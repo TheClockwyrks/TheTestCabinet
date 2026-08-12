@@ -97,33 +97,55 @@
 # where that costs nothing: `rustup target add` over an already-present toolchain is seconds, which
 # is why the hydration script skips it by name and says so.
 #
-# Reserved: the second, build-capable prefix
-# ------------------------------------------
-# Every toolchain installed here is the RUN set — pruned to what a gg run and gg's reflectors
-# actually execute. `scripts/ci/install-wasi-sdk.sh` keeps one sysroot target (`wasm32-wasip1`) and
-# deletes four; `scripts/ci/install-dotnet.sh` keeps a runtime, Roslyn and the reference assemblies
-# and deletes MSBuild, NuGet and every workload. That is correct and must stay correct: those two
-# prefixes have to remain byte-equivalent to what their installers write, because the installers'
-# idempotence checks are what make the reconciler above safe. A `wasm32-wasip2` sysroot appearing
-# under `~/.local/share/tcab/gg-wasi-sdk` would leave the tree no longer equal to what
-# `install-wasi-sdk.sh` produces, and the next reconcile would either fail to notice or `rm -rf` it.
+# The second, build-capable prefix — and the two tags this file publishes
+# -----------------------------------------------------------------------
+# Every toolchain the `run-toolchains` stage installs is the RUN set — pruned to what a gg run and
+# gg's reflectors actually execute. `scripts/ci/install-wasi-sdk.sh` keeps one sysroot target
+# (`wasm32-wasip1`) and deletes four; `scripts/ci/install-dotnet.sh` keeps a runtime, Roslyn and the
+# reference assemblies and deletes MSBuild, NuGet and every workload. That is correct and must stay
+# correct: those two prefixes have to remain byte-equivalent to what their installers write, because
+# the installers' idempotence checks are what make the reconciler above safe. A `wasm32-wasip2`
+# sysroot appearing under `~/.local/share/tcab/gg-wasi-sdk` would leave the tree no longer equal to
+# what `install-wasi-sdk.sh` produces, and the next reconcile would either fail to notice or
+# `rm -rf` it.
 #
-# `packages/gg-sandbox-csharp/build.sh` — which builds that arm's committed guest — needs the
-# UNPRUNED versions of both, and today it fetches its own into `$HERE/.build` and says so in its
-# own header. It is a developer command; nothing in CI runs it. When the guest/checker artifact
-# builds move into the cargo build, the answer is a SECOND, separately-prefixed tree rather than a
-# widening of these:
+# `packages/gg-sandbox-csharp/build.sh` — which builds that arm's guest — needs the UNPRUNED versions
+# of both, and it is the one arm whose artifact build does. So there is a SECOND, separately-prefixed
+# tree rather than a widening of these, in the `build-toolchains` stage at the foot of this file:
 #
 #     ~/.local/share/tcab/gg-build/dotnet-sdk-<version>      (a whole SDK, `wasi-experimental` installed)
 #     ~/.local/share/tcab/gg-build/wasi-sdk-<version>-full   (every sysroot target)
+#     ~/.local/share/tcab/gg-build/<runtime-pack>.<version>  (Mono for wasi-wasm)
 #
-# mirroring `build.sh`'s own `.build/` names, populated by a new `FROM run-toolchains AS
-# build-toolchains` stage below it, and reached by an override in
-# `packages/gg-sandbox-csharp/csharp-version.sh` that `build.sh` consults before falling back to
-# `$HERE/.build`. The consumer half of that lives in `packages/`, so the two land together or not at
-# all; the stage is deliberately NOT written yet, because a stage nothing builds is a comment that
-# costs a maintainer a rebuild to discover has rotted. The decision is recorded here so whoever adds
-# it does not have to re-take it.
+# mirroring `build.sh`'s own `.build/` names, populated by
+# `scripts/ci/install-gg-build-toolchains.sh`, and reached by `gg_dotnet_build_sdk_home` /
+# `gg_wasi_sdk_build_home` / `gg_dotnet_runtime_pack_home` in
+# `packages/gg-sandbox-csharp/csharp-version.sh`, which `build.sh` consults before falling back to
+# `$HERE/.build`. The consumer half lives in `packages/`, so the two landed together.
+#
+# TWO TAGS — AND THE REASON THE BIG ONE IS NOT THE DEFAULT IS NOT THE REASON IT WAS WRITTEN FOR.
+# `run-toolchains` is ~1.9 GB; `build-toolchains` adds roughly 1.5 GB on top of it — a ~770 MB
+# unpruned SDK plus its workload, a ~650 MB unpacked wasi-sdk, and the Mono runtime pack — for a
+# total near 3.4 GB. `.github/workflows/build-gg-ci-image.yml` publishes both stages under their own
+# tags (`:latest` and `:build-latest`) and a consumer pulls the one it needs.
+#
+# WHEN THIS WAS WRITTEN, the split was an economy: almost every consumer of this image built and
+# tested gg, which needed the eleven RUN toolchains and nothing here, and only a job that re-cut the
+# C# guest BY HAND needed the rest. THAT PREMISE IS DEAD. Nothing gg embeds is committed any more —
+# every arm has a crate under `crates/gg-sandbox-artifacts/` whose build script runs that arm's
+# `build.sh` on every build whose inputs moved — so BUILDING gg re-cuts the C# guest, and every
+# consumer that compiles `test-cabinet-gg` wants `:build-latest`. Both jobs in `ci.yml` do.
+#
+# The two tags are kept anyway, and the argument is now the other one: this image is also hydrated by
+# things that only RUN gg or read its pins, and `install-wasi-sdk.sh` / `install-dotnet.sh` prune
+# precisely so a run image does not carry 1.5 GB it never opens. A single fused tag would push that
+# weight onto them to save a `:build-` prefix on two lines of YAML. A consumer that pulls the smaller
+# tag and then builds gg is not broken, only slower: `packages/gg-sandbox-csharp/build.sh` falls back
+# to fetching both toolchains into its own `.build/`, which is the same bytes down a worse path.
+#
+# The stage is the last one in the file so that a build with no `--target` still produces the
+# smaller image — a default that now serves the minority, and stays because an accidental 3.4 GB
+# publish is the more expensive mistake of the two.
 
 # Ubuntu 24.04 deliberately, and it is a coupling rather than a preference: the consumer of this
 # image is `ubuntu-24.04` (and `ubuntu-24.04-arm`) GitHub Actions runners, and what gets copied out
@@ -139,11 +161,12 @@ FROM ubuntu:24.04 AS base
 # needs it, because "some install broke four minutes in" is the failure this list prevents:
 #   ca-certificates, curl  every arm downloads over TLS
 #   tar, gzip, xz-utils    the Java, Kotlin, PureScript, Swift, wasi-sdk and .NET archives
-#   unzip                  the one entry NOT read by the pinned list today: every installer here
-#                          fetches a tarball. It is the extractor the C# arm's developer build
-#                          (`packages/gg-sandbox-csharp/build.sh`) unpacks a `.nupkg` with, and it
-#                          is here so that the reserved `build-toolchains` stage described in the
-#                          header is a stage and not also an apt change. ~400 KB.
+#   unzip                  the extractor a `.nupkg` needs — the Mono WASI runtime pack the C# arm's
+#                          guest is relinked from. Every installer on the ELEVEN-ARM list fetches a
+#                          tarball instead, so this entry serves only the `build-toolchains` stage
+#                          at the foot of this file and the arm build it enables. It was put here
+#                          before that stage existed, precisely so the stage would be a stage and
+#                          not also an apt change; it is read now. ~400 KB.
 #   binutils               `readelf` and `ar`, which `install-swift.sh` uses to walk the Swift
 #                          binaries' shared-library closure and to unpack the Debian .debs it
 #                          vendors libxml2/libicu out of. Without it that installer exits with a
@@ -160,6 +183,23 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 	--mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 	apt-get update && apt-get install -y --no-install-recommends \
 	ca-certificates curl tar gzip xz-utils unzip binutils ruby libicu74 libstdc++6 zlib1g
+
+# Node and npm, which are a PREREQUISITE OF THE ELEVEN-ARM LIST rather than of one arm, and were the
+# one thing on it this image did not have. `install-gg-toolchains.sh` ends by calling
+# `install-gg-build-tools.sh`, which warms the four build tools that are published on npm and nowhere
+# else — `@bytecodealliance/componentize-js` for the TypeScript and Ruby guests, `opal-compiler` for
+# the Ruby arm, `spago` for the PureScript package set — into the version-stamped prefix
+# `scripts/gg-npm-tools.sh` resolves. Every one of those is an `npm install --prefix`, so without a
+# node here the installer's first line dies with `npm: command not found` under `set -eux`.
+#
+# From the official node image rather than from Ubuntu's archive, which is two majors behind, and
+# exactly the two paths `deployments/images/services.Dockerfile` copies for the same reason — only
+# the interpreter and npm itself, because copying all of `/usr/local` would bury this image's own
+# toolchain trees. bookworm's glibc is older than this base's, so the binary runs here; the reverse
+# would not.
+COPY --from=docker.io/library/node:24-bookworm-slim /usr/local/bin/node /usr/local/bin/node
+COPY --from=docker.io/library/node:24-bookworm-slim /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && npm --version
 
 # An unprivileged user, because everything below writes into a home directory and a consumer copies
 # it out onto a machine where it will be owned by whoever ran the copy. Installing as root would
@@ -229,6 +269,7 @@ RUN set -eux; \
 # helpers and on the Java arm's installer, the second of which broke the `-gg` variant of every
 # language rather than only Java's.
 COPY --chown=${USER_UID}:${USER_GID} scripts/ci /gg-repo/scripts/ci
+COPY --chown=${USER_UID}:${USER_GID} scripts/gg-*.sh /gg-repo/scripts/
 COPY --chown=${USER_UID}:${USER_GID} packages /gg-repo/packages
 
 # The whole point of the image, in one command with no arguments and no overrides.
@@ -248,6 +289,16 @@ COPY --chown=${USER_UID}:${USER_GID} packages /gg-repo/packages
 # cost of that choice is exactly this — a default path that MOVES leaves a line here checking
 # somewhere nothing writes, and the build goes red rather than quiet, which is the right way round.
 # An eleventh line for a twelfth arm is the price of the block working at all.
+#
+# THE LAST TWO LINES ARE NOT AN ARM'S COMPILER, and they are here because they are the ones most
+# likely to be silently absent. `install-gg-build-tools.sh` warms what the artifact builds resolve
+# instead of downloading: the npm-delivered tools under `gg-npm` (which four arms reached with
+# `npx --yes`, i.e. the registry), and the Swift arm's three vendored source packages under
+# `gg-swift-libraries` (which lived in that package's own gitignored `.build/`, a cache that looks
+# provisioned on a developer's machine and is three GitHub fetches inside `cargo build` on a fresh
+# checkout). If either is missing from this image, every consumer of it goes back to fetching them
+# per job — with nothing in the log to say so, which is the failure this whole block exists to
+# convert into a red build.
 RUN set -eux; \
 	/gg-repo/scripts/ci/install-gg-toolchains.sh; \
 	test -x "$HOME/.local/bin/uv"; \
@@ -258,6 +309,8 @@ RUN set -eux; \
 	test -x "$HOME/.local/share/tcab/gg-swift/toolchain/usr/bin/swiftc"; \
 	test -x "$HOME/.local/share/tcab/gg-wasi-sdk/bin/clang++"; \
 	test -x "$HOME/.local/share/tcab/gg-dotnet/dotnet/dotnet"; \
+	test -d "$HOME/.local/share/tcab/gg-swift-libraries"; \
+	test -d "$HOME/.local/share/tcab/gg-npm"; \
 	ruby -e 'gem "yard"'; \
 	du -sh "$HOME/.local"
 
@@ -279,4 +332,51 @@ USER ${USERNAME}
 
 # A shell, so this image can be `docker run` for debugging and so `docker create` — which is how a
 # consumer gets a filesystem to copy out of — has a command to record without being given one.
+CMD ["/bin/bash"]
+
+# ---------------------------------------------------------------------------------------------
+# The build-capable stage: `run-toolchains` plus the second, unpruned prefix the C# arm's ARTIFACT
+# build needs. See "The second, build-capable prefix" in this file's header for why it is a second
+# tree rather than a widening, and for why it is a second TAG rather than the default.
+#
+# It is last in the file so a `docker build` with no `--target` produces the smaller image, and it
+# builds `FROM run-toolchains` rather than `FROM base` so the two tags share every layer up to this
+# point — a consumer that has pulled one has most of the other.
+# ---------------------------------------------------------------------------------------------
+FROM run-toolchains AS build-toolchains
+
+ARG USERNAME=gg
+ARG USER_UID=1000
+ARG USER_GID=1000
+
+# The repository slice again, because the stage above deleted its copy — see that `rm -rf`. The same
+# two directories, for the same reason: `scripts/ci` is the installer family and `packages` carries
+# the per-arm pins this one reads (`csharp-version.sh`, which sources `cpp-version.sh` for the
+# wasi-sdk release, so the unpruned tree and the pruned one can never name different releases).
+COPY --chown=${USER_UID}:${USER_GID} scripts/ci /gg-repo/scripts/ci
+COPY --chown=${USER_UID}:${USER_GID} scripts/gg-*.sh /gg-repo/scripts/
+COPY --chown=${USER_UID}:${USER_GID} packages /gg-repo/packages
+
+# One command with no arguments, exactly as the run half is. The assertions afterwards are the same
+# kind and are here for the same reason: what an installer cannot check is that it landed in the ONE
+# place a consumer will copy. Each is a path the C# arm's `build.sh` names directly — the workload's
+# build tasks, the `noeh` libc++ the link line reaches for under `wasm32-wasip2` (which is precisely
+# what the pruned run tree deletes, and therefore the assertion that says this stage did something),
+# and the runtime pack's native archives.
+RUN set -eux; \
+	/gg-repo/scripts/ci/install-gg-build-toolchains.sh; \
+	. /gg-repo/packages/gg-sandbox-csharp/csharp-version.sh; \
+	test -x "$HOME/.local/share/tcab/gg-build/dotnet-sdk-${GG_DOTNET_SDK_VERSION}/dotnet"; \
+	test -f "$HOME/.local/share/tcab/gg-build/dotnet-sdk-${GG_DOTNET_SDK_VERSION}/packs/Microsoft.NET.Runtime.WebAssembly.Wasi.Sdk/${GG_DOTNET_RUNTIME_VERSION}/tasks/${GG_DOTNET_TFM}/WasmAppBuilder.dll"; \
+	test -d "$HOME/.local/share/tcab/gg-build/wasi-sdk-${GG_WASI_SDK_VERSION}-full/share/wasi-sysroot/lib/${GG_CSHARP_TARGET}/noeh"; \
+	test -d "$HOME/.local/share/tcab/gg-build/${GG_DOTNET_MONO_WASI_PACK}.${GG_DOTNET_RUNTIME_VERSION}/runtimes/wasi-wasm/native"; \
+	du -sh "$HOME/.local"
+
+# The slice goes again, for the reason the stage above gives: nothing should ship a stale half-copy
+# of the repository for someone to read a pin out of by mistake. As root, in its own step, because
+# unlinking an entry from `/` needs write permission on `/`.
+USER root
+RUN rm -rf /gg-repo
+USER ${USERNAME}
+
 CMD ["/bin/bash"]

@@ -15,7 +15,8 @@
 //!
 //! It is generated **by the build that compiles this crate**, not committed and embedded later.
 //! `crates/gg/build.rs` runs every arm's reflector into the build's `OUT_DIR`, and each arm module
-//! `include_str!`s the result; nothing under `sandbox/guests/` holds a catalogue any more. That
+//! `include_str!`s the result; `sandbox/guests/`, which held them and then held the baked guest
+//! components after them, does not exist at all any more. That
 //! removes the one failure mode the arrangement could not otherwise see. A committed catalogue is a
 //! claim about SDK source that is checked at the moment it is generated and never again, and
 //! nothing about a `.json` file *looks* out of date — so between one regeneration and the next it
@@ -211,7 +212,7 @@ pub(crate) struct SignatureCatalogue {
     /// [role](crate::ending::EndingRole).
     ///
     /// Kept out of [`tools`](Self::tools) because none of them has a gg tool name, which is what
-    /// keeps that array in exact bijection with the gg tool vocabulary the committed component is
+    /// keeps that array in exact bijection with the gg tool vocabulary the prebuilt component is
     /// checked against.
     ///
     /// **[`V1`](SchemaVersion::V1) only.** A [`V2`](SchemaVersion::V2) catalogue files every
@@ -223,7 +224,7 @@ pub(crate) struct SignatureCatalogue {
     /// object.
     ///
     /// Kept out of [`tools`](Self::tools) on the same rule [`session`](Self::session) is: none of
-    /// them has a gg tool name, so folding them in would break the bijection the committed component
+    /// them has a gg tool name, so folding them in would break the bijection the prebuilt component
     /// is checked against.
     ///
     /// **[`V1`](SchemaVersion::V1) only.** A [`V2`](SchemaVersion::V2) catalogue files every

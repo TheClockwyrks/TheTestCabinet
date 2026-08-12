@@ -1,10 +1,10 @@
 //! **The JavaScript arm's execution substrate** — a real JavaScript program, really prepared by
-//! this arm's own step and really evaluated by the committed guest, talking to gg's real host.
+//! this arm's own step and really evaluated by the embedded guest, talking to gg's real host.
 //!
 //! # Why this file exists at all, given what the arm is
 //!
 //! [The arm](super::javascript) is [TypeScript](super::typescript)'s with the type check taken out,
-//! and it holds every other variable at zero *by construction*: the same committed component
+//! and it holds every other variable at zero *by construction*: the same embedded component
 //! reached through TypeScript's own constant, the same strip, the same catalogue, the same healing
 //! dialect. A sibling gate asserts each of those equalities directly
 //! ([`the_javascript_arm_differs_from_typescript_only_in_the_check`](super::tests)), and
@@ -21,7 +21,7 @@
 //!
 //! All of it. A program starts as ordinary JavaScript, goes through
 //! [`prepare_program`](ProgramLanguage::prepare_program) — this arm's production step, the `oxc`
-//! strip with nothing after it — and the prepared source is handed to the **committed**
+//! strip with nothing after it — and the prepared source is handed to the **prebuilt**
 //! `guests/typescript.component.wasm`, linked with the production
 //! [linker](crate::sandbox::linker), instantiated with the production ceilings and driven through
 //! the real membrane, exactly as [`run_program`](crate::sandbox::run_program) does on a turn.
@@ -89,7 +89,7 @@ fn logs(outcome: &crate::sandbox::SandboxOutcome) -> &[String] {
 }
 
 /// **A real JavaScript program runs through the real membrane** — prepared by this arm, evaluated by
-/// the committed guest, calling gg's real host and reading back what it answered.
+/// the embedded guest, calling gg's real host and reading back what it answered.
 ///
 /// Three programs, because three different things are being observed and a component compile is
 /// paid once per process:
@@ -304,7 +304,7 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
     // 5. THE CONVENIENCE HELPERS, which are the one part of this SDK that no static artifact can
     // vouch for. Every module function is an export the catalogue reflects, the checker declares and
     // the drift gate compares; a helper is a *closure the guest attaches to a value the host handed
-    // back*, so the catalogue can promise `handle.send` and the committed component can have
+    // back*, so the catalogue can promise `handle.send` and the embedded component can have
     // forgotten to put one there — a model reading the documentation would then meet a `TypeError`
     // on a call gg told it to make. That is only observable by running one, which is what this does:
     // four helpers, each hanging off a value a different call produced, each reaching gg's dispatch

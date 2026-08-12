@@ -1,5 +1,21 @@
 //! Reflect every program language's signature catalogue out of its own SDK, as a step of building
-//! this crate, and hand the eleven JSON files to `OUT_DIR` for the arm modules to `include_str!`.
+//! this crate, and hand the eleven JSON files to `OUT_DIR` for the arm modules to `include_str!` —
+//! and tell those same modules where each arm's **artifacts** were built.
+//!
+//! # Two halves, one subject
+//!
+//! An arm of gg's responses-as-code capability is two things that must agree: what a model is
+//! **told** it can call, and what its program is actually compiled and evaluated **against**. This
+//! file is where both stop being committed files and become outputs of the build that embeds them.
+//!
+//! * The **catalogue** — the description — is reflected here, by running
+//!   `scripts/gg-signatures.sh`. That is the bulk of this file and the whole of the argument below.
+//! * The **artifacts** — the bytes: an SDK jar, a compiler, a baked guest component — are built one
+//!   crate per arm, under `crates/gg-sandbox-artifacts/`, and this file only re-publishes where they
+//!   landed. They are separate crates rather than more steps here because a build script has one
+//!   rerun set: folded in, editing a Python docstring would re-run `swiftc`. See
+//!   `gg-artifact-build`'s header for that argument in full, and [`publish_artifact_roots`] for the
+//!   part of it that lives here.
 //!
 //! # Why these are built and not committed
 //!
@@ -28,12 +44,37 @@
 //! that compiles the host embedding it, so a prompt cannot describe a surface the guest does not
 //! have. There is no drift left to gate, which is why nothing gates it.
 //!
+//! Every word of that holds of the artifacts too, which is why they moved the same way, one arm at
+//! a time, until none was left. A committed `.jar` looks even less stale than a committed `.json`,
+//! and what it costs is the mirror image: not a model told about a function that does not exist, but
+//! a model told correctly and then compiled against a library that has not caught up. Both halves of
+//! every arm are now cut from the sources of the checkout that builds them, on the same build, so
+//! they cannot be two vintages — and `crates/gg/src/sandbox/guests/`, which held the catalogues and
+//! then the baked guest components after them, does not exist at all.
+//!
+//! The four baked interpreters were the last to move and they are the sharpest case, because they
+//! are the ones no drift gate could ever have covered: not one of the TypeScript, Python, Ruby or C#
+//! components is byte-reproducible, so nothing could re-cut one and diff it. What stood in for that
+//! was a manifest each build wrote beside its own output — which could attest what a build had been
+//! *told* and never what it produced. Generating them deletes the question rather than answering
+//! it.
+//!
 //! # What it does
 //!
 //! One line of work: run `scripts/gg-signatures.sh` with `GG_SIGNATURES_OUT_DIR` pointed at
-//! `$OUT_DIR/signatures`. That script is the only list of gg's arms in the repository — it is what a
-//! person runs by hand to *read* a catalogue, and it is what this runs — so a twelfth arm is one
-//! line there and no line here.
+//! `$OUT_DIR/signatures`. That script reads `scripts/gg-arms.sh`, which is the only list of gg's
+//! arms in the repository — it is what a person runs by hand to *read* a catalogue, and it is what
+//! this runs — so a twelfth arm is one line there and no line here.
+//!
+//! Before that, [`publish_artifact_roots`], which is mostly bookkeeping: the artifact crates have
+//! already run by the time this build script starts, because cargo runs a dependency's build script
+//! before its dependent's, and most of what this does is turn what they published into variables the
+//! source can name.
+//!
+//! Mostly, and not entirely — the order of those two calls is load-bearing for exactly one arm. The
+//! PureScript catalogue is reflected by compiling that arm's SDK against its **compiled library
+//! tree**, which is one of the artifacts `gg-artifact-purescript` builds, so the path it published
+//! is handed to the reflector in its environment. See [`reflect`].
 //!
 //! The rest of this file is the rerun set: the sources whose change must re-reflect a catalogue, and
 //! nothing else. Getting that set wrong is worse than it sounds in both directions. Too small, and a
@@ -44,6 +85,7 @@
 //! package's `src`/`Sources` and `tools` subtrees and its pins, never a `.build/`, a `dist/`, a
 //! `node_modules/` or a generated-bindings directory.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -66,7 +108,8 @@ fn main() {
     );
     let signatures = out_dir.join("signatures");
 
-    reflect(&root, &signatures);
+    let artifacts = publish_artifact_roots();
+    reflect(&root, &signatures, &artifacts);
 
     for path in rerun_paths(&root) {
         // A path cargo cannot see is a path cargo treats as changed, which would mean re-running
@@ -83,6 +126,76 @@ fn main() {
     }
 }
 
+/// Turn every artifact crate's published directory into a `GG_ARTIFACTS_<ARM>` the source can name.
+///
+/// # The chain, end to end
+///
+/// ```text
+///   crates/gg-sandbox-artifacts/java/Cargo.toml   links = "gg-artifact-java"
+///   …/java/build.rs      runs packages/gg-sandbox-java/build.sh into its own OUT_DIR
+///        └─ prints  cargo::metadata=root=<that directory>
+///   cargo             →  DEP_GG_ARTIFACT_JAVA_ROOT=<that directory>   (here, in this process)
+///   this function     →  cargo::rustc-env=GG_ARTIFACTS_JAVA=<that directory>
+///   crates/gg/src/sandbox/language/java.compile.rs
+///        include_bytes!(concat!(env!("GG_ARTIFACTS_JAVA"), "/java.sdk.jar"))
+/// ```
+///
+/// Which is the same idiom the signature catalogues already use one line further out —
+/// `include_str!(concat!(env!("OUT_DIR"), "/signatures/java.signatures.json"))` — so an arm module
+/// reads as one habit rather than two. The only difference is whose `OUT_DIR` it is, and that
+/// difference is the whole point: an arm's bytes are rebuilt when that arm's sources move, and not
+/// when some other arm's do.
+///
+/// # Why this reads the environment instead of naming the arms
+///
+/// Because there is already a list of which arm crates exist, and it is `Cargo.toml`'s
+/// `[dependencies]` — the place cargo itself reads it from. Cargo sets exactly one
+/// `DEP_GG_ARTIFACT_<ARM>_ROOT` per `links` dependency of this package, so scanning for them is not
+/// a guess about what is there; it is a reading of the only declaration that could have put
+/// anything there. A hand-kept list here would be a second copy of that, free to fall behind it, and
+/// the failure would be an arm whose crate is built on every `cargo build` and whose bytes nothing
+/// can reach.
+///
+/// So landing a twelfth arm is one `[dependencies]` line and the `include_bytes!` that uses it, with
+/// no line here. There are ten of them today, serving all eleven arms — `gg-artifact-typescript`
+/// covers the JavaScript arm as well, because those two arms are one guest — and the loop below
+/// publishes whatever cargo put in the environment without caring how many that is.
+///
+/// Returns the same table it published, keyed by the arm id in upper case, for the one caller that
+/// needs a path rather than a variable: [`reflect`], which has to hand the PureScript reflection the
+/// library tree that arm's crate just built.
+fn publish_artifact_roots() -> BTreeMap<String, PathBuf> {
+    // Sorted, because the only reason anybody reads this output is `cargo build -vv` and a build's
+    // directives should not reorder themselves between two runs of the same build.
+    let mut roots: Vec<(String, String)> = std::env::vars()
+        .filter_map(|(key, value)| {
+            let arm = key
+                .strip_prefix("DEP_GG_ARTIFACT_")?
+                .strip_suffix("_ROOT")?;
+            Some((arm.to_string(), value))
+        })
+        .collect();
+    roots.sort();
+
+    let mut published = BTreeMap::new();
+    for (arm, root) in roots {
+        // The artifact crate asserts every file its row promises is present and non-empty before it
+        // publishes this, so what is left to check here is only that the directory itself survived —
+        // which it would not if somebody cleaned that crate's `OUT_DIR` out from under a cached
+        // fingerprint. Caught here it names the arm; missed here it is an `include_bytes!` failing
+        // on a path with a hash in it, several files away.
+        assert!(
+            Path::new(&root).is_dir(),
+            "the {arm} arm published {root} as the directory its artifacts were built into and it \
+             is not there. Force that arm to rebuild with `cargo clean -p gg-artifact-{}`.",
+            arm.to_lowercase(),
+        );
+        println!("cargo::rustc-env=GG_ARTIFACTS_{arm}={root}");
+        published.insert(arm, PathBuf::from(root));
+    }
+    published
+}
+
 /// Run the one script that knows the arms, with its destination pointed into this build's `OUT_DIR`.
 ///
 /// stdout and stderr are both **inherited**. stderr is the important one: when griffe cannot parse a
@@ -92,7 +205,25 @@ fn main() {
 /// script's stdout looking for `cargo:` directives and ignores every other line, so the orchestrator's
 /// per-arm progress is dropped on an ordinary build and shown under `cargo build -vv`, which is
 /// exactly where someone wondering what a four-minute build is doing will look.
-fn reflect(root: &Path, signatures: &Path) {
+///
+/// # The one arm whose reflection needs another arm's artifact
+///
+/// Ten of the eleven reflectors read only their own package. The PureScript one cannot: `purs`
+/// refuses to type-check a module without the sources *and* the externs of everything it imports
+/// (measured: with externs alone, every import is `ModuleNotFound`), and compiling the registry set
+/// from scratch is ~16 s. So `packages/gg-sandbox-purescript/signatures.sh` unpacks the arm's
+/// **compiled library tree**, stages the working tree's `src/` over the copy inside it, and reflects
+/// that — which is also what makes the catalogue a description of the SDK on disk rather than a
+/// re-read of whatever was baked.
+///
+/// That tarball used to be committed, and the requirement was met by naming it in the rerun set
+/// below and trusting that a checkout had it. Now it is built by `gg-artifact-purescript`, cargo
+/// runs that crate's build script strictly before this one because `crates/gg` depends on it, and
+/// the path is handed over in the environment. The ordering stopped being a comment and became an
+/// edge in the package graph — which is why this function asserts the variable is there rather than
+/// falling back to anything: an absent `DEP_GG_ARTIFACT_PURESCRIPT_ROOT` means the dependency was
+/// dropped or moved to `[build-dependencies]`, and either way there is no tree to reflect against.
+fn reflect(root: &Path, signatures: &Path, artifacts: &BTreeMap<String, PathBuf>) {
     let script = root.join("scripts/gg-signatures.sh");
     assert!(
         script.is_file(),
@@ -100,8 +231,22 @@ fn reflect(root: &Path, signatures: &Path) {
         script.display(),
     );
 
+    let purescript = artifacts.get("PURESCRIPT").unwrap_or_else(|| {
+        panic!(
+            "the purescript arm published no artifact directory, so there is no compiled library \
+             tree to reflect its catalogue against.\n\
+             crates/gg/Cargo.toml must depend on gg-artifact-purescript as an ORDINARY dependency \
+             — under [build-dependencies] the crate still builds and DEP_GG_ARTIFACT_PURESCRIPT_ROOT \
+             is silently absent.",
+        )
+    });
+
     let status = Command::new(&script)
         .arg(signatures)
+        .env(
+            "GG_PURESCRIPT_LIBRARIES",
+            purescript.join("purescript.libraries.tar.gz"),
+        )
         .current_dir(root)
         .status()
         .unwrap_or_else(|error| {
@@ -138,15 +283,30 @@ fn reflect(root: &Path, signatures: &Path) {
 /// "the SDK a person edits": each package's `src` (or `Sources`) and `tools` subtrees, its
 /// `signatures.sh`, its library set and its `<lang>-version.sh` pin.
 ///
-/// The two cross-tree inputs are deliberate and belong to specific arms rather than to all of them:
+/// The one cross-tree input is deliberate and belongs to specific arms rather than to all of them:
 /// `crates/gg/wit` is what the Rust, Swift and C++ arms generate their bindings from before
-/// reflecting, and `checkers/purescript.libraries.tar.gz` is the compiled library set the PureScript
-/// arm type-checks its staged SDK against.
+/// reflecting.
+///
+/// **The PureScript arm's compiled library tree is a second cross-tree input and it is deliberately
+/// NOT in this list**, which is worth saying because it used to be. That tarball was committed under
+/// `crates/gg/src/sandbox/checkers/`, so naming it here was the only way to say "re-reflect
+/// PureScript when the tree it compiles against moves" — a checkers file in a signature rerun set,
+/// which took a paragraph to defend. It is now built by `gg-artifact-purescript` into that crate's
+/// `OUT_DIR`, and the way that fact is declared is the `[dependencies]` edge: cargo re-runs a
+/// dependent's build script whenever a `links` dependency was rebuilt, so a re-cut tree re-runs this
+/// whole reflection with no path naming it. Naming the `OUT_DIR` copy here would be naming a
+/// directory of this build's own output — the exact mistake the paragraph above is about.
 fn rerun_paths(root: &Path) -> Vec<PathBuf> {
     [
-        // This file, and the one script that knows the eleven arms.
+        // This file, the orchestrator it runs, and the one list of the eleven arms that
+        // orchestrator sources. `scripts/gg-arms.sh` is named here and not left to the transitive
+        // path: it is true that every artifact crate names it too, and that cargo re-runs this
+        // build script whenever one of them is rebuilt — but that is a SIDE EFFECT of the `links`
+        // edge, and this file's own header calls it out as one. A reflection's rerun set is every
+        // input the reflection reads, and `gg-signatures.sh` reads this.
         "crates/gg/build.rs",
         "scripts/gg-signatures.sh",
+        "scripts/gg-arms.sh",
         // TypeScript and JavaScript: one guest, one set of declarations, two catalogues. The
         // declaration emit is decided by the repo-root tsconfig the package's own configs extend, so
         // that file is an input here even though nothing in the package names it.
@@ -170,13 +330,14 @@ fn rerun_paths(root: &Path) -> Vec<PathBuf> {
         "packages/gg-sandbox-ruby/tools",
         "packages/gg-sandbox-ruby/signatures.sh",
         "packages/gg-sandbox-ruby/yard-version.sh",
-        // PureScript: `purs --codegen docs` over the SDK staged into the committed library tree, so
-        // the tarball is as much an input as the sources are; `spago.yaml` is the library set.
+        // PureScript: `purs --codegen docs` over the SDK staged into the arm's compiled library
+        // tree. That tree is as much an input as the sources are, and it is the one input here that
+        // is not a path — see this function's header on why the dependency edge says it instead.
+        // `spago.yaml` is the library set.
         "packages/gg-sandbox-purescript/src",
         "packages/gg-sandbox-purescript/tools",
         "packages/gg-sandbox-purescript/signatures.sh",
         "packages/gg-sandbox-purescript/spago.yaml",
-        "crates/gg/src/sandbox/checkers/purescript.libraries.tar.gz",
         // Java: javadoc with gg's own doclet, compiled fresh from `tools/` on every run.
         "packages/gg-sandbox-java/src",
         "packages/gg-sandbox-java/tools",
@@ -193,7 +354,7 @@ fn rerun_paths(root: &Path) -> Vec<PathBuf> {
         "packages/gg-sandbox-kotlin/kotlin-version.sh",
         // Rust: rustdoc's own JSON. `Cargo.toml` is both the manifest and the library set;
         // `rust-version.sh` reads the channel out of the repo-root `rust-toolchain.toml`, which is
-        // the one release this arm's committed rlibs are compiler-locked to. Its `src` is the one
+        // the one release this arm's rlibs are compiler-locked to. Its `src` is the one
         // tree named a file at a time rather than as a directory — see [`rust_sdk_sources`].
         "packages/gg-sandbox-rust/tools",
         "packages/gg-sandbox-rust/signatures.sh",

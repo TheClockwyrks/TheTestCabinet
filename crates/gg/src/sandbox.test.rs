@@ -1,4 +1,4 @@
-//! End-to-end tests against the **committed component** — real TypeScript, really evaluated.
+//! End-to-end tests against the **prebuilt component** — real TypeScript, really evaluated.
 //!
 //! # These cost a component compile each, so they are consolidated
 //!
@@ -817,7 +817,7 @@ fn a_returned_value_is_discarded_and_the_model_is_told() {
 /// verdict gg has to decide what to do with.
 ///
 /// This is the end-to-end half of the membrane's own tests: it pays a component compile to prove the
-/// **committed artifact** binds what the host thinks it binds.
+/// **embedded artifact** binds what the host thinks it binds.
 #[test]
 fn a_role_gets_only_its_own_ending_calls() {
     // The standard group: `harness.finish` is there, and neither verdict object exists.
@@ -950,7 +950,7 @@ fn a_refused_call_is_the_same_turn_error_as_an_unbound_name() {
 ///
 /// A view is the one channel material has into a model's own context window, so binding it from the
 /// capability set would leave a run that enables no tools with nothing to show itself — the same
-/// carve-out `harness` has, checked here against the **committed artifact** rather than the source
+/// carve-out `harness` has, checked here against the **embedded artifact** rather than the source
 /// catalogue. `openFile` is the exception and stays a read: withholding `read_file` must not leave a
 /// side door open, and it has to close the *function* rather than the whole object, which is a
 /// distinction only an end-to-end run can prove.
@@ -1162,7 +1162,7 @@ fn the_program_library_is_bound_only_when_the_run_keeps_one() {
 // Code modules — the `lib` object
 // ---------------------------------------------------------------------------
 //
-// These are the only tests that prove the committed component really binds a module: everything
+// These are the only tests that prove the prebuilt component really binds a module: everything
 // else about the feature is host-side, and a `lib` the guest failed to build would look exactly like
 // a program that forgot to call into it.
 

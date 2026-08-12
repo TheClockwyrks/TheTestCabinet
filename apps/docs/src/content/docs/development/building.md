@@ -92,7 +92,9 @@ cargo clippy --workspace
 
 One crate in the workspace is not built by the Rust toolchain alone.
 [`test-cabinet-gg`](/gg/overview/) drives a model in one of **eleven program languages**, and
-what a model is told about each language's surface — every module, signature, argument, type
+building it reaches every one of them, for two different things.
+
+**What a model is told** about each language's surface — every module, signature, argument, type
 and type member — is a *signature catalogue* reflected out of that language's own SDK by that
 language's own documentation tool. Those catalogues are **not committed**. `crates/gg/build.rs`
 generates all eleven as a step of building the crate, into the build's `OUT_DIR`, and the arm
@@ -101,19 +103,44 @@ modules `include_str!` them from there. See
 committed copy is a claim about source that is checked once and never again, and when it is
 wrong what it costs is a model told about a function the guest does not export.
 
-The cost is that **anything which compiles `crates/gg` wants eleven documentation toolchains
-present** — which is `cargo build --workspace`, `cargo clippy --workspace`,
-`cargo doc --workspace`, the two pre-commit hooks that run those, `npm run gen:contract`, and
-`scripts/build-gg-static.sh`. Nothing else in the workspace depends on `test-cabinet-gg`, so a
-package-scoped build (`-p test-cabinet-cli`, the release binaries, the desktop app) needs none
-of this.
+**What a model's program is compiled and evaluated against** — an SDK jar, a compiler, a library
+set — went the same way, one arm at a time. Each arm has a
+three-file crate under `crates/gg-sandbox-artifacts/` whose build script runs that arm's
+`packages/gg-sandbox*/build.sh` into its own `OUT_DIR`, and `crates/gg` embeds the result from
+there. They are separate crates so that each arm has its own rerun set: editing the Java SDK
+re-cuts the Java jar and touches nothing else, and cargo runs the independent arms concurrently.
+**All of them have moved** — the TypeScript checker set, the Ruby arm's Opal compiler, the Java and
+Kotlin SDK jars, every one of the compiled arms (the Rust library set, the PureScript library tree,
+the C++ and Swift guest archives with the two preview1 adapters they carry), and finally the four
+baked guest components: TypeScript/JavaScript, Python, Ruby and C#, 14 to 35 MB of language runtime
+apiece. `crates/gg/src/sandbox/guests/` no longer exists. What is left under
+`crates/gg/src/sandbox/checkers/` is five files that are gg's own source rather than anybody's
+output: three hand-written Java compiler drivers and the two JVM arms' pin declarations. A
+`.gitignore` allowlist names exactly those five and ignores the rest of that directory, so nothing
+generated can be committed back into it.
+
+The cost is that **anything which compiles `crates/gg` wants those toolchains present** — which
+is `cargo build --workspace`, `cargo clippy --workspace`, `cargo doc --workspace`, the two
+pre-commit hooks that run those, `npm run gen:contract`, and `scripts/build-gg-static.sh`.
+Nothing else in the workspace depends on `test-cabinet-gg`, so a package-scoped build
+(`-p test-cabinet-cli`, the release binaries, the desktop app) needs none of this.
 
 Install them once, before the first build:
 
 ```sh
-scripts/ci/install-gg-toolchains.sh   # every arm's documentation tool, idempotent
-npm ci                                # the pinned `tsc` two of the arms are reflected with
+scripts/ci/install-gg-toolchains.sh        # every arm's documentation tool AND its build tools, idempotent
+scripts/ci/install-gg-build-toolchains.sh  # the ~1.4 GB that RELINKS the C# guest, idempotent
+npm ci                                     # the pinned `tsc` two of the arms are reflected with
 ```
+
+The second one is separate on purpose and must stay separate. The first list is the **eleven
+arms** — every toolchain a gg *run* and gg's reflectors execute, ~1.9 GB, installed by the
+devcontainer image, both CI systems, the release workflow and the run images. The second is a
+whole .NET SDK and an *unpruned* wasi-sdk needed by exactly one arm's artifact build (C#'s guest
+is Mono's IL interpreter, relinked) and by no run at all, in its own prefix
+(`~/.local/share/tcab/gg-build/`) so the eleven-arm list keeps its meaning and the run images stay
+their size. Skipping it does not break the build: `packages/gg-sandbox-csharp/build.sh` falls back
+to fetching both into its own `.build/` — the same download by a worse route.
 
 The devcontainer image runs that installer as its last build layer, so a container arrives with
 all of it already there and re-runs the installer on create only to reconcile an image built
@@ -130,6 +157,38 @@ emitting an empty catalogue — a build that quietly hands a model no surface at
 outcome available here. If a build stops with a sentence about `node_modules`, run `npm ci`; if
 it stops naming a toolchain, run the installer above.
 
+Building gg therefore now runs real compilers for **every** arm — `cargo` against the wasm
+target, `purs` and Spago, the wasi-sdk's `clang++`, `swiftc`, `javac` and the Kotlin front end,
+`componentize-js`, `componentize-py`, and MSBuild relinking Mono — which is why the installers
+above are a prerequisite of `cargo build` rather than only of a documentation step. Nothing gg
+embeds is committed any more: the guest a program runs in, the libraries it links against and the
+catalogue its prompt is written from all come out of the checkout that compiles the host.
+
+The costs, measured on an 18-core aarch64 machine:
+
+| | |
+| --- | --- |
+| cold build of all ten artifact crates + reflection + `crates/gg` | ~2 min 30 s |
+| warm no-op `cargo build -p test-cabinet-gg` | ~0.2 s |
+| touching one arm's SDK (its own build + the reflection + the recompile) | ~25–35 s |
+
+A warm rebuild costs nothing because an artifact crate re-runs only when one of its **own**
+declared inputs moved, and the arms run concurrently — which is the whole reason they are ten
+crates rather than ten steps of one build script. Editing a Python docstring does not run
+`swiftc`.
+
+To **read** an arm's build artifacts, run the sibling script the artifact crates run:
+
+```sh
+scripts/gg-artifacts.sh               # -> target/gg-artifacts/, every arm
+scripts/gg-artifacts.sh /tmp/out      # -> anywhere else you like
+```
+
+Both scripts read one list, `scripts/gg-arms.sh`, which is the only enumeration of gg's arms in
+the repository. Neither has a default destination inside `crates/`, deliberately: a script that
+re-created a deleted artifact as an untracked file under `crates/gg/src` is one `git add -A` away
+from putting it back in the repository.
+
 To **read** a catalogue — which is how reflector bugs are found, since a dropped `@return`
 paragraph or a truncated parameter description is invisible in the SDK and obvious in the
 emitted JSON — run the same script the build runs:
@@ -139,10 +198,10 @@ scripts/gg-signatures.sh              # -> target/gg-signatures/<language>.signa
 scripts/gg-signatures.sh /tmp/sigs    # -> anywhere else you like
 ```
 
-That script is the single list of gg's arms in the repository; `build.rs` calls it rather than
-repeating it. Both destinations are gitignored, as is
-`crates/gg/src/sandbox/guests/*.signatures.json`, where the catalogues used to be committed —
-nothing writes there any more and nothing may commit one again.
+That script reads the single list (`scripts/gg-arms.sh`); `build.rs` calls the script rather than
+repeating either. Both destinations are gitignored. `crates/gg/src/sandbox/guests/`, where the
+catalogues were committed and where the baked guest components lived after them, no longer exists
+at all — which is a stronger guarantee than the gitignore rule that used to stand in for it.
 
 ### Portable (static) builds
 

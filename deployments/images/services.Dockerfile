@@ -114,6 +114,15 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # that builds gg is therefore a machine that has all eleven toolchains — this one
 # included, and scripts/ci/install-gg-toolchains.sh is the one pinned list of them that
 # the devcontainer and CI install too.
+#
+# AND IT NOW COMPILES THEM AS WELL AS READING THEM. What a model's program is compiled
+# and evaluated AGAINST — the guest components, the SDK jars, the compiled library sets —
+# stopped being committed the same way and for the same reason. Each arm has a crate under
+# crates/gg-sandbox-artifacts/ whose build script runs that arm's packages/gg-sandbox*/build.sh
+# into its own OUT_DIR, so this stage bakes four language runtimes (TypeScript/JavaScript,
+# Python, Ruby, C#) and links six compile targets on the way to one static binary. One of
+# them needs a toolchain the eleven-arm list deliberately excludes — see the second
+# installer call below.
 FROM docker.io/library/rust:1-bookworm AS gg-build
 WORKDIR /src
 # Node, for the two ECMAScript arms: the TypeScript and JavaScript catalogues are one
@@ -164,10 +173,21 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     # YARD into it and fails by name if the interpreter is absent). python3 is already in
     # this base image and is named anyway: the Rust, Swift and C++ reflectors are Python
     # scripts, and depending on it silently is how a base-image change becomes a mystery.
+    # unzip is for the C# arm alone and only since its guest stopped being committed: the
+    # Mono WASI runtime pack it is relinked from ships as a `.nupkg`, which is a zip, and
+    # every other fetch in both installer lists is a tarball. ~400 KB, and without it the
+    # build toolchain installer below fails four minutes in.
     apt-get update && apt-get install -y --no-install-recommends \
-        musl-tools ca-certificates curl python3 ruby \
+        musl-tools ca-certificates curl python3 ruby unzip \
     && rm -rf /var/lib/apt/lists/* \
     && ./scripts/ci/install-gg-toolchains.sh \
+    # And the C# arm's BUILD toolchains, which are deliberately not on that list: a whole .NET SDK
+    # and an unpruned wasi-sdk, ~1.4 GB, needed to relink Mono's IL interpreter into this arm's guest
+    # component. That component is not committed any more (nothing gg embeds is), so the cargo build
+    # below produces it. Without this line the arm's build.sh falls back to fetching both into its
+    # own .build/ — which still works and still costs the download, but lands outside the
+    # /root/.local cache mount and is therefore paid again on every image build.
+    && ./scripts/ci/install-gg-build-toolchains.sh \
     # The pinned `typescript` the ECMAScript arms reflect through is a workspace
     # devDependency, so the catalogue step needs the workspace installed. It is the
     # repo-root install, not a package-scoped one: npm ci validates the whole workspace

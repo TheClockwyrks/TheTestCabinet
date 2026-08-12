@@ -1,4 +1,4 @@
-//! **Code modules**, driven end to end through the real Roslyn and the real committed guest: a code
+//! **Code modules**, driven end to end through the real Roslyn and the real prebuilt guest: a code
 //! skill's C# really compiles, and a program really reaches it at `lib.<key>`.
 //!
 //! # Why this is its own file
@@ -7,7 +7,7 @@
 //! writes around a module, which lines move, what it exports — and those are microseconds. What is
 //! here is the claim none of them can make: that a real `csc` accepts the compilation unit gg
 //! writes, that the class it produces is where a program looks for it, and that a member of it runs
-//! **inside the committed interpreter** with gg's surface still in scope. Each of these compiles a
+//! **inside the embedded interpreter** with gg's surface still in scope. Each of these compiles a
 //! 35.3 MB component once, so each function drives several statements rather than being one
 //! behaviour per function.
 

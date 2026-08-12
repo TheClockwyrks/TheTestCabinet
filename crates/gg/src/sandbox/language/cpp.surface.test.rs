@@ -651,8 +651,15 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
 fn cpp_reaches_every_library() {
     // Every header the catalogue's `libraries` section names, included and used for what it is there
     // for. The claim is not that these compile in the abstract: it is that a MODEL'S PROGRAM,
-    // compiled by the production prepare step against the committed archive, can name them — which
-    // is the promise the prompt makes and the one a stale archive would break silently.
+    // compiled by the production prepare step against the archive this build cut, can name them.
+    //
+    // WHAT IT DEFENDS HAS CHANGED, and the test is worth keeping for the second thing rather than
+    // the first. It used to be the guard on a hand-cut archive going stale — a committed `.a` that
+    // no longer carried what the prompt promised, with nothing to say so. That state is not
+    // reachable any more. What is still reachable, and is what this asserts, is the two halves of
+    // one arm DISAGREEING at one vintage: `Sources/prelude.hpp` decides which headers the archive
+    // carries and the catalogue's `libraries` section is reflected separately, so a header added to
+    // one and not the other is a promise the prompt makes and the compile refuses.
     let catalogue = catalogue();
     let named: Vec<&str> = section(&catalogue, "libraries")
         .iter()
@@ -822,7 +829,7 @@ fn the_artifact_binds_exactly_the_tools_gg_offers() {
     // fact that makes asking the artifact worth anything.
     //
     // The language handed to the store is TypeScript's, and it changes nothing: an artifact is
-    // supplied, so nothing reaches for a committed guest, and this arm has no
+    // supplied, so nothing reaches for a prebuilt guest, and this arm has no
     // `GgProgramLanguage` of its own until it is registered.
     let component = prepare(&program("  return 0;"));
     let mut bound = crate::sandbox::component_bound_tools(

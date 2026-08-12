@@ -122,6 +122,23 @@
 # compiler server, which is a decision that must live in one place rather than two.
 !/packages/gg-sandbox-csharp/csharp-version.sh
 !/scripts/ci/install-dotnet.sh
+# The PureScript arm does the same, and it is the arm where the version file and the image
+# were LAST to stop disagreeing: its block used to restate `purs` and `esbuild` as ARG
+# defaults that containers/build.sh overrode, so the Dockerfile carried a second, silently
+# stale answer for anyone who built it without the wrapper. It runs the installer now. The
+# third file is spago.yaml, which the version file is not merely beside but READS — the
+# registry package set is written down where Spago reads it, and purescript-version.sh
+# projects it — so sourcing that file without this line fails inside the image.
+#
+# The fourth is spago.lock, and it belongs to a different consumer: `install-gg-build-tools.sh`
+# warms Spago's package STORE by running `spago install` in this package, and the lockfile is
+# what decides which versions that resolves to. Without it the warm would resolve the package
+# set afresh and cache a set the arm's build then re-resolves — a warm that warms the wrong
+# thing is worse than none, because it looks like it worked.
+!/packages/gg-sandbox-purescript/purescript-version.sh
+!/packages/gg-sandbox-purescript/spago.yaml
+!/packages/gg-sandbox-purescript/spago.lock
+!/scripts/ci/install-purescript.sh
 
 # The performance image bakes the committed training scenarios from the
 # Lattice case's version folder (see containers/performance/Dockerfile's
@@ -168,18 +185,38 @@
 # target). That build reaches much further into this repository than a `cargo build`
 # normally does, and the next three blocks are why.
 #
-# COMPILING gg NOW MEANS REFLECTING ELEVEN SDKs. gg's responses-as-code capability
-# drives a model in one of eleven program languages, and what the model is *told* each
-# language offers — every module, signature, argument, type and type member — is a
-# signature catalogue reflected out of that language's own SDK by that language's own
-# documentation tool. Those catalogues used to be committed under
+# COMPILING gg NOW MEANS REFLECTING ELEVEN SDKs — AND BUILDING EVERY ONE OF THEIR
+# ARTIFACTS. gg's responses-as-code capability drives a model in one of eleven program
+# languages, and TWO things per arm are generated on the way to a gg binary.
+#
+# What the model is *told* each language offers — every module, signature, argument, type
+# and type member — is a signature catalogue reflected out of that language's own SDK by
+# that language's own documentation tool. Those catalogues used to be committed under
 # crates/gg/src/sandbox/guests/, which is what let this stage compile gg from crates/
 # alone. They are not committed any more: crates/gg/build.rs runs
 # scripts/gg-signatures.sh on every build, so the catalogue embedded in a gg binary is
 # reflected from the SDK sources of the same checkout and cannot describe a surface the
-# guest does not export. The price is paid right here — the ten guest packages and the
-# scripts that reflect them are build inputs of the driver image now, exactly as
-# crates/ is.
+# guest does not export.
+#
+# What a model's program is COMPILED AND EVALUATED AGAINST went the same way, one arm at
+# a time, and the move is COMPLETE: an SDK jar, a compiler, a compiled library set, a
+# guest archive, and finally the four baked interpreters — the TypeScript/JavaScript,
+# Python, Ruby and C# guest components, 14 to 35 MB apiece. Every arm has a crate under
+# crates/gg-sandbox-artifacts/ whose build script runs that arm's
+# packages/gg-sandbox*/build.sh into its own OUT_DIR, and crates/gg include_bytes!s the
+# result. So this stage does not merely read those packages' sources — it compiles them,
+# and crates/gg/src/sandbox/guests/ does not exist any more.
+#
+# ONE ARM COSTS THIS STAGE SOMETHING THE OTHERS DO NOT, and it is not a context entry:
+# csharp's build wants a whole .NET SDK and an unpruned wasi-sdk, ~1.4 GB installed by
+# scripts/ci/install-gg-build-toolchains.sh — which is NOT part of the eleven-arm
+# install-gg-toolchains.sh list every image already runs. A stage that builds gg needs
+# both lists. That is a Dockerfile concern rather than a context one, and it is recorded
+# here because this is where somebody reading "why does gg need all of packages/" will
+# look for the rest of the price.
+#
+# The price of both is paid right here: the ten guest packages and the scripts that
+# reflect and build them are build inputs of the driver image now, exactly as crates/ is.
 #
 # THE SECOND CONSUMER of everything in the next three blocks is containers/gg-ci, the
 # image CI hydrates those toolchains from. It COPYs `packages` and `scripts/ci` as
@@ -229,7 +266,14 @@
 # tooling, the desktop build helpers) are not, and admitting them would mean editing any
 # one of them recompiled the asset tooling from scratch.
 !/scripts/build-gg-static.sh
-!/scripts/gg-signatures.sh
+# The gg build's own shared shell, as a GLOB rather than as `gg-signatures.sh` alone. That one file
+# was enough while reflecting the eleven catalogues was all the build did; it is not any more.
+# `gg-signatures.sh` and `gg-artifacts.sh` both source `gg-arms.sh` (the one list of the arms), every
+# arm's `build.sh` sources `gg-artifacts-out-dir.sh`, and the pinned-download and npm-tool resolvers
+# are sourced by the arms' `bindings.sh` and by two installers. A glob rather than five lines for the
+# reason the installer patterns above are globs: the set grows, and a list that has to be edited when
+# it does is a list that will not be.
+!/scripts/gg-*.sh
 !/scripts/ci
 # This image is also the one service Dockerfile that COPYs sibling files from its
 # own deployments/images/ directory (the nginx server block, the config.js
@@ -258,9 +302,11 @@
 **/__pycache__/
 /packages/gg-sandbox-purescript/output/
 # The Rust arm's WIT bindings are GENERATED into its source tree (bindings.sh writes
-# src/bindings.rs, which is gitignored), and its reflector regenerates them only when
-# the file is absent. A copy carried in from a developer's machine would therefore be
-# USED rather than refreshed — so an image could reflect the Rust arm against a wire
-# older than the crates/gg/wit riding beside it in the same context. Keep it out and
-# the stage generates it from that wire, every time.
+# src/bindings.rs, which is gitignored). They are a pure function of crates/gg/wit and
+# the pinned wit-bindgen, and `signatures.sh` rewrites them UNCONDITIONALLY rather than
+# when the file is missing — it spends a paragraph on why, and cites this line as the
+# other half of the same invariant. So a copy carried in from a developer's machine
+# would not be used; it would be overwritten. Keeping it out buys the two things that
+# are left, which are enough on their own: a context that does not carry a file the
+# build is about to rewrite, and a layer cache that does not churn on it.
 /packages/gg-sandbox-rust/src/bindings.rs

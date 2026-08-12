@@ -11,14 +11,16 @@
 #
 # WHY IT IS ITS OWN SCRIPT, as `packages/gg-sandbox-rust/bindings.sh` and
 # `packages/gg-sandbox-swift/bindings.sh` are. The bindings are a pure function of the WIT
-# directory and the pinned generator, and they are an input to two different steps that must not
-# share side effects: `build.sh`, which REWRITES committed artifacts under
-# `crates/gg/src/sandbox/checkers/`, and `signatures.sh`, which reflects this arm's catalogue and
-# is run by `crates/gg/build.rs` on EVERY build of `test-cabinet-gg`. A signature step that reached
-# the build script for its bindings would therefore re-cut those committed artifacts every time
-# anybody typed `cargo build`, rewriting them under the working tree of someone who was only
-# compiling — and would make the build dirty its own declared inputs, which is how a build script
-# comes to re-run forever.
+# directory and the pinned generator, and they are an input to two steps on two DIFFERENT rerun
+# sets: `build.sh`, which cuts this arm's guest archive into `gg-artifact-cpp`'s `OUT_DIR`, and
+# `signatures.sh`, which reflects this arm's catalogue into `crates/gg`'s and is run by
+# `crates/gg/build.rs` on EVERY build of `test-cabinet-gg`. A signature step that reached the build
+# script for its bindings would therefore re-cut a nine-second `clang++` build every time a
+# catalogue was reflected, collapsing two deliberately separate rerun sets into one — and would
+# make the reflection dirty an artifact build's declared inputs, which is how a build script comes
+# to re-run forever. (The argument used to run through those archives being COMMITTED, so that a
+# reflection would rewrite tracked bytes under the working tree of someone who was only compiling.
+# They are generated now; the rerun-set reason is what the split rests on.)
 #
 # Usage:
 #   packages/gg-sandbox-cpp/bindings.sh          # -> .build/bindings/
@@ -29,29 +31,22 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 # shellcheck source=packages/gg-sandbox-cpp/cpp-version.sh
 source "$HERE/cpp-version.sh"
 
-# Version-stamped, so a bumped pin fetches rather than reusing the last release's binary, and
-# so a second run of this script inside one CI job costs nothing.
-BINDGEN_DIR="$HERE/.build/wit-bindgen-$GG_WIT_BINDGEN_VERSION"
-BINDGEN="$BINDGEN_DIR/wit-bindgen"
-OUT_DIR="$HERE/.build/bindings"
+# The generator, resolved out of the ONE pinned copy every arm shares rather than fetched into this
+# package. Four arms need this executable and each used to keep its own — three copies of one 20 MB
+# binary, and three GitHub downloads reachable from inside `cargo build`, because this script runs on
+# every build of `test-cabinet-gg`. `scripts/ci/install-wit-bindgen.sh` is what puts it there, and
+# it checks that all four arms' pins agree before it installs anything.
+# shellcheck source=scripts/gg-downloads.sh
+source "$ROOT/scripts/gg-downloads.sh"
 
-if [ ! -x "$BINDGEN" ]; then
-	case "$(uname -s)-$(uname -m)" in
-	Linux-x86_64) BINDGEN_ASSET="x86_64-linux" ;;
-	Linux-aarch64 | Linux-arm64) BINDGEN_ASSET="aarch64-linux" ;;
-	Darwin-x86_64) BINDGEN_ASSET="x86_64-macos" ;;
-	Darwin-arm64) BINDGEN_ASSET="aarch64-macos" ;;
-	*)
-		echo "error: no pinned wit-bindgen build for $(uname -s)-$(uname -m)." >&2
-		exit 1
-		;;
-	esac
-	echo "==> fetching wit-bindgen $GG_WIT_BINDGEN_VERSION ($BINDGEN_ASSET)"
-	rm -rf "$BINDGEN_DIR"
-	mkdir -p "$BINDGEN_DIR"
-	curl -sSfL "https://github.com/bytecodealliance/wit-bindgen/releases/download/v${GG_WIT_BINDGEN_VERSION}/wit-bindgen-${GG_WIT_BINDGEN_VERSION}-${BINDGEN_ASSET}.tar.gz" |
-		tar -xz -C "$BINDGEN_DIR" --strip-components=1
-fi
+# ONE ARM, ONE PROCESS AT A TIME. This package's scratch is a fixed path inside the source tree
+# rather than a `mktemp -d`, deliberately — it is a cache — and two cargo processes with two target
+# directories do not serialise with each other. See `scripts/gg-scratch-lock.sh`.
+# shellcheck source=scripts/gg-scratch-lock.sh
+source "$ROOT/scripts/gg-scratch-lock.sh"
+gg_lock_scratch "$HERE"
+BINDGEN="$(gg_wit_bindgen "$GG_WIT_BINDGEN_VERSION")"
+OUT_DIR="$HERE/.build/bindings"
 
 echo "==> generating C bindings from crates/gg/wit"
 rm -rf "$OUT_DIR"

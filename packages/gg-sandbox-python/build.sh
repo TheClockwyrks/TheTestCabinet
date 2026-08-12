@@ -1,54 +1,54 @@
 #!/usr/bin/env bash
 #
-# Refresh the COMMITTED artifact this package produces:
+# Build the artifact this package produces, into `$GG_ARTIFACTS_OUT_DIR`:
 #
-#   crates/gg/src/sandbox/guests/python.component.wasm   the baked CPython interpreter component
+#   python.component.wasm   the baked CPython interpreter component
 #
 # It is named for the PROGRAM LANGUAGE it serves, not for this package, exactly as the TypeScript
 # guest's artifacts are: gg's responses-as-code capability registers a language per guest, and each
-# one commits its artifacts under `crates/gg/src/sandbox/guests/<language-id>.*`.
+# one files its artifacts under `<language-id>.*`.
 #
 # The signature catalogue — what a model is TOLD this arm offers — is emitted by `signatures.sh`,
-# not by this script, and it is not an artifact at all in the sense this one is: `crates/gg/build.rs`
-# reflects it out of `src/gg/**` on every build of the host and `include_str!`s the result, so
-# nothing about it is committed and nothing about it can be stale. The split is what makes that
-# possible. Reflecting reads the sources statically and needs only a pinned `griffe`, which is
-# affordable on every machine that types `cargo build`; this needs `componentize-py`, a network and
-# 25 MB of output, and is not byte-reproducible (see below), so it stays a deliberate hand-run whose
-# result is reviewed and committed. `crates/gg/src/sandbox/language/python.substrate.test.rs` is what
-# proves the artifact this script writes really runs, and really binds what that catalogue
-# describes, against gg's own linker and membrane — which is the check that matters once the two
-# halves are refreshed on different schedules.
+# not by this script, and reflecting is a different question answered by a different tool:
+# `crates/gg/build.rs` runs it out of `src/gg/**` with a pinned `griffe`, which reads the sources
+# statically, where this needs `componentize-py` and emits 25 MB. Two steps, two scripts, two rerun
+# sets. `crates/gg/src/sandbox/language/python.substrate.test.rs` is what proves the artifact this
+# script writes really runs, and really binds what that catalogue describes, against gg's own linker
+# and membrane.
 #
-# The artifact is checked in, exactly as the TypeScript guest's is, so no build or CI step ever
-# needs `componentize-py`: the Rust host reads it with `include_bytes!`. That is also why this
-# script is never wired into a build — it is run by hand, deliberately, and its output is committed
-# alongside the source change that motivated it.
-#
-# Run it after changing anything the component is made of:
+# NOBODY HAS TO REMEMBER WHEN TO RUN THIS. `crates/gg-sandbox-artifacts/python` runs it as part of
+# building `test-cabinet-gg`, and the rerun set it declares — in
+# `crates/gg-sandbox-artifacts/build-support` — is exactly the list of things this build reads:
 #
 #   * crates/gg/wit/gg-sandbox.wit        (the membrane — a WIT change without a rebuild fails gg's
 #                                          instantiation test, which is the intended failure
 #                                          direction)
 #   * packages/gg-sandbox-python/src/**   (the shim, the SDK, or the curated library set — and if
-#                                          what changed is `library.py`'s imports, run
-#                                          `signatures.sh` too: those imports are also what the
-#                                          system prompt tells a model it may import)
+#                                          what changed is `library.py`'s imports, that is also a
+#                                          change to what the system prompt tells a model it may
+#                                          import, which `signatures.sh` reflects off the same tree
+#                                          on the same build)
 #   * packages/gg-sandbox-python/requirements.txt  (the pinned third-party wheels)
-#   * the pinned COMPONENTIZE_VERSION below
+#   * packages/gg-sandbox-python/build.sh (this file — the pinned COMPONENTIZE_VERSION below, and
+#                                          the `-p` paths that decide what is importable at all)
 #
-# Requires `uv` (the devcontainer installs it) and network access the first time, to fetch the
-# pinned `componentize-py` and the wheels. The build takes a couple of seconds and emits ~24 MB,
-# because the component embeds a whole CPython plus its curated standard library.
+# Requires `uv` (the devcontainer installs it) with its cache warmed by
+# `scripts/ci/install-gg-build-tools.sh`, which pre-fetches the pinned `componentize-py` and the
+# pinned wheels so the two `uv` calls below can run `--offline`. The build takes a couple of seconds
+# and emits ~24 MB, because the component embeds a whole CPython plus its curated standard library.
 #
 # IT IS NOT BYTE-REPRODUCIBLE. `componentize-py` pre-initialises CPython and snapshots the running
 # interpreter's memory, so two builds of identical sources differ by tens of kilobytes even with
-# `PYTHONHASHSEED` and `SOURCE_DATE_EPOCH` pinned (measured). So do NOT run this to check whether the
-# committed artifact is current: it will always say no. Run it when something above actually
-# changed, and let the substrate tests say whether the result behaves.
+# `PYTHONHASHSEED` and `SOURCE_DATE_EPOCH` pinned (measured). Nothing depends on that: this arm's
+# crate rebuilds only when a declared input moved, and there is no committed copy for a rebuild to
+# be diffed against. It is worth stating rather than dropping, because it is why this arm could
+# never have been covered by a regenerate-and-diff gate the way the JVM jars and the TypeScript
+# checker were — comparing two runs' bytes here tells you nothing, and the substrate tests are what
+# say whether the result behaves.
 #
 # Usage:
-#   packages/gg-sandbox-python/build.sh
+#   scripts/gg-artifacts.sh                                      # every arm, into one directory
+#   GG_ARTIFACTS_OUT_DIR=<dir> packages/gg-sandbox-python/build.sh
 set -euo pipefail
 
 # Repo root, independent of the caller's working directory.
@@ -56,30 +56,56 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
 PACKAGE="packages/gg-sandbox-python"
-DEST_DIR="crates/gg/src/sandbox/guests"
-COMPONENT="$DEST_DIR/python.component.wasm"
 
-# The `componentize-py` release the committed artifact is built with, and with it the CPython
-# version a program runs on (0.25.0 embeds CPython 3.14). Pinned rather than floating for the reason
-# the TypeScript guest pins `componentize-js`: the component is a binary in the repository, so a
-# silent toolchain bump would land as an unexplained multi-megabyte diff — and here it would also
-# silently change the language version a study's Python arm was run in.
+# The destination, which is required and has no default — see the file itself for why.
+# shellcheck source=scripts/gg-artifacts-out-dir.sh
+source "$ROOT/scripts/gg-artifacts-out-dir.sh"
+
+# ONE ARM, ONE PROCESS AT A TIME. This package's scratch is a fixed path inside the source tree
+# rather than a `mktemp -d`, deliberately — it is a cache — and two cargo processes with two target
+# directories do not serialise with each other. See `scripts/gg-scratch-lock.sh`.
+# shellcheck source=scripts/gg-scratch-lock.sh
+source "$ROOT/scripts/gg-scratch-lock.sh"
+gg_lock_scratch "$ROOT/$PACKAGE"
+
+COMPONENT="$GG_ARTIFACTS_OUT_DIR/python.component.wasm"
+
+# THIS SCRIPT WRITES INTO ITS OWN SOURCE TREE AND CANNOT BE TALKED OUT OF IT, which is worth knowing
+# here because the consequence is handled somewhere else. `componentize-py` imports the shim to take
+# its import closure, and the CPython it does that with drops a `__pycache__/` beside every module it
+# touches — inside `packages/gg-sandbox-python/src`, which is this arm's own rerun set.
+#
+# `signatures.sh` beside this file has the same problem and solves it with `PYTHONDONTWRITEBYTECODE`.
+# That does not work here: `componentize-py` embeds its own interpreter and configures it itself, and
+# MEASURED, with the variable exported from this script, a build still left 19 `.pyc` files under
+# `src/`. So the write stays, and `crates/gg-sandbox-artifacts/build-support` enumerates this arm's
+# sources a file at a time instead of naming the directory — the same exception, for the same reason,
+# that the Rust arm's generated `src/bindings.rs` gets. See `python_sdk_sources` there; it records
+# what this cost before it was excluded (two full rebuilds for one edit).
+
+# The `componentize-py` release this artifact is built with, and with it the CPython version a
+# program runs on (0.25.0 embeds CPython 3.14). Pinned rather than floating for the reason the
+# TypeScript guest pins `componentize-js`: a floating one would silently change the language version
+# a study's Python arm was run in, half way through a sweep.
 COMPONENTIZE_VERSION="0.25.0"
 
-# Everything this script generates, none of it committed: the vendored wheels and the generated WIT
+# Everything this script generates besides the artifact: the vendored wheels and the generated WIT
 # bindings. Inside the package so a developer can read them, and `.gitignore`d so they cannot be
 # mistaken for source.
 BUILD_DIR="$PACKAGE/.build"
 
-mkdir -p "$DEST_DIR"
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 
 # 1. Vendor the pinned third-party wheels into a private tree. `--target` rather than a virtualenv
 #    because all `componentize-py` wants is a directory to put on its Python path, and because a
 #    tree this script created and can delete is one no other build can have polluted.
+#
+#    `--offline`, because this runs inside an ordinary `cargo build`: everything it needs was
+#    downloaded into uv's cache by `scripts/ci/install-gg-build-tools.sh`, and a resolution that
+#    could reach PyPI is one that will, on the day the cache is cold and somebody is on a train.
 echo "Vendoring the pinned wheels ..."
-uv pip install --quiet --target "$BUILD_DIR/vendor" -r "$PACKAGE/requirements.txt"
+uv pip install --quiet --offline --target "$BUILD_DIR/vendor" -r "$PACKAGE/requirements.txt"
 
 # 2. Generate the Python bindings for the ONE copy of the WIT — the one that lives in the Rust crate
 #    that embeds the result, so there is no second copy in this package to drift from it.
@@ -88,7 +114,7 @@ uv pip install --quiet --target "$BUILD_DIR/vendor" -r "$PACKAGE/requirements.tx
 #    to step 3: it exists so that `src/shim.py` can be read, type-checked and navigated against the
 #    real `wit_world` package rather than against an import that resolves nowhere.
 echo "Generating the WIT bindings ..."
-uvx --quiet --from "componentize-py==$COMPONENTIZE_VERSION" componentize-py \
+uvx --quiet --offline --from "componentize-py==$COMPONENTIZE_VERSION" componentize-py \
 	--wit-path "$ROOT/crates/gg/wit" \
 	--world sandbox \
 	bindings "$BUILD_DIR/bindings"
@@ -107,40 +133,39 @@ uvx --quiet --from "componentize-py==$COMPONENTIZE_VERSION" componentize-py \
 #    there. Both matter more than they look: `componentize-py` bakes only the modules the entry
 #    module's import closure actually reached, so what is importable at run time is decided here.
 echo "Building the component with componentize-py@$COMPONENTIZE_VERSION ..."
-uvx --quiet --from "componentize-py==$COMPONENTIZE_VERSION" componentize-py \
+uvx --quiet --offline --from "componentize-py==$COMPONENTIZE_VERSION" componentize-py \
 	--wit-path "$ROOT/crates/gg/wit" \
 	--world sandbox \
 	componentize shim \
 	-p "$ROOT/$PACKAGE/src" \
 	-p "$ROOT/$BUILD_DIR/vendor" \
-	-o "$ROOT/$COMPONENT"
+	-o "$COMPONENT"
 
-# 4. Record what went into the component, beside it. Nothing in CI rebuilds this artifact — and the
-#    build is not even byte-reproducible, so nothing in CI could — which leaves this manifest and the
-#    Rust test that recomputes it as the only thing standing between an SDK edit committed without a
-#    rebuild and every Python program in the run being evaluated by last month's guest.
-#    `requirements.txt` is in it beside the SDK tree because step 1 vendors exactly what it pins and
-#    step 3 bakes the closure of what the shim imports: a wheel bumped there without a rebuild is a
-#    library the prompt names at one version and the guest carries at another.
+# WHAT USED TO BE STEP 4: `python.component.manifest.json`, written beside the component by
+# `scripts/gg-artifact-manifest.mjs` — the SHA-256 of every file under `src/`, of `requirements.txt`,
+# of this script, and of `crates/gg/wit`'s declarations, so that a test could recompute them from the
+# checkout and fail when somebody had edited the SDK without re-running it. That question — *is the
+# committed component older than the sources beside it?* — no longer has a subject. The component is
+# not committed: `crates/gg-sandbox-artifacts/python` runs this script into its own cargo `OUT_DIR`
+# on every build whose declared inputs moved, and `crates/gg` embeds what lands there.
 #
-#    `build.sh` records ITSELF, because the recipe is an input as much as any file it reads: the
-#    flags below decide what the artifact is, and editing one without re-running this script leaves
-#    the checkout describing something the committed bytes are not. That an edit to it fails the
-#    gate until it is run is the intended reading — editing the recipe and not cooking is exactly
-#    the state the gate exists to name.
-echo "Recording the component manifest ..."
-node "$ROOT/scripts/gg-artifact-manifest.mjs" \
-	--arm python \
-	--rebuild "$PACKAGE/build.sh" \
-	--artifact "$COMPONENT" \
-	--source-root "$PACKAGE/src" \
-	--source-file "$PACKAGE/requirements.txt" \
-	--source-file "$PACKAGE/build.sh" \
-	--ignore "$PACKAGE/src/__pycache__" \
-	--ignore "$PACKAGE/src/gg/__pycache__" \
-	--wit crates/gg/wit \
-	--pin "componentizePy=$COMPONENTIZE_VERSION" \
-	--out "$DEST_DIR/python.component.manifest.json"
+# THIS ARM HAD THE STRONGEST CASE FOR THE MANIFEST AND IT IS THE SAME CASE FOR DELETING IT. The
+# reason given here was that a manifest was the only thing that could cover this arm at all, because
+# the build is not byte-reproducible and so nothing in CI could re-cut it and diff it. Read the other
+# way round, that is a statement that the committed bytes were UNVERIFIABLE: the manifest could say
+# what the build was told, never what it produced. Cutting the component on the build that embeds it
+# needs no verification, because there is no gap to verify across.
+#
+# EVERY FILE THAT MANIFEST NAMED IS NOW IN THIS ARM'S RERUN SET, in `gg-artifact-build`'s table, and
+# `requirements.txt` is there for the reason it was recorded here: step 1 vendors exactly what it
+# pins and step 3 bakes the import closure of what the shim reached, so a wheel bumped without a
+# rebuild is a library the prompt names at one version and the guest carries at another. `build.sh`
+# is there because the recipe is an input — the flags above decide what the artifact is.
+#
+# The `--ignore`d paths went with it and needed no replacement: `src/**/__pycache__` was excluded
+# because CPython writes it beside the sources it imports and hashing a `.gitignore`d file would have
+# failed the gate on a fresh checkout. A rerun set names DIRECTORIES a person edits, and cargo
+# re-running this script because a `.pyc` was rewritten is a wasted build, not a failure — the same
+# trade the Rust arm's `src/bindings.rs` exception makes, and cheap here where it was fatal there.
 
 echo "Wrote $COMPONENT ($(wc -c <"$COMPONENT") bytes)."
-echo "Remember to commit the refreshed artifact together with the source change."

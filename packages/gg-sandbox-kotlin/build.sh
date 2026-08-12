@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Compile the Kotlin program language's SDK and commit it as the jar gg carries inside its own
-# binary: crates/gg/src/sandbox/checkers/kotlin.sdk.jar.
+# Compile the Kotlin program language's SDK into the jar gg carries inside its own binary:
+# `$GG_ARTIFACTS_OUT_DIR/kotlin.sdk.jar`.
 #
-# WHY A JAR, AND WHY COMMITTED. Kotlin reaches a library through the classpath, so gg puts this one
-# on the classpath of both compilers a program passes through — the Kotlin compiler's, so a model's
-# `fs.readFile("x")` type-checks, and TeaVM's, so the bytecode behind it is translated. A jar is the
-# only shape a classpath entry can take that is one file.
+# WHY A JAR. Kotlin reaches a library through the classpath, so gg puts this one on the classpath of
+# both compilers a program passes through — the Kotlin compiler's, so a model's `fs.readFile("x")`
+# type-checks, and TeaVM's, so the bytecode behind it is translated. A jar is the only shape a
+# classpath entry can take that is one file.
 #
-# It is committed rather than installed beside TeaVM in the toolchain image for the reason
-# PureScript's library tarball and the Java arm's SDK are: the image is built separately from the
-# binary that runs in it, so an SDK living there could be a different vintage from the gg describing
-# it — and a model shown one surface in its prompt and compiled against another is the failure this
-# whole seam is built to prevent. Committed, the jar travels with the gg that describes it — and it
-# is the half of the pair that can be committed stale, because the catalogue is reflected out of the
-# same `src/` by `crates/gg/build.rs` on every build.
+# WHY IT RIDES INSIDE gg's BINARY rather than being installed beside TeaVM in the toolchain image,
+# which is the same argument PureScript's library tarball and the Java arm's SDK make: the image is
+# built separately from the binary that runs in it, so an SDK living there could be a different
+# vintage from the gg describing it — and a model shown one surface in its prompt and compiled
+# against another is the failure this whole seam is built to prevent. Built here, the jar is compiled
+# out of the same `src/` that `crates/gg/build.rs` reflects this arm's catalogue from, on the same
+# build, so the library and the description of it cannot be two vintages.
 #
 # TWO FLAGS THAT ARE GATES RATHER THAN SETTINGS.
 #
@@ -31,16 +31,26 @@
 # literal, for the same reason, beside the same pin.
 #
 # REPRODUCIBLE. `jar --date` fixes every entry's timestamp and the file list is sorted, so two builds
-# of identical sources produce identical bytes and `scripts/ci/contract-drift.sh` can rebuild this
-# and diff it like every other generated artifact.
+# of identical sources produce identical bytes. That is a nice property and it is no longer
+# load-bearing: it existed so that CI could re-cut this jar and diff it against a committed copy,
+# and there is no committed copy — see the Java arm's `build.sh`, whose committed jar was provably
+# stale when that gate was deleted.
+#
+# NOBODY HAS TO REMEMBER TO RUN THIS. `crates/gg-sandbox-artifacts/kotlin` runs it as part of
+# building `test-cabinet-gg`, whenever this package's `src/`, this script or `kotlin-version.sh`
+# moves. Running it by hand is for reading what it emitted.
 #
 # Usage:
-#   packages/gg-sandbox-kotlin/build.sh
+#   scripts/gg-artifacts.sh                                      # every arm, into one directory
+#   GG_ARTIFACTS_OUT_DIR=<dir> packages/gg-sandbox-kotlin/build.sh
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
-OUT="$ROOT/crates/gg/src/sandbox/checkers/kotlin.sdk.jar"
+# The destination, which is required and has no default — see the file itself for why.
+# shellcheck source=scripts/gg-artifacts-out-dir.sh
+source "$ROOT/scripts/gg-artifacts-out-dir.sh"
+OUT="$GG_ARTIFACTS_OUT_DIR/kotlin.sdk.jar"
 
 KOTLIN_DIR="${KOTLIN_INSTALL_DIR:-$HOME/.local/share/gg-kotlin}"
 JAVA_DIR="${JAVA_INSTALL_DIR:-$HOME/.local/share/gg-java}"

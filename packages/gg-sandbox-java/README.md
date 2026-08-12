@@ -7,7 +7,7 @@ The **Java** program language's toolchain pin and its hand-written SDK.
 | [`java-version.sh`](java-version.sh) | the JDK and TeaVM releases this arm is pinned to |
 | [`src/gg/`](src/gg/) | the **SDK** a model's program is compiled against, and the doc comments every word a model reads is reflected out of |
 | [`libraries.txt`](libraries.txt) | the packages this arm says a program may reach, grouped as the prompt shows them |
-| [`build.sh`](build.sh) | compiles the SDK to `crates/gg/src/sandbox/checkers/java.sdk.jar` |
+| [`build.sh`](build.sh) | compiles the SDK to `$GG_ARTIFACTS_OUT_DIR/java.sdk.jar`; `crates/gg-sandbox-artifacts/java` runs it on every build |
 | [`signatures.sh`](signatures.sh) | reflects `java.signatures.json` out of the SDK's Javadoc, into `$GG_SIGNATURES_OUT_DIR`; `crates/gg/build.rs` runs it on every build |
 | [`tools/`](tools/) | the doclet `signatures.sh` runs, and the module table it reads |
 

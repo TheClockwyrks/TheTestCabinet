@@ -18,7 +18,7 @@
 //! exception at all, so `catch (NullPointerException)` never fires and a program that failed is
 //! recorded as one that succeeded. A second copy of the code that sets it would be a standing chance
 //! for one arm to lose it and for nobody to notice — which is the argument that has
-//! [JavaScript](super::javascript) serve TypeScript's committed component rather than a
+//! [JavaScript](super::javascript) serve TypeScript's prebuilt component rather than a
 //! byte-identical copy of it, one level down.
 //!
 //! The JDK's single-file source-code launcher compiles **one** file, so sharing here cannot mean

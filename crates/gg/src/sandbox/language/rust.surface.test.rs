@@ -745,10 +745,16 @@ fn a_program_reaches_every_library_this_arm_says_it_may() {
     // And the other direction, which nothing else closes: the set a program may NAME is the
     // manifest's `extern` crates, and a crate `--extern`ed but left out of the catalogue would be a
     // library this arm offers and never mentions. The two are one declaration in `Cargo.toml` and
-    // two readers of it — `build.sh` for the manifest, `tools/signatures.py` for the catalogue — so
-    // a rebuild of one without the other is exactly what this catches.
-    let manifest: Value = serde_json::from_str(include_str!("../checkers/rust.toolchain.json"))
-        .expect("the committed toolchain manifest is JSON");
+    // two readers of it — `build.sh` for the manifest, `tools/signatures.py` for the catalogue — and
+    // both are now run by the same `cargo build`, which makes this an AGREEMENT check between two
+    // generators rather than a staleness check on a committed file. That is the stronger of the two
+    // readings, and it is the one this always wanted: what it catches is one reader of `Cargo.toml`
+    // learning something the other did not.
+    let manifest: Value = serde_json::from_str(include_str!(concat!(
+        env!("GG_ARTIFACTS_RUST"),
+        "/rust.toolchain.json"
+    )))
+    .expect("the toolchain manifest this build cut is JSON");
     let externed: Vec<&str> = manifest["crates"]
         .as_array()
         .expect("the manifest lists crates")

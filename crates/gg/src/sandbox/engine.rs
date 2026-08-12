@@ -78,7 +78,7 @@ static COMPILES: AtomicU64 = AtomicU64::new(0);
 ///
 /// # The compile cost is core-count sensitive
 ///
-/// Measured on the committed artifact at `OptLevel::None`: **658 ms** on 18 cores, 1.29 s on 4,
+/// Measured on the embedded artifact at `OptLevel::None`: **658 ms** on 18 cores, 1.29 s on 4,
 /// 2.36 s on 2, and **4.84 s** on 1. A run container given one or two cores therefore does not
 /// *hide* the compile behind [`precompile`](super::precompile) so much as overlap it with the
 /// first model request — worth knowing before concluding that a cold turn is slow for some other
@@ -105,7 +105,7 @@ fn engine() -> &'static Engine {
         // `program.wasm!main` and nothing else. Inlined frames are what make that legible, and they
         // are the same feature.
         //
-        // It costs nothing for a guest carrying no debug information — the committed interpreter
+        // It costs nothing for a guest carrying no debug information — the embedded interpreter
         // components carry none — and the work is done only where a trap is actually being
         // rendered, never on the path a program takes when it succeeds.
         config.wasm_backtrace_details(WasmBacktraceDetails::Enable);
@@ -199,7 +199,7 @@ pub(crate) fn component(
 ) -> Result<(&'static Component, Option<Duration>), SandboxError> {
     let Some(bytes) = language.guest_component() else {
         return Err(SandboxError::Compile(format!(
-            "{} compiles a component per program and has no committed one to share",
+            "{} compiles a component per program and has no prebuilt one to share",
             language.id()
         )));
     };
@@ -222,7 +222,7 @@ pub(crate) fn component(
 /// The one place the two shapes of arm meet. A language whose prepare step
 /// [compiled a component for this program](super::PreparedProgram::component) has its bytes
 /// compiled here, now, for this turn and no other; every other language gets the process-wide
-/// [committed](component) one, compiled at most once.
+/// [prebuilt](component) one, compiled at most once.
 ///
 /// The duration means the same thing in both cases — *what this caller waited for a component* —
 /// and it is `Some` on every turn of a compiled arm rather than only the first. That is not a
@@ -248,12 +248,12 @@ pub(crate) fn program_component(
 /// The compiled component one program is evaluated by, and where it came from.
 ///
 /// Two variants rather than one `Cow`-shaped borrow because the lifetimes genuinely differ: a
-/// committed component lives in a process-wide [`OnceLock`] and is `&'static`, while a program's own
+/// embedded component lives in a process-wide [`OnceLock`] and is `&'static`, while a program's own
 /// is owned by the turn that compiled it and is dropped with it. Nothing downstream cares which —
 /// [`get`](Self::get) is the whole interface — but the store that instantiates it must be able to
 /// hold either.
 pub(crate) enum ProgramComponent {
-    /// The language's committed component, compiled once per process and shared by every program it
+    /// The language's embedded component, compiled once per process and shared by every program it
     /// evaluates.
     Shared(&'static Component),
     /// A component compiled for this program alone, and dropped when the turn ends.
@@ -293,7 +293,7 @@ pub(crate) fn compile_bytes(bytes: &[u8]) -> Result<Component, SandboxError> {
     Component::new(engine(), bytes).map_err(|err| SandboxError::Compile(err.to_string()))
 }
 
-/// One language's committed component bytes, for the test that guards its size band.
+/// One language's embedded component bytes, for the test that guards its size band.
 ///
 /// `#[cfg(test)]` because production never wants the bytes, only the compiled
 /// [`Component`](component) — an ungated accessor with one test caller is dead code in a released
@@ -321,7 +321,7 @@ pub(crate) fn component_bytes(language: &'static dyn ProgramLanguage) -> &'stati
 /// eventually did wrong instead.
 ///
 /// `fallback` is what an unclassified failure becomes, and it differs by phase — an error from
-/// [`instantiate`](wasmtime::component::Linker) means the committed artifact and the membrane have
+/// [`instantiate`](wasmtime::component::Linker) means the embedded artifact and the membrane have
 /// drifted apart, while one from the call is an ordinary trap — so the caller names it.
 pub(crate) fn classify<A: ToolApi>(
     store: &Store<MembraneState<A>>,

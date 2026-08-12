@@ -172,7 +172,7 @@ fn refused(source: &str) -> SandboxOutcome {
 
 /// **A program the compiler read and rejected is the model's to fix, and never an artifact defect.**
 ///
-/// The distinction this band exists for. `SandboxError::Compile` is the *committed interpreter
+/// The distinction this band exists for. `SandboxError::Compile` is the *embedded interpreter
 /// component* failing to compile — an artifact defect that ends the session on the first occurrence,
 /// because every further turn would fail identically. A model's own type error is the exact opposite:
 /// the next turn's program may well compile, because the model will have changed it. Routing one
@@ -191,7 +191,7 @@ fn a_program_its_compiler_rejected_is_recoverable_and_the_models_to_fix() {
     );
     assert!(
         !error.is_artifact_defect(),
-        "a model's type error must never read as a defect in the committed component: {error:?}"
+        "a model's type error must never read as a defect in the prebuilt component: {error:?}"
     );
     assert!(!error.is_host_fault(), "{error:?}");
     assert_eq!(
@@ -219,7 +219,7 @@ fn a_program_its_compiler_rejected_is_recoverable_and_the_models_to_fix() {
 ///
 /// Three claims, and each is a different way the failure could be got wrong. It is not the model's
 /// program, so it must not arrive as a `transpile` error beside genuine type errors and skew the one
-/// rate a checked language's arm is read on. It is not gg's plumbing and not the committed artifact,
+/// rate a checked language's arm is read on. It is not gg's plumbing and not the embedded artifact,
 /// so it must not end the session — a compiler that fell over on one program may well compile the
 /// next. And it is still an error turn, so a run whose image has no compiler at all stops on its
 /// error ceilings rather than burning to its deadline.
@@ -337,7 +337,7 @@ fn typescript_reports_what_checking_a_program_cost() {
 enum Disposition {
     /// gg's own machinery failed. The session ends; the model's error budget is untouched.
     GgsFault,
-    /// The committed artifact is broken. The session ends; the model's error budget is untouched.
+    /// The embedded artifact is broken. The session ends; the model's error budget is untouched.
     ArtifactDefect,
     /// The reply was not runnable source in the run's program language. An error turn; nothing ran.
     ModelsPrepareError,
@@ -564,7 +564,7 @@ fn every_uncaught_throw_class_is_recorded_as_its_own_type() {
     }
 }
 
-/// Which failures are defects in the committed artifact. Every subsequent turn would fail
+/// Which failures are defects in the embedded artifact. Every subsequent turn would fail
 /// identically, so the loop ends the session loudly instead of burning to the deadline.
 #[test]
 fn only_a_compile_or_instantiate_failure_is_an_artifact_defect() {
@@ -601,7 +601,7 @@ fn only_the_engine_and_host_failures_are_ggs_own_fault() {
     assert!(
         !SandboxError::Toolchain("`swiftc` was killed".into()).is_host_fault()
             && !SandboxError::Toolchain("`swiftc` was killed".into()).is_artifact_defect(),
-        "a compiler that fell over is neither gg's plumbing nor the committed artifact: both of \
+        "a compiler that fell over is neither gg's plumbing nor the embedded artifact: both of \
          those end the session, and the next program may well compile"
     );
     assert!(

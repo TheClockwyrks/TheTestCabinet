@@ -2,7 +2,7 @@
 //! nothing else changed.
 //!
 //! It is the second registered [program language](super::ProgramLanguage), and it is deliberately
-//! the *narrowest* second one gg could have: it shares TypeScript's committed component, TypeScript's
+//! the *narrowest* second one gg could have: it shares TypeScript's embedded component, TypeScript's
 //! SDK, TypeScript's type-strip and TypeScript's healing dialect. What it does not share is the
 //! `tsc` pass. A program written on this arm is parsed, stripped and evaluated exactly as every gg
 //! program was before gg carried a compiler.
@@ -87,7 +87,7 @@ static PROMPT: PromptDialect = PromptDialect {
 /// The one instance of this language.
 pub(super) static JAVASCRIPT: JavaScript = JavaScript;
 
-/// JavaScript: type-stripped and evaluated in the committed `componentize-js` guest, with **no**
+/// JavaScript: type-stripped and evaluated in the embedded `componentize-js` guest, with **no**
 /// type check on the way.
 pub(super) struct JavaScript;
 
@@ -150,9 +150,9 @@ impl ProgramLanguage for JavaScript {
         typescript::binding_name(name)
     }
 
-    /// TypeScript's committed component, the same bytes.
+    /// TypeScript's embedded component, the same bytes.
     ///
-    /// The one place a language deliberately serves another's committed artifact, and the reason is
+    /// The one place a language deliberately serves another's artifact, and the reason is
     /// that there is only one artifact: the two arms differ in what gg does to a program *before*
     /// handing it over, never in what evaluates it. A second, byte-identical 13.4 MB `.wasm` in the
     /// repository would be a second copy of one file with nothing to observe between them — and a

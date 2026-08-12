@@ -845,8 +845,8 @@ def libraries_of(manifest):
 
     One declaration with two readers: this, which is what a model is told, and
     `swift_reaches_every_library`, which compiles a program that imports every one of them through
-    the real prepare step. A module listed here that the committed archive does not carry fails
-    there rather than reaching a model.
+    the real prepare step. A module listed here that the archive this build cut does not carry
+    fails there rather than reaching a model.
     """
     groups = []
     for line in manifest.read_text().splitlines():

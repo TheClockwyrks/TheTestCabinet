@@ -22,14 +22,18 @@
 # `wit-bindgen` once.
 #
 # WHAT IT MUST NOT DO IS REBUILD THE LIBRARY SET, and that is why the bindings live in their own
-# script rather than inside `build.sh`. `crates/gg/src/sandbox/checkers/` holds this arm's committed
-# compile inputs — `rust.libraries.tar.gz` and `rust.toolchain.json` — and `build.sh` is what re-cuts
-# them, by hand, deliberately, because they are a compiler-version-locked rlib set that costs minutes
-# and megabytes. A fresh checkout never has `src/bindings.rs`, so a signature step that reached
-# `build.sh` for it would re-cut those two on every build of gg that regenerates a catalogue: a
-# multi-megabyte binary rewritten under a developer who typed `cargo build`, and a checkout whose
-# committed artifacts no longer say what produced them. It writes exactly one file: the catalogue
-# named above.
+# script rather than inside `build.sh`. `build.sh` cuts this arm's compile inputs —
+# `rust.libraries.tar.gz` and `rust.toolchain.json` — and that is 9.4 MB of compiler-version-locked
+# rlibs and several seconds of `cargo`. A fresh checkout never has `src/bindings.rs`, so a signature
+# step that reached `build.sh` for it would re-cut the whole set every time a catalogue was
+# reflected.
+#
+# THAT ARGUMENT IS STRONGER NOW THAN WHEN IT WAS WRITTEN, not weaker. Both halves are generated
+# during `cargo build`: `crates/gg-sandbox-artifacts/rust` runs `build.sh` and `crates/gg/build.rs`
+# runs this, each with its own rerun set. Folding the set's build into this one would collapse those
+# two sets into one, so editing a doc comment would re-link every rlib — exactly the inner-loop cost
+# the artifact crates exist to avoid. `bindings.sh` remains the one step both callers need, split out
+# of the one that has side effects. This writes exactly one file: the catalogue named above.
 #
 # WHY `RUSTC_BOOTSTRAP=1`. `rustdoc`'s JSON output is unstable, and this repository pins a STABLE
 # toolchain — deliberately, because an rlib is compiler-version-private and the arm must be built by
@@ -69,6 +73,13 @@ OUT="$(cd "$GG_SIGNATURES_OUT_DIR" && pwd)/rust.signatures.json"
 
 # shellcheck source=packages/gg-sandbox-rust/rust-version.sh
 source "$HERE/rust-version.sh"
+
+# ONE ARM, ONE PROCESS AT A TIME. This package's scratch is a fixed path inside the source tree
+# rather than a `mktemp -d`, deliberately — it is a cache — and two cargo processes with two target
+# directories do not serialise with each other. See `scripts/gg-scratch-lock.sh`.
+# shellcheck source=scripts/gg-scratch-lock.sh
+source "$HERE/../../scripts/gg-scratch-lock.sh"
+gg_lock_scratch "$HERE"
 
 # The rustdoc JSON format this reflector reads. It is a version of `rustdoc`'s output rather than of
 # `rustdoc`, and it moves on its own schedule; pinning it here is what turns "the catalogue came out

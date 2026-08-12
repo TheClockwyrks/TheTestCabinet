@@ -7,7 +7,7 @@
 //! [`wit_component`] encode, and what crosses the membrane is not source at all but the artifact
 //! gg's engine instantiates.
 //!
-//! # Why this arm has no committed component, and what that costs
+//! # Why this arm has no guest component, and what that costs
 //!
 //! Every other arm gg drives ships one: Python's holds a whole CPython, Ruby's holds Opal, the
 //! ECMAScript one holds a JavaScript engine, and a program crosses the membrane as a **string** the
@@ -50,8 +50,9 @@
 //!
 //! The **library set** goes the other way: 9.4 MB gzipped of `.rlib` — 4.4 MB of that `regex`'s own
 //! `regex-syntax` and `regex-automata`, which every program is linked against and almost none uses
-//! all of — built once by `packages/gg-sandbox-rust/build.sh` and committed. It could have gone in the image beside the
-//! compiler and deliberately does not, for the reason the PureScript arm's tree does not — gg is
+//! all of — built once by `packages/gg-sandbox-rust/build.sh`, into the `OUT_DIR` this file embeds
+//! it from. It could have gone in the image beside the compiler and deliberately does not, for the
+//! reason the PureScript arm's tree does not — gg is
 //! copied as a single file into an ephemeral run container whose image was built separately, so a
 //! set that lived in the image could be a different vintage from the binary reading it. Once this
 //! arm's SDK is compiled into that set, that would mean a model shown one surface in its prompt and
@@ -73,7 +74,7 @@
 //! is never written to, and nothing is generated into it — so unlike the PureScript arm's tree,
 //! which `purs` compiles *into*, this one is used directly out of the
 //! [shared toolchain directory](shared_toolchain_dir) with no staging, no hard links and no copy.
-//! The directory is content-keyed on the pinned compiler and a digest of the committed tarball, and
+//! The directory is content-keyed on the pinned compiler and a digest of the embedded tarball, and
 //! it is sealed read-only when it is placed, so a compiler that tried to write into it would fail
 //! loudly at the moment it tried.
 //!
@@ -105,10 +106,12 @@ use super::source::{CRATE_NAME, LINE_OFFSET, PROGRAM_FILE};
 ///
 /// Embedded for the reason the guest components are: gg is copied as a single file into an ephemeral
 /// run container and must carry everything it needs with it.
-const LIBRARIES_TAR_GZ: &[u8] = include_bytes!("../checkers/rust.libraries.tar.gz");
+const LIBRARIES_TAR_GZ: &[u8] =
+    include_bytes!(concat!(env!("GG_ARTIFACTS_RUST"), "/rust.libraries.tar.gz"));
 
 /// What that set was built by, and what is in it.
-const MANIFEST_JSON: &str = include_str!("../checkers/rust.toolchain.json");
+const MANIFEST_JSON: &str =
+    include_str!(concat!(env!("GG_ARTIFACTS_RUST"), "/rust.toolchain.json"));
 
 /// The environment variable an operator points at `rustc` when it is not where gg looks.
 pub(super) const RUSTC_ENV: &str = "TCAB_GG_RUSTC";
@@ -130,7 +133,7 @@ const COMPILE_TIMEOUT: Duration = Duration::from_secs(60);
 /// What `rustc` is told to write, in this preparation's own output directory.
 const ARTIFACT_FILE: &str = "program.wasm";
 
-/// What the committed library set was built by, and what is in it.
+/// What the embedded library set was built by, and what is in it.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Manifest {
@@ -174,7 +177,7 @@ fn manifest() -> &'static Manifest {
     static MANIFEST: std::sync::OnceLock<Manifest> = std::sync::OnceLock::new();
     MANIFEST.get_or_init(|| {
         serde_json::from_str(MANIFEST_JSON)
-            .expect("the committed Rust toolchain manifest is valid JSON of the expected shape")
+            .expect("the embedded Rust toolchain manifest is valid JSON of the expected shape")
     })
 }
 
@@ -644,7 +647,7 @@ fn classify(report: &CompilerReport, file: &str, lines: usize) -> Result<(), Pre
 /// Validated on the way out. An invalid component would otherwise fail at
 /// [`Component::new`](wasmtime::component::Component) as a
 /// [`SandboxError::Compile`](crate::sandbox::SandboxError) — the variant that means gg's *own*
-/// committed artifact is broken and ends the session — where what it really is is a toolchain
+/// embedded artifact is broken and ends the session — where what it really is is a toolchain
 /// failure on one turn.
 fn componentize(module: &[u8]) -> Result<Vec<u8>, String> {
     wit_component::ComponentEncoder::default()
@@ -663,7 +666,7 @@ fn componentize(module: &[u8]) -> Result<Vec<u8>, String> {
 // The library set
 // ---------------------------------------------------------------------------------------------
 
-/// Where the committed library set is unpacked, for this process.
+/// Where the embedded library set is unpacked, for this process.
 struct Libraries {
     /// The directory holding every `.rlib`, named on `-L dependency=` and `--extern`.
     tree: PathBuf,
@@ -678,7 +681,7 @@ fn libraries() -> Result<&'static Libraries, String> {
         .map_err(Clone::clone)
 }
 
-/// Unpack the committed set into a [shared toolchain directory](shared_toolchain_dir).
+/// Unpack the embedded set into a [shared toolchain directory](shared_toolchain_dir).
 ///
 /// The seam's one sanctioned share, taken under the seam's discipline: the key folds in the pinned
 /// compiler **and** a digest of the tarball itself, so a gg carrying a different set at the same
@@ -701,7 +704,7 @@ fn materialise() -> Result<Libraries, String> {
     Ok(Libraries { tree })
 }
 
-/// Decompress and extract the committed tarball into `into`.
+/// Decompress and extract the embedded tarball into `into`.
 fn unpack(into: &Path) -> Result<(), String> {
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(LIBRARIES_TAR_GZ));
     // The tarball is gg's own build artifact rather than anything a run produced, but the extraction
@@ -713,7 +716,7 @@ fn unpack(into: &Path) -> Result<(), String> {
         .map_err(|error| format!("could not unpack the Rust library set: {error}"))
 }
 
-/// A stable digest of the committed tarball, so a change to it changes the directory it is unpacked
+/// A stable digest of the embedded tarball, so a change to it changes the directory it is unpacked
 /// into. Not cryptographic and not required to be: it distinguishes builds, it does not defend
 /// against one.
 fn fingerprint() -> u64 {

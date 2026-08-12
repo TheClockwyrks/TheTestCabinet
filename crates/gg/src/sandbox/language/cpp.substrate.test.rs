@@ -15,7 +15,7 @@
 //! production ceilings, instantiated through the `bindgen!`-generated
 //! [`Sandbox`](crate::sandbox::membrane::Sandbox) and driven through its `run` export.
 //!
-//! There is no committed artifact anywhere in that path, which is what makes this arm's proof
+//! There is no prebuilt guest anywhere in that path, which is what makes this arm's proof
 //! *stronger* than the interpreted arms': what these tests instantiate was compiled from this
 //! checkout's WIT, this checkout's prelude and this checkout's shell, seconds earlier.
 //!
@@ -869,7 +869,7 @@ fn the_prelude_is_precompiled_once_and_read_only_afterwards() {
     assert!(!component.is_empty());
 
     let home = compile::wasi_sdk_home().expect("resolving the wasi-sdk home never fails");
-    let guest = compile::guest().expect("the committed C++ guest unpacks");
+    let guest = compile::guest().expect("the embedded C++ guest unpacks");
     let prelude = compile::precompiled_prelude(&home, guest, &PrepareContext::new())
         .expect("the prelude precompiles");
     let metadata = std::fs::metadata(&prelude).expect("the precompiled prelude is on disk");
@@ -961,7 +961,7 @@ fn what_compiling_a_cpp_program_cost_is_a_reading_the_seam_can_take() {
 #[test]
 fn what_a_compiled_cpp_program_weighs_is_a_per_turn_cost() {
     // Two figures a study needs and neither is an accident: the artifact is compiled by the engine
-    // on **every** turn, because this arm has no committed component to compile once — so its size
+    // on **every** turn, because this arm has no prebuilt component to compile once — so its size
     // is a per-turn cost in a way no interpreted arm's is.
     //
     // The band is wide and low-sided on purpose. What would fail it is a jump, and a jump would mean

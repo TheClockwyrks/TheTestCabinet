@@ -1,6 +1,6 @@
-//! **The C# arm's execution substrate** — the real Roslyn, the real committed guest and the real
+//! **The C# arm's execution substrate** — the real Roslyn, the real embedded guest and the real
 //! membrane, driven end to end: C# the way a model would write it, really compiled by the toolchain
-//! in the run image, really interpreted by the Mono IL interpreter gg commits, really talking to
+//! in the run image, really interpreted by the Mono IL interpreter gg embeds, really talking to
 //! gg's real host.
 //!
 //! # What "real" means here
@@ -9,7 +9,7 @@
 //! [`compile_program`](super::compile::compile_program) — the production prepare step, spawning a
 //! real `csc` through the seam's own isolated invocation, in a
 //! [`PrepareContext`](crate::sandbox::PrepareContext) — and what comes back is a base64 IL assembly,
-//! which is handed to the **committed** `guests/csharp.component.wasm`: compiled with
+//! which is handed to the **prebuilt** [`GUEST_COMPONENT`](super::GUEST_COMPONENT): compiled with
 //! [`compile_bytes`](crate::sandbox::engine::compile_bytes), linked with
 //! [`linker`](crate::sandbox::linker) (the production linker: the whole membrane plus the whole
 //! ambient WASI surface), put in a [`bounded_store`](crate::sandbox::bounded_store) with the
@@ -68,7 +68,7 @@ pub(super) fn prepare(source: &str) -> String {
         Ok(prepared) => {
             assert!(
                 prepared.component.is_none(),
-                "this arm evaluates its program with the committed guest, not one per turn"
+                "this arm evaluates its program with the embedded guest, not one per turn"
             );
             assert!(
                 !prepared.source.is_empty(),
@@ -80,7 +80,7 @@ pub(super) fn prepare(source: &str) -> String {
     }
 }
 
-/// The committed guest, compiled **once per test process**.
+/// The embedded guest, compiled **once per test process**.
 ///
 /// A local `OnceLock` rather than the production [component cache](crate::sandbox::engine::component)
 /// for one reason: that cache is indexed by a registered language's wire id, and this arm has none
@@ -90,7 +90,7 @@ pub(super) fn prepare(source: &str) -> String {
 fn component() -> &'static Component {
     static COMPONENT: OnceLock<Component> = OnceLock::new();
     COMPONENT.get_or_init(|| {
-        engine::compile_bytes(GUEST_COMPONENT).expect("the committed C# guest is a component")
+        engine::compile_bytes(GUEST_COMPONENT).expect("the embedded C# guest is a component")
     })
 }
 
@@ -216,7 +216,7 @@ fn evaluate_granting(
     let bound = match Sandbox::instantiate(&mut store, component, &linker) {
         Ok(bound) => bound,
         Err(error) => panic!(
-            "the committed C# guest instantiates against the real membrane: {}",
+            "the embedded C# guest instantiates against the real membrane: {}",
             engine::classify(&store, limits, &error, SandboxError::Instantiate)
         ),
     };

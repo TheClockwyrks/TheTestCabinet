@@ -10,7 +10,8 @@ module GG
   #
   # 1. `GG::Scope`, which binds every one of them onto the modules a program calls, at load time.
   # 2. `tools/signatures.rb`, which requires this SDK, reads {registry} and reflects each entry's
-  #    YARD documentation into `crates/gg/src/sandbox/guests/ruby.signatures.json`.
+  #    YARD documentation into the `ruby.signatures.json` `crates/gg/build.rs` writes into its
+  #    own `OUT_DIR`.
   #
   # ## Why the declaration sits below the method rather than above it
   #

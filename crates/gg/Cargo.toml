@@ -31,6 +31,55 @@ path = "src/main.rs"
 # the invocation config that core hands this binary.
 test-cabinet-core = { path = "../core" }
 
+# THE PROGRAM-LANGUAGE ARTIFACT CRATES. Not libraries — every one of them is an empty `lib.rs` — but
+# build steps: each runs one arm's `packages/gg-sandbox*/build.sh` into its own `OUT_DIR` and
+# publishes the directory it wrote to, which `build.rs` here turns into a `GG_ARTIFACTS_<ARM>`
+# variable and the arm modules `include_bytes!`/`include_str!` from. Those bytes are what a model's
+# program is compiled and evaluated against: the Java and Kotlin arms' SDK jars, the Opal compiler
+# the Ruby arm lowers a program with, the `tsc` the TypeScript arm type-checks one with, the rlibs
+# and the compiled PureScript tree a program links or resolves against, the C++ and Swift arms'
+# guest archives, and the four baked interpreters — the TypeScript/JavaScript, Python, Ruby and C#
+# guest components, 14 to 35 MB apiece, each carrying a whole language runtime.
+#
+# THEY MUST BE ORDINARY `[dependencies]`, NOT `[build-dependencies]`, and the difference is silent.
+# Cargo hands a `links` package's metadata to the build script of every package that depends on it —
+# that is the one channel a build script has for talking to another build script — but only across a
+# NORMAL dependency edge. Moved to `[build-dependencies]`, every one of them still builds, and
+# `DEP_GG_ARTIFACT_JAVA_ROOT` is simply absent in `build.rs`, with no warning from anything. See
+# `gg-artifact-build`'s header, which records the measurement.
+#
+# ONE OF THESE EDGES DOES MORE THAN CARRY BYTES. `gg-artifact-purescript` is also an ORDERING
+# constraint: the PureScript signature reflection `build.rs` runs compiles this arm's SDK against
+# the library tree that crate builds, so the tree has to exist first. A dependency edge is how that
+# is said in a way cargo enforces — see that crate's `src/lib.rs`.
+#
+# TEN EDGES, ELEVEN ARMS, AND THE ARITHMETIC IS NOT A MISTAKE. `gg-artifact-typescript` serves the
+# JavaScript arm too: those two arms are ONE guest and one set of declarations, differing only in
+# whether gg type-checks the program on the way in, so `packages/gg-sandbox` builds one component for
+# both and `scripts/gg-arms.sh` carries one row for both. There is no `gg-artifact-javascript` and
+# there never will be.
+#
+# ONE OF THESE COSTS SOMETHING A DEVELOPER WILL NOTICE. `gg-artifact-csharp` is the only arm whose
+# build needs toolchains no gg RUN needs — a whole .NET SDK and an unpruned wasi-sdk, ~1.4 GB —
+# installed by `scripts/ci/install-gg-build-toolchains.sh`, which is deliberately NOT part of the
+# eleven-arm `install-gg-toolchains.sh` list. Building gg on a machine that never ran it SUCCEEDS,
+# and that is the thing to know: `packages/gg-sandbox-csharp/build.sh` falls back to fetching both
+# into the package's own `.build/`, so what a missing prefix costs is a silent ~1.4 GB download in
+# the middle of somebody's `cargo build` rather than an error naming the installer. Which is why
+# every surface that builds gg calls that installer explicitly — see `scripts/ci/rust-test.sh`,
+# whose comment on the line says the same thing in the same words. The argument for paying it rather
+# than committing 35 MB is in that crate's `src/lib.rs`.
+gg-artifact-typescript = { path = "../gg-sandbox-artifacts/typescript" }
+gg-artifact-python = { path = "../gg-sandbox-artifacts/python" }
+gg-artifact-ruby = { path = "../gg-sandbox-artifacts/ruby" }
+gg-artifact-java = { path = "../gg-sandbox-artifacts/java" }
+gg-artifact-kotlin = { path = "../gg-sandbox-artifacts/kotlin" }
+gg-artifact-purescript = { path = "../gg-sandbox-artifacts/purescript" }
+gg-artifact-rust = { path = "../gg-sandbox-artifacts/rust" }
+gg-artifact-swift = { path = "../gg-sandbox-artifacts/swift" }
+gg-artifact-cpp = { path = "../gg-sandbox-artifacts/cpp" }
+gg-artifact-csharp = { path = "../gg-sandbox-artifacts/csharp" }
+
 serde = { workspace = true }
 serde_json = { workspace = true }
 # gg's model-facing prose (the system prompt, the pinned context blocks, the compaction
@@ -112,12 +161,12 @@ tiktoken-rs = { workspace = true }
 # the picture to its tool result as a base64 `data:` URL, which is how every provider
 # behind OpenRouter takes an inline image (`src/tools/filesystem.rs`, `src/client.rs`).
 base64 = { workspace = true }
-# Unpacking the PureScript arm's committed library set
+# Unpacking the PureScript arm's compiled library set
 # (`src/sandbox/language/purescript.compile.rs`). `purs` cannot type-check a program
 # without the sources AND the compiled externs of everything it imports, and compiling
-# that set costs ~16 s — so it is compiled once at build time and shipped as a 1.2 MB
-# gzipped tar inside this binary, unpacked once per machine into a shared, sealed,
-# read-only directory. `flate2` is the workspace's gzip codec (pure-Rust `miniz_oxide`
+# that set costs ~16 s — so it is compiled once, by `gg-artifact-purescript`'s build
+# script into that crate's `OUT_DIR`, and shipped as a 1.2 MB gzipped tar inside this
+# binary, unpacked once per machine into a shared, sealed, read-only directory. `flate2` is the workspace's gzip codec (pure-Rust `miniz_oxide`
 # backend, no system zlib); `tar` is the same pure-Rust reader `artifacts`, `driver` and
 # `publisher` already use on the run-tree artifact path.
 flate2 = { workspace = true }
@@ -137,12 +186,6 @@ wit-component = { workspace = true }
 # the local filesystem rooted at the invocation's workspace, so the tests exercise
 # them against a real temporary directory.
 tempfile = { workspace = true }
-
-# The C# arm's committed guest is built by a developer's command and exempted from the
-# contract-drift re-cut, so the gate that a `Sources/shell.c` edit was actually rebuilt is a
-# digest comparison in this crate's own tests. A dev dependency rather than a real one: nothing
-# on the turn path hashes anything.
-sha2 = { workspace = true }
 
 [lints]
 workspace = true

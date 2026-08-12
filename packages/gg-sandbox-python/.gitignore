@@ -1,10 +1,12 @@
-# Everything `build.sh` generates: the vendored wheels and the generated WIT bindings. Both are
-# derived from `requirements.txt` and `crates/gg/wit/gg-sandbox.wit`; only the component this
-# package bakes is committed, and it lives in the Rust crate that embeds it.
+# Everything `build.sh` generates on the way to the component: the vendored wheels and the generated
+# WIT bindings. Both are derived from `requirements.txt` and `crates/gg/wit/gg-sandbox.wit`. The
+# component itself is not committed either — it is written into $GG_ARTIFACTS_OUT_DIR, the `OUT_DIR`
+# of crates/gg-sandbox-artifacts/python, and `include_bytes!`d from there.
 .build/
 
 # The private environment `signatures.sh` puts `griffe` in. It is a toolchain, not a source: the
-# pin lives in `signatures.sh` and the catalogue it emits is committed in the Rust crate.
+# pin lives in `signatures.sh`, and the catalogue it emits goes to $GG_SIGNATURES_OUT_DIR — the
+# `OUT_DIR` of the build that reflects it.
 .venv/
 
 # CPython's own build output. The sources here are read by `componentize-py` and by `griffe`, and

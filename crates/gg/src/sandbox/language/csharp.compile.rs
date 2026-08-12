@@ -4,13 +4,13 @@
 //!
 //! A model's reply is compiled **on the host, to IL**, by Roslyn — `csc`, the compiler every C#
 //! developer's build already runs — and the assembly it produces crosses the membrane as base64 in
-//! the world's existing `program` string. The committed guest is a Mono **IL interpreter**, so the
+//! the world's existing `program` string. The prebuilt guest is a Mono **IL interpreter**, so the
 //! artifact gg ships is a runtime rather than a program, and the per-turn cost is one `csc` and
 //! nothing else.
 //!
 //! What `csc` is given is the model's program **and the SDK's own sources** — twenty-two `.cs` files
 //! written into the preparation's workspace beside it, so that gg's surface is in the program's own
-//! assembly and the committed guest has nothing extra to carry. See [`sdk`](super::sdk) for why, and
+//! assembly and the prebuilt guest has nothing extra to carry. See [`sdk`](super::sdk) for why, and
 //! below for what it costs.
 //!
 //! That shape is what a prior feasibility study missed. Priced on `componentize-dotnet` —
@@ -32,7 +32,7 @@
 //! Which puts it **second among the compiled arms**, behind [C++](super::super::cpp)'s ~85 ms — and
 //! that arm is only there because it precompiles a header once per machine — and comfortably ahead
 //! of `swiftc`, both JVM arms and `purs`. What it costs *beyond* the compiler is where this arm
-//! differs from those: none of them instantiates a committed guest, and this one instantiates the
+//! differs from those: none of them instantiates a prebuilt guest, and this one instantiates the
 //! largest in the repository, so the honest per-turn figure is `csc` plus a share of one 35.3 MB
 //! `Component::new` paid once per process. It is
 //! [recorded](crate::sandbox::SandboxOutcome::compile) on the failing path as well as the succeeding
@@ -100,7 +100,7 @@
 //! into the preparation's workspace as `module_<key>.cs` — [wrapped](super::source::wrap_module) as
 //! `public static class <key>` inside `namespace lib` — and named in the **same `csc` invocation** as
 //! the program and the SDK. Nothing is referenced with `-r:` and nothing becomes a second assembly,
-//! which the committed guest could not load anyway: it loads exactly one per run.
+//! which the prebuilt guest could not load anyway: it loads exactly one per run.
 //!
 //! A module is also compiled **alone** when it is read — [`compile_module`], one `-target:library`
 //! over the wrapped file — which is what buys its author a diagnostic in their own coordinates
@@ -188,7 +188,7 @@ const COMPILE_TIMEOUT: Duration = Duration::from_secs(60);
 ///
 /// A tree rather than a `dotnet` on `PATH`, for the reason the C++ and Swift arms resolve one: what
 /// this arm needs is a runtime, a Roslyn and a **reference assembly set that agree with the BCL
-/// inside the committed guest**, and a `dotnet` on `PATH` says nothing about the last two. A
+/// inside the prebuilt guest**, and a `dotnet` on `PATH` says nothing about the last two. A
 /// machine's own .NET is deliberately not used even when it is the same version — the guest was
 /// built against one release and the reference assemblies decide what a program may call.
 pub(super) fn dotnet_home() -> Option<PathBuf> {
@@ -229,7 +229,8 @@ fn usable(root: &Path) -> bool {
 /// treats as the end, or an exception.
 ///
 /// [`component`](PreparedProgram::component) is `None` because this arm evaluates its program with a
-/// **committed** runtime rather than compiling one per turn. That is what separates it from the
+/// **prebuilt** runtime — one the build linked, once, and gg embeds — rather than compiling one per
+/// turn. That is what separates it from the
 /// three arms whose compiler emits wasm: its per-turn cost is one `csc` and no engine work at all,
 /// where theirs is a compiler *and* a `Component::new` over bytes that differ every turn.
 pub(super) fn compile_program(
@@ -250,7 +251,7 @@ pub(super) fn compile_program(
 ///
 /// What comes back is **source**, which is what a compiled arm's module has to be: it is an input to
 /// the [program compile](compile_program) that binds it, not something a guest could load on its
-/// own. The committed guest loads exactly one assembly per run, so a module cannot be a second one —
+/// own. The prebuilt guest loads exactly one assembly per run, so a module cannot be a second one —
 /// it is C# handed to the same `csc` as the program, and the class it becomes is in the program's
 /// own assembly. It is the author's own bytes rather than the
 /// [wrapped](super::source::wrap_module) form, because the class is named for the key the *program*
@@ -385,7 +386,7 @@ impl Target {
 ///
 /// * `-nologo` — nothing but the diagnostics, which is what gg is about to read.
 /// * `-nostdlib+` — load-bearing. The references below are the ones that match the BCL inside the
-///   committed guest, and nothing else may be implicitly in scope. (`-noconfig`, which stops `csc`
+///   prebuilt guest, and nothing else may be implicitly in scope. (`-noconfig`, which stops `csc`
 ///   reading the `csc.rsp` sitting beside it, is **not** here: Roslyn ignores it inside a response
 ///   file and says so as `CS2023`, so [`invoke`] passes it on the command line instead.)
 /// * `-target:exe` — the guest loads the assembly and calls its entry point, so it needs one.

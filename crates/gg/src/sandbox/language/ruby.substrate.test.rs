@@ -47,7 +47,7 @@ fn ruby() -> &'static dyn crate::sandbox::ProgramLanguage {
     crate::sandbox::language(GgProgramLanguage::Ruby)
 }
 
-/// The committed guest, compiled once per test process — through the **production** per-language
+/// The embedded guest, compiled once per test process — through the **production** per-language
 /// cache, now that this arm has a wire id to be cached under.
 ///
 /// The same bargain a run strikes, and for the same reason: compiling 20 MB costs a second and
@@ -55,7 +55,7 @@ fn ruby() -> &'static dyn crate::sandbox::ProgramLanguage {
 /// not pay ten compiles.
 fn component() -> &'static Component {
     engine::component(ruby())
-        .expect("the committed Ruby guest compiles")
+        .expect("the embedded Ruby guest compiles")
         .0
 }
 
@@ -63,7 +63,7 @@ fn component() -> &'static Component {
 fn prepare(ruby: &str) -> String {
     match compile_program(ruby, &PrepareContext::new()) {
         Ok(prepared) => prepared.source,
-        Err(failure) => panic!("the committed Opal did not compile this Ruby: {failure}"),
+        Err(failure) => panic!("the embedded Opal did not compile this Ruby: {failure}"),
     }
 }
 
@@ -71,7 +71,7 @@ fn prepare(ruby: &str) -> String {
 fn prepare_module(ruby: &str) -> String {
     match compile_module(ruby, &PrepareContext::new()) {
         Ok(source) => source,
-        Err(failure) => panic!("the committed Opal did not compile this Ruby module: {failure}"),
+        Err(failure) => panic!("the embedded Opal did not compile this Ruby module: {failure}"),
     }
 }
 
@@ -108,7 +108,7 @@ fn run_as(
 /// calls. Host work done after that stamp and before the guest runs is neither, so nothing gives it
 /// back: it is charged in full to a program that has not started.
 ///
-/// [`component`] is exactly that work: a `Component::new` of this arm's 21 MB committed guest, paid
+/// [`component`] is exactly that work: a `Component::new` of this arm's 21 MB embedded guest, paid
 /// once per **process** — which under `cargo nextest` means once per `#[test]`. The same compile of
 /// the 14 MB shared guest was measured on this repository's dev container at 1.35 s alone, a median
 /// of 10.6 s and a worst of 34.0 s across the processes that paid it during one `cargo nextest run
@@ -145,7 +145,7 @@ fn evaluate(
     let bound = match Sandbox::instantiate(&mut store, component, &linker) {
         Ok(bound) => bound,
         Err(error) => panic!(
-            "the committed Ruby guest instantiates against the real membrane: {}",
+            "the embedded Ruby guest instantiates against the real membrane: {}",
             engine::classify(&store, limits, &error, SandboxError::Instantiate)
         ),
     };
@@ -276,11 +276,11 @@ end
 }
 
 #[test]
-fn the_libraries_the_manifest_declares_are_really_in_the_committed_guest() {
+fn the_libraries_the_manifest_declares_are_really_in_the_embedded_guest() {
     // What a Ruby program may `require` is a **bake-time fact about this artifact**: it is what
     // `src/library.rb` declared and `tools/guest.mjs` compiled into it, and nothing else. That set
     // is what the catalogue's `libraries` section tells a model it has, so this drives every name
-    // the catalogue names into the committed component and requires it — a curated library dropped
+    // the catalogue names into the embedded component and requires it — a curated library dropped
     // in a rebuild fails here rather than in a run.
     let catalogue: Value =
         serde_json::from_str(SIGNATURES).expect("the generated Ruby catalogue is valid JSON");
@@ -305,7 +305,7 @@ fn the_libraries_the_manifest_declares_are_really_in_the_committed_guest() {
     assert_eq!(
         logs(&outcome),
         declared.as_slice(),
-        "every library the catalogue declares loads inside the committed guest"
+        "every library the catalogue declares loads inside the embedded guest"
     );
 
     // And they are libraries rather than names: each of these is a call into the thing that was
@@ -1239,7 +1239,7 @@ puts GG::Scope::IMPLEMENTATIONS.frozen?
 fn opal_is_not_cruby_and_the_study_records_which_ways() {
     // Every one of these is a difference a model's program can observe, and a study that reported
     // "Ruby" without recording them would be reporting something else. Asserted against the
-    // committed artifact rather than described in prose, so the claim is checkable.
+    // embedded artifact rather than described in prose, so the claim is checkable.
     let outcome = run(r##"
 puts (1 / 0).to_s
 puts (2 ** 64).to_s
@@ -1374,7 +1374,7 @@ end
 }
 
 #[test]
-fn the_committed_guest_imports_the_membrane_and_the_wasi_it_was_baked_with() {
+fn the_embedded_guest_imports_the_membrane_and_the_wasi_it_was_baked_with() {
     // This guest is the ECMAScript guest's engine plus a Ruby runtime, so its imports must be that
     // guest's exactly: a capability enabled here and not there would be a difference between two
     // arms of a study that nobody chose. `wasi:filesystem` and `wasi:sockets` are absent because the
@@ -1386,7 +1386,7 @@ fn the_committed_guest_imports_the_membrane_and_the_wasi_it_was_baked_with() {
     imports.sort_unstable();
     assert_eq!(
         imports, expected,
-        "the committed Ruby guest reaches something the ECMAScript guest does not, or the other \
+        "the embedded Ruby guest reaches something the ECMAScript guest does not, or the other \
          way round; a capability on one side only is a difference between arms of a study that \
          nobody chose"
     );
@@ -1410,11 +1410,11 @@ fn the_committed_guest_imports_the_membrane_and_the_wasi_it_was_baked_with() {
     // it should not have.
     assert!(
         (18 * 1024 * 1024..=24 * 1024 * 1024).contains(&COMPONENT.len()),
-        "the committed Ruby guest is {} bytes, outside the documented 18–24 MiB band",
+        "the embedded Ruby guest is {} bytes, outside the documented 18–24 MiB band",
         COMPONENT.len()
     );
 
-    // The bijection the committed artifact is held to: this guest binds gg's whole tool vocabulary
+    // The bijection the embedded artifact is held to: this guest binds gg's whole tool vocabulary
     // and nothing else. It is the RUBY SDK's own catalogue doing the answering, so this is a check
     // of that SDK rather than a second reading of the TypeScript one.
     // The component before the store, as everywhere in this file: `bounded_store` arms the guest's
@@ -1490,7 +1490,7 @@ fn the_generated_catalogue_agrees_with_the_arms_it_will_be_compared_against() {
 #[test]
 fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
     // The other half of the catalogue's honesty, and the one no cross-language comparison can see:
-    // that the surface it *describes* is the surface the committed `.wasm` really binds. A signature
+    // that the surface it *describes* is the surface the embedded `.wasm` really binds. A signature
     // reflected out of a source file that was never baked in would read perfectly and name a call
     // that is not there.
     let catalogue: Value =
@@ -1591,7 +1591,7 @@ fn an_argument_mistake_is_an_argument_error_rather_than_silence() {
     //
     // gg now compiles both halves with `arity_check`, and `GG::Scope` checks the surface it
     // binds before the call is made. All of what follows is measured through the real compiler and
-    // the real membrane, because the claim is about the committed artifacts and nothing else can
+    // the real membrane, because the claim is about the embedded artifacts and nothing else can
     // say it.
     //
     // Programs are batched — one compile drives many mistakes, each rescued and logged — because a

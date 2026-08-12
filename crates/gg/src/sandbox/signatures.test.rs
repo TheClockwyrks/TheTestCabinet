@@ -235,7 +235,7 @@ fn typescript_spells_its_ending_calls_as_its_sdk_declares_them() {
 ///
 /// Which functions the grouping carries and what gates them is identity — a file view is a read
 /// whatever language asks for it — and the [agreement gate](crate::sandbox::language) asserts that
-/// for every language, including the ones with no committed component yet. What stays here is
+/// for every language, including the ones with no prebuilt component yet. What stays here is
 /// TypeScript's own spelling of them, and the count, which is this SDK's surface rather than a rule
 /// about surfaces.
 #[test]

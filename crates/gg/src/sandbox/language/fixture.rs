@@ -7,7 +7,7 @@
 //! trait, and nothing distinguishes the two until a second one arrives. Every property the
 //! [seam](super) claims — that the healing skeleton asks a dialect rather than knowing TypeScript's
 //! answers, that the prompt is selected per language rather than shared, that one language's
-//! committed artifacts cannot reach another's consumer, that the
+//! embedded artifacts cannot reach another's consumer, that the
 //! [capability gate](super::agreement) can be made to reject a surface at all —
 //! is unfalsifiable while TypeScript is the only thing that implements it. The fixture is what
 //! makes them falsifiable, a workflow before a second real language exists rather than a workflow

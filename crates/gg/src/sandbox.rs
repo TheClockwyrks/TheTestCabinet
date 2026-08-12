@@ -5,14 +5,14 @@
 //! model answers a turn by writing a whole **program**, and every gg tool is a distinct, typed
 //! function in that program's scope. This module is the host: it prepares the program for its
 //! guest through the run's [program language](mod@language), evaluates it inside that language's
-//! committed [interpreter component](engine) under an execution-timeout and linear-memory ceiling,
+//! embedded [interpreter component](engine) under an execution-timeout and linear-memory ceiling,
 //! and bridges each typed call across the [membrane] to gg's real toolset.
 //!
 //! ## Which language, and what that means here
 //!
 //! The language is a per-agent configuration knob rather than a fact about gg — the axis a
 //! cross-language study compares its arms on. [`language`](mod@language) is the seam: it owns how a reply becomes
-//! evaluable source, which committed component evaluates it, and how its SDK spells the surface.
+//! evaluable source, which embedded component evaluates it, and how its SDK spells the surface.
 //! Everything in *this* module is written against that seam, so nothing here knows which language is
 //! running.
 //!
@@ -32,7 +32,7 @@
 //!
 //! What a turn *does* pay is its own language's prepare step. TypeScript's is two passes: the `oxc`
 //! type-strip, in-process at ~0.2 ms, and a `tsc` type check that spawns `node` against the
-//! committed checker at ~90 ms. That is a real per-turn cost on the hot path, which is why it is
+//! embedded checker at ~90 ms. That is a real per-turn cost on the hot path, which is why it is
 //! measured rather than assumed — see [`SandboxOutcome::compile`].
 //!
 //! ## What a program costs, and what bounds it
@@ -271,7 +271,7 @@ pub struct ProgramScope<'a> {
 /// component, evaluate it, and report everything that happened.
 ///
 /// `language` is the [program language](ProgramLanguage) this agent writes in — which decides how
-/// `program` is prepared and which committed component evaluates it — `program` is the source the
+/// `program` is prepared and which embedded component evaluates it — `program` is the source the
 /// model emitted, `scope` is everything the evaluated function's parameters are built from, and
 /// `deadline` is the run's wall-clock budget, consulted before every bridged call so a program
 /// cannot outlive the run it belongs to. Synchronous and CPU-bound, so the [loop](crate::agent) runs
@@ -367,7 +367,7 @@ fn evaluate<A: ToolApi>(
         docview_close: _,
     } = scope;
     let unreachable = prepared.unreachable;
-    // Either the language's committed component, or — for an arm whose prepare step compiled the
+    // Either the language's embedded component, or — for an arm whose prepare step compiled the
     // program itself into one — this program's own. The wait is reported the same way for both.
     let (component, compile_wait) = match engine::program_component(language, prepared.component) {
         Ok(component) => component,
@@ -387,7 +387,7 @@ fn evaluate<A: ToolApi>(
         Ok(bound) => bound,
         Err(error) => {
             // An instantiation failure is either the memory cap denying the guest its heap or the
-            // committed artifact importing something this membrane does not provide — i.e. the
+            // embedded artifact importing something this membrane does not provide — i.e. the
             // component and the WIT have drifted apart.
             let error = engine::classify(&store, limits, &error, SandboxError::Instantiate);
             return reclaim(store, Err(error), unreachable, compile, compile_wait);
@@ -473,11 +473,11 @@ fn keep_reported_error<A: ToolApi>(
 /// how a program's `Date.now()` and `crypto.randomUUID()` read the host's own clock and entropy —
 /// and imports neither `wasi:filesystem` nor `wasi:sockets`, because its component is baked without
 /// them. Those two are therefore *unused* by it rather than withheld from it, a distinction that
-/// stopped being hypothetical with the committed `componentize-py` guest, which imports the whole
+/// stopped being hypothetical with the embedded `componentize-py` guest, which imports the whole
 /// surface — twenty WASI interfaces to TypeScript's seven — and would not instantiate against a
 /// linker built to that guest's appetite. The exact lists are asserted by
-/// `the_committed_component_imports_the_membrane_and_the_wasi_it_was_baked_with` and by
-/// `the_committed_guest_imports_the_whole_membrane_and_the_whole_wasi_surface`.
+/// `the_embedded_component_imports_the_membrane_and_the_wasi_it_was_baked_with` and by
+/// `the_embedded_guest_imports_the_whole_membrane_and_the_whole_wasi_surface`.
 ///
 /// The one thing the host does not hand over is **stdout**: gg's telemetry stream *is* this
 /// process's stdout (`crate::telemetry`, newline-delimited JSON), so a guest write to fd 1 would
@@ -652,8 +652,8 @@ pub const FINISH_FUNCTION: &str = "finish";
 /// enabled set is what it passes in.
 ///
 /// `artifact` is how a language that [compiles a component per program](ProgramLanguage) is asked:
-/// it has no committed artifact to interrogate, so the caller compiles one program and hands the
-/// bytes in. `None` means "the committed one", which is every other arm. The artifact is *stronger*
+/// it has no prebuilt artifact to interrogate, so the caller compiles one program and hands the
+/// bytes in. `None` means "the prebuilt one", which is every other arm. The artifact is *stronger*
 /// evidence in the compiled case rather than weaker — it cannot be stale, because it was built from
 /// this checkout's SDK moments earlier.
 #[cfg(test)]
@@ -774,7 +774,7 @@ fn reclaim<A: ToolApi>(
 /// [`SandboxError::Engine`], [`SandboxError::Host`] and the two artifact-defect variants are the
 /// inputs to the one branch of the [turn taxonomy](crate::limits::TurnOutcome) that keeps gg's own
 /// failures **off** the model's error budget — and every one of them is, by construction, absent
-/// from a healthy build. The committed component compiles and instantiates (the suite proves it on
+/// from a healthy build. The embedded component compiles and instantiates (the suite proves it on
 /// every run), the engine's [`Config`](wasmtime::Config) is a fixed constant with no runtime input,
 /// and the blocking task only fails to join if the host panicked. There is therefore no program a
 /// test can write that reaches that branch, and without a seam it is the single arm of the loop with

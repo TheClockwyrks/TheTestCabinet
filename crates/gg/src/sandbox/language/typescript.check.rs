@@ -48,18 +48,25 @@
 //!
 //! Three declaration files, assembled once per process and reused by every check:
 //!
-//! 1. `lib.gg.d.ts` — the ES2022 standard library, the 57 `lib.*.d.ts` files concatenated at build
-//!    time so one open replaces 57. The check runs `noLib` and names it explicitly.
-//! 2. `gg.d.ts` — the **whole** SDK surface, generated here from this language's committed
+//! 1. `lib.gg.d.ts` — the ES2022 standard library, the 57 `lib.*.d.ts` files concatenated by this
+//!    arm's build so one open replaces 57. The check runs `noLib` and names it explicitly.
+//! 2. `gg.d.ts` — the **whole** SDK surface, generated here from this language's
 //!    [signature catalogue](crate::sandbox::signatures): one ambient namespace per capability
 //!    module, carrying that module's types and functions, plus the bare aliases the shim also binds.
 //!    Nothing is hand-written; the same reflected signatures a model reads in a documentation view
 //!    are the ones it is checked against, so the two cannot disagree.
 //! 3. `globals.d.ts` — `console`, `lib`, `performance` and `crypto`: the names a program reaches
-//!    that no SDK declaration covers, authored beside the shim that installs or shadows them and
-//!    committed verbatim. The rule there is one rule — a name a program can **call** is declared and
+//!    that no SDK declaration covers, authored beside the shim that installs or shadows them (in
+//!    `packages/gg-sandbox/tools/program-globals.d.ts`) and copied verbatim into the build's
+//!    artifacts. The rule there is one rule — a name a program can **call** is declared and
 //!    a name it cannot is not — which is why `setTimeout` and `fetch` are absent and the host's clock
 //!    and entropy are present.
+//!
+//! None of the three is a committed file, and neither is the compiler that reads them. All four come
+//! out of `packages/gg-sandbox/build.sh`, run by `crates/gg-sandbox-artifacts/typescript` as part of
+//! building this crate, so the pinned `typescript` a program is judged by and the pinned
+//! `typescript` its catalogue was emitted with are the same release by construction rather than by
+//! a check somebody has to run.
 //!
 //! ## The surface is the whole one, not the run's
 //!
@@ -123,20 +130,36 @@ use crate::sandbox::language::{PrepareContext, PrepareError, PrepareFailure, Pro
 use crate::sandbox::operations::operation_by_id;
 use crate::sandbox::signatures::{EntryKind, SignatureCatalogue};
 
-/// The compiler behind the `tsc` CLI, at the release
-/// `packages/gg-sandbox/tools/checker.mjs` pins — committed and embedded for the reason the
-/// component is: gg is copied as a single file into an ephemeral run container and must carry
-/// everything it needs with it.
-const TSC_JS: &str = include_str!("../checkers/typescript.tsc.js");
+/// The compiler behind the `tsc` CLI, at the release the repository-root `package.json` pins.
+///
+/// **Embedded** for the reason the guest component is: gg is copied as a single file into an
+/// ephemeral run container and must carry everything it needs with it. **Cut by this build** rather
+/// than committed beside this file, by `packages/gg-sandbox/build.sh` through
+/// `tools/checker.mjs`, so that the compiler a program is judged by and the catalogue that program's
+/// prompt was written from come out of one checkout on one build. A bumped `typescript` pin used to
+/// be two edits with a gate between them; it is now one, and the gate has nothing left to catch.
+const TSC_JS: &str = include_str!(concat!(
+    env!("GG_ARTIFACTS_TYPESCRIPT"),
+    "/typescript.tsc.js"
+));
 
-/// The ES2022 standard library, concatenated at build time.
-const LIB_DTS: &str = include_str!("../checkers/typescript.lib.d.ts");
+/// The ES2022 standard library, 57 declaration files concatenated so a check opens one.
+const LIB_DTS: &str = include_str!(concat!(
+    env!("GG_ARTIFACTS_TYPESCRIPT"),
+    "/typescript.lib.d.ts"
+));
 
 /// `console`, `lib`, `performance` and `crypto` — the globals no SDK declaration covers.
-const GLOBALS_DTS: &str = include_str!("../checkers/typescript.globals.d.ts");
+const GLOBALS_DTS: &str = include_str!(concat!(
+    env!("GG_ARTIFACTS_TYPESCRIPT"),
+    "/typescript.globals.d.ts"
+));
 
-/// What the committed checker is, so gg can say which compiler judged a program.
-const MANIFEST_JSON: &str = include_str!("../checkers/typescript.checker.json");
+/// What the checker beside it is, so gg can say which compiler judged a program.
+const MANIFEST_JSON: &str = include_str!(concat!(
+    env!("GG_ARTIFACTS_TYPESCRIPT"),
+    "/typescript.checker.json"
+));
 
 /// How long a single check may take before it is killed and reported as a
 /// [toolchain failure](PrepareFailure::Toolchain).
@@ -161,7 +184,7 @@ const PROGRAM_PROLOGUE: &str = "function __ggProgram__() {\n";
 /// What closes it.
 const PROGRAM_EPILOGUE: &str = "\n}\n";
 
-/// What the committed checker is: the TypeScript release it was cut from and the language level it
+/// What the embedded checker is: the TypeScript release it was cut from and the language level it
 /// checks at.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -179,7 +202,7 @@ fn manifest() -> &'static CheckerManifest {
     static MANIFEST: OnceLock<CheckerManifest> = OnceLock::new();
     MANIFEST.get_or_init(|| {
         serde_json::from_str(MANIFEST_JSON)
-            .expect("the committed checker manifest is valid JSON of the expected shape")
+            .expect("the checker manifest this build wrote is valid JSON of the expected shape")
     })
 }
 

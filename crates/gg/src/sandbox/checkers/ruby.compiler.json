@@ -1,8 +1,0 @@
-{
-  "language": "ruby",
-  "opal": "1.7.3",
-  "rubyVersion": "3.2.0",
-  "opalCompilerPackage": "3.0.0",
-  "opalRuntimePackage": "3.0.0",
-  "generatedFrom": "packages/gg-sandbox-ruby/tools/compiler.mjs"
-}

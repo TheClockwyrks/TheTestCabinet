@@ -37,7 +37,7 @@ fn the_component_compiles_once_per_process() {
     // container that compile is ~4.8 s, which is the difference between a first turn that feels
     // instant and one that does not.
     let warmed = crate::sandbox::precompile(typescript())
-        .expect("the warm-up compiles the committed component");
+        .expect("the warm-up compiles the embedded component");
     assert_eq!(compiles(), 1, "the warm-up compiles it");
     // The warm-up is the caller that paid the compile, so it is the one that reports how long it
     // took — the figure the run logs, and the only measurement of this machine's compile cost that
@@ -53,7 +53,7 @@ fn the_component_compiles_once_per_process() {
     );
     assert_eq!(compiles(), 1, "the warm-up is idempotent");
 
-    let (first, first_wait) = component(typescript()).expect("the committed component is ready");
+    let (first, first_wait) = component(typescript()).expect("the embedded component is ready");
     let (second, second_wait) =
         component(typescript()).expect("the second call is served from the cache");
     assert_eq!(compiles(), 1, "asking for it must not recompile");
@@ -107,7 +107,7 @@ fn the_component_compiles_once_per_process() {
 }
 
 /// A component that is not a component at all is a compile error, not a panic. Unreachable in a
-/// real build — the artifact is committed and every test here compiles it — but the classification
+/// real build — the artifact is cut by the build and every test here compiles it — but the classification
 /// has to exist, because it is what tells the loop that a failure is in the ARTIFACT rather than in
 /// anything the model wrote.
 #[test]
@@ -125,7 +125,7 @@ fn bad_component_bytes_are_a_compile_error() {
     );
 }
 
-/// **What the committed artifact actually imports**, named rather than assumed.
+/// **What the embedded artifact actually imports**, named rather than assumed.
 ///
 /// A component is only affected by the imports it *declares*, so this list is the whole of what the
 /// TypeScript guest can reach — and several pages of prose describe the sandbox in terms of it. It
@@ -148,8 +148,8 @@ fn bad_component_bytes_are_a_compile_error() {
 ///
 /// Versions are stripped: a WASI point release is not the change this guards against.
 #[test]
-fn the_committed_component_imports_the_membrane_and_the_wasi_it_was_baked_with() {
-    let (component, _) = component(typescript()).expect("the committed component is ready");
+fn the_embedded_component_imports_the_membrane_and_the_wasi_it_was_baked_with() {
+    let (component, _) = component(typescript()).expect("the embedded component is ready");
     let component_type = component.component_type();
     let mut imports: Vec<&str> = component_type
         .imports(shared_engine())
@@ -183,24 +183,24 @@ fn the_committed_component_imports_the_membrane_and_the_wasi_it_was_baked_with()
             "wasi:io/streams",
             "wasi:random/random",
         ],
-        "the committed component's imports changed; if that was intended, update the prose that \
+        "the embedded component's imports changed; if that was intended, update the prose that \
          describes what this guest can reach (`packages/gg-sandbox/README.md`, \
          `gg/program-languages.md`, `gg/responses-as-code.md`) in the same commit"
     );
 }
 
-/// The committed artifact is within the documented size band.
+/// The embedded artifact is within the documented size band.
 ///
 /// It is ~13.4 MB because it embeds a JavaScript engine. A build that produced something far
 /// smaller dropped the engine; one far larger picked up something it should not have. Either way
-/// the number belongs in a test rather than only in prose, because the artifact is committed and
+/// the number belongs in a test rather than only in prose, because the artifact is embedded and
 /// nobody re-reads its size.
 #[test]
-fn the_committed_component_is_within_the_documented_size_band() {
+fn the_embedded_component_is_within_the_documented_size_band() {
     let bytes = component_bytes(typescript()).len();
     assert!(
         (12 * 1024 * 1024..=15 * 1024 * 1024).contains(&bytes),
-        "the committed component is {bytes} bytes, outside the documented 12–15 MiB band"
+        "the embedded component is {bytes} bytes, outside the documented 12–15 MiB band"
     );
 }
 

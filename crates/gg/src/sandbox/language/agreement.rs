@@ -13,7 +13,7 @@
 //! difference in *capability*, and the study would quietly be measuring something nobody asked
 //! about.
 //!
-//! Nothing else in gg would notice. Each language's own gates compare it to its own committed
+//! Nothing else in gg would notice. Each language's own gates compare it to its own prebuilt
 //! component and to its own SDK — never to gg's vocabulary, and never to another language — so
 //! eleven internally
 //! consistent surfaces that offer eleven different sets of capabilities are eleven green test

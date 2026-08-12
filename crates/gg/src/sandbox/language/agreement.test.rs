@@ -97,7 +97,7 @@ fn every_registered_language_binds_exactly_the_tools_gg_offers() {
     expected.sort();
 
     for language in registered() {
-        // An interpreted arm is asked about its committed component; a compiled one has none to
+        // An interpreted arm is asked about its prebuilt component; a compiled one has none to
         // ask, so it is given a program to compile — `open_docs_views_statement` is the one whole
         // program every language is required to be able to write, and a sibling gate already
         // asserts each can prepare what it generated.

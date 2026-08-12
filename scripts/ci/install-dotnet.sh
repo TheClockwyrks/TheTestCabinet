@@ -14,9 +14,10 @@
 # WHAT IS NOT HERE, and it is most of what a .NET developer would expect: MSBuild, NuGet, the
 # templating engine, F#, the test host, the AOT compilers, the ASP.NET reference pack, and the whole
 # wasm workload. gg never builds a *project* — it compiles one file with one compiler — and the wasm
-# half of this arm was compiled once by `packages/gg-sandbox-csharp/build.sh` and committed. A run
-# container therefore carries no wasm toolchain for C# at all, which is why this is the only arm
-# whose compiler emits something that is not wasm and whose image cost is the smallest.
+# half of this arm is built by `packages/gg-sandbox-csharp/build.sh`, from the unpruned SDK
+# `scripts/ci/install-gg-build-toolchains.sh` puts in a prefix of its own. A run container therefore
+# carries no wasm toolchain for C# at all, which is why this is the only arm whose compiler emits
+# something that is not wasm and whose image cost is the smallest.
 #
 # The layout, which `crates/gg/src/sandbox/language/csharp.compile.rs` depends on:
 #
@@ -28,7 +29,7 @@
 #   <home>/dotnet-version         what is installed, for idempotency
 #
 # THE REFERENCE ASSEMBLIES ARE THE POINT OF PINNING THIS AT ALL. They decide what a model's program
-# may call, and they have to be the release the BCL inside the committed guest was cut from — a
+# may call, and they have to be the release the BCL inside the baked guest was cut from — a
 # program compiled against 10.0.10 references and interpreted by a 10.0.9 runtime is a program whose
 # `MissingMethodException` nobody would think to look for. That is why gg does not use a machine's
 # own `dotnet` even when it is the same version.

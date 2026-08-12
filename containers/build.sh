@@ -243,28 +243,28 @@ build_tools() {
 build_gg_toolchains() {
 	echo "==> building ${GG_TOOLCHAINS_IMAGE} (gg language toolchains)"
 	# Every toolchain's version comes from the package that owns it rather than from a
-	# default in the Dockerfile, so a pin is edited in one place. PureScript's matters
-	# more than most: externs are a compiler-version-private format, so the `purs` in
-	# this image and the `purs` that compiled the committed library set inside gg's
-	# binary must be the same release or nothing compiles at all.
-	# Java's pins are not build args: its block runs `scripts/ci/install-java.sh`, which
-	# reads `packages/gg-sandbox-java/java-version.sh` itself — one list of ~29 jars, read
-	# by the image and by a developer's machine rather than copied into both. Kotlin's
-	# block does the same with `scripts/ci/install-kotlin.sh`, which RUNS the Java one:
-	# that arm compiles to JVM bytecode and hands it to the same TeaVM, so there is one
-	# JDK in this image rather than two.
-	# Rust's pin is not this arm's to choose: it is `rust-toolchain.toml`'s, read here through
-	# packages/gg-sandbox-rust/rust-version.sh. The compiler in this image and the compiler
-	# that built the `.rlib` set inside gg's binary must be the same release — an `.rlib` is a
-	# compiler-version-private format — so having only one Rust release in the repository is
-	# what makes the two impossible to get out of step.
-	# shellcheck source=packages/gg-sandbox-purescript/purescript-version.sh
-	source "${SCRIPT_DIR}/../packages/gg-sandbox-purescript/purescript-version.sh"
+	# default in the Dockerfile, so a pin is edited in one place — and for all but one arm
+	# that is now arranged so the wrapper cannot get it wrong either. Java's, Kotlin's,
+	# Swift's, the C++ arm's, the C# arm's and (as of this change) PureScript's blocks each
+	# COPY that arm's version file and RUN the same installer a developer's or CI machine
+	# runs, so the list of versions is read by the image rather than passed to it. PureScript
+	# was the last holdout and the one where it mattered most: externs are a
+	# compiler-version-private format, so the `purs` in this image and the `purs` that
+	# compiled the library set inside gg's binary must be the same release or NOTHING
+	# compiles — and the two ARG defaults it used to carry were a second answer that a
+	# `docker build -f` skipping this wrapper would silently have taken.
+	#
+	# Rust's is still a build arg, because there is no installer to run: the block is
+	# `rustup` inside the image. The pin is not this arm's to choose either — it is
+	# `rust-toolchain.toml`'s, read here through packages/gg-sandbox-rust/rust-version.sh.
+	# The compiler in this image and the compiler that built the `.rlib` set inside gg's
+	# binary must be the same release (an `.rlib` is a compiler-version-private format), so
+	# having only one Rust release in the repository is what makes the two impossible to get
+	# out of step; the Dockerfile declares `ARG RUST_VERSION` with no default so a build that
+	# forgets this line fails rather than guessing.
 	# shellcheck source=packages/gg-sandbox-rust/rust-version.sh
 	source "${SCRIPT_DIR}/../packages/gg-sandbox-rust/rust-version.sh"
 	"$DOCKER" build \
-		--build-arg "PURS_VERSION=${PURS_VERSION}" \
-		--build-arg "ESBUILD_VERSION=${ESBUILD_VERSION}" \
 		--build-arg "RUST_VERSION=${GG_RUST_VERSION}" \
 		--build-arg "RUST_TARGET=${GG_RUST_TARGET}" \
 		-t "${GG_TOOLCHAINS_IMAGE}" \

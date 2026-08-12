@@ -261,7 +261,7 @@ fn a_declaration_inside_a_literal_is_not_one() {
 /// can be written and it **works**: Roslyn lowers an `async Task Main` into a synthesized synchronous
 /// entry point that blocks on the result, and that is the entry point the guest invokes, which
 /// `csharp_runs_a_program_written_the_async_way_a_model_reaches_for` proves against the real compiler
-/// and the real committed guest. Taking the wrapper off would delete a class declaration and
+/// and the real prebuilt guest. Taking the wrapper off would delete a class declaration and
 /// re-indent a body to no purpose.
 #[test]
 fn an_async_entry_point_is_not_unwrapped() {

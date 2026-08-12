@@ -14,7 +14,7 @@
 // without which a `NullPointerException` is not an exception at all and a program that
 // failed is recorded as one that succeeded. A second copy of `teavm(…)` would be a
 // standing chance for one arm to lose either of them silently — which is the same argument
-// that has JavaScript serve TypeScript's committed component rather than a byte-identical
+// that has JavaScript serve TypeScript's prebuilt component rather than a byte-identical
 // copy of it. The single-file launcher compiles one file, so "shared" here means gg
 // assembles the file rather than that javac does.
 

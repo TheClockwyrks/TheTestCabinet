@@ -67,17 +67,27 @@ on:
     # it was an enumeration and the enumeration was wrong. It named exactly two files —
     # `scripts/ci/install-java.sh` and the Java arm's version file — from when Java was
     # the only arm `containers/gg-toolchains/Dockerfile` installed by script. That
-    # Dockerfile now also runs the Kotlin, Swift, wasi-sdk and .NET installers, and
-    # `build_gg_toolchains` in containers/build.sh additionally sources the PureScript
-    # and Rust arms' pins to pass as build args — so a Swift or .NET pin bump changed
+    # Dockerfile now also runs the Kotlin, Swift, wasi-sdk, .NET and PureScript
+    # installers, and `build_gg_toolchains` in containers/build.sh additionally sources
+    # the Rust arm's pins to pass as build args — so a Swift or .NET pin bump changed
     # what every `-gg` variant bakes in and rebuilt nothing. A glob covers an arm added
     # tomorrow; a list covers the arms someone remembered.
+    #
+    # Two files are still enumerated, because the glob over `*-version.sh` cannot reach
+    # them and they are pins all the same. `packages/gg-sandbox-purescript/spago.yaml`
+    # holds the registry package set, where Spago reads it, and purescript-version.sh
+    # projects it rather than restating it; `packages/gg-sandbox-rust/Cargo.lock` holds
+    # the wit-bindgen release cargo resolved for the Rust arm's runtime crate, which is
+    # what decides the generator, and rust-version.sh reads it from there. Single-sourcing
+    # a pin moves where it lives; it does not stop it being a pin.
     paths:
       - ".dockerignore"
       - "containers/**"
       - "scripts/ci/install-*.sh"
       - "scripts/ci/lib.sh"
       - "packages/gg-sandbox-*/*-version.sh"
+      - "packages/gg-sandbox-purescript/spago.yaml"
+      - "packages/gg-sandbox-rust/Cargo.lock"
       - "rust-toolchain.toml"
       - "crates/draw/**"
       - "crates/voxel/**"

@@ -100,7 +100,7 @@ RUN mkdir -p /opt/gg/toolchains/bin
 # Python: nothing, and that is a property of the strategy rather than an omission. Its
 # guest embeds a whole CPython (`componentize-py` links one against gg's WIT world), so a
 # program crosses the membrane as a string and is evaluated by an interpreter that is
-# already inside the committed component. There is no compiler on the turn path and
+# already inside the prebuilt component gg carries. There is no compiler on the turn path and
 # nothing to install — see `packages/gg-sandbox-python/README.md`. A *typed* Python arm,
 # should one be added, would be the thing that needs a block here: it type-checks the
 # model's program with a real host-side binary before the guest ever sees it.
@@ -109,8 +109,8 @@ RUN mkdir -p /opt/gg/toolchains/bin
 # cheaper of the two shapes. This arm does have a compiler on the turn path — Opal, which
 # compiles the model's Ruby to JavaScript before the guest sees it — but Opal has a
 # self-hosted JavaScript build, so the compiler is 2.9 MB of JavaScript gg carries inside
-# its own binary (`crates/gg/src/sandbox/checkers/ruby.opal.cjs`) and runs with the `node`
-# every run image already ships. A compiler small enough to BE an artifact does not need an
+# its own binary (`ruby.opal.cjs`, cut by the gg build itself and embedded from its OUT_DIR)
+# and runs with the `node` every run image already ships. A compiler small enough to BE an artifact does not need an
 # image at all; see `crates/gg/src/sandbox/language/ruby.compile.rs`. What needs a block
 # here is a toolchain that cannot be copied — a JDK, a Swift toolchain, a `purs` — which is
 # what this image exists for.
@@ -131,34 +131,38 @@ RUN mkdir -p /opt/gg/toolchains/bin
 # invocation its own hard-linked copy of the library tree, which is what the measured
 # `purs` corruption in this header's constraint 2 was the absence of.
 #
-# What is NOT here is the library set a program is compiled against. It is compiled once
-# by `packages/gg-sandbox-purescript/build.sh` and shipped inside gg's binary, because
-# this image is built separately from the binary that runs in it — and a library tree of a
-# different vintage from the SDK compiled into it would mean a model shown one surface and
-# compiled against another. See `crates/gg/src/sandbox/language/purescript.compile.rs`.
+# What is NOT here is the library set a program is compiled against. It is compiled by
+# `packages/gg-sandbox-purescript/build.sh` into a cargo `OUT_DIR` and embedded in gg's
+# binary, because this image is built separately from the binary that runs in it — and a
+# library tree of a different vintage from the SDK compiled into it would mean a model
+# shown one surface and compiled against another. See
+# `crates/gg/src/sandbox/language/purescript.compile.rs`.
 #
-# The versions are the ones `packages/gg-sandbox-purescript/purescript-version.sh` pins and
-# `scripts/ci/install-purescript.sh` installs on a developer's or CI machine; they must
-# match, because externs are a compiler-version-private format and the committed tree was
-# compiled by exactly this `purs`.
-ARG PURS_VERSION=0.15.16
-ARG ESBUILD_VERSION=0.28.1
+# THE VERSIONS ARE NOT WRITTEN DOWN HERE, and that is the whole of why this block runs a
+# script instead of a `curl`. They belong to `packages/gg-sandbox-purescript/purescript-
+# version.sh`, and they have to be the SAME release the library tree inside gg's binary was
+# compiled by — externs are a compiler-version-private format, so a `purs` in this image
+# one patch away from the one that built the tree does not compile a model's program at all,
+# it fails on every program. This block used to restate both pins as `ARG` defaults that
+# `containers/build.sh` then overrode with the real ones; an override is only as good as the
+# caller that remembers it, and the default was a second answer sitting in the tree waiting
+# for a `docker build -f` that skipped the wrapper. So this runs
+# `scripts/ci/install-purescript.sh` — the same script a developer's and a CI machine run —
+# exactly as the Java, Kotlin, Swift, C++ and C# blocks below run theirs, and for the same
+# reason: one list of versions, read by the image and by the machine, rather than copied
+# into both. Its `.dockerignore` re-inclusions are what let the two COPYs find anything.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 	--mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 	apt-get update && apt-get install -y --no-install-recommends ca-certificates curl
+COPY packages/gg-sandbox-purescript/purescript-version.sh \
+	/tmp/gg-purescript/packages/gg-sandbox-purescript/purescript-version.sh
+COPY packages/gg-sandbox-purescript/spago.yaml \
+	/tmp/gg-purescript/packages/gg-sandbox-purescript/spago.yaml
+COPY scripts/ci/install-purescript.sh /tmp/gg-purescript/scripts/ci/install-purescript.sh
 RUN set -eux; \
-	case "$(dpkg --print-architecture)" in \
-	amd64) purs_asset="linux64"; esbuild_platform="linux-x64" ;; \
-	arm64) purs_asset="linux-arm64"; esbuild_platform="linux-arm64" ;; \
-	*) echo "no pinned purs build for $(dpkg --print-architecture)" >&2; exit 1 ;; \
-	esac; \
-	curl -sSfL "https://github.com/purescript/purescript/releases/download/v${PURS_VERSION}/${purs_asset}.tar.gz" \
-	| tar -xz -C /tmp; \
-	install -m 0755 /tmp/purescript/purs /opt/gg/toolchains/bin/purs; \
-	curl -sSfL "https://registry.npmjs.org/@esbuild/${esbuild_platform}/-/${esbuild_platform}-${ESBUILD_VERSION}.tgz" \
-	| tar -xz -C /tmp; \
-	install -m 0755 /tmp/package/bin/esbuild /opt/gg/toolchains/bin/esbuild; \
-	rm -rf /tmp/purescript /tmp/package; \
+	PURS_INSTALL_DIR=/opt/gg/toolchains/bin \
+	bash /tmp/gg-purescript/scripts/ci/install-purescript.sh; \
+	rm -rf /tmp/gg-purescript; \
 	/opt/gg/toolchains/bin/purs --version; \
 	/opt/gg/toolchains/bin/esbuild --version
 
@@ -236,8 +240,8 @@ RUN set -eux; \
 # --- Rust -------------------------------------------------------------------
 # The heaviest toolchain in this image by a wide margin — **~376 MB** — and the first that is
 # not a compiler *for* a guest but the thing that PRODUCES one. Every other arm here compiles a
-# model's program into something an interpreter already inside a committed component evaluates;
-# `rustc` emits the component itself, per turn, because there is no Rust runtime to commit. See
+# model's program into something an interpreter already inside a prebuilt component evaluates;
+# `rustc` emits the component itself, per turn, because there is no Rust runtime to bake. See
 # `crates/gg/src/sandbox/language/rust.compile.rs`.
 #
 # Constraint 1 is satisfied by construction. A rustup toolchain directory is relocatable: `rustc`
@@ -259,21 +263,27 @@ RUN set -eux; \
 # (packages/gg-sandbox-rust/rust-version.sh). What is KEPT out of that directory is
 # `lib/rustlib/<host>/bin`, which holds `rust-lld`: the linker every wasm32 build runs.
 #
-# The version is not defaulted here. `containers/build.sh` reads it out of `rust-toolchain.toml`
-# through `packages/gg-sandbox-rust/rust-version.sh` and passes it in, because the compiler in this
-# image and the compiler that built the `.rlib` set inside gg's binary must be the SAME release —
-# an `.rlib` is a compiler-version-private format and `rustc` refuses another release's with E0514.
+# NEITHER ARG IS DEFAULTED, and that is the rule this file now keeps everywhere. `containers/
+# build.sh` reads both out of `packages/gg-sandbox-rust/rust-version.sh` (which reads the compiler
+# out of `rust-toolchain.toml`) and passes them in, because the compiler in this image and the
+# compiler that built the `.rlib` set inside gg's binary must be the SAME release — an `.rlib` is a
+# compiler-version-private format and `rustc` refuses another release's with E0514. A default would
+# be a second answer to that question, sitting here, correct only until somebody edited the version
+# file; the `test -n` below turns a build that forgot the argument into an immediate failure
+# instead. This is the only arm still passed its versions rather than running its own installer,
+# because the block IS the installer: `rustup` needs no script around it.
 #
 # The build ends by compiling a `cdylib` for the target WITH THE COPY rather than with the rustup
 # installation — the relocated sysroot, the pruned host tree and `rust-lld` are exactly what a run
 # will use, and each of the three is a thing the pruning above could have broken.
 ARG RUST_VERSION
-ARG RUST_TARGET=wasm32-unknown-unknown
+ARG RUST_TARGET
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 	--mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 	apt-get update && apt-get install -y --no-install-recommends ca-certificates curl xz-utils
 RUN set -eux; \
 	test -n "${RUST_VERSION}"; \
+	test -n "${RUST_TARGET}"; \
 	host="$(uname -m)-unknown-linux-gnu"; \
 	export RUSTUP_HOME=/tmp/rustup CARGO_HOME=/tmp/cargo; \
 	curl -sSfL https://sh.rustup.rs \
@@ -312,7 +322,7 @@ RUN set -eux; \
 # their own paths, and the SDK is named explicitly on every invocation.
 #
 # Constraint 2 is satisfied outright. `swiftc` is a plain one-shot process with an explicit `-o`, it
-# has no daemon and nothing to keep warm (a compile is ~0.3 s), and it only ever READS the committed
+# has no daemon and nothing to keep warm (a compile is ~0.3 s), and it only ever READS the prebuilt
 # bindings gg carries inside its own binary. Everything it writes — intermediates, the clang module
 # cache, the precompiled bridging header — lands inside the preparation's own tree, because the
 # calling side redirects `HOME`, `TMPDIR` and the `XDG_*` roots there and this arm additionally names
@@ -409,8 +419,8 @@ RUN set -eux; \
 # The LIGHTEST toolchain in this image — **~122 MB**, against wasi-sdk's ~200 MB, `rustc`'s
 # ~376 MB and the Swift SDK's ~835 MB — and the only one here that is not a wasm toolchain
 # at all. That is the arm's whole strategy rather than a saving: a C# program is compiled to
-# **IL** by Roslyn on the host, in ~0.3 s, and interpreted by a Mono IL interpreter that was
-# compiled to wasm once by `packages/gg-sandbox-csharp/build.sh` and committed inside gg's
+# **IL** by Roslyn on the host, in ~0.3 s, and interpreted by a Mono IL interpreter that
+# `packages/gg-sandbox-csharp/build.sh` compiles to wasm once per build and gg embeds in its own
 # binary. Nothing about a C# program is compiled to wasm, so nothing that compiles to wasm
 # has to be here. See `crates/gg/src/sandbox/language/csharp.rs`.
 #
@@ -429,14 +439,15 @@ RUN set -eux; \
 #
 # WHAT IS PRUNED, and why each is safe — the published SDK is ~770 MB. Dropped: MSBuild, NuGet,
 # the templating engine, the test host, F#, the AOT cross-compilers, the ASP.NET reference pack
-# and the whole wasm workload (gg never builds a *project*, and the wasm half of this arm is
-# committed); `vbc` and the Visual Basic code-analysis assembly; the compiler server, above;
+# and the whole wasm workload (gg never builds a *project*, and the wasm half of this arm is built
+# by that arm's own artifact crate, out of a separate and much larger prefix — see
+# `scripts/ci/install-gg-build-toolchains.sh`); `vbc` and the Visual Basic code-analysis assembly; the compiler server, above;
 # thirteen languages of localised compiler messages, since every diagnostic here is read by a
 # model and every prompt in this repository is English; and 43 MB of IntelliSense XML beside
 # the reference assemblies. Kept: the launcher and its resolver, the shared framework, Roslyn,
 # and the reference assemblies — which are the whole reason this is pinned, because they decide
-# what a model's program may call and must be the release the BCL inside the committed guest
-# was cut from.
+# what a model's program may call and must be the release the BCL inside the baked guest was cut
+# from.
 #
 # The versions are the ones `packages/gg-sandbox-csharp/csharp-version.sh` pins, and the script
 # is run here so there is one list rather than two. It ends by compiling a C# file with the

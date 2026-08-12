@@ -33,20 +33,32 @@ repos:
         # renders of a case's authored mockups (a full-detail gameplay frame is a
         # large PNG). `reference-impl/<variant>/assets/` holds the sprites, particle
         # systems, and audio the reference build produced with the asset-generation
-        # tools (a music bed is several MB of WAV). `crates/gg/src/sandbox/guests/`
-        # and `crates/gg/src/sandbox/checkers/` hold what a gg program language
-        # carries: the guest component that evaluates a program (it embeds a
-        # JavaScript engine, so it is ~13MB by construction) and, for a language that
-        # type-checks, the compiler that judges one (~6MB). Both are rebuilt by a
-        # documented `build.sh` — deliberately by hand, because rebuilding one wants
-        # `componentize-js`, `componentize-py`, a ~200MB wasi-sdk or an ~835MB Swift
-        # toolchain — and committed beside their source, like the `foray-ref-*`
-        # guests, so that gg arrives in a run container carrying everything it needs.
-        # (What a model is *told* about those languages is not here and is not
-        # committed at all: each arm's signature catalogue is reflected out of its SDK
-        # by `crates/gg/build.rs` on every build of gg.) All are generated wholesale
-        # and tracked deliberately.
-        exclude: '(^|/)(validation-baseline|reference/screenshots)/|(^|/)reference-impl/[^/]+/assets/|(^|/)crates/gg/src/sandbox/(guests|checkers)/'
+        # tools (a music bed is several MB of WAV). All are generated wholesale and
+        # tracked deliberately.
+        #
+        # `crates/gg/src/sandbox/guests/` and `crates/gg/src/sandbox/checkers/` USED
+        # TO BE EXEMPT HERE, and removing them is the point rather than tidying: those
+        # directories held what each gg program language carries — the guest component
+        # that evaluates a program (~13MB, it embeds a whole language runtime) and, for
+        # a language that type-checks, the compiler that judges one (~6MB). Thirty-three
+        # such artifacts, ~117MB, are not committed any more; every one is cut into a
+        # cargo `OUT_DIR` by a crate under `crates/gg-sandbox-artifacts/` on the same
+        # build that compiles the host that embeds it. `guests/` no longer exists and
+        # `checkers/` holds five small hand-written source files. So this hook is now a
+        # STRUCTURAL guard on that decision: put a multi-megabyte guest back under
+        # either path and the commit is refused, by a rule that does not have to know
+        # gg exists. That is worth more than the exemption ever was, and it is why the
+        # exemption must not come back.
+        #
+        # It is the second guard over those paths and not the only one, and the sizes
+        # are why: this hook's threshold is 500 kB, while nine of the thirty-three
+        # artifacts were smaller than that — both 52 kB adapters, every
+        # `*.toolchain.json`, both `*.compiler.json`. `.gitignore` carries an ALLOWLIST
+        # for `crates/gg/src/sandbox/checkers/` that names the five files which belong
+        # there and ignores everything else, plus a whole-directory ignore for
+        # `guests/`. That one is about WHETHER a generated artifact may be committed at
+        # all; this one is about how big anything may be, anywhere.
+        exclude: '(^|/)(validation-baseline|reference/screenshots)/|(^|/)reference-impl/[^/]+/assets/'
       - id: check-case-conflict
       - id: check-executables-have-shebangs
       - id: check-illegal-windows-names

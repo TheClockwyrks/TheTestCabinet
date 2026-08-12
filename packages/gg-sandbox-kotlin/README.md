@@ -7,7 +7,7 @@ The **Kotlin** program language's toolchain pin and its hand-written SDK.
 | [`kotlin-version.sh`](kotlin-version.sh) | the Kotlin release this arm is pinned to, the jars its compiler runs with, and the four the scripting plugin is loaded by name from |
 | [`src/`](src/) | the **SDK** a model's program is compiled against, and the KDoc every word a model reads is reflected out of |
 | [`libraries.txt`](libraries.txt) | the packages this arm says a program may reach, grouped as the prompt shows them |
-| [`build.sh`](build.sh) | compiles the SDK to `crates/gg/src/sandbox/checkers/kotlin.sdk.jar` |
+| [`build.sh`](build.sh) | compiles the SDK to `$GG_ARTIFACTS_OUT_DIR/kotlin.sdk.jar`; `crates/gg-sandbox-artifacts/kotlin` runs it on every build |
 | [`signatures.sh`](signatures.sh) | reflects `kotlin.signatures.json` out of the SDK's own KDoc, into `$GG_SIGNATURES_OUT_DIR`; `crates/gg/build.rs` runs it on every build |
 | [`tools/`](tools/) | the reflector `signatures.sh` runs, and the module table it reads |
 

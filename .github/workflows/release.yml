@@ -166,6 +166,11 @@ jobs:
       # on BOTH legs of this matrix — the aarch64 leg included, which is the one where a
       # toolchain that publishes no arm64 build would be found.
       #
+      # The same is true of what a program is compiled AGAINST, which stopped being
+      # committed the same way: this build bakes four language runtimes and links six
+      # compile targets, so it needs those toolchains to RUN and not merely to be read.
+      # One of them is not on the eleven-arm list at all — see the second call below.
+      #
       # `npm ci` is part of the same prerequisite: the pinned `typescript` that reflects
       # the TypeScript and JavaScript arms is a workspace devDependency, so a checkout
       # nobody installed has no reflector for two of the eleven.
@@ -178,6 +183,13 @@ jobs:
         run: |
           set -euo pipefail
           ./scripts/ci/install-gg-toolchains.sh
+          # And the C# arm's BUILD toolchains, which the eleven-arm list deliberately excludes
+          # (~1.4 GB no gg RUN needs). Building gg means building every arm's artifacts now,
+          # not only reflecting their catalogues, and this arm's guest is Mono's IL interpreter
+          # relinked with a whole .NET SDK against an unpruned wasi-sdk. Without it the arm's
+          # build.sh fetches both itself, which works and costs the same download twice over
+          # the two matrix legs — see that installer's header for why it is a second prefix.
+          ./scripts/ci/install-gg-build-toolchains.sh
           npm ci
           # The build step below is a separate process, so the installers' bin directory
           # is prepended for the job rather than exported here: `purs` and `uv` are

@@ -661,9 +661,14 @@ driven through a process shared between compilations. See
 The tree carries **PureScript**'s toolchain today: `purs` and `esbuild`, both statically
 linked, both a single file, and both pinned by
 [`packages/gg-sandbox-purescript/purescript-version.sh`](../packages/gg-sandbox-purescript/purescript-version.sh)
-— which `build.sh` sources and passes in, so a pin is edited in one place. What is *not*
-here is the library set a PureScript program is compiled against: that is compiled once at
-build time and shipped inside gg's binary, because this image is built separately from the
+and installed by
+[`scripts/ci/install-purescript.sh`](../scripts/ci/install-purescript.sh) — which the
+Dockerfile runs rather than duplicating, so a pin is edited in one place. (It used to pass
+the two versions in as build args over `ARG` defaults that restated them; a default is a
+second answer, correct only until somebody edits the version file, and it was reachable by
+any `docker build -f` that skipped `containers/build.sh`.) What is *not* here is the library
+set a PureScript program is compiled against: that is compiled at build time into a cargo
+`OUT_DIR` and embedded in gg's binary, because this image is built separately from the
 binary that runs in it and a library tree of a different vintage from the SDK compiled into
 it would mean a model shown one surface and compiled against another.
 
@@ -766,12 +771,22 @@ a run image nor a builder anything here copies from. It exists for the machines 
 
 Since the eleven signature catalogues stopped being committed, `crates/gg/build.rs`
 reflects each of them out of its arm's own SDK with its arm's own documentation tool on
-every build — so a machine that cannot run `swiftc`, `javac`, `purs`, Roslyn and the rest
-cannot run `cargo build --workspace` at all. `scripts/ci/install-gg-toolchains.sh` is the
-one pinned list that makes a machine such a machine, and it works; what it costs a cold CI
-agent is ten-ish minutes across five separate upstreams, each of which is a way for a run
-to go red for a reason unrelated to the change under test. This image is those ten minutes,
-done once, published, and pulled.
+every build — and since every arm's *artifacts* followed them, that same build also **runs**
+those toolchains rather than only reading with them: it bakes four language runtimes and
+links six compile targets. So a machine that cannot run `swiftc`, `javac`, `purs`, Roslyn and
+the rest cannot run `cargo build --workspace` at all.
+`scripts/ci/install-gg-toolchains.sh` is the one pinned list that makes a machine such a
+machine, and it works; what it costs a cold CI agent is ten-ish minutes across five separate
+upstreams, each of which is a way for a run to go red for a reason unrelated to the change
+under test. This image is those ten minutes, done once, published, and pulled.
+
+**Two tags, and a gg build wants the bigger one.** `:latest` is that eleven-arm run set;
+`:build-latest` adds the unpruned .NET SDK and wasi-sdk that relinking the C# arm's guest
+needs (`scripts/ci/install-gg-build-toolchains.sh`, ~1.5 GB more). The split was made when
+that guest was committed and re-cut by hand, so only one job wanted the bigger tag; now that
+`cargo build` re-cuts it, both `ci.yml` jobs pull `:build-latest`. `:latest` remains for
+consumers that run gg or read its pins rather than compiling it — which is what the pruning
+in the run installers exists for.
 
 Three things about it are decisions rather than details:
 

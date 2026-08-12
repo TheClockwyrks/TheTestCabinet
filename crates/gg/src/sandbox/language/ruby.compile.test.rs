@@ -1,4 +1,4 @@
-//! **The Opal compile**, driven for real: a real `node`, the real committed bundle, real Ruby.
+//! **The Opal compile**, driven for real: a real `node`, the real embedded bundle, real Ruby.
 //!
 //! Nothing here is mocked and nothing is faked. Each case spawns the compiler exactly as a turn
 //! would, through a [`PrepareContext`] the sandbox mints, so what is proven is the path a run takes
@@ -18,7 +18,7 @@ fn context() -> PrepareContext {
 fn compiled(source: &str) -> String {
     match compile_program(source, &context()) {
         Ok(prepared) => prepared.source,
-        Err(failure) => panic!("the committed Opal did not compile valid Ruby: {failure}"),
+        Err(failure) => panic!("the embedded Opal did not compile valid Ruby: {failure}"),
     }
 }
 
@@ -153,7 +153,7 @@ fn a_compiler_that_cannot_run_is_never_reported_as_the_models_failure() {
 }
 
 #[test]
-fn the_committed_bundle_says_which_opal_and_which_ruby_it_is() {
+fn the_embedded_bundle_says_which_opal_and_which_ruby_it_is() {
     // Both are model- and operator-facing facts that a study records, and both are read off the
     // artifact rather than written down in Rust — which is the point of the manifest.
     assert!(

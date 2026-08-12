@@ -32,9 +32,9 @@ ones the run withheld, at the host, with `ToolErrorCode.UNAVAILABLE`. What the r
 of them are bound into a program's scope, and therefore which a model is ever shown.
 
 Its documentation is **the** documentation. Every docstring on a catalogued function, argument, type
-and type member in this package is reflected by `tools/signatures.py` into
-`crates/gg/src/sandbox/guests/python.signatures.json`, which is what gg renders the system prompt and
-every documentation view from. There is nowhere else for a description of this surface to live, which
+and type member in this package is reflected by `tools/signatures.py` into the
+`python.signatures.json` that `crates/gg/build.rs` writes into its own `OUT_DIR`, which is what gg
+renders the system prompt and every documentation view from. There is nowhere else for a description of this surface to live, which
 is what stops one from drifting.
 
 A docstring's **first line is its brief** and everything after the blank line is its detail, which is

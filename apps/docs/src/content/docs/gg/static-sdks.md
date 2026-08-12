@@ -248,49 +248,52 @@ the program-library flag. **No guest reads any of them** any more — the four w
 compiled-in guests (Rust, C++, Swift, C#) never did, and the three that built a scope from them
 (the shared ECMAScript guest, Python's and Ruby's) have stopped. They are kept rather than
 removed for two reasons: the WIT world is implemented by all eleven arms' guests, several of
-which are large committed binaries rebuilt by hand, and gg does still answer those three
-questions per run — at the membrane, in what a search will show, and in what the prompt names.
-Removing a parameter would mean rebuilding every one of them to stop sending a value nobody
+which are large binaries the build re-cuts, and gg does still answer those three questions per
+run — at the membrane, in what a search will show, and in what the prompt names. Removing a
+parameter would mean re-cutting every one of those artifact crates to stop sending a value nobody
 reads.
 
-## How the committed artifacts are kept honest
+## How the artifacts are kept honest: they are not committed
 
-Six arms commit a binary that a person rebuilds by hand. Three are guest components —
+Six arms used to commit a binary that a person rebuilt by hand. Three were guest components —
 TypeScript (shared with JavaScript), Python and Ruby, each 14–25 MB of baked interpreter with
-the SDK inside it. Three are compile inputs: the Rust library set, the Swift guest and library
-archives, and the C++ guest archive, each carrying that arm's SDK as something a program is
-linked or declared against.
+the SDK inside it — with the C# arm's 35 MB Mono component beside them. Three were compile
+inputs: the Rust library set, the Swift guest and library archives, and the C++ guest archive,
+each carrying that arm's SDK as something a program is linked or declared against.
 
-Nothing in CI rebuilds any of them, and the reasons are good ones: the builds want
-`componentize-js`, `componentize-py`, a ~200 MB wasi-sdk or an ~835 MB Swift toolchain, and two
-of the six are not byte-reproducible, so a check that re-cut them would fail on every run over
-bytes nobody edited.
+Nothing in CI rebuilt any of them, and the reasons were good ones: the builds want
+`componentize-js`, `componentize-py`, a ~200 MB wasi-sdk, an ~835 MB Swift toolchain or a whole
+.NET SDK, and several are not byte-reproducible, so a check that re-cut them would fail on every
+run over bytes nobody edited.
 
-That leaves one silent failure: a source edited without a rebuild, which leaves every program
-of that arm evaluated by — or compiled against — what was committed, while the source in front
-of a reader and the catalogue in the model's prompt describe something else. The checks that
-did inspect these artifacts reached only part of it. `bound-tools` compares **tool names**, and
+That left one silent failure: a source edited without a rebuild, which leaves every program of
+that arm evaluated by — or compiled against — what was committed, while the source in front of a
+reader and the catalogue in the model's prompt describe something else. The checks that did
+inspect these artifacts reached only part of it. `bound-tools` compares **tool names**, and
 would have stayed green straight through the inversion above, which touched three guests' scope
-builders and not one tool name. The C++ archive carries its SDK headers as source and they are
+builders and not one tool name. The C++ archive carries its SDK headers as source and they were
 compared file for file — but not the bodies. The Swift archive carries the shell, not the SDK.
 The Rust set carries no source at all.
 
-So each build now writes a manifest beside its artifacts recording the SHA-256 of every source
-it consumed — the SDK tree, and whatever else that arm's `build.sh` actually reads: a lockfile,
-a pinned requirements list, a compiler configuration, the tool that lowers one arm's SDK — plus
-each artifact's own digest, the toolchain pins, and a digest of the membrane's **declarations**
-in `crates/gg/wit`. That last one is deliberately blind to the WIT's prose, which is most of
-that file: a reworded comment must not demand a 25 MB rebuild, or whoever hits it will learn to
-regenerate the manifest without rebuilding, which would make the whole mechanism worthless.
+The answer taken first was a **manifest**: each build wrote, beside its artifacts, the SHA-256 of
+every source it consumed plus the toolchain pins and a digest of the membrane's declarations, and
+a test recomputed all of it from the checkout and failed by arm name. It worked, and it was
+replaced anyway, because it could only ever attest what a build had been *told*. The thing it
+compared against was written by the build rather than measured from the artifact — so it proved
+that an artifact matched its recorded sources, never that anybody had run the build at all after
+the last edit, and never that the build had compiled what it meant to.
 
-`crates/gg/src/sandbox/language/artifacts.test.rs` recomputes all of it from the checkout in
-the ordinary test suite and fails **by arm name**, naming the files that moved, what a stale
-artifact costs that particular arm, and the command that fixes it. A source edited, added or
-deleted without a rebuild is a named failure rather than a silent correctness hole — and so is
-a seventh committed binary arriving with no manifest at all, which the same file refuses.
+**So nothing gg embeds is committed.** Every arm has a crate under
+`crates/gg-sandbox-artifacts/` whose build script runs that arm's `build.sh` into its own
+`OUT_DIR`, with a declared rerun set naming exactly the sources that build reads; `crates/gg`
+`include_bytes!`s the result from there. The guest a program is evaluated in, the libraries it is
+linked against and the catalogue its prompt was written from are all cut from one checkout on one
+`cargo build`. "A source was edited without a rebuild" stops being a failure a test reports and
+becomes a state the tree cannot reach — which is the difference between detecting drift and
+making it impossible. `crates/gg/src/sandbox/guests/` does not exist, and the manifests and the
+test that read them are gone with it.
 
-**What this proves, and what it does not.** It proves an artifact matches the sources recorded
-beside it. It does not prove the artifact was built *correctly* from them — that the build
+**What this does not prove** is unchanged, and it is worth keeping in view: that the build
 compiled what it meant to, or that the guest behaves as the SDK reads. Those remain the job of
 each arm's substrate, compile and surface tests, which run real programs through the real
-membrane against these very artifacts.
+membrane against these very artifacts — and not one of them was touched by any of this.

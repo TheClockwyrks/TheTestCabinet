@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# Build the **Rust** program language's library set and commit it into `crates/gg`.
-#
-# What it produces, both under `crates/gg/src/sandbox/checkers/`:
+# Build the **Rust** program language's library set, into `$GG_ARTIFACTS_OUT_DIR`:
 #
 #   rust.libraries.tar.gz   every `.rlib` a model's program is compiled against, gzipped.
 #   rust.toolchain.json     what they were built by and what is in them.
@@ -10,7 +8,7 @@
 # a shared read-only directory it then names on `rustc -L`. See
 # `crates/gg/src/sandbox/language/rust.compile.rs`.
 #
-# WHY THE SET IS COMMITTED AND THE COMPILER IS NOT. `rustc` is ~376 MB with its wasm standard
+# WHY THE SET RIDES INSIDE gg's BINARY AND THE COMPILER DOES NOT. `rustc` is ~376 MB with its wasm standard
 # library and cannot ride inside a single static `tcab` binary, so it is installed into the gg
 # toolchain image (`containers/gg-toolchains/Dockerfile`) and found on `PATH` at run time. The rlibs
 # go the other way: they are 9.4 MB gzipped — most of it `regex`, whose `regex-syntax` and
@@ -19,22 +17,19 @@
 # the SDK is in them, would mean a model shown one surface in its prompt and compiled against
 # another.
 #
-# NOTHING IN CI RUNS THIS. It is a developer's command, run deliberately and committed with its
-# output, and `scripts/ci/contract-drift.sh` names this arm's artifacts in its `$declared` exemption
-# for that reason. The bindings step both this script and `signatures.sh` need is `bindings.sh`, so
-# the catalogue can be reflected — which now happens inside every `cargo build` of `test-cabinet-gg`,
-# because `crates/gg/build.rs` runs it — without re-cutting a library set on the way past. That split
-# stopped being a convenience when the catalogue stopped being committed: a reflection that reached
-# this script would re-cut 9.4 MB of rlibs under anybody who typed `cargo build`, into bytes that
-# match nothing but their own machine.
+# THE BINDINGS STEP IS ITS OWN SCRIPT, AND THAT IS STILL LOAD-BEARING. `signatures.sh` needs the
+# bindings too, and it runs inside every `cargo build` of `test-cabinet-gg`; a reflection that
+# reached THIS script for them would re-cut 9.4 MB of rlibs on the way past. `bindings.sh` is the one
+# step both callers need, split out of the one that has side effects.
 #
-# Re-run it when: `crates/gg/wit/gg-sandbox.wit` changes, this package's `src/` changes, or
-# `rust-toolchain.toml` bumps the compiler. The third is not optional and not a judgement call —
-# an rlib is a compiler-version-private format and `rustc` refuses one built by a different
-# release. `the_committed_library_set_was_built_by_this_checkouts_compiler` fails until it is done.
+# It re-runs when: `crates/gg/wit/gg-sandbox.wit` changes, this package's `src/` changes, or
+# `rust-toolchain.toml` bumps the compiler. The third is not optional and not a judgement call — an
+# rlib is a compiler-version-private format and `rustc` refuses one built by a different release —
+# and the check below fails by name rather than leaving it to a reader of this comment.
 #
 # Usage:
-#   packages/gg-sandbox-rust/build.sh
+#   scripts/gg-artifacts.sh                                    # every arm, into one directory
+#   GG_ARTIFACTS_OUT_DIR=<dir> packages/gg-sandbox-rust/build.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -42,7 +37,17 @@ HERE="$ROOT/packages/gg-sandbox-rust"
 # shellcheck source=packages/gg-sandbox-rust/rust-version.sh
 source "$HERE/rust-version.sh"
 
-CHECKERS="$ROOT/crates/gg/src/sandbox/checkers"
+# The destination, which is required and has no default — see the file itself for why.
+# shellcheck source=scripts/gg-artifacts-out-dir.sh
+source "$ROOT/scripts/gg-artifacts-out-dir.sh"
+
+# ONE ARM, ONE PROCESS AT A TIME. This package's scratch is a fixed path inside the source tree
+# rather than a `mktemp -d`, deliberately — it is a cache — and two cargo processes with two target
+# directories do not serialise with each other. See `scripts/gg-scratch-lock.sh`.
+# shellcheck source=scripts/gg-scratch-lock.sh
+source "$ROOT/scripts/gg-scratch-lock.sh"
+gg_lock_scratch "$HERE"
+
 BUILD="$HERE/.build"
 STAGE="$BUILD/lib"
 
@@ -94,11 +99,32 @@ mkdir -p "$STAGE"
 # It REPLACES an inherited `RUSTFLAGS` rather than appending to one, deliberately: a flag arriving
 # from somebody's shell is exactly the kind of thing that would make one machine's set differ from
 # another's, which is the property this whole paragraph is here to hold.
+#
+# AND `CARGO_ENCODED_RUSTFLAGS` HAS TO GO WITH IT, which is not obvious and was not done. Cargo sets
+# that variable in EVERY build script's environment — to the empty string when the outer build has no
+# flags — and when it is present `rustc`'s invoker reads it and IGNORES `RUSTFLAGS` entirely. So
+# under `crates/gg-sandbox-artifacts/rust`, which is the only path that produces what gg actually
+# embeds, the line above did nothing at all: measured over three builds of one checkout, the
+# standalone `scripts/gg-artifacts.sh` run wrote `/gg/cargo` into `libbase64.rlib` fourteen times and
+# the `cargo build -p test-cabinet-gg` run wrote `/home/vscode` fourteen times instead, at a
+# different size. Two things followed, and the second is the worse one: the shipped rlibs baked in
+# the builder's home directory, which `rustc` then prints in diagnostics gg shows a MODEL; and
+# `scripts/build-gg-static.sh` exports `RUSTFLAGS=-C target-feature=+crt-static` for the host binary,
+# which arrived here encoded and was applied to a `wasm32-unknown-unknown` compile nobody intended it
+# for. Unsetting it is what makes this arm's compile decided here rather than by whatever invoked it.
+unset CARGO_ENCODED_RUSTFLAGS
 export RUSTFLAGS="--remap-path-prefix=$HERE=/gg/sdk --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/gg/cargo"
 echo "==> compiling the library set for $GG_RUST_TARGET"
+# `--locked --offline`, because this runs inside an ordinary `cargo build`. This package has its OWN
+# `Cargo.lock`, separate from the workspace's, so nothing else in this repository warms its registry
+# closure — `scripts/ci/install-gg-build-tools.sh` runs `cargo fetch --locked` against exactly this
+# manifest for that reason. `--locked` additionally refuses to UPDATE the lockfile, which matters
+# beyond determinism: the lockfile is a declared input of this arm's artifact crate, and a build that
+# rewrote its own input would invalidate itself and re-run for ever.
 (
 	cd "$HERE"
-	CARGO_TARGET_DIR="$BUILD/target" cargo build --release --target "$GG_RUST_TARGET"
+	CARGO_TARGET_DIR="$BUILD/target" cargo build --release --locked --offline \
+		--target "$GG_RUST_TARGET"
 )
 
 # NO PROC MACRO may have been built. One in the tree would be a host `.so` named in an rlib's
@@ -112,7 +138,7 @@ if compgen -G "$HOST_DEPS/*.so" >/dev/null || compgen -G "$HOST_DEPS/*.dylib" >/
 	ls "$HOST_DEPS"/*.so "$HOST_DEPS"/*.dylib 2>/dev/null >&2
 	echo "       A proc macro is a host dynamic library. An rlib whose metadata names one" >&2
 	echo "       cannot be loaded on any other architecture (E0463), which would make the" >&2
-	echo "       committed set unusable in every run container. Remove it." >&2
+	echo "       whole library set unusable in every run container. Remove it." >&2
 	exit 1
 fi
 
@@ -184,7 +210,7 @@ crates_json="$(
 			"$name" "$(wc -c <"$rlib" | tr -d ' ')" "$is_extern"
 	done | paste -sd, -
 )"
-cat >"$CHECKERS/rust.toolchain.json" <<EOF
+cat >"$GG_ARTIFACTS_OUT_DIR/rust.toolchain.json" <<EOF
 {
   "rustc": "$GG_RUST_VERSION",
   "target": "$GG_RUST_TARGET",
@@ -202,51 +228,34 @@ tar --sort=name \
 	--mtime="UTC 1970-01-01" \
 	--owner=0 --group=0 --numeric-owner \
 	-C "$STAGE" -cf "$BUILD/rust.libraries.tar" .
-gzip -9 -n -c "$BUILD/rust.libraries.tar" >"$CHECKERS/rust.libraries.tar.gz"
+gzip -9 -n -c "$BUILD/rust.libraries.tar" >"$GG_ARTIFACTS_OUT_DIR/rust.libraries.tar.gz"
 
-# --- The source manifest ----------------------------------------------------
-# What the set was built FROM, beside what it was built BY. `rust.toolchain.json` above answers the
-# second question and `rust.compile.test.rs` holds it to this checkout's `rustc`; nothing answered
-# the first, and this arm is the one where a stale artifact is least visible. Every other compiled
-# arm carries some of its SDK into its archive as source — the C++ headers, the Swift shell — and is
-# compared file for file. An `.rlib` carries none: `libgg.rlib` is a compiled artifact through and
-# through, so an SDK edit committed without this rebuild would leave every program linked against
-# the old surface with the catalogue describing the new one, and every gate green.
+# --- What used to be here: the source manifest --------------------------------
+# This step wrote `rust.sources.manifest.json`, a table of the SHA-256 of every file under `src/`
+# beside the digest of the tarball, so that a test could recompute the hashes from the checkout and
+# fail when somebody had edited the SDK without re-running this script. That question — *is the
+# committed archive older than the sources beside it?* — no longer has a subject. The archive is not
+# committed: `crates/gg-sandbox-artifacts/rust` runs this script into its own cargo `OUT_DIR` on
+# every build whose declared inputs moved, and `crates/gg` embeds what lands there. An SDK edit
+# re-cuts the rlibs in the same `cargo build` that compiles the host, so the state the manifest
+# existed to name is not a state this repository can be in.
 #
-# `Cargo.toml` and `Cargo.lock` are in the manifest beside `src/` because they are what the curated
-# set IS — the crates a model may name and the exact versions of them that were compiled in.
+# It is worth recording WHY it mattered here more than anywhere else, because the reason has not gone
+# away — it has just been answered differently. Every other compiled arm carries part of its SDK into
+# its archive as source (the C++ headers, the Swift shell) and could be compared file for file. An
+# `.rlib` carries none: `libgg.rlib` is compiled through and through, so nothing could read this
+# arm's shipped surface back out. The digest table was the only thing that could see an SDK edit at
+# all. What sees it now is cargo — `packages/gg-sandbox-rust/src` is in this arm's rerun set, and a
+# rerun re-cuts the archive rather than reporting on it.
 #
-# `src/bindings.rs` is deliberately IGNORED, and `bindings.sh` recorded in its place. The bindings
-# are generated and `.gitignore`d, so a fresh checkout — which is every CI checkout, on both CI
-# systems — does not have the file at all; hashing it would fail the gate unconditionally on green
-# trees and teach whoever hit it to delete the mechanism. What generates it goes in instead, and it
-# has to, because unlike the C++ and Swift arms' bindings steps (`wit-bindgen c --world sandbox`,
-# and nothing else, whose output the wire digest and the `witBindgen` pin already pin between them)
-# this one passes `--pub-export-macro --export-macro-name export --default-bindings-module
-# gg::bindings --format` — flags that change `bindings.rs`, and therefore `libgg.rlib`, without the
-# WIT or the pin moving.
-#
-# `build.sh` records ITSELF for the same reason it records the tool that generates the bindings: the
-# recipe is an input. The `rustc` flags, the staged library set and the archive's own construction
-# all live here, so an edit to this file changes what the artifact is with no source under `src/`
-# moving. That an edit to it fails the gate until it is run is the intended reading — editing the
-# recipe and not cooking is exactly the state the gate exists to name.
-echo "==> rust.sources.manifest.json"
-node "$ROOT/scripts/gg-artifact-manifest.mjs" \
-	--arm rust \
-	--rebuild packages/gg-sandbox-rust/build.sh \
-	--artifact "$CHECKERS/rust.libraries.tar.gz" \
-	--source-root "$HERE/src" \
-	--ignore "$HERE/src/bindings.rs" \
-	--source-file "$HERE/Cargo.toml" \
-	--source-file "$HERE/Cargo.lock" \
-	--source-file "$HERE/bindings.sh" \
-	--source-file "$HERE/build.sh" \
-	--wit "$ROOT/crates/gg/wit" \
-	--pin "target=$GG_RUST_TARGET" \
-	--pin "witBindgen=$GG_WIT_BINDGEN_VERSION" \
-	--out "$CHECKERS/rust.sources.manifest.json"
+# The one check that was NOT about staleness stays, and it is the `rustc --version` comparison at the
+# top of this file. An `.rlib` is a compiler-version-private format and `rustc` refuses one built by
+# another release outright, so a set cut by the wrong compiler grounds every Rust program in a run.
+# `rust.compile.test.rs` used to assert that from the other end, against the version recorded in the
+# manifest; that assertion is gone with the manifest, because there is no longer any interval in
+# which the recorded compiler and the running one can differ. The check up there is what enforces it
+# now, on every build, before a single rlib is produced.
 
 echo "==> wrote"
-ls -la "$CHECKERS/rust.libraries.tar.gz" "$CHECKERS/rust.toolchain.json"
-cat "$CHECKERS/rust.toolchain.json"
+ls -la "$GG_ARTIFACTS_OUT_DIR/rust.libraries.tar.gz" "$GG_ARTIFACTS_OUT_DIR/rust.toolchain.json"
+cat "$GG_ARTIFACTS_OUT_DIR/rust.toolchain.json"

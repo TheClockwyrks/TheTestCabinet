@@ -13,8 +13,8 @@ So the reference is not written at all. It is **projected out of gg's own defini
 
 - every **tool** entry is the live `ToolDefinition` a real `ToolRegistry` hands the
   provider — the same name, the same description, the same JSON-Schema parameters; and
-- every **API function** entry is the committed
-  [signature catalogue](/gg/responses-as-code/), reflected out of the sandbox SDK's own
+- every **API function** entry comes from the reflected
+  [signature catalogue](/gg/responses-as-code/), cut out of the sandbox SDK's own
   emitted declarations and their doc comments — the same material a program gets back from
   `openDocsView(...)` mid-run: every shape the function may be called in, and a line per
   argument.

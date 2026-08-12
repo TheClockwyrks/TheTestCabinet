@@ -9,7 +9,9 @@
 # arm's SDK, and a `.swiftmodule` is a **compiler-version-private format**: the release that
 # reads one must be the release that wrote it. So the pin is not a preference about which
 # diagnostics a model is shown — it is the one release that can compile a program here at
-# all, and bumping it means re-running `build.sh` in the same commit.
+# all. Bumping it invalidates every artifact this arm carries, and nothing has to be done
+# about that: this file is in `crates/gg-sandbox-artifacts/swift`'s rerun set, so the next
+# `cargo build` re-cuts them with the release named here.
 #
 # Before the SDK landed this arm committed only C objects, two headers and one Swift SOURCE
 # file, and a run image one patch release ahead would still have linked. That is no longer
@@ -48,10 +50,12 @@ GG_SWIFT_TARGET="wasm32-unknown-wasip1"
 #
 # Pinned to the wasmtime release gg links, because the adapter and the runtime are two halves
 # of one ABI: an adapter from a newer line may lower an interface the host's `wasmtime-wasi`
-# does not yet define. It is downloaded once by `build.sh` and COMMITTED
-# (`crates/gg/src/sandbox/checkers/swift.adapter.wasm`, 52 KB), for the reason every other
-# arm's committed artifact is: gg is copied as a single file into an ephemeral run container
-# and must carry everything the turn path needs with it.
+# does not yet define. `build.sh` resolves it through `scripts/gg-downloads.sh` — an override,
+# the toolchain image, a version-stamped per-user cache the installers warm, and only then a
+# download — and copies it into this arm's artifact directory as `swift.adapter.wasm`, 52 KB,
+# which gg `include_bytes!`s. It rides inside the binary for the reason every other artifact
+# does: gg is copied as a single file into an ephemeral run container and must carry
+# everything the turn path needs with it.
 #
 # The REACTOR one, not the command one: a component's exports are called after `_initialize`,
 # and the command adapter would insist on running a `_start` this guest does not have.
@@ -87,8 +91,11 @@ GG_WIT_BINDGEN_VERSION="0.60.0"
 # WHY VENDORED AND COMPILED RATHER THAN FETCHED AT RUN TIME. There is no SwiftPM in the run
 # image: the pruned toolchain is a compiler and a linker, and a package manager reaching a
 # network from inside a run container is not something this sandbox is going to grow. So the
-# set is built once, here, and committed as a static archive gg unpacks per machine — the same
-# arrangement the Rust arm's library set has, and for the same reason.
+# set is built once per build, by `build.sh` into `crates/gg-sandbox-artifacts/swift`'s `OUT_DIR`,
+# and embedded as a static archive gg unpacks per machine — the same arrangement the Rust arm's
+# library set has, and for the same reason. The three sources it is compiled from are a pinned
+# download like every other (`gg_swift_library` in `scripts/gg-downloads.sh`), not a fetch this
+# build makes.
 GG_SWIFT_COLLECTIONS_VERSION="1.2.1"
 GG_SWIFT_ALGORITHMS_VERSION="1.2.1"
 GG_SWIFT_NUMERICS_VERSION="1.0.3"

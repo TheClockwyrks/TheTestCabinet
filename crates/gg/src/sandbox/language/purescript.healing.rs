@@ -34,8 +34,9 @@
 //!
 //! # An import is never deleted
 //!
-//! `purs` resolves every `import` a program writes, against a library set that is a committed
-//! artifact: `import Gg` is how a program reaches the surface at all, `import Prelude` is how it
+//! `purs` resolves every `import` a program writes, against a library set that is a prebuilt
+//! artifact — compiled by this arm's build and carried inside gg's binary: `import Gg` is how a
+//! program reaches the surface at all, `import Prelude` is how it
 //! reaches `<>`, and `import Data.Map as Map` is how it reaches a map. There is no lexical shape here
 //! that is *certainly* dead — which is precisely what
 //! [`drop-imports`](crate::healing::HealingStrategy::DropImports) needs before it may delete a line —

@@ -49,7 +49,7 @@ and compiles a model's reply **byte for byte**; and
 that shape and the cheapest of the three per turn, because everything its programs are compiled
 against is precompiled once per machine; and
 [C#](/gg/program-languages/#c-a-compiler-on-the-host-an-interpreter-in-the-guest), which is neither
-shape — Roslyn compiles the reply to an **IL assembly** on the host and a committed Mono interpreter
+shape — Roslyn compiles the reply to an **IL assembly** on the host and a prebuilt Mono interpreter
 loads it, so it is type-checked before it runs and still pays nothing per turn for its guest.
 Every example on this page is TypeScript — and where a passage below quotes a
 spelling, a type-strip or a fence tag, it is TypeScript's answer to a question **every**
@@ -512,13 +512,15 @@ rather than as a refusal from the host. See
 
 #### What the check is, exactly
 
-- **The compiler.** A `tsc` pinned at one release, committed under
-  `crates/gg/src/sandbox/checkers/` and embedded in the gg binary, run with the `node`
-  every run image already ships. gg carries it for the same reason it carries the
-  component: it is copied as a single file into an ephemeral run container and must arrive
-  with everything it needs. Cut from the same pinned `typescript` the SDK's declarations
-  are emitted by, so what a program is judged against and what the model is shown are one
-  release.
+- **The compiler.** A `tsc` pinned at one release, **cut by the build** that embeds it —
+  `crates/gg-sandbox-artifacts/typescript` runs `packages/gg-sandbox/build.sh` into that
+  build's `OUT_DIR` — and run with the `node` every run image already ships. gg carries it
+  for the same reason it carries the component: it is copied as a single file into an
+  ephemeral run container and must arrive with everything it needs. Cut from the same pinned
+  `typescript` the SDK's declarations are emitted by, on the same build, so what a program is
+  judged against and what the model is shown cannot be two releases. (It was committed under
+  `crates/gg/src/sandbox/checkers/` until a CI step that re-cut and diffed it was replaced by
+  generating it.)
 - **The declarations.** The ES2022 standard library, plus the whole SDK surface generated
   from the [signature catalogue](/gg/program-languages/#the-sdk-is-hand-written-and-native)
   — so the signatures the prompt shows and the signatures the checker enforces cannot
@@ -777,7 +779,7 @@ never runs on the turn path, and nothing about the component is cached to disk.
 
 What a turn *does* pay is its own language's [prepare step](#stripped-and-checked), and for
 TypeScript that is now a real cost rather than a rounding error: the strip is in-process, but
-the check spawns `node` against the committed `tsc`. It is measured for exactly that reason and
+the check spawns `node` against the embedded `tsc`. It is measured for exactly that reason and
 reported per turn as [`compileMs`](/gg/telemetry/).
 
 | Stage | Measured |
@@ -1534,7 +1536,7 @@ record.
 | The program breaks a rule enforced before any statement runs — for TypeScript an **early error**, most often a `const` declared twice, i.e. two programs in one reply | preparation's scope analysis, before any engine work | a `Compiler error`: the identifier, and **both** places it was bound, each with a line, a column and the source line quoted |
 | The reply carried statements after a top-level `return` | preparation, from the tree it already built | a `Notice`: how many did not run, which one was first, and that a top-level `return` ends the program — the program itself still runs |
 | `import`, `export`, a dynamic `import()`, or a top-level `await` — TypeScript's spelling of "something this sandbox has no implementation of" | preparation, which refuses it | a `Compiler error` saying the sandbox has no module system and is synchronous, and what to write instead |
-| The language's compiler read the whole program and **rejected** it — a type error, a name that does not resolve, an argument of the wrong shape. TypeScript's `tsc` pass is what raises it | preparation, before any engine work | a `Compiler error` carrying the compiler's own diagnostics and nothing else. It is the model's to fix and the turn is recorded as `transpile_compile`; it must never be confused with the committed **component** failing to compile, which is an artifact defect that ends the session |
+| The language's compiler read the whole program and **rejected** it — a type error, a name that does not resolve, an argument of the wrong shape. TypeScript's `tsc` pass is what raises it | preparation, before any engine work | a `Compiler error` carrying the compiler's own diagnostics and nothing else. It is the model's to fix and the turn is recorded as `transpile_compile`; it must never be confused with the embedded **component** failing to compile, which is an artifact defect that ends the session |
 | The language's compiler **could not finish** — it crashed, its timeout killed it, or it is not installed in the run's image | preparation, which reports the compiler rather than the program | a `Notice`: that the program was not run, that this is the environment rather than anything it wrote, and that nothing about it was rejected. **Not** a `Compiler error`, because nothing read the program. The turn is an error, under its own `toolchain` base kind rather than `transpile` |
 | A TypeScript program nests brackets past 200 deep | that language's nesting guard, before the parse | a `Compiler error`: its depth, the cap, that the parse runs on a bounded stack, and that this is almost always a repeated bracket |
 | A call the agent was not granted | the membrane, which refuses it | a catchable `unavailable` `ToolError` thrown at the call site, naming the capability that is missing and what the agent does have instead; uncaught, a `Runtime error` recorded as `program_unknown_name` on nine of the eleven arms (the C# and Swift guests classify an uncaught throw differently — see [static SDKs](/gg/static-sdks/#what-it-is-recorded-as), and count refusals from the refusal roster instead). Every SDK is [static](/gg/static-sdks/), so the *refusal itself* is one failure on all eleven arms rather than a missing name on some and a refusal on others |
@@ -1552,7 +1554,7 @@ record.
 | The run's wall-clock budget ran out mid-program | the deadline check before each call | a catchable `limit-exceeded` failure saying the budget is spent and prior work stands |
 | Execution timeout reached | the trap classifier | a `Runtime error`: the ceiling, and that a timeout this long almost always means a loop or recursion that never ends — find it rather than write less |
 | Memory cap exceeded, or set below the guest's ~10 MiB floor | the memory limiter's denial flag | a `Runtime error`: the configured cap, and the floor the guest engine needs before a program runs at all |
-| The committed component fails to compile or instantiate, or gg's own wasm plumbing fails | the engine, or the host | nothing — the **session ends** with a model-error status and a log naming which of the two it was, because every further turn would fail identically |
+| The embedded component fails to compile or instantiate, or gg's own wasm plumbing fails | the engine, or the host | nothing — the **session ends** with a model-error status and a log naming which of the two it was, because every further turn would fail identically |
 | A configured [error ceiling](/gg/execution-limits/) was breached | the loop, at the turn boundary | the last turn's message, then the **session ends** `limit_exceeded` with the breach recorded |
 
 Which of these count as an **error turn** follows one definition shared by both execution
@@ -1570,42 +1572,70 @@ making progress.
 ## How the sandbox is built and shipped
 
 The TypeScript guest lives at `packages/gg-sandbox/` — the typed SDK, the interpreter
-shim, and the build that bakes them into a component with a pinned `componentize-js`. Two
-of its outputs reach the Rust crate, named for the **language** rather than for the
-package, because both belong to a registered language rather than to a directory of
-JavaScript — and they get there in **opposite** ways:
+shim, and the build that bakes them into a component with a pinned `componentize-js`. Its
+outputs reach the Rust crate named for the **language** rather than for the package,
+because each belongs to a registered language rather than to a directory of JavaScript —
+and every one of them now gets there the **same** way, generated into an `OUT_DIR`:
 
 | Artifact | What it is | How it gets there |
 | --- | --- | --- |
-| `crates/gg/src/sandbox/guests/typescript.component.wasm` | The baked component, embedded in the binary (14,004,036 bytes as committed). | Committed. `packages/gg-sandbox/build.sh` bakes it by hand. |
+| `typescript.component.wasm` | The baked component, embedded in the binary (~13.4 MiB). | Generated. `crates/gg-sandbox-artifacts/typescript` runs `build.sh` on every build, into `OUT_DIR`. |
 | `typescript.signatures.json` (and `javascript.signatures.json`) | The signature catalogue the model searches and reads through `view.openDocsView()`. | Generated. `crates/gg/build.rs` reflects it out of the SDK on every build, into `OUT_DIR`. |
+| `typescript.tsc.js`, `.lib.d.ts`, `.globals.d.ts`, `.checker.json` | The compiler a program is type-checked by, its standard library, and what says which release. | Generated. Same crate, same `build.sh`, same `OUT_DIR`. |
 
-Committing the **component** follows the precedent the `foray-ref-*` guests already set,
-and it is what means **no build or CI step ever needs `componentize-js`**: the host
-`include_bytes!`s it. Refreshing it is a deliberate act — run
-`packages/gg-sandbox/build.sh` after changing the membrane or the guest, and commit the
-output with the source change. Committing it zstd-compressed (~4 MB) was considered and
-rejected: it would drag a C toolchain onto a musl-static release binary to shrink an
-artifact nobody downloads on a budget.
+**Generated beats committed, and the direction of travel is one way.** A committed
+artifact is a claim about source that is checked when it is generated and never again, and
+nothing about a `.wasm` or a `.jar` looks stale. A generated one is cut from the sources of
+the checkout that embeds it, so the disagreement is not a thing that is caught — it is a
+state that cannot exist. The catalogues went first; the four checker files above followed,
+along with the Ruby arm's Opal compiler, the Java and Kotlin arms' SDK jars, and every
+compiled arm's library set and guest archive. The Java jar is the case worth quoting: it was
+*stale in `git`* when it moved, three SDK files having gained documentation without anyone
+re-cutting it, and the fix was to stop committing it rather than to re-cut it.
 
-The **catalogue** is committed nowhere, and that is the opposite decision for the opposite
-reason. Baking a component takes minutes and a componentizing toolchain; reflecting a
-catalogue takes seconds and the `tsc` the workspace already pins. What a catalogue costs
-when it is *wrong*, meanwhile, is much worse than what a stale component costs: it is the
-whole of what a model is told this sandbox offers, so a copy that quietly stopped matching
-the SDK is a prompt describing functions the guest does not export. So the host
-`include_str!`s it out of the build's own `OUT_DIR`, reflected from the declarations in the
-same checkout by that language's own documentation tool — see
+**The journey is finished, and the last stage was the four baked interpreters** — the
+TypeScript/JavaScript, Python, Ruby and C# components, 14 to 35 MB apiece. Committing them
+followed the precedent the `foray-ref-*` guests set, and it used to buy something concrete:
+no build or CI step needed `componentize-js`. That stopped being true when the same
+`build.sh` that bakes a component started cutting the checker files beside it, so a `cargo
+build` reached the tool either way and the last argument for committing the big half was
+gone. `crates/gg/src/sandbox/guests/` no longer exists.
+
+The evidence that settles it is that these four were the arms a drift gate could never have
+covered anyway. **Not one of them is byte-reproducible**: `componentize-js` and
+`componentize-py` snapshot a pre-initialised heap, and the C# link bakes its own toolchain's
+absolute paths into the component — measured, two builds of one checkout differing only in
+where the SDK was unpacked came out 48 bytes apart. So no CI step could re-cut one and diff
+it, and what stood in for that (`artifacts.test.rs`, which recomputed the source digests a
+`build.sh` had recorded in a manifest beside its output) could only ever attest what a build
+had been *told*, never what it produced. Both are gone with the components. Committing them
+zstd-compressed (~4 MB) had also been considered and rejected: it would have dragged a C
+toolchain onto a musl-static release binary to shrink an artifact nobody downloads on a
+budget.
+
+What it costs is stated plainly rather than buried: building gg now runs eleven documentation
+toolchains **and** ten artifact builds, and one of those — relinking Mono's IL interpreter for
+the C# arm — needs a whole .NET SDK and an unpruned wasi-sdk that no gg *run* needs, about
+1.4 GB installed by its own `scripts/ci/install-gg-build-toolchains.sh`. The devcontainer
+image and the CI image's `build-toolchains` tag carry it, so no developer installs it by
+hand; but a machine that builds gg is now a machine with all of it.
+
+The **catalogue** is the clearest case of the general argument. What a catalogue costs when
+it is *wrong* is much worse than what a stale component costs: it is the whole of what a
+model is told this sandbox offers, so a copy that quietly stopped matching the SDK is a
+prompt describing functions the guest does not export. So the host `include_str!`s it out
+of the build's own `OUT_DIR`, reflected from the declarations in the same checkout by that
+language's own documentation tool — see
 [reading a catalogue](/gg/program-languages/#reading-a-catalogue) for how to open one and
 what the build needs in order to make it.
 
 The component is embedded rather than read from disk because gg is copied as a single
 file into an ephemeral run container and has to carry everything it needs with it.
 
-Four gates stop the committed component drifting from the code around it, and there is no
+Four gates stop the embedded component drifting from the code around it, and there is no
 fifth for the catalogue because the catalogue has nothing left to drift from: the
 `componentize-js` link fails if the guest and the membrane disagree; gg's instantiation
-test fails if the committed component's imports no longer match the host's linker; gg's
+test fails if the embedded component's imports no longer match the host's linker; gg's
 `bound-tools` test asks the **artifact** which tools it can bind and compares that against
 gg's own tool vocabulary, which is the one drift no source-level test can catch; and the
 [capability gate](#the-capability-gate) checks the catalogue against every other registered
@@ -1619,7 +1649,7 @@ JSON is the thing standing between a reflector bug and a model's context window.
 
 The language a program is written in is not baked into the sandbox. It is a **registered
 axis**: gg holds a set of program languages, each of which answers the same questions —
-how to prepare a model's reply into something its guest evaluates, which committed guest
+how to prepare a model's reply into something its guest evaluates, which prebuilt guest
 and which reflected signature catalogue are its own, what its guest needs from the host linker, which
 [healing](/gg/response-healing/) questions have language-shaped answers, and which system
 prompt teaches it. Eleven are registered. TypeScript is the default;
@@ -1630,7 +1660,7 @@ pair measures what checking a program before it runs is worth;
 different language rather than a variation on one — its own hand-written SDK, its own guest,
 its own healing dialect, and no compiler anywhere on the turn path;
 [Ruby](/gg/program-languages/#ruby-compiled-to-javascript-before-it-crosses) is compiled to
-JavaScript by a committed Opal before it crosses, which makes it the arm that separates
+JavaScript by a baked Opal before it crosses, which makes it the arm that separates
 *compiled* from *typed*: its programs are read and may be refused before they run, and
 their types are never checked at all; and
 [PureScript](/gg/program-languages/#purescript-a-compiler-in-the-image-a-library-set-in-the-binary)
@@ -1657,7 +1687,7 @@ verbatim for a stronger version of that reason and is the cheapest of the three 
 programs being compiled against a prelude precompiled once per machine; and
 [C#](/gg/program-languages/#c-a-compiler-on-the-host-an-interpreter-in-the-guest) is a **third**
 shape rather than a variation on either — Roslyn compiles the reply to an IL assembly on the host,
-the bytes cross as base64, and a committed component holding a Mono IL interpreter and the whole
+the bytes cross as base64, and a prebuilt component holding a Mono IL interpreter and the whole
 .NET class library loads them, so this is the one arm that both checks every program and commits the
 thing that runs it. This
 section is the capability's view of that seam; the design of it — the rules every
@@ -1718,7 +1748,7 @@ signature beginning with it, one spelling per module and receiver, and every arg
 named by the signature that takes it.
 
 It is load-bearing because its absence is silent. Each language's own gates compare it to
-its own committed component and to its own SDK — never to gg's vocabulary, and never to
+its own prebuilt component and to its own SDK — never to gg's vocabulary, and never to
 another language — so eleven internally consistent surfaces offering eleven different sets of
 capabilities are eleven green test suites, and an A/B across them measures the difference
 in the surface while reporting it as a difference in the language.
@@ -1747,8 +1777,8 @@ knowing TypeScript's answers, that a prompt is selected per language, that no la
 serves another's artifacts.
 
 Adding one is additive: a sibling guest directory — not necessarily an npm package —
-that binds the same `crates/gg/wit/gg-sandbox.wit`, commits
-`crates/gg/src/sandbox/guests/<language>.component.wasm`, reflects
+that binds the same `crates/gg/wit/gg-sandbox.wit`, builds
+`<language>.component.wasm` into whatever `GG_ARTIFACTS_OUT_DIR` names, reflects
 `<language>.signatures.json` out of its own SDK into whatever `GG_SIGNATURES_OUT_DIR`
 names, and hand-writes an SDK that is **idiomatic for that language** while obeying the same rules
 this one does: namespaced typed bindings rather than a generic dispatcher, every call

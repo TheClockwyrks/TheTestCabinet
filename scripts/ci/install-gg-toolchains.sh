@@ -50,6 +50,12 @@
 #     own is the arm's reflector: the pinned YARD, installed per-user, so a build never discovers
 #     mid-`cargo build` that it wants to talk to rubygems.org.
 #
+# AND ONE THING IT DELIBERATELY WILL NOT INSTALL, which is not a prerequisite it cannot meet but one
+# it refuses to: the ~1.4 GB of unpruned .NET SDK and wasi-sdk that BUILDING the C# arm's guest
+# needs. That is `scripts/ci/install-gg-build-toolchains.sh`, and it is separate because this list is
+# the eleven arms a RUN and gg's own reflectors execute — every surface named above pays for anything
+# added here, and no run on that arm compiles anything to wasm at all.
+#
 # PATH — TWO OBLIGATIONS, and a caller that meets only the first gets a build that dies three arms
 # in. `purs` and `esbuild` land in `$HOME/.local/bin`, so a caller that shells out to them AFTERWARDS
 # needs that directory on PATH; a child process cannot fix its parent's environment (this script
@@ -148,8 +154,10 @@ log "wasi-sdk (gg's c++ arm documents and compiles with its clang++)"
 
 # C# documents with Roslyn, compiled against the reference assemblies a model's program is compiled
 # against, so the surface a model is told about is the surface the compiler will accept. It is the
-# only arm that installs no wasm toolchain at all: the wasm half was compiled once by
-# packages/gg-sandbox-csharp/build.sh and committed.
+# only arm on THIS list that installs no wasm toolchain at all, and the reason is not that it needs
+# none: the wasm half is built by packages/gg-sandbox-csharp/build.sh, out of the separate,
+# ~1.4 GB prefix scripts/ci/install-gg-build-toolchains.sh warms — a whole .NET SDK and an unpruned
+# wasi-sdk that no gg RUN needs and that this list therefore deliberately excludes.
 log ".NET and Roslyn (gg's csharp arm documents and compiles with them)"
 ./scripts/ci/install-dotnet.sh
 
@@ -157,6 +165,37 @@ log ".NET and Roslyn (gg's csharp arm documents and compiles with them)"
 # the arm compiles against — the heaviest install here by a factor of four, and therefore last.
 log "the Swift toolchain (gg's swift arm documents and compiles with swiftc)"
 ./scripts/ci/install-swift.sh
+
+# ---------------------------------------------------------------------------------------------
+# The three that are not one arm's compiler: the small pinned downloads and the package-manager
+# resolutions that gg's ARTIFACT builds reach for.
+#
+# They are here because an artifact is now built by the build. `crates/gg-sandbox-artifacts/<arm>`
+# runs its arm's `build.sh` inside an ordinary `cargo build`, so anything that build fetches is
+# something an ordinary `cargo build` fetches — and a build that talks to github.com, npm and PyPI
+# halfway through is a build that fails on an aeroplane and on a rate limit. Every one of those
+# fetches now resolves from a version-stamped prefix, and these three fill them ahead of time.
+#
+# They are LAST because they are cheap and because two of them want a compiler that is already
+# installed: the Rust arm's crate closure needs `cargo`, and the wheels need the `uv` from the top of
+# this list.
+# ---------------------------------------------------------------------------------------------
+
+# Four arms generate their WIT bindings with this one executable. Each used to fetch its own copy
+# into its own package, which meant three copies and three downloads reachable from `cargo build`.
+log "wit-bindgen (gg's rust, swift, cpp and csharp arms generate their bindings with it)"
+./scripts/ci/install-wit-bindgen.sh
+
+# The C++ and Swift arms each turn a preview1 core module into a component with this 52 KB adapter,
+# and each pins it separately on purpose. One cached file serves both, and the installer refuses to
+# fill it if the two pins disagree.
+log "the wasmtime preview1 reactor adapter (gg's cpp and swift arms componentise with it)"
+./scripts/ci/install-adapter.sh
+
+# componentize-js, componentize-py, opal, spago, the Opal gem and the Rust arm's own crate closure —
+# the tools whose native idiom is "resolve me at build time", warmed so the build does not.
+log "gg's package-manager-delivered build tools (componentize-*, opal, spago, the rust crate set)"
+./scripts/ci/install-gg-build-tools.sh
 
 # The one prerequisite this script deliberately does not satisfy, reported at the end rather than
 # the start: a checkout whose npm workspaces were never installed builds none of gg, because two of

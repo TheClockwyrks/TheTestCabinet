@@ -121,7 +121,7 @@ fn every_language_reports_what_compiling_its_program_cost() {
 /// [`prepare_compiles`](ProgramLanguage::prepare_compiles) defaults to "there is a checker", so an
 /// arm that forgets to declare one reports `None` forever and looks free. Naming the two arms that
 /// are genuinely free — JavaScript, whose whole point is being TypeScript without the check, and
-/// Python, whose interpreter is inside the committed component — means a third one joining them
+/// Python, whose interpreter is inside the prebuilt component — means a third one joining them
 /// fails here and has to be argued for rather than merely committed.
 #[test]
 fn only_the_arms_with_no_compiler_report_no_compile_cost() {

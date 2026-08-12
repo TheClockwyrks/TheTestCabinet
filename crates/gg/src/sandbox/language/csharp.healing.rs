@@ -39,7 +39,7 @@
 //! and it **works**. Roslyn lowers an `async Task Main` — and a top-level `await` — into a
 //! synthesized synchronous entry point that blocks on the result, and that entry point is the one
 //! the guest invokes. `csharp_runs_a_program_written_the_async_way_a_model_reaches_for` in
-//! `csharp.substrate.test.rs` drives both shapes through the real `csc` and the real committed guest
+//! `csharp.substrate.test.rs` drives both shapes through the real `csc` and the real prebuilt guest
 //! and requires each to run. Unwrapping a wrapper that works would delete a class declaration and
 //! re-indent a body to no purpose, so this dialect declines.
 //!

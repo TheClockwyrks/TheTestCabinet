@@ -636,8 +636,10 @@ public final class GgSignatures implements Doclet {
     }
 
     /**
-     * The names in order, because the catalogue is a committed artifact and a diff of it should show
-     * what changed rather than what the compiler happened to walk first.
+     * The names in order, because a catalogue two builds of one checkout disagreed on would be a
+     * prompt two runs of one study disagreed on — and because a person reading one, or diffing two
+     * runs of `scripts/gg-signatures.sh`, should see what changed rather than what the compiler
+     * happened to walk first.
      */
     private static List<String> sorted(Set<String> names) {
         List<String> out = new ArrayList<>(names);

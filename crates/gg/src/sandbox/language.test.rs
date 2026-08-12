@@ -57,29 +57,29 @@ fn the_registry_is_derived_from_the_core_enum() {
     }
 }
 
-/// **Every registered language's committed artifacts are present and its own.**
+/// **Every registered language's artifacts are present and its own.**
 ///
 /// The catalogue is loaded (which panics on a corrupt artifact) and the component's bytes are
 /// non-empty — the two things a language cannot run a single program without, and both of which are
-/// committed files that a rename or a bad merge could quietly detach from the language that claims
+/// generated files that a rename or a bad merge could quietly detach from the language that claims
 /// them.
 ///
 /// A language that [compiles a component per program](ProgramLanguage::guest_component) has no
-/// committed one, and that is not a hole here: it is required to answer `None` rather than empty
+/// prebuilt one, and that is not a hole here: it is required to answer `None` rather than empty
 /// bytes, so "the artifact went missing" and "this arm has no artifact" stay different answers. Its
 /// component is proved by its own substrate test, which compiles one and runs a program through it.
 #[test]
-fn every_registered_language_carries_its_committed_artifacts() {
+fn every_registered_language_carries_its_artifacts() {
     for language in all_languages() {
         match language.guest_component() {
             Some(bytes) => assert!(
                 !bytes.is_empty(),
-                "{} claims a committed guest component and carries no bytes",
+                "{} claims a prebuilt guest component and carries no bytes",
                 language.id()
             ),
             None => assert!(
                 language.compiles_component(),
-                "{} committed no guest component and does not compile one either",
+                "{} declares no prebuilt guest component and does not compile one either",
                 language.id()
             ),
         }
@@ -487,7 +487,7 @@ fn the_fixture_language_has_no_wire_id() {
     let _ = fixture_language().id();
 }
 
-/// The pairs of registered languages that **deliberately** share a committed artifact, and why.
+/// The pairs of registered languages that **deliberately** share one artifact, and why.
 ///
 /// The rule below is that a language is handed its own artifacts and never another's, because the
 /// shape every one of them was in before the seam was a `static` of TypeScript's that a second
@@ -592,7 +592,7 @@ fn shared_artifacts(a: GgProgramLanguage, b: GgProgramLanguage) -> Option<&'stat
 /// **No language serves another language's artifacts**, except where the seam says so out loud.
 ///
 /// Four artifacts, each of which a consumer reaches through the trait object it was handed: the
-/// committed component, the catalogue's spellings, the prompt's templates, and the healing dialect.
+/// embedded component, the catalogue's spellings, the prompt's templates, and the healing dialect.
 /// A consumer that had kept a `static` of TypeScript's — the shape every one of these was in before
 /// the seam — would return the same value for both languages here.
 ///

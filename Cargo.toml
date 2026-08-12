@@ -5,6 +5,31 @@ members = [
 	"crates/code-analysis",
 	"crates/cli",
 	"crates/gg",
+	# The shared build-script body behind every gg program-language ARTIFACT crate, and the arm
+	# crates that use it. Each arm crate builds one program language's compile inputs — a guest
+	# component, an SDK jar, a compiler — into its own `OUT_DIR` and publishes the directory to
+	# `crates/gg`, which `include_bytes!`s them from there. They are ten crates rather than ten
+	# steps of `crates/gg/build.rs` so that each arm has its own rerun set; the argument is
+	# in `gg-artifact-build`'s header, along with the recipe for adding one.
+	#
+	# The list arrived one arm at a time, each entry landing on the change that stopped committing
+	# that arm's bytes — never before, because an arm crate here is a crate whose build script runs
+	# on `cargo build --workspace`, and running an arm's toolchain to produce bytes nothing embeds is
+	# pure cost. It is complete now: ten packages serving eleven arms, `packages/gg-sandbox` serving
+	# TypeScript and JavaScript from one build exactly as `scripts/gg-arms.sh` does. Nothing under
+	# `crates/gg/src/sandbox/guests/` is committed any more, and what is left beside it under
+	# `checkers/` is gg's own hand-written Java and its pins.
+	"crates/gg-sandbox-artifacts/build-support",
+	"crates/gg-sandbox-artifacts/typescript",
+	"crates/gg-sandbox-artifacts/python",
+	"crates/gg-sandbox-artifacts/ruby",
+	"crates/gg-sandbox-artifacts/java",
+	"crates/gg-sandbox-artifacts/kotlin",
+	"crates/gg-sandbox-artifacts/purescript",
+	"crates/gg-sandbox-artifacts/rust",
+	"crates/gg-sandbox-artifacts/swift",
+	"crates/gg-sandbox-artifacts/cpp",
+	"crates/gg-sandbox-artifacts/csharp",
 	"crates/contract-codegen",
 	"crates/draw",
 	"crates/model-core",

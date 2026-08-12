@@ -5,13 +5,18 @@ capability: the guest that evaluates a model's C# program, the hand-written SDK 
 and the builds that produce both.
 
 Not an npm package. This directory is a set of builds, and what they produce lives elsewhere —
-two artifacts committed into the Rust crate, and one the crate's build reflects on every compile:
+in the `OUT_DIR`s of the two crates that run those builds. **Nothing here is committed:**
 
 | Artifact | What it is |
 | --- | --- |
-| `crates/gg/src/sandbox/guests/csharp.component.wasm` | The guest — Mono's IL interpreter, the .NET class libraries, ICU and gg's bridge, as one self-contained wasm component exporting gg's `sandbox` world (35.3 MB). Committed. |
-| `crates/gg/src/sandbox/checkers/csharp.toolchain.json` | What built the guest, and what is in it. Committed. |
-| `csharp.signatures.json`, in the build's `OUT_DIR` | The **catalogue** — every module, signature, argument, type and type member a model is told about, in the normalized schema, reflected out of the SDK's own XML documentation comments by `signatures.sh`, which `crates/gg/build.rs` runs. Not committed. |
+| `csharp.component.wasm`, in `crates/gg-sandbox-artifacts/csharp`'s `OUT_DIR` | The guest — Mono's IL interpreter, the .NET class libraries, ICU and gg's bridge, as one self-contained wasm component exporting gg's `sandbox` world (35.3 MB). Built by `build.sh`, which that crate runs on every build whose declared inputs moved. |
+| `csharp.signatures.json`, in the build's `OUT_DIR` | The **catalogue** — every module, signature, argument, type and type member a model is told about, in the normalized schema, reflected out of the SDK's own XML documentation comments by `signatures.sh`, which `crates/gg/build.rs` runs. |
+
+`build.sh` used to write a `csharp.toolchain.json` beside the component — the pins, the source
+digests and the byte count a drift test recomputed from the checkout. It went with the committing:
+it was the only one of the per-arm toolchain declarations that nothing on the turn path read, so
+once the component was generated it described a question nobody could ask. `build.sh` records what
+each part of it became.
 
 | | |
 | --- | --- |
@@ -19,7 +24,7 @@ two artifacts committed into the Rust crate, and one the crate's build reflects 
 | [`src/Gg/`](src/Gg/) | the **SDK** a model's program is compiled against, and the documentation comments every word a model reads is reflected out of |
 | [`Sources/`](Sources/) | the guest's C: the shell, the bridge, and the interpreter trampolines |
 | [`libraries.txt`](libraries.txt) | the namespaces this arm says a program may reach, grouped as the prompt shows them |
-| [`build.sh`](build.sh) | builds and commits the guest |
+| [`build.sh`](build.sh) | builds the guest into `$GG_ARTIFACTS_OUT_DIR` |
 | [`signatures.sh`](signatures.sh) | reflects the catalogue out of the SDK, with Roslyn, into `$GG_SIGNATURES_OUT_DIR` |
 | [`tools/`](tools/) | the reflector `signatures.sh` runs and the identity table it reads, plus [`Parse.cs`](tools/Parse.cs) — the parse-only Roslyn driver gg builds and runs on a rejected program, to tell a typo from a program written against the wrong surface |
 
@@ -27,8 +32,8 @@ two artifacts committed into the Rust crate, and one the crate's build reflects 
 
 **Roslyn on the host, a Mono IL interpreter in the guest.** A model's reply is compiled to an
 IL assembly by `csc` in ~0.28 s, base64-encoded into the world's existing `program` string,
-and loaded by the committed component above. That is the same shape the Python and Ruby arms
-have — one committed runtime, a payload per turn — rather than the shape Rust, Swift and C++
+and loaded by the prebuilt component above. That is the same shape the Python and Ruby arms
+have — one prebuilt runtime, a payload per turn — rather than the shape Rust, Swift and C++
 have, and it is the whole reason C# is affordable. A prior feasibility study priced this arm
 on the only toolchain it looked at, `componentize-dotnet` (NativeAOT-LLVM, which compiles the
 *program* to native wasm): 25–43 seconds a turn, and the arm was cut as impractical.
@@ -55,11 +60,12 @@ in gg's binary and writes them into the preparation's own workspace beside `prog
 
 Three things follow, and each of them is why:
 
-- **there is no second assembly for the guest to find.** The committed guest loads exactly one
-  assembly per run: the program's. An SDK compiled separately would have to be bundled *into* the
-  35.3 MB component, so every doc-comment edit would mean rebuilding and re-committing it.
+- **there is no second assembly for the guest to find.** The guest loads exactly one assembly per
+  run: the program's. An SDK compiled separately would have to be bundled *into* the 35.3 MB
+  component, so every doc-comment edit would mean re-linking it — a ~26 s build rather than the
+  ~70 ms below.
 - **the SDK is reviewable.** What a reviewer reads in the diff is what a model compiles against,
-  with no committed binary in between and no reproducible-build gate to keep green.
+  with no binary in between.
 - **it costs almost nothing.** ~70 ms on a ~210 ms compile, measured.
 
 What puts it in a model's scope without touching a byte of the model's file is a `global using` the
@@ -80,15 +86,23 @@ catalogue — there is nothing to catalogue, only `Console`.
 3. Compiles the runtime pack's C, gg's bindings and `Sources/*.c` for `wasm32-wasip2`.
 4. Links a **reactor** component with wasi-sdk's `wasm-component-ld`.
 
-Nothing in CI runs it. It is a developer's command, run deliberately when a pin in
-`csharp-version.sh` moves or a file in `Sources/` changes, and committed with its output —
-which is why `crates/gg/src/sandbox/language/csharp.manifest.test.rs` compares the committed
-component and each source's digest against the manifest, and fails when one of them was
-rebuilt without the other.
+**`cargo build` runs it**, which is the opposite of what this paragraph used to say. It was a
+developer's command, run deliberately when a pin in `csharp-version.sh` moved or a file in
+`Sources/` changed, and committed with its output — with a drift test recomputing each source's
+digest against a manifest so that a rebuild forgotten was a named failure rather than a silent one.
+`crates/gg-sandbox-artifacts/csharp` runs it now, on every build whose declared inputs moved, and
+`crates/gg` embeds what lands in that crate's `OUT_DIR`. The gate and the manifest are gone with
+the committed component, because "did somebody forget?" is not a question a generated artifact has.
+
+What that costs is the one thing worth knowing about this arm: the toolchains below are needed to
+BUILD gg at all now, not merely to work on C#. They are ~1.4 GB no gg *run* needs, which is why
+they live in their own prefix and their own installer — see `scripts/ci/install-gg-build-toolchains.sh`.
+The devcontainer image and the CI image's `build-toolchains` tag both carry them.
 
 ```sh
 scripts/ci/install-dotnet.sh                 # once: the toolchain a program compiles with
-packages/gg-sandbox-csharp/build.sh          # the guest (developer-only; ~1 GB of downloads once)
+scripts/ci/install-gg-build-toolchains.sh    # once: the ~1.4 GB that RELINKS the guest
+packages/gg-sandbox-csharp/build.sh          # the guest, by hand (cargo build does it for you)
 cargo nextest run -p test-cabinet-gg sandbox::language::csharp
 
 GG_SIGNATURES_OUT_DIR=/tmp/sigs \

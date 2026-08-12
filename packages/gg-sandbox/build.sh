@@ -1,51 +1,52 @@
 #!/usr/bin/env bash
 #
-# Refresh the COMMITTED artifacts this package produces:
+# Build the artifacts this package produces, into `$GG_ARTIFACTS_OUT_DIR`:
 #
-#   crates/gg/src/sandbox/guests/typescript.component.wasm    the baked interpreter component
-#   crates/gg/src/sandbox/checkers/typescript.tsc.js          the compiler that type-checks a program
-#   crates/gg/src/sandbox/checkers/typescript.lib.d.ts        the standard library it checks against
-#   crates/gg/src/sandbox/checkers/typescript.globals.d.ts    the globals no SDK declaration covers
-#   crates/gg/src/sandbox/checkers/typescript.checker.json    which compiler, at which level
+#   typescript.component.wasm    the baked interpreter component
+#   typescript.tsc.js            the compiler that type-checks a program
+#   typescript.lib.d.ts          the standard library it checks against
+#   typescript.globals.d.ts      the globals no SDK declaration covers
+#   typescript.checker.json      which compiler, at which level
 #
 # They are named for the PROGRAM LANGUAGE they serve, not for this package. gg's responses-as-code
-# capability registers a language per guest, and each one files its artifacts under
-# `crates/gg/src/sandbox/{guests,checkers}/<language-id>.*` — so a second guest, for a second
-# language, is a sibling directory with its own build script writing its own set, and touches
-# nothing here.
+# capability registers a language per guest, and each one files its artifacts under `<language-id>.*`
+# — so a second guest, for a second language, is a sibling directory with its own build script
+# writing its own set, and touches nothing here.
 #
 # This guest serves TWO registered languages and bakes ONE component: `javascript` is `typescript`
 # with gg's type check removed, so the two arms differ in what gg does to a program before handing it
-# over and in nothing else. Committing a second, byte-identical component would be a second copy of
-# one artifact.
+# over and in nothing else. A second, byte-identical component would be a second copy of one
+# artifact.
 #
-# WHAT IS *NOT* HERE ANY MORE: the two signature catalogues. They are reflected out of the SDK's own
-# emitted declarations by `signatures.sh` beside this script, which `scripts/gg-signatures.sh` runs
-# and `crates/gg/build.rs` calls — so the catalogue a model is described by is generated on the build
-# that compiles the host embedding it, and cannot be older than the declarations it quotes. This
-# script therefore has nothing to refresh about them, and running it is not a prerequisite for
-# building gg.
+# WHAT IS *NOT* HERE: the two signature catalogues. They are reflected out of the SDK's own emitted
+# declarations by `signatures.sh` beside this script, which `scripts/gg-signatures.sh` runs and
+# `crates/gg/build.rs` calls — a different question, answered by a different tool, on a different
+# schedule, which is why the two steps are two scripts.
 #
-# The component IS checked in, exactly as the `foray-ref-*` guests are, so no build or CI step ever
-# needs `componentize-js`: the Rust host `include_bytes!`s it. That is why this script is run by
-# hand, deliberately, and its outputs are committed alongside the source change that motivated them —
-# and it is the reason `gg-artifact-manifest.mjs` records what went into the component below, since a
-# committed binary is the one thing in this package that a build cannot re-derive for you.
-#
-# Run it after changing anything the component is made of:
+# NOBODY HAS TO REMEMBER WHEN TO RUN THIS. `crates/gg-sandbox-artifacts/typescript` runs it as part
+# of building `test-cabinet-gg`, and the rerun set it declares — in
+# `crates/gg-sandbox-artifacts/build-support` — is exactly the list of things this build reads:
 #
 #   * crates/gg/wit/gg-sandbox.wit  (the membrane — a WIT change without a rebuild fails gg's
 #                                    instantiation test, which is the intended failure direction)
 #   * packages/gg-sandbox/src/**    (the SDK, the shim, or the catalogue)
 #   * packages/gg-sandbox/tools/program-globals.d.ts  (the globals a checked program may name)
 #   * the pinned `typescript` version in package.json (which the checker is cut from)
+#   * tsconfig.base.json            (which decides the emit, and is edited for the web app)
 #
-# Requires Node and network access the first time, to fetch the pinned `componentize-js` through
-# `npx`; nothing else. The build takes a few seconds and emits ~13 MB, because the component embeds a
-# whole JavaScript engine.
+# NOTHING HERE IS BY HAND ANY MORE, AND THE COMPONENT WAS THE LAST OF IT. `crates/gg/src/sandbox/
+# guests/` used to hold a committed `typescript.component.wasm` that `typescript.rs` embedded, so a
+# change to the SDK or the shim wanted this script run by hand and the 13 MB `.wasm` committed with
+# it — while the copy written here was discarded. Both arms of this package now come out of the same
+# `OUT_DIR`: the checker a program is judged by, and the guest it is then evaluated in.
+#
+# Requires Node, a repo-root `npm ci` (for the pinned `typescript`) and the pinned `componentize-js`
+# out of the shared tool prefix `scripts/ci/install-gg-build-tools.sh` warms. The build takes a few
+# seconds and emits ~13 MB, because the component embeds a whole JavaScript engine.
 #
 # Usage:
-#   packages/gg-sandbox/build.sh
+#   scripts/gg-artifacts.sh                               # every arm, into one directory
+#   GG_ARTIFACTS_OUT_DIR=<dir> packages/gg-sandbox/build.sh
 set -euo pipefail
 
 # Repo root, independent of the caller's working directory.
@@ -53,20 +54,51 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
 PACKAGE="packages/gg-sandbox"
-DEST_DIR="crates/gg/src/sandbox/guests"
-COMPONENT="$DEST_DIR/typescript.component.wasm"
 
-# The `componentize-js` release the committed artifact is built with. Pinned rather than floating:
-# the component is a binary in the repository, so a silent toolchain bump would land as an
-# unexplained multi-megabyte diff.
+# The destination, which is required and has no default — see the file itself for why.
+# shellcheck source=scripts/gg-artifacts-out-dir.sh
+source "$ROOT/scripts/gg-artifacts-out-dir.sh"
+# shellcheck source=scripts/gg-npm-tools.sh
+source "$ROOT/scripts/gg-npm-tools.sh"
+
+# ONE ARM, ONE PROCESS AT A TIME. This package's scratch is a fixed path inside the source tree
+# rather than a `mktemp -d`, deliberately — it is a cache — and two cargo processes with two target
+# directories do not serialise with each other. See `scripts/gg-scratch-lock.sh`.
+# shellcheck source=scripts/gg-scratch-lock.sh
+source "$ROOT/scripts/gg-scratch-lock.sh"
+gg_lock_scratch "$ROOT/$PACKAGE"
+
+COMPONENT="$GG_ARTIFACTS_OUT_DIR/typescript.component.wasm"
+
+# The `componentize-js` release this component is built with. Pinned rather than floating: it decides
+# which JavaScript engine a program on this arm runs on, which is a study parameter, and a floating
+# one would move it between two runs of one sweep.
 COMPONENTIZE_VERSION="0.21.0"
-
-mkdir -p "$DEST_DIR"
 
 # 1. Type-check the guest and emit the JavaScript the component is built from. This is also the gate
 #    that catches an SDK that has drifted from `src/membrane.d.ts`.
+#
+#    THE WORKSPACE'S OWN COMPILER, BY PATH, and not `npx --yes tsc`, which is what this was. The
+#    argument under step 2 for resolving `componentize-js` out of a pinned prefix applies here word
+#    for word — this script runs inside an ordinary `cargo build` and a build that talks to npm
+#    halfway through is a build that fails on an aeroplane — and this call was worse than that one.
+#    `npx --yes` does not fail when a checkout has no `node_modules`: it goes to the registry, and
+#    the package npm resolves for the bare name `tsc` is the well-known decoy, not TypeScript. So the
+#    failure available was a build that reached the network and then emitted the guest's JavaScript
+#    with something that is not the compiler `typescript.checker.json` names three steps below.
+#
+#    Named rather than probed, so the diagnosis is the true one. A missing install is exactly what
+#    `scripts/ci/install-gg-toolchains.sh` warns about at the end of its run, in the same words.
+if [ ! -x "$ROOT/node_modules/.bin/tsc" ]; then
+	echo "error: no $ROOT/node_modules/.bin/tsc." >&2
+	echo "       This guest is emitted and type-checked by the \`typescript\` release the" >&2
+	echo "       repository pins, which a repo-root \`npm ci\` installs — the same one" >&2
+	echo "       step 3 cuts the checker a model's program is judged against out of." >&2
+	echo "       Run \`npm ci\` at the repository root." >&2
+	exit 1
+fi
 echo "Type-checking and emitting $PACKAGE/dist ..."
-npx --yes tsc -p "$ROOT/$PACKAGE/tsconfig.json"
+"$ROOT/node_modules/.bin/tsc" -p "$ROOT/$PACKAGE/tsconfig.json"
 
 # 2. Bake the component against the ONE copy of the WIT, which lives in the Rust crate that embeds
 #    the result — there is no second copy in this package to drift from it.
@@ -87,13 +119,18 @@ npx --yes tsc -p "$ROOT/$PACKAGE/tsconfig.json"
 #    an event loop this synchronous export does not run): disabling a capability removes the WASI
 #    import, not the builtin that calls it, so an unshadowed call reaches a missing import and traps
 #    the whole store instead of raising a catchable error.
+#
+#    Resolved out of the shared pinned tool prefix rather than through `npx --yes`, which reached
+#    the registry: this script runs inside an ordinary `cargo build` now, and a build that talks to
+#    npm halfway through is a build that fails on an aeroplane.
 echo "Building the component with componentize-js@$COMPONENTIZE_VERSION ..."
-npx --yes "@bytecodealliance/componentize-js@$COMPONENTIZE_VERSION" \
+COMPONENTIZE_DIR="$(gg_npm_tool @bytecodealliance/componentize-js "$COMPONENTIZE_VERSION")"
+"$COMPONENTIZE_DIR/node_modules/.bin/componentize-js" \
 	"$ROOT/$PACKAGE/dist/shim.js" \
 	--wit "$ROOT/crates/gg/wit" \
 	--world-name sandbox \
 	--disable stdio http fetch-event \
-	-o "$ROOT/$COMPONENT"
+	-o "$COMPONENT"
 
 # 3. Cut the checker gg type-checks a model's program with out of the same pinned `typescript` this
 #    package installs, so what the SDK's declarations were emitted by and what a program is judged
@@ -101,38 +138,34 @@ npx --yes "@bytecodealliance/componentize-js@$COMPONENTIZE_VERSION" \
 echo "Cutting the TypeScript checker ..."
 npm run --workspace @test-cabinet/gg-sandbox checker
 
-# 4. Record what went into the component, beside it. `contract-drift.sh` deliberately never rebuilds
-#    this artifact, so this manifest — and the Rust test that recomputes it from the checkout — is
-#    the only thing standing between an SDK edit committed without a rebuild and every TypeScript
-#    and JavaScript program in the run being evaluated by last month's guest.
+# WHAT USED TO BE STEP 4: `typescript.component.manifest.json`, written beside the component by
+# `scripts/gg-artifact-manifest.mjs` — the SHA-256 of every file under `src/`, of each of the four
+# files below, and of `crates/gg/wit`'s declarations, so that a test could recompute them from the
+# checkout and fail when somebody had edited the SDK without re-running this script. That question —
+# *is the committed component older than the sources beside it?* — no longer has a subject. The
+# component is not committed: `crates/gg-sandbox-artifacts/typescript` runs this script into its own
+# cargo `OUT_DIR` on every build whose declared inputs moved, and `crates/gg` embeds what lands
+# there. An SDK edit is baked into the guest by the same `cargo build` that compiles the host.
 #
-#    The files beside the SDK tree are inputs as much as the tree is. `tsconfig.json` and the
-#    repository-wide `tsconfig.base.json` it extends decide together what step 1 emits — and the
-#    base file is where the emit-affecting options actually live: `target`, `module`, `lib` and
-#    `useDefineForClassFields` are all inherited, none of them is restated in the leaf, and changing
-#    `target` alone was measured to change the JavaScript in eight emitted files, `shim.js` among
-#    them. It is a file edited for the web app and the docs site by people with no reason to know
-#    this component hangs off it, which is exactly why it is recorded here. `package.json` pins the
-#    `typescript` release that does the emitting, so a program is judged by a compiler this
-#    component was not built with the moment it moves alone.
+# EVERY FILE THAT MANIFEST NAMED IS NOW IN THIS ARM'S RERUN SET, in `gg-artifact-build`'s table, and
+# they are named there for the reasons they were recorded here — the list did not shrink, it moved
+# from a thing that is checked to a thing that is obeyed:
 #
-#    `build.sh` records ITSELF, because the recipe is an input: the `--disable stdio http
-#    fetch-event` flags above decide whether this guest has a `fetch` at all, and dropping one and
-#    committing without rebuilding would leave the checkout claiming a capability the artifact does
-#    not have. That an edit to this file fails the gate until it is run is the intended reading.
-echo "Recording the component manifest ..."
-node "$ROOT/scripts/gg-artifact-manifest.mjs" \
-	--arm typescript \
-	--rebuild "$PACKAGE/build.sh" \
-	--artifact "$COMPONENT" \
-	--source-root "$PACKAGE/src" \
-	--source-file "$PACKAGE/tsconfig.json" \
-	--source-file tsconfig.base.json \
-	--source-file "$PACKAGE/package.json" \
-	--source-file "$PACKAGE/build.sh" \
-	--wit crates/gg/wit \
-	--pin "componentizeJs=$COMPONENTIZE_VERSION" \
-	--out "$DEST_DIR/typescript.component.manifest.json"
+#   src/                 the SDK itself.
+#   tsconfig.json  and
+#   tsconfig.base.json   which decide TOGETHER what step 1 emits, and the BASE is where the
+#                        emit-affecting options actually live: `target`, `module`, `lib` and
+#                        `useDefineForClassFields` are all inherited and none is restated in the
+#                        leaf. Changing `target` alone was measured to change the JavaScript in
+#                        eight emitted files, `shim.js` among them. It is a file edited for the web
+#                        app and the docs site by people with no reason to know this guest hangs off
+#                        it — which was the best argument for recording it, and is now the best
+#                        argument for watching it.
+#   package.json         pins the `typescript` release that does the emitting, so a program would
+#                        otherwise be judged by a compiler this component was not built with.
+#   build.sh             the recipe. The `--disable stdio http fetch-event` flags above decide
+#                        whether this guest has a `fetch` at all.
+#
+# The gate said "you edited the recipe and did not cook"; the rerun set cooks.
 
 echo "Wrote $COMPONENT ($(wc -c <"$COMPONENT") bytes)."
-echo "Remember to commit the refreshed artifacts together with the source change."

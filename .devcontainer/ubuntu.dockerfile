@@ -151,6 +151,12 @@ COPY --chown=${USER_UID}:${USER_GID} \
 	./scripts/ci/install-*.sh \
 	./scripts/ci/lib.sh \
 	/tmp/scripts/gg-repo/scripts/ci/
+# The gg build's own shared shell, which several of those installers source — the pinned-download
+# resolver, the npm-tool resolver and the one list of the arms. A glob, matching the allowlist entry
+# beside the one above.
+COPY --chown=${USER_UID}:${USER_GID} \
+	./scripts/gg-*.sh \
+	/tmp/scripts/gg-repo/scripts/
 COPY --chown=${USER_UID}:${USER_GID} ./packages /tmp/scripts/gg-repo/packages
 COPY --chown=${USER_UID}:${USER_GID} ./rust-toolchain.toml /tmp/scripts/gg-repo/rust-toolchain.toml
 RUN bash /tmp/scripts/languages/gg/install.sh && \

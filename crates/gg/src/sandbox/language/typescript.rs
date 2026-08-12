@@ -17,12 +17,14 @@
 //!   wrapper;
 //! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
 //!   in this language's syntax;
-//! * `guests/typescript.component.wasm` — the committed `componentize-js` guest;
+//! * [`COMPONENT`] — the `componentize-js` guest, built by `gg-artifact-typescript`;
 //! * the **signature catalogue** — every signature the prompt renders and a documentation view
 //!   answers with, reflected out of that guest's SDK by `packages/gg-sandbox/signatures.sh` and
 //!   generated into this build's `OUT_DIR` rather than committed anywhere (see `crates/gg/build.rs`);
-//! * `checkers/typescript.*` — the committed `tsc` the check runs, its standard library, and the
-//!   two globals no SDK declaration covers.
+//! * `typescript.tsc.js`, `.lib.d.ts`, `.globals.d.ts` and `.checker.json` — the `tsc` the check
+//!   runs, its standard library, the globals no SDK declaration covers, and what says which
+//!   release, all four cut into this build's artifacts by `crates/gg-sandbox-artifacts/typescript`
+//!   rather than committed anywhere.
 //!
 //! Most of that is **not TypeScript's alone**. gg's [JavaScript](super::javascript) arm is this
 //! language with [`check`] removed and nothing else changed, so it serves this module's component,
@@ -85,9 +87,8 @@ mod check;
 #[path = "typescript.healing.rs"]
 pub(super) mod healing;
 
-/// The committed interpreter component: the TypeScript guest in `packages/gg-sandbox`, built by its
-/// `build.sh` with `componentize-js` and committed here, exactly as gg's other wasm guests are
-/// committed alongside their sources.
+/// The interpreter component: the TypeScript guest in `packages/gg-sandbox`, built by that
+/// package's `build.sh` with `componentize-js`.
 ///
 /// It is ~13.4 MB because it embeds a JavaScript engine, and it is **embedded in the binary** rather
 /// than read from disk because gg is copied as a single file into an ephemeral run container and
@@ -96,10 +97,22 @@ pub(super) mod healing;
 /// macOS and statically linked against musl, in order to shrink a developer/CI artifact nobody
 /// downloads on a budget.
 ///
+/// It is not committed. `gg-artifact-typescript` runs that `build.sh` as a step of building this
+/// crate and this line embeds what it wrote into that crate's `OUT_DIR`, so the guest a program is
+/// evaluated in is baked out of the SDK sources in this checkout, on the build that compiles the
+/// module describing it — the same guarantee, and the same idiom, as [`SIGNATURES`] below. A guest
+/// is exactly the artifact that most needs it: nothing about a 13 MB `.wasm` looks stale, and what a
+/// stale one costs is not a build error but every TypeScript and JavaScript program in a run being
+/// evaluated by last month's scope, refusals and argument handling while the catalogue and the
+/// prompt describe this checkout's.
+///
 /// [`JavaScript`](super::javascript) serves these same bytes, reached through this constant rather
 /// than through a second `include_bytes!` of the same file: two embeddings would be two copies of
 /// 13.4 MB in every released binary, for an artifact that is the same artifact.
-pub(super) const COMPONENT: &[u8] = include_bytes!("../guests/typescript.component.wasm");
+pub(super) const COMPONENT: &[u8] = include_bytes!(concat!(
+    env!("GG_ARTIFACTS_TYPESCRIPT"),
+    "/typescript.component.wasm"
+));
 
 /// This arm's catalogue, reflected out of the same SDK declarations the component is built from by
 /// the guest package's `signatures.sh`.
@@ -135,8 +148,8 @@ static PROMPT: PromptDialect = PromptDialect {
 /// `OnceLock` state above.
 pub(super) static TYPESCRIPT: TypeScript = TypeScript;
 
-/// TypeScript: type-checked with the committed `tsc`, type-stripped to JavaScript, and evaluated in
-/// the committed `componentize-js` guest.
+/// TypeScript: type-checked with the embedded `tsc`, type-stripped to JavaScript, and evaluated in
+/// the embedded `componentize-js` guest.
 pub(super) struct TypeScript;
 
 impl ProgramLanguage for TypeScript {
@@ -165,7 +178,7 @@ impl ProgramLanguage for TypeScript {
     }
 
     /// `tsc`, and it is spelled the way a TypeScript programmer writes it rather than the way it is
-    /// invoked (`node` running a committed bundle), because the model reading the name is being told
+    /// invoked (`node` running an embedded bundle), because the model reading the name is being told
     /// which compiler's rules it is being held to.
     ///
     /// Naming one is also what has [`prepare_program`](Self::prepare_program)'s ~91 ms against a
@@ -176,7 +189,7 @@ impl ProgramLanguage for TypeScript {
         Some("tsc")
     }
 
-    /// Write the committed checker — ~6.7 MB of compiler and declarations — into the directory every
+    /// Write the embedded checker — ~6.7 MB of compiler and declarations — into the directory every
     /// check runs against, so the first code turn is not charged for unpacking it.
     ///
     /// Idempotent and best effort: the result is cached for the process, and a failure here is

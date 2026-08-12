@@ -34,12 +34,20 @@
 # set. `.devcontainer/ubuntu.dockerfile` COPYs that slice in and deletes it again in
 # the RUN below — which keeps a stale half-repository out of the final filesystem but
 # saves nothing, because each COPY is its own layer and a later delete can only write a
-# whiteout over it. Both halves of the slice are GLOBS
-# (`scripts/ci/install-*.sh` + `lib.sh` in the Dockerfile,
-# `!/packages/gg-sandbox-*/*-version.sh` in
+# whiteout over it. THREE of the four parts of the slice are GLOBS
+# (`scripts/ci/install-*.sh` + `lib.sh` in the Dockerfile, and
+# `!/packages/gg-sandbox-*/*-version.sh` + `!/scripts/gg-*.sh` in
 # `.devcontainer/ubuntu.dockerfile.dockerignore`) rather than enumerations, so a new arm
-# needs no edit in either place — and so the ~1.9 GB layer's cache key contains the pins
-# and the installers and nothing else.
+# needs no edit in either place — and so the ~3.4 GB layer's cache key contains the pins,
+# the installers and gg's shared build shell, and nothing else.
+#
+# The fourth part IS an enumeration, of seven files, and deliberately: the two arms whose
+# `componentize-*` pin lives in a `build.sh`, the Python arm's `requirements.txt`, the Rust
+# arm's separate `Cargo.toml`/`Cargo.lock`, and the PureScript arm's `spago.yaml`/`spago.lock`
+# — the inputs `install-gg-build-tools.sh` warms the package-manager-delivered half of the
+# build toolchain from. A glob wide enough to admit them (`!/packages/gg-sandbox*/build.sh`)
+# would put ten build scripts in this layer's cache key, and every one of those changes far
+# more often than a pin does. That file's own comment carries the same argument.
 #
 # WHAT THIS DELIBERATELY DOES NOT DO. `npm ci`, which is the one prerequisite of a
 # gg build that cannot be baked: two of the eleven catalogues (TypeScript and
@@ -56,7 +64,7 @@
 # gem and the rustup `wasm32` component) can use AT ALL without editing the pinned
 # list. That means this must run as the container user, after `USER $USERNAME`, and
 # it means `devcontainer.json`'s `"updateRemoteUserUID": false` is load-bearing: a
-# runtime UID rewrite would orphan ~1.9 GB of image-owned files. The two things the
+# runtime UID rewrite would orphan ~3.4 GB of image-owned files. The two things the
 # installer's header says a caller must arrange — `$HOME/.local/bin` on `PATH` for
 # `purs` and `esbuild`, and `$HOME/.cargo/bin` on it for the `rustc`/`rustup` that
 # `install-rust-wasm.sh` refuses to proceed without — the Dockerfile has already
@@ -71,3 +79,18 @@ set -euo pipefail
 readonly SLICE="${GG_REPO_SLICE:-/tmp/scripts/gg-repo}"
 
 bash "$SLICE/scripts/ci/install-gg-toolchains.sh"
+
+# AND THE SECOND LIST, WHICH IS NOT AN ARM AND MUST NOT JOIN THE ELEVEN. Everything above is what a
+# gg RUN and gg's reflectors execute. Building gg additionally builds every arm's ARTIFACTS — the
+# guest components and compiled library sets a model's program actually meets, which stopped being
+# committed for the same reason the catalogues did — and one of them, the C# guest, is Mono's IL
+# interpreter relinked with a whole .NET SDK against an UNPRUNED wasi-sdk. Neither is on the list
+# above, deliberately: ~1.4 GB that no run image needs, in its own prefix, so the eleven-arm list
+# keeps its meaning (see `scripts/ci/install-gg-build-toolchains.sh`'s header, which argues it).
+#
+# IT IS BAKED HERE RATHER THAN LEFT TO THE DEVELOPER FOR THE REASON EVERYTHING ELSE HERE IS: without
+# it `cargo build --workspace` still succeeds, and `packages/gg-sandbox-csharp/build.sh` quietly
+# fetches both into that package's `.build/` the first time anybody compiles gg. A silent 1.4 GB
+# download on somebody's first build is exactly the first-run experience this image exists to
+# abolish. It is the single biggest thing in this image and it is still the right trade.
+bash "$SLICE/scripts/ci/install-gg-build-toolchains.sh"

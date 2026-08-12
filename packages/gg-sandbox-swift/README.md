@@ -13,7 +13,7 @@ because what it produces is not a library anybody links from this repository —
 ## What this arm is
 
 **A Swift program is compiled by `swiftc` into the wasm component that turn is evaluated by.**
-There is no committed guest and no interpreter: this is the second arm of that shape, after
+There is no baked guest and no interpreter: this is the second arm of that shape, after
 [Rust](../gg-sandbox-rust/), and the whole design is in
 `crates/gg/src/sandbox/language/swift.compile.rs`.
 
@@ -50,7 +50,7 @@ which is what gets both the message and the model's own line and column out.
 | `libraries.txt` | Every module a program may `import`, grouped as the catalogue renders them. One declaration, two readers: `tools/signatures.py` and a gg test that compiles a program importing all of them. |
 | `swift-version.sh` | Every pin — the Swift release, the wasm SDK, the target triple, the `wasi_snapshot_preview1` adapter, the `wit-bindgen` release, the three vendored packages — and where gg looks for the toolchain. Sourced by everything below, by `containers/gg-toolchains/Dockerfile` and by `scripts/ci/install-swift.sh`. |
 | `bindings.sh` | Generates the C bindings from `crates/gg/wit` with the pinned `wit-bindgen`. Its own script so no step that must write exactly one file has to reach the build. |
-| `build.sh` | Compiles those bindings and the SDK for wasm, vendors and compiles the library set, cuts the two committed archives, fetches the adapter, and writes the manifest. |
+| `build.sh` | Compiles those bindings and the SDK for wasm, vendors and compiles the library set, cuts the two archives, resolves the adapter, and writes the manifest — into `$GG_ARTIFACTS_OUT_DIR`. Run by `crates/gg-sandbox-artifacts/swift` on every build of gg whose declared inputs moved. |
 | `signatures.sh`, `tools/` | The catalogue: a symbol graph in, `swift.signatures.json` out, into `$GG_SIGNATURES_OUT_DIR`; `crates/gg/build.rs` runs it on every build. `tools/catalogue.py` is the module table — gg's thirteen ids, the order a reader meets them in, and the Swift path each answers under — and `tools/signatures.py` is everything else. A function's gg operation id is not in either: it is a `- ggop:` line in the declaration's own doc comment. |
 
 ## What a Swift program looks like
@@ -129,20 +129,25 @@ pulls archive members, so an artifact for a program that imports none of them is
 size of one built without the archive on the command line at all (measured; passing the objects
 directly instead added ~2.7 MB to every artifact, used or not).
 
-## What it commits, and why those and not the compiler
+## What it produces, and why those ride inside gg and the compiler does not
+
+Nothing here is committed. [`build.sh`](build.sh) is run by `crates/gg-sandbox-artifacts/swift`
+during an ordinary `cargo build -p test-cabinet-gg`, into that crate's own `OUT_DIR`, and
+`crates/gg` `include_bytes!`s the result from there — reachable as `$GG_ARTIFACTS_SWIFT` while the
+build runs, and put somewhere you can open it by `scripts/gg-artifacts.sh`.
 
 ```
-crates/gg/src/sandbox/checkers/swift.guest.tar.gz     182 KB — the compile inputs, SDK included
-crates/gg/src/sandbox/checkers/swift.libraries.tar.gz 3.4 MB — the curated library set
-crates/gg/src/sandbox/checkers/swift.adapter.wasm      52 KB — the preview1 reactor adapter
-crates/gg/src/sandbox/checkers/swift.toolchain.json           — what built them, and what is in them
+swift.guest.tar.gz     182 KB — the compile inputs, SDK included
+swift.libraries.tar.gz 3.4 MB — the curated library set
+swift.adapter.wasm      52 KB — the preview1 reactor adapter
+swift.toolchain.json          — what built them, and what is in them
 ```
 
-The catalogue a model is described by is deliberately **not** in that list: `signatures.sh`
-emits it into whatever directory `crates/gg/build.rs` hands it, on every build of that crate,
-and it is committed nowhere. Reflecting it costs a `swiftc -emit-symbol-graph` over the SDK;
-cutting the archives above costs the whole toolchain and is not byte-reproducible. That
-difference is the whole of why one is generated and the others are committed.
+The catalogue a model is described by is produced the same way and by the other half of the same
+build: `signatures.sh` emits it into whatever directory `crates/gg/build.rs` hands it. The two are
+separate scripts, and separate crates, for one reason — this arm's archives take ~22 s to cut and
+the catalogue takes a fraction of that, so they are given separate rerun sets rather than one. An
+edit to a doc comment re-reflects; an edit to `Sources/` does both.
 
 The split every compiled arm here has. The toolchain is ~835 MB even pruned, so it lives in the
 gg run image (`containers/gg-toolchains/Dockerfile`). These go the other way because they are a
@@ -151,9 +156,9 @@ run container whose image was built separately — so an SDK that lived in the i
 different vintage from the prompt describing it.
 
 **The pin is hard now, and it was not before.** A `.swiftmodule` is a compiler-version-private
-format, so the release that reads this arm's SDK must be the release that wrote it. Bumping
-`GG_SWIFT_VERSION` invalidates the committed archives and `build.sh` must be re-run in the same
-commit.
+format, so the release that reads this arm's SDK must be the release that wrote it. A bump to
+`GG_SWIFT_VERSION` re-cuts the archives on the next `cargo build` and cannot fail to:
+`swift-version.sh` is in this arm's artifact-crate rerun set.
 
 **This set is not byte-reproducible**, and that is `swiftc` rather than this script: every object it
 emits carries a random 16-byte module hash no flag disables. `-file-prefix-map` is still applied, so
@@ -206,17 +211,19 @@ GG_SIGNATURES_OUT_DIR=/tmp/sigs \
 scripts/gg-signatures.sh                   # all eleven, into target/gg-signatures/
 ```
 
-Commit the archives with the change that needed them. `swift.compile.test.rs` fails by name if the
-archive's copy of the shell or the header is not this checkout's, so an edit here without a rebuild
-does not reach a model as a program compiled against the old one. The catalogue needs no such gate:
-`crates/gg/build.rs` reflects it out of `Sources/SDK/` on every build, so a doc comment edit reaches
-the prompt on the next `cargo build`. Running `signatures.sh` by hand is for reading what it emitted.
+There is nothing to commit and nothing to remember. `crates/gg-sandbox-artifacts/swift` runs
+`build.sh` on every build of gg whose declared inputs moved, and `crates/gg/build.rs` reflects the
+catalogue out of `Sources/SDK/` on the same build — so an edit to the SDK reaches both the archives a
+program is compiled against and the prompt describing them, together, and neither can be the older
+of the two. `swift.compile.test.rs` used to fail by name when the archive's copy of the shell was not
+this checkout's; that assertion is gone, because the state it named is not one this repository can be
+in. Running either script by hand is for reading what it emitted.
 
 **`signatures.sh` writes the catalogue and nothing else, and that is why the bindings are their own
-script.** `build.sh` writes the committed archives under `crates/gg/src/sandbox/checkers/`, so a
-signature step that reached `build.sh` for its bindings would re-cut the library set on every
-`cargo build` — rewriting committed artifacts under the working tree of someone who was only
-compiling, into bytes that are not even reproducible.
+script.** The two halves have two rerun sets — the artifact crate's and `crates/gg/build.rs`'s — and
+a signature step that reached `build.sh` for its bindings would collapse them into one, so editing a
+doc comment would re-cut 3.6 MB of archives that are not even byte-reproducible. That is the whole
+inner-loop cost the artifact crates exist to avoid.
 
 ## What is not built
 

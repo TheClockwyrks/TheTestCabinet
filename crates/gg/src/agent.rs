@@ -905,7 +905,7 @@ pub(crate) async fn run_with_seams(
         }
     }
 
-    // Warm the code sandbox, once per run and never from a subagent. A committed interpreter
+    // Warm the code sandbox, once per run and never from a subagent. A embedded interpreter
     // component takes ~0.7 s to compile on a many-core machine and several seconds on one core, and
     // that compile is paid exactly once per process *per language* — so starting it *here*,
     // concurrently with the first model request (which takes far longer), takes it off the first
@@ -949,7 +949,7 @@ pub(crate) async fn run_with_seams(
     // Report the warm-up, and report it *here* rather than from a detached task, so a diagnostic can
     // never land after the terminal `SessionEnded`. Draining costs nothing: the compile is behind a
     // `OnceLock`, so by the time the root has finished it has either completed or was never
-    // contended. A failure is only ever a defect in the committed artifact — the first code turn
+    // contended. A failure is only ever a defect in the embedded artifact — the first code turn
     // would have hit it too, and ended the session loudly — so this is a breadcrumb, not a
     // control-flow signal.
     //
@@ -7512,7 +7512,7 @@ struct CodeSetup {
     /// [`crate::healing`] is reachable at all and the loop drives ordinary tool calling.
     enabled: bool,
     /// The [language](GgProgramLanguage) this agent writes its programs in — which decides how a
-    /// reply is prepared, which committed guest evaluates it, and how the SDK the prompt describes
+    /// reply is prepared, which prebuilt guest evaluates it, and how the SDK the prompt describes
     /// spells its functions.
     ///
     /// Per-agent, like everything else here: responses-as-code is a per-agent capability, so one

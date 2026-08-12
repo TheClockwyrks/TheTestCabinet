@@ -31,13 +31,14 @@ and can be run from anywhere, including locally:
 | -------------------- | --------------------------------------------------- | -------- |
 | `rust-lint.sh`       | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo doc --document-private-items` | no |
 | `install-nextest.sh` | Install cargo-nextest pinned to `NEXTEST_VERSION`   | —        |
-| `install-gg-toolchains.sh` | Install every toolchain `crates/gg` needs to build | — |
+| `install-gg-toolchains.sh` | Install every toolchain a gg **run** and gg's reflectors execute | — |
+| `install-gg-build-toolchains.sh` | Install the full .NET + wasi-sdk only the C# guest's **link** needs | — |
 | `rust-test.sh`       | `cargo build` + `cargo nextest run` + doctests (headless crates) | yes |
 | `binary-smoke.sh`    | release-build, `cargo nextest run --release` + doctests, run binary | yes |
 | `smoke-binary.sh`  | run a built binary (`--version`/`--help`/commands) | yes      |
 | `web-build.sh`     | `npm ci`, type-check + `vite build` of the front ends | yes   |
 | `specs-lint.sh`    | markdownlint + cspell over `test-cases/**`         | no       |
-| `contract-drift.sh`| regenerate TS bindings, JSON Schemas, gg's reference + gg's program checkers, fail on diff | yes |
+| `contract-drift.sh`| regenerate TS bindings, JSON Schemas and gg's reference, fail on diff | yes |
 | `frozen-check.sh`  | `.frozen` test-case versions match their recorded digests | yes |
 | `build-context.sh` | every Dockerfile `COPY` source survives the `.dockerignore` allowlist | yes |
 
@@ -83,6 +84,27 @@ about a second) and costs ~1.9 GB installed. The two prerequisites it will not
 install itself are the Ruby interpreter (a distribution package, and so part of
 the machine) and the npm workspaces (`npm ci`, which two of the eleven arms
 reflect through the pinned `typescript`); it checks for both and says so.
+
+`install-gg-build-toolchains.sh` is its sibling and the second list, and the
+split is what keeps the first list's meaning. Building gg no longer only
+*reflects* each arm — it **runs every arm's artifact build**, because what a
+model's program is compiled and evaluated against (the guest components, the
+compiled library sets, the SDK jars) stopped being committed for the same reason
+the catalogues did: each arm has a crate under `crates/gg-sandbox-artifacts/`
+whose build script runs that arm's `build.sh` into a cargo `OUT_DIR`. Ten of the
+eleven arms build with toolchains that are already on the first list. The
+eleventh, C#, does not: relinking Mono's IL interpreter needs a **whole** .NET
+SDK and an **unpruned** wasi-sdk, ~1.4 GB that no gg run and no reflector ever
+touches, so they go in a prefix of their own rather than widening the run list
+and every run image with it.
+
+Every surface that compiles `test-cabinet-gg` therefore calls **both** —
+`rust-test.sh`, `contract-drift.sh`, the release workflow's `gg` job, the driver
+image's gg build stage and the devcontainer's gg layer. Skipping the second one
+does not break the build, which is exactly why the call is explicit everywhere:
+`packages/gg-sandbox-csharp/build.sh` falls back to fetching both into that
+package's own `.build/`, so what a missing prefix buys is a silent ~1.4 GB
+download in the middle of somebody's first `cargo build`.
 
 `binary-smoke.sh` is the release gate that keeps a flat-out-broken binary from
 ever being published: it builds `tcab` in the shipped release profile, runs the

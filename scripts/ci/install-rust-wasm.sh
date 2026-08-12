@@ -6,9 +6,10 @@
 # WHY THIS EXISTS, when the compiler itself does not need installing. This arm is the one whose
 # compiler a checkout already has: `rustc` is what builds this repository, and
 # packages/gg-sandbox-rust deliberately has no compiler pin of its own because an `.rlib` is a
-# compiler-version-private format — the committed library set and the compiler that reads it must
+# compiler-version-private format — the compiled library set and the compiler that reads it must
 # be the same release, and the cheapest way to guarantee that is to have exactly one Rust release
-# in the repository. What a checkout does NOT necessarily have is the `wasm32-unknown-unknown`
+# in the repository, which `rust-toolchain.toml` names and this arm's artifact crate rebuilds
+# against. What a checkout does NOT necessarily have is the `wasm32-unknown-unknown`
 # STANDARD LIBRARY, which is a separate rustup component.
 #
 # WHY IT IS NOT `targets` IN rust-toolchain.toml, which would be one line and no script. A target

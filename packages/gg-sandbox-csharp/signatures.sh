@@ -7,8 +7,9 @@
 # `OUT_DIR`, so the `<summary>` a model is shown is reflected on the same build that compiles the
 # host showing it — a `<param>` edited without a regeneration is not a state this checkout can be in.
 # A default here would be a second answer to a question the build already answers, and the old one,
-# `crates/gg/src/sandbox/guests/`, is the answer that stopped being right: only this arm's component
-# is committed there now. Run it by hand, into a directory of your choosing, to READ a catalogue —
+# `crates/gg/src/sandbox/guests/`, is the answer that stopped being right: that directory held this
+# arm's component last of all, and it no longer exists — the component is cut into a cargo `OUT_DIR`
+# too. Run this by hand, into a directory of your choosing, to READ a catalogue —
 # which is what `scripts/gg-signatures.sh` is for, and how a reflector bug gets found.
 #
 # WHY ROSLYN. Everything a model reads about this surface is written on the declaration it describes

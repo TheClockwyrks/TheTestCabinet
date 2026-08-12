@@ -1,15 +1,16 @@
 # shellcheck shell=bash
 # shellcheck disable=SC2034  # every variable here is read by the scripts that source this file
 
-# The Opal release this package's two committed artifacts are built from — sourced by both
-# `compiler.sh` (which cuts the host-side compiler) and `build.sh` (which bakes the guest around
-# Opal's runtime).
+# The Opal release this package's artifacts are built from — the host-side compiler `build.sh` cuts
+# in step 2, and the runtime it bakes into the guest component in step 6.
 #
-# ONE pin, in one file, because the two artifacts have to be the same Opal. The compiler emits
+# ONE pin, in one file, because the two have to be the same Opal. The compiler emits
 # JavaScript against a runtime's private conventions — how a method is defined, how a `send` is
 # dispatched, what a block closes over — and a program compiled by one Opal and evaluated against
 # another's runtime does not fail cleanly. Two pins in two scripts would be one edit away from
-# exactly that.
+# exactly that. (The two used to be cut by two scripts, which is what made this file's existence
+# load-bearing rather than merely tidy; they are one script now, and one pin in one place is still
+# what `install-gg-build-tools.sh` and this arm's artifact crate both read.)
 #
 # `opal-compiler` is Opal's own compiler with a self-hosted JavaScript build, and it depends on
 # `opal-runtime`, which is the runtime. Both come out of the one install.
@@ -21,13 +22,14 @@ OPAL_COMPILER_VERSION="3.0.0"
 # library's sources, and those have to be the same release for the same reason the runtime and the
 # compiler do.
 #
-# `build.sh` checks this against the version the committed compiler reports rather than trusting the
-# comment above, so a bump to `OPAL_COMPILER_VERSION` that forgets this one fails the build.
+# `build.sh` checks this against the version the compiler it just cut reports rather than trusting
+# the comment above, so a bump to `OPAL_COMPILER_VERSION` that forgets this one fails the build.
 OPAL_VERSION="1.7.3"
 
-# `componentize-js`, which bakes the guest. Pinned for the reason the TypeScript guest pins it: the
-# component is a binary in the repository, so a silent toolchain bump would land as an unexplained
-# multi-megabyte diff. It is the SAME release the ECMAScript guest is baked with, deliberately —
+# `componentize-js`, which bakes the guest. Pinned for the reason the TypeScript guest pins it: a
+# componentiser is not byte-reproducible, so a floating version would rewrite 14 MB of
+# `include_bytes!` — and recompile `crates/gg` — on any machine that happened to resolve a newer
+# one. It is the SAME release the ECMAScript guest is baked with, deliberately —
 # this guest is that guest plus a runtime, and two engines would be a difference between the arms
 # nobody chose.
 COMPONENTIZE_VERSION="0.21.0"

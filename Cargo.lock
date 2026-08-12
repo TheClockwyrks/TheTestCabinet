@@ -2172,6 +2172,80 @@ dependencies = [
 ]
 
 [[package]]
+name = "gg-artifact-build"
+version = "0.0.0"
+
+[[package]]
+name = "gg-artifact-cpp"
+version = "0.0.0"
+dependencies = [
+ "gg-artifact-build",
+]
+
+[[package]]
+name = "gg-artifact-csharp"
+version = "0.0.0"
+dependencies = [
+ "gg-artifact-build",
+]
+
+[[package]]
+name = "gg-artifact-java"
+version = "0.0.0"
+dependencies = [
+ "gg-artifact-build",
+]
+
+[[package]]
+name = "gg-artifact-kotlin"
+version = "0.0.0"
+dependencies = [
+ "gg-artifact-build",
+]
+
+[[package]]
+name = "gg-artifact-purescript"
+version = "0.0.0"
+dependencies = [
+ "gg-artifact-build",
+]
+
+[[package]]
+name = "gg-artifact-python"
+version = "0.0.0"
+dependencies = [
+ "gg-artifact-build",
+]
+
+[[package]]
+name = "gg-artifact-ruby"
+version = "0.0.0"
+dependencies = [
+ "gg-artifact-build",
+]
+
+[[package]]
+name = "gg-artifact-rust"
+version = "0.0.0"
+dependencies = [
+ "gg-artifact-build",
+]
+
+[[package]]
+name = "gg-artifact-swift"
+version = "0.0.0"
+dependencies = [
+ "gg-artifact-build",
+]
+
+[[package]]
+name = "gg-artifact-typescript"
+version = "0.0.0"
+dependencies = [
+ "gg-artifact-build",
+]
+
+[[package]]
 name = "gif"
 version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7240,12 +7314,21 @@ dependencies = [
  "clap",
  "flate2",
  "futures-util",
+ "gg-artifact-cpp",
+ "gg-artifact-csharp",
+ "gg-artifact-java",
+ "gg-artifact-kotlin",
+ "gg-artifact-purescript",
+ "gg-artifact-python",
+ "gg-artifact-ruby",
+ "gg-artifact-rust",
+ "gg-artifact-swift",
+ "gg-artifact-typescript",
  "handlebars",
  "oxc",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
- "sha2",
  "tar",
  "tempfile",
  "test-cabinet-core",

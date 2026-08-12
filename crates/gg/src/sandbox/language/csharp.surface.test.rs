@@ -782,7 +782,7 @@ fn csharp_reaches_every_library() {
     // Every namespace the catalogue's `libraries` section names, imported and used for what it is
     // there for. The claim is not that these compile in the abstract: it is that a MODEL'S PROGRAM,
     // compiled by the production prepare step against the installed reference pack and run by the
-    // committed guest, can name them — which is two artifacts that have to agree, and a promise the
+    // embedded guest, can name them — which is two artifacts that have to agree, and a promise the
     // prompt makes that a pin move on either could break.
     let outcome = evaluate(
         &prepare(
@@ -889,8 +889,8 @@ lock (gate) { Console.WriteLine($"{Monitor.IsEntered(gate)} {typeof(Task).Name}"
     // And the claim is held to the file that makes it: every group in `libraries.txt` is exercised
     // above, and a group added to it without a line here fails rather than reaching a model
     // undriven.
-    let committed = catalogue();
-    let groups: Vec<&str> = section(&committed, "libraries")
+    let catalogue = catalogue();
+    let groups: Vec<&str> = section(&catalogue, "libraries")
         .iter()
         .map(|group| text(group, "group"))
         .collect();
@@ -912,7 +912,7 @@ lock (gate) { Console.WriteLine($"{Monitor.IsEntered(gate)} {typeof(Task).Name}"
 
 #[test]
 fn the_artifact_binds_exactly_the_tools_gg_offers() {
-    // The one drift no source-level test can catch, asked of the **committed artifact** rather than
+    // The one drift no source-level test can catch, asked of the **embedded artifact** rather than
     // of a source file: `Sources/bridge.c` answers `bound-tools` off its own registration table, so
     // a gg function bound with no tool name beside it — or a tool gg gained since the guest was last
     // built — fails here and nowhere else.
@@ -922,7 +922,7 @@ fn the_artifact_binds_exactly_the_tools_gg_offers() {
     let limits = SandboxLimits::default();
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
     let component =
-        engine::compile_bytes(GUEST_COMPONENT).expect("the committed C# guest is a component");
+        engine::compile_bytes(GUEST_COMPONENT).expect("the embedded C# guest is a component");
     let enabled: Vec<String> = Vec::new();
     let mut store = bounded_store(
         MembraneState::new(
@@ -941,7 +941,7 @@ fn the_artifact_binds_exactly_the_tools_gg_offers() {
         limits,
     );
     let bound = Sandbox::instantiate(&mut store, &component, &linker)
-        .expect("the committed C# guest instantiates");
+        .expect("the embedded C# guest instantiates");
     let mut answered = bound
         .call_bound_tools(&mut store)
         .expect("the guest answers which tools its bridge binds");

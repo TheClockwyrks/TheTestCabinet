@@ -5,17 +5,23 @@
 # generated rather than committed (see `.gitignore`), and why it is ITS OWN script rather than a
 # step inside `build.sh`.
 #
-# WHY IT IS ITS OWN SCRIPT. Two callers need the bindings and only one of them may write anything
-# else. `build.sh` compiles the library set and REWRITES two committed artifacts under
-# `crates/gg/src/sandbox/checkers/`. `signatures.sh` reflects the catalogue with `rustdoc` and must
-# write exactly one file, because `crates/gg/build.rs` runs it on EVERY build of `test-cabinet-gg`.
-# A signature step that reached `build.sh` for its bindings would therefore re-cut the library set
-# every time anybody typed `cargo build` — rewriting a committed artifact under the working tree of
-# someone who was only compiling, and rewriting it into bytes that match nothing but their own
-# machine, since an `.rlib` embeds the absolute directory it was compiled in. It would also make the
-# build dirty its own declared inputs, which is how a build script comes to re-run forever.
-# Splitting the one step both callers need out of the one that has side effects is what keeps a
-# build from being a rebuild.
+# WHY IT IS ITS OWN SCRIPT, AND THE REASON SURVIVED THE ARTIFACTS BECOMING GENERATED. Two callers
+# need the bindings, and they are on two DIFFERENT rerun sets. `build.sh` compiles the library set
+# into `gg-artifact-rust`'s `OUT_DIR`; `signatures.sh` reflects the catalogue with `rustdoc` into
+# `crates/gg`'s, and `crates/gg/build.rs` runs it on EVERY build of `test-cabinet-gg`. A signature
+# step that reached `build.sh` for its bindings would re-cut the whole library set every time the
+# catalogue was reflected — collapsing two deliberately separate rerun sets into one, so that an
+# edit to a doc comment paid for a `cargo build --target wasm32-unknown-unknown` of the entire
+# curated crate closure. It would also make the reflection dirty an artifact build's declared
+# inputs, which is how a build script comes to re-run forever.
+#
+# The argument used to be stated the other way round — that `build.sh` REWRITES committed artifacts
+# under `crates/gg/src/sandbox/checkers/`, so a reflection reaching it would rewrite tracked bytes
+# under the working tree of someone who was only compiling, into bytes that match nothing but their
+# own machine (an `.rlib` embeds the absolute directory it was compiled in). Those artifacts are not
+# committed any more, so that half is gone; the rerun-set half is what the split rests on now,
+# and it is the stronger of the two. Splitting the one step both callers need out of the one with
+# side effects is what keeps a build from being a rebuild.
 #
 # WHY THE CLI RATHER THAN `wit_bindgen::generate!`. See `rust-version.sh`: the macro leaves a
 # proc-macro dependency in the rlib's metadata, and a proc macro is a host `.so` no other
@@ -30,28 +36,21 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 # shellcheck source=packages/gg-sandbox-rust/rust-version.sh
 source "$HERE/rust-version.sh"
 
-# Version-stamped, so a bumped pin fetches rather than reusing the last release's binary, and so a
-# second run of this script inside one CI job costs nothing.
-BINDGEN_DIR="$HERE/.build/wit-bindgen-$GG_WIT_BINDGEN_VERSION"
-BINDGEN="$BINDGEN_DIR/wit-bindgen"
+# The generator, resolved out of the ONE pinned copy every arm shares rather than fetched into this
+# package. Four arms need this executable and each used to keep its own — three copies of one 20 MB
+# binary, and three GitHub downloads reachable from inside `cargo build`, because this script runs on
+# every build of `test-cabinet-gg`. `scripts/ci/install-wit-bindgen.sh` is what puts it there, and
+# it checks that all four arms' pins agree before it installs anything.
+# shellcheck source=scripts/gg-downloads.sh
+source "$ROOT/scripts/gg-downloads.sh"
 
-if [ ! -x "$BINDGEN" ]; then
-	case "$(uname -s)-$(uname -m)" in
-	Linux-x86_64) BINDGEN_ASSET="x86_64-linux" ;;
-	Linux-aarch64 | Linux-arm64) BINDGEN_ASSET="aarch64-linux" ;;
-	Darwin-x86_64) BINDGEN_ASSET="x86_64-macos" ;;
-	Darwin-arm64) BINDGEN_ASSET="aarch64-macos" ;;
-	*)
-		echo "error: no pinned wit-bindgen build for $(uname -s)-$(uname -m)." >&2
-		exit 1
-		;;
-	esac
-	echo "==> fetching wit-bindgen $GG_WIT_BINDGEN_VERSION ($BINDGEN_ASSET)"
-	rm -rf "$BINDGEN_DIR"
-	mkdir -p "$BINDGEN_DIR"
-	curl -sSfL "https://github.com/bytecodealliance/wit-bindgen/releases/download/v${GG_WIT_BINDGEN_VERSION}/wit-bindgen-${GG_WIT_BINDGEN_VERSION}-${BINDGEN_ASSET}.tar.gz" |
-		tar -xz -C "$BINDGEN_DIR" --strip-components=1
-fi
+# ONE ARM, ONE PROCESS AT A TIME. This package's scratch is a fixed path inside the source tree
+# rather than a `mktemp -d`, deliberately — it is a cache — and two cargo processes with two target
+# directories do not serialise with each other. See `scripts/gg-scratch-lock.sh`.
+# shellcheck source=scripts/gg-scratch-lock.sh
+source "$ROOT/scripts/gg-scratch-lock.sh"
+gg_lock_scratch "$HERE"
+BINDGEN="$(gg_wit_bindgen "$GG_WIT_BINDGEN_VERSION")"
 
 # `--default-bindings-module gg::bindings` is what lets the `export!` macro be invoked from the
 # program's own crate against bindings that live in this one — the arrangement the whole

@@ -2,7 +2,7 @@
 # Regenerates every generated-and-committed contract artifact from its source of
 # truth and fails if a committed copy is stale.
 #
-# Three artifacts are checked here, because each is generated from source that a
+# Two artifacts are checked here, because each is generated from source that a
 # change can edit without remembering to regenerate:
 #
 #  1. The data contract. The TS bindings (packages/run-record/src/) and the JSON
@@ -28,66 +28,38 @@
 #     installs gg's toolchains before it regenerates anything — to build gg, not to
 #     reflect a catalogue of its own. See the install step below.
 #
-#  3. gg's program CHECKERS and COMPILERS, under crates/gg/src/sandbox/checkers/. A
-#     language whose prepare step runs a compiler carries that compiler, because gg is
-#     copied as a single file into a run container. TypeScript's is cut straight out of
-#     the pinned `typescript` — the same one the catalogue is reflected with — so bumping
-#     the pin without re-cutting the checker would leave a model's program judged by one
-#     release and its prompt written from another; Ruby's is Opal, cut out of the pinned
-#     `opal-compiler`, and the same argument holds twice over there because the SAME pin
-#     also decides the runtime baked into that language's guest. It is the same
-#     regenerate-and-diff rule, and each needs only Node.
+# WHAT IS NOT CHECKED HERE, AND USED TO BE — READ THIS BEFORE ADDING A THIRD ITEM. This script was
+# once also the drift gate for everything gg embeds about its eleven program languages: the eleven
+# SIGNATURE CATALOGUES (what a model is *told* each language offers, reflected out of that language's
+# guest SDK), and the four CHECKERS this script could re-cut cheaply (TypeScript's `tsc`, Ruby's Opal,
+# and the two JVM arms' SDK jars). None of them is committed any more. Each arm has a crate under
+# crates/gg-sandbox-artifacts/ whose build script runs that arm's build.sh into its own OUT_DIR;
+# crates/gg/build.rs reflects the catalogues into its own; and crates/gg `include_bytes!`/
+# `include_str!`s the result. So the compiler a program is judged by, the guest it runs in and the
+# catalogue its prompt was written from all come out of the one checkout that compiled the host.
 #
-#     PureScript's artifact in that directory is the one exception, and it is a declared one:
-#     it is not a compiler at all but the compiled LIBRARY SET a program is type-checked
-#     against, which needs `purs` and the registry to rebuild, and it is verified by what is
-#     committed beside it — see the exemption below, which is enforced rather than assumed.
+# A regenerate-and-diff check answers "is the committed copy current?", and that question no longer
+# has a subject — which is a STRONGER guarantee than the gate was, not a weaker one: a gate finds
+# staleness after the fact and only when somebody runs it, whereas generating the artifact makes
+# staleness a state the tree cannot be in. That is not theoretical here. This half of the script was
+# RED when it was deleted: a commit that added `@throws` prose to three Java SDK files moved the
+# catalogue on the next build of gg and left java.sdk.jar (and kotlin.sdk.jar) at an older vintage.
+# The fix was to delete the gate and stop committing what it gated, not to re-cut and commit.
 #
-#     Java's stem covers three files of three different kinds, and only one of them is re-cut
-#     here: the SDK jar, which is this arm's LIBRARY and is rebuilt reproducibly from
-#     packages/gg-sandbox-java/src. The other two are neither cut nor derived — the compiler
-#     DRIVER is gg's own hand-written source, reviewable by reading and diffing like any other,
-#     and the toolchain manifest is the pin itself. What could drift between those two and the
-#     shell side that installs them is what `java.compile.test.rs` fails on.
+# The same reasoning retired crates/gg/src/sandbox/language/artifacts.test.rs, which stood in for a
+# diff over the four BAKED INTERPRETERS (the TypeScript/JavaScript, Python, Ruby and C# guest
+# components) that no diff could ever cover, because not one of them is byte-reproducible — measured,
+# two builds of one checkout differing only in where the toolchains were unpacked came out 48 bytes
+# apart. It recomputed the source digests a build.sh had written into a manifest beside its output,
+# so it could attest what a build had been TOLD and never what it produced.
 #
-# WHAT IS DELIBERATELY NOT HERE, AND USED TO BE: gg's ELEVEN SIGNATURE CATALOGUES. A catalogue is
-# the whole of what a model is *told* about one of gg's program languages — every module,
-# signature, argument, type and type member the responses-as-code system prompt renders and a
-# documentation view answers with — reflected out of that language's guest SDK by that language's
-# own documentation tool. Eleven of them used to be committed under crates/gg/src/sandbox/guests/,
-# and this script used to re-reflect every one and diff it, on the reasoning that committing them
-# meant building gg needed no documentation toolchain. That trade is gone. This repository is
-# developed in a devcontainer precisely so that every developer has one environment rather than
-# eleven personal ones, so a toolchain that is required is a toolchain that is INSTALLED —
-# scripts/ci/install-gg-toolchains.sh installs the lot, idempotently, and every surface that builds
-# or lints gg runs it. The catalogues are now generated by crates/gg/build.rs, through
-# scripts/gg-signatures.sh (the one script in the repository that knows the eleven arms), into that
-# build's OUT_DIR, and `include_str!`d from there.
-#
-# So there is nothing here to gate, and that is a stronger guarantee than the gate was rather than
-# a weaker one. A committed catalogue is a claim about SDK sources checked once, at the moment it
-# was generated; between that moment and the next regeneration it can disagree with the sources it
-# describes, and a `.json` file never looks stale. Reflected by the build, the catalogue a gg binary
-# embeds came out of the SDK sources of the very checkout that compiled it, so the prompt a model is
-# shown cannot describe a surface the guest does not export. A regenerate-and-diff check answers
-# "is the committed copy current?", and that question no longer has a subject. To READ a catalogue —
-# which is worth doing, because reflectors are programs and the bugs found in these have been of the
-# shape "the `@return` prose was dropped" or "only the first overload's docs came through" — run
-# `scripts/gg-signatures.sh` and open `target/gg-signatures/`.
-#
-# The rest of crates/gg/src/sandbox/guests/ is still committed and is still not checked here, for
-# the reason it never was: what remains there is each arm's .wasm component — the guest a model's
-# program is evaluated in — with the manifest recording what built it beside it or, for C#, over in
-# the checkers directory with that arm's other declarations. Rebuilding one needs
-# `componentize-js`, `componentize-py`, a ~200 MB wasi-sdk or an ~835 MB Swift toolchain, and two of
-# them are not byte-reproducible even then, so staleness is PROVED rather than diffed:
-# `crates/gg/src/sandbox/language/artifacts.test.rs` runs in the ordinary suite and compares each
-# hand-built artifact against the manifest its build.sh wrote beside it — the SHA-256 of every SDK
-# source and every other file the build consumed, the artifact's own digest, the toolchain pins, and
-# a digest of crates/gg/wit's DECLARATIONS (blind to its prose, so a reworded comment is not a 25 MB
-# rebuild). A source edited without a rebuild fails there by arm name, which is a failure this
-# script structurally cannot produce. That test proves an artifact matches its recorded sources; the
-# per-arm substrate and compile tests are what prove the artifact WORKS.
+# So: this script gates GENERATED-AND-COMMITTED files, and there are exactly two kinds left, both
+# above. If a change makes you want to add a third, the question to ask first is whether the artifact
+# needs to be committed at all. What proves gg's own artifacts WORK is the per-arm substrate, surface
+# and compile tests, which are untouched and were always the load-bearing half; nothing here ever
+# tested behaviour. To READ a catalogue — worth doing, since reflectors are programs and their bugs
+# have been of the shape "the `@return` prose was dropped" — run `scripts/gg-signatures.sh` and open
+# `target/gg-signatures/`.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
@@ -95,17 +67,30 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 log "npm ci"
 npm ci
 
-# THESE ARE INSTALLED TO BUILD gg, NOT TO REFLECT ANYTHING. Nothing in this script regenerates a
-# signature catalogue any more. But `npm run gen:contract` below projects
+# THESE ARE INSTALLED TO BUILD gg, NOT TO REGENERATE ANYTHING. Nothing in this script re-cuts a
+# signature catalogue or a checker any more. But `npm run gen:contract` below projects
 # crates/backend/src/gg_reference.json by RUNNING gg — `cargo run -p test-cabinet-gg -- reference` is
-# its first step — and gg's build script reflects all eleven arms' catalogues out of their guest
-# SDKs, each with its own documentation tool: `tsc`, griffe, YARD, `purs`, javadoc, the Kotlin front
-# end, rustdoc, `swiftc -emit-symbol-graph`, `clang++ -ast-dump=json`, Roslyn. Without them the very
-# first cargo invocation below dies inside a build script, several layers away from anything that
-# looks like a contract. One call, one pinned list: the same script the devcontainer, the Rust
-# lint/test scripts and the driver image's gg stage all run.
-log "install gg's program-language toolchains (gg is BUILT below; its build script reflects them)"
+# its first step — and building gg now reaches every arm twice over. Its own build script reflects
+# all eleven arms' catalogues out of their guest SDKs, each with its own documentation tool: `tsc`,
+# griffe, YARD, `purs`, javadoc, the Kotlin front end, rustdoc, `swiftc -emit-symbol-graph`,
+# `clang++ -ast-dump=json`, Roslyn. And the artifact crates it depends on compile those arms'
+# COMPILE INPUTS — javac and `jar` for the JVM arms' SDK jars, Node and the pinned `opal-compiler`
+# and `componentize-js` for the Ruby and TypeScript arms, `cargo` against the wasm target for the
+# Rust arm's rlibs, `purs` and Spago for the PureScript arm's library tree, and the wasi-sdk and the
+# Swift SDK for WebAssembly for the C++ and Swift arms' guest archives. Without them the very first
+# cargo invocation below dies inside a build script, several layers away from anything that looks
+# like a contract. One call, one pinned list: the same script the devcontainer, the Rust lint/test
+# scripts and the driver image's gg stage all run, and it installs both halves — plus a second call
+# for the one arm neither half covers, immediately below it.
+log "install gg's program-language toolchains (gg is BUILT below; its build reflects and compiles them)"
 ./scripts/ci/install-gg-toolchains.sh
+# And the second list, which is not part of the eleven and must not become part of them: the whole
+# .NET SDK and unpruned wasi-sdk that RELINK the C# guest. That guest is not committed any more
+# either, so `cargo build -p test-cabinet-gg` below produces it — and without this line
+# `packages/gg-sandbox-csharp/build.sh` quietly fetches ~1.4 GB into its own `.build/` instead of
+# using the prefix an agent was hydrated with. Idempotent; see its header for why it is separate.
+log "install the csharp arm's build toolchains (~1.4 GB no gg RUN needs)"
+./scripts/ci/install-gg-build-toolchains.sh
 # Several of them land in ~/.local/bin — uv, `purs` — and the reflectors resolve them off PATH. An
 # installer cannot export into the shell that ran it, so this shell does it.
 export PATH="$HOME/.local/bin:$PATH"
@@ -125,215 +110,6 @@ the tools and responses-as-code functions gg actually offers models — in which
 case the backend would serve, and the console would render, a description no
 model was ever sent.
 Run `npm run gen:contract` and commit the result.
-EOF
-	exit 1
-fi
-
-# A COMPLETENESS RULE over the one committed directory this script re-cuts, because the diff at the
-# bottom can only see what something rewrote: a checker or compiler this script never re-cuts would
-# sit in that diff green whatever its pin said. That is the failure this list closes — an un-re-cut
-# stem is an error naming what to add, rather than a silent pass. Stems are the first dot-separated
-# component of each file name, which is the language id each artifact is named for.
-recut="typescript ruby java kotlin"
-# The one exemption, and it is an exemption rather than an omission. PureScript's committed
-# artifact is not a compiler: it is the LIBRARY SET, compiled — 1.2 MB of externs and
-# JavaScript that `purs` needs before it can type-check anything. Re-cutting it needs `purs`,
-# Spago and the registry, takes about a minute, and produces a binary nobody can review by
-# reading. So it is verified by its CONTENTS instead: `purescript.compiler.json` declares
-# every package and module in the tree, and gg's own test unpacks the tarball and compares —
-# a tree rebuilt with a different library set and committed without its manifest fails there.
-# `spago.yaml` and `spago.lock` are committed beside the build, so what went in is reviewable
-# even though what came out is not.
-#
-# Java's stem is in $recut rather than here, and it is worth saying what that re-cut does and
-# does not cover, because the stem names three files of three kinds. `java.sdk.jar` is this
-# arm's LIBRARY — the surface a model's program is compiled against — and it is rebuilt from
-# `packages/gg-sandbox-java/src` below, reproducibly (`jar --date` and a sorted entry list), so
-# an SDK edit committed without the jar fails the diff by name — which matters more now that the
-# arm's catalogue is reflected out of that same `src` by gg's build rather than committed beside
-# the jar: the description a model reads follows the SDK on every build, and this diff is what stops
-# the LIBRARY it is compiled against from lagging behind it.
-# `java.compiler.java` is gg's own hand-written compiler driver and `java.toolchain.json`
-# is the pin itself: neither is cut from anything, both are reviewable by reading, and what
-# could drift is the pin against the shell side that installs it — which `java.compile.test.rs`
-# fails on when the two name different releases, when a TeaVM jar in the list is at another
-# version, or when the driver's protocol constant and the manifest's disagree.
-#
-# `jvm` is the third, and it is the same kind as Java's driver: `jvm.backend.java` is the half of
-# that hand-written driver the two JVM arms SHARE — javac, TeaVM and the JSON — which gg appends to
-# an arm's front end before running it. Nothing cuts it either, and what it must not lose is
-# asserted over the text rather than by a diff: `jvm.test.rs` fails if the TeaVM settings that make
-# a `NullPointerException` an exception at all leave it.
-#
-# `kotlin`'s stem is in $recut for the same reason Java's is, and covers the same three kinds of
-# file: `kotlin.sdk.jar` is this arm's LIBRARY and is rebuilt below out of
-# `packages/gg-sandbox-kotlin/src`, reproducibly, so an SDK edit committed without the jar fails the
-# diff; `kotlin.compiler.java` is this arm's own half of gg's hand-written driver and
-# `kotlin.toolchain.json` is its pin, and neither is cut from anything. What could drift between the
-# pin and the shell side that installs it is what `kotlin.compile.test.rs` fails on — including when
-# the scripting plugin's four file names, which the compiler looks for by name and without which
-# every program on this arm fails, leave the list.
-#
-# `rust` is exempted for PureScript's reason and answered with a stronger check than a diff.
-# Its committed artifact is not a compiler either: `rust.libraries.tar.gz` is the compiled
-# LIBRARY SET — this arm's SDK and the curated crates a model's program is linked against — and
-# re-cutting it needs the pinned `wit-bindgen` CLI downloaded from GitHub and a
-# `wasm32-unknown-unknown` build, and produces an archive of binaries nobody can review by
-# reading. Nothing above re-cuts it, and nothing else does either — which is a property rather than
-# a hope: the WIT bindings that both `build.sh` and `signatures.sh` need are their own script,
-# `bindings.sh` in that same package, so reflecting this arm's catalogue reaches the bindings
-# without ever reaching the build. That split mattered when the reflection ran here; it matters
-# more now that it runs inside `cargo build`, because a reflection that re-cut the library set would
-# rewrite a committed artifact on every ordinary build — and an `.rlib` records the absolute
-# directory it was compiled in, so on every machine but the author's the rewritten tarball would
-# differ and fail the diff below over bytes nobody edited. (That is measured, not imagined: this
-# arm's `signatures.sh` did once call `build.sh` for its bindings, and did exactly that.)
-# `rust.toolchain.json` declares what built it and every crate in it, and gg's own tests
-# compare it four ways: the manifest against the archive's contents; the manifest's compiler
-# against THIS CHECKOUT's `rustc` (an `.rlib` cannot be read by any other release, so a bumped
-# `rust-toolchain.toml` fails there by name); the crates the manifest marks `extern` against the
-# ones THIS CHECKOUT's CATALOGUE — reflected out of the SDK by gg's own build script — tells a model
-# it may name, which is the drift a stale tarball beside a freshly reflected catalogue would
-# otherwise be; and — the check no diff could make — a
-# real Rust program, compiled against the set by the production prepare step and run through the
-# real membrane, that calls every one of them. A stale set does not merely differ; it stops
-# linking. What none of those four could see is this arm's own SDK: an `.rlib` carries no source to
-# compare, so `libgg.rlib` built from a `src/` that has since moved on was invisible until
-# `rust.sources.manifest.json` and `artifacts.test.rs` — a fifth comparison, and the only one that
-# fails on an SDK edit committed without a rebuild.
-#
-# `swift` is exempted on the same terms and answered the same way. Its four committed artifacts are
-# not a compiler either. `swift.guest.tar.gz` is 182 KB of compile INPUTS — the C bindings generated
-# from crates/gg/wit and compiled to a wasm object, the component-type object naming the world, the
-# bridging header, gg's own shell in Swift source, and this arm's SDK as a prebuilt `gg.swiftmodule`
-# and object — and re-cutting it needs the pinned `wit-bindgen` CLI downloaded from GitHub and a
-# ~1 GB Swift toolchain. `swift.libraries.tar.gz` is 3.4 MB: the curated library set
-# (swift-collections, swift-algorithms, swift-numerics) fetched from GitHub by tag and compiled for
-# this arm's target into one static archive. `swift.adapter.wasm` is a 52 KB binary downloaded from a
-# wasmtime release. None of the three is reviewable by reading, and this set is not even byte
-# reproducible: `swiftc` stamps every object with a random module hash no flag disables, so a re-cut
-# here would fail the diff on every run over bytes nobody edited. Nothing above re-cuts them, and —
-# as with Rust — that is a property rather than a hope: the bindings both build steps need are their
-# own script, packages/gg-sandbox-swift/bindings.sh, so the reflection gg's build script runs reaches
-# the bindings without reaching the build.
-# `swift.toolchain.json` declares what built them, every file in the guest archive, every module in
-# the library set and the release tag of every vendored package, and gg's own tests compare it four
-# ways: the manifest against the guest archive's contents, file by file and byte count by byte count;
-# the archive's copy of the shell and the bridging header against THIS CHECKOUT's sources, so a shell
-# edited without rebuilding fails by name rather than compiling every program against the old one;
-# the modules the manifest declares against the ones THIS CHECKOUT's CATALOGUE — reflected out of the
-# SDK by gg's own build script — tells a model it may import, which is the drift a stale archive
-# beside a freshly reflected catalogue would otherwise be; and —
-# the check no diff could make — a real Swift program, compiled against both archives by the
-# production prepare step and run through the real membrane, that imports every one of them.
-# A fifth was added with `swift.sources.manifest.json`, and it covers what the second cannot: the SDK
-# rides in as `gg.o` and `gg.swiftmodule` rather than as source, so an edit to `Sources/SDK/**` —
-# which is the whole model-facing surface — matched nothing to compare until `artifacts.test.rs`
-# began recomputing the digest of every file the build read.
-#
-# `cpp` is exempted on the same terms and is the cheapest of the three to argue. Its three committed
-# artifacts are not a compiler either. `cpp.guest.tar.gz` is ~100 KB of compile INPUTS — the C
-# bindings generated from crates/gg/wit and compiled to a wasm object, the component-type object
-# naming the world, gg's hand-written SDK as headers and as a prebuilt object, the prelude every
-# program is precompiled against, and gg's own shell as both source and a prebuilt object — and
-# re-cutting it needs the pinned `wit-bindgen` CLI downloaded from GitHub and a ~200 MB wasi-sdk.
-# `cpp.adapter.wasm` is a 52 KB binary downloaded from a wasmtime release. Neither is reviewable by
-# reading. Nothing above re-cuts them, and — as with Rust and Swift — that is a
-# property rather than a hope: the bindings both build steps need are their own script,
-# packages/gg-sandbox-cpp/bindings.sh.
-# Unlike Swift's, this set IS byte-reproducible — clang stamps no per-invocation nonce and
-# `-ffile-prefix-map` removes the checkout path — so a re-cut here would produce an empty diff rather
-# than a failing one. It stays out anyway, because the only thing that would buy is a ~200 MB
-# toolchain download on every CI run to confirm bytes a manifest already describes.
-# `cpp.toolchain.json` declares what built them, every file in the archive and every standard-library
-# header the prelude puts in front of a program, and gg's own tests compare it five ways: the manifest
-# against the archive's contents, file by file and byte count by byte count; the archive's copy of the
-# prelude, the shell and every SDK header against THIS CHECKOUT's sources, so an edit without a
-# rebuild fails by name rather than compiling every program against a surface the catalogue does not
-# describe; the headers the manifest claims against the ones the prelude really includes; the headers
-# THIS CHECKOUT's CATALOGUE — reflected out of the SDK by gg's own build script — tells a model it may
-# include against those same ones, which is the drift a stale archive beside a freshly reflected
-# catalogue would otherwise be; and — the check no diff could
-# make — real C++ programs, compiled against the archive by the production prepare step and run
-# through the real membrane, that call every function the SDK offers. `cpp.sources.manifest.json`
-# adds the sixth, and it is narrow because this arm was already the best covered: the archive carries
-# the SDK's HEADERS but not its BODIES, so a change to what a function DOES, with its declaration
-# left alone, was the one edit no comparison here could see.
-# `csharp` is exempted on the same terms and is the easiest of the four to argue, because its one
-# committed artifact here is a MANIFEST — `csharp.toolchain.json` is what says which .NET SDK, which
-# Mono runtime pack, which wasi-sdk and which `wit-bindgen` built the guest, and it is a description
-# rather than a compiler. What it describes, `guests/csharp.component.wasm`, is 34.9 MB of Mono's IL
-# interpreter with the whole .NET class library bundled into it, and re-cutting it needs a ~770 MB
-# .NET SDK **and** a ~193 MB full wasi-sdk downloaded on every CI run to confirm bytes the manifest
-# already describes. Nothing above re-cuts it, and — as with Rust, Swift and C++ — that is a property
-# rather than a hope: the bindings the build needs are their own script,
-# packages/gg-sandbox-csharp/bindings.sh.
-# What holds it honest is `crates/gg/src/sandbox/language/csharp.manifest.test.rs`, which compares
-# the manifest three ways: against the committed component's own byte count, so a manifest written
-# without the component (or the reverse) fails by name; against the SHA-256 of THIS CHECKOUT's
-# `Sources/shell.c`, so a shell edited without a rebuild fails here rather than leaving every C#
-# program evaluated by last month's shell; and against every version `csharp-version.sh` pins, so a
-# bumped pin without a rebuild fails rather than describing a guest something else built. Beside
-# those, `csharp.substrate.test.rs` makes the check no diff could make — real C# programs, compiled
-# by the production prepare step and run through the real membrane against that very component.
-declared="purescript jvm rust swift cpp csharp"
-for artifact in crates/gg/src/sandbox/checkers/*; do
-	stem="$(basename "$artifact")"
-	stem="${stem%%.*}"
-	case " $recut $declared " in
-	*" $stem "*) ;;
-	*)
-		cat >&2 <<EOF
-
-error: $artifact has no re-cut step in this script.
-The compiler a $stem program is judged by could drift from its pin without the drift
-check noticing, because the check below only diffs what has already been written. Add
-the re-cut command for $stem here, and add "$stem" to \$recut — or, if the artifact is
-verified by a committed manifest instead, add it to \$declared and say where.
-EOF
-		exit 1
-		;;
-	esac
-done
-
-log "re-cut gg's program checkers (tools/checker.mjs)"
-npm run --workspace @test-cabinet/gg-sandbox checker
-
-log "re-cut the Ruby compiler (Opal, tools/compiler.mjs)"
-./packages/gg-sandbox-ruby/compiler.sh
-
-log "rebuild the Java arm's SDK jar (javac + jar)"
-./packages/gg-sandbox-java/build.sh
-
-log "rebuild the Kotlin arm's SDK jar (kotlinc + jar)"
-./packages/gg-sandbox-kotlin/build.sh
-
-log "check for checker drift"
-if ! git diff --exit-code -- crates/gg/src/sandbox/checkers; then
-	cat >&2 <<'EOF'
-
-error: a committed gg program checker, compiler or SDK library is out of date.
-
-If a COMPILER drifted, the pinned compiler a model's program is compiled or
-type-checked with no longer matches the one installed here — usually a version
-bump. Run `npm run -w @test-cabinet/gg-sandbox checker` for TypeScript's, or
-`packages/gg-sandbox-ruby/compiler.sh` for Ruby's, and commit the result. A Ruby
-bump is two artifacts, not one: the same pin decides the Opal baked into that
-language's guest, so rebuild it with packages/gg-sandbox-ruby/build.sh and commit
-crates/gg/src/sandbox/guests/ruby.component.wasm alongside.
-
-If an SDK JAR drifted — java.sdk.jar or kotlin.sdk.jar — that arm's SDK sources
-were edited without rebuilding the LIBRARY a model's program is compiled against.
-That matters on its own terms now: the catalogue describing the SDK is reflected
-out of those same sources on every build of gg, so the prompt already moved and
-only the library it is compiled against is behind. Run
-packages/gg-sandbox-java/build.sh or packages/gg-sandbox-kotlin/build.sh and commit
-the jar.
-
-If a file here changed that no step above re-cuts, something with side effects ran
-that should not have — a signature reflection reaching its arm's build.sh for
-bindings is the way that has actually happened. Give it its own path to what it
-needed, as packages/gg-sandbox-rust/bindings.sh does.
 EOF
 	exit 1
 fi

@@ -3,7 +3,7 @@
 //!
 //! These types are what the [loop](crate::agent) reads after a program has run, so they are written
 //! to be read *there*: every field says what the turn's feedback and telemetry are meant to do with
-//! it, and every failure variant says whose fault it is — the model's, the committed artifact's, or
+//! it, and every failure variant says whose fault it is — the model's, the embedded artifact's, or
 //! gg's own — because that is the question the loop has to answer without matching on prose, and
 //! because only one of those three answers may cost the model a turn.
 //!
@@ -189,7 +189,7 @@ pub struct SandboxOutcome {
 
 impl SandboxOutcome {
     /// The outcome of a program that never started: it did not compile, or the engine or the
-    /// committed component could not be prepared. Nothing ran, so nothing was accumulated.
+    /// prebuilt component could not be prepared. Nothing ran, so nothing was accumulated.
     ///
     /// `compile` is the exception to "nothing was accumulated", and the reason it is a parameter
     /// rather than a `None` written in here: the prepare step ran on every one of these paths, and
@@ -379,12 +379,12 @@ pub enum SandboxError {
     /// that asserts what it says.
     #[error("failed to prepare the wasm engine: {0}")]
     Engine(String),
-    /// The committed interpreter component failed to compile. A defect in the artifact, never a
+    /// The embedded interpreter component failed to compile. A defect in the artifact, never a
     /// program fault; the tests compile it, so this cannot reach a release.
     #[error("the sandbox component failed to compile: {0}")]
     Compile(String),
     /// The component could not be instantiated — most often because it imports something the
-    /// membrane does not provide, i.e. the committed artifact and the WIT have drifted apart.
+    /// membrane does not provide, i.e. the embedded artifact and the WIT have drifted apart.
     #[error("the sandbox component failed to instantiate: {0}")]
     Instantiate(String),
     /// The program ran past its execution timeout — its guest CPU exceeded the wall-clock ceiling,

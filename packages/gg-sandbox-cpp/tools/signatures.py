@@ -593,7 +593,8 @@ def declaration_of(node, name, members):
 
 
 class Reflector:
-    """One reflection of the SDK, from clang's dump to the committed JSON."""
+    """One reflection of the SDK, from clang's dump to the JSON written into
+    ``$GG_SIGNATURES_OUT_DIR``."""
 
     def __init__(self, dump):
         nodes = documents(dump)

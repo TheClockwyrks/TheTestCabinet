@@ -12,7 +12,7 @@
 //!   wrapper;
 //! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
 //!   in Python's syntax;
-//! * `guests/python.component.wasm` — the committed `componentize-py` guest, CPython 3.14 linked
+//! * [`COMPONENT`] — the `componentize-py` guest, CPython 3.14 linked
 //!   against `crates/gg/wit/gg-sandbox.wit`, built by `packages/gg-sandbox-python/build.sh`;
 //! * the **signature catalogue** — reflected out of that guest's hand-written SDK with `griffe`,
 //!   Python's own documentation tool, and generated into this build's `OUT_DIR` rather than
@@ -60,8 +60,10 @@
 //! string and the interpreter is already inside the artifact. The cost is the artifact: ~24 MiB
 //! against the ECMAScript guest's 13.4 MB, because it carries an interpreter, a curated standard
 //! library and the SDK. The build is **not byte-reproducible** — it snapshots a running
-//! interpreter's memory — so a test holds it to a size band rather than to a hash, and rebuilding
-//! to check whether the committed artifact is current does not work. Its `build.sh` says so.
+//! interpreter's memory — so a test holds it to a size band rather than to a hash. That is also why
+//! this arm could never have been covered by a regenerate-and-diff gate, and therefore part of the
+//! reason the component is cut by the build rather than committed: two runs of one checkout differ
+//! by tens of kilobytes, so "rebuild it and compare" answers nothing. Its `build.sh` says so.
 //!
 //! What a program may `import` is settled by that build and by nothing at run time: the entry
 //! module's import closure is what gets baked, so `packages/gg-sandbox-python/src/library.py` *is*
@@ -91,16 +93,28 @@ mod modules;
 #[path = "python.healing.rs"]
 pub(super) mod healing;
 
-/// The committed interpreter component: the Python guest in `packages/gg-sandbox-python`, built by
-/// its `build.sh` with `componentize-py` and committed here, exactly as gg's other wasm guests are
-/// committed alongside their sources.
+/// The interpreter component: the Python guest in `packages/gg-sandbox-python`, built by that
+/// package's `build.sh` with `componentize-py`.
 ///
 /// **Embedded in the binary**, like every other guest, because gg is copied as a single file into an
-/// ephemeral run container and must carry everything it needs with it. It is the largest thing gg
-/// carries by some way, and that is the price of an arm whose guest is a whole language runtime;
-/// the alternative — a compiler installed in the run image — is what the gg toolchain layer exists
-/// for, and is exactly what this arm does not need.
-pub(super) const COMPONENT: &[u8] = include_bytes!("../guests/python.component.wasm");
+/// ephemeral run container and must carry everything it needs with it. At ~25 MB it is the largest
+/// thing gg carries, and that is the price of an arm whose guest is a whole language runtime; the
+/// alternative — a compiler installed in the run image — is what the gg toolchain layer exists for,
+/// and is exactly what this arm does not need.
+///
+/// It is not committed. `gg-artifact-python` runs that `build.sh` as a step of building this crate
+/// and this line embeds what it wrote into that crate's `OUT_DIR`, so the guest a program is
+/// evaluated in is baked out of the SDK sources in this checkout, on the build that compiles the
+/// module describing it — the same guarantee, and the same idiom, as [`SIGNATURES`] below. This arm
+/// bakes more into its guest than any other: `build.sh` vendors the wheels `requirements.txt` pins
+/// and `componentize-py` keeps only the modules the shim's import closure actually reached, so what
+/// is importable at run time is decided at build time. A stale component is therefore a *library
+/// set* the prompt names at one version and the guest carries at another, which is not a shape any
+/// build error would report.
+pub(super) const COMPONENT: &[u8] = include_bytes!(concat!(
+    env!("GG_ARTIFACTS_PYTHON"),
+    "/python.component.wasm"
+));
 
 /// This arm's catalogue, reflected out of the SDK's own docstrings by
 /// `packages/gg-sandbox-python/tools/signatures.py` with `griffe`.
@@ -135,7 +149,7 @@ static PROMPT: PromptDialect = PromptDialect {
 /// straight to `&'static dyn ProgramLanguage`.
 pub(super) static PYTHON: Python = Python;
 
-/// Python: handed to the committed `componentize-py` guest as the model wrote it, and evaluated
+/// Python: handed to the embedded `componentize-py` guest as the model wrote it, and evaluated
 /// there by a CPython that is inside the artifact.
 pub(super) struct Python;
 

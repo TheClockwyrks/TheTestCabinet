@@ -22,14 +22,17 @@
 # The graph is emitted for `wasm32-unknown-wasip1`, the target this arm really compiles to, so the
 # types in it are the types a program is really compiled against.
 #
-# WHY IT WRITES EXACTLY ONE FILE. This runs on any build of gg that regenerates a catalogue, which
-# is to say under a developer who typed `cargo build`. `crates/gg/src/sandbox/checkers/` holds this
-# arm's committed guest and library archives, re-cut by `build.sh` on purpose and by hand because
-# they cost minutes and megabytes. A signature step that reached `build.sh` for the bindings it needs
-# would rewrite those archives on the way past — a multi-megabyte binary changed under someone who
-# asked for a compile, and a checkout whose committed artifacts no longer say what produced them.
-# Measured on the Rust arm, which is why the bindings are their own script here as they are there.
-# Nothing below writes into `crates/gg/src/sandbox/checkers/`.
+# WHY IT WRITES EXACTLY ONE FILE, AND WHY THAT MATTERS MORE THAN IT USED TO. This runs on every
+# build of gg that regenerates a catalogue, which is to say under a developer who typed
+# `cargo build`. `build.sh` cuts this arm's guest and library archives, which is ~22 s and 3.6 MB —
+# the dearest artifact build of any arm. A signature step that reached `build.sh` for the bindings it
+# needs would re-cut both on the way past, every time a doc comment moved.
+#
+# Both halves are now generated during the same `cargo build`, each with its own rerun set:
+# `crates/gg-sandbox-artifacts/swift` runs `build.sh` and `crates/gg/build.rs` runs this. Folding one
+# into the other would collapse those two sets into one, which is the whole cost the artifact crates
+# exist to avoid. `bindings.sh` remains the one step both need, split out of the one with side
+# effects. This writes exactly one file, into `$GG_SIGNATURES_OUT_DIR`.
 #
 # Usage:
 #   GG_SIGNATURES_OUT_DIR=<dir> packages/gg-sandbox-swift/signatures.sh
@@ -39,6 +42,13 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=packages/gg-sandbox-swift/swift-version.sh
 source "$HERE/swift-version.sh"
+
+# ONE ARM, ONE PROCESS AT A TIME. This package's scratch is a fixed path inside the source tree
+# rather than a `mktemp -d`, deliberately — it is a cache — and two cargo processes with two target
+# directories do not serialise with each other. See `scripts/gg-scratch-lock.sh`.
+# shellcheck source=scripts/gg-scratch-lock.sh
+source "$HERE/../../scripts/gg-scratch-lock.sh"
+gg_lock_scratch "$HERE"
 
 # NO BYTECODE CACHE. `tools/signatures.py` imports its sibling `tools/catalogue.py`, and an ordinary
 # CPython drops a `__pycache__/` beside a module it imports. That directory is gitignored and

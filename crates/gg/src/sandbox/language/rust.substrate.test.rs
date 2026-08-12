@@ -15,7 +15,7 @@
 //! production ceilings, instantiated through the `bindgen!`-generated
 //! [`Sandbox`](crate::sandbox::membrane::Sandbox) and driven through its `run` export.
 //!
-//! There is no committed artifact anywhere in that path, which is what makes this arm's proof
+//! There is no embedded artifact anywhere in that path, which is what makes this arm's proof
 //! *stronger* than the others': what these tests instantiate was compiled from this checkout's WIT,
 //! this checkout's library set and this checkout's wrapper, seconds earlier. A stale artifact is not
 //! a failure mode this arm has.

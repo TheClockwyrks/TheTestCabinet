@@ -14,9 +14,10 @@
 // ambiently, so a program that asks what time it is gets the answer, and a checker that refused the
 // question would be refusing a program that runs.
 //
-// This file is COPIED VERBATIM by `tools/checker.mjs` into
-// `crates/gg/src/sandbox/checkers/typescript.globals.d.ts` and committed. It is deliberately outside
-// `src/`, so the guest build never compiles it and it never reaches the component.
+// This file is COPIED VERBATIM by `tools/checker.mjs` into the `typescript.globals.d.ts` it writes
+// into `$GG_ARTIFACTS_OUT_DIR` — the `OUT_DIR` of `crates/gg-sandbox-artifacts/typescript`, which
+// `typescript.check.rs` `include_str!`s it from. It is deliberately outside `src/`, so the guest
+// build never compiles it and it never reaches the component.
 
 /**
  * The console the shim installs over the engine's (see `installConsole` in `src/shim.ts`).

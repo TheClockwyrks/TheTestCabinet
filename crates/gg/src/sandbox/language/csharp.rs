@@ -1,5 +1,5 @@
 //! **C#** — the arm whose compiler emits neither wasm nor source, and the only one that pairs a
-//! real compiler on the turn path with a committed runtime that never changes.
+//! real compiler on the turn path with a prebuilt runtime that never changes.
 //!
 //! Everything this arm owns lives here or in one of this module's siblings:
 //!
@@ -15,21 +15,21 @@
 //! * `packages/gg-sandbox-csharp/src/Gg/` — that SDK, and the XML documentation comments every word
 //!   a model reads is reflected out of;
 //! * `packages/gg-sandbox-csharp/Sources/` — the guest's C: the shell, the bridge, the trampolines;
-//! * `guests/csharp.component.wasm` — the committed guest: Mono's IL interpreter, the .NET class
-//!   libraries and ICU, as one self-contained component;
+//! * [`GUEST_COMPONENT`] — the guest itself: Mono's IL interpreter, the .NET class libraries and
+//!   ICU, as one self-contained component, relinked by `gg-artifact-csharp` on the build that
+//!   compiles this module and embedded from its `OUT_DIR` rather than committed anywhere;
 //! * the **signature catalogue**, which is the whole of what a model is told about the surface —
 //!   reflected out of the SDK's own XML documentation comments and generated into this build's
-//!   `OUT_DIR` rather than committed anywhere (see `crates/gg/build.rs`);
-//! * `checkers/csharp.toolchain.json` — what built the guest.
+//!   `OUT_DIR`, the same way and for the same reason (see `crates/gg/build.rs`).
 //!
 //! # The strategy, in one paragraph
 //!
 //! **Roslyn on the host, a Mono IL interpreter in the guest.** A model's reply is compiled to an IL
 //! assembly by `csc` in ~0.3 s, base64-encoded into the world's existing `program` string, and
-//! loaded by a committed component that carries the whole .NET runtime. It is **neither of the two
+//! loaded by a prebuilt component that carries the whole .NET runtime. It is **neither of the two
 //! shapes this seam had**: an interpreted arm ([Python](super::python), [Ruby](super::ruby)) sends
-//! source to a committed runtime, and a compiled arm ([Rust](super::rust), [Swift](super::swift),
-//! [C++](super::cpp)) sends a component and commits nothing. This sends an *assembly* to a committed
+//! source to a prebuilt runtime, and a compiled arm ([Rust](super::rust), [Swift](super::swift),
+//! [C++](super::cpp)) sends a component and bakes nothing. This sends an *assembly* to a prebuilt
 //! runtime — an interpreted arm's artifact with a compiled arm's failure bands — and that is the
 //! whole reason C# is affordable. A prior study priced this arm on the only toolchain it looked at,
 //! `componentize-dotnet`, which compiles the *program* to native wasm: 25–43 seconds a turn, and
@@ -52,9 +52,9 @@
 //! older than wasm and needs no build-time code generation.
 //!
 //! So this arm's guest is built by the runtime pack's **own supported build**, with three extra
-//! translation units. The measured result is in `checkers/csharp.toolchain.json`: a 35.3 MB
-//! component, produced by wasi-sdk's `clang` on `wasm32-wasip2`, holding the interpreter, 171
-//! bundled assemblies and ICU.
+//! translation units. The measured result — which `packages/gg-sandbox-csharp/build.sh` prints and
+//! which is what [`GUEST_COMPONENT`] holds — is a 35.3 MB component, produced by wasi-sdk's `clang`
+//! on `wasm32-wasip2`, holding the interpreter, 171 bundled assemblies and ICU, in about 26 s.
 //!
 //! # What a C# program is, here
 //!
@@ -88,7 +88,7 @@
 //! runtime pack's default, a `managed/` directory beside the program — would have put 17 MB of
 //! Microsoft's assemblies into a run's own working tree where a model would find them, and would
 //! have made the guest depend on a path the toolchain image happened to install. It costs 22 MB of
-//! committed artifact and buys a component that behaves the same on every machine.
+//! embedded artifact and buys a component that behaves the same on every machine.
 //!
 //! # What the SDK is
 //!
@@ -97,7 +97,7 @@
 //! `record`s for results and a thrown `ToolException` for the error arm — plus a twelfth,
 //! class-less `core` module holding the three types every other module's signatures name. It is
 //! compiled **with** the model's program rather than referenced as a built assembly, which is what
-//! makes gg's surface reachable without the committed guest having to carry it — see [`sdk`] for
+//! makes gg's surface reachable without the prebuilt guest having to carry it — see [`sdk`] for
 //! the argument and the cost (~70 ms on a ~210 ms compile).
 //!
 //! Every name in it is spelled the way C# spells it, and nothing about the shape is gg's: a module
@@ -137,7 +137,7 @@
 //! `lib.<key>` is therefore a **`static class`** in `namespace lib`, and a module is that class's
 //! body — which is the shape a C# author already writes when they write a file of helpers, and the
 //! answer [Java](super::java)'s arm reached for the same reason. It compiles in the **same
-//! invocation** as the program and the SDK, so there is no second assembly for the committed guest
+//! invocation** as the program and the SDK, so there is no second assembly for the prebuilt guest
 //! to find, and `#line` keeps every diagnostic in the author's own coordinates. See [`source`] for
 //! the wrap, the `using` hoist and the two refusals.
 //!
@@ -146,7 +146,7 @@
 //! This arm is the only registered one whose [prepare step](ProgramLanguage::prepare_program)
 //! compiles and whose [`warm_prepare`](ProgramLanguage::warm_prepare) does nothing, and the reason
 //! is worth stating rather than leaving as an empty method. There is no archive to unpack — the
-//! guest is one committed component the sandbox already compiles at launch — and no prelude to
+//! guest is one prebuilt component the sandbox already compiles at launch — and no prelude to
 //! build, because a C# compilation has no precompiled-header equivalent to hold across
 //! preparations. What is left is the ~2 s the *first* `csc` on a machine spends paging Roslyn in,
 //! and gg cannot pay that here: a compiler is spawned through a [`PrepareContext`] that a warm-up
@@ -177,14 +177,32 @@ pub(super) mod source;
 #[path = "csharp.healing.rs"]
 pub(super) mod healing;
 
-/// **The committed guest** — Mono's IL interpreter, the .NET class libraries and ICU, as one
-/// self-contained wasm component exporting gg's `sandbox` world.
+/// **The guest** — Mono's IL interpreter, the .NET class libraries and ICU, as one self-contained
+/// wasm component exporting gg's `sandbox` world.
 ///
-/// Built by `packages/gg-sandbox-csharp/build.sh` and committed, for the reason every other guest
-/// here is: gg is copied as a single file into an ephemeral run container and must carry everything
-/// the turn path needs with it. Nothing about a C# *program* is compiled to wasm, so no wasm
-/// toolchain reaches a run container on this arm at all.
-const GUEST_COMPONENT: &[u8] = include_bytes!("../guests/csharp.component.wasm");
+/// Built by `packages/gg-sandbox-csharp/build.sh` and **embedded in the binary**, for the reason
+/// every other guest here is: gg is copied as a single file into an ephemeral run container and must
+/// carry everything the turn path needs with it. Nothing about a C# *program* is compiled to wasm,
+/// so no wasm toolchain reaches a run container on this arm at all.
+///
+/// It is not committed. `gg-artifact-csharp` runs that `build.sh` as a step of building this crate
+/// and this line embeds what it wrote into that crate's `OUT_DIR`, so the runtime a program is
+/// interpreted by is relinked out of the sources in this checkout, on the build that compiles the
+/// module describing it — the same guarantee, and the same idiom, as [`SIGNATURES`] below.
+///
+/// This is the one arm where that decision cost something, and it is worth knowing what: relinking
+/// Mono wants a whole .NET SDK and an unpruned wasi-sdk, ~1.4 GB that no gg *run* needs, so building
+/// gg now needs `scripts/ci/install-gg-build-toolchains.sh` to have been run. The alternative was to
+/// keep committing 35 MB — and it was rejected on evidence rather than on principle. Measured on one
+/// machine: two builds of the same checkout differing only in where the toolchains were unpacked
+/// produced components of 35 263 680 and 35 263 728 bytes, because the link bakes its own absolute
+/// paths in. So a committed copy could never have been *verified* by rebuilding it and diffing;
+/// nobody could have told a stale 35 MB blob from a current one by looking. Generating it deletes
+/// the question. `gg-artifact-csharp`'s `src/lib.rs` carries the rest of that argument.
+const GUEST_COMPONENT: &[u8] = include_bytes!(concat!(
+    env!("GG_ARTIFACTS_CSHARP"),
+    "/csharp.component.wasm"
+));
 
 /// This arm's catalogue, reflected out of the SDK's own XML documentation comments by
 /// `packages/gg-sandbox-csharp/signatures.sh` — a hosted Roslyn driver, which is the compiler's own
@@ -219,7 +237,7 @@ static PROMPT: PromptDialect = PromptDialect {
 /// straight to `&'static dyn ProgramLanguage`.
 pub(super) static CSHARP: CSharp = CSharp;
 
-/// C#: compiled by Roslyn into the IL assembly a committed Mono interpreter loads, per turn.
+/// C#: compiled by Roslyn into the IL assembly a prebuilt Mono interpreter loads, per turn.
 pub(super) struct CSharp;
 
 impl ProgramLanguage for CSharp {
@@ -261,7 +279,7 @@ impl ProgramLanguage for CSharp {
     ///
     /// What comes back is **source**, which is what a compiled arm's module has to be: it is an
     /// input to the [program compile](compile::compile_program) that binds it, not something the
-    /// committed guest could load on its own — that guest loads exactly one assembly per run.
+    /// prebuilt guest could load on its own — that guest loads exactly one assembly per run.
     fn prepare_module(
         &self,
         source: &str,
@@ -287,7 +305,7 @@ impl ProgramLanguage for CSharp {
         source::binding_name(name)
     }
 
-    /// **The committed guest**, which is where this arm departs from every other one that runs a
+    /// **The prebuilt guest**, which is where this arm departs from every other one that runs a
     /// compiler on the turn path.
     ///
     /// [Rust](super::rust), [Swift](super::swift) and [C++](super::cpp) answer `None` here because
@@ -474,11 +492,16 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
 #[path = "csharp.test.rs"]
 mod tests;
 
-/// **The committed guest against what says it built it** — the gate that covers this arm's
-/// hand-built artifacts, which `scripts/ci/contract-drift.sh` deliberately never re-cuts.
+/// **The one C# version written down twice**, held to itself across a build.
+///
+/// What is left of the gate that used to cover this arm's committed guest: the guest is generated
+/// now, so the three assertions that compared it against a manifest have no subject. This one never
+/// read the manifest — it holds [`compile::LANGUAGE_VERSION`] to `csharp-version.sh`'s
+/// `GG_DOTNET_LANG_VERSION`, which is a cross-language invariant no rerun set can enforce. That file
+/// carries the whole argument.
 #[cfg(test)]
-#[path = "csharp.manifest.test.rs"]
-mod manifest;
+#[path = "csharp.pins.test.rs"]
+mod pins;
 
 /// **The C# arm's execution substrate**, driven end to end through gg's real compiler, linker,
 /// membrane and store.
@@ -509,7 +532,7 @@ mod examples;
 mod surface;
 
 /// **Code modules**, driven end to end: a code skill's C# compiles on its own, and a program reaches
-/// its declarations at `lib.<key>` through the real compiler and the real committed guest.
+/// its declarations at `lib.<key>` through the real compiler and the real guest.
 #[cfg(test)]
 #[path = "csharp.modules.test.rs"]
 mod modules;

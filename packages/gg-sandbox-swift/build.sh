@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Build the four artifacts gg carries inside its own binary for the **Swift** program language,
-# and commit them under `crates/gg/src/sandbox/checkers/`:
+# Build the four artifacts gg carries inside its own binary for the **Swift** program language, into
+# `$GG_ARTIFACTS_OUT_DIR`:
 #
 #   swift.guest.tar.gz     the compile inputs every turn needs on disk — the bridging header, the
 #                          generated WIT header, the compiled bindings object, the component-type
@@ -37,20 +37,17 @@
 # script. Every object it emits carries a random 16-byte module hash that no flag disables, so two
 # runs of this script over identical sources produce different bytes. `-file-prefix-map` is still
 # applied, so nothing records the path of the checkout it was built in; what varies is the hash
-# alone. Re-run this only when something really changed, and expect the diff to be larger than
-# what you edited.
+# alone. Little depends on the bytes being stable — an artifact crate rebuilds only when a declared
+# input moved — but it is why comparing two runs' output tells you nothing.
 #
-# NOTHING IN CI RUNS THIS. It is a developer's command, run deliberately and committed with its
-# output, and `scripts/ci/contract-drift.sh` names this arm's artifacts in its `$declared`
-# exemption for that reason. The bindings step both this script and `signatures.sh` need is
-# `bindings.sh`, so the catalogue can be reflected — which now happens inside every `cargo build` of
-# `test-cabinet-gg`, because `crates/gg/build.rs` runs it — without re-cutting a library set on the
-# way past. That split stopped being a convenience when the catalogue stopped being committed: this
-# script's own output is not byte-reproducible, so a reflection that reached it would rewrite
-# megabytes of archive under anybody who typed `cargo build`.
+# THE BINDINGS STEP IS ITS OWN SCRIPT, AND THAT IS STILL LOAD-BEARING. `signatures.sh` needs the
+# bindings too, and it runs inside every `cargo build` of `test-cabinet-gg`; a reflection that
+# reached THIS script for them would rewrite megabytes of non-reproducible archive on the way past.
+# `bindings.sh` is the one step both callers need, split out of the one that has side effects.
 #
 # Usage:
-#   packages/gg-sandbox-swift/build.sh
+#   scripts/gg-artifacts.sh                                     # every arm, into one directory
+#   GG_ARTIFACTS_OUT_DIR=<dir> packages/gg-sandbox-swift/build.sh
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -58,11 +55,28 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 # shellcheck source=packages/gg-sandbox-swift/swift-version.sh
 source "$HERE/swift-version.sh"
 
-CHECKERS="$ROOT/crates/gg/src/sandbox/checkers"
+# The destination, which is required and has no default — see the file itself for why.
+# shellcheck source=scripts/gg-artifacts-out-dir.sh
+source "$ROOT/scripts/gg-artifacts-out-dir.sh"
+# shellcheck source=scripts/gg-downloads.sh
+source "$ROOT/scripts/gg-downloads.sh"
+
+# ONE ARM, ONE PROCESS AT A TIME. This package's scratch is a fixed path inside the source tree
+# rather than a `mktemp -d`, deliberately — it is a cache — and two cargo processes with two target
+# directories do not serialise with each other. See `scripts/gg-scratch-lock.sh`.
+# shellcheck source=scripts/gg-scratch-lock.sh
+source "$ROOT/scripts/gg-scratch-lock.sh"
+gg_lock_scratch "$HERE"
+
 STAGE="$HERE/.build/stage"
 LIBS="$HERE/.build/libs"
-VENDOR="$HERE/.build/vendor"
 BINDINGS="$HERE/.build/bindings"
+
+# The three vendored packages' sources, which are NOT under `.build/` and are the one thing here
+# that is not: they are a pinned download, so they live in the same version-stamped per-user prefix
+# `wit-bindgen` and the wasmtime adapter do. See `gg_swift_library` in `scripts/gg-downloads.sh` for
+# why a cache inside the package was a network call on every fresh checkout.
+VENDOR="$(gg_swift_libraries_dir)"
 
 SWIFT_HOME="$(gg_swift_home)"
 SWIFTC="$SWIFT_HOME/toolchain/usr/bin/swiftc"
@@ -106,25 +120,16 @@ BUILD_ARGS=(-Osize -wmo -parse-as-library)
 # The curated library set
 # ------------------------------------------------------------------------------------------------
 
-fetch() {
-	local name="$1"
-	local url="$2"
-	local stamp="$VENDOR/$name/.stamp"
-	if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$url" ]; then
-		return 0
-	fi
-	echo "==> fetching $name"
-	rm -rf "${VENDOR:?}/$name"
-	mkdir -p "$VENDOR/$name"
-	curl -sSfL "$url" | tar -xz -C "$VENDOR/$name" --strip-components=1
-	echo "$url" >"$stamp"
-}
+# The three source trees, resolved out of the shared pinned prefix rather than fetched into this
+# package. `gg_swift_library` is stamped by the release URL and downloads only on a machine no
+# installer has warmed, which on the surfaces that matter is none of them:
+# `scripts/ci/install-gg-build-tools.sh` fetches all three, the CI image bakes them and
+# `scripts/ci/hydrate-gg-toolchains.sh` carries them.
+COLLECTIONS_TREE="$(gg_swift_library swift-collections "$GG_SWIFT_COLLECTIONS_VERSION" "$(gg_swift_collections_url)")"
+ALGORITHMS_TREE="$(gg_swift_library swift-algorithms "$GG_SWIFT_ALGORITHMS_VERSION" "$(gg_swift_algorithms_url)")"
+NUMERICS_TREE="$(gg_swift_library swift-numerics "$GG_SWIFT_NUMERICS_VERSION" "$(gg_swift_numerics_url)")"
 
-fetch swift-collections "$(gg_swift_collections_url)"
-fetch swift-algorithms "$(gg_swift_algorithms_url)"
-fetch swift-numerics "$(gg_swift_numerics_url)"
-
-SHIMS="$VENDOR/swift-numerics/Sources/_NumericsShims"
+SHIMS="$NUMERICS_TREE/Sources/_NumericsShims"
 
 # One Swift module of the library set, compiled from a source directory.
 #
@@ -148,7 +153,7 @@ mkdir -p "$LIBS"
 
 # Dependency order. `Collections` is an umbrella that re-exports the five below it, and
 # `InternalCollectionsUtilities` is what every one of them is built on.
-COLLECTIONS="$VENDOR/swift-collections/Sources"
+COLLECTIONS="$COLLECTIONS_TREE/Sources"
 library InternalCollectionsUtilities "$COLLECTIONS/InternalCollectionsUtilities"
 library DequeModule "$COLLECTIONS/DequeModule"
 library OrderedCollections "$COLLECTIONS/OrderedCollections"
@@ -160,13 +165,13 @@ library Collections "$COLLECTIONS/Collections"
 
 # `RealModule` is `swift-algorithms`' own dependency — `randomSample` needs a `log` — and is a
 # perfectly good library in its own right, so it is declared rather than hidden.
-NUMERICS="$VENDOR/swift-numerics/Sources"
+NUMERICS="$NUMERICS_TREE/Sources"
 echo "==> _NumericsShims"
 (cd "$LIBS" && "$CLANG" --target="$GG_SWIFT_TARGET" --sysroot="$SDK/WASI.sdk" -O2 \
 	-I "$SHIMS/include" -c "$SHIMS/_NumericsShims.c" -o "$LIBS/_NumericsShims.o")
 library RealModule "$NUMERICS/RealModule"
 library ComplexModule "$NUMERICS/ComplexModule"
-library Algorithms "$VENDOR/swift-algorithms/Sources/Algorithms"
+library Algorithms "$ALGORITHMS_TREE/Sources/Algorithms"
 
 echo "==> libgglibs.a"
 # A static archive, and that is the whole reason an unused library costs a program nothing: `lld`
@@ -177,17 +182,17 @@ echo "==> libgglibs.a"
 test -s "$LIBS/libgglibs.a"
 
 # The clang module map `RealModule` resolves `_NumericsShims` through, which a program importing
-# it needs on the include path. Copied into the tree so the committed archive is self-contained.
+# it needs on the include path. Copied into the tree so the archive is self-contained.
 mkdir -p "$LIBS/include"
 cp "$SHIMS/include/_NumericsShims.h" "$SHIMS/include/module.modulemap" "$LIBS/include/"
 
-echo "==> writing $CHECKERS/swift.libraries.tar.gz"
+echo "==> writing swift.libraries.tar.gz"
 # `X` rather than `x`: the archive carries a DIRECTORY (`include/`, the clang module map
 # `RealModule` resolves its shims through), and a directory without its execute bit is one
 # nothing can reach a file inside — including gg's own sealing walk, which fails on it by name.
 (cd "$LIBS" && tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
 	--mode='u=rwX,go=rX' -cf - libgglibs.a include ./*.swiftmodule) |
-	gzip -9 -n >"$CHECKERS/swift.libraries.tar.gz"
+	gzip -9 -n >"$GG_ARTIFACTS_OUT_DIR/swift.libraries.tar.gz"
 
 # ------------------------------------------------------------------------------------------------
 # The guest: the bindings, the shell, and the SDK
@@ -221,21 +226,27 @@ echo "==> compiling the SDK as the module a program's scope is re-exported from"
 test -s "$STAGE/gg.o"
 test -s "$STAGE/gg.swiftmodule"
 
-echo "==> fetching the wasi_snapshot_preview1 reactor adapter $GG_WASMTIME_ADAPTER_VERSION"
-curl -sSfL "$(gg_wasmtime_adapter_url)" -o "$CHECKERS/swift.adapter.wasm"
-test -s "$CHECKERS/swift.adapter.wasm"
+echo "==> the wasi_snapshot_preview1 reactor adapter $GG_WASMTIME_ADAPTER_VERSION"
+# COPIED FROM A CACHE, NOT DOWNLOADED. This used to `curl` a GitHub release asset unconditionally,
+# with no marker of any kind, every single time this script ran. `scripts/gg-downloads.sh` resolves
+# the pinned file from an override, the toolchain image, or a version-stamped per-user cache, and
+# only downloads on a machine no installer has touched. THE PIN IS STILL THIS ARM'S OWN — see
+# `swift-version.sh`, and the C++ arm's, on why the two arms keeping separate pins matters.
+cp "$(gg_wasmtime_adapter "$GG_WASMTIME_ADAPTER_VERSION" "$(gg_wasmtime_adapter_url)")" \
+	"$GG_ARTIFACTS_OUT_DIR/swift.adapter.wasm"
+test -s "$GG_ARTIFACTS_OUT_DIR/swift.adapter.wasm"
 
-echo "==> writing $CHECKERS/swift.guest.tar.gz"
+echo "==> writing swift.guest.tar.gz"
 # A sorted entry list, a fixed timestamp, no owner and a gzip stream carrying neither a name nor
 # an mtime — so the only thing that varies between two builds of one tree is what `swiftc` itself
 # stamps into an object, which is the module hash named at the top of this file.
 tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner --mode='u=rw,go=r' \
 	-C "$STAGE" -cf - gg-shell.h gg.o gg.swiftmodule sandbox.h sandbox.o \
 	sandbox_component_type.o shell.swift |
-	gzip -9 -n >"$CHECKERS/swift.guest.tar.gz"
+	gzip -9 -n >"$GG_ARTIFACTS_OUT_DIR/swift.guest.tar.gz"
 
-echo "==> writing $CHECKERS/swift.toolchain.json"
-python3 - "$STAGE" "$LIBS" "$CHECKERS/swift.toolchain.json" <<PY
+echo "==> writing swift.toolchain.json"
+python3 - "$STAGE" "$LIBS" "$GG_ARTIFACTS_OUT_DIR/swift.toolchain.json" <<PY
 import json, os, sys
 
 stage, libs, out = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -270,36 +281,24 @@ with open(out, "w") as handle:
     handle.write("\n")
 PY
 
-echo "==> writing $CHECKERS/swift.sources.manifest.json"
-# What the four artifacts were built FROM, beside what they were built BY. `swift.toolchain.json`
-# above answers the second question; the first was answered only for the two files the archive
-# happens to carry verbatim, `shell.swift` and `gg-shell.h`, which `swift.compile.test.rs` compares
-# against this checkout. The SDK itself does NOT ride in as source — it is `gg.o` and
-# `gg.swiftmodule`, and it is the whole model-facing surface — so before this manifest an edit to
-# `Sources/SDK/**` committed without a rebuild left every program compiled against the old module
-# while the catalogue reflected the new source, with nothing to say so.
+# WHAT USED TO BE HERE: `swift.sources.manifest.json`, a table of the SHA-256 of every file under
+# `Sources/` beside the digests of the three artifacts, so that a test could recompute the hashes
+# from the checkout and fail when somebody had edited the SDK without re-running this script. That
+# question — *are the committed archives older than the sources beside them?* — no longer has a
+# subject. They are not committed: `crates/gg-sandbox-artifacts/swift` runs this script into its own
+# cargo `OUT_DIR` on every build whose declared inputs moved, and `crates/gg` embeds what lands
+# there.
 #
-# `build.sh` records ITSELF, because the recipe is an input as much as the sources are: the compile
-# arguments and the `library` module list that decides what the library archive contains both live
-# here, so an edit to either changes what the artifacts are with no source under `Sources/` moving.
-# An edit that fails the gate until the script is re-run is the intended reading.
-node "$ROOT/scripts/gg-artifact-manifest.mjs" \
-	--arm swift \
-	--rebuild packages/gg-sandbox-swift/build.sh \
-	--artifact "$CHECKERS/swift.guest.tar.gz" \
-	--artifact "$CHECKERS/swift.libraries.tar.gz" \
-	--artifact "$CHECKERS/swift.adapter.wasm" \
-	--source-root "$HERE/Sources" \
-	--source-file "$HERE/libraries.txt" \
-	--source-file "$HERE/build.sh" \
-	--wit "$ROOT/crates/gg/wit" \
-	--pin "swift=$GG_SWIFT_VERSION" \
-	--pin "target=$GG_SWIFT_TARGET" \
-	--pin "witBindgen=$GG_WIT_BINDGEN_VERSION" \
-	--pin "adapter=$GG_WASMTIME_ADAPTER_VERSION" \
-	--pin "swiftCollections=$GG_SWIFT_COLLECTIONS_VERSION" \
-	--pin "swiftAlgorithms=$GG_SWIFT_ALGORITHMS_VERSION" \
-	--pin "swiftNumerics=$GG_SWIFT_NUMERICS_VERSION" \
-	--out "$CHECKERS/swift.sources.manifest.json"
+# It covered the widest hole of the three compiled arms and that is worth recording.
+# `swift.toolchain.json` answers what the artifacts were built BY, and `swift.compile.test.rs` could
+# compare the two files the guest archive happens to carry verbatim — `shell.swift` and
+# `gg-shell.h` — against the checkout. The SDK does NOT ride in as source: it is `gg.o` and `gg.swiftmodule`, which is the whole
+# model-facing surface, and nothing could read it back out. An edit to `Sources/SDK/**` matched
+# nothing anything could compare. What answers it now is cargo — `packages/gg-sandbox-swift/Sources`
+# is in this arm's rerun set, so an SDK edit re-cuts `gg.swiftmodule` rather than being reported on.
+#
+# `swift.toolchain.json` above is NOT that manifest and does not go with it. It is a declaration of
+# what is in the archives and what built them, `swift.compile.rs` reads it at run time to place the
+# files and to name the library modules, and the tests that hold it to the unpacked tree still run.
 
-ls -la "$CHECKERS"/swift.*
+ls -la "$GG_ARTIFACTS_OUT_DIR"/swift.*

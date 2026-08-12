@@ -1,6 +1,6 @@
 //! The host-side PureScript compile: the header rewrite it does before a compiler sees anything, the
-//! two verdicts it tells apart, and the agreement between the committed library tree and the manifest
-//! that describes it.
+//! two verdicts it tells apart, and the agreement between the compiled library tree this build cut
+//! and the manifest that describes it.
 //!
 //! These spawn a real `purs` and a real `esbuild`, so they are seconds rather than microseconds — but
 //! they stop at the JavaScript. What that JavaScript *does* inside the guest is
@@ -348,11 +348,18 @@ fn a_code_module_compiles_to_a_namespace() {
 
 #[test]
 fn the_manifest_describes_the_tree_that_actually_shipped() {
-    // The library set is what a model may import, so it is a study parameter. Nothing regenerates
-    // this tarball in CI — it needs `purs` and the registry — so what holds the two together is this:
-    // the manifest's package list is compared with the tree's own directories, and a tree rebuilt
-    // with a different set and committed without its manifest fails here.
-    let libraries = libraries().expect("the committed library set unpacks");
+    // The library set is what a model may import, so it is a study parameter, and this is what holds
+    // the manifest to the tree: the package list against the tree's own directories, the module
+    // count against `output/`, and the registry the versions were resolved from against the
+    // committed lockfile.
+    //
+    // One run of `build.sh` writes both sides, so this is an AGREEMENT check between two readings of
+    // one staging tree rather than a claim about a committed file — a build that staged one package
+    // set and described another still fails it. The lockfile half is the interesting one, because it
+    // is the only assertion here with a side that is not generated: `spago.lock` is committed, it is
+    // what `build.sh` resolved through, and a manifest naming a package set the lockfile does not is
+    // a tree resolved against something nobody reviewed.
+    let libraries = libraries().expect("the library set this build cut unpacks");
     let mut staged: Vec<String> = std::fs::read_dir(libraries.tree.join("libs"))
         .expect("the unpacked tree has a libs directory")
         .map(|entry| {
@@ -396,9 +403,7 @@ fn the_manifest_describes_the_tree_that_actually_shipped() {
     );
 
     // And the provenance: the registry package set these versions were resolved against, which is
-    // the one thing in the manifest that is not observable in the tree. It is held to the committed
-    // lockfile instead — `spago.lock` is what `build.sh` resolved through, so a manifest claiming
-    // one package set over a tree built from another fails here rather than being believed.
+    // the one thing in the manifest that is not observable in the tree.
     let lock = include_str!("../../../../../packages/gg-sandbox-purescript/spago.lock");
     assert!(
         lock.contains(&format!("\"registry\": \"{}\"", manifest().registry)),
@@ -452,94 +457,33 @@ fn a_purs_that_did_not_compile_the_tree_is_refused_by_name() {
     check_purs_version(&PrepareContext::new()).expect("the `purs` on PATH is the pinned release");
 }
 
-/// The SDK inside the shipped tarball is the SDK in the working tree, file for file.
-///
-/// This is the gate under the arm's central claim — *the surface a model is shown and the surface it
-/// is compiled against are one artifact* — and without it that claim was a comment in `build.sh`.
-/// The catalogue is reflected from `packages/gg-sandbox-purescript/src` by `signatures.sh`, which
-/// stages the **working tree** over a scratch copy of the tarball; a real compile resolves `Gg`
-/// against the **tarball's** `libs/gg-sdk` sources and externs. Nothing held the two together. An SDK
-/// edit committed without re-cutting the tarball leaves a freshly reflected catalogue describing a
-/// surface the compile does not offer, and every other gate would have stayed green: the manifest
-/// gate above compares directory *names* and counts module directories, neither of which moves when
-/// a function's body, its lowering, or an added export inside an existing module changes.
-///
-/// A digest recorded at build time would have been the other answer. This one is stronger for the
-/// same work: it names the file that drifted, and it cannot itself go stale, because there is no
-/// second recording to keep in step.
-#[test]
-fn the_shipped_sdk_is_the_sdk_in_the_working_tree() {
-    /// Where this arm's hand-written PureScript lives, from this crate's own directory.
-    const SDK_SOURCE: &str = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../packages/gg-sandbox-purescript/src"
-    );
-
-    let libraries = libraries().expect("the committed library set unpacks");
-    let shipped = sdk_sources(
-        &libraries
-            .tree
-            .join("libs")
-            .join(&manifest().sdk)
-            .join("src"),
-    );
-    let authored = sdk_sources(std::path::Path::new(SDK_SOURCE));
-
-    let shipped_names: Vec<&String> = shipped.iter().map(|(name, _)| name).collect();
-    let authored_names: Vec<&String> = authored.iter().map(|(name, _)| name).collect();
-    assert_eq!(
-        shipped_names, authored_names,
-        "the tarball's SDK modules are not the working tree's — rebuild with \
-         packages/gg-sandbox-purescript/build.sh"
-    );
-    assert!(!shipped.is_empty(), "the tarball carries an SDK at all");
-
-    // Asserted rather than `assert_eq!`ed, because the difference that matters is *which file*: the
-    // two sides are whole SDK modules and printing both would bury the answer in a thousand lines.
-    for ((name, was), (_, now)) in shipped.iter().zip(&authored) {
-        assert!(
-            was == now,
-            "src/{name} differs between the committed tarball and the working tree — rebuild with \
-             packages/gg-sandbox-purescript/build.sh"
-        );
-    }
-}
-
-/// Every file under `root`, as (path relative to `root`, contents), sorted by path.
-///
-/// The `.js` foreign modules are compared alongside the `.purs`, because `Gg/Internal/Wire.js` is
-/// where a call's **lowering** lives: an SDK whose types never moved but whose wire shape did is
-/// exactly the drift this is here to catch.
-fn sdk_sources(root: &std::path::Path) -> Vec<(String, String)> {
-    fn walk(root: &std::path::Path, at: &std::path::Path, into: &mut Vec<(String, String)>) {
-        let entries = std::fs::read_dir(at)
-            .unwrap_or_else(|error| panic!("could not read {}: {error}", at.display()));
-        for entry in entries {
-            let entry = entry.expect("readable");
-            let path = entry.path();
-            if entry.file_type().expect("a type").is_dir() {
-                walk(root, &path, into);
-                continue;
-            }
-            let name = path
-                .strip_prefix(root)
-                .expect("under the root")
-                .to_string_lossy()
-                .into_owned();
-            let contents = std::fs::read_to_string(&path)
-                .unwrap_or_else(|error| panic!("could not read {}: {error}", path.display()));
-            into.push((name, contents));
-        }
-    }
-    let mut sources = Vec::new();
-    walk(root, root, &mut sources);
-    sources.sort();
-    sources
-}
+// WHAT USED TO BE HERE: `the_shipped_sdk_is_the_sdk_in_the_working_tree`, and the `sdk_sources`
+// walker it needed. It unpacked the tarball and compared `libs/gg-sdk/src` with
+// `packages/gg-sandbox-purescript/src` file for file, the `.js` foreign modules included, naming the
+// one that had drifted.
+//
+// It was the gate under this arm's central claim — *the surface a model is shown and the surface it
+// is compiled against are one artifact* — and it was the most load-bearing drift check in the whole
+// sandbox, because this is the arm where the two halves were most easily separated. The catalogue is
+// reflected out of `src/` on every build; a compile resolves `Gg` against the SDK inside the
+// TARBALL. While the tarball was committed, an SDK edit reached the prompt immediately and the
+// compile only when somebody remembered to re-cut it, and every other gate stayed green: the
+// manifest check above compares directory NAMES and counts module directories, neither of which
+// moves when a function's body, its lowering, or an added export inside an existing module changes.
+//
+// The claim is now true by construction rather than by assertion. `crates/gg-sandbox-artifacts/
+// purescript` runs `build.sh` whenever `src/` moves, `build.sh` stages that same `src/` into a wiped
+// tree with `cp -aL` and compiles it, and `crates/gg` embeds the result — all in the `cargo build`
+// that also reflects the catalogue, which reads the tarball this crate just produced. Two vintages
+// is not a state this arm can be in, so the comparison had no way left to fail.
+//
+// That is also why this arm was the reason the artifact crates are ORDINARY `[dependencies]` of
+// `crates/gg` rather than a step of its build script: the reflection needs the tarball, so the
+// tarball has to be built first, and a dependency edge is how cargo is told that.
 
 #[test]
 fn the_shared_tree_is_sealed_and_each_preparation_gets_its_own() {
-    let libraries = libraries().expect("the committed library set unpacks");
+    let libraries = libraries().expect("the library set this build cut unpacks");
 
     // Nothing may write to the shared tree: that is what turns the measured `purs` corruption — two
     // agents' programs interleaved into one artifact, every process exiting zero — into a refusal at

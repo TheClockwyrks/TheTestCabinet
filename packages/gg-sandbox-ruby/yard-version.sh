@@ -11,8 +11,9 @@
 #
 # It is a file of its own rather than a line in `opal-version.sh` because the two pins answer to
 # different artifacts and different people: `opal-version.sh` pins the Opal that COMPILES a model's
-# Ruby program, and every version in it has to agree with the committed guest it was baked into.
-# This pins the tool that READS the SDK's documentation, which touches nothing committed at all.
+# Ruby program, and every version in it has to agree with the guest it was baked into — which is why
+# that file is in this arm's artifact rerun set and this one is in its signature rerun set. This pins
+# the tool that READS the SDK's documentation, and reading it produces no artifact at all.
 #
 # Not a script to run: it only sets variables.
 

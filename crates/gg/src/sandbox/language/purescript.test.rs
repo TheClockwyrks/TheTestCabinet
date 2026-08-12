@@ -215,7 +215,7 @@ fn every_name_is_written_under_the_module_a_program_imports() {
 
 /// **PureScript's libraries are declared in its catalogue**, which is what the prompt renders.
 ///
-/// The set is a build-time fact about the committed tree — `import Data.Map` works because
+/// The set is a build-time fact about the compiled tree — `import Data.Map` works because
 /// `build.sh` compiled `ordered-collections` into the tarball gg carries — so the sentence a model
 /// reads is reflected from the file that decides the set rather than written in a template. That the
 /// prompt carries every group is a [prompt gate](crate::prompts); what is asserted here is that this

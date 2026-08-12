@@ -17,7 +17,8 @@
 //! * the **signature catalogue** — reflected out of that SDK's own KDoc by the compiler's own front
 //!   end, and generated into this build's `OUT_DIR` rather than committed anywhere (see
 //!   `crates/gg/build.rs`);
-//! * `checkers/kotlin.sdk.jar` — that SDK compiled, which is what a classpath entry is;
+//! * `kotlin.sdk.jar` — that SDK compiled, which is what a classpath entry is, cut into this
+//!   build's artifacts by `crates/gg-sandbox-artifacts/kotlin` rather than committed anywhere;
 //! * `checkers/kotlin.compiler.java` — this arm's half of gg's compiler driver;
 //! * `checkers/kotlin.toolchain.json` — the Kotlin release this arm is pinned to.
 //!

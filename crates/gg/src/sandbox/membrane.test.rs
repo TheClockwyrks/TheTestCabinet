@@ -44,7 +44,7 @@ fn the_container_root_is_preopenable_for_every_program() {
 /// Every tool the model-facing catalogue offers is a real gg tool.
 ///
 /// Together with its sibling below this is the drift gate on the *source* side. The gate on the
-/// **committed artifact** is `the_component_binds_exactly_the_tools_gg_offers` in `sandbox.test.rs`,
+/// **embedded artifact** is `the_component_binds_exactly_the_tools_gg_offers` in `sandbox.test.rs`,
 /// which asks the guest itself; nothing here can catch a stale `.wasm`.
 ///
 /// The tools a catalogue offers are read as *the gates its entries carry*, which is the question in

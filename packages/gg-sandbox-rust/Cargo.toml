@@ -28,7 +28,13 @@ crate-type = ["rlib"]
 # metadata. See `rust-version.sh` for why that matters — a proc macro is a host `.so`, and one
 # named in the metadata makes the whole library set unloadable on any other architecture.
 #
-# The generated bindings in `src/bindings.rs` are what use it, through `wit_bindgen::rt`.
+# The generated bindings in `src/bindings.rs` are what use it, through `wit_bindgen::rt`. THIS
+# REQUIREMENT, AND THE VERSION `Cargo.lock` RESOLVES IT TO, ARE ALSO WHICH GENERATOR EMITS THOSE
+# BINDINGS: `rust-version.sh` reads `GG_WIT_BINDGEN_VERSION` out of the lock rather than restating
+# it, because the generator and this runtime are two halves of one release and a disagreement
+# between them surfaces as an unresolved symbol in a wasm module rather than as anything either
+# file could be read to predict. Bump it here — or with `cargo update -p wit-bindgen` — and the
+# downloaded CLI follows.
 wit-bindgen = { version = "0.60", default-features = false }
 
 # ------------------------------------------------------------------------------------------------

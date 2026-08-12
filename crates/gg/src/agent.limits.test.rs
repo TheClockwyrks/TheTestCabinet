@@ -563,7 +563,7 @@ async fn a_model_api_error_is_still_fatal_on_the_first_occurrence() {
 /// loop must end the session on gg's terms, credit no ceiling with it, and leave a ceiling armed at
 /// **one** error unbreached, because a defect in the harness is not a failed turn by the model.
 ///
-/// A fault this shape cannot be provoked honestly — the committed component compiles, the engine
+/// A fault this shape cannot be provoked honestly — the prebuilt component compiles, the engine
 /// config is a constant, and the blocking task only fails to join if the host panicked — so it is
 /// armed through the [seam](crate::sandbox::force_next_program_fault) that exists for exactly this.
 #[tokio::test]

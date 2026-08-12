@@ -25,9 +25,11 @@
 //! The **library set** goes the other way. `purs` cannot type-check a program without both the
 //! sources and the compiled externs of everything it imports (measured: with externs alone every
 //! import is `ModuleNotFound`), and compiling the set from scratch costs ~16 s — so it is compiled
-//! once by `packages/gg-sandbox-purescript/build.sh` and committed as a 1.3 MB tarball that gg
-//! embeds. This arm's **SDK** is compiled into that same tree, which is what makes the surface a
-//! model is shown in its prompt and the surface its program is compiled against one artifact. It could have gone in the image beside `purs` and it deliberately does not: gg is copied
+//! once, by `packages/gg-sandbox-purescript/build.sh`, into a 1.3 MB tarball that gg embeds — cut
+//! by the same `cargo build` that compiles this file, so it cannot be a different vintage from the
+//! SDK inside it. This arm's **SDK** is compiled into that same tree, which is what makes the
+//! surface a model is shown in its prompt and the surface its program is compiled against one
+//! artifact. It could have gone in the image beside `purs` and it deliberately does not: gg is copied
 //! as a single file into an ephemeral run container whose image was built separately, so a tree that
 //! lived in the image could be a different vintage from the binary reading it. Once this arm's SDK
 //! is compiled into that tree, that would mean a model being shown one surface in its prompt and
@@ -35,7 +37,7 @@
 //!
 //! # What a PureScript program costs to compile
 //!
-//! Measured in this repository's dev container, aarch64, against the committed tree (329 modules,
+//! Measured in this repository's dev container, aarch64, against the embedded tree (329 modules,
 //! 50 packages plus this arm's own SDK), median of nine:
 //!
 //! | | |
@@ -115,10 +117,16 @@ use crate::sandbox::language::{PrepareContext, PrepareError, PrepareFailure, Pre
 ///
 /// Embedded for the reason the guest components are: gg is copied as a single file into an ephemeral
 /// run container and must carry everything it needs with it.
-const LIBRARIES_TAR_GZ: &[u8] = include_bytes!("../checkers/purescript.libraries.tar.gz");
+const LIBRARIES_TAR_GZ: &[u8] = include_bytes!(concat!(
+    env!("GG_ARTIFACTS_PURESCRIPT"),
+    "/purescript.libraries.tar.gz"
+));
 
 /// What that tree was built from and what is in it.
-const MANIFEST_JSON: &str = include_str!("../checkers/purescript.compiler.json");
+const MANIFEST_JSON: &str = include_str!(concat!(
+    env!("GG_ARTIFACTS_PURESCRIPT"),
+    "/purescript.compiler.json"
+));
 
 /// The environment variable an operator points at `purs` when it is not where gg looks.
 pub(super) const PURS_ENV: &str = "TCAB_GG_PURS";
@@ -187,7 +195,7 @@ const OUTPUT_DIR: &str = "output";
 /// The tree's two top-level directories: the library sources, and what `purs` compiled them to.
 const TREE_DIRS: [&str; 2] = ["libs", OUTPUT_DIR];
 
-/// What the committed library tree was built from, and what is in it.
+/// What the embedded library tree was built from, and what is in it.
 #[derive(Debug, Deserialize)]
 struct Manifest {
     /// The pinned `purs` release the tree was compiled by — and therefore the only one that can read
@@ -259,7 +267,7 @@ fn manifest() -> &'static Manifest {
     static MANIFEST: std::sync::OnceLock<Manifest> = std::sync::OnceLock::new();
     MANIFEST.get_or_init(|| {
         serde_json::from_str(MANIFEST_JSON)
-            .expect("the committed compiler manifest is valid JSON of the expected shape")
+            .expect("the embedded compiler manifest is valid JSON of the expected shape")
     })
 }
 
@@ -486,7 +494,7 @@ fn skip_trivia(source: &str, from: usize) -> usize {
 // The two invocations
 // ---------------------------------------------------------------------------------------------
 
-/// Refuse, once per process, a `purs` that is not the release the committed tree was compiled by.
+/// Refuse, once per process, a `purs` that is not the release the embedded tree was compiled by.
 ///
 /// Externs are a **compiler-version-private format**, so this is not a nicety: a `purs` that drifted
 /// from the manifest's pin cannot read the tree gg ships, and every compile fails with diagnostics
@@ -834,7 +842,7 @@ fn libraries() -> Result<&'static Libraries, String> {
         .map_err(Clone::clone)
 }
 
-/// Unpack the committed tree into a [shared toolchain directory](shared_toolchain_dir).
+/// Unpack the embedded tree into a [shared toolchain directory](shared_toolchain_dir).
 ///
 /// The seam's one sanctioned share, taken under the seam's discipline: the key folds in the pinned
 /// `purs` release **and** a digest of the tarball itself, so a gg carrying a different tree at the
@@ -852,7 +860,7 @@ fn materialise() -> Result<Libraries, String> {
     Ok(Libraries { tree })
 }
 
-/// Decompress and extract the committed tarball into `into`.
+/// Decompress and extract the embedded tarball into `into`.
 fn unpack(into: &Path) -> Result<(), String> {
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(LIBRARIES_TAR_GZ));
     // The tarball is gg's own build artifact rather than anything a run produced, but the extraction
@@ -864,7 +872,7 @@ fn unpack(into: &Path) -> Result<(), String> {
         .map_err(|error| format!("could not unpack the PureScript library set: {error}"))
 }
 
-/// A stable digest of the committed tarball, so a change to it changes the directory it is unpacked
+/// A stable digest of the embedded tarball, so a change to it changes the directory it is unpacked
 /// into. Not cryptographic and not required to be: it distinguishes builds, it does not defend
 /// against one.
 fn fingerprint() -> u64 {

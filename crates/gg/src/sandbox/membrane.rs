@@ -502,7 +502,7 @@ fn wasi_context(stderr: GuestStderr) -> WasiCtx {
 /// still be *exercised*: nothing about a `WasiCtx` is inspectable once built, and no **registered**
 /// guest imports `wasi:filesystem`, so without this a preopen that stopped succeeding — or a builder
 /// call dropped in a refactor — would go unnoticed until a language months later blamed its own
-/// toolchain. It is no longer only a unit test that reaches it: the committed Python guest imports
+/// toolchain. It is no longer only a unit test that reaches it: the prebuilt Python guest imports
 /// the whole filesystem surface, and its substrate test opens a real file from inside a program.
 fn preopen_root(builder: &mut WasiCtxBuilder) -> wasmtime::Result<()> {
     builder.preopened_dir("/", "/", DirPerms::all(), FilePerms::all())?;

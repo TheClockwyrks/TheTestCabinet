@@ -21,11 +21,17 @@ fn report(ok: bool, stderr: &str) -> CompilerReport {
 }
 
 #[test]
-fn the_committed_archive_holds_exactly_what_its_manifest_declares() {
+fn the_archive_holds_exactly_what_its_manifest_declares() {
     // The manifest is what an operator reads and what the shared-directory key is derived beside; an
     // archive that lost a file would otherwise fail as a `clang++` error about a missing input,
     // three layers down from the thing that was actually wrong.
-    let guest = guest().expect("the committed C++ guest unpacks");
+    //
+    // Both sides come out of one run of `build.sh` — the file list is `find`'s reading of the
+    // staging directory and the archive is `tar`'s — so what this asks is whether gg's own unpacking
+    // put back everything that was packed, at the size it was packed at. That is a live question
+    // however the archive got here, which is why it outlived the drift checks that used to sit
+    // beside it.
+    let guest = guest().expect("the C++ guest this build cut unpacks");
     for name in guest_files() {
         let path = guest.file(name);
         let placed = std::fs::metadata(&path)
@@ -38,17 +44,17 @@ fn the_committed_archive_holds_exactly_what_its_manifest_declares() {
         assert_eq!(
             placed.len(),
             declared.bytes,
-            "{name} in the committed archive is not the size its manifest declares"
+            "{name} in the archive is not the size its manifest declares"
         );
     }
 }
 
 #[test]
-fn the_committed_archive_is_placed_read_only() {
+fn the_archive_is_placed_read_only() {
     // The seam's rule for a shared toolchain directory, asserted rather than assumed: `clang++`
     // reads these files and must never be able to write beside them, because a shared tree a
     // compilation writes into is the measured `purs` corruption exactly.
-    let guest = guest().expect("the committed C++ guest unpacks");
+    let guest = guest().expect("the C++ guest this build cut unpacks");
     let path = guest.file("prelude.hpp");
     let metadata = std::fs::metadata(&path).expect("the prelude is in the unpacked guest");
     #[cfg(unix)]
@@ -63,127 +69,25 @@ fn the_committed_archive_is_placed_read_only() {
     }
 }
 
-#[test]
-fn what_gg_compiles_every_program_against_is_what_this_checkout_committed() {
-    // The archive is built from `packages/gg-sandbox-cpp/Sources` and committed; a checkout that
-    // edited the prelude or the shell without rebuilding would compile every program against the old
-    // one, and nothing else would say so. Compared by content rather than by size so a same-length
-    // edit is caught too.
-    //
-    // The shell is in the archive as SOURCE as well as as an object precisely for this: the object
-    // is what links, and the source is the only thing a comparison like this can read. The SDK's
-    // HEADERS are in it for a stronger reason than comparison — they are what the prelude
-    // precompiles and what a program is declared against, so a stale copy is a model compiled
-    // against a surface it was not shown.
-    let guest = guest().expect("the committed C++ guest unpacks");
-    let prelude = std::fs::read_to_string(guest.file("prelude.hpp")).expect("the prelude unpacks");
-    assert_eq!(
-        prelude,
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/prelude.hpp"),
-        "crates/gg/src/sandbox/checkers/cpp.guest.tar.gz is stale — run \
-         packages/gg-sandbox-cpp/build.sh and commit it"
-    );
-    let shell = std::fs::read_to_string(guest.file("shell.cpp")).expect("the shell unpacks");
-    assert_eq!(
-        shell,
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/shell.cpp"),
-        "the committed shell object was built from a different source than this checkout's"
-    );
-
-    // Every SDK header, compared the same way — and the LIST compared too, so a header added to the
-    // SDK and left out of a rebuild is caught rather than silently absent from the tree the prelude
-    // is precompiled out of.
-    let mut shipped: Vec<&str> = guest_files()
-        .filter(|name| name.starts_with("sdk/"))
-        .collect();
-    shipped.sort_unstable();
-    let mut written: Vec<&str> = SDK_HEADERS.iter().map(|(name, _)| *name).collect();
-    written.sort_unstable();
-    assert_eq!(
-        shipped, written,
-        "the committed archive's SDK headers and this checkout's are not the same set — run          packages/gg-sandbox-cpp/build.sh and commit it"
-    );
-    for (name, source) in SDK_HEADERS {
-        let committed = std::fs::read_to_string(guest.file(name))
-            .unwrap_or_else(|error| panic!("{name} unpacks: {error}"));
-        assert_eq!(
-            &committed, source,
-            "the archive's copy of {name} is not this checkout's, so every program would be              compiled against a surface the catalogue does not describe"
-        );
-    }
-}
-
-/// This checkout's SDK headers, beside the names they ride in the archive under.
-///
-/// Written out rather than globbed, because a macro that walked the directory would go green on a
-/// header nobody committed — and the point of the comparison is that the set is the same on both
-/// sides.
-const SDK_HEADERS: &[(&str, &str)] = &[
-    (
-        "sdk/gg.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg.hpp"),
-    ),
-    (
-        "sdk/runtime.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/runtime.hpp"),
-    ),
-    (
-        "sdk/wire.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/wire.hpp"),
-    ),
-    (
-        "sdk/gg/board.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/board.hpp"),
-    ),
-    (
-        "sdk/gg/context.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/context.hpp"),
-    ),
-    (
-        "sdk/gg/core.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/core.hpp"),
-    ),
-    (
-        "sdk/gg/delegation.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/delegation.hpp"),
-    ),
-    (
-        "sdk/gg/docs.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/docs.hpp"),
-    ),
-    (
-        "sdk/gg/files.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/files.hpp"),
-    ),
-    (
-        "sdk/gg/memories.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/memories.hpp"),
-    ),
-    (
-        "sdk/gg/programs.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/programs.hpp"),
-    ),
-    (
-        "sdk/gg/session.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/session.hpp"),
-    ),
-    (
-        "sdk/gg/shell.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/shell.hpp"),
-    ),
-    (
-        "sdk/gg/skills.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/skills.hpp"),
-    ),
-    (
-        "sdk/gg/tasks.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/tasks.hpp"),
-    ),
-    (
-        "sdk/gg/views.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/views.hpp"),
-    ),
-];
+// WHAT USED TO BE HERE: `what_gg_compiles_every_program_against_is_what_this_checkout_committed`
+// and the `SDK_HEADERS` table it read. Between them they unpacked the archive and compared its
+// `prelude.hpp`, its `shell.cpp` and all sixteen SDK headers, byte for byte, against
+// `packages/gg-sandbox-cpp/Sources` — because the archive was COMMITTED, and somebody could edit a
+// header and not re-cut it, leaving every program on this arm declared against a surface the
+// catalogue no longer described.
+//
+// Both sides of that comparison are now cut by the same `cargo build`. `crates/gg-sandbox-artifacts/
+// cpp` runs `build.sh` whenever anything under `Sources/` moves, and `build.sh` stages those exact
+// files into a wiped directory with `cp` immediately before packing it. There is no interval in
+// which the two can differ and no operation between them that could make them, so the assertion
+// could not fail — and a test that cannot fail is worse than no test, because it reads like cover.
+//
+// The archive is still checked, and by the two tests either side of this note, which ask a different
+// question: `the_archive_holds_exactly_what_its_manifest_declares` holds the packed tree to the file
+// list `build.sh` wrote from that same tree, and `every_header_the_manifest_claims_is_one_the_
+// prelude_really_includes` holds the library set a MODEL is told about to the prelude that actually
+// ships it. Those are agreements between two generators rather than claims about a committed file,
+// and a build script that staged the wrong thing still fails them.
 
 #[test]
 fn every_header_the_manifest_claims_is_one_the_prelude_really_includes() {
@@ -392,7 +296,7 @@ fn the_precompiled_headers_key_moves_when_the_compiler_is_reinstalled() {
 }
 
 #[test]
-fn the_flags_that_have_to_agree_are_the_ones_the_committed_objects_were_built_with() {
+fn the_flags_that_have_to_agree_are_the_ones_the_prebuilt_objects_were_built_with() {
     // Spelled twice — here and in `packages/gg-sandbox-cpp/build.sh` — because the prebuilt objects
     // and the per-turn compile have to agree about both: an object compiled without the exception
     // flags does not link against libc++'s `eh` build, and one compiled under a different hardening
@@ -415,18 +319,20 @@ fn the_flags_that_have_to_agree_are_the_ones_the_committed_objects_were_built_wi
 
 #[test]
 fn the_adapter_is_a_wasm_module_and_the_archive_is_a_gzip_stream() {
-    // The two committed binaries, checked for what they are rather than only for being non-empty: a
+    // The two embedded binaries, checked for what they are rather than only for being non-empty: a
     // truncated download that still had bytes in it would otherwise surface as an encode failure on
-    // a model's first turn.
+    // a model's first turn. The adapter is the one this arm does not build — `build.sh` copies it
+    // out of a version-stamped cache that a `curl` fills on a cold machine — so it is the one where
+    // "bytes, but not the right kind of bytes" is a thing that can actually happen.
     assert_eq!(
         &ADAPTER[..8],
         b"\0asm\x01\0\0\0",
-        "checkers/cpp.adapter.wasm is not a wasm module"
+        "cpp.adapter.wasm is not a wasm module"
     );
     assert_eq!(
         &GUEST_TAR_GZ[..2],
         b"\x1f\x8b",
-        "checkers/cpp.guest.tar.gz is not a gzip stream"
+        "cpp.guest.tar.gz is not a gzip stream"
     );
 }
 

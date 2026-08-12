@@ -28,14 +28,17 @@
 # the declarations whose name matches — which for this SDK is all of them, because its surface lives
 # in `namespace gg`. 3 MB and half a second.
 #
-# WHY IT WRITES EXACTLY ONE FILE. This runs on any build of gg that regenerates a catalogue, which
-# is to say under a developer who typed `cargo build`. `crates/gg/src/sandbox/checkers/` holds this
-# arm's committed guest archive, re-cut by `build.sh` on purpose and by hand because it costs minutes
-# and megabytes. A signature step that reached `build.sh` for the bindings it needs would rewrite
-# that archive on the way past — a multi-megabyte binary changed under someone who asked for a
-# compile, and a checkout whose committed artifacts no longer say what produced them. Measured on the
-# Rust arm, which is why the bindings are their own script here as they are there. Nothing below
-# writes into `crates/gg/src/sandbox/checkers/`.
+# WHY IT WRITES EXACTLY ONE FILE. This runs on every build of gg that regenerates a catalogue, which
+# is to say under a developer who typed `cargo build`. `build.sh` cuts this arm's guest archive,
+# which is ~9 s of `clang++` over the SDK, the shell and the generated bindings. A signature step
+# that reached `build.sh` for the bindings it needs would re-cut that archive on the way past, every
+# time a doc comment moved.
+#
+# Both halves are now generated during the same `cargo build`, each with its own rerun set:
+# `crates/gg-sandbox-artifacts/cpp` runs `build.sh` and `crates/gg/build.rs` runs this. Folding one
+# into the other would collapse those two sets into one, which is the whole cost the artifact crates
+# exist to avoid. `bindings.sh` remains the one step both need, split out of the one with side
+# effects. This writes exactly one file, into `$GG_SIGNATURES_OUT_DIR`.
 #
 # Usage:
 #   GG_SIGNATURES_OUT_DIR=<dir> packages/gg-sandbox-cpp/signatures.sh
@@ -45,6 +48,13 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=packages/gg-sandbox-cpp/cpp-version.sh
 source "$HERE/cpp-version.sh"
+
+# ONE ARM, ONE PROCESS AT A TIME. This package's scratch is a fixed path inside the source tree
+# rather than a `mktemp -d`, deliberately — it is a cache — and two cargo processes with two target
+# directories do not serialise with each other. See `scripts/gg-scratch-lock.sh`.
+# shellcheck source=scripts/gg-scratch-lock.sh
+source "$HERE/../../scripts/gg-scratch-lock.sh"
+gg_lock_scratch "$HERE"
 
 # NO BYTECODE CACHE. `tools/signatures.py` imports its sibling `tools/catalogue.py`, and an ordinary
 # CPython drops a `__pycache__/` beside a module it imports. That directory is gitignored and

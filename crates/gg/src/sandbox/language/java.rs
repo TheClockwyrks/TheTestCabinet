@@ -16,7 +16,8 @@
 //! * the **signature catalogue** — reflected out of that SDK's own Javadoc by `javadoc` and a
 //!   doclet of gg's own, and generated into this build's `OUT_DIR` rather than committed anywhere
 //!   (see `crates/gg/build.rs`);
-//! * `checkers/java.sdk.jar` — that SDK compiled, which is what a classpath entry is;
+//! * `java.sdk.jar` — that SDK compiled, which is what a classpath entry is, cut into this
+//!   build's artifacts by `crates/gg-sandbox-artifacts/java` rather than committed anywhere;
 //! * `checkers/java.compiler.java` — gg's own compiler driver, a single file run by the JDK's
 //!   single-file source-code launcher;
 //! * `checkers/java.toolchain.json` — the JDK and TeaVM releases this arm is pinned to.

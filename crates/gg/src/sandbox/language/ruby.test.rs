@@ -29,12 +29,13 @@ fn this_arm_names_the_compiler_that_judges_a_program() {
     assert!(ruby().prepare_compiles());
 }
 
-/// **The prompt states the Ruby level the committed compiler really reports.**
+/// **The prompt states the Ruby level the compiler this build cut really reports.**
 ///
 /// The one fact in this arm's prompt that is a *version* and therefore rots: a model told it is
 /// writing Ruby 3.2 writes `case … in` and does not write `it` as a block parameter, and an Opal
 /// bump that moved the level would leave that sentence quietly wrong. The number is prose — no
-/// catalogue reflects it — so this is what holds it to `checkers/ruby.compiler.json`.
+/// catalogue reflects it — so this is what holds it to `ruby.compiler.json`, which this arm's
+/// artifact crate writes beside the compiler it describes.
 #[test]
 fn the_prompt_states_the_ruby_level_the_compiler_reports() {
     let level = compile::ruby_version();
@@ -219,7 +220,7 @@ fn a_block_is_a_second_signature_rather_than_a_second_function() {
 
 /// **Ruby's libraries are declared in its catalogue**, which is what the prompt renders.
 ///
-/// The set is a bake-time fact about the committed component — `require "json"` works because the
+/// The set is a bake-time fact about the prebuilt component — `require "json"` works because the
 /// build compiled `json` out of the pinned Opal's own sources — so the sentence a model reads is
 /// reflected from the file that decides the set rather than written in a template. That the prompt
 /// carries every group is a [prompt gate](crate::prompts); what is asserted here is that this arm

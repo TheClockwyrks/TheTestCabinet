@@ -3,8 +3,8 @@
 //! # Why this gate exists, and why it exists *here*
 //!
 //! Two things gg renders contain code a model is invited to copy: this arm's responses-as-code
-//! system prompt (with the "your program showed you nothing" notice beside it) and its committed
-//! signature catalogue, whose prose is reflected out of the SDK's own rustdoc and rendered into
+//! system prompt (with the "your program showed you nothing" notice beside it) and its signature
+//! catalogue, whose prose is reflected out of the SDK's own rustdoc and rendered into
 //! documentation views. Everything about those two that can be checked without a compiler already
 //! is — [`prompts::spellings`](crate::prompts) resolves every call *name* they quote against the
 //! catalogue, and every argument name beside one against that signature — and none of it can tell
@@ -17,7 +17,7 @@
 //! the `?` was an `E0277` on a line the model had been shown.
 //!
 //! It lives with the arm rather than with the prompt tests because it needs the arm's whole compile
-//! path: the real wrapper, the real flags and the real committed library set. That is also why it
+//! path: the real wrapper, the real flags and the real library set this build compiled. That is also why it
 //! is one `rustc` rather than one per example — every snippet goes into a single program, each in
 //! its own block so nothing one binds is visible to another, and `rustc` reports all of their
 //! diagnostics at once.

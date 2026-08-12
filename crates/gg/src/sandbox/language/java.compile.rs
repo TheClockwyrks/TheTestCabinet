@@ -82,7 +82,7 @@
 //! | A JDK | the gg toolchain image, or `scripts/ci/install-java.sh` on a developer's machine | ~190 MB with a build per platform; it cannot ride inside a static binary |
 //! | TeaVM's jars | the same place | ~29 MB of third-party artifacts, pinned by version |
 //! | gg's compiler driver | **inside gg's binary** (`checkers/java.compiler.java`) | it is gg's own code, and a driver of a different vintage from the gg that speaks to it would be a protocol mismatch nobody notices |
-//! | this arm's SDK, compiled | **inside gg's binary** (`checkers/java.sdk.jar`) | it is the surface a program is compiled against, and one of a different vintage from the catalogue describing it would show a model a surface it is not compiled against |
+//! | this arm's SDK, compiled | **inside gg's binary** (`java.sdk.jar`, cut by this build) | it is the surface a program is compiled against, and one of a different vintage from the catalogue describing it would show a model a surface it is not compiled against |
 //!
 //! The driver is a **single `.java` file run by the JDK's single-file source-code launcher**, so
 //! there is no jar to build, no binary artifact to commit and no reproducible-build gate to keep
@@ -118,9 +118,15 @@ const FRONT: &str = include_str!("../checkers/java.compiler.java");
 /// reason: the image is built separately from the binary that runs in it, so an SDK living there
 /// could be a different vintage from the gg whose catalogue describes it — and a model shown one
 /// surface in its prompt and compiled against another is the failure this seam exists to prevent.
-/// Committed, the jar travels with the gg that describes it — and it is the half of the pair that
-/// can be committed stale, since the catalogue is reflected out of the same `src/` on every build.
-const SDK: &[u8] = include_bytes!("../checkers/java.sdk.jar");
+///
+/// And it is **compiled by this build**, out of `packages/gg-sandbox-java/src`, by that package's
+/// `build.sh` — not committed. That closes the last gap in the sentence above, which used to end
+/// "…and it is the half of the pair that can be committed stale". It could, and it was: the change
+/// that added `@throws` prose to `Files.java`, `Views.java` and `Context.java` moved the catalogue
+/// on the next build and left the jar at the previous vintage, and nothing about a `.jar` looks
+/// stale. Now the library and the description of it are cut from one `src/` on one build, so being
+/// two vintages is not a state this arm can be in.
+const SDK: &[u8] = include_bytes!(concat!(env!("GG_ARTIFACTS_JAVA"), "/java.sdk.jar"));
 
 /// What the toolchain the driver is run against is pinned to.
 const MANIFEST_JSON: &str = include_str!("../checkers/java.toolchain.json");
@@ -200,7 +206,7 @@ fn manifest() -> &'static Manifest {
     static MANIFEST: std::sync::OnceLock<Manifest> = std::sync::OnceLock::new();
     MANIFEST.get_or_init(|| {
         serde_json::from_str(MANIFEST_JSON)
-            .expect("the committed Java toolchain manifest is valid JSON of the expected shape")
+            .expect("the committed Java toolchain pin is valid JSON of the expected shape")
     })
 }
 

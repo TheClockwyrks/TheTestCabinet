@@ -1,45 +1,46 @@
 #!/usr/bin/env bash
 #
-# Refresh the COMMITTED artifact this package produces:
+# Build this arm's three artifacts, into `$GG_ARTIFACTS_OUT_DIR`:
 #
-#   crates/gg/src/sandbox/guests/ruby.component.wasm   the ECMAScript engine with Opal's runtime,
-#                                                      gg's Ruby SDK and the libraries a program may
-#                                                      require, all pre-initialised into it
+#   ruby.component.wasm   the ECMAScript engine with Opal's runtime, gg's Ruby SDK and the libraries
+#                         a program may require, all pre-initialised into it
+#   ruby.opal.cjs         the host-side Opal compiler, as one CommonJS bundle with gg's driver
+#   ruby.compiler.json    which Opal that is, and which Ruby it emulates
 #
-# It is named for the PROGRAM LANGUAGE it serves, not for this package, exactly as the other guests'
-# artifacts are: gg's responses-as-code capability registers a language per guest, and each one
-# commits its artifacts under `crates/gg/src/sandbox/guests/<language-id>.*`.
+# They are named for the PROGRAM LANGUAGE they serve, not for this package, exactly as the other
+# guests' artifacts are: gg's responses-as-code capability registers a language per guest, and each
+# one files its artifacts under `<language-id>.*`.
 #
-# The host-side Opal compiler is this package's OTHER pair of committed artifacts and is cut by
-# `compiler.sh`, not by this script. The split is the same one the Python guest makes: cutting the
-# compiler needs only Node and is therefore something CI can run and diff, where this needs
-# `componentize-js` and emits 20 MB.
+# THIS IS THE ARM'S ONE PRODUCER. `scripts/gg-arms.sh` promises three files for this row and this
+# script writes all three; a second entry point that wrote only some of them would leave gg
+# embedding half a set. Two of the three — the compiler and the manifest describing it — used to be
+# cut by a separate `compiler.sh` that `scripts/ci/contract-drift.sh` called directly, because that
+# check wanted the cheap half without the 20 MB component. Nothing diffs them any more, so the split
+# has no caller and step 2 below is what became of it.
 #
 # The signature catalogue — what a model is TOLD this arm offers — is emitted by `signatures.sh`,
-# which needs Ruby and YARD rather than either of the above, and it is not committed anywhere:
-# `crates/gg/build.rs` reflects it out of `src/gg/**` on every build of the host and `include_str!`s
-# the result. That is the third thing this package produces and the only one of the three that no
-# hand-run can leave stale, because the build that compiles the code rendering the prompt is the
-# build that reads the SDK the prompt describes.
+# which needs Ruby and YARD rather than either of the above. That is the fourth thing this package
+# produces, and it is a different question answered by a different tool on a different schedule,
+# which is why it is not a step here.
 #
-# The component is checked in, exactly as the other guests' are, so no build or CI step ever needs
-# `componentize-js`: the Rust host reads it with `include_bytes!`. That is also why this script is
-# never wired into a build — it is run by hand, deliberately, and its output is committed alongside
-# the source change that motivated it.
-#
-# Run it after changing anything the component is made of:
+# NOBODY HAS TO REMEMBER WHEN TO RUN THIS. `crates/gg-sandbox-artifacts/ruby` runs it as part of
+# building `test-cabinet-gg`, and the rerun set it declares — in
+# `crates/gg-sandbox-artifacts/build-support` — is exactly the list of things this build reads:
 #
 #   * crates/gg/wit/gg-sandbox.wit         (the membrane — a WIT change without a rebuild fails gg's
 #                                           instantiation test, which is the intended failure
 #                                           direction)
 #   * packages/gg-sandbox-ruby/src/**      (this guest's entry module, its Ruby SDK, and the library
 #                                           manifest — a change to `src/gg/**` is also a change to
-#                                           the signature catalogue, so run `signatures.sh` too)
+#                                           the signature catalogue, which `signatures.sh` reflects
+#                                           off the same tree on the same build)
+#   * packages/gg-sandbox-ruby/tools/**    (what lowers that SDK — both times, see step 1 and step 4)
 #   * the pins in opal-version.sh
 #
-# Requires Node and network access the first time, to fetch the pinned `componentize-js`, the
-# pinned Opal npm packages, and the Opal gem of the same release (for the standard library's Ruby
-# sources, which npm does not ship). The build takes a few seconds and emits ~20 MB: a whole
+# Requires Node, the pinned Opal npm packages and `componentize-js` out of the shared tool prefix
+# `scripts/ci/install-gg-build-tools.sh` warms, and the Opal gem of the same release (for the
+# standard library's Ruby sources, which npm does not ship) out of the version-stamped cache that
+# same installer fills. The build takes a few seconds and emits ~20 MB: a whole
 # JavaScript engine, plus Opal's corelib, the curated libraries and gg's SDK as they stand after
 # their top level has run.
 #
@@ -47,12 +48,13 @@
 # entry module's top level at build time under `wizer` and snapshots the heap, so Opal's 743 KB
 # runtime is built once, into the artifact. Measured through gg's own store and linker, on this
 # repository's dev container: a Ruby program costs 2.1–2.6 ms per turn this way, against 45.6–51.0 ms
-# with the same runtime prepended to the program and evaluated in the committed ECMAScript
-# component — and 1.2–1.4 ms is what a plain JavaScript program costs on the same component. The
-# difference is the whole reason this artifact exists.
+# with the same runtime prepended to the program and evaluated in the TypeScript arm's plain
+# ECMAScript component — and 1.2–1.4 ms is what a plain JavaScript program costs on that same
+# component. The difference is the whole reason this artifact exists.
 #
 # Usage:
-#   packages/gg-sandbox-ruby/build.sh
+#   scripts/gg-artifacts.sh                                    # every arm, into one directory
+#   GG_ARTIFACTS_OUT_DIR=<dir> packages/gg-sandbox-ruby/build.sh
 set -euo pipefail
 
 # Repo root, independent of the caller's working directory.
@@ -60,59 +62,89 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
 PACKAGE="packages/gg-sandbox-ruby"
-DEST_DIR="crates/gg/src/sandbox/guests"
-COMPONENT="$DEST_DIR/ruby.component.wasm"
-MANIFEST="crates/gg/src/sandbox/checkers/ruby.compiler.json"
 
-# The Opal pins, shared with `compiler.sh`, and the `componentize-js` release.
+# The destination, which is required and has no default — see the file itself for why.
+# shellcheck source=scripts/gg-artifacts-out-dir.sh
+source "$ROOT/scripts/gg-artifacts-out-dir.sh"
+# shellcheck source=scripts/gg-npm-tools.sh
+source "$ROOT/scripts/gg-npm-tools.sh"
+
+# ONE ARM, ONE PROCESS AT A TIME. This package's scratch is a fixed path inside the source tree
+# rather than a `mktemp -d`, deliberately — it is a cache — and two cargo processes with two target
+# directories do not serialise with each other. See `scripts/gg-scratch-lock.sh`.
+# shellcheck source=scripts/gg-scratch-lock.sh
+source "$ROOT/scripts/gg-scratch-lock.sh"
+gg_lock_scratch "$ROOT/$PACKAGE"
+
+COMPONENT="$GG_ARTIFACTS_OUT_DIR/ruby.component.wasm"
+MANIFEST="$GG_ARTIFACTS_OUT_DIR/ruby.compiler.json"
+
+# The Opal pins and the `componentize-js` release.
 # shellcheck source=packages/gg-sandbox-ruby/opal-version.sh
 source "$ROOT/$PACKAGE/opal-version.sh"
 
 BUILD_DIR="$PACKAGE/.build"
-GEM_DIR="$BUILD_DIR/opal-gem"
-mkdir -p "$DEST_DIR" "$BUILD_DIR"
+mkdir -p "$BUILD_DIR"
 
-# 1. Vendor Opal from npm: the runtime this guest bakes and the self-hosted compiler that lowers
-#    gg's own Ruby to JavaScript. Both come out of the one pinned install, which is what keeps the
-#    compiler and the runtime the same release.
-echo "Vendoring opal-compiler@$OPAL_COMPILER_VERSION ..."
-npm install --silent --no-audit --no-fund --prefix "$BUILD_DIR" \
-	"opal-compiler@$OPAL_COMPILER_VERSION"
+# 1. Resolve Opal — ONCE, for both halves of this build. The npm tree below is the runtime this
+#    guest bakes AND the self-hosted compiler step 2 bundles for the host, and resolving it once is
+#    what makes "the compiler and the runtime are the same release" a fact about this script rather
+#    than an agreement two scripts have to keep.
+OPAL_DIR="$(gg_npm_tool opal-compiler "$OPAL_COMPILER_VERSION")"
 
-# 2. The npm packages carry Opal's runtime and compiler and NOT its standard library's sources, so
-#    the libraries `src/library.rb` declares are fetched from the Opal gem of the same release. The
-#    check is against what the committed compiler reports rather than against a comment, so a bump
-#    to one pin that forgets the other fails here instead of producing a guest whose libraries were
+# 2. Cut the host-side compiler: Opal's runtime and its self-hosted compiler as one CommonJS bundle
+#    with gg's driver at the end of it, plus the manifest saying which Opal that is. It comes before
+#    everything the component is made of because step 3 reads that manifest.
+#
+#    This was its own script, `compiler.sh`, for exactly as long as there was a caller that wanted
+#    the cheap half alone: `scripts/ci/contract-drift.sh` re-cut `ruby.opal.cjs` and diffed it
+#    against the committed copy, and doing that through `build.sh` would have meant baking a 20 MB
+#    non-reproducible component on every CI run to check 3 MB of JavaScript. Nothing is committed
+#    now and nothing diffs it, so that caller is gone and so is the script. What is left is the
+#    invariant both orchestrators want: one `build.sh` and one `signatures.sh` per package, and
+#    nothing else that produces an artifact.
+echo "Cutting the Opal compiler bundle ..."
+GG_RUBY_VENDOR="$OPAL_DIR/node_modules" node "$PACKAGE/tools/compiler.mjs"
+
+# 3. The npm packages carry Opal's runtime and compiler and NOT its standard library's sources, so
+#    the libraries `src/library.rb` declares come from the Opal gem of the same release. The check is
+#    against what the compiler cut in step 2 reports rather than against a comment, so a bump to one
+#    pin that forgets the other fails here instead of producing a guest whose libraries were
 #    compiled by a different Opal than the one that runs them.
-if [ -f "$MANIFEST" ]; then
-	CUT_VERSION="$(node -e 'process.stdout.write(require(process.argv[1]).opal)' "$ROOT/$MANIFEST")"
-	if [ "$CUT_VERSION" != "$OPAL_VERSION" ]; then
-		echo "error: opal-version.sh pins the gem at $OPAL_VERSION but the committed compiler is Opal $CUT_VERSION." >&2
-		echo "       Set OPAL_VERSION to $CUT_VERSION (or re-cut the compiler) and run this again." >&2
-		exit 1
-	fi
+#
+#    THE GEM IS CACHED OUTSIDE THIS PACKAGE, under a version-stamped prefix
+#    `scripts/ci/install-gg-build-tools.sh` also fills, for the reason every other pinned download
+#    moved there: `.build/` is wiped by a `git clean` and by anybody debugging this arm, and a cache
+#    that a routine tidy-up empties is a cache that puts a registry call back inside `cargo build`.
+#    The existence check is the marker, as it was before — the gem either unpacked or it did not.
+GEM_DIR="${GG_OPAL_GEM_DIR:-$HOME/.local/share/tcab/gg-opal-$OPAL_VERSION}"
+CUT_VERSION="$(node -e 'process.stdout.write(require(process.argv[1]).opal)' "$MANIFEST")"
+if [ "$CUT_VERSION" != "$OPAL_VERSION" ]; then
+	echo "error: opal-version.sh pins the gem at $OPAL_VERSION but the compiler cut above is Opal $CUT_VERSION." >&2
+	echo "       Set OPAL_VERSION to $CUT_VERSION and run this again." >&2
+	exit 1
 fi
 if [ ! -d "$GEM_DIR/stdlib" ]; then
 	echo "Fetching the opal $OPAL_VERSION gem for the standard library's Ruby sources ..."
 	mkdir -p "$GEM_DIR"
-	curl -sSfL "https://rubygems.org/downloads/opal-$OPAL_VERSION.gem" -o "$BUILD_DIR/opal.gem"
-	tar -xf "$BUILD_DIR/opal.gem" -C "$GEM_DIR" data.tar.gz
+	curl -sSfL "https://rubygems.org/downloads/opal-$OPAL_VERSION.gem" -o "$GEM_DIR/opal.gem"
+	tar -xf "$GEM_DIR/opal.gem" -C "$GEM_DIR" data.tar.gz
 	tar -xzf "$GEM_DIR/data.tar.gz" -C "$GEM_DIR"
 fi
 
-# 3. Compile the two Ruby halves of the guest — gg's SDK, and the libraries `src/library.rb`
+# 4. Compile the two Ruby halves of the guest — gg's SDK, and the libraries `src/library.rb`
 #    declares together with everything they require — with the SAME Opal that compiles a model's
 #    program on the host.
 echo "Compiling the Ruby SDK and the library set ..."
-GG_RUBY_VENDOR="$ROOT/$BUILD_DIR/node_modules" GG_OPAL_SOURCES="$ROOT/$GEM_DIR" \
+GG_RUBY_VENDOR="$OPAL_DIR/node_modules" GG_OPAL_SOURCES="$GEM_DIR" \
 	node "$PACKAGE/tools/guest.mjs"
 
-# 4. Stage the entry beside the three files it imports.
+# 5. Stage the entry beside the three files it imports.
 echo "Staging the entry module ..."
 cp "$PACKAGE/src/shim.js" "$BUILD_DIR/shim.js"
-cp "$BUILD_DIR/node_modules/opal-runtime/src/opal.js" "$BUILD_DIR/opal.js"
+cp "$OPAL_DIR/node_modules/opal-runtime/src/opal.js" "$BUILD_DIR/opal.js"
 
-# 5. Bake the component against the ONE copy of the WIT, which lives in the Rust crate that embeds
+# 6. Bake the component against the ONE copy of the WIT, which lives in the Rust crate that embeds
 #    the result. The `--disable` flags are the ECMAScript guest's, unchanged and deliberately so:
 #    a capability enabled here and not there would be a difference between two arms of a study that
 #    nobody chose.
@@ -123,40 +155,35 @@ cp "$BUILD_DIR/node_modules/opal-runtime/src/opal.js" "$BUILD_DIR/opal.js"
 #      http,
 #      fetch-event  this guest gets no HTTP client, for the reason `DENIED_GLOBALS` gives
 echo "Building the component with componentize-js@$COMPONENTIZE_VERSION ..."
-npx --yes "@bytecodealliance/componentize-js@$COMPONENTIZE_VERSION" \
+COMPONENTIZE_DIR="$(gg_npm_tool @bytecodealliance/componentize-js "$COMPONENTIZE_VERSION")"
+"$COMPONENTIZE_DIR/node_modules/.bin/componentize-js" \
 	"$ROOT/$BUILD_DIR/shim.js" \
 	--wit "$ROOT/crates/gg/wit" \
 	--world-name sandbox \
 	--disable stdio http fetch-event \
-	-o "$ROOT/$COMPONENT"
+	-o "$COMPONENT"
 
-# 6. Record what went into the component, beside it. `contract-drift.sh` deliberately never rebuilds
-#    this artifact, so this manifest — and the Rust test that recomputes it from the checkout — is
-#    the only thing standing between an SDK edit committed without a rebuild and every Ruby program
-#    in the run being evaluated by last month's guest.
-#    `tools/guest.mjs` is in it beside the SDK tree because it is what step 3 lowers the SDK and the
-#    library set with — a change there changes the JavaScript baked into the component without any
-#    Ruby source moving. The gem pin is recorded for the same reason: the standard library's Ruby
-#    sources come from it, and it is bumped in a different variable from the compiler's.
+# WHAT USED TO BE STEP 7: `ruby.component.manifest.json`, written beside the component by
+# `scripts/gg-artifact-manifest.mjs` — the SHA-256 of every file under `src/`, of `tools/guest.mjs`,
+# of this script, and of `crates/gg/wit`'s declarations, so that a test could recompute them from the
+# checkout and fail when somebody had edited the SDK without re-running it. That question — *is the
+# committed component older than the sources beside it?* — no longer has a subject. The component is
+# not committed: `crates/gg-sandbox-artifacts/ruby` runs this script into its own cargo `OUT_DIR` on
+# every build whose declared inputs moved, and `crates/gg` embeds what lands there.
 #
-#    `build.sh` records ITSELF, because the recipe is an input as much as any file it reads: the
-#    flags below decide what the artifact is, and editing one without re-running this script leaves
-#    the checkout describing something the committed bytes are not. That an edit to it fails the
-#    gate until it is run is the intended reading — editing the recipe and not cooking is exactly
-#    the state the gate exists to name.
-echo "Recording the component manifest ..."
-node "$ROOT/scripts/gg-artifact-manifest.mjs" \
-	--arm ruby \
-	--rebuild "$PACKAGE/build.sh" \
-	--artifact "$COMPONENT" \
-	--source-root "$PACKAGE/src" \
-	--source-file "$PACKAGE/tools/guest.mjs" \
-	--source-file "$PACKAGE/build.sh" \
-	--wit crates/gg/wit \
-	--pin "componentizeJs=$COMPONENTIZE_VERSION" \
-	--pin "opalCompiler=$OPAL_COMPILER_VERSION" \
-	--pin "opalGem=$OPAL_VERSION" \
-	--out "$DEST_DIR/ruby.component.manifest.json"
+# THE PAIRING THIS ARM DEPENDS ON IS NOW A CONSEQUENCE RATHER THAN A CLAIM, and it is the reason
+# this was the arm most worth moving. gg's Ruby SDK is lowered to JavaScript TWICE from the one
+# `src/` — once by step 4 into the component above, and once by step 1 into the host-side Opal
+# compiler `crates/gg` also embeds. Two lowerings of the same SDK at two vintages is a
+# `NoMethodError` inside somebody's run, and the manifest could only ever have reported it after the
+# fact and only if somebody ran the test. One `build.sh` writes all three artifacts and one rerun
+# set decides when, so they cannot be cut at different vintages.
+#
+# EVERY FILE THAT MANIFEST NAMED IS NOW IN THIS ARM'S RERUN SET, in `gg-artifact-build`'s table, and
+# for the reasons they were recorded here: `tools/` because `guest.mjs` is what lowers the SDK and
+# the library set, so a change there changes the JavaScript baked in without a line of Ruby moving;
+# `opal-version.sh` because the standard library's Ruby sources come from the gem it pins, in a
+# different variable from the compiler's; and `build.sh` because the recipe is an input — the
+# `--disable`s above decide what capabilities this guest is baked with.
 
 echo "Wrote $COMPONENT ($(wc -c <"$COMPONENT") bytes)."
-echo "Remember to commit the refreshed artifact together with the source change."

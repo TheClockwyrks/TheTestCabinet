@@ -3,7 +3,7 @@
 //! # Why this gate exists, and why it exists *here*
 //!
 //! Two things gg renders contain Swift a model is invited to copy: this arm's responses-as-code
-//! system prompt (with the "your program showed you nothing" notice beside it) and its committed
+//! system prompt (with the "your program showed you nothing" notice beside it) and its
 //! signature catalogue, whose prose is reflected out of the SDK's own documentation comments and
 //! rendered into documentation views. Everything about those two that can be checked without a
 //! compiler already is — [`prompts::spellings`](crate::prompts) resolves every call *name* they
@@ -16,7 +16,7 @@
 //! first arm to be given this gate, because exactly that had shipped there.
 //!
 //! It lives with the arm rather than with the prompt tests because it needs the arm's whole compile
-//! path: the real SDK module, the real flags and the real committed library set. That is also why
+//! path: the real SDK module, the real flags and the real library set this build compiled. That is also why
 //! it is one `swiftc` rather than one per example — every snippet becomes a `func` of its own in a
 //! single program, so nothing one binds is visible to another and the compiler reports all of their
 //! diagnostics at once.

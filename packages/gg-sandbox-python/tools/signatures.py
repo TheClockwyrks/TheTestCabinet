@@ -708,7 +708,7 @@ LIBRARY_SOURCE = SRC_DIR / "library.py"
 `componentize-py` bakes the entry module's executed import closure, so what this file imports is
 what a program can import — a bake-time fact about the artifact rather than a policy. See its own
 docstring for why, and `crates/gg/src/sandbox/language/python.substrate.test.rs` for the test that
-asks the committed component whether every name below really landed.
+asks the baked component whether every name below really landed.
 """
 
 GROUP_HEADER = re.compile(r"^#\s*-{3,}\s*(?P<title>.+?)\s*-{3,}\s*$")

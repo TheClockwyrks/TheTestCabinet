@@ -12,7 +12,7 @@ holding a language runtime: `gg-sandbox` bakes a JavaScript engine, `gg-sandbox-
 a whole CPython, `gg-sandbox-ruby` an Opal. Rust has no runtime of that kind. `rustc`
 does not produce a Rust interpreter that later runs a program — it produces the
 program, and that module *is* the component. There is nothing of this language to
-commit, which is why the seam grew a shape for it: a language may answer "no committed
+bake, which is why the seam grew a shape for it: a language may answer "no guest
 component" and hand its bytes back from the preparation instead.
 
 What this package **is** is the crate a program is compiled against — named `gg`,
@@ -30,17 +30,25 @@ two modules are free to declare a type of the same name. `gg::prelude` re-export
 **modules**, never the types inside them: that is what keeps a call qualified by the
 module that documents it, which is the whole of how a model discovers one.
 
-## What it commits
+## What it produces
+
+Nothing here is committed. Every file below is generated during an ordinary
+`cargo build -p test-cabinet-gg` and `include_bytes!`d out of the build's own `OUT_DIR`:
+[`build.sh`](build.sh) is run by `crates/gg-sandbox-artifacts/rust`, and
+[`signatures.sh`](signatures.sh) by `crates/gg/build.rs`.
 
 | Artifact | What it is |
 | --- | --- |
-| [`crates/gg/src/sandbox/checkers/rust.libraries.tar.gz`](../../crates/gg/src/sandbox/checkers/) | Every `.rlib` a program links — this SDK and the curated set — gzipped. ~9.4 MB, `include_bytes!`d by the host and unpacked once per machine into a shared, sealed, read-only directory named on `rustc -L`. |
-| [`crates/gg/src/sandbox/checkers/rust.toolchain.json`](../../crates/gg/src/sandbox/checkers/) | What that set was built by — the compiler, the target, the `wit-bindgen` release — and every crate in it, each marked with whether a **program** may name it. |
-| `rust.signatures.json`, in the build's `OUT_DIR` | The signature catalogue: the whole of what a model is told about this surface, reflected out of this crate's own rustdoc by `signatures.sh`, which `crates/gg/build.rs` runs on every build. Not committed. |
+| `rust.libraries.tar.gz`, in `$GG_ARTIFACTS_RUST` | Every `.rlib` a program links — this SDK and the curated set — gzipped. ~9.4 MB, `include_bytes!`d by the host and unpacked once per machine into a shared, sealed, read-only directory named on `rustc -L`. |
+| `rust.toolchain.json`, in `$GG_ARTIFACTS_RUST` | What that set was built by — the compiler, the target, the `wit-bindgen` release — and every crate in it, each marked with whether a **program** may name it. |
+| `rust.signatures.json`, in the build's `OUT_DIR` | The signature catalogue: the whole of what a model is told about this surface, reflected out of this crate's own rustdoc by `signatures.sh`, which `crates/gg/build.rs` runs on every build. |
 
 There is no `rust.component.wasm`: the component is the program, compiled per turn.
 
-## Why the set is committed and the compiler is not
+To put the artifacts somewhere you can open them, run `scripts/gg-artifacts.sh`; the catalogue's
+equivalent is `scripts/gg-signatures.sh`.
+
+## Why the set rides inside gg and the compiler does not
 
 `rustc` with its `wasm32-unknown-unknown` standard library is **~376 MB** and cannot
 ride inside a single static `tcab` binary, so it is installed into the gg toolchain
@@ -58,10 +66,12 @@ its prompt and compiled against another.
 is a compiler-version-private format: `rustc` refuses one built by another release
 outright, with `E0514`. So this arm has **no compiler pin of its own** — it uses
 [`rust-toolchain.toml`](../../rust-toolchain.toml)'s, the one every checkout already
-builds with, so there is only one Rust release in the repository to keep in step. Bumping
-it invalidates the committed set and `build.sh` must be re-run in the same commit;
-`the_committed_library_set_was_built_by_this_checkouts_compiler` fails by name until it
-is.
+builds with, so there is only one Rust release in the repository to keep in step. A bump
+re-cuts the set on the next `cargo build` and cannot fail to: `rust-toolchain.toml` is in
+this arm's artifact-crate rerun set, and `build.sh` refuses to run at all if the `rustc`
+on `PATH` is not the pinned one, before it produces a single rlib. That check used to be
+made from the other end, by a test comparing the compiler recorded in `rust.toolchain.json`
+with the one on the machine; there is no longer an interval in which the two can differ.
 
 ## Layout
 
@@ -76,7 +86,7 @@ is.
 | `src/program.rs` | The shell gg's generated entry file names: the panic hook, the `Failure` type a program's body returns, and what `bound-tools` answers. |
 | `signatures.sh`, `tools/` | The catalogue: `rustdoc` JSON in, `rust.signatures.json` out, into `$GG_SIGNATURES_OUT_DIR`. `tools/catalogue.py` holds the one thing the sources cannot say — which modules the surface is divided into and in what order a reader meets them — and `tools/signatures.py` is everything else. A function's gg operation id is written on the declaration itself, as `#[doc(alias = "ggop:files.read_file")]`, and a module's as `#[doc(alias = "ggmodule:files")]`. |
 | `src/bindings.rs` | **Generated and not committed** — a pure function of `crates/gg/wit/gg-sandbox.wit` and the pinned `wit-bindgen`. `bindings.sh` writes it. |
-| `bindings.sh` | Fetches the pinned `wit-bindgen` and generates `src/bindings.rs`. Its own script rather than a step of `build.sh` because both `build.sh` and `signatures.sh` need it, and only one of them may write a committed artifact — see below. |
+| `bindings.sh` | Resolves the pinned `wit-bindgen` and generates `src/bindings.rs`. Its own script rather than a step of `build.sh` because both `build.sh` and `signatures.sh` need it, and folding it into `build.sh` would give the two one rerun set instead of two — see below. |
 | `build.sh` | Generates the bindings, compiles the set for `wasm32-unknown-unknown`, packs it and writes the manifest. |
 
 ## Why the bindings are generated by a CLI rather than by the macro
@@ -138,20 +148,22 @@ the model's prompt on the next `cargo build`. It needs this checkout's own `rust
 to *read* the emitted JSON, which is where a reflector bug shows and nowhere else.
 
 **`signatures.sh` writes the catalogue and nothing else, and that is why the bindings are
-their own script.** `build.sh` writes the committed library set under
-`crates/gg/src/sandbox/checkers/`, and a signature step that reached `build.sh` for its
-bindings would re-cut that set **on every `cargo build`** — rewriting a committed artifact
-under the working tree of a developer who was only compiling, and producing bytes that
-match nothing but the machine they were produced on. It is also the shape that makes a
-build script invalidate its own inputs, which is why `crates/gg/build.rs` names this
-package's `src` and `tools` and never its `.build/`.
+their own script.** Both halves are generated during `cargo build`, by two different crates
+with two different rerun sets: `crates/gg-sandbox-artifacts/rust` runs `build.sh`, and
+`crates/gg/build.rs` runs `signatures.sh`. A signature step that reached `build.sh` for its
+bindings would collapse those two sets into one, so editing a doc comment would re-link
+9.4 MB of rlibs — which is the whole inner-loop cost the artifact crates exist to avoid. It
+is also the shape that makes a build script invalidate its own inputs, which is why
+`crates/gg/build.rs` names this package's `src` and `tools` and never its `.build/`.
 
 **The set is byte-reproducible across checkouts.** An `.rlib` records the absolute paths it
 was compiled from and the directory `rustc` ran in, so `build.sh` remaps this package and
 `CARGO_HOME` onto fixed logical roots. Cargo leaves the values of `--remap-path-prefix` out
 of the unit hash it derives `-C metadata` from, so that does not itself put the path back;
 verified by building at two roots and under two `$HOME`s and comparing every rlib's digest.
-Rebuild it and you should get the committed bytes back.
+Nothing depends on that any more — the set is generated rather than committed, so there is
+no second copy to diff against — but an artifact that changed when nothing did is one nobody
+can reason about, so the property is kept.
 
 ## What a Rust program looks like
 

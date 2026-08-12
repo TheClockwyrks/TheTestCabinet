@@ -5,7 +5,7 @@
 //!
 //! The eight tool interfaces stand in exact one-to-one correspondence with gg's
 //! [tool vocabulary](crate::tools::ALL_TOOL_NAMES), and `crates/gg/src/sandbox.test.rs` checks the
-//! committed component's `bound-tools` against it. A view function is not a tool: no capability
+//! prebuilt component's `bound-tools` against it. A view function is not a tool: no capability
 //! offers one, nothing dispatches one by name, and four of the five are bound into every program's
 //! scope whatever a run enables. Filing them among the tool interfaces would break that bijection —
 //! and making them *real* tools would hand a native tool-calling session an `open_file_view` that

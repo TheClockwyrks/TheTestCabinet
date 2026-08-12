@@ -4,8 +4,8 @@
 # PureScript author reaches for `Data.Map`, `StateT` and a lens without asking, and an arm that made
 # them ask would be measuring how well a model can live without its standard idioms rather than how
 # well it works. So this set is deliberately generous and deliberately FIXED: it is compiled into the
-# tree `packages/gg-sandbox-purescript/build.sh` commits, every program is compiled against exactly
-# it, and nothing is installed at run time.
+# library tree `packages/gg-sandbox-purescript/build.sh` cuts into a cargo `OUT_DIR` and gg embeds,
+# every program is compiled against exactly it, and nothing is installed at run time.
 #
 # What is NOT here is as deliberate. There is no JSON library, because neither an argument nor a
 # result the SDK takes is a JSON document a program assembles or parses — that is one of the seam's
@@ -22,8 +22,18 @@
 # rather than written into a prompt that would drift from it. Add a package under a heading, rebuild,
 # and the prompt says so.
 #
-# Versions are resolved against the pinned registry package set (see `purescript-version.sh`) and
+# Versions are resolved against the pinned registry package set at the bottom of this file, and
 # recorded package by package in the committed `spago.lock`.
+#
+# # `workspace.packageSet.registry` is the ONLY place that package set is written down
+#
+# Spago reads it from here and from nowhere else, so this is where it lives. The shell and the
+# images need it too — `purescript-version.sh` reports it beside `purs`, `esbuild` and Spago — and
+# that file therefore SEDS IT OUT OF THIS ONE rather than restating it. It used to restate it, with
+# nothing comparing the two copies, and neither half of that disagreement is a build failure: bump
+# only the shell copy and every script names a package set no library was resolved from; bump only
+# this one and the scripts are silently a set behind. Change the number here, and the projection
+# follows.
 package:
   name: gg-sandbox-purescript
   dependencies:

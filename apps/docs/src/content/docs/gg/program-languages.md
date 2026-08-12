@@ -6,7 +6,7 @@ Under [responses as code](/gg/responses-as-code/) a model answers a turn by writ
 whole **program** over its tools. Which *language* it writes that program in is a
 **variable**, not a fact of the capability: gg registers a set of program languages, a
 run picks one per agent, and every answer that used to be TypeScript's — how a reply
-becomes something a guest can evaluate, which committed component evaluates it, what
+becomes something a guest can evaluate, which prebuilt component evaluates it, what
 that component needs from the host, how the prompt teaches it, which
 [healing](/gg/response-healing/) questions have language-shaped answers — is asked of
 that language rather than baked in.
@@ -38,7 +38,7 @@ has a working **exception** mechanism, and the only one where a failure the lang
 hard to tell in the run record from a model that reasoned badly; and
 **[C#](#c-a-compiler-on-the-host-an-interpreter-in-the-guest)** is a fifth thing rather than a
 fourth, and the only arm that is neither shape — Roslyn compiles the reply to an **IL assembly** on
-the host and a committed interpreter loads it, so it is type-checked like a compiled arm and pays no
+the host and a prebuilt interpreter loads it, so it is type-checked like a compiled arm and pays no
 per-turn engine cost like an interpreted one. This page is the
 design of the seam: why the
 language is an axis, what an agent-facing surface has to look like in *any* language, what a
@@ -84,7 +84,7 @@ rather than a variable. So the language is one:
 ## JavaScript: the same arm, unchecked
 
 The second registered language is the narrowest one gg could have, and that is the point of
-it. **JavaScript is TypeScript with the `tsc` pass taken out.** Same committed component,
+it. **JavaScript is TypeScript with the `tsc` pass taken out.** Same prebuilt component,
 same hand-written SDK, same signature catalogue, same type-strip, same healing dialect. One
 difference: gg does not check the program before evaluating it.
 
@@ -98,7 +98,7 @@ So every other variable is held at zero by construction:
 
 | Held constant | How |
 | --- | --- |
-| The evaluator | JavaScript serves TypeScript's committed component, reached through the constant rather than embedded a second time. Two byte-identical 13.4 MB `.wasm` files would be a second copy of one artifact and a standing chance for the one thing the arms must share to diverge. |
+| The evaluator | JavaScript serves TypeScript's prebuilt component, reached through the constant rather than embedded a second time. Two byte-identical 13.4 MB `.wasm` files would be a second copy of one artifact and a standing chance for the one thing the arms must share to diverge. |
 | The surface a model reads | Its catalogue is the same declarations reflected under a second id — **including the type annotations**. A model on this arm reads `readFile(path: string): FileRead` exactly as a model on the other does. Stripping the types out of what the *prompt* shows would have made the arms differ in how much the model was told about the surface, which is a second variable and a bigger one than the check. |
 | What a program may contain | The same strip. A program that annotates its own bindings runs here too — the annotations are erased rather than rejected. "JavaScript" on this arm means *a program nothing checked*, not a narrower grammar. |
 | How a reply is read | The same [healing dialect](/gg/response-healing/): healing is a lexical reading of a reply, and the two arms are one syntax. |
@@ -126,7 +126,7 @@ The equalities above say this arm *must* run whatever TypeScript runs; they do n
 *was* run, and every other registered language answers that with a test that starts at a
 model's text and ends at a value the host handed back. So this one does too
 (`javascript.substrate.test.rs`): a real JavaScript program, prepared by this arm's own step
-and evaluated by the committed guest through the real membrane. Its third program is the arm's
+and evaluated by the prebuilt guest through the real membrane. Its third program is the arm's
 whole variable made observable — `view.openText(1, 2)`, which the checked arm refuses before
 anything runs, here reaches the guest and fails at run time as
 `` `openText` failed (invalid-argument): TypeError: expected a string, received [number] `` at
@@ -219,7 +219,7 @@ of the places a language arm is usually expensive:
 
 | | |
 | --- | --- |
-| **Nothing is installed in the run container** | Opal's compiler is *itself* Ruby compiled to JavaScript — a self-hosted build — so it is 2.9 MB gg carries inside its own binary (`crates/gg/src/sandbox/checkers/ruby.opal.cjs`) and runs with the `node` every run image already ships. This is the first arm to take the "[a compiler small enough to *be* an artifact](#the-steps)" route for a language that is not TypeScript, and [the toolchain image](#where-a-compiler-lives-and-what-it-must-never-share) gains a paragraph rather than a toolchain. |
+| **Nothing is installed in the run container** | Opal's compiler is *itself* Ruby compiled to JavaScript — a self-hosted build — so it is 2.9 MB gg carries inside its own binary (`ruby.opal.cjs`, cut into the build's `OUT_DIR` by `crates/gg-sandbox-artifacts/ruby` and `include_str!`d from there) and runs with the `node` every run image already ships. This is the first arm to take the "[a compiler small enough to *be* an artifact](#the-steps)" route for a language that is not TypeScript, and [the toolchain image](#where-a-compiler-lives-and-what-it-must-never-share) gains a paragraph rather than a toolchain. |
 | **No second engine** | The compiled program is JavaScript, so the guest is `componentize-js`'s, not a second runtime linked against the WIT. |
 
 ### Where Opal's runtime lives is the whole design
@@ -230,7 +230,7 @@ container:
 
 | Where the runtime lives | Per program |
 | --- | --- |
-| Prepended to the program, evaluated in the committed ECMAScript component | 45.6–51.0 ms |
+| Prepended to the program, evaluated in the prebuilt ECMAScript component | 45.6–51.0 ms |
 | Imported by the guest's entry module, so `componentize-js` pre-initialises it | **2.1–2.6 ms** |
 | (a plain JavaScript program on the same component, for scale) | 1.2–1.4 ms |
 
@@ -317,7 +317,7 @@ closed both of the gaps the substrate landed with:
   each `LoadError` with another compile, everything those in turn require — out of the pinned
   Opal release's own sources; and the catalogue's [`libraries`](#the-catalogue) section is
   reflected from the same file. Twenty-two names, in five groups, and a test drives every one of
-  them into the committed component and requires it.
+  them into the prebuilt component and requires it.
 
 What a Ruby program gets **without** requiring anything is Opal's corelib — `Set`, `Struct`,
 `Time`, `Math`, `Random`, `Enumerator` with `lazy`, `Comparable`, `Rational`, `Complex` — plus
@@ -400,7 +400,7 @@ them:
 
 One further fact a study has to record: **Opal is not CRuby.** Integer division is JavaScript's, so
 `1 / 0` is `Infinity` where CRuby raises `ZeroDivisionError`; there is no bignum, so `2 ** 64`
-loses precision; and `:done.class` is `String`. All three are asserted against the committed
+loses precision; and `:done.class` is `String`. All three are asserted against the built
 artifact rather than described in prose, so the claim is checkable.
 
 **Arity is checked, and Opal defaults it off.** This is the fourth divergence, and the only one gg
@@ -528,13 +528,13 @@ a guest map one to the other. The mapping is not lost — both `purs` and `esbui
 maps, and the host that produced the bundle holds them — but `feedback.program-error` carries a
 single `location` and the guest picks the innermost frame, which once the SDK is linked into the
 bundle is inside the SDK. The fix is a frame *list* on the wire, which is a change shared with a
-future Java arm and rebuilds every committed component. It is neither made cheaper nor dearer by
+future Java arm and re-cuts every prebuilt component. It is neither made cheaper nor dearer by
 the component decision above.
 
 ### The toolchain and the library set travel in opposite directions
 
 This is the first arm to need [the toolchain image](#where-a-compiler-lives-and-what-it-must-never-share),
-and the first whose committed artifact is not a compiler but the thing its compiler cannot work
+and the first whose prebuilt artifact is not a compiler but the thing its compiler cannot work
 without. Both halves go the only way they can:
 
 | | Where it lives | Why |
@@ -550,14 +550,18 @@ from one file (`packages/gg-sandbox-purescript/purescript-version.sh`), which th
 the developer/CI install script both read, because externs are a compiler-version-private format:
 a tree built by one `purs` and read by another does not compile at all.
 
-"One artifact" is a gate rather than a slogan. The catalogue is reflected from the working tree's
-`packages/gg-sandbox-purescript/src` on every build, and a compile resolves `Gg` against the
-**tarball's** `libs/gg-sdk` — so an SDK edit committed without re-cutting the tarball would leave a
-fresh catalogue describing a surface the program is not compiled against, and the manifest gate
-would not notice,
-because it compares directory names and counts modules. `the_shipped_sdk_is_the_sdk_in_the_working_tree`
-unpacks the tarball and compares the two SDK trees file for file — the `.js` foreign modules
-included, since that is where a call's lowering lives — and names the file that drifted.
+"One artifact" is a fact about the build rather than a slogan. The catalogue is reflected from the
+working tree's `packages/gg-sandbox-purescript/src` on every build, and a compile resolves `Gg`
+against the **tarball's** `libs/gg-sdk`. While the tarball was committed those two could be
+different vintages — an SDK edit reached the prompt on the next build and the compile only when
+somebody remembered to re-cut it — and a test named `the_shipped_sdk_is_the_sdk_in_the_working_tree`
+existed to compare the two trees file for file and name the one that drifted.
+
+Both are now cut by the same `cargo build`: `crates/gg-sandbox-artifacts/purescript` compiles the
+tree from that same `src/`, and `crates/gg/build.rs` reflects the catalogue against the tree it just
+produced. The ordering is a dependency edge rather than a convention — `crates/gg` depends on that
+crate, so cargo runs it first — and the test is deleted, because two vintages is no longer a state
+this arm can be in.
 
 The compiler that reads a tree must also be the one that wrote it, and that is checked rather than
 assumed: the first compile of a process asks `purs --version` once and refuses a release that is
@@ -573,7 +577,7 @@ one, and the compile that follows has far more to say about it.
 The set is declared in `packages/gg-sandbox-purescript/spago.yaml`, resolved against a pinned
 registry package set, compiled by `build.sh` — **together with this arm's own SDK**, which is
 staged into the same tree and compiled into the same tarball — and recorded package by package in
-`crates/gg/src/sandbox/checkers/purescript.compiler.json`: 50 packages and 329 modules as it
+the `purescript.compiler.json` that build writes beside it: 50 packages and 329 modules as it
 stands, the SDK's nineteen among them. It carries the collections (`Data.Map`, `Data.Set`, arrays, lists, `Foreign.Object`), the
 monad transformers, `profunctor-lenses`, the `Effect` types including the two the sandbox's
 [ambient WASI](#wasi) makes real (`Effect.Now`, `Effect.Random`), and the everyday prelude,
@@ -586,12 +590,11 @@ reason — no JSON library, because
 [neither an argument nor a result is a JSON document](#the-rules-an-agent-facing-surface-obeys-in-every-language)
 a program assembles; no `aff`, because every call in this sandbox is synchronous.
 
-The manifest is what the drift gate holds the tarball to. Re-cutting the tree needs `purs`,
-Spago and the registry, so `scripts/ci/contract-drift.sh` verifies it by its **declared
-contents** instead — a test unpacks the committed tarball and compares every package and module
-against the manifest, so a tree rebuilt with a different set and committed without its manifest
-fails. `spago.yaml` and `spago.lock` are committed beside it, so what went in is reviewable even
-though what came out is a binary.
+The manifest is what holds the tarball honest about its own contents. `purescript.compile.test.rs`
+unpacks the tarball and compares every package and module against the manifest, so a build that
+staged one package set and described another fails — an agreement check between two readings of one
+staging tree, both written by the same run of `build.sh`. `spago.yaml` and `spago.lock` are
+committed, so what went in is reviewable even though what came out is a binary.
 
 `spago.yaml`'s dependency list is also **machine-readable prose**: each package sits under a
 `# --- heading ---`, and the catalogue's [`libraries`](#the-catalogue) section is the modules of
@@ -602,7 +605,7 @@ place it could recur.
 
 ### What compiling costs
 
-Measured on this repository's dev container, aarch64, against the committed tree, median of
+Measured on this repository's dev container, aarch64, against the compiled tree, median of
 nine:
 
 | | |
@@ -1169,24 +1172,30 @@ arm's own front end before closing the class. The reason is
 [`setStrict(true)`](#two-teavm-settings-that-are-not-optional): it fails **silently** when it goes
 missing, so a second copy of the code that sets it would be a standing chance for one arm to lose it
 and for nobody to notice — the same argument that has
-[JavaScript](#javascript-the-same-arm-unchecked) serve TypeScript's committed component rather than a
+[JavaScript](#javascript-the-same-arm-unchecked) serve TypeScript's prebuilt component rather than a
 byte-identical copy of it. The launcher compiles one *file*, so sharing here means gg builds the
 file; the assembled text is what is placed on disk, and what the shared directory's key is taken
 over.
 
-The **SDK** goes inside gg's binary too, as a committed jar, and that is the same split
+The **SDK** goes inside gg's binary too, as a jar, and that is the same split
 [PureScript's library set](#the-toolchain-and-the-library-set-travel-in-opposite-directions) is on
 and for the same reason: the image is built separately from the binary that runs in it, so an SDK
 living beside TeaVM could be a different vintage from the gg whose catalogue describes it — which
-would mean a model shown one surface in its prompt and compiled against another. Committed, the jar
-travels with the gg that describes it. What keeps the jar itself honest is that it is the one half
-of the pair a person can commit stale: the catalogue is reflected out of
-`packages/gg-sandbox-java/src` on every build, so it is always this checkout's, and a jar built
-before the last SDK edit would compile a model's program against a surface its prompt no longer
-matches. Unlike PureScript's tarball it is cheap enough to rebuild that
-`scripts/ci/contract-drift.sh` re-cuts and diffs it rather than verifying it by a manifest: 52
-classes, a fixed entry timestamp and a sorted entry list, so two builds of identical sources are
-identical bytes. gg places it beside the driver in a shared directory whose
+would mean a model shown one surface in its prompt and compiled against another. Embedded, the jar
+travels with the gg that describes it.
+
+It used to be the one half of the pair a person could commit stale — the catalogue is reflected
+out of `packages/gg-sandbox-java/src` on every build, so it is always this checkout's, while a jar
+built before the last SDK edit would compile a model's program against a surface its prompt no
+longer matches. That is not hypothetical: it happened, on the commit that added `@throws` prose to
+three of the SDK's files, and the regenerate-and-diff step in `scripts/ci/contract-drift.sh` that
+was supposed to catch it sat red until somebody looked. **The jar is generated now** —
+`crates/gg-sandbox-artifacts/java` runs `packages/gg-sandbox-java/build.sh` into the `OUT_DIR`
+`java.compile.rs` embeds from — so the library and the description of it are cut from one `src/`
+on one build, and being two vintages is not a state the arm can be in. (The build is still
+byte-reproducible: 52 classes, a fixed entry timestamp and a sorted entry list. That mattered when
+CI diffed it; now it is merely a nice property, and what it buys is that an unrelated rebuild does
+not rewrite 59 KB of `include_bytes!` and recompile the crate.) gg places it beside the driver in a shared directory whose
 key folds in a digest of both, so a gg carrying a different SDK never reads another build's jar.
 
 On a developer's or CI machine the same script installs under `~/.local/share/gg-java`, which
@@ -1656,7 +1665,7 @@ The eighth arm: `language: "rust"` is a value an operator configures, and it is 
 is a **different shape** rather than a different language.
 
 **A Rust program is compiled by `rustc` into the wasm component that turn is evaluated by.** There
-is no guest. Every arm before this one ships a committed `.wasm` carrying a whole language runtime —
+is no guest. Every arm before this one ships a prebuilt `.wasm` carrying a whole language runtime —
 a CPython, an Opal, a JavaScript engine — and hands it the model's reply as a *string* to read.
 `rustc` produces no such thing: it produces the program. The seam's two shapes and what carries
 them are described under [an arm whose artifact is the program](#an-arm-whose-artifact-is-the-program);
@@ -1764,7 +1773,7 @@ The ninth arm: `language: "swift"` is a value an operator configures, and it is
 [Rust](#rust-the-program-is-the-artifact)'s **shape** reached down a different road.
 
 **A Swift program is compiled by `swiftc` into the wasm component that turn is evaluated by**, and
-there is no guest to commit. What its SDK looks like is [above](#what-swifts-sdk-looks-like); what
+there is no guest component at all. What its SDK looks like is [above](#what-swifts-sdk-looks-like); what
 the shape is and what it costs the seam is under
 [an arm whose artifact is the program](#an-arm-whose-artifact-is-the-program); the rest of this
 section is what a model and an operator see.
@@ -2043,18 +2052,18 @@ because its errors are safe in the accepting direction.
 
 The eleventh and last arm: `language: "csharp"` is a value an operator configures, and it is the
 only one that is **neither of the seam's two shapes**. An interpreted arm sends source to a
-committed runtime; a compiled arm sends a component and commits nothing. This sends an **IL
-assembly** to a committed runtime.
+prebuilt runtime; a compiled arm sends a component it produced per turn. This sends an **IL
+assembly** to a prebuilt runtime.
 
-**A C# program is compiled by `csc` into an assembly the committed guest loads**, and that guest is
+**A C# program is compiled by `csc` into an assembly the prebuilt guest loads**, and that guest is
 a 35.3 MB component holding Mono's IL interpreter and the whole .NET class library. What its SDK
 looks like is [above](#the-idiom-and-the-one-place-it-is-not-cs); why the shape is what it is, what
 the guest is built from, what its code modules are and how a typo is told from a misunderstanding,
-is under [a committed interpreter for a compiled language](#c-a-committed-interpreter-for-a-compiled-language);
+is under [a prebuilt interpreter for a compiled language](#c-a-prebuilt-interpreter-for-a-compiled-language);
 the rest of this section is what a model and an operator see.
 
 Measured in this repository's dev container, aarch64: `csc` is **~2.4 s cold** and **~0.27–0.37 s
-warm**, of which ~70 ms is compiling gg's own SDK beside the program; the committed guest is
+warm**, of which ~70 ms is compiling gg's own SDK beside the program; the prebuilt guest is
 **35.3 MB** and wasmtime compiles it **once per process**, as it does every interpreted arm's. The
 toolchain is the **lightest in the gg image** — ~122 MB kept out of a ~770 MB SDK — and the only one
 that is not a wasm toolchain at all, because nothing about a C# *program* is compiled to wasm.
@@ -2062,7 +2071,7 @@ MSBuild, NuGet, the templating engine, the test host, F#, the AOT cross-compiler
 workload, `vbc`, thirteen locales of compiler messages and 43 MB of IntelliSense XML all go; the
 launcher, the shared framework, Roslyn and the reference assemblies stay. The reference assemblies
 are the whole reason the pin is hard: they decide what a model's program may call and must be the
-release the class library inside the committed guest was cut from.
+release the class library inside the prebuilt guest was cut from.
 
 That combination is worth reading beside the other arms deliberately, because it is the one place on
 this seam where the two costs come apart. A **compiled** arm pays a compiler *and* a
@@ -2128,7 +2137,7 @@ asymmetry is the language's rather than gg's.
 C++'s answer was that the shape cannot be written. C#'s is that it *can* be written and it **works**:
 Roslyn lowers an `async Task Main` — and a top-level `await` — into a synthesized synchronous entry
 point that blocks on the result, and that entry point is the one the guest invokes. Both shapes are
-driven through the real compiler and the real committed guest by
+driven through the real compiler and the real prebuilt guest by
 `csharp_runs_a_program_written_the_async_way_a_model_reaches_for`, and both run. Taking a wrapper off
 that works would delete a class declaration and re-indent a body to no purpose, so this dialect
 declines.
@@ -2223,7 +2232,7 @@ next turn rewriting something that was never wrong. Meanwhile the arm's `transpi
 absorbs the image's flakiness and reads as a worse model.
 
 Neither of them is [`SandboxError::Compile`](/gg/responses-as-code/#what-can-go-wrong), which
-is the *committed interpreter component* failing to compile — an artifact defect that ends
+is the *prebuilt interpreter component* failing to compile — an artifact defect that ends
 the session, because every further turn would fail identically. Both of these are
 recoverable: the next turn's program may well compile.
 
@@ -2283,7 +2292,7 @@ Swift toolchain with the Swift SDK for WebAssembly (**~835 MB**, the largest by 
 margin), a pruned **wasi-sdk** — clang, `wasm-ld`, wasi-libc and libc++ — for the C++
 arm (~200 MB, the *smallest* of the three compiled arms'), and a pruned **.NET** — a
 runtime, Roslyn and the reference assemblies — for the
-[C#](#c-a-committed-interpreter-for-a-compiled-language) arm (**~122 MB**, the smallest
+[C#](#c-a-prebuilt-interpreter-for-a-compiled-language) arm (**~122 MB**, the smallest
 in the image and the only one here that is not a wasm toolchain at all). Rust's is pruned to `rustc`, its two shared libraries, the wasm standard
 library and `rust-lld` — `cargo`, `rustdoc`, the lint tools, the standard-library sources
 and the *host* standard library are all removed, none of which a cross-compile of a program
@@ -2315,7 +2324,7 @@ which the installer copies in beside it, where that rpath finds them and nothing
 image does. No `LD_LIBRARY_PATH` and no closure walk. What is pruned is the debugger, the
 lint and format tools, the object utilities, the other linker drivers, and — the largest
 deletion by far — four of the wasi-sysroot's five *targets*, since the arm compiles to
-exactly one. Its pin is the **softest** of the three, because what gg commits for it is
+exactly one. Its pin is the **softest** of the three, because what gg carries for it is
 objects rather than a compiler-private module format; what is version-private is the
 [precompiled header](#c-a-compiler-with-a-precompiled-prelude) the arm builds per machine,
 and the directory that lives in is keyed on the compiler binary itself so a reinstall writes
@@ -2324,8 +2333,9 @@ a new key rather than leaving one nothing can read.
 C#'s is the odd one out and it is worth saying why in this section rather than only in that
 arm's own: **it installs no wasm toolchain, because nothing about a C# program is compiled to
 wasm.** Roslyn compiles the model's reply to IL on the host and the wasm half — a Mono IL
-interpreter with the whole class library inside it — was compiled once by a developer's
-command and committed. So what this block installs is a launcher, a shared framework, Roslyn
+interpreter with the whole class library inside it — is cut once per build by that arm's own
+artifact crate, out of a separate ~1.4 GB prefix. So what this block installs is a launcher, a
+shared framework, Roslyn
 and the reference assemblies, and the pruning is everything a .NET developer would expect and
 gg never uses: MSBuild, NuGet, the templating engine, the test host, F#, the AOT
 cross-compilers and the whole wasm workload. One thing is deleted rather than merely unused —
@@ -2334,7 +2344,7 @@ shape [per-agent isolation](#per-agent-compiler-isolation) exists to prevent. gg
 it (it runs `csc.dll` under `dotnet exec`, not through the shim that would), and removing it
 means nothing in the image can. Its pin is **hard** for a reason neither Rust's nor Swift's
 gives: the *reference assemblies* decide what a model's program may call, and they have to be
-the release the class library inside the committed guest was cut from.
+the release the class library inside the prebuilt guest was cut from.
 
 ### Per-agent compiler isolation
 
@@ -2554,7 +2564,7 @@ and read, and it is the whole of what the model sees.
 
 A registered language is one implementation of gg's `ProgramLanguage` trait
 (`crates/gg/src/sandbox/language.rs`) plus two artifacts that live outside it: a guest
-component, which is committed, and a signature catalogue, which the build reflects. The trait is
+component and a signature catalogue, both of which the build produces. The trait is
 object-safe and the registry is an exhaustive `match` **derived from the core enum**, so a
 language added to the enum does not compile until it is registered, and once it is, it is
 instantly in every gate that iterates languages.
@@ -2565,20 +2575,30 @@ instantly in every gate that iterates languages.
 | **Preparing a program** | Turning a model's reply into source its guest can evaluate, given the [code modules](#a-module-a-program-has-to-be-linked-against) already in that agent's scope. TypeScript's is the `oxc` type-strip, the early-error check, the refusals for module syntax and top-level `await`, the stack sizing an unguarded recursive-descent parser forces on untrusted text, and then a `tsc` pass over the unstripped source. A language that runs a compiler here must also say **which of two failures** it hit — see [below](#a-compiler-has-two-ways-to-fail). |
 | **Whether preparing a program compiles** | Whether that step invokes a compiler whose cost belongs to the program that paid it, and is therefore [recorded](#what-compiling-costs-and-where-it-is-recorded). A required answer rather than an inferred one: an arm whose compile time went unrecorded because nobody declared it would look free and would not be. |
 | **Preparing a module** | Turning a [code skill](/gg/skills/#code-skills)'s or [code memory](/gg/memories/#code-memories)'s file into something that yields a namespace, bound at `lib.<key>` — for an interpreted arm, source its guest evaluates; for a [compiled](#a-module-a-program-has-to-be-linked-against) one, source the *next program's* compile is built against. |
-| Its **guest component** | The committed `.wasm` that evaluates the prepared source, embedded in the binary — or **nothing at all**, for an arm whose prepare step [compiles the component itself](#an-arm-whose-artifact-is-the-program). |
+| Its **guest component** | The prebuilt `.wasm` that evaluates the prepared source, embedded in the binary — or **nothing at all**, for an arm whose prepare step [compiles the component itself](#an-arm-whose-artifact-is-the-program). |
 | Its **signature catalogue** | The JSON reflected out of its own SDK by its own documentation tool — every object, signature, argument, type and type member the model reaches by searching and reads through `view.openDocsView()`. Generated by the build rather than checked in. See [the catalogue](#the-catalogue). |
 | A **healing dialect** | The language-shaped questions [response healing](/gg/response-healing/#the-skeleton-and-the-dialect) asks: which fence tags mean "this block is the program", which lines are certainly code and which are certainly prose, which bytes of a source are code rather than string or comment, what an import statement looks like, what makes a binding the language refuses to see twice, and what a whole-program concurrency wrapper looks like. |
 | A **prompt dialect** | Its own `system-code.<id>.hbs` and `code-nothing-shown.<id>.hbs` templates, and nothing else. Not one function name: every call a template quotes is resolved from that language's catalogue when the template renders — see [nothing quotes a call by hand](#nothing-quotes-a-call-by-hand). |
 | **Healing fixtures** (tests only) | Replies its own dialect must survive, so that healing's delete-only invariant is re-earned per language rather than inherited. |
 
-Its two artifacts follow one convention — the language id is the stem of both — and they are
-kept in **opposite** ways, for reasons that are worth stating rather than inferring.
+Its artifacts follow one convention — the language id is the stem of every one of them — and
+**every one of them is generated rather than committed**. That move is finished.
 
-The **component** is committed, at `crates/gg/src/sandbox/guests/<language-id>.component.wasm`,
-which is what means no build or CI step ever needs a componentizing toolchain: baking one wants
-`componentize-js` or `componentize-py`, takes minutes, and in Python's case is not even
-byte-reproducible, so a build that re-cut it would be slower and would still not prove anything.
-A component is a whole language runtime and it changes when someone deliberately rebuilds it.
+The **component** is generated too, and it was the last thing to move. Baking one wants
+`componentize-js` or `componentize-py` or a whole .NET SDK, takes tens of seconds, and is not
+byte-reproducible for any of the four arms that have one — so a build that re-cut one and diffed
+it would have failed on every run over bytes nobody edited, which is why these were the arms a
+drift gate could never cover. `crates/gg/src/sandbox/guests/` no longer exists. Each component is
+now written by its arm's `build.sh` into the `OUT_DIR` of a crate under
+`crates/gg-sandbox-artifacts/`, and the arm module `include_bytes!`s it from there.
+
+An arm's **compile inputs** — the compiler it judges a program with, the library set it links
+against, the SDK jar it puts on a classpath — went first, one arm at a
+time, by the same mechanism: a crate under `crates/gg-sandbox-artifacts/` whose build script runs
+that arm's `build.sh` into its own `OUT_DIR`. That is the same fidelity argument
+the catalogue makes below, and the Java jar is its receipt — it was demonstrably stale in `git`,
+three SDK files having gained documentation without anyone re-cutting the jar, and what fixed it
+was deleting it rather than rebuilding it.
 
 The **catalogue** is not committed. `crates/gg/build.rs` reflects all eleven out of their SDKs
 as a step of building the crate, into the build's own `OUT_DIR`, and each arm module
@@ -2602,20 +2622,20 @@ to be inferred from a test that happens to pass.
 
 ### An arm whose artifact is the program
 
-Every arm described above evaluates a **string**. Python's committed component holds a whole
+Every arm described above evaluates a **string**. Python's baked component holds a whole
 CPython, Ruby's holds Opal, the ECMAScript one holds a JavaScript engine, and what crosses
 the membrane is source those runtimes read. That shape has a name — an *interpreted* arm —
 and it is not the only one.
 
-A **compiled** arm has no runtime to commit. `rustc` does not produce a Rust interpreter
+A **compiled** arm has no runtime to bake. `rustc` does not produce a Rust interpreter
 that later runs a program; it produces the program, as a wasm module, and that module *is*
 the component. There is no artifact of the language that is not one particular program, so
-there is nothing to check in and nothing a per-process cache could hold.
+there is nothing to build ahead of time and nothing a per-process cache could hold.
 
 The seam carries both shapes, and the difference is two fields:
 
 - a language answers **nothing** for its guest component, which is a real answer rather
-  than an omission — the seam's "every registered language carries its committed component"
+  than an omission — the seam's "every registered language carries its guest component"
   gate requires such a language to say so, so "the artifact went missing" and "this arm has
   no artifact" stay different failures;
 - and its prepare step hands back the **bytes it compiled**, on the prepared program,
@@ -2891,8 +2911,8 @@ stating, because both are decisions:
 
 The **library set** is `std` plus five curated crates, declared under machine-readable headings in
 `packages/gg-sandbox-rust/Cargo.toml`: `regex`, `serde_json`, `base64`, `itertools` and `indexmap`.
-That one declaration has two readers — `build.sh` marks those crates `extern` in the committed
-manifest, which is what `rustc --extern` puts in a program's prelude, and the reflector groups the
+That one declaration has two readers — `build.sh` marks those crates `extern` in the manifest it
+writes beside the library set, which is what `rustc --extern` puts in a program's prelude, and the reflector groups the
 catalogue's library list by the same headings — so what a model is told it may `use` and what the
 compile lets it name cannot drift, and a test compares the two lists and then compiles a program that
 really uses all five. Two constraints decide what may be in the set and both are hard: **no proc
@@ -2908,19 +2928,18 @@ reaches an artifact the program did not use it in, because the link dead-strips.
 Two things about **how that set is built** are decisions rather than mechanics, and both were paid
 for by a defect.
 
-- **Nothing but a deliberate rebuild re-cuts it.** A signature step runs on every build of gg —
-  that is what [the catalogue](#the-catalogue) being generated means — so a signature step that
-  reached `build.sh` for something it needed would re-cut this committed library set every time
-  anybody typed `cargo build`, silently rewriting an artifact under the working tree of a developer
-  who was compiling, not rebuilding. This arm's catalogue needs the generated WIT bindings, which
-  are not committed — so the bindings are their own script,
-  `packages/gg-sandbox-rust/bindings.sh`, called by `signatures.sh` and by `build.sh` alike, and
-  that split is what keeps the two apart. It was paid for: before it, a fresh checkout with no
-  `src/bindings.rs` sent the signature step through `build.sh`, which re-cut the library set, and
-  the result could not be reproduced anywhere but on the machine the committed tarball was built
-  on. The same discipline is why `crates/gg/build.rs` names each package's `src` and `tools`
-  subtrees as its rerun inputs and never a directory a reflection writes into: a build step that
-  dirties its own inputs invalidates the next build forever.
+- **The set and the catalogue have separate rerun sets, and that is what the split is for.** Both
+  are generated during `cargo build` — the set by `crates/gg-sandbox-artifacts/rust`, the
+  catalogue by `crates/gg/build.rs` — and a signature step that reached `build.sh` for something it
+  needed would collapse the two into one, so editing a doc comment would re-link 9.4 MB of rlibs.
+  This arm's catalogue needs the generated WIT bindings, which are not committed, so the bindings
+  are their own script, `packages/gg-sandbox-rust/bindings.sh`, called by `signatures.sh` and by
+  `build.sh` alike. It was paid for twice over: before the split, a fresh checkout with no
+  `src/bindings.rs` sent the signature step through `build.sh`, which re-cut the library set
+  under a developer who had only asked for a compile. The same discipline is why
+  `crates/gg/build.rs` names each package's `src` and `tools` subtrees as its rerun inputs and
+  never a directory a reflection writes into: a build step that dirties its own inputs invalidates
+  the next build forever.
 - **The same inputs produce the same archive on any machine.** An `.rlib` records the absolute
   paths of the sources it was compiled from and the directory `rustc` ran in, so before this the
   set was a function of where the checkout happened to live — measured, `libgg.rlib` came out
@@ -3041,7 +3060,7 @@ beside it (Foundation and its companions, `RegexBuilder`, `Synchronization`, `Ob
 swift-algorithms' own dependency and a perfectly good library in its own right.
 `packages/gg-sandbox-swift/libraries.txt` is the one declaration, and a test compiles a program
 importing every module in it through the production prepare step — so a name a model is told about
-that the committed archive does not carry fails there rather than reaching a model.
+that the archive does not carry fails there rather than reaching a model.
 
 Two properties of that set are worth stating.
 
@@ -3234,7 +3253,7 @@ it would be the reflector inventing a spelling and this SDK's prose is full of e
 ##### The library set is the standard library, and that is an argument rather than a shortfall
 
 Declared header by header in `Sources/prelude.hpp` under `// == Heading ==` groups, which is one
-declaration with **three** readers: the compile, the committed manifest, and the catalogue's
+declaration with **three** readers: the compile, the manifest `build.sh` writes, and the catalogue's
 `libraries` section — so what a model is told it may include and what the compile allows cannot
 drift.
 
@@ -3258,20 +3277,20 @@ the reason [Rust](#what-rusts-sdk-looks-like) keeps `std::fs` off its own: nothi
 is gated, recorded in the run's events or put in front of the model, and the workspace is reached
 through `gg::files` and `gg::shell`.
 
-### C#: a committed interpreter for a compiled language
+### C#: a prebuilt interpreter for a compiled language
 
 A **third** shape, and the only arm that is neither of the two above. What a model and an
 operator see of it is [its own section](#c-a-compiler-on-the-host-an-interpreter-in-the-guest);
 what is here is the shape.
 
 The two shapes so far split on *what crosses the membrane*. An interpreted arm sends **source**
-to a committed runtime; a compiled arm sends **a component** and commits nothing. C# sends
+to a prebuilt runtime; a compiled arm sends **a component** it produced per turn. C# sends
 neither. Roslyn compiles the model's reply to **IL** on the host — the compiler every C#
 build already runs, in **~0.28 s** warm — and the assembly crosses as base64 in the
-world's existing `program` string, to a committed component holding a **Mono IL interpreter**
+world's existing `program` string, to a prebuilt component holding a **Mono IL interpreter**
 and the whole .NET class library. So it has an interpreted arm's *artifact* and a compiled
 arm's *failure bands*: a program the compiler read whole and rejected is
-[the model's compile error](#a-compiler-has-two-ways-to-fail), on an arm whose committed guest
+[the model's compile error](#a-compiler-has-two-ways-to-fail), on an arm whose prebuilt guest
 never changes.
 
 That is what makes C# affordable, and it is the whole of what a prior feasibility study got
@@ -3298,7 +3317,7 @@ as in-memory resources, so the runtime boots with zero preopens and reads nothin
 pack's default is a `managed/` directory beside the program, which would have put 17 MB of
 Microsoft's assemblies into a run's own working tree where a model would find them and would
 have made the guest depend on a path the toolchain image happened to install. It costs 22 MB of
-committed artifact — the component is **35.3 MB** — and buys one that behaves the same
+prebuilt artifact — the component is **35.3 MB** — and buys one that behaves the same
 everywhere.
 
 **Its error surface is the best of any compiled arm here, and gg engineered none of it.**
@@ -3367,7 +3386,7 @@ hole nothing else could: every C# keyword is lower-case, so a skill called `clas
 `lib.Class` and compiles, where a lower-cased key would have needed a `@` nobody would think to type.
 
 It compiles in the **same `csc` invocation** as the program and the SDK. Nothing is referenced with
-`-r:` and nothing becomes a second assembly, which the committed guest could not load anyway — it
+`-r:` and nothing becomes a second assembly, which the prebuilt guest could not load anyway — it
 loads exactly one per run. A module is *also* compiled alone when it is read, as a library, so its
 author gets a diagnostic on the call that loaded the skill rather than a program that stops compiling
 a turn later for reasons in somebody else's file.
@@ -3387,11 +3406,11 @@ prelude, a wasm object linked into the program. C#'s is twenty-seven `.cs` files
 binary, written into the preparation's workspace and handed to `csc` beside `program.cs`. The
 model's program and gg's SDK are **one compilation**, and three things follow:
 
-- **there is no second assembly for the guest to find.** The committed guest loads exactly one
+- **there is no second assembly for the guest to find.** The prebuilt guest loads exactly one
   assembly per run. An SDK compiled separately would have to be bundled into the 35.3 MB component,
   so every doc-comment edit would mean rebuilding and re-committing it.
 - **the SDK is reviewable** — what a reviewer reads in the diff is what a model compiles against,
-  with no committed binary in between and no reproducible-build gate to keep green.
+  with no binary in between for a reviewer to have to take on trust.
 - **it costs ~70 ms** on a ~210 ms compile, measured.
 
 It also buys the answer to a question every arm has to answer differently: **how gg's surface gets
@@ -3544,8 +3563,8 @@ crate — it runs `scripts/gg-signatures.sh` with `GG_SIGNATURES_OUT_DIR` pointe
 `$OUT_DIR/signatures`, and each arm module `include_str!`s the file with its stem out of there. So
 what a model is told about an arm is reflected out of the SDK sources of the checkout that compiled
 the host telling it, and a prompt describing a surface the guest does not export is not a state a
-build can be in. `crates/gg/src/sandbox/guests/*.signatures.json` — where they used to be committed
-— is gitignored, so a stray one cannot be added back by accident.
+build can be in. `crates/gg/src/sandbox/guests/` — where they used to be committed, and where the
+baked components lived after them — does not exist at all any more.
 
 That still leaves a reason to *read* one, and it is the reason the files are written to disk at all
 rather than piped through a build. A reflector is a program, reflectors have bugs, and every bug
@@ -3736,7 +3755,7 @@ draws the host's entropy — and declares neither `wasi:filesystem` nor `wasi:so
 it is baked without them. Those two are **unused** by that guest, not withheld from it: the
 host defines them all the same, and a `componentize-py` guest importing them gets them.
 
-That list is asserted against the committed artifact on every test run, because it is decided
+That list is asserted against the built artifact on every test run, because it is decided
 by the `--disable` flags in `packages/gg-sandbox/build.sh` and a flag changed there rewrites
 what a program can reach without touching a line of readable diff. The Python guest's list is
 asserted the same way and for the same reason, and it is the other end of the range: fifteen
@@ -3830,7 +3849,7 @@ function's own prose and spelling, which are the arm's and are not comparable to
 No gate that refuses to compare spellings can reach it.
 
 **Why it is load-bearing for the experiment:** its absence is *silent*. Each language's
-own drift gates compare it to its own committed component — never to gg's vocabulary, and
+own drift gates compare it to its own prebuilt component — never to gg's vocabulary, and
 never to another language. Eleven internally consistent surfaces offering eleven different
 sets of capabilities are eleven green test suites, and an A/B across them measures the
 difference in the surface while reporting it as a difference in the language.
@@ -3839,7 +3858,7 @@ difference in the surface while reporting it as a difference in the language.
 because a gate that can be shown to pass but never shown to *catch* anything is a gate
 nobody knows works — and a coverage gate written slightly too loosely still passes on
 eleven green arms. Two kinds of subject prove it. Damaged **catalogues**, built by
-reshaping a committed one and breaking a row: an operation the SDK stopped binding, an
+reshaping a real one and breaking a row: an operation the SDK stopped binding, an
 operation bound twice with neither binding calling itself the alias, an operation gg does
 not have, an alias of an operation the arm binds nowhere, a call that claims to take an
 argument gg says it does not, a name that shadows another in its module, an argument
@@ -3945,7 +3964,7 @@ reached — measured by *executing* the import, so a function-local one does not
 Everything else is absent from the component's filesystem entirely, and a program that asks
 for it gets `ModuleNotFoundError`. So the library set is a property of the **artifact**, not
 a policy applied at run time: `src/library.py` imports what the arm offers, and a test asks
-the committed component which modules really landed.
+the built component which modules really landed.
 
 That is worth more than it costs. A study can state exactly what each arm was given, and the
 statement is checkable against the binary rather than against a promise. What is offered is
@@ -3979,8 +3998,8 @@ Three gates hold it:
 - `a_language_that_declares_libraries_names_every_one_in_its_prompt` renders the prompt of every
   registered language and requires each declared group's heading and its exact comma-joined list
   to appear in it — so a catalogue entry withheld from the model fails;
-- `the_committed_guest_carries_every_library_the_prompt_names` drives that same list into the
-  **committed component** and imports every name inside it, so a curated import dropped in a
+- `the_embedded_guest_carries_every_library_the_prompt_names` drives that same list into the
+  **prebuilt component** and imports every name inside it, so a curated import dropped in a
   rebuild fails here rather than in a run.
 
 The three named absences the prompt still states in prose — `asyncio`, `subprocess`/
@@ -4087,14 +4106,19 @@ model reaches by accident rather than by writing a sleep.
    and documents none fails, as does an entry documenting no argument where gg says the
    operation takes one. The reflector refuses to emit either, so the failure lands on the author
    rather than on a model.
-5. **Commit the component** under `crates/gg/src/sandbox/guests/`, and commit no catalogue: the
-   catalogue is the build's, and step 9 is where the build learns to make it. If the language
+5. **Commit nothing** — not the component, not the catalogue. Both are the build's: add a row to
+   `scripts/gg-arms.sh` naming what the arm's `build.sh` writes and a three-file crate under
+   `crates/gg-sandbox-artifacts/` (see `gg-artifact-build`'s header for the recipe), and the
+   component is baked into that crate's `OUT_DIR` on every build whose declared inputs moved.
+   Step 9 is where the build learns to make the catalogue. If the language
    type-checks the model's program, its compiler has to reach the run container, and there
-   are two places for it. A compiler small enough to *be* an artifact goes under
-   `crates/gg/src/sandbox/checkers/`, pinned at one release, and rides inside gg's own
+   are two places for it. A compiler small enough to *be* an artifact rides inside gg's own
    binary — TypeScript's is a `tsc` cut out of the same pinned `typescript` its catalogue is
    reflected with, which is what stops a program from being judged by one release and
-   described by another. A real toolchain goes in the
+   described by another. **Generate it, do not commit it**: add a row to `scripts/gg-arms.sh`
+   naming what the arm's `build.sh` writes, and a three-file crate under
+   `crates/gg-sandbox-artifacts/` (see `gg-artifact-build`'s header for the recipe), so the
+   compiler is cut on the build that embeds it. A real toolchain goes in the
    [gg image layer](#where-a-compiler-lives-and-what-it-must-never-share) instead (step 8),
    because gg is copied into a container as a single file and a JDK is not one.
 6. **Add the enum variant** in `crates/core/src/gg.rs`, and list it in `GgProgramLanguage::ALL`
@@ -4145,16 +4169,18 @@ model reaches by accident rather than by writing a sleep.
    rules the reflector itself has to obey: it takes its destination from
    `GG_SIGNATURES_OUT_DIR` and fails when that is unset, and it **writes its catalogue and
    nothing else**, so whatever it needs that a build script happens to also produce gets its own
-   script, as [Rust](#what-rusts-sdk-looks-like)'s WIT bindings did — a signature step runs on
-   every `cargo build`, and one that re-cut a committed library set on the way past would rewrite
-   the working tree of everyone who merely compiled. Finally, if the arm's documentation tool is
+   script, as [Rust](#what-rusts-sdk-looks-like)'s WIT bindings did — the catalogue and the
+   arm's artifacts have separate rerun sets on purpose, and a reflector that reached the artifact
+   build for something it needed would collapse them into one. Finally, if the arm's documentation tool is
    not already installed, add it to `scripts/ci/install-gg-toolchains.sh`: that is the one
    idempotent installer the devcontainer and every CI surface that builds gg run, and a toolchain
-   this repository requires is a toolchain this repository installs. If the new arm's checker is
-   a committed artifact, that half still belongs in `scripts/ci/contract-drift.sh`, which
-   re-cuts and diffs `crates/gg/src/sandbox/checkers/`; what must never go in there is a
-   component, since Python's is not byte-reproducible and a rebuild would fail the diff every
-   time.
+   this repository requires is a toolchain this repository installs. The arm's **compile inputs**
+   get the sibling treatment: `<package>/build.sh`, taking its destination from
+   `GG_ARTIFACTS_OUT_DIR` and failing when that is unset, listed in the same `scripts/gg-arms.sh`
+   row, run by `scripts/gg-artifacts.sh` and — once the arm has a crate under
+   `crates/gg-sandbox-artifacts/` — by `cargo build` itself. Nothing goes in
+   `scripts/ci/contract-drift.sh`: it does not re-cut anything of gg's any more, because an
+   artifact a build regenerates has no committed copy to diff.
 10. **Add the console's row**: a label in `PROGRAM_LANGUAGE_LABELS`
    (`packages/ui/src/app/pages/runs/gg/ggCatalog.ts`), which is what the capability editor's
    picker is built from, and a name in `PROGRAM_LANGUAGE_NAMES` on the Reference page. Both are

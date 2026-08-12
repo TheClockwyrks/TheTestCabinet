@@ -14,7 +14,7 @@
 //! two places a language arm is usually expensive:
 //!
 //! * **Nothing is installed in the run container.** `node` is what every run image already ships —
-//!   the shared base *is* `node:24-bookworm-slim` — so the compiler is a committed artifact gg
+//!   the shared base *is* `node:24-bookworm-slim` — so the compiler is an embedded artifact gg
 //!   carries with it, exactly as the TypeScript checker is, and `containers/gg-toolchains` gains a
 //!   paragraph rather than a toolchain.
 //! * **No second engine.** The compiled program is JavaScript, so it is evaluated by the same
@@ -85,7 +85,7 @@
 //! to fix and both arrive as [`PrepareError::Syntax`], because the model's answer to each is the
 //! same: write different Ruby.
 //!
-//! The driver in the committed bundle says which of three things happened in its **exit code**
+//! The driver in the embedded bundle says which of three things happened in its **exit code**
 //! rather than leaving gg to guess it from a non-zero status — which cannot be guessed, since a
 //! compiler that rejected a program and a compiler that could not start both exit non-zero:
 //!
@@ -108,12 +108,17 @@ use crate::sandbox::language::{PrepareContext, PrepareError, PrepareFailure, Pre
 /// Opal — the runtime and its self-hosted compiler as one CommonJS bundle, with gg's driver at the
 /// end of it — at the release `packages/gg-sandbox-ruby/opal-version.sh` pins.
 ///
-/// Committed and embedded for the reason the guest components are: gg is copied as a single file
-/// into an ephemeral run container and must carry everything it needs with it.
-const OPAL_CJS: &str = include_str!("../checkers/ruby.opal.cjs");
+/// **Embedded** for the reason the guest components are: gg is copied as a single file into an
+/// ephemeral run container and must carry everything it needs with it. **Cut by this build** rather
+/// than committed beside this file — 2.8 MB of generated JavaScript no reviewer could read, which is
+/// exactly the shape of artifact that goes stale unnoticed. `packages/gg-sandbox-ruby/build.sh`
+/// writes it out of the one pinned Opal release, on the same build that reflects this arm's
+/// catalogue and bakes this arm's guest, so the compiler, the runtime it lowers a program for and
+/// the description a model was given cannot be three vintages.
+const OPAL_CJS: &str = include_str!(concat!(env!("GG_ARTIFACTS_RUBY"), "/ruby.opal.cjs"));
 
-/// What the committed compiler is, so gg can say which Opal compiled a program.
-const MANIFEST_JSON: &str = include_str!("../checkers/ruby.compiler.json");
+/// What the compiler beside it is, so gg can say which Opal compiled a program.
+const MANIFEST_JSON: &str = include_str!(concat!(env!("GG_ARTIFACTS_RUBY"), "/ruby.compiler.json"));
 
 /// How long one compile may take before it is killed and reported as a
 /// [toolchain failure](PrepareFailure::Toolchain).
@@ -138,7 +143,7 @@ const EXIT_SYNTAX: i32 = 20;
 /// The exit code the driver uses for a compilation Opal refused for any other reason.
 const EXIT_REFUSED: i32 = 21;
 
-/// What the committed compiler is: the Opal release it was cut from, and the Ruby that release
+/// What the embedded compiler is: the Opal release it was cut from, and the Ruby that release
 /// emulates.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -161,7 +166,7 @@ fn manifest() -> &'static CompilerManifest {
     static MANIFEST: std::sync::OnceLock<CompilerManifest> = std::sync::OnceLock::new();
     MANIFEST.get_or_init(|| {
         serde_json::from_str(MANIFEST_JSON)
-            .expect("the committed compiler manifest is valid JSON of the expected shape")
+            .expect("the compiler manifest this build wrote is valid JSON of the expected shape")
     })
 }
 
@@ -177,7 +182,7 @@ pub(super) fn compiler_version() -> &'static str {
 /// [`OPERATIONS`](super::super::operations::OPERATIONS) is: the language level a program is
 /// written in is a sentence in [this arm's system prompt](super::PROMPT), which is prose and cannot
 /// be generated from a manifest — so what this exists for is the test that holds that sentence to
-/// what the committed compiler actually reports. Nothing at run time asks; a compile reports which
+/// what the embedded compiler actually reports. Nothing at run time asks; a compile reports which
 /// *compiler* read the program, which is [`compiler_version`] and a different fact.
 #[cfg(test)]
 pub(super) fn ruby_version() -> &'static str {
@@ -311,7 +316,7 @@ pub(super) fn compile(
 
 /// Turn a finished invocation into a verdict.
 ///
-/// The exit code is the whole of the decision, because the driver in the committed bundle exists to
+/// The exit code is the whole of the decision, because the driver in the embedded bundle exists to
 /// make it one: a status gg had to interpret is a status gg would eventually interpret wrongly, and
 /// reporting a broken compiler as a broken program is the misattribution this whole split is for.
 ///
@@ -433,7 +438,7 @@ fn materialise() -> Result<Compiler, String> {
     Ok(compiler)
 }
 
-/// A stable digest of the committed bundle, so a change to it changes the directory it is written
+/// A stable digest of the embedded bundle, so a change to it changes the directory it is written
 /// into. Not cryptographic and not required to be: it distinguishes builds, it does not defend
 /// against one.
 fn fingerprint() -> u64 {

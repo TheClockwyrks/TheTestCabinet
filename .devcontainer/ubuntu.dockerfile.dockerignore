@@ -90,6 +90,13 @@
 !/scripts/ci/install-*.sh
 !/scripts/ci/lib.sh
 
+# The gg build's own shared shell, which those installers source: `gg-downloads.sh` resolves the
+# pinned `wit-bindgen` and wasmtime adapter, `gg-npm-tools.sh` resolves the pinned npm-delivered
+# build tools, and `gg-arms.sh` is the one list of the arms. A glob for the same reason the two
+# patterns above are globs. Six small files; the layer-cache argument above is unaffected, because
+# these change about as often as an arm is added.
+!/scripts/gg-*.sh
+
 # The version files those installers source, one per arm, as a GLOB — so adding an
 # arm needs no edit here, exactly as it needs no edit in the Dockerfile. The
 # pattern admits `packages/gg-sandbox-*/*-version.sh` and nothing else under
@@ -97,6 +104,35 @@
 # scratch and the unrelated npm workspaces beside them all stay out. Measured
 # whole slice: ~230 kB.
 !/packages/gg-sandbox-*/*-version.sh
+
+# Seven files that are NOT version files and are read by `scripts/ci/install-gg-build-tools.sh`,
+# which warms the package-manager-delivered half of gg's build toolchain. They are named
+# individually rather than admitted by a glob, because a glob wide enough to catch them
+# (`!/packages/gg-sandbox*/build.sh`) would put ten build scripts in this layer's cache key and the
+# note above `!/scripts/ci/install-*.sh` is the reason not to.
+#
+#   the two `build.sh`   carry the `componentize-js` and `componentize-py` pins. Those two arms have
+#                        no `*-version.sh` of their own, so this is where the pin lives.
+#   requirements.txt     the Python arm's wheels, pre-fetched into uv's cache.
+#   the two Cargo files  the Rust arm's SEPARATE lockfile, whose registry closure nothing else in
+#                        this repository warms and which that arm's build resolves `--offline`.
+#   spago.yaml           read by TWO things, and the first is why it cannot wait for the glob above:
+#                        `purescript-version.sh` does not merely sit beside it, it READS it. The
+#                        registry package set is written down once, where Spago reads it, and that
+#                        version file projects it with a `sed` that `exit 1`s on an empty result —
+#                        so every installer that sources the PureScript pin fails inside the image
+#                        without this line. The second reader is the build-tool installer, below.
+#   spago.lock           `install-gg-build-tools.sh` warms Spago's package STORE by running `spago
+#                        install` in that package, and the lockfile decides which versions it
+#                        resolves to. A warm without it caches a set the arm's build re-resolves,
+#                        which is worse than no warm because it looks like it worked.
+!/packages/gg-sandbox/build.sh
+!/packages/gg-sandbox-python/build.sh
+!/packages/gg-sandbox-python/requirements.txt
+!/packages/gg-sandbox-rust/Cargo.toml
+!/packages/gg-sandbox-rust/Cargo.lock
+!/packages/gg-sandbox-purescript/spago.yaml
+!/packages/gg-sandbox-purescript/spago.lock
 
 # `packages/gg-sandbox-rust/rust-version.sh` reads the toolchain channel out of
 # this file rather than pinning a second copy of it, so the Rust arm's installer

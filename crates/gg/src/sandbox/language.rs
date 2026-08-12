@@ -3,7 +3,7 @@
 //! and everything that follows from the answer.
 //!
 //! gg used to have exactly one answer, spelled out in a dozen places: the type-strip was
-//! TypeScript's, the committed component was TypeScript's, the signature catalogue's entries were
+//! TypeScript's, the prebuilt component was TypeScript's, the signature catalogue's entries were
 //! keyed on a field literally named `js`, and the system prompt said so in prose. That was true and
 //! costless right up until the question became *does the language a model writes in change how well
 //! it works?* — which is a question a harness answers by running two arms, and therefore a question
@@ -27,7 +27,7 @@
 //! * how a model's reply becomes source the guest can evaluate ([`ProgramLanguage::prepare_program`]);
 //! * how a code [skill](crate::skills)'s or [memory](crate::memories)'s file becomes a namespace
 //!   bound at `lib.<key>` ([`ProgramLanguage::prepare_module`]);
-//! * which committed component evaluates it ([`ProgramLanguage::guest_component`]);
+//! * which prebuilt component evaluates it ([`ProgramLanguage::guest_component`]);
 //! * and how its SDK spells the surface ([`ProgramLanguage::catalogue`]).
 //!
 //! # Why the registry is trait objects
@@ -137,17 +137,26 @@ mod register;
 #[path = "language/isolation.rs"]
 mod isolation;
 
-/// The **hand-built artifact gate**: the assertion that every committed binary gg carries — three
-/// guest components and three compiled-arm archives — was built from the sources this checkout
-/// holds.
-///
-/// `#[cfg(test)]`, and a gate rather than a runtime need for the same reason [`agreement`] is. Its
-/// module documentation says why the drift check next door cannot cover these six, what each arm's
-/// existing gates do and do not reach, and — in as many words — that matching one's recorded
-/// sources is not the same claim as having been built correctly from them.
-#[cfg(test)]
-#[path = "language/artifacts.test.rs"]
-mod artifacts;
+// WHAT USED TO BE DECLARED HERE: `artifacts`, the hand-built artifact gate — the assertion that
+// every committed binary gg carried was built from the sources of the checkout carrying it. It
+// recomputed, from the tree, the SHA-256 of every source a `build.sh` had recorded in a manifest
+// beside its output, and failed BY ARM NAME when the two had parted; and its last test inverted the
+// question, walking `crates/gg/src/sandbox/{guests,checkers}` and demanding that every file found
+// there be either described by a manifest or argued for by name.
+//
+// GG CARRIES NO COMMITTED BINARY ANY MORE, so it had no subject left. Ten crates under
+// `crates/gg-sandbox-artifacts/` serve the eleven arms — `typescript` serves JavaScript too, because
+// those two arms are one guest — each running its `build.sh` into a cargo `OUT_DIR`, and the arm
+// modules `include_bytes!` from there — so a source edited without a rebuild is not a
+// state the tree can reach, rather than a state a test reports. `guests/` no longer exists at all,
+// and `checkers/` holds five files that are gg's own hand-written Java and its two JVM pins.
+//
+// The one test worth mourning is `every_committed_artifact_is_covered`, which existed to force
+// somebody to SAY, in prose, why a newly committed blob needed no gate. It dies correctly: it was a
+// question about committed files, and the answer it was pushing toward — "generate it during the
+// build" — is the one every arm took. `scripts/gg-arms.sh`'s `--artifacts` list is what a twelfth
+// arm must now be added to, and `gg-artifact-build` checks that list against what the build really
+// wrote, which is the same forcing function one layer up and on the right side of the gap.
 
 /// A **second implementation of this trait, for tests only** — the thing that makes the seam an
 /// abstraction rather than one implementation wearing a trait.
@@ -377,7 +386,7 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// lets it be minted once per agent and quoted back in the reply that names it.
     fn binding_name(&self, name: &str) -> String;
 
-    /// The committed guest component that evaluates this language's prepared source, embedded in
+    /// The prebuilt guest component that evaluates this language's prepared source, embedded in
     /// the binary — or `None` for a language that compiles **the program itself** into a component,
     /// per turn.
     ///
@@ -389,7 +398,7 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     ///
     /// # Why `None` is a real answer and not an omission
     ///
-    /// A committed component is what an **interpreted** arm has: Python's holds a whole CPython,
+    /// A prebuilt component is what an **interpreted** arm has: Python's holds a whole CPython,
     /// Ruby's holds Opal, the ECMAScript one holds a JavaScript engine, and every program of that
     /// language crosses the membrane as a *string* the runtime inside evaluates. A **compiled** arm
     /// has no such thing to commit. `rustc` does not produce a Rust runtime that later runs a
@@ -398,14 +407,14 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// shape answers `None` here and hands its bytes back on
     /// [`PreparedProgram::component`](PreparedProgram::component) instead.
     ///
-    /// The two are not both allowed to be present. A language that committed a component *and*
+    /// The two are not both allowed to be present. A language that declares a prebuilt component *and*
     /// compiled one per program would have two answers to "what evaluated this turn", and the run's
     /// record could only carry one of them.
     fn guest_component(&self) -> Option<&'static [u8]>;
 
     /// Whether this language's [prepare step](Self::prepare_program) produces the component its
     /// program is evaluated by, rather than handing source to a
-    /// [committed](Self::guest_component) one. Derived rather than declared, so the two can never
+    /// [prebuilt](Self::guest_component) one. Derived rather than declared, so the two can never
     /// disagree.
     fn compiles_component(&self) -> bool {
         self.guest_component().is_none()
@@ -879,7 +888,7 @@ pub struct PreparedProgram {
     pub unreachable: Option<UnreachableTail>,
     /// **The component that evaluates this program**, for a language that compiled one *for this
     /// program* — `None` for every language whose programs are evaluated by a
-    /// [committed](ProgramLanguage::guest_component) one.
+    /// [prebuilt](ProgramLanguage::guest_component) one.
     ///
     /// Two shapes of arm, and the seam carries both because the languages that have each are not
     /// negotiable. An interpreted arm (Python, Ruby, the ECMAScript pair) ships one component
@@ -983,7 +992,7 @@ pub enum PrepareError {
     ///
     /// It is **recoverable**, like every variant here: the model is handed the diagnostic and writes
     /// another program. A model's own type error must never reach
-    /// [`SandboxError::Compile`](super::SandboxError::Compile), which is the committed interpreter
+    /// [`SandboxError::Compile`](super::SandboxError::Compile), which is the embedded interpreter
     /// component failing to compile — an artifact defect that ends the session.
     ///
     /// Every arm with a compiler in front of it raises it: TypeScript's prepare step runs `tsc` over
@@ -1097,7 +1106,7 @@ pub struct ResolvedProgramLanguage {
 /// | absent / `null` / `"typescript"` | [`TypeScript`](GgProgramLanguage::TypeScript) — the default |
 /// | `"javascript"` | [`JavaScript`](GgProgramLanguage::JavaScript) — the same surface, unchecked |
 /// | `"python"` | [`Python`](GgProgramLanguage::Python) — a committed CPython, evaluating the reply as written |
-/// | `"ruby"` | [`Ruby`](GgProgramLanguage::Ruby) — compiled to JavaScript by the committed Opal, then evaluated |
+/// | `"ruby"` | [`Ruby`](GgProgramLanguage::Ruby) — compiled to JavaScript by the embedded Opal, then evaluated |
 /// | `"purescript"` | [`PureScript`](GgProgramLanguage::PureScript) — type-checked and compiled to JavaScript by the image's `purs`, bundled, then evaluated |
 /// | `"java"` | [`Java`](GgProgramLanguage::Java) — compiled by `javac` and TeaVM in a warm JVM, then evaluated |
 /// | `"kotlin"` | [`Kotlin`](GgProgramLanguage::Kotlin) — compiled as a script by the Kotlin compiler and TeaVM in a warm JVM, then evaluated |

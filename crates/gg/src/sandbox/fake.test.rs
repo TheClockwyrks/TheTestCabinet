@@ -41,7 +41,7 @@ use crate::tools::{
 ///
 /// Named for the language rather than for gg's default, because that is what these tests are about.
 /// Every program they run is TypeScript source, every spelling they assert on (`readFile`,
-/// `requestChanges`) is TypeScript's, and the artifact they compile is TypeScript's committed
+/// `requestChanges`) is TypeScript's, and the artifact they compile is TypeScript's prebuilt
 /// component — so a helper called "the default language" would make them read as though the same
 /// cases would hold for whatever gg defaulted to next, which is exactly what they do not claim.
 ///

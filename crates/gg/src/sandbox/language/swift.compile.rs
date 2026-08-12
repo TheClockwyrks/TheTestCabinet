@@ -116,7 +116,7 @@
 //! more of the machinery.
 //!
 //! Everything gg carries is unpacked into a [shared toolchain directory](shared_toolchain_dir) —
-//! two of them, one per committed archive, each content-keyed on the pinned compiler and a digest
+//! two of them, one per embedded archive, each content-keyed on the pinned compiler and a digest
 //! of its own bytes, placed by rename and sealed read-only. `swiftc` only ever **reads** them: the
 //! header is named on `-import-objc-header`, the shell and the objects are inputs, the modules are
 //! found by `-I`, the library archive is a link input, and nothing is generated beside any of them.
@@ -163,7 +163,8 @@ use super::source::{LIB_FILE, MODULE_FILE_PREFIX};
 /// Embedded for the reason the guest components are: gg is copied as a single file into an
 /// ephemeral run container and must carry everything it needs with it. Built by
 /// `packages/gg-sandbox-swift/build.sh`.
-const GUEST_TAR_GZ: &[u8] = include_bytes!("../checkers/swift.guest.tar.gz");
+const GUEST_TAR_GZ: &[u8] =
+    include_bytes!(concat!(env!("GG_ARTIFACTS_SWIFT"), "/swift.guest.tar.gz"));
 
 /// The **curated library set**, compiled for this arm's target: one static archive and the
 /// `.swiftmodule` a program's `import` resolves against.
@@ -180,17 +181,21 @@ const GUEST_TAR_GZ: &[u8] = include_bytes!("../checkers/swift.guest.tar.gz");
 /// the command line at all. Measured; passing the objects directly added ~2.7 MB to every artifact
 /// on this arm, used or not, because `--gc-sections` cannot strip what a reflection metadata table
 /// names.
-const LIBRARIES_TAR_GZ: &[u8] = include_bytes!("../checkers/swift.libraries.tar.gz");
+const LIBRARIES_TAR_GZ: &[u8] = include_bytes!(concat!(
+    env!("GG_ARTIFACTS_SWIFT"),
+    "/swift.libraries.tar.gz"
+));
 
 /// The `wasi_snapshot_preview1` **reactor** adapter, which turns the preview1 core module the Swift
 /// SDK emits into the preview 2 component gg's engine instantiates.
 ///
 /// In memory rather than in the archive above, because this is the one input the *encoder* needs
 /// and not the compiler: it never touches a filesystem.
-const ADAPTER: &[u8] = include_bytes!("../checkers/swift.adapter.wasm");
+const ADAPTER: &[u8] = include_bytes!(concat!(env!("GG_ARTIFACTS_SWIFT"), "/swift.adapter.wasm"));
 
-/// What the committed archive was built by, and what is in it.
-const MANIFEST_JSON: &str = include_str!("../checkers/swift.toolchain.json");
+/// What the archives were built by, and what is in them.
+const MANIFEST_JSON: &str =
+    include_str!(concat!(env!("GG_ARTIFACTS_SWIFT"), "/swift.toolchain.json"));
 
 /// The environment variable an operator points at the Swift toolchain tree when it is not where gg
 /// looks.
@@ -272,7 +277,7 @@ const PREPARATION_PREFIX: &str = "/gg";
 /// while it also compared bytes, which is one of the three reasons that comparison was deleted.
 const DEBUG_INFO: &str = "-g";
 
-/// What the committed archive was built by, and what is in it.
+/// What the embedded archive was built by, and what is in it.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Manifest {
@@ -291,7 +296,7 @@ struct Manifest {
     #[allow(dead_code)]
     adapter: String,
     /// The third-party packages the [library set](LIBRARIES_TAR_GZ) was vendored from, by release
-    /// tag. Recorded so a reader of the committed archive knows which sources produced it, and so a
+    /// tag. Recorded so a reader of the embedded archive knows which sources produced it, and so a
     /// bump is visible in a diff of one line rather than only in three megabytes of binary.
     #[allow(dead_code)]
     packages: std::collections::BTreeMap<String, String>,
@@ -302,7 +307,7 @@ struct Manifest {
     files: Vec<GuestFile>,
 }
 
-/// One file in the committed archive.
+/// One file in the embedded archive.
 #[derive(Debug, Deserialize)]
 struct GuestFile {
     /// Its name, which is also its name inside the unpacked tree.
@@ -318,7 +323,7 @@ fn manifest() -> &'static Manifest {
     static MANIFEST: std::sync::OnceLock<Manifest> = std::sync::OnceLock::new();
     MANIFEST.get_or_init(|| {
         serde_json::from_str(MANIFEST_JSON)
-            .expect("the committed Swift toolchain manifest is valid JSON of the expected shape")
+            .expect("the embedded Swift toolchain manifest is valid JSON of the expected shape")
     })
 }
 
@@ -333,12 +338,12 @@ pub(super) fn target() -> &'static str {
     &manifest().target
 }
 
-/// Every file the committed archive holds, in the order the manifest lists them.
+/// Every file the embedded archive holds, in the order the manifest lists them.
 pub(super) fn guest_files() -> impl Iterator<Item = &'static str> {
     manifest().files.iter().map(|file| file.name.as_str())
 }
 
-/// Every module a program of this language may `import` out of the committed library set.
+/// Every module a program of this language may `import` out of the embedded library set.
 ///
 /// Read off the manifest the build wrote, so what gg believes it ships and what it really shipped
 /// are one statement. The *model-facing* list is `packages/gg-sandbox-swift/libraries.txt`, and the
@@ -347,7 +352,7 @@ pub(super) fn library_modules() -> impl Iterator<Item = &'static str> {
     manifest().modules.iter().map(String::as_str)
 }
 
-/// Unpack both committed archives now, so the first compile does not.
+/// Unpack both embedded archives now, so the first compile does not.
 ///
 /// The whole of this language's warm-up: 182 KB and 3.4 MB decompressed, once per machine. The
 /// results are dropped, because a failure here is the failure the first compile will make, and
@@ -522,7 +527,7 @@ struct Build<'a> {
 // The compiler
 // ---------------------------------------------------------------------------------------------
 
-/// Spawn `swiftc` over the model's file, gg's shell and the committed bindings, and link the core
+/// Spawn `swiftc` over the model's file, gg's shell and the prebuilt bindings, and link the core
 /// module.
 ///
 /// One invocation does the whole job — type-check, optimise, link — because the Swift driver's
@@ -864,7 +869,7 @@ fn componentize(module: &[u8]) -> Result<Vec<u8>, String> {
 const ADAPTER_NAME: &str = "wasi_snapshot_preview1";
 
 // ---------------------------------------------------------------------------------------------
-// The toolchain and the committed guest
+// The toolchain and the embedded guest
 // ---------------------------------------------------------------------------------------------
 
 /// Where this arm's toolchain tree is: what an operator said, then what a gg run image guarantees,
@@ -888,7 +893,7 @@ pub(super) fn swift_home() -> Result<PathBuf, String> {
     Ok(PathBuf::from(user).join(USER_HOME_SUFFIX))
 }
 
-/// Where the committed archive is unpacked, for this process.
+/// Where the embedded archive is unpacked, for this process.
 pub(super) struct Guest {
     /// The directory holding every file the archive carried.
     tree: PathBuf,
@@ -915,7 +920,7 @@ pub(super) fn guest() -> Result<&'static Guest, String> {
         .map_err(Clone::clone)
 }
 
-/// Unpack the committed archive into a [shared toolchain directory](shared_toolchain_dir).
+/// Unpack the embedded archive into a [shared toolchain directory](shared_toolchain_dir).
 ///
 /// The seam's one sanctioned share, taken under the seam's discipline: the key folds in the pinned
 /// compiler **and** a digest of the archive itself, so a gg carrying different bindings at the same
@@ -936,7 +941,7 @@ fn materialise() -> Result<Guest, String> {
     Ok(Guest { tree })
 }
 
-/// Decompress and extract the committed archive into `into`.
+/// Decompress and extract the embedded archive into `into`.
 fn unpack(into: &Path) -> Result<(), String> {
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(GUEST_TAR_GZ));
     // The archive is gg's own build artifact rather than anything a run produced, but the
@@ -944,19 +949,19 @@ fn unpack(into: &Path) -> Result<(), String> {
     // wrong place to be trusting.
     archive
         .unpack(into)
-        .map_err(|error| format!("could not unpack the committed Swift guest: {error}"))?;
+        .map_err(|error| format!("could not unpack the embedded Swift guest: {error}"))?;
     for name in guest_files() {
         let path = into.join(name);
         if !path.is_file() {
             return Err(format!(
-                "the committed Swift guest is missing {name}, which its manifest declares"
+                "the embedded Swift guest is missing {name}, which its manifest declares"
             ));
         }
     }
     Ok(())
 }
 
-/// A digest of a committed archive, so the [shared directory](shared_toolchain_dir) a process reads
+/// A digest of an embedded archive, so the [shared directory](shared_toolchain_dir) a process reads
 /// is keyed on the bytes it would have written.
 fn fingerprint(archive: &[u8]) -> u64 {
     let mut hasher = std::hash::DefaultHasher::new();
@@ -977,7 +982,7 @@ pub(super) fn libraries() -> Result<&'static Path, String> {
         .map_err(Clone::clone)
 }
 
-/// Unpack the committed library set into a [shared toolchain directory](shared_toolchain_dir) of its
+/// Unpack the embedded library set into a [shared toolchain directory](shared_toolchain_dir) of its
 /// own.
 ///
 /// Its own directory rather than the guest's, keyed on its own digest, because the two archives are
@@ -996,12 +1001,12 @@ fn materialise_libraries() -> Result<PathBuf, String> {
     let tree = root.join("lib");
     place_tree(&tree, |into| {
         let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(LIBRARIES_TAR_GZ));
-        archive.unpack(into).map_err(|error| {
-            format!("could not unpack the committed Swift library set: {error}")
-        })?;
+        archive
+            .unpack(into)
+            .map_err(|error| format!("could not unpack the embedded Swift library set: {error}"))?;
         if !into.join(LIBRARY_ARCHIVE).is_file() {
             return Err(format!(
-                "the committed Swift library set is missing {LIBRARY_ARCHIVE}, which every link \
+                "the embedded Swift library set is missing {LIBRARY_ARCHIVE}, which every link \
                  names"
             ));
         }
@@ -1009,7 +1014,7 @@ fn materialise_libraries() -> Result<PathBuf, String> {
             let path = into.join(format!("{module}.swiftmodule"));
             if !path.is_file() {
                 return Err(format!(
-                    "the committed Swift library set is missing {module}.swiftmodule, which its \
+                    "the embedded Swift library set is missing {module}.swiftmodule, which its \
                      manifest declares"
                 ));
             }

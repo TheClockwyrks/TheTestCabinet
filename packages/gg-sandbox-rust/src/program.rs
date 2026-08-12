@@ -10,9 +10,9 @@ use crate::bindings::test_cabinet::gg::types::ErrorCode;
 
 /// The gg tool names this component can bind, **module by module** — what `bound-tools` answers.
 ///
-/// gg's drift gate asks the committed artifact which tools it binds and compares the answer with
-/// gg's own `ALL_TOOL_NAMES`. The answer has to come from the SDK's own binding table rather than
-/// from a list written here, because the whole point of asking the artifact is that it is a second,
+/// gg asks the built artifact which tools it binds and compares the answer with gg's own
+/// `ALL_TOOL_NAMES`. The answer has to come from the SDK's own binding table rather than from a
+/// list written here, because the whole point of asking the artifact is that it is a second,
 /// independent statement of the same fact: each capability module declares the tools *its own*
 /// functions dispatch, beside the functions that dispatch them, and this is the concatenation.
 ///

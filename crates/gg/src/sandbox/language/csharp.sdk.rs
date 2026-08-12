@@ -7,7 +7,7 @@
 //! the preparation's own workspace and handed to `csc` beside `program.cs`, so the model's program
 //! and gg's SDK are **one compilation**. Three things follow, and each of them is why:
 //!
-//! * **There is no second assembly for the guest to find.** The committed guest holds a Mono
+//! * **There is no second assembly for the guest to find.** The prebuilt guest holds a Mono
 //!   interpreter and a bundled class library, and it loads exactly one assembly per run — the
 //!   program's. An SDK compiled separately would have to be bundled *into* the 34.9 MB component,
 //!   which would mean rebuilding and re-committing that component every time a doc comment changed.

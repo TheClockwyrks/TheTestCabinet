@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# Build the two artifacts gg carries for the **C#** program language, and commit them:
+# Build the one artifact gg carries for the **C#** program language, into `$GG_ARTIFACTS_OUT_DIR`:
 #
-#   crates/gg/src/sandbox/guests/csharp.component.wasm    the guest — Mono's IL interpreter, the
-#                                                         whole BCL, ICU, and gg's shell, as one
-#                                                         self-contained wasm component
-#   crates/gg/src/sandbox/checkers/csharp.toolchain.json  what built it, and what is in it
+#   csharp.component.wasm    the guest — Mono's IL interpreter, the whole BCL, ICU, and gg's shell,
+#                            as one self-contained wasm component
 #
 # WHAT THIS ARM IS, IN ONE PARAGRAPH. Microsoft publishes a Mono **IL interpreter** built for wasm,
 # as static archives plus the C its own build compiles against them. This script relinks it with
@@ -12,27 +10,33 @@
 # world, and bundles the .NET class libraries into the same module so the guest needs no
 # filesystem, no preopen and no toolchain at run time. A model's C# is then compiled to IL **on the
 # host** by Roslyn (~0.3 s) and crosses the membrane as base64 in the world's existing `program`
-# string. It is the same shape as the Python and Ruby arms — one committed runtime, a source-ish
+# string. It is the same shape as the Python and Ruby arms — one prebuilt runtime, a source-ish
 # payload per turn — and the reason C# is affordable at all: the toolchain a prior study priced this
 # arm out on compiles the *program* to native wasm and costs 25-43 s a turn.
 #
-# WHAT THIS SCRIPT NEEDS, AND WHY NONE OF IT REACHES A RUN. A whole .NET SDK and a whole wasi-sdk,
-# both fetched into `.build/` below and both ~200 MB installed. Neither is in the gg toolchain image
-# and neither is on the turn path: this output is committed, so a run needs only the much smaller
-# host toolchain `scripts/ci/install-dotnet.sh` installs (a runtime, Roslyn, reference assemblies).
+# WHAT THIS SCRIPT NEEDS, AND WHY NONE OF IT REACHES A RUN. A whole .NET SDK and a whole, unpruned
+# wasi-sdk — ~1.4 GB between them, and neither on the turn path. A run needs only the much smaller
+# host toolchain `scripts/ci/install-dotnet.sh` installs (a runtime, Roslyn, reference assemblies),
+# because nothing about a C# program is compiled to wasm: the wasm is what this script produces.
 #
 # WHY THE FULL wasi-sdk RATHER THAN THE SHARED PRUNED ONE. `scripts/ci/install-wasi-sdk.sh` keeps
-# exactly the one target the C++ arm compiles to, `wasm32-wasip1`. This arm needs `wasm32-wasip2` —
-# see `csharp-version.sh` for why, in one sentence: .NET's native library calls `socket` and
-# `getaddrinfo`, which wasi-libc supplies only there. Rather than widen the shared installer for a
-# toolchain no *run* needs, this developer-only script fetches its own copy.
+# exactly the one target the C++ arm compiles to, `wasm32-wasip1`, and deletes the `noeh` libc++ this
+# script's link line names. This arm needs `wasm32-wasip2` — see `csharp-version.sh` for why, in one
+# sentence: .NET's native library calls `socket` and `getaddrinfo`, which wasi-libc supplies only
+# there. Widening the shared installer would mean shipping more in every gg run image to serve a
+# build no run image performs, so the two trees are separately prefixed instead.
 #
-# NOTHING IN CI RUNS THIS. It is a developer's command, run deliberately and committed with its
-# output, and `scripts/ci/contract-drift.sh` names this arm's artifacts in its `$declared`
-# exemption for that reason.
+# WHERE THOSE TWO COME FROM. `gg_dotnet_build_sdk_home` and `gg_wasi_sdk_build_home` in
+# `csharp-version.sh` resolve them: the build prefix
+# `scripts/ci/install-gg-build-toolchains.sh` populates if it is there, and this package's own
+# `.build/` otherwise — which is where this script used to fetch them itself, so a developer with
+# neither prefix is in exactly the state they were in before, and one who ran that installer (or is
+# on the `build-toolchains` stage of `containers/gg-ci/Dockerfile`) reaches nothing at all.
 #
 # Usage:
-#   packages/gg-sandbox-csharp/build.sh
+#   scripts/ci/install-gg-build-toolchains.sh   # once, unless you want the ~1.4 GB fetched below
+#   scripts/gg-artifacts.sh                                      # every arm, into one directory
+#   GG_ARTIFACTS_OUT_DIR=<dir> packages/gg-sandbox-csharp/build.sh
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -40,14 +44,23 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 # shellcheck source=packages/gg-sandbox-csharp/csharp-version.sh
 source "$HERE/csharp-version.sh"
 
+# The destination, which is required and has no default — see the file itself for why.
+# shellcheck source=scripts/gg-artifacts-out-dir.sh
+source "$ROOT/scripts/gg-artifacts-out-dir.sh"
+
+# ONE ARM, ONE PROCESS AT A TIME. This package's scratch is a fixed path inside the source tree
+# rather than a `mktemp -d`, deliberately — it is a cache — and two cargo processes with two target
+# directories do not serialise with each other. See `scripts/gg-scratch-lock.sh`.
+# shellcheck source=scripts/gg-scratch-lock.sh
+source "$ROOT/scripts/gg-scratch-lock.sh"
+gg_lock_scratch "$HERE"
+
 BUILD="$HERE/.build"
 STAGE="$BUILD/stage"
 BINDINGS="$BUILD/bindings"
-GUESTS="$ROOT/crates/gg/src/sandbox/guests"
-CHECKERS="$ROOT/crates/gg/src/sandbox/checkers"
 
-DOTNET_SDK_DIR="$BUILD/dotnet-sdk-$GG_DOTNET_SDK_VERSION"
-WASI_SDK_DIR="$BUILD/wasi-sdk-$GG_WASI_SDK_VERSION-full"
+DOTNET_SDK_DIR="$(gg_dotnet_build_sdk_home)"
+WASI_SDK_DIR="$(gg_wasi_sdk_build_home)"
 
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_NOLOGO=1
@@ -74,7 +87,7 @@ fi
 
 # The Mono WASI runtime pack, straight off nuget rather than out of the SDK's `packs/`, so this
 # script depends on the pin in `csharp-version.sh` and not on which workloads happen to be installed.
-PACK_DIR="$BUILD/$GG_DOTNET_MONO_WASI_PACK.$GG_DOTNET_RUNTIME_VERSION"
+PACK_DIR="$(gg_dotnet_runtime_pack_home)"
 if [ ! -d "$PACK_DIR/runtimes/wasi-wasm/native" ]; then
 	echo "==> fetching $GG_DOTNET_MONO_WASI_PACK $GG_DOTNET_RUNTIME_VERSION"
 	rm -rf "$PACK_DIR"
@@ -104,7 +117,7 @@ echo "==> bindings"
 "$HERE/bindings.sh" >/dev/null
 
 rm -rf "$STAGE"
-mkdir -p "$STAGE/bundle" "$GUESTS" "$CHECKERS"
+mkdir -p "$STAGE/bundle"
 
 # --- what the runtime pack's own build generates -------------------------------------------------
 #
@@ -179,8 +192,8 @@ dotnet msbuild "$STAGE/generate.proj" -v:q -nologo
 #
 # `-DGEN_PINVOKE=1` selects the generated table above over the runtime pack's absent default, and
 # `-DWASM_SINGLE_FILE=1` selects the bundled BCL over one read off a filesystem — which is what makes
-# the committed artifact self-contained, and what keeps the class libraries out of a run's own
-# working directory where a model would find them.
+# the artifact self-contained, and what keeps the class libraries out of a run's own working
+# directory where a model would find them.
 echo "==> compiling"
 CFLAGS=(--target="$GG_CSHARP_TARGET" -O2
 	-I"$NATIVE/include/wasm" -I"$NATIVE/include/mono-2.0" -I"$STAGE" -I"$BINDINGS"
@@ -233,28 +246,37 @@ echo "==> linking"
 	-lwasi-emulated-process-clocks -lwasi-emulated-signal -lwasi-emulated-mman \
 	-Wl,-z,stack-size=8388608,--initial-memory=52428800
 
-cp "$STAGE/csharp.component.wasm" "$GUESTS/csharp.component.wasm"
+cp "$STAGE/csharp.component.wasm" "$GG_ARTIFACTS_OUT_DIR/csharp.component.wasm"
 
-echo "==> csharp.toolchain.json"
-{
-	printf '{\n'
-	printf '  "dotnetSdk": "%s",\n' "$GG_DOTNET_SDK_VERSION"
-	printf '  "dotnetRuntime": "%s",\n' "$GG_DOTNET_RUNTIME_VERSION"
-	printf '  "targetFramework": "%s",\n' "$GG_DOTNET_TFM"
-	printf '  "languageVersion": "%s",\n' "$GG_DOTNET_LANG_VERSION"
-	printf '  "runtimePack": "%s",\n' "$GG_DOTNET_MONO_WASI_PACK"
-	printf '  "wasiSdk": "%s",\n' "$GG_WASI_SDK_VERSION"
-	printf '  "clang": "%s",\n' "$("$CLANG" --version | head -1 | sed 's/^clang version //; s/ (.*//')"
-	printf '  "target": "%s",\n' "$GG_CSHARP_TARGET"
-	printf '  "witBindgen": "%s",\n' "$GG_WIT_BINDGEN_VERSION"
-	printf '  "componentBytes": %s,\n' "$(stat -c%s "$GUESTS/csharp.component.wasm")"
-	printf '  "shellSha256": "%s",\n' "$(sha256sum "$HERE/Sources/shell.c" | cut -d' ' -f1)"
-	printf '  "bridgeSha256": "%s",\n' "$(sha256sum "$HERE/Sources/bridge.c" | cut -d' ' -f1)"
-	printf '  "trampolinesSha256": "%s",\n' "$(sha256sum "$HERE/Sources/m2n.c" | cut -d' ' -f1)"
-	printf '  "unscannedAssemblies": ["System.Net.Http.dll"],\n'
-	printf '  "bundledAssemblies": %s\n' "$(find "$MANAGED" -name '*.dll' | wc -l | tr -d ' ')"
-	printf '}\n'
-} >"$CHECKERS/csharp.toolchain.json"
+# WHAT USED TO BE THE LAST STEP: `csharp.toolchain.json`, written beside the component — the pins the
+# build read, the `clang` that linked it, the component's own byte count, the SHA-256 of each of the
+# three C sources above, and how many assemblies were bundled. It is gone, and it is the one
+# declaration of its kind that went rather than moving into `$GG_ARTIFACTS_OUT_DIR` with its arm.
+#
+# THE DIFFERENCE IS WHO READ IT. Every other arm's `*.toolchain.json` / `*.compiler.json` is read at
+# RUN TIME by that arm's `*.compile.rs` — the crate list and `extern` flags the Rust arm links with,
+# the header list the C++ prelude includes, the module list `swiftc` is given, the Opal release the
+# Ruby arm reports. Those are content declarations gg itself consumes, so they are artifacts and they
+# are generated like artifacts. This one was consumed by nothing on the turn path. Its only reader
+# was `csharp.manifest.test.rs`, and that file's whole subject was whether the COMMITTED component
+# matched the checkout beside it — the question a generated component does not have.
+#
+# NOTHING IT RECORDED IS LOST, WHICH IS WHY DELETING IT COSTS NOTHING:
+#
+#   the pins            are `csharp-version.sh`, which is where this script reads them from and is
+#                       the only place they are declared. A JSON copy of a shell variable is a second
+#                       spelling of one fact.
+#   the source digests  were a way of asking whether the component was cut after the last edit to
+#                       `Sources/`. That directory is in this arm's rerun set in
+#                       `crates/gg-sandbox-artifacts/build-support`, so it is cut after every edit.
+#   the byte count      was a way of pairing the declaration with the component. There is one
+#                       artifact now and nothing to pair it with.
+#   `clang` and the     were never read by anything. They are printed by the build instead, above,
+#   assembly count      where somebody watching a 26-second link can see them.
+#
+# The one cross-language invariant that gate really held — `csharp.compile.rs` and `csharp-version.sh`
+# agreeing about which C# a model may write, which no rerun set can enforce because the two are not
+# inputs to one another — survives in `crates/gg/src/sandbox/language/csharp.pins.test.rs`.
 
 echo "==> done"
-ls -la "$GUESTS/csharp.component.wasm" "$CHECKERS/csharp.toolchain.json"
+ls -la "$GG_ARTIFACTS_OUT_DIR/csharp.component.wasm"

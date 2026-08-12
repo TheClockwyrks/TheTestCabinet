@@ -1,61 +1,40 @@
-//! The Rust compile's own units: the two halves of the toolchain agreeing about which compiler they
-//! were built by, and the classifier's verdict on a report that never came from one.
-
-use std::process::Command;
+//! The Rust compile's own units: the two halves of this arm's build agreeing about what a program
+//! links against, and the classifier's verdict on a report that never came from a compiler.
 
 use super::*;
 
-/// **The committed library set was built by this checkout's compiler.**
-///
-/// The one gate that catches the arm's most awkward coupling, and it is deliberately loud. An
-/// `.rlib` is a compiler-version-private format: `rustc` refuses one built by any other release
-/// outright, with `E0514`. So bumping `rust-toolchain.toml` invalidates
-/// `checkers/rust.libraries.tar.gz`, and the two must move in the same commit.
-///
-/// Failing here on the commit that bumps the compiler is the point. The alternative is a gg binary
-/// that builds, ships, reaches a run container, and refuses **every Rust program in the run** over
-/// gg's own library files — a failure that costs a whole run to discover and reads, to whoever finds
-/// it, like a compiler problem rather than a build-order one.
-///
-/// It compares against `rustc --version` rather than against `rust-toolchain.toml`, because what a
-/// compile will actually use is a compiler rather than a file: a machine whose `rustc` is not the
-/// pinned one has the problem this describes whatever the pin says.
-#[test]
-fn the_committed_library_set_was_built_by_this_checkouts_compiler() {
-    // Deliberately `Command`, and this file is exempt from the seam's source-level ban on it (the
-    // gate exempts `.test.rs`): this asks the machine a question about its toolchain rather than
-    // compiling anything, so there is no preparation for it to be isolated from.
-    let observed = Command::new("rustc")
-        .arg("--version")
-        .output()
-        .expect("a checkout of this repository has rustc on PATH");
-    let observed = String::from_utf8_lossy(&observed.stdout);
-    let observed = observed
-        .split_whitespace()
-        .nth(1)
-        .expect("`rustc --version` prints `rustc <version> (…)`");
-
-    assert_eq!(
-        observed,
-        compiler_version(),
-        "the committed Rust library set was built by rustc {}, and this checkout's rustc is \
-         {observed}. An .rlib cannot be read by another release, so every Rust program would be \
-         refused over gg's own library files. Re-run packages/gg-sandbox-rust/build.sh.",
-        compiler_version(),
-    );
-}
+// WHAT USED TO BE HERE: `the_committed_library_set_was_built_by_this_checkouts_compiler`, which
+// read the `rustc` recorded in `rust.toolchain.json` and compared it with `rustc --version` on this
+// machine. The coupling it named is real and unchanged — an `.rlib` is a compiler-version-private
+// format, `rustc` refuses one built by any other release with `E0514`, and a mismatched set grounds
+// EVERY Rust program in a run over gg's own library files — but the interval it watched is gone.
+//
+// The set was committed then, so `rust-toolchain.toml` could be bumped in one commit and the archive
+// re-cut in another, and the test was what stopped that pair from being separated. The set is cut by
+// `crates/gg-sandbox-artifacts/rust` now, from the same `cargo build` that compiles this crate, with
+// `rust-toolchain.toml` in that arm's rerun set — so a bump re-cuts the rlibs before anything can
+// link against them, and there is no window in which the recorded compiler and the running one
+// differ. The assertion moved to where it can still fail: `packages/gg-sandbox-rust/build.sh` refuses
+// to build at all when the `rustc` on PATH is not what `rust-toolchain.toml` pins, which is the
+// stronger form because it asks the machine before producing anything rather than after.
 
 /// **The manifest and the tarball describe the same set.**
 ///
 /// The manifest is what `--extern` is built from, so a crate named there and absent from the archive
 /// is a link failure on every program, and a crate in the archive and absent from the manifest is a
 /// library a program silently cannot reach.
+///
+/// This is an AGREEMENT check between two things one run of `packages/gg-sandbox-rust/build.sh`
+/// produces — the staged rlibs and the manifest it writes from the same staging directory — and it
+/// stayed when the drift checks around it went, because that is a different question from "is the
+/// committed copy current?". What it catches is a build script whose two halves came apart: a crate
+/// staged and not declared, or declared and not staged.
 #[test]
 fn the_manifest_names_exactly_what_the_tarball_carries() {
     let mut archived: Vec<String> =
         tar::Archive::new(flate2::read::GzDecoder::new(LIBRARIES_TAR_GZ))
             .entries()
-            .expect("the committed library set is a readable tar")
+            .expect("the library set this build cut is a readable tar")
             .filter_map(|entry| {
                 let path = entry.ok()?.path().ok()?.to_string_lossy().into_owned();
                 let name = path.rsplit('/').next()?.to_string();
@@ -78,8 +57,8 @@ fn the_manifest_names_exactly_what_the_tarball_carries() {
 
     assert_eq!(
         declared, archived,
-        "the committed manifest and the committed library set disagree about what a program is \
-         compiled against; re-run packages/gg-sandbox-rust/build.sh"
+        "rust.toolchain.json and rust.libraries.tar.gz disagree about what a program is compiled \
+         against, and one run of packages/gg-sandbox-rust/build.sh wrote both"
     );
     assert!(
         declared.iter().any(|name| name == "gg"),

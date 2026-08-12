@@ -4,22 +4,27 @@ The **Ruby guest** for gg's [responses-as-code](../../apps/docs/src/content/docs
 sandbox: the hand-written Ruby SDK a model is given, the libraries a program may require,
 and the **Opal compiler** gg turns a model's Ruby into JavaScript with.
 
-It is not an npm workspace package and it exports nothing. It is three build scripts, one
-entry module and a directory of Ruby. Three of what it produces are committed in the Rust
-crate that embeds them; the fourth, the catalogue, is reflected by every build of that
-crate and committed nowhere:
+It is not an npm workspace package and it exports nothing. It is two build scripts, one
+entry module and a directory of Ruby. All four things it produces are generated into the
+`OUT_DIR` of the build that embeds them; **nothing here is committed**:
 
 | Artifact | Written by | What it is |
 | --- | --- | --- |
-| `crates/gg/src/sandbox/guests/ruby.component.wasm` | `build.sh` | the JavaScript engine with Opal's runtime, this SDK and the curated libraries pre-initialised into it |
+| `ruby.component.wasm`, in the build's `OUT_DIR` | `build.sh`, run by `gg-artifact-ruby` | the JavaScript engine with Opal's runtime, this SDK and the curated libraries pre-initialised into it |
 | `ruby.signatures.json`, in the build's `OUT_DIR` | `signatures.sh`, run by `crates/gg/build.rs` | the signature catalogue, reflected out of this SDK's own YARD documentation |
-| `crates/gg/src/sandbox/checkers/ruby.opal.cjs` | `compiler.sh` | Opal — runtime, self-hosted compiler and gg's driver — as one CommonJS bundle |
-| `crates/gg/src/sandbox/checkers/ruby.compiler.json` | `compiler.sh` | which Opal that is, and which Ruby it emulates |
+| `ruby.opal.cjs`, in the build's `OUT_DIR` | `build.sh`, run by `gg-artifact-ruby` | Opal — runtime, self-hosted compiler and gg's driver — as one CommonJS bundle |
+| `ruby.compiler.json`, in the same place | `build.sh`, run by `gg-artifact-ruby` | which Opal that is, and which Ruby it emulates |
 
-`build.sh` and `compiler.sh` read their pins from `opal-version.sh`, and there is exactly
-one Opal pin because every artifact has to be the same Opal: the compiler emits JavaScript
-against a runtime's private conventions, and a program compiled by one release and
-evaluated against another's runtime does not fail cleanly.
+The last two used to be committed under `crates/gg/src/sandbox/checkers/`, cut by a third
+script (`compiler.sh`) that a CI step re-ran and diffed. `crates/gg-sandbox-artifacts/ruby`
+now runs `build.sh` as part of building `test-cabinet-gg` and `ruby.compile.rs` embeds the
+result out of that build's `OUT_DIR`, so there is no committed copy to be stale and no
+third script.
+
+`build.sh` reads its pins from `opal-version.sh`, and there is exactly one Opal pin because
+every artifact has to be the same Opal: the compiler emits JavaScript against a runtime's
+private conventions, and a program compiled by one release and evaluated against another's
+runtime does not fail cleanly.
 
 ## The strategy
 
@@ -56,7 +61,7 @@ costs. Measured through gg's own store and linker, on this repository's dev cont
 
 | Where the runtime lives | Per program |
 | --- | --- |
-| Prepended to the program, evaluated in the committed ECMAScript component | 45.6–51.0 ms |
+| Prepended to the program, evaluated in the prebuilt ECMAScript component | 45.6–51.0 ms |
 | Imported by `src/shim.js`, so `componentize-js` pre-initialises it | **2.1–2.6 ms** |
 | (a plain JavaScript program on the same component, for scale) | 1.2–1.4 ms |
 
@@ -111,18 +116,24 @@ symbol from a typo.
 ## Building
 
 ```sh
-packages/gg-sandbox-ruby/compiler.sh     # the host-side compiler (Node only; CI re-cuts and diffs this)
-packages/gg-sandbox-ruby/build.sh        # the guest component (needs componentize-js)
+GG_ARTIFACTS_OUT_DIR=/tmp/artifacts \
+  packages/gg-sandbox-ruby/build.sh      # the compiler AND the component (needs componentize-js)
+scripts/gg-artifacts.sh                  # every arm, into target/gg-artifacts/
 
 GG_SIGNATURES_OUT_DIR=/tmp/sigs \
   packages/gg-sandbox-ruby/signatures.sh # the catalogue, to READ (Ruby + the pinned YARD)
 scripts/gg-signatures.sh                 # all eleven, into target/gg-signatures/
 ```
 
-`build.sh` and `compiler.sh` are not wired into a build. They are run by hand, deliberately,
-and their output is committed alongside the source change that motivated it. Run `build.sh`
-after changing `crates/gg/wit/gg-sandbox.wit`, anything under this package's `src/`, or the
-pins in `opal-version.sh`.
+`build.sh` is wired into `cargo build`: `crates/gg-sandbox-artifacts/ruby` runs it, into that
+build's own `OUT_DIR`, whenever anything in its rerun set moves — this package's `src/`, its
+`tools/`, `opal-version.sh`, or `crates/gg/wit`. Running it by hand is for *reading* what it
+emitted, which is why the destination is required and has no default. It cuts all three of
+this arm's artifacts on every run, and that is deliberate rather than incidental: the
+component and the host-side compiler are lowered to JavaScript from the same `src/` by the
+same script under the same rerun set, which is what makes it impossible for them to be two
+vintages. `ruby.rs` embeds the component and `ruby.compile.rs` embeds the compiler and its
+manifest, all three out of that one `OUT_DIR`.
 
 `signatures.sh` is the opposite: `crates/gg/build.rs` runs it on **every** build of
 `test-cabinet-gg`, so an edit under `src/gg/` or to `src/library.rb` reaches the model's

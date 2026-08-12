@@ -49,8 +49,8 @@
 //!
 //! * It is **compiler-version-private and path-bearing**: only the clang that wrote one may read it,
 //!   and it records the absolute path of every header it precompiled. A PCH built in this
-//!   repository's checkout could not be read by the wasi-sdk in a run image, so committing 26 MB of
-//!   one would be committing something no other machine can use.
+//!   repository's checkout could not be read by the wasi-sdk in a run image, so putting 26 MB of one
+//!   into the archive would be shipping something no other machine can use.
 //! * It is a pure function of the prelude and the toolchain, which is exactly what a
 //!   [shared toolchain directory](shared_toolchain_dir) is for.
 //! * It is **built by the first compile**, not by [`warm`], because building it means running a
@@ -58,7 +58,7 @@
 //!   have. The first program of a process pays ~1.1 s more than the rest; every process after that
 //!   on the same machine pays nothing, because the directory is already there.
 //!
-//! The key folds in the pinned release, a digest of the committed guest archive (which carries the
+//! The key folds in the pinned release, a digest of the embedded guest archive (which carries the
 //! prelude) **and a stamp of the compiler binary itself** — its size and its modification time.
 //! That last part is not fussiness: a wasi-sdk reinstalled at the same version writes new files with
 //! new timestamps, and clang refuses a PCH whose inputs have moved. Without the stamp in the key,
@@ -146,7 +146,7 @@
 //! This arm satisfies the [contract](super::compile) the way the Rust and Swift arms do, with one
 //! addition of its own.
 //!
-//! The committed archive is unpacked into a [shared toolchain directory](shared_toolchain_dir),
+//! The embedded archive is unpacked into a [shared toolchain directory](shared_toolchain_dir),
 //! content-keyed, placed by rename and sealed read-only; `clang++` only ever **reads** it. The PCH
 //! lives in a second such directory and is **written once**, by whichever preparation gets there
 //! first, into `place_tree`'s own staging directory under a process-unique name — so two
@@ -188,7 +188,7 @@ use crate::sandbox::{
 /// Embedded for the reason the guest components are: gg is copied as a single file into an
 /// ephemeral run container and must carry everything it needs with it. Built by
 /// `packages/gg-sandbox-cpp/build.sh`.
-const GUEST_TAR_GZ: &[u8] = include_bytes!("../checkers/cpp.guest.tar.gz");
+const GUEST_TAR_GZ: &[u8] = include_bytes!(concat!(env!("GG_ARTIFACTS_CPP"), "/cpp.guest.tar.gz"));
 
 /// The `wasi_snapshot_preview1` **reactor** adapter, which turns the preview1 core module wasi-sdk
 /// emits into the preview 2 component gg's engine instantiates.
@@ -200,10 +200,10 @@ const GUEST_TAR_GZ: &[u8] = include_bytes!("../checkers/cpp.guest.tar.gz");
 /// duplication is deliberate rather than an oversight: each arm pins its adapter from its own
 /// version file, and the point of a pin is that bumping one arm's toolchain cannot silently move
 /// another arm's ABI.
-const ADAPTER: &[u8] = include_bytes!("../checkers/cpp.adapter.wasm");
+const ADAPTER: &[u8] = include_bytes!(concat!(env!("GG_ARTIFACTS_CPP"), "/cpp.adapter.wasm"));
 
-/// What the committed archive was built by, and what is in it.
-const MANIFEST_JSON: &str = include_str!("../checkers/cpp.toolchain.json");
+/// What the archive was built by, and what is in it.
+const MANIFEST_JSON: &str = include_str!(concat!(env!("GG_ARTIFACTS_CPP"), "/cpp.toolchain.json"));
 
 /// The environment variable an operator points at the wasi-sdk tree when it is not where gg looks.
 pub(super) const WASI_SDK_HOME_ENV: &str = "TCAB_GG_WASI_SDK_HOME";
@@ -326,7 +326,7 @@ fn shared_flags(home: &Path) -> Vec<String> {
     flags
 }
 
-/// What the committed archive was built by, and what is in it.
+/// What the embedded archive was built by, and what is in it.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Manifest {
@@ -357,7 +357,7 @@ struct Manifest {
     files: Vec<GuestFile>,
 }
 
-/// One file in the committed archive.
+/// One file in the embedded archive.
 #[derive(Debug, Deserialize)]
 struct GuestFile {
     /// Its name, which is also its name inside the unpacked tree.
@@ -373,7 +373,7 @@ fn manifest() -> &'static Manifest {
     static MANIFEST: std::sync::OnceLock<Manifest> = std::sync::OnceLock::new();
     MANIFEST.get_or_init(|| {
         serde_json::from_str(MANIFEST_JSON)
-            .expect("the committed C++ toolchain manifest is valid JSON of the expected shape")
+            .expect("the embedded C++ toolchain manifest is valid JSON of the expected shape")
     })
 }
 
@@ -398,7 +398,7 @@ pub(super) fn language_standard() -> &'static str {
     &manifest().std
 }
 
-/// Every file the committed archive holds, in the order the manifest lists them.
+/// Every file the embedded archive holds, in the order the manifest lists them.
 pub(super) fn guest_files() -> impl Iterator<Item = &'static str> {
     manifest().files.iter().map(|file| file.name.as_str())
 }
@@ -413,7 +413,7 @@ pub(super) fn prelude_headers() -> impl Iterator<Item = &'static str> {
     manifest().headers.iter().map(String::as_str)
 }
 
-/// Unpack the committed archive now, so the first compile does not.
+/// Unpack the embedded archive now, so the first compile does not.
 ///
 /// The whole of this language's warm-up that can be done without a compiler: 32 KB decompressed,
 /// once per machine. The **precompiled header** is deliberately not built here — building one means
@@ -1041,7 +1041,7 @@ fn componentize(module: &[u8]) -> Result<Vec<u8>, String> {
 const ADAPTER_NAME: &str = "wasi_snapshot_preview1";
 
 // ---------------------------------------------------------------------------------------------
-// The toolchain, the committed guest and the precompiled prelude
+// The toolchain, the embedded guest and the precompiled prelude
 // ---------------------------------------------------------------------------------------------
 
 /// Where this arm's toolchain tree is: what an operator said, then what a gg run image guarantees,
@@ -1065,7 +1065,7 @@ pub(super) fn wasi_sdk_home() -> Result<PathBuf, String> {
     Ok(PathBuf::from(user).join(USER_HOME_SUFFIX))
 }
 
-/// Where the committed archive is unpacked, for this process.
+/// Where the embedded archive is unpacked, for this process.
 pub(super) struct Guest {
     /// The directory holding every file the archive carried.
     tree: PathBuf,
@@ -1093,7 +1093,7 @@ pub(super) fn guest() -> Result<&'static Guest, String> {
         .map_err(Clone::clone)
 }
 
-/// Unpack the committed archive into a [shared toolchain directory](shared_toolchain_dir).
+/// Unpack the embedded archive into a [shared toolchain directory](shared_toolchain_dir).
 ///
 /// The seam's one sanctioned share, taken under the seam's discipline: the key folds in the pinned
 /// compiler **and** a digest of the archive itself, so a gg carrying different bindings at the same
@@ -1114,7 +1114,7 @@ fn materialise() -> Result<Guest, String> {
     Ok(Guest { tree })
 }
 
-/// Decompress and extract the committed archive into `into`.
+/// Decompress and extract the embedded archive into `into`.
 fn unpack(into: &Path) -> Result<(), String> {
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(GUEST_TAR_GZ));
     // The archive is gg's own build artifact rather than anything a run produced, but the extraction
@@ -1122,19 +1122,19 @@ fn unpack(into: &Path) -> Result<(), String> {
     // to be trusting.
     archive
         .unpack(into)
-        .map_err(|error| format!("could not unpack the committed C++ guest: {error}"))?;
+        .map_err(|error| format!("could not unpack the embedded C++ guest: {error}"))?;
     for name in guest_files() {
         let path = into.join(name);
         if !path.is_file() {
             return Err(format!(
-                "the committed C++ guest is missing {name}, which its manifest declares"
+                "the embedded C++ guest is missing {name}, which its manifest declares"
             ));
         }
     }
     Ok(())
 }
 
-/// A digest of a committed archive, so the [shared directory](shared_toolchain_dir) a process reads
+/// A digest of an embedded archive, so the [shared directory](shared_toolchain_dir) a process reads
 /// is keyed on the bytes it would have written.
 fn fingerprint(archive: &[u8]) -> u64 {
     let mut hasher = std::hash::DefaultHasher::new();
@@ -1144,7 +1144,7 @@ fn fingerprint(archive: &[u8]) -> u64 {
 
 /// **The precompiled prelude**, built once per machine and read by every compile after it.
 ///
-/// See this module's own documentation for what it saves and why it cannot be committed. The
+/// See this module's own documentation for what it saves and why it cannot be shipped. The
 /// mechanics are the seam's: a [shared directory](shared_toolchain_dir) keyed on everything that
 /// could change the bytes, filled through [`place_tree`] — which stages under a process-unique
 /// name, seals the result read-only and renames it in — so two preparations racing to build it
@@ -1152,7 +1152,7 @@ fn fingerprint(archive: &[u8]) -> u64 {
 /// file.
 ///
 /// The key folds in three things and the third is the one worth naming. The pinned wasi-sdk release
-/// and a digest of the committed archive are the ordinary content-keying every shared directory
+/// and a digest of the embedded archive are the ordinary content-keying every shared directory
 /// here does. **A stamp of the compiler binary** is not: a PCH may only be read by the clang that
 /// wrote it *and* records the absolute path and identity of every header it precompiled, so a
 /// wasi-sdk reinstalled at the same version — new files, new timestamps — invalidates one without

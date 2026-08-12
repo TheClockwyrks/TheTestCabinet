@@ -65,7 +65,8 @@
  *
  *   GG_SIGNATURES_OUT_DIR=<dir> packages/gg-sandbox-purescript/signatures.sh
  *
- * which unpacks the committed library tree, stages this package's `src/` into it, compiles the lot
+ * which unpacks the library tree `gg-artifact-purescript` built, stages this package's `src/` into
+ * it, compiles the lot
  * with `--codegen docs` first, and is what turns the environment variable into the destination
  * below. The catalogue is not committed anywhere: `crates/gg/build.rs` generates it through
  * `scripts/gg-signatures.sh` on every build of gg that needs it, so an edit to a doc comment IS the
@@ -1188,8 +1189,8 @@ function libraries() {
         );
         if (directory === undefined) {
           throw new Error(
-            `spago.yaml declares \`${name}\` and the committed library tree does not carry it; ` +
-              "rebuild the tree with build.sh",
+            `spago.yaml declares \`${name}\` and the built library tree does not carry it; ` +
+              "re-cut the tree with build.sh (cargo clean -p gg-artifact-purescript forces it)",
           );
         }
         return modulesUnder(join(TREE_DIR, "libs", directory, "src"));

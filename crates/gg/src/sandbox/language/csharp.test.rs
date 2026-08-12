@@ -34,8 +34,9 @@ fn the_wire_id_a_run_configures_resolves_to_this_arm() {
 /// `csc` rather than `dotnet`, which is the launcher, and not `msbuild`, which never runs here.
 /// Naming a checker is also what has every compile on this arm
 /// [timed](crate::sandbox::SandboxOutcome::compile) — which matters more here than on any other
-/// arm, because the compile is the *whole* of this arm's per-turn cost: the guest is committed and
-/// compiled once per process, so an unrecorded `csc` would be an arm a study could not price at all.
+/// arm, because the compile is the *whole* of this arm's per-turn cost: the guest is prebuilt and
+/// instantiated once per process, so an unrecorded `csc` would be an arm a study could not price at
+/// all.
 #[test]
 fn this_arm_names_the_compiler_that_judges_a_program() {
     assert_eq!(csharp().checker(), Some("csc"));

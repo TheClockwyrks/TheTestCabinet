@@ -1,31 +1,43 @@
 #!/usr/bin/env bash
-# Compile the Java program language's SDK and commit it as the jar gg carries inside its own
-# binary: crates/gg/src/sandbox/checkers/java.sdk.jar.
+# Compile the Java program language's SDK into the jar gg carries inside its own binary:
+# `$GG_ARTIFACTS_OUT_DIR/java.sdk.jar`.
 #
-# WHY A JAR, AND WHY COMMITTED. Java reaches a library through the classpath, so gg puts this
-# one on the classpath of both compilers a program passes through — javac's, so a model's
-# `fs.readFile("x")` type-checks, and TeaVM's, so the bytecode behind it is translated. A jar is
-# the only shape a classpath entry can take that is one file.
+# WHY A JAR. Java reaches a library through the classpath, so gg puts this one on the classpath
+# of both compilers a program passes through — javac's, so a model's `fs.readFile("x")`
+# type-checks, and TeaVM's, so the bytecode behind it is translated. A jar is the only shape a
+# classpath entry can take that is one file.
 #
-# It is committed rather than installed beside TeaVM in the toolchain image for the reason
-# PureScript's library tarball is committed rather than shipped in the image: the image is built
-# separately from the binary that runs in it, so an SDK living there could be a different vintage
-# from the gg describing it — and a model shown one surface in its prompt and compiled against
-# another is the failure this whole seam is built to prevent. Committed, the jar travels with the
-# gg that describes it — and it is the half of the pair that can be committed stale, because the
-# catalogue is reflected out of the same `src/gg/` by `crates/gg/build.rs` on every build.
+# WHY IT RIDES INSIDE gg's BINARY rather than being installed beside TeaVM in the toolchain image,
+# which is the same argument PureScript's library tarball makes: the image is built separately
+# from the binary that runs in it, so an SDK living there could be a different vintage from the gg
+# describing it — and a model shown one surface in its prompt and compiled against another is the
+# failure this whole seam is built to prevent. Built here, the jar is compiled out of the same
+# `src/gg/` that `crates/gg/build.rs` reflects this arm's catalogue from, on the same build, so the
+# library and the description of it cannot be two vintages.
 #
 # REPRODUCIBLE. `jar --date` fixes every entry's timestamp and the file list is sorted, so two
-# builds of identical sources produce identical bytes and `scripts/ci/contract-drift.sh` can
-# rebuild this and diff it like every other generated artifact.
+# builds of identical sources produce identical bytes. That is a nice property and it is no longer
+# load-bearing: it existed so that CI could re-cut this jar and diff it against a committed copy,
+# and there is no committed copy. (That gate is worth remembering rather than mourning. It was RED,
+# on the commit that added `@throws` prose to three SDK files without re-cutting the jar — which is
+# precisely the failure it was built to catch, caught after the fact, by a check somebody had to
+# run. Cutting the jar inside `cargo build` makes the state unreachable instead.)
+#
+# NOBODY HAS TO REMEMBER TO RUN THIS. `crates/gg-sandbox-artifacts/java` runs it as part of building
+# `test-cabinet-gg`, whenever this package's `src/`, this script or `java-version.sh` moves.
+# Running it by hand is for reading what it emitted.
 #
 # Usage:
-#   packages/gg-sandbox-java/build.sh
+#   scripts/gg-artifacts.sh                                    # every arm, into one directory
+#   GG_ARTIFACTS_OUT_DIR=<dir> packages/gg-sandbox-java/build.sh
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
-OUT="$ROOT/crates/gg/src/sandbox/checkers/java.sdk.jar"
+# The destination, which is required and has no default — see the file itself for why.
+# shellcheck source=scripts/gg-artifacts-out-dir.sh
+source "$ROOT/scripts/gg-artifacts-out-dir.sh"
+OUT="$GG_ARTIFACTS_OUT_DIR/java.sdk.jar"
 
 # shellcheck source=packages/gg-sandbox-java/java-version.sh
 source "$HERE/java-version.sh"

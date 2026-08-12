@@ -4,7 +4,9 @@
 #
 # `build.sh` reads the `require` lines below, compiles each named library out of the pinned Opal
 # release's own sources (together with whatever else each one requires), and bakes the result into
-# `crates/gg/src/sandbox/guests/ruby.component.wasm`. `tools/signatures.rb` reads the same lines,
+# the `ruby.component.wasm` it writes into `$GG_ARTIFACTS_OUT_DIR` — the `OUT_DIR` of
+# `crates/gg-sandbox-artifacts/ruby`, which is where gg `include_bytes!`s it from.
+# `tools/signatures.rb` reads the same lines,
 # under the same `# --- … ---` headings, and emits them as the catalogue's `libraries` section,
 # which is what the system prompt tells a model it may require.
 #

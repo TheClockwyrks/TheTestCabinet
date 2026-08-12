@@ -4,7 +4,7 @@
 # Sourced by `bindings.sh` and `build.sh`, by `containers/gg-toolchains/Dockerfile` and by
 # `scripts/ci/install-wasi-sdk.sh`, so there is one list rather than four.
 #
-# WHY THE COMPILER IS PINNED. Two of the three things gg commits for this arm are *objects* —
+# WHY THE COMPILER IS PINNED. Two of the three things gg carries for this arm are *objects* —
 # the generated WIT bindings and gg's shell, compiled for wasm at build time — and an object
 # is not a compiler-private format the way a `.swiftmodule` or an `.rlib` is: `wasm-ld` will
 # link one clang's object against another's. So the pin here is softer than the Swift and
@@ -53,10 +53,12 @@ GG_CPP_STD="c++23"
 # emits into a preview 2 component.
 #
 # Pinned to the wasmtime release gg links, because the adapter and the runtime are two halves
-# of one ABI. It is downloaded once by `build.sh` and COMMITTED
-# (`crates/gg/src/sandbox/checkers/cpp.adapter.wasm`, 52 KB), for the reason every other arm's
-# committed artifact is: gg is copied as a single file into an ephemeral run container and must
-# carry everything the turn path needs with it.
+# of one ABI. `build.sh` resolves it through `scripts/gg-downloads.sh` — an override, the
+# toolchain image, a version-stamped per-user cache the installers warm, and only then a
+# download — and copies it into this arm's artifact directory as `cpp.adapter.wasm`, 52 KB,
+# which gg `include_bytes!`s. It rides inside the binary for the reason every other artifact
+# does: gg is copied as a single file into an ephemeral run container and must carry
+# everything the turn path needs with it.
 #
 # It is this arm's OWN copy of a file the Swift arm also carries, and that duplication is
 # deliberate. The two arms pin their adapter from their own version file, and the whole point

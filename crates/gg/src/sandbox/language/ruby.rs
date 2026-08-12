@@ -12,13 +12,14 @@
 //!   wrapper;
 //! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
 //!   in Ruby's syntax;
-//! * `guests/ruby.component.wasm` — the committed guest, built by
+//! * [`COMPONENT`] — the guest, built by
 //!   `packages/gg-sandbox-ruby/build.sh`, carrying Opal's runtime, gg's hand-written Ruby SDK and
 //!   the declared library set pre-initialised into it;
 //! * the **signature catalogue** — reflected out of that SDK's own YARD documentation, and
 //!   generated into this build's `OUT_DIR` rather than committed anywhere (see
 //!   `crates/gg/build.rs`);
-//! * `checkers/ruby.opal.*` — the pinned Opal a program is compiled with, riding inside gg's binary.
+//! * `compile::OPAL_CJS` — the pinned Opal a program is compiled with, riding inside gg's binary,
+//!   cut into the same `OUT_DIR` as the component above and by the same `build.sh`.
 //!
 //! # The strategy, in one sentence
 //!
@@ -28,7 +29,7 @@
 //! Both halves are measured rather than assumed, and each is documented where it lives:
 //! [`compile`] is the host side, and `packages/gg-sandbox-ruby/src/shim.js` is the guest's.
 //!
-//! # Why this guest is its own committed component
+//! # Why this guest is its own baked component
 //!
 //! It would be cheaper not to be. [JavaScript](super::javascript) serves
 //! [TypeScript](super::typescript)'s component byte for byte, and the obvious reading of "Ruby
@@ -108,13 +109,22 @@ mod modules;
 #[path = "ruby.healing.rs"]
 pub(super) mod healing;
 
-/// The committed interpreter component: the ECMAScript guest with Opal's runtime, gg's Ruby SDK and
-/// the declared library set pre-initialised into it, built by `packages/gg-sandbox-ruby/build.sh`
-/// and committed here, exactly as gg's other wasm guests are committed alongside their sources.
+/// The interpreter component: the ECMAScript guest with Opal's runtime, gg's Ruby SDK and the
+/// declared library set pre-initialised into it, built by `packages/gg-sandbox-ruby/build.sh`.
 ///
 /// **Embedded in the binary**, like every other guest, because gg is copied as a single file into an
 /// ephemeral run container and must carry everything it needs with it.
-pub(super) const COMPONENT: &[u8] = include_bytes!("../guests/ruby.component.wasm");
+///
+/// It is not committed. `gg-artifact-ruby` runs that `build.sh` as a step of building this crate and
+/// this line embeds what it wrote into that crate's `OUT_DIR`, so the guest a program is evaluated
+/// in is baked out of the SDK sources in this checkout, on the build that compiles the module
+/// describing it — the same guarantee, and the same idiom, as [`SIGNATURES`] below. It is also the
+/// same `OUT_DIR` `compile::OPAL_CJS` comes out of, which matters more on this arm than on any
+/// other: the SDK is lowered to JavaScript **twice**, once by `tools/guest.mjs` into these bytes and
+/// once by the host-side Opal compiler that lowers the model's program, and the two lowerings meeting
+/// at different vintages is a `NoMethodError` inside somebody's run. One build cuts both.
+pub(super) const COMPONENT: &[u8] =
+    include_bytes!(concat!(env!("GG_ARTIFACTS_RUBY"), "/ruby.component.wasm"));
 
 /// This arm's catalogue, reflected out of the SDK's own YARD documentation by
 /// `packages/gg-sandbox-ruby/tools/signatures.rb`.
@@ -145,7 +155,7 @@ static PROMPT: PromptDialect = PromptDialect {
 /// straight to `&'static dyn ProgramLanguage`.
 pub(super) static RUBY: Ruby = Ruby;
 
-/// Ruby: compiled to JavaScript on the host by the committed Opal, and evaluated by a guest that
+/// Ruby: compiled to JavaScript on the host by the embedded Opal, and evaluated by a guest that
 /// carries Opal's runtime and gg's Ruby SDK.
 pub(super) struct Ruby;
 
@@ -180,7 +190,7 @@ impl ProgramLanguage for Ruby {
         Some("opal")
     }
 
-    /// Write the committed Opal — 2.9 MB of runtime, self-hosted compiler and gg's driver — into the
+    /// Write the embedded Opal — 2.9 MB of runtime, self-hosted compiler and gg's driver — into the
     /// directory every compile runs against, so the first code turn is not charged for unpacking it.
     ///
     /// Idempotent and best effort: the result is cached for the process, and a failure here is

@@ -1,4 +1,4 @@
-//! **The Python guest and its SDK** — the committed `componentize-py` component, really instantiated
+//! **The Python guest and its SDK** — the embedded `componentize-py` component, really instantiated
 //! against gg's real membrane, really evaluating real Python against the typed surface a model is
 //! given.
 //!
@@ -12,7 +12,7 @@
 //!
 //! # What is proven here, and what "real" means
 //!
-//! All of it. The committed artifact is compiled through the production
+//! All of it. The embedded artifact is compiled through the production
 //! [component cache](super::super::super::engine::component), linked with
 //! [`linker`](super::super::super::linker) — the production linker, the whole membrane plus the whole
 //! ambient WASI surface — put in a [`bounded_store`](super::super::super::bounded_store) with the
@@ -47,7 +47,7 @@ fn python() -> &'static dyn crate::sandbox::ProgramLanguage {
     crate::sandbox::language(GgProgramLanguage::Python)
 }
 
-/// The committed guest, compiled once per test process through the **production** cache.
+/// The embedded guest, compiled once per test process through the **production** cache.
 ///
 /// The same bargain a run strikes, and for the same reason: compiling 25 MB costs seconds and
 /// instantiating the result costs milliseconds, so a function that drives ten programs must not pay
@@ -56,7 +56,7 @@ fn python() -> &'static dyn crate::sandbox::ProgramLanguage {
 /// programs really come out of, indexed by its own wire id.
 fn component() -> &'static Component {
     engine::component(python())
-        .expect("the committed Python guest compiles")
+        .expect("the embedded Python guest compiles")
         .0
 }
 
@@ -106,7 +106,7 @@ fn run_with(
 /// calls. Host work done after that stamp and before the guest runs is neither, so nothing gives it
 /// back: it is charged in full to a program that has not started.
 ///
-/// [`component`] is exactly that work: a `Component::new` of this arm's 25 MB committed guest, paid
+/// [`component`] is exactly that work: a `Component::new` of this arm's 25 MB embedded guest, paid
 /// once per **process** — which under `cargo nextest` means once per `#[test]`. The same compile of
 /// the 14 MB shared guest was measured on this repository's dev container at 1.35 s alone, a median
 /// of 10.6 s and a worst of 34.0 s across the processes that paid it during one `cargo nextest run
@@ -151,7 +151,7 @@ fn run_as(
     let bound = match Sandbox::instantiate(&mut store, component, &linker) {
         Ok(bound) => bound,
         Err(error) => panic!(
-            "the committed Python guest instantiates against the real membrane: {}",
+            "the embedded Python guest instantiates against the real membrane: {}",
             engine::classify(&store, limits, &error, SandboxError::Instantiate)
         ),
     };
@@ -558,7 +558,7 @@ print("still here")
 }
 
 #[test]
-fn the_committed_guest_carries_every_library_the_prompt_names() {
+fn the_embedded_guest_carries_every_library_the_prompt_names() {
     // `componentize-py` bakes only the modules the entry module's import closure reached, so the
     // library set is a property of the ARTIFACT rather than of a policy — and one nothing would
     // notice losing.
@@ -631,7 +631,7 @@ print("toml", tomli_w.dumps({"a": 1}).strip())
 }
 
 #[test]
-fn the_committed_guest_imports_the_whole_membrane_and_the_whole_wasi_surface() {
+fn the_embedded_guest_imports_the_whole_membrane_and_the_whole_wasi_surface() {
     // The counterpart of TypeScript's assertion, and the reason gg's linker went ambient: a
     // `componentize-py` guest imports the WHOLE WASI p2 surface — filesystem and sockets included —
     // whether or not a program touches any of it. A host that defined only what the JavaScript
@@ -687,7 +687,7 @@ fn the_committed_guest_imports_the_whole_membrane_and_the_whole_wasi_surface() {
             "wasi:sockets/udp",
             "wasi:sockets/udp-create-socket",
         ],
-        "the committed Python guest's imports changed; if that was intended, update the prose that \
+        "the embedded Python guest's imports changed; if that was intended, update the prose that \
          describes what this guest can reach (`packages/gg-sandbox-python/README.md`, \
          `gg/program-languages.md`) in the same commit"
     );
@@ -708,18 +708,18 @@ fn the_committed_guest_imports_the_whole_membrane_and_the_whole_wasi_surface() {
     // pure-Python wheels. A band rather than a number because the build is not byte-reproducible —
     // `componentize-py` snapshots a running interpreter's memory, and two builds of identical
     // sources differ by tens of kilobytes. Far smaller would mean the library set was dropped; far
-    // larger, that the build picked up something it should not have. It is committed, so nobody
+    // larger, that the build picked up something it should not have. Nobody
     // re-reads its size.
     let guest = python()
         .guest_component()
-        .expect("the Python arm's programs are evaluated by a committed component");
+        .expect("the Python arm's programs are evaluated by a prebuilt component");
     assert!(
         (22 * 1024 * 1024..=28 * 1024 * 1024).contains(&guest.len()),
-        "the committed Python guest is {} bytes, outside the documented 22–28 MiB band",
+        "the embedded Python guest is {} bytes, outside the documented 22–28 MiB band",
         guest.len()
     );
 
-    // The bijection the committed artifact is held to: this guest's SDK binds gg's whole tool
+    // The bijection the embedded artifact is held to: this guest's SDK binds gg's whole tool
     // vocabulary and nothing else. It is the one drift check that reads the `.wasm` rather than a
     // source file, so a tool added to gg with a stale artifact still checked in fails here.
     // The component before the store, as everywhere in this file: `bounded_store` arms the guest's
@@ -1403,7 +1403,7 @@ except ToolError as failure:
 /// [capability gate](super::super::agreement) runs over every registered language, so this one is
 /// inside it now that it is registered, and a second copy of that assertion would be a second thing
 /// to keep in step. What is here is the half that gate cannot make — whether the surface this
-/// catalogue describes is the surface the committed `.wasm` really binds.
+/// catalogue describes is the surface the embedded `.wasm` really binds.
 const SIGNATURES: &str = include_str!(concat!(
     env!("OUT_DIR"),
     "/signatures/python.signatures.json"
@@ -1412,7 +1412,7 @@ const SIGNATURES: &str = include_str!(concat!(
 #[test]
 fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
     // The other half of the catalogue's honesty, and the one no cross-language comparison can see:
-    // that the surface it *describes* is the surface the committed `.wasm` really binds. A signature
+    // that the surface it *describes* is the surface the embedded `.wasm` really binds. A signature
     // reflected out of a source file that was never baked in would read perfectly and name a call
     // that is not there.
     let catalogue: Value =

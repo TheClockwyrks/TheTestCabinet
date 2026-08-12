@@ -88,9 +88,14 @@ const MANIFEST_JSON: &str = include_str!("../checkers/kotlin.toolchain.json");
 /// [PureScript's library set](super::super::purescript) are on, for the same reason: the image is
 /// built separately from the binary that runs in it, so an SDK living there could be a different
 /// vintage from the gg whose catalogue describes it — and a model shown one surface in its prompt and
-/// compiled against another is the failure this whole seam exists to prevent. Committed, the SDK and
-/// the catalogue reflected from it move in one diff.
-const SDK: &[u8] = include_bytes!("../checkers/kotlin.sdk.jar");
+/// compiled against another is the failure this whole seam exists to prevent.
+///
+/// **Compiled by this build**, out of `packages/gg-sandbox-kotlin/src`, by that package's
+/// `build.sh` — the same source and the same build that the catalogue describing it is reflected
+/// from, so the two cannot be two vintages. Committed, they only moved together when somebody
+/// remembered to re-cut the jar, which on the Java arm's identical setup is a thing that did not
+/// happen.
+const SDK: &[u8] = include_bytes!(concat!(env!("GG_ARTIFACTS_KOTLIN"), "/kotlin.sdk.jar"));
 
 /// The environment variable an operator points at the directory of Kotlin jars.
 pub(super) const KOTLIN_ENV: &str = "TCAB_GG_KOTLIN";
@@ -172,7 +177,7 @@ fn manifest() -> &'static Manifest {
     static MANIFEST: std::sync::OnceLock<Manifest> = std::sync::OnceLock::new();
     MANIFEST.get_or_init(|| {
         serde_json::from_str(MANIFEST_JSON)
-            .expect("the committed Kotlin toolchain manifest is valid JSON of the expected shape")
+            .expect("the committed Kotlin toolchain pin is valid JSON of the expected shape")
     })
 }
 

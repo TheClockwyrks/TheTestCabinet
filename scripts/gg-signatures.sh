@@ -4,10 +4,10 @@
 #
 #   scripts/gg-signatures.sh [OUT_DIR]        # default: target/gg-signatures
 #
-# THIS FILE IS THE ONLY LIST OF gg's PROGRAM-LANGUAGE ARMS IN THE REPOSITORY. Eleven arms, ten
-# packages — `packages/gg-sandbox` reflects TypeScript and JavaScript from one set of declarations,
-# because those two arms ARE one set of declarations and differ only in whether gg type-checks the
-# program. A twelfth arm is one line below and nowhere else.
+# THE LIST OF gg's PROGRAM-LANGUAGE ARMS IS `scripts/gg-arms.sh`, which this sources. It used to be
+# here, and it moved out when a second thing came to be generated per arm: this script reflects an
+# arm's signature CATALOGUE, `scripts/gg-artifacts.sh` builds its ARTIFACTS, and a list in either one
+# would be a list the other could disagree with. A twelfth arm is one row there and no line here.
 #
 # WHAT A CATALOGUE IS. The whole of what a model is *told* about an arm's surface: every module,
 # signature, argument, type and type member the responses-as-code system prompt renders and a
@@ -42,25 +42,37 @@
 # there rather than here so there is one description of what an arm needs, in the script that needs
 # it.
 #
-# THE NETWORK IT CAN WANT, which matters because `crates/gg/build.rs` runs this inside an ordinary
-# `cargo build` and a build that reaches the internet halfway through is a build that fails on an
-# aeroplane. There are exactly two reachable fetches, both cold-cache only and both pinned:
+# AND ONE THING THAT IS NOT A TOOLCHAIN: the PureScript arm's compiled library tree, which is an
+# ARTIFACT rather than an installed program and is built by `scripts/gg-artifacts.sh`. It is the only
+# place these two scripts touch, it is pointed at through `GG_PURESCRIPT_LIBRARIES`, and the reason
+# it is not a third answer to "who runs this" is set out where that variable is derived, below.
 #
-#   * the Rust, Swift and C++ arms generate WIT bindings first, and that fetches the pinned
-#     `wit-bindgen` release from GitHub when the arm's `.build/` has none;
+# THE NETWORK IT WANTS, WHICH IS NONE on a machine `scripts/ci/install-gg-toolchains.sh` has run on
+# — and that matters because `crates/gg/build.rs` runs this inside an ordinary `cargo build`, and a
+# build that reaches the internet halfway through is a build that fails on an aeroplane. Two things
+# here could reach a registry, both pinned, both resolved from a version-stamped prefix that
+# installer fills, and both therefore cold-machine-only:
+#
+#   * the Rust, Swift and C++ arms generate WIT bindings first, and `bindings.sh` resolves the
+#     pinned `wit-bindgen` through `scripts/gg-downloads.sh` — an override, the toolchain image, a
+#     per-user cache, and only then GitHub. `scripts/ci/install-wit-bindgen.sh` is what fills it,
+#     with one copy for all four arms rather than one each;
 #   * the Ruby arm's reflector is YARD, and `packages/gg-sandbox-ruby/signatures.sh` installs the
-#     pinned gem from rubygems.org when the interpreter cannot already resolve it.
+#     pinned gem from rubygems.org when the interpreter cannot already resolve it. That installer
+#     puts it on the machine ahead of time for exactly this reason.
 #
-# `scripts/ci/install-gg-toolchains.sh` installs the YARD one ahead of time precisely so that a
-# build does not discover mid-compile that it wants to talk to a package registry, and it is run by
-# every surface that builds gg. Nothing else here fetches anything: griffe comes out of uv's cache,
-# and every compiler is already on the machine.
+# Nothing else here fetches anything: griffe comes out of uv's cache, and every compiler is already
+# on the machine.
 set -euo pipefail
 
 # Repo root, independent of the caller's working directory: every arm below is named relative to it,
 # and several of them change directory on the way to their own toolchain.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+
+# The arms. Sourced rather than restated — see the header, and `scripts/gg-arms.sh`'s own.
+# shellcheck source=scripts/gg-arms.sh
+source "$ROOT/scripts/gg-arms.sh"
 
 # The default lives under `target/`, which is already gitignored and already the directory this
 # repository throws build output into — so a developer who runs this to read a catalogue does not
@@ -100,6 +112,26 @@ rm -f "$OUT_DIR"/*.signatures.json
 # a script, and never imported again.
 export PYTHONDONTWRITEBYTECODE=1
 
+# THE ONE ARM WHOSE REFLECTION NEEDS ANOTHER SCRIPT'S OUTPUT. Ten reflectors read only their own
+# package. The PureScript one type-checks this repository's PureScript SDK against that arm's
+# COMPILED LIBRARY TREE, because `purs` refuses a module whose imports it has no externs for and
+# compiling the registry set from scratch is ~16 s an arm — so `purescript.libraries.tar.gz`, which
+# `packages/gg-sandbox-purescript/build.sh` produces, is an input here.
+#
+# It used to be a committed file and this script did not have to know: the reflector named
+# `crates/gg/src/sandbox/checkers/purescript.libraries.tar.gz` directly. It is generated now, so
+# somebody has to say where it is, and there are exactly two somebodies — the same two that run this
+# script. `crates/gg/build.rs` sets `GG_PURESCRIPT_LIBRARIES` from the directory
+# `gg-artifact-purescript` published, and cargo guarantees that crate's build script ran first
+# because `crates/gg` depends on it. A PERSON gets the line below instead: the artifacts they built
+# with `scripts/gg-artifacts.sh`, whose default destination this mirrors.
+#
+# DERIVED RATHER THAN CHECKED HERE, deliberately. If the tarball is not there,
+# `packages/gg-sandbox-purescript/signatures.sh` says so — it is the script that wants it, it names
+# `scripts/gg-artifacts.sh` in its message, and one description of a missing input is better than two
+# that can disagree.
+export GG_PURESCRIPT_LIBRARIES="${GG_PURESCRIPT_LIBRARIES:-${GG_ARTIFACTS_DIR:-$ROOT/target/gg-artifacts}/purescript.libraries.tar.gz}"
+
 # The one thing checked here rather than in an arm: the npm workspaces. Two arms come out of the
 # pinned `typescript` that a repo-root `npm ci` installs, and "no such file or directory" from a
 # package manager two directories away is a poor way to learn that a checkout was never installed.
@@ -109,37 +141,29 @@ if [ ! -x "$ROOT/node_modules/.bin/tsc" ]; then
 	exit 1
 fi
 
-# Run one arm, saying which one before it starts rather than after it finishes: the compiled arms
-# take tens of seconds each and a silent minute reads as a hang.
+# Reflect every arm, in the order `gg-arms.sh` declares them, saying which one before it starts
+# rather than after it finishes: the compiled arms take tens of seconds each and a silent minute
+# reads as a hang.
 #
-# `$1` is what to print, `$2` is the script. A failure is reported with the arm named, because the
-# tool that failed will have printed its own diagnostics several screens ago by then.
-run_arm() {
-	local label="$1" script="$2"
-	echo "==> $label"
+# A failure is reported with the arm named, because the tool that failed will have printed its own
+# diagnostics several screens ago by then. The reflector's path is derived from the row rather than
+# stored in it — every package has a `signatures.sh` and it is the only shape this has ever taken.
+for arm in "${GG_ARM_IDS[@]}"; do
+	script="${GG_ARM_PACKAGE[$arm]}/signatures.sh"
+	echo "==> ${GG_ARM_LABEL[$arm]}"
+	if [ ! -x "$ROOT/$script" ]; then
+		echo "error: the $arm arm's row in scripts/gg-arms.sh names $(dirname "$script")," >&2
+		echo "       and there is no executable $script there." >&2
+		exit 1
+	fi
 	if ! "$ROOT/$script"; then
 		echo >&2
-		echo "error: the $label arm's reflection failed ($script)." >&2
+		echo "error: the ${GG_ARM_LABEL[$arm]} arm's reflection failed ($script)." >&2
 		echo "       If the message above names a missing toolchain, run" >&2
 		echo "       scripts/ci/install-gg-toolchains.sh and try again." >&2
 		exit 1
 	fi
-}
-
-# The eleven arms. `packages/gg-sandbox` is first because it is the cheapest by an order of magnitude
-# and because it is the one that fails on a checkout nobody installed — better to learn that in two
-# seconds than after four minutes of javadoc, rustdoc and Roslyn. The rest are in the order the
-# packages sit on disk, which is the order a reader of this list will look for them in.
-run_arm "typescript + javascript" packages/gg-sandbox/signatures.sh
-run_arm "python" packages/gg-sandbox-python/signatures.sh
-run_arm "ruby" packages/gg-sandbox-ruby/signatures.sh
-run_arm "purescript" packages/gg-sandbox-purescript/signatures.sh
-run_arm "java" packages/gg-sandbox-java/signatures.sh
-run_arm "kotlin" packages/gg-sandbox-kotlin/signatures.sh
-run_arm "rust" packages/gg-sandbox-rust/signatures.sh
-run_arm "swift" packages/gg-sandbox-swift/signatures.sh
-run_arm "cpp" packages/gg-sandbox-cpp/signatures.sh
-run_arm "csharp" packages/gg-sandbox-csharp/signatures.sh
+done
 
 # Every catalogue this script promises to have produced. Not a drift check — there is nothing to
 # drift from — but a check that each arm did what it said it did. An arm that exits 0 having written
@@ -151,9 +175,15 @@ run_arm "csharp" packages/gg-sandbox-csharp/signatures.sh
 # It is a real check rather than a reassuring one only because the destination was emptied above: on
 # a machine that has built gg before, every one of these files existed and was non-empty before the
 # first arm ran.
-CATALOGUES=(
-	typescript javascript python ruby purescript java kotlin rust swift cpp csharp
-)
+#
+# The list is the `--catalogues` half of every row, flattened — so the eleven-arms-in-ten-packages
+# arithmetic is stated once, in the table, rather than here as a hand-kept parallel list that was
+# free to fall one behind it.
+CATALOGUES=()
+for arm in "${GG_ARM_IDS[@]}"; do
+	# shellcheck disable=SC2206  # deliberate word-splitting: the row stores a space-joined list
+	CATALOGUES+=(${GG_ARM_CATALOGUES[$arm]})
+done
 for language in "${CATALOGUES[@]}"; do
 	file="$OUT_DIR/$language.signatures.json"
 	if [ ! -s "$file" ]; then

@@ -1372,7 +1372,7 @@ fn every_type_and_function_the_catalogue_declares_is_a_name_a_program_can_write(
     // *describes* is the surface a program really has. A signature reflected out of a source file
     // that was never compiled into the shipped tree would read perfectly and name a call that is not
     // there — which for this arm is the failure mode that matters, since the tree a program compiles
-    // against is a committed artifact rather than the working directory.
+    // against is a built artifact rather than the working directory.
     //
     // It is asked as an **explicit import list** per module, which is the one question a program can
     // put to `purs` about a name without also having to solve its type: importing a name a module

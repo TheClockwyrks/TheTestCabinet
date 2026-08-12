@@ -15,7 +15,7 @@
 //! production ceilings, instantiated through the `bindgen!`-generated
 //! [`Sandbox`](crate::sandbox::membrane::Sandbox) and driven through its `run` export.
 //!
-//! There is no committed artifact anywhere in that path, which is what makes this arm's proof
+//! There is no embedded artifact anywhere in that path, which is what makes this arm's proof
 //! *stronger* than the interpreted arms': what these tests instantiate was compiled from this
 //! checkout's WIT, this checkout's shell and this checkout's bindings, seconds earlier.
 //!
@@ -631,7 +631,7 @@ fn what_compiling_a_swift_program_cost_is_a_reading_the_seam_can_take() {
 #[test]
 fn what_a_compiled_swift_program_weighs_is_the_arms_dominant_per_turn_cost() {
     // Two figures a study needs and neither is an accident: the artifact is compiled by the engine
-    // on **every** turn, because this arm has no committed component to compile once — so its size
+    // on **every** turn, because this arm has no prebuilt component to compile once — so its size
     // is a per-turn cost in a way no interpreted arm's is.
     //
     // The band is wide and low-sided on purpose. What would fail it is a jump, and a jump would

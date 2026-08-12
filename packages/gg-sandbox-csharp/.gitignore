@@ -1,3 +1,5 @@
-# Fetched toolchains, generated bindings and link intermediates. Nothing here is committed; the
-# artifacts this package produces live under crates/gg/src/sandbox/{guests,checkers}/.
+# Fetched toolchains, generated bindings and link intermediates. THIS PACKAGE COMMITS NOTHING:
+# `build.sh` writes the guest component into $GG_ARTIFACTS_OUT_DIR — the `OUT_DIR` of
+# crates/gg-sandbox-artifacts/csharp — and `signatures.sh` writes the catalogue into
+# $GG_SIGNATURES_OUT_DIR, which is crates/gg's.
 .build/

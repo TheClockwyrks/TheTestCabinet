@@ -114,7 +114,7 @@ pub(super) enum CodeTurnOutcome {
         report: String,
     },
     /// gg's own machinery failed. Not a fault in anything the model wrote, and unreachable in a
-    /// released build — CI compiles and instantiates the committed artifact — so the loop ends the
+    /// released build — CI compiles and instantiates the embedded artifact — so the loop ends the
     /// session loudly rather than burning the run on a failure that would recur identically.
     Fatal {
         /// Which of gg's own failures this was.
@@ -496,7 +496,7 @@ fn sandbox_failure_decision(
         error if error.is_artifact_defect() => CodeTurnOutcome::Fatal {
             fault: FatalFault::ArtifactDefect,
             message: format!(
-                "the code sandbox's committed component could not be run ({error}); this is \
+                "the code sandbox's prebuilt component could not be run ({error}); this is \
                  artifact drift, not a fault in the model's program, and every further turn would \
                  fail identically."
             ),

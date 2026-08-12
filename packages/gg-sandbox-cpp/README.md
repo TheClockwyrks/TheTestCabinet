@@ -2,7 +2,7 @@
 
 The **C++** arm of gg's [responses as code] capability: the hand-written SDK a model's program is
 written against, the prelude it is compiled against, the shell it is linked with, and the build
-that commits all three into gg's binary.
+that cuts all three into gg's binary.
 
 It is not an npm package and not a Cargo crate. It is a directory of C++ sources and four scripts,
 because what it produces is not a library anybody links from this repository — it is compile
@@ -13,7 +13,7 @@ because what it produces is not a library anybody links from this repository —
 ## What this arm is
 
 **A C++ program is compiled by `clang++` into the wasm component that turn is evaluated by.** There
-is no committed guest and no interpreter: this is the third arm of that shape, after
+is no baked guest and no interpreter: this is the third arm of that shape, after
 [Rust](../gg-sandbox-rust/) and [Swift](../gg-sandbox-swift/), and the whole design is in
 `crates/gg/src/sandbox/language/cpp.compile.rs`.
 
@@ -50,11 +50,11 @@ three-element vector reads whatever is there. gg compiles every translation unit
 | --- | --- |
 | `Sources/sdk/gg/` | **gg's surface, hand-written and idiomatic**: one header per capability module, each a nested `namespace` under `gg` holding that module's functions and the types they hand back. Its `///` comments are the model-facing documentation — `tools/signatures.py` reflects the catalogue out of them on every build — and its `//` comments are not. |
 | `Sources/sdk/*.cpp` | One translation unit per module: the lowering, the call and the lift. Nothing in them is model-facing. `sdk/wire.*` is the bridge onto the canonical ABI, which a model never reads, and `sdk/runtime.hpp` holds the three declarations that belong to no module. |
-| `Sources/prelude.hpp` | **What every program is compiled against**, and the header this arm precompiles once per machine: the generated WIT surface as C, the declaration of the model's own entry point, and the standard-library set. One declaration, two readers — the compile, and the `headers` list in the committed manifest. |
+| `Sources/prelude.hpp` | **What every program is compiled against**, and the header this arm precompiles once per machine: the generated WIT surface as C, the declaration of the model's own entry point, and the standard-library set. One declaration, two readers — the compile, and the `headers` list in the generated `cpp.toolchain.json`. |
 | `Sources/shell.cpp` | gg's shell — the two exports the sandbox world declares, the call into the model's own `main`, and the `catch` that turns an uncaught exception from `thrown Wasm exception` into the exception's own class and `what()`. Compiled **once**, at build time. |
 | `cpp-version.sh` | Every pin — the wasi-sdk release, the target triple, the C++ standard, the `wasi_snapshot_preview1` adapter, the `wit-bindgen` release — and where gg looks for the toolchain. Sourced by everything below, by `containers/gg-toolchains/Dockerfile` and by `scripts/ci/install-wasi-sdk.sh`. |
 | `bindings.sh` | Generates the C bindings from `crates/gg/wit` with the pinned `wit-bindgen`. Its own script so no step that must write exactly one file has to reach the build. |
-| `build.sh` | Compiles those bindings, the SDK and the shell for wasm, cuts the committed archive, fetches the adapter, and writes the manifest. |
+| `build.sh` | Compiles those bindings, the SDK and the shell for wasm, cuts the guest archive, resolves the adapter, and writes the manifest — into `$GG_ARTIFACTS_OUT_DIR`. Run by `crates/gg-sandbox-artifacts/cpp` on every build of gg whose declared inputs moved. |
 | `signatures.sh` | Dumps the SDK's comment AST with `clang++ -ast-dump=json` and writes `cpp.signatures.json` into `$GG_SIGNATURES_OUT_DIR`. Run by `crates/gg/build.rs` on every build of that crate; writes exactly one file, which is why the bindings are their own script. |
 | `tools/catalogue.py` | The thirteen module identities, and the order a reader meets them in. Nothing else: a function's gg operation id is written on its own declaration. |
 | `tools/signatures.py` | The reflector: clang's comment AST in, the catalogue out. |
@@ -151,9 +151,10 @@ Two conventions the reflector enforces, both worth knowing before editing a head
 
 The **C++ standard library**, as libc++ 22 implements it for this target, declared header by header
 in `Sources/prelude.hpp` under `// == Heading ==` groups. That one declaration has **three** readers
-— the compile, the committed manifest's `headers` list, and the catalogue's `libraries` section,
-which is what a model is told it may include — so what a model reads and what the compile allows
-cannot drift. Ranges, `std::format`, `std::expected`, the containers, `<regex>`, `<chrono>` and
+— the compile, `cpp.toolchain.json`'s `headers` list, and the catalogue's `libraries` section, which
+is what a model is told it may include — so what a model reads and what the compile allows cannot
+drift. All three are produced by the same `cargo build`, and a test holds the second to the prelude
+directly. Ranges, `std::format`, `std::expected`, the containers, `<regex>`, `<chrono>` and
 `<random>` are all there and all exercised by this arm's tests.
 
 **The set is what is put in front of a program, not an allowlist.** clang's default include path is
@@ -234,15 +235,19 @@ A code skill or memory spells its code **`skill.hpp`** / `memory.hpp` — one sp
 nothing else in the registry compiles C++ and a language whose modules nothing else can evaluate
 names one extension and no more.
 
-## What it commits, and why those and not the compiler
+## What it produces, and why those ride inside gg and the compiler does not
+
+Nothing here is committed. [`build.sh`](build.sh) is run by `crates/gg-sandbox-artifacts/cpp` during
+an ordinary `cargo build -p test-cabinet-gg`, into that crate's own `OUT_DIR`, and `crates/gg`
+`include_bytes!`s the result from there — reachable as `$GG_ARTIFACTS_CPP` while the build runs, and
+put somewhere you can open it by `scripts/gg-artifacts.sh`.
 
 ```
-crates/gg/src/sandbox/checkers/cpp.guest.tar.gz    100 KB — the compile inputs: the generated
-                                                            header, the prelude, the SDK's headers
-                                                            and its prebuilt object, gg's shell as
-                                                            source and object, the bindings object
-crates/gg/src/sandbox/checkers/cpp.adapter.wasm     52 KB — the preview1 reactor adapter
-crates/gg/src/sandbox/checkers/cpp.toolchain.json         — what built them, and what is in them
+cpp.guest.tar.gz    100 KB — the compile inputs: the generated header, the prelude, the SDK's
+                             headers and its prebuilt object, gg's shell as source and object,
+                             the bindings object
+cpp.adapter.wasm     52 KB — the preview1 reactor adapter
+cpp.toolchain.json         — what built them, and what is in them
 ```
 
 `cpp.toolchain.json` lists every file with its size, so that is the figure to read rather than this
@@ -255,14 +260,15 @@ gg's own wire, and gg is copied as a single file into an ephemeral run container
 built separately — so bindings that lived in the image could be a different vintage from the binary
 reading them.
 
-**The precompiled header is deliberately not committed.** A PCH may only be read by the clang that
+**The precompiled header is deliberately not shipped.** A PCH may only be read by the clang that
 wrote it and records the absolute path of every header in it, so one built in this checkout is
 unreadable by the wasi-sdk in a run image — and it is 26 MB. It is built once per *machine* instead,
 by the first compile, into a content-keyed shared toolchain directory that is sealed read-only.
 
 **This set is byte-reproducible**, unlike the Swift arm's: clang stamps no per-invocation nonce into
 an object, and `-ffile-prefix-map` removes the one thing that would otherwise record the checkout it
-was built in. A diff here means an edit.
+was built in. Nothing depends on that any more — there is no committed copy to diff against — but an
+artifact that changed when nothing did is one nobody can reason about, so the property is kept.
 
 ## Rebuilding
 
