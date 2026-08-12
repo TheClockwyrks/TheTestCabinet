@@ -2,7 +2,7 @@
 //! the deletion-only invariant, disclosure, and configuration resolution.
 //!
 //! The per-strategy cases live beside them in `healing.fences.test.rs` (everything about a fence)
-//! and `healing.programs.test.rs` (prose, imports, async, comments, the predicates and the mask).
+//! and `healing.programs.test.rs` (prose, the doubled response, comments and the predicates).
 //! This file owns the round-1 corpus itself, because the corpus is one thing and the properties
 //! asserted over it — subsequence, idempotence, convergence — are properties of the whole of it.
 //!
@@ -19,7 +19,7 @@ use super::*;
 ///
 /// Named for the language rather than for gg's default, because that is what these cases are about:
 /// the corpus is a set of replies real models sent to a TypeScript run, and every expectation in it
-/// — which fence tags are the program's, which lines are prose, what an import looks like — is that
+/// — which fence tags are the program's, which lines are prose, which could only be code — is that
 /// language's answer. A case that means to assert something about **every** registered language
 /// iterates [`all_languages`](crate::sandbox::all_languages) instead, and one that means to assert
 /// something about the skeleton alone uses the inert dialect in `healing.programs.test.rs`.
@@ -93,13 +93,6 @@ pub(crate) const TERRA_TWO_DRAFTS: &str = include_str!("testdata/round2-terra-tw
 /// deliverable.
 pub(crate) const SOL_TWO_DRAFTS: &str = include_str!("testdata/round2-sol-two-drafts.txt");
 
-/// Round 2's largest fence-free shape: **five** programs in one reply, each followed by the output
-/// the model invented for it — a whole session narrated in a single turn. Only one name (`const
-/// srcEntries`) is declared by two of the five, so it is the fixture that pins what the candidate
-/// count means when the redeclaration evidence proves fewer programs than the reply holds.
-pub(crate) const GEMINI_FIVE_PROGRAMS: &str =
-    include_str!("testdata/round2-gemini-five-programs.txt");
-
 /// One reply in the corpus, named so a failure says which one.
 pub(crate) struct Fixture {
     /// The fixture's file stem, or a description for the synthetic shapes.
@@ -158,17 +151,13 @@ pub(crate) const CAPTURED_PROGRAM_REPLIES: [Fixture; 6] = [
     },
 ];
 
-/// A program wrapped in a fence, an `import` and an `async` wrapper at once — every rewriting
-/// strategy in one reply.
+/// A program wrapped in a fence with prose inside it — both rewriting strategies the defaults arm,
+/// in one reply.
 const EVERY_STRATEGY: &str = "\
 ```ts
 Here is what I will do.
 
-import { writeFile } from \"@test-cabinet/gg\";
-async function main() {
-  await writeFile(\"a.txt\", \"hi\");
-}
-main();
+writeFile(\"a.txt\", \"hi\");
 ```
 That should be everything.";
 
@@ -296,8 +285,8 @@ pub(crate) const CORPUS: &[Fixture] = &[
 /// the property tests.
 ///
 /// Written against [`HealingStrategy::ALL`] rather than against a hard-coded arity so that adding a
-/// strategy widens the property tests by itself: six strategies is 64 configurations, and the day
-/// there are seven it is 128 with no edit here.
+/// strategy widens the property tests by itself: three strategies is eight configurations, and the
+/// day there are four it is sixteen with no edit here.
 pub(crate) fn every_configuration() -> Vec<HealingConfig> {
     (0..(1u32 << HealingStrategy::ALL.len()))
         .map(|bits| {
@@ -380,8 +369,7 @@ pub(crate) fn is_subsequence(needle: &str, haystack: &str) -> bool {
 /// Healing only ever deletes, so the healed program — whitespace removed — is a subsequence of the
 /// response the model sent. One machine-checkable sentence covering "never invents code" and "never
 /// reorders" for every strategy at once, over the whole corpus under
-/// [every configuration](every_configuration) — all 64 of them, since a sixth strategy doubled the
-/// space.
+/// [every configuration](every_configuration) — all eight of them.
 #[test]
 fn every_healed_program_is_a_subsequence_of_the_response() {
     for fixture in CORPUS {
@@ -412,9 +400,8 @@ fn every_healed_program_is_a_subsequence_of_the_response() {
 /// front of every non-blank line of the program, yields a line the model really sent. One indent for
 /// all of them is exactly "the block moved"; two would be "gg misaligned it".
 ///
-/// Only those two are armed, deliberately. `unwrap-async` also dedents, but it removes `await`
-/// tokens from the lines it keeps, so its output is not made of the reply's lines at all and no
-/// line-wise property can be asserted of it — that strategy is pinned by its own dialect's tests.
+/// Only those two are armed, deliberately. `drop-doubled-response` deletes a copy of the reply
+/// rather than moving a block, so it has no indent to preserve and nothing to say here.
 #[test]
 fn unwrapping_moves_every_line_of_the_program_by_one_indent() {
     let mut config = HealingConfig::OFF;
@@ -514,11 +501,6 @@ fn the_repairs_reach_the_same_program_in_any_order() {
     let partials = [
         vec![HealingStrategy::StripFences],
         vec![HealingStrategy::StripFences, HealingStrategy::StripProse],
-        vec![
-            HealingStrategy::StripFences,
-            HealingStrategy::StripProse,
-            HealingStrategy::DropImports,
-        ],
     ];
     for armed in partials {
         let mut config = HealingConfig::OFF;
@@ -604,62 +586,23 @@ fn a_doubly_nested_fence_converges_within_the_budget() {
 
 /// The strategies fire in the documented order, and the order is `HealingStrategy::ALL`.
 ///
-/// One reply that needs all four repairs produces them in one pass, in order — which is also the
-/// order the config table, the session summary and the docs page list them in, so the four cannot
-/// drift apart.
+/// One reply that needs both default-armed repairs produces them in one pass, in order — which is
+/// also the order the config table, the session summary and the docs page list them in, so the
+/// listings cannot drift apart.
 #[test]
 fn strategies_apply_in_the_documented_order() {
     assert_eq!(
         HealingStrategy::ALL.map(HealingStrategy::id),
-        [
-            "strip-fences",
-            "strip-prose",
-            "drop-doubled-response",
-            "drop-duplicate-program",
-            "drop-imports",
-            "unwrap-async"
-        ]
+        ["strip-fences", "strip-prose", "drop-doubled-response"]
     );
     let result = healed(EVERY_STRATEGY);
     assert_eq!(
         result.strategies(),
-        vec![
-            HealingStrategy::StripFences,
-            HealingStrategy::StripProse,
-            HealingStrategy::DropImports,
-            HealingStrategy::UnwrapAsync,
-        ],
+        vec![HealingStrategy::StripFences, HealingStrategy::StripProse],
         "program: {}",
         result.program
     );
     assert_eq!(result.program, "writeFile(\"a.txt\", \"hi\");");
-}
-
-/// One strategy's output is what lets the next one match: the `import` line is exactly what stops
-/// `unwrap-async` seeing a top level made only of the wrapper.
-#[test]
-fn dropping_an_import_is_what_lets_the_async_wrapper_unwrap() {
-    let reply = "import { writeFile } from \"gg\";\n\
-                 async function main() {\n  \
-                 await writeFile(\"a.txt\", \"hi\");\n\
-                 }\n\
-                 main();";
-
-    let result = healed(reply);
-    assert_eq!(
-        result.strategies(),
-        vec![HealingStrategy::DropImports, HealingStrategy::UnwrapAsync]
-    );
-    assert_eq!(result.program, "writeFile(\"a.txt\", \"hi\");");
-
-    let mut without_imports = HealingConfig::default();
-    without_imports.set(HealingStrategy::DropImports, false);
-    let unhelped = heal(reply, &without_imports, dialect());
-    assert!(
-        unhelped.applied.is_empty(),
-        "the wrapper unwrapped with the import still above it: {:?}",
-        unhelped.applied
-    );
 }
 
 /// A reply offering several candidate blocks is left **exactly as the model sent it**.
@@ -741,11 +684,13 @@ fn a_reply_that_is_prose_from_end_to_end_is_left_alone() {
     }
 }
 
-/// Every one of the ten committed round-1 replies now reaches the type-strip, and the four that
-/// carry one candidate block are unwrapped to it.
+/// Every one of the ten committed round-1 replies now reaches the type-strip. This case walks the
+/// six that carry a program, and the two of those that carry one candidate block are unwrapped to
+/// it.
 ///
-/// The table is measured rather than estimated: the five multi-candidate replies are the ones gg
-/// used to refuse, are handed on whole.
+/// The table is measured rather than estimated: the other four carry several candidates each — the
+/// shape gg used to refuse — and are handed on whole. The remaining four replies of the ten are
+/// terminal prose, and the case above is where they are pinned.
 #[test]
 fn the_committed_round_one_replies_all_reach_the_type_strip() {
     let unwrapped: [(&str, &str); 2] = [
@@ -798,14 +743,6 @@ fn each_strategy_can_be_disabled_on_its_own() {
             HealingStrategy::StripProse,
             "Here is the program.\n\nconst x = 1;\nreturn x;",
         ),
-        (
-            HealingStrategy::DropImports,
-            "import { writeFile } from \"gg\";\nwriteFile(\"a.txt\", \"hi\");",
-        ),
-        (
-            HealingStrategy::UnwrapAsync,
-            "async function main() {\n  await writeFile(\"a.txt\", \"hi\");\n}\nmain();",
-        ),
     ];
     for (strategy, reply) in cases {
         let armed = healed(reply);
@@ -845,7 +782,7 @@ fn absent_healing_takes_the_defaults() {
     );
 }
 
-/// **The default arm, spelled out.** Five strategies are on because repairing is strictly safer than
+/// **The default arm, spelled out.** Two strategies are on because repairing is strictly safer than
 /// not; `drop-doubled-response` is off because the half it deletes is valid code under any other
 /// reading, so it is armed deliberately rather than by omission.
 ///
@@ -857,9 +794,6 @@ fn the_defaults_arm_every_strategy_except_the_doubled_response_one() {
         (HealingStrategy::StripFences, true),
         (HealingStrategy::StripProse, true),
         (HealingStrategy::DropDoubledResponse, false),
-        (HealingStrategy::DropDuplicateProgram, true),
-        (HealingStrategy::DropImports, true),
-        (HealingStrategy::UnwrapAsync, true),
     ];
     let config = HealingConfig::default();
     for (strategy, armed) in expected {
@@ -878,13 +812,7 @@ fn the_defaults_arm_every_strategy_except_the_doubled_response_one() {
     }
     assert_eq!(
         config.armed(),
-        vec![
-            HealingStrategy::StripFences,
-            HealingStrategy::StripProse,
-            HealingStrategy::DropDuplicateProgram,
-            HealingStrategy::DropImports,
-            HealingStrategy::UnwrapAsync,
-        ],
+        vec![HealingStrategy::StripFences, HealingStrategy::StripProse],
         "the launch log would name the wrong arm"
     );
 }
@@ -924,7 +852,7 @@ fn the_doubled_response_strategy_is_armed_by_naming_it() {
     );
 }
 
-/// `"healing": false` is still the master switch **over the defaults**: it turns off the five that
+/// `"healing": false` is still the master switch **over the defaults**: it turns off the two that
 /// were on and leaves off the one that already was.
 #[test]
 fn the_master_switch_disarms_the_default_off_strategy_too() {

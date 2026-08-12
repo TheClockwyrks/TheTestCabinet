@@ -1,27 +1,25 @@
-//! The four answers that are Java's own, and the lexer underneath them.
+//! The two answers that are Java's own, and the lexer underneath them.
 //!
 //! What is deliberately **not** here is a second copy of the skeleton's tests. Fence stripping,
 //! prose stripping, the fixpoint loop, the honesty disclosure and the delete-only invariant are
 //! asserted once in `healing.test.rs` against every registered dialect, this one included. What this
-//! file asserts is the part that is Java's: the wrapper it takes off, the import it refuses to
-//! delete, the declaration it reads as a redeclaration, and the lexer that keeps a text block's body
-//! out of the code.
+//! file asserts is the part that is Java's: the `#` line it reads as prose, the backtick it does not
+//! read as code punctuation, and the lexer that keeps a text block's body out of the code.
 
 use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::JAVA_DIALECT;
-use crate::healing::{
-    AsyncWrapper, Dialect, Healed, HealingConfig, HealingDetail, HealingStrategy, heal,
-};
+use crate::healing::{Dialect, Healed, HealingConfig, HealingStrategy, heal};
 
 /// Replies in Java that the [delete-only invariant](crate::healing::Dialect::fixtures) is re-earned
 /// over.
 ///
-/// Every one of them exercises an answer that is this dialect's rather than the skeleton's: the two
-/// wrapper shapes, an import that must survive, a text block whose body must not be read as code, a
-/// character literal, a doubled program whose repeat redeclares a local, a `#` line that is prose
-/// here and is not on two other arms, an inline code span that is deletable here and is not on any
-/// other C-shaped arm, and two replies that are no program at all.
+/// Every one of them carries a shape this dialect has to read correctly: a fenced program, both of
+/// the concurrency wrappers a model writes, an import, a text block whose body must not be read as
+/// code, a character literal, a doubled program, a `#` line that is prose here and is not on two
+/// other arms, an inline code span that is deletable here and is not on any other C-shaped arm, and
+/// two replies that are no program at all. No strategy now touches a wrapper or a doubled program,
+/// which is precisely why they belong in a corpus asserting that nothing is ever added or moved.
 pub(super) const FIXTURES: &[&str] = &[
     "Here is the program.\n\n```java\nList<DirEntry> rows = fs.listDir(\"src\");\nview.openText(\"rows\", rows.toString());\n```\n\nThat lists the directory.",
     "new Thread(() -> {\n    List<DirEntry> rows = fs.listDir(\"src\");\n    view.openText(\"rows\", rows.toString());\n}).start();",
@@ -48,214 +46,6 @@ fn healed(reply: &str) -> Healed {
 /// This dialect, as the skeleton takes it.
 fn java() -> &'static dyn Dialect {
     &JAVA_DIALECT
-}
-
-// ---------------------------------------------------------------------------------------------
-// The concurrency wrapper
-// ---------------------------------------------------------------------------------------------
-
-/// **The immediate thread wrapper comes off.**
-///
-/// Java has no `async` keyword, so the shape a model wraps a whole program in is a thread it creates
-/// and starts where it writes it. The wrapper is not merely redundant here: TeaVM schedules a
-/// started thread with `setTimeout`, which this sandbox denies, so a program wearing one fails
-/// before a line of the model's own work runs.
-#[test]
-fn the_immediate_thread_wrapper_comes_off() {
-    let result = healed(
-        "new Thread(() -> {\n    \
-             List<DirEntry> rows = fs.listDir(\"src\");\n    \
-             view.openText(\"rows\", rows.toString());\n\
-         }).start();",
-    );
-    assert_eq!(
-        result.program,
-        "List<DirEntry> rows = fs.listDir(\"src\");\nview.openText(\"rows\", rows.toString());"
-    );
-    assert_eq!(result.strategies(), vec![HealingStrategy::UnwrapAsync]);
-    assert!(
-        matches!(
-            result
-                .applied
-                .first()
-                .map(|application| &application.detail),
-            // Zero, and that is the honest number: Java has no suspension token, so a count here
-            // would report a repair that never happened.
-            Some(HealingDetail::Async {
-                wrapper: AsyncWrapper::Immediate,
-                awaits: 0,
-            })
-        ),
-        "{:?}",
-        result.applied
-    );
-}
-
-/// **The declared shape comes off too**, and only when something actually starts it.
-#[test]
-fn the_declared_thread_wrapper_comes_off_only_when_it_is_started() {
-    let started = healed(
-        "Thread worker = new Thread(() -> {\n    \
-             view.openText(\"note\", \"done\");\n\
-         });\n\
-         worker.start();\n\
-         worker.join();",
-    );
-    assert_eq!(started.program, "view.openText(\"note\", \"done\");");
-    assert!(matches!(
-        started
-            .applied
-            .first()
-            .map(|application| &application.detail),
-        Some(HealingDetail::Async {
-            wrapper: AsyncWrapper::Declared,
-            awaits: 0,
-        })
-    ));
-
-    // A wrapper that is only constructed runs nothing at all, so unwrapping it would not repair a
-    // broken program — it would execute statements the response never asked to execute.
-    let unstarted = "Thread worker = new Thread(() -> {\n    \
-                         view.openText(\"note\", \"done\");\n\
-                     });";
-    assert_eq!(healed(unstarted).program, unstarted);
-}
-
-/// **A `CompletableFuture` is the other shape, and its import survives the repair.**
-///
-/// This is where Java parts company with [Python](super::super::python::healing) and
-/// [Ruby](super::super::ruby::healing), which both delete the import that made their runner
-/// reachable. `java.util.concurrent` is in this arm's declared library set, so the line resolves;
-/// an unused import is legal Java rather than an error; and deleting a working line is the one thing
-/// this subsystem must never do.
-#[test]
-fn the_future_wrapper_comes_off_and_leaves_its_import_standing() {
-    let result = healed(
-        "import java.util.concurrent.CompletableFuture;\n\n\
-         CompletableFuture.runAsync(() -> {\n    \
-             view.openText(\"note\", \"done\");\n\
-         }).join();",
-    );
-    assert_eq!(
-        result.program,
-        "import java.util.concurrent.CompletableFuture;\n\nview.openText(\"note\", \"done\");"
-    );
-    assert_eq!(result.strategies(), vec![HealingStrategy::UnwrapAsync]);
-}
-
-/// **A wrapper that is not the whole program is left alone.**
-///
-/// The match is anchored to the constructor, so a program whose *last* statement happens to start a
-/// thread keeps every statement above it. Without the anchor this strategy would delete a model's
-/// work on the strength of a lambda it found somewhere in the text.
-#[test]
-fn a_thread_that_is_not_the_whole_program_is_left_alone() {
-    let reply = "fs.writeFile(\"out.txt\", \"hello\");\n\
-                 new Thread(() -> {\n    \
-                     view.openText(\"note\", \"done\");\n\
-                 }).start();";
-    assert_eq!(healed(reply).program, reply);
-}
-
-// ---------------------------------------------------------------------------------------------
-// The import that is never deleted
-// ---------------------------------------------------------------------------------------------
-
-/// **No line is ever an import, so `drop-imports` never fires here.**
-///
-/// gg's wrapper hoists every `import` a model wrote into the compilation unit's header before javac
-/// sees it, so the line resolves and does its job. On the ECMAScript arms the same line is dead text
-/// and dropping it can only help; here dropping it would delete a working line.
-#[test]
-fn an_import_is_a_working_line_and_is_never_deleted() {
-    for line in [
-        "import java.util.List;",
-        "import static java.util.Map.entry;",
-        "import java.util.*;",
-    ] {
-        assert!(!java().is_import_statement(line), "{line}");
-    }
-
-    let reply = "import java.util.stream.Collectors;\n\n\
-                 String joined = fs.listDir(\"src\").stream()\n    \
-                     .map(DirEntry::name)\n    \
-                     .collect(Collectors.joining(\", \"));\n\
-                 view.openText(\"names\", joined);";
-    let result = healed(reply);
-    assert_eq!(result.program, reply);
-    assert!(result.applied.is_empty(), "{:?}", result.applied);
-}
-
-// ---------------------------------------------------------------------------------------------
-// Redeclaration
-// ---------------------------------------------------------------------------------------------
-
-/// **A repeated tail that redeclares a local is deleted, because the reply as sent could not have
-/// compiled.**
-///
-/// Java refuses two declarations of one name in one block (`variable total is already defined`), and
-/// a program's statements are one block — so the reply as sent would have been refused by javac
-/// before a statement of it ran, which is exactly the proof this strategy needs before it deletes.
-#[test]
-fn a_doubled_program_that_redeclares_a_local_is_halved() {
-    let half = "int total = 1;\nview.openText(\"total\", String.valueOf(total));";
-    let result = healed(&format!("{half}\n\n{half}"));
-    assert_eq!(result.program, half);
-    assert!(
-        result
-            .strategies()
-            .contains(&HealingStrategy::DropDuplicateProgram),
-        "{:?}",
-        result.applied
-    );
-}
-
-/// **What counts as a declaration, and what deliberately does not.**
-///
-/// The declines are where the correctness is: every entry in the second list may legally appear
-/// twice, so reading one as a redeclaration would let a doubled reply lose work the model asked to
-/// have done.
-#[test]
-fn a_declaration_is_told_from_everything_that_merely_looks_like_one() {
-    let declares = |text: &str| {
-        let mask = java().code_mask(text).expect("it lexes");
-        java().declares_a_redeclarable_binding(text, &mask, 0)
-    };
-
-    for line in [
-        "int total = 1;",
-        "final String plan = \"go\";",
-        "var rows = fs.listDir(\"src\");",
-        "Map<String, List<Integer>> index = new HashMap<>();",
-        "String[] parts = source.split(\",\");",
-        "Object pending;",
-        "class Helper {",
-        "record Point(int x, int y) {}",
-        "enum Mode { FAST, SLOW }",
-    ] {
-        assert!(declares(line), "not read as a declaration: {line}");
-    }
-
-    for line in [
-        // A statement keyword followed by a name and a terminator is not a declaration, and every
-        // one of these may be written twice.
-        "return value;",
-        "throw failure;",
-        "assert ok;",
-        // Two identical imports are legal Java, and gg hoists both.
-        "import java.util.List;",
-        // A call, an assignment and a comparison.
-        "System.out.println(\"hi\");",
-        "fs.writeFile(\"out.txt\", body);",
-        "total = 1;",
-        "if (left < right) {",
-        // Indented: a different block, where the same name is legal again.
-        "    int total = 1;",
-        // Inside a string, which the mask keeps out of the code.
-        "\"int total = 1;\"",
-    ] {
-        assert!(!declares(line), "read as a declaration: {line}");
-    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -355,11 +145,11 @@ fn the_two_predicates_point_their_errors_in_the_safe_direction() {
 // The lexer
 // ---------------------------------------------------------------------------------------------
 
-/// **A text block's body is not code**, so a wrapper written inside one is not a wrapper.
+/// **A text block's body is not code**, so an example program written inside one is not a program.
 ///
 /// This is the shape a naive scan loses the source on: `"""` also starts with `"`, and reading it as
 /// an empty string followed by another would put the whole body back in the code — where the
-/// `new Thread(…)` inside it would be matched and the program around it deleted.
+/// statements inside it would be read as the reply's own.
 #[test]
 fn a_text_block_carries_data_rather_than_code() {
     let reply = "String usage = \"\"\"\n    \
@@ -373,7 +163,7 @@ fn a_text_block_carries_data_rather_than_code() {
     assert_eq!(result.program, reply.trim_end());
     assert!(result.applied.is_empty(), "{:?}", result.applied);
 
-    // And the mask says so directly: the `int total = 1;` inside the block is not a declaration.
+    // And the mask says so directly: the `int total = 1;` inside the block is not code.
     let mask = java().code_mask(reply).expect("it lexes");
     let inside = reply.find("int total = 1;").expect("the block holds one");
     assert!(!mask.is_code(inside));
@@ -417,17 +207,14 @@ fn the_lexer_reads_every_shape_java_has_and_declines_the_one_it_cannot() {
 
 /// **A reply that is not ASCII is read rather than crashed on.**
 ///
-/// Both scans here walk one **byte** at a time — the lexer over the whole source, and the
-/// declaration reader over one line — so slicing at every step panics on an index that is not a
-/// character boundary. A single `é` in a string, a comment or an identifier would take the turn
-/// down with a slice index error rather than being healed, and a model writing a message in any
-/// language but English produces one on its first turn. What is asserted is not merely that nothing
-/// panics but that the reading is still right: the text block's contents are still not code, and
-/// the accented declaration is still a declaration.
+/// The lexer walks one **byte** at a time over the whole source, so slicing at every step panics on
+/// an index that is not a character boundary. A single `é` in a string, a comment or an identifier
+/// would take the turn down with a slice index error rather than being healed, and a model writing a
+/// message in any language but English produces one on its first turn. What is asserted is not
+/// merely that nothing panics but that the reading is still right: the text block's contents are
+/// still not code, and the code around them still is.
 #[test]
 fn a_reply_that_is_not_ascii_is_read_rather_than_crashed_on() {
-    // Deliberately no top-level declaration, so the one *inside* the text block is the only thing
-    // that could make the reading below true.
     let reply = "// a cömment: don\u{2019}t lose the place\n\
                  System.out.println(\'é\');\n\
                  view.openText(\"grüße — wörld ✅\", \"\"\"\n    \
@@ -436,19 +223,12 @@ fn a_reply_that_is_not_ascii_is_read_rather_than_crashed_on() {
                      \"\"\");\n";
     let mask = java().code_mask(reply).expect("it lexes");
 
-    // The text block's body is still not code, so the declaration inside it is not one.
+    // The text block's body is still not code, and the accented comment above it has not lost the
+    // scan its place: the call that opens the block is.
     let inside = reply.find("int total = 1;").expect("the block holds one");
     assert!(!mask.is_code(inside));
-    assert!(!java().declares_a_redeclarable_binding(reply, &mask, 0));
-
-    // And an accented type or name is still read as a declaration rather than skipped.
-    for line in ["String grüße = \"a\";", "Größe size = new Größe();"] {
-        let mask = java().code_mask(line).expect("it lexes");
-        assert!(
-            java().declares_a_redeclarable_binding(line, &mask, 0),
-            "{line}"
-        );
-    }
+    let outside = reply.find("view.openText").expect("the program holds one");
+    assert!(mask.is_code(outside));
 
     // The whole pipeline runs over it, under every configuration, and only ever deletes.
     crate::healing::tests::assert_delete_only(java(), &[reply], "Java");

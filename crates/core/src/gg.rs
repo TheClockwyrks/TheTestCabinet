@@ -1120,12 +1120,14 @@ pub const CAPABILITY_AGENT_TRANSITIONS: &str = "agent-transitions";
 /// fails to) like any other, and the run goes on until a program calls the ending function.
 ///
 /// Responses are **healed** before they run: a conservative, deletion-only text repair that unwraps
-/// a fence the model added, drops explanatory prose, removes imports of a surface already in scope,
-/// and unwraps an asynchronous wrapper. Which spellings each of those is written in belongs to the
-/// program language; the repairs themselves do not. Every application is disclosed to the model in its turn feedback
+/// a fence the model added, drops explanatory prose from around the program, and halves a reply that
+/// arrived as one completion concatenated with a byte-identical copy of itself. What counts as a
+/// fence tag, or as a line of prose, belongs to the program language; the repairs themselves do not.
+/// Every application is disclosed to the model in its turn feedback
 /// and [counted on the run](GgHealingSummary), because a repair the model is not told about teaches
 /// it nothing and corrupts the ablation; each [strategy](GgHealingStrategy) is independently
-/// toggleable through the capability's `healing` param, and on unless turned off.
+/// toggleable through the capability's `healing` param — the first two on unless turned off, and
+/// [`drop-doubled-response`](GgHealingStrategy::DropDoubledResponse) off unless a run arms it.
 ///
 /// Every tool the run offers is bound into the program's surface: there is no class of call a
 /// program is denied, so the toolset a program sees is exactly the toolset a JSON tool-calling
@@ -4359,9 +4361,9 @@ pub struct GgReviewer {
 /// told about teaches it nothing and corrupts the ablation, whose whole question is whether models
 /// learn the contract.
 ///
-/// Most strategies are armed unless a configuration turns them off, because for those, repairing is
-/// strictly safer than not: the reply they delete from could not have run as sent. The exception is
-/// [`drop-doubled-response`](Self::DropDoubledResponse), which is **off** unless a configuration
+/// Two of the three are armed unless a configuration turns them off, because for those, repairing
+/// is strictly safer than not: the reply they delete from could not have run as sent. The exception
+/// is [`drop-doubled-response`](Self::DropDoubledResponse), which is **off** unless a configuration
 /// arms it — see its own documentation for why that asymmetry exists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -4380,28 +4382,12 @@ pub enum GgHealingStrategy {
     /// the same completion twice: the reply's text is exactly `X + X`, with no fence, no blank line
     /// and no declaration to separate the halves.
     ///
-    /// The coarser, whole-reply sibling of
-    /// [`drop-duplicate-program`](Self::DropDuplicateProgram), applied **before** it so the finer
-    /// test only ever sees a reply that is not a clean doubling. It is the one strategy that is
-    /// **off unless a configuration arms it**: the half it deletes is valid code under any reading
-    /// other than "the transport duplicated this", so unlike every other repair here, applying it to
-    /// a model that genuinely meant to do the work twice changes behaviour rather than restoring it.
-    /// An operator arms it for the models observed to exhibit the defect.
+    /// It is the one strategy that is **off unless a configuration arms it**: the half it deletes
+    /// is valid code under any reading other than "the transport duplicated this", so unlike the
+    /// other repairs here, applying it to a model that genuinely meant to do the work twice changes
+    /// behaviour rather than restoring it. An operator arms it for the models observed to exhibit
+    /// the defect.
     DropDoubledResponse,
-    /// The response was one program pasted after an identical copy of itself, and the trailing copy
-    /// was deleted. The shape a model produces when it drafts two programs and sends both with no
-    /// fence to separate them: the repeat redeclares every `const` in the first copy, so the reply
-    /// as sent could not execute a single statement, which is what makes deleting it a repair
-    /// rather than a change of behaviour.
-    DropDuplicateProgram,
-    /// Whole `import`/`require` statements were removed: the tool surface is already in the
-    /// program's scope, so there is nothing to import and the sandbox has no module loader to
-    /// import it with.
-    DropImports,
-    /// An `async function` wrapper (or an async IIFE) was unwrapped and the `await`s it implied
-    /// deleted. Every function on the model-facing surface is synchronous and returns its value
-    /// directly.
-    UnwrapAsync,
 }
 
 /// The language a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program is written in — the
@@ -4834,14 +4820,6 @@ pub struct GgHealingSummary {
     /// with [`enabled`](Self::enabled) rather than as "this model never doubled a reply".
     #[serde(default)]
     pub drop_doubled_response: u64,
-    /// Applications of
-    /// [`drop-duplicate-program`](GgHealingStrategy::DropDuplicateProgram) — how often a model sent
-    /// the same program twice in one reply.
-    pub drop_duplicate_program: u64,
-    /// Applications of [`drop-imports`](GgHealingStrategy::DropImports).
-    pub drop_imports: u64,
-    /// Applications of [`unwrap-async`](GgHealingStrategy::UnwrapAsync).
-    pub unwrap_async: u64,
     /// The [strategies](GgHealingStrategy) that were **armed** for this run, in the order gg
     /// applies them — the resolved configuration, recorded rather than left to be re-derived from
     /// the capability set.

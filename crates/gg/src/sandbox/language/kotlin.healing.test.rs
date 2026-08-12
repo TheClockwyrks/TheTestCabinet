@@ -4,25 +4,26 @@
 //! stripping, the fixpoint loop, the honesty disclosure and the delete-only invariant are asserted
 //! once in `healing.test.rs` against every registered dialect, this one included. What this file
 //! asserts is the part that is Kotlin's — and, because this arm shares a compiler road with
-//! [Java's](super::super::java::healing), most of it is written as a **comparison against that arm**:
-//! five answers differ, and each test below names the one it is about.
+//! [Java's](super::super::java::healing), some of it is written as a **comparison against that arm**:
+//! two answers differ, and each test that turns on one names it.
 
 use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::KOTLIN_DIALECT;
-use crate::healing::{
-    AsyncWrapper, Dialect, Healed, HealingConfig, HealingDetail, HealingStrategy, heal,
-};
+use crate::healing::{Dialect, Healed, HealingConfig, heal};
 
 /// Replies in Kotlin that the [delete-only invariant](crate::healing::Dialect::fixtures) is re-earned
 /// over.
 ///
-/// Every one of them exercises an answer that is this dialect's rather than the skeleton's: the three
-/// wrapper heads and both of their shapes, the coroutine import that comes off with one, a `suspend`
-/// modifier the repair deletes, an import that must survive, a raw string whose body must not be read
-/// as code — including one carrying a `${…}` template with a quote inside it — a doubled program
-/// whose repeat redeclares a `fun` rather than a `val`, a `#` line that is prose here, and two replies
-/// that are no program at all.
+/// A corpus rather than a list of expected repairs: what each reply has to survive is the whole
+/// pipeline, under every configuration, with nothing invented and nothing moved. Between them they
+/// carry a fenced program with prose on both sides, imports of three kinds, the concurrency wrappers
+/// and the `suspend` modifier a Kotlin author reaches for, a raw string whose body must not be read
+/// as code, a `${…}` template with a quote inside it, a program written out twice, a `#` line that
+/// is prose here, and a reply that is no program at all. Only some of those are shapes one of this
+/// arm's four readings turns on; a wrapper, an import and a doubled program are read by nothing at
+/// all now, which is exactly what makes them worth keeping in a corpus whose claim is that nothing
+/// is ever added or moved.
 pub(super) const FIXTURES: &[&str] = &[
     "Here is the program.\n\n```kotlin\nval rows = gg.files.listDir(\"src\")\ngg.views.openText(\"rows\", rows.toString())\n```\n\nThat lists the directory.",
     "import kotlinx.coroutines.runBlocking\n\nrunBlocking {\n    val rows = gg.files.listDir(\"src\")\n    gg.views.openText(\"rows\", rows.toString())\n}",
@@ -51,326 +52,9 @@ fn kotlin() -> &'static dyn Dialect {
     &KOTLIN_DIALECT
 }
 
-/// [Java's](super::super::java::healing), for the comparisons this file is largely made of.
+/// [Java's](super::super::java::healing), for the two comparisons this file makes.
 fn java() -> &'static dyn Dialect {
     crate::sandbox::language(GgProgramLanguage::Java).healing()
-}
-
-// ---------------------------------------------------------------------------------------------
-// The concurrency wrapper
-// ---------------------------------------------------------------------------------------------
-
-/// **`runBlocking { … }` comes off, and the `kotlinx.coroutines` import comes off with it.**
-///
-/// The whole-program shape a Kotlin author reaches for, and the one whose repair would be useless
-/// without the import deletion: `kotlinx.coroutines` is deliberately not on this arm's program
-/// classpath, so leaving the line behind would leave the one line of the repaired program that still
-/// fails to compile.
-#[test]
-fn the_run_blocking_wrapper_comes_off_with_its_import() {
-    let result = healed(
-        "import kotlinx.coroutines.runBlocking\n\n\
-         runBlocking {\n    \
-             val rows = gg.files.listDir(\"src\")\n    \
-             gg.views.openText(\"rows\", rows.toString())\n\
-         }",
-    );
-    assert_eq!(
-        result.program,
-        "val rows = gg.files.listDir(\"src\")\ngg.views.openText(\"rows\", rows.toString())"
-    );
-    assert_eq!(result.strategies(), vec![HealingStrategy::UnwrapAsync]);
-    assert!(
-        matches!(
-            result
-                .applied
-                .first()
-                .map(|application| &application.detail),
-            Some(HealingDetail::Async {
-                wrapper: AsyncWrapper::Immediate,
-                awaits: 0,
-            })
-        ),
-        "{:?}",
-        result.applied
-    );
-}
-
-/// **This is where the two JVM arms disagree about an import**, and the disagreement is about the
-/// classpath rather than about the language family.
-///
-/// Java keeps `import java.util.concurrent.CompletableFuture;` above its wrapper, because that
-/// package is in its declared library set and an unused import is legal. Kotlin's wrapper library is
-/// not reachable at all, so the same rule — never delete a working line, never leave a dead one —
-/// reaches the opposite conclusion.
-#[test]
-fn the_wrappers_import_is_deleted_here_and_kept_on_the_other_jvm_arm() {
-    let kotlin = healed(
-        "import kotlinx.coroutines.*\n\nrunBlocking {\n    gg.views.openText(\"note\", \"done\")\n}",
-    );
-    assert_eq!(kotlin.program, "gg.views.openText(\"note\", \"done\")");
-
-    let java = heal(
-        "import java.util.concurrent.CompletableFuture;\n\n\
-         CompletableFuture.runAsync(() -> {\n    \
-             gg.views.openText(\"note\", \"done\");\n\
-         }).join();",
-        &HealingConfig::default(),
-        java(),
-    );
-    assert!(
-        java.program.starts_with("import java.util.concurrent"),
-        "the comparison this test is about no longer holds:\n{}",
-        java.program
-    );
-}
-
-/// **An import that is not the wrapper's own makes the match decline**, rather than being deleted
-/// alongside.
-///
-/// A program with a working import above its wrapper is not a program that is *entirely* made of one,
-/// and `import kotlin.math.abs` is a line the body below may well depend on.
-#[test]
-fn an_unrelated_import_above_the_wrapper_declines_the_repair() {
-    let reply = "import kotlin.math.abs\n\nrunBlocking {\n    gg.views.openText(\"n\", abs(-1).toString())\n}";
-    assert_eq!(healed(reply).program, reply);
-}
-
-/// **`thread { … }` comes off with no runner call, and `Thread { … }` needs one.**
-///
-/// `kotlin.concurrent.thread` starts by default, so writing it is enough to have run the body;
-/// a bare `java.lang.Thread` has to be told to, and a wrapper that is only constructed ran nothing —
-/// so unwrapping it would execute statements the response never asked to execute.
-#[test]
-fn a_thread_that_starts_itself_needs_no_runner_and_one_that_does_not_does() {
-    let started = healed("thread {\n    gg.views.openText(\"note\", \"done\")\n}");
-    assert_eq!(started.program, "gg.views.openText(\"note\", \"done\")");
-
-    let joined =
-        healed("kotlin.concurrent.thread {\n    gg.views.openText(\"note\", \"done\")\n}.join()");
-    assert_eq!(joined.program, "gg.views.openText(\"note\", \"done\")");
-
-    let unstarted = "Thread {\n    gg.views.openText(\"note\", \"done\")\n}";
-    assert_eq!(healed(unstarted).program, unstarted);
-
-    let running = healed("Thread {\n    gg.views.openText(\"note\", \"done\")\n}.start()");
-    assert_eq!(running.program, "gg.views.openText(\"note\", \"done\")");
-}
-
-/// **The declared shape comes off too**, and only when something actually starts it.
-#[test]
-fn the_declared_thread_wrapper_comes_off_only_when_it_is_started() {
-    let started = healed(
-        "val worker = Thread {\n    \
-             gg.views.openText(\"note\", \"done\")\n\
-         }\n\
-         worker.start()\n\
-         worker.join()",
-    );
-    assert_eq!(started.program, "gg.views.openText(\"note\", \"done\")");
-    assert!(matches!(
-        started
-            .applied
-            .first()
-            .map(|application| &application.detail),
-        Some(HealingDetail::Async {
-            wrapper: AsyncWrapper::Declared,
-            awaits: 0,
-        })
-    ));
-
-    let unstarted = "val worker = Thread {\n    gg.views.openText(\"note\", \"done\")\n}";
-    assert_eq!(healed(unstarted).program, unstarted);
-}
-
-/// **A trailing lambda after an argument list is still the wrapper**, which is a shape Java's arm
-/// cannot have.
-///
-/// Kotlin puts the block *outside* the parentheses, so `runBlocking(Dispatchers.Default) { … }` and
-/// `thread(start = false) { … }` are the same wrapper with an argument list in the middle — where the
-/// equivalent Java wrapper has its lambda inside the call.
-#[test]
-fn an_argument_list_between_the_head_and_the_lambda_is_still_the_wrapper() {
-    let result = healed(
-        "import kotlinx.coroutines.*\n\n\
-         runBlocking(Dispatchers.Default) {\n    \
-             gg.views.openText(\"note\", \"done\")\n\
-         }",
-    );
-    assert_eq!(result.program, "gg.views.openText(\"note\", \"done\")");
-
-    let declared = healed(
-        "import kotlin.concurrent.thread\n\n\
-         val worker = thread(start = false) {\n    \
-             gg.views.openText(\"note\", \"done\")\n\
-         }\n\
-         worker.start()",
-    );
-    assert_eq!(declared.program, "gg.views.openText(\"note\", \"done\")");
-}
-
-/// **The `suspend` modifier goes with the wrapper, and is counted** — the one arm whose suspension
-/// count is not zero for a language with no `await`.
-///
-/// Kotlin marks suspension on the *declaration* rather than at the call site, so a `suspend fun`
-/// declared inside the wrapper is exactly the thing that cannot survive the wrapper coming off:
-/// without this the repaired program is refused with `Suspend function … should be called only from
-/// a coroutine`. Java's and Ruby's zero is the honest number for languages with no such token; this
-/// is the honest number for one that keeps it somewhere unusual.
-#[test]
-fn a_suspend_modifier_comes_off_with_the_wrapper_and_is_counted() {
-    let result = healed(
-        "runBlocking {\n    \
-             suspend fun gather(): String = gg.files.readTextFile(\"notes.md\")\n    \
-             gg.views.openText(\"notes\", gather())\n\
-         }",
-    );
-    assert_eq!(
-        result.program,
-        "fun gather(): String = gg.files.readTextFile(\"notes.md\")\ngg.views.openText(\"notes\", gather())"
-    );
-    assert!(
-        matches!(
-            result
-                .applied
-                .first()
-                .map(|application| &application.detail),
-            Some(HealingDetail::Async {
-                wrapper: AsyncWrapper::Immediate,
-                awaits: 1,
-            })
-        ),
-        "{:?}",
-        result.applied
-    );
-
-    // And the word inside a string is not a modifier: the mask is what tells the two apart.
-    let quoted = healed("runBlocking {\n    gg.views.openText(\"note\", \"suspend nothing\")\n}");
-    assert_eq!(
-        quoted.program,
-        "gg.views.openText(\"note\", \"suspend nothing\")"
-    );
-}
-
-/// **A wrapper that is not the whole program is left alone.**
-///
-/// The match is anchored to the head, which matters more here than on any other arm: Kotlin's
-/// trailing-lambda syntax makes `something { … }` the shape of half the expressions a program writes,
-/// so without the anchor a reply whose last statement was `rows.forEach { … }` would have every
-/// statement above it deleted.
-#[test]
-fn a_wrapper_that_is_not_the_whole_program_is_left_alone() {
-    for reply in [
-        "gg.files.writeFile(\"out.txt\", \"hello\")\nrunBlocking {\n    gg.views.openText(\"note\", \"done\")\n}",
-        "val rows = gg.files.listDir(\"src\")\nrows.forEach {\n    gg.views.openText(it.name, it.name)\n}",
-    ] {
-        assert_eq!(healed(reply).program, reply);
-    }
-}
-
-// ---------------------------------------------------------------------------------------------
-// The import that is never deleted
-// ---------------------------------------------------------------------------------------------
-
-/// **No line is ever an import, so `drop-imports` never fires here.**
-///
-/// gg's preparation hoists every `import` a model wrote into the script's header before the compiler
-/// sees it, so the line resolves and does its job. On the ECMAScript arms the same line is dead text
-/// and dropping it can only help; here dropping it would delete a working line.
-#[test]
-fn an_import_is_a_working_line_and_is_never_deleted() {
-    for line in [
-        "import kotlin.math.abs",
-        "import kotlin.collections.*",
-        "import java.time.Instant",
-    ] {
-        assert!(!kotlin().is_import_statement(line), "{line}");
-    }
-
-    let reply = "import kotlin.math.abs\n\n\
-                 val drift = abs(gg.files.listDir(\"src\").size - 3)\n\
-                 gg.views.openText(\"drift\", drift.toString())";
-    let result = healed(reply);
-    assert_eq!(result.program, reply);
-    assert!(result.applied.is_empty(), "{:?}", result.applied);
-}
-
-// ---------------------------------------------------------------------------------------------
-// Redeclaration
-// ---------------------------------------------------------------------------------------------
-
-/// **A repeated tail that redeclares a `fun` is deleted**, which is a proof no other arm has.
-///
-/// A program here is a Kotlin **script**, whose top level is a class body rather than a block — so
-/// the compiler refuses a second `fun` of one name (`Overload resolution ambiguity`) exactly as it
-/// refuses a second `val`. Java's program is a method body, where a `fun` has no counterpart at all,
-/// so that arm's proof is a local variable and nothing else.
-#[test]
-fn a_doubled_program_that_redeclares_a_function_is_halved() {
-    let half = "fun helper(): Int = 1\ngg.views.openText(\"n\", helper().toString())";
-    let result = healed(&format!("{half}\n\n{half}"));
-    assert_eq!(result.program, half);
-    assert!(
-        result
-            .strategies()
-            .contains(&HealingStrategy::DropDuplicateProgram),
-        "{:?}",
-        result.applied
-    );
-}
-
-/// **What counts as a declaration, and what deliberately does not.**
-///
-/// Every entry in the first list is one the compiler refuses to see twice at a script's top level —
-/// measured against the real one. Every entry in the second may legally be written twice, and each is
-/// rejected **by construction** rather than by a deny list: Kotlin puts a keyword in front of every
-/// declaration, so a line whose first word is neither a modifier nor a declaration keyword is not a
-/// declaration, full stop. That is the whole difference from Java's reading of the same question,
-/// which has to subtract two dozen statement keywords from "a type, a name and a terminator".
-#[test]
-fn a_declaration_is_told_from_everything_that_merely_looks_like_one() {
-    let declares = |text: &str| {
-        let mask = kotlin().code_mask(text).expect("it lexes");
-        kotlin().declares_a_redeclarable_binding(text, &mask, 0)
-    };
-
-    for line in [
-        "val total = 1",
-        "var total = 1",
-        "val plan: String = \"go\"",
-        "val (first, second) = pair",
-        "fun helper(): Int = 1",
-        "private fun helper(): Int = 1",
-        "suspend fun gather(): String = \"a\"",
-        "class Helper",
-        "data class Point(val x: Int, val y: Int)",
-        "sealed interface Event",
-        "enum class Mode { FAST, SLOW }",
-        "object Registry",
-        "typealias Rows = List<Int>",
-        "const val MAX = 10",
-    ] {
-        assert!(declares(line), "not read as a declaration: {line}");
-    }
-
-    for line in [
-        // No deny list is needed for any of these: none of them opens with a declaration keyword.
-        "return value",
-        "throw failure",
-        "import kotlin.math.abs",
-        "println(\"hi\")",
-        "gg.files.writeFile(\"out.txt\", body)",
-        "total = 1",
-        "if (left < right) {",
-        // A modifier that is really an identifier: `data.load()` is a call, not a `data class`.
-        "data.load()",
-        // Indented: a different scope, where the same name is legal again.
-        "    val total = 1",
-        // Inside a string, which the mask keeps out of the code.
-        "\"val total = 1\"",
-    ] {
-        assert!(!declares(line), "read as a declaration: {line}");
-    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -475,11 +159,11 @@ fn the_two_predicates_point_their_errors_in_the_safe_direction() {
 // The lexer
 // ---------------------------------------------------------------------------------------------
 
-/// **A raw string's body is not code**, so a wrapper written inside one is not a wrapper.
+/// **A raw string's body is not code**, and the brace and the declaration inside it are data.
 ///
 /// This is the shape a naive scan loses the source on: `"""` also starts with `"`, and reading it as
-/// an empty string followed by another would put the whole body back in the code — where the
-/// `runBlocking { … }` inside it would be matched and the program around it deleted.
+/// an empty string followed by another would put the whole body back in the code — where the `{`
+/// would be counted and the `val` inside it read as the program's.
 #[test]
 fn a_raw_string_carries_data_rather_than_code() {
     let reply = "val usage = \"\"\"\n    \
@@ -573,17 +257,14 @@ fn the_lexer_declines_the_shapes_it_cannot_read() {
 
 /// **A reply that is not ASCII is read rather than crashed on.**
 ///
-/// Both scans here walk one **byte** at a time — the lexer over the whole source, and the declaration
-/// reader over one line — so slicing at every step panics on an index that is not a character
-/// boundary. A single `é` in a string, a comment or an identifier would take the turn down with a
-/// slice index error rather than being healed, and a model writing a message in any language but
-/// English produces one on its first turn. What is asserted is not merely that nothing panics but
+/// The lexer walks one **byte** at a time, so slicing at every step panics on an index that is not a
+/// character boundary. A single `é` in a string, a comment or an identifier would take the turn down
+/// with a slice index error rather than being healed, and a model writing a message in any language
+/// but English produces one on its first turn. What is asserted is not merely that nothing panics but
 /// that the reading is still right: the raw string's contents are still not code, and the accented
-/// declaration is still a declaration.
+/// name outside it still is.
 #[test]
 fn a_reply_that_is_not_ascii_is_read_rather_than_crashed_on() {
-    // Deliberately no top-level declaration, so the one *inside* the raw string is the only thing
-    // that could make the reading below true.
     let reply = "// a cömment: don\u{2019}t lose the place\n\
                  println('é')\n\
                  gg.views.openText(\"grüße — wörld ✅\", \"\"\"\n    \
@@ -594,15 +275,16 @@ fn a_reply_that_is_not_ascii_is_read_rather_than_crashed_on() {
 
     let inside = reply.find("val total = 1").expect("the block holds one");
     assert!(!mask.is_code(inside));
-    assert!(!kotlin().declares_a_redeclarable_binding(reply, &mask, 0));
 
-    // And an accented name is still read as a declaration rather than skipped.
-    for line in ["val grüße = \"a\"", "data class Größe(val x: Int)"] {
+    // And an accented name outside a string is still read as code rather than lost.
+    for (line, name) in [
+        ("val grüße = \"a\"", "grüße"),
+        ("data class Größe(val x: Int)", "Größe"),
+    ] {
         let mask = kotlin().code_mask(line).expect("it lexes");
-        assert!(
-            kotlin().declares_a_redeclarable_binding(line, &mask, 0),
-            "{line}"
-        );
+        let at = line.find(name).expect("the line holds it");
+        assert!(mask.is_code(at), "{line}");
+        assert!(kotlin().looks_like_code(line), "{line}");
     }
 
     // The whole pipeline runs over it, under every configuration, and only ever deletes.

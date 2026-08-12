@@ -49,10 +49,17 @@ worth calling out because they answer questions the rest cannot:
   own, so this is the facet that answers "which ceiling?" directly.
 - **Eight [response-healing](/gg/response-healing/) metrics** — how many of a run's
   replies had to be repaired before they could run, how many applications each of the five
-  strategies made, and the computed `healing_rate`. Averaging that rate across a bucket
-  grouped by primary model answers "which models still need their replies repaired?" in one
-  query, which is exactly the instruction-following signal responses-as-code exists to
-  measure.
+  strategies of the day made, and the computed `healing_rate`. Averaging that rate across a
+  bucket grouped by primary model answers "which models still need their replies repaired?"
+  in one query, which is exactly the instruction-following signal responses-as-code exists to
+  measure. Eight is what this surface offered, not what a run document carries: three of
+  those five strategies have since been removed, so of the eight legacy names
+  `healing_strip_fences` and `healing_strip_prose` are the only per-strategy counters that
+  still name a field. A run records a third per-strategy counter —
+  `summary.healing.dropDoubledResponse` — but the old enum predates that strategy and never
+  had a token for it, so no legacy link can ask for it. A legacy link naming one of the other
+  three is dropped from the transcoded query exactly as `healing_rate` is — visibly, in the
+  editor the redirect lands in, rather than rewritten to a field the document does not carry.
 
 Ablating a healing strategy needs no new facet: a **capability param** facet over
 `responses-as-code` / `healing.strip-fences` resolves the dotted path, and a run that left

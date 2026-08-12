@@ -1,49 +1,23 @@
 //! **Ruby's [healing dialect](crate::healing::Dialect)** — the lexical half of
 //! [response healing](crate::healing), answered in Ruby's own terms.
 //!
-//! Every method here answers a question the healing skeleton asks and cannot answer itself. Three of
-//! the answers are the same *decisions* [Python's arm](super::super::python::healing) made, for the
-//! same reasons restated in Ruby; two are Ruby's alone and exist nowhere else in the registry.
+//! The healing skeleton asks three questions here and cannot answer any of them itself: the fence
+//! tags and the two line predicates. One of those answers is the same *decision*
+//! [Python's arm](super::super::python::healing) made, for the same reason restated in Ruby. The
+//! trait's fourth question — the [mask](Dialect::code_mask), which healing never asks and
+//! [this arm's module analysis](super::modules) does — is where Ruby reads shapes that exist
+//! nowhere else in the registry.
 //!
-//! # The two answers that are Ruby's and nobody else's
+//! # The answer that is Ruby's and nobody else's
 //!
-//! **The concurrency wrapper is a `Thread`, not a coroutine.** Ruby has no `async` keyword and no
-//! suspension token — every method call in the language already blocks — so the shape a model wraps
-//! a whole program in, when it wraps one at all, is `Thread.new do … end.join`. That wrapper is not
-//! merely redundant here: this guest is Opal, which has no `Thread` at all, so a program wearing one
-//! raises `NameError: uninitialized constant Thread` before a single line of the model's own work
-//! runs. [`unwrap_async`](Dialect::unwrap_async) therefore recognises both the immediate shape and
-//! the two-statement declared shape (`t = Thread.new do … end` … `t.join`), takes the
-//! `require "thread"` above it if there is one, and reports **zero** tokens removed — because there
-//! is no `await` in this language to remove and reporting one would be a count of something that
-//! never existed.
+//! **The lexer reads five string shapes, one of them a heredoc.** `'…'`, `"…"` with `#{…}`
+//! interpolation, `` `…` ``, the `%w[…]`/`%q(…)` family and `<<~EOS` heredocs — beside `#` line
+//! comments and `=begin`/`=end` block comments — are all ordinary Ruby that a model writes without
+//! thinking about it, and a mask that lost its place on any of them would be a mask that reported
+//! string bytes as code. See [`code_mask`] for what is read, and for the one shape that is
+//! deliberately not.
 //!
-//! **The lexer has five string shapes and a heredoc.** `'…'`, `"…"` with `#{…}` interpolation,
-//! `` `…` ``, the `%w[…]`/`%q(…)` family, `<<~EOS` heredocs, and `=begin`/`=end` block comments are
-//! all ordinary Ruby that a model writes without thinking about it, and a mask that lost its place
-//! on any of them would be a mask that reported string bytes as code. See [`code_mask`] for what is
-//! read, and for the one shape that is deliberately not.
-//!
-//! # The three answers that agree with Python's, and why
-//!
-//! **An import is never deleted.** The ECMAScript guest is baked with no module system at all, so
-//! every `import` a program writes there is dead text and dropping it can only help. This guest
-//! carries [a declared library set](super) baked out of the pinned Opal's own sources, so
-//! `require "json"` works, `require "set"` works, and the line is load-bearing. There is no lexical
-//! shape gg can recognise here that is *certainly* dead — and a `require` of something that is
-//! **not** baked is no better a candidate, because a program is entitled to rescue the `LoadError`
-//! it raises. So [`is_import_statement`](Dialect::is_import_statement) answers `false` and
-//! [`drop-imports`](crate::healing::HealingStrategy::DropImports) never fires on this arm.
-//!
-//! **Nothing is refused twice.** ECMAScript makes redeclaring a `const` an early error, which is
-//! what proves that deleting a repeated tail deletes text that could never have run. Ruby refuses
-//! nothing: `def main` twice is legal and the second wins, re-assigning a constant is a *warning*
-//! rather than an error, and a program pasted twice **runs twice**. So
-//! [`declares_a_redeclarable_binding`](Dialect::declares_a_redeclarable_binding) answers `false`,
-//! [`drop-duplicate-program`](crate::healing::HealingStrategy::DropDuplicateProgram) gives itself up,
-//! and a doubled reply is left to do what the model literally wrote. The coarser
-//! [`drop-doubled-response`](crate::healing::HealingStrategy::DropDoubledResponse) — a transport
-//! artefact rather than a model's text, and the strategy that asks a dialect nothing — still fires.
+//! # The answer that agrees with Python's, and why
 //!
 //! **A `#` line is never prose.** `# note` is a Ruby comment *and* a Markdown heading, and nothing
 //! lexical tells them apart. So `#` is listed among the characters no prose line contains: a comment
@@ -59,9 +33,7 @@
 //! predicate may cost. So every answer below is a lexical shape test, and each declines rather than
 //! guessing.
 
-use crate::healing::{
-    AsyncWrapper, CodeMask, Dialect, Unwrapped, common_prefix, lines_with_offsets,
-};
+use crate::healing::{CodeMask, Dialect};
 
 /// Ruby's dialect. A unit struct: everything it "holds" is the `const` data below.
 pub(in crate::sandbox::language) struct RubyDialect;
@@ -84,37 +56,6 @@ impl Dialect for RubyDialect {
 
     fn code_mask(&self, src: &str) -> Option<CodeMask> {
         code_mask(src)
-    }
-
-    /// **`false`, always.** See this module's own documentation: this guest bakes a declared library
-    /// set, so `require "json"` is a working line, and a `require` of something it does not carry is
-    /// a `LoadError` the program is entitled to rescue. Neither is certainly dead, and there is no
-    /// lexical test that tells a working one from a doomed one.
-    fn is_import_statement(&self, _line: &str) -> bool {
-        false
-    }
-
-    /// **`false`, always.** Ruby refuses no declaration twice — `def main` may be written as often
-    /// as a program likes and the last one wins, and re-assigning a constant is a warning rather
-    /// than an error — so there is no proof that a repeated tail could not have run, and without
-    /// that proof deleting it would delete work the model asked to have done twice.
-    fn declares_a_redeclarable_binding(&self, _text: &str, _mask: &CodeMask, _base: usize) -> bool {
-        false
-    }
-
-    /// `Thread.new do … end.join`, and the two-statement `t = Thread.new do … end` … `t.join` —
-    /// with the `require "thread"` that would have made either reachable, taken off together.
-    ///
-    /// Both shapes are reported, and this is the one dialect where the
-    /// [`Immediate`](AsyncWrapper::Immediate) label describes something that is not a lambda: a
-    /// thread created and joined where it is written is one expression with no name, which is
-    /// exactly what that variant is for.
-    ///
-    /// `awaits` is always **zero**. Ruby has no suspension token — every call in the language
-    /// already blocks — so there is nothing of that kind to delete, and reporting a count would put
-    /// a number in front of the model for a repair that never happened.
-    fn unwrap_async(&self, text: &str, mask: &CodeMask) -> Option<Unwrapped> {
-        unwrap_async(text, mask)
     }
 
     #[cfg(test)]
@@ -472,7 +413,7 @@ struct Scan {
 
 /// Lex `src` into its [code mask](CodeMask) — this dialect's answer to [`Dialect::code_mask`].
 ///
-/// `None` means the source did not lex cleanly, and every strategy that needs the mask declines on
+/// `None` means the source did not lex cleanly, and every caller that needs the mask declines on
 /// it. Three states end a scan uncleanly: a quoted string still open at the end of input, a
 /// `%`-literal still open there, and a heredoc whose terminator never arrived.
 ///
@@ -486,7 +427,7 @@ struct Scan {
 ///   counting* rather than by looking for the closing quote. That is what lets
 ///   `"total: #{rows["n"]}"` — an interpolation containing the outer quote, which Ruby allows — stay
 ///   one string. Reading the interpolation's contents as code was the alternative and is the scan
-///   that loses its place on exactly the input hardest to notice; nothing any strategy needs lives
+///   that loses its place on exactly the input hardest to notice; nothing any caller needs lives
 ///   inside one.
 /// * `` `…` `` — a command literal in Ruby, and inline JavaScript in this guest's Opal. Either way
 ///   its bytes are not Ruby code.
@@ -505,8 +446,8 @@ struct Scan {
 /// **A regular-expression literal.** `/…/` cannot be told from division without knowing whether the
 /// previous token was a value, which is a parse. So a `/` is scanned as an ordinary code byte, and a
 /// regex carrying a quote — `/it's/` — opens a string that never closes and the scan **declines**.
-/// That is the right failure: declining costs a repair, and the alternative reading costs a
-/// deletion.
+/// That is the right failure: a mask that declines is one nobody acts on, and the alternative
+/// reading is one that reports string bytes as code.
 fn code_mask(src: &str) -> Option<CodeMask> {
     let bytes = src.as_bytes();
     let mut code = vec![true; bytes.len()];
@@ -795,202 +736,6 @@ fn heredoc_terminator(bytes: &[u8], index: usize) -> Option<(usize, String)> {
         None => {}
     }
     Some((cursor - index, name))
-}
-
-// ---------------------------------------------------------------------------------------------
-// The concurrency wrapper
-// ---------------------------------------------------------------------------------------------
-
-/// The whole `Thread` wrapper, if `text` is entirely made of one.
-///
-/// Line-oriented, because Ruby's block structure is: the body is what lies between the line that
-/// opens the block and the `end` that closes it, and nothing but a keyword count could say so in
-/// another language. Each step declines rather than guessing, and the join is **required** for the
-/// reason [the skeleton](crate::healing::Dialect::unwrap_async) gives: a thread the program never
-/// joins is a wrapper whose body may not have finished, so unwrapping it would change what the reply
-/// asked for.
-fn unwrap_async(text: &str, mask: &CodeMask) -> Option<Unwrapped> {
-    let lines: Vec<(usize, &str)> = lines_with_offsets(text).collect();
-    let mut cursor = 0;
-
-    // Leading blanks, then the optional `require "thread"` that would have made the runner
-    // reachable — dead in this guest either way, and taken with the wrapper rather than left behind
-    // as the one line of a repaired program that still names a constant nothing defines.
-    cursor = skip_blank(&lines, cursor);
-    if lines
-        .get(cursor)
-        .is_some_and(|(offset, line)| mask.is_code(*offset) && is_thread_require(line))
-    {
-        cursor = skip_blank(&lines, cursor + 1);
-    }
-
-    // The line that opens the thread, unindented and in code context.
-    let (offset, header) = lines.get(cursor).copied()?;
-    if !mask.is_code(offset) || header.starts_with([' ', '\t']) {
-        return None;
-    }
-    let opened = thread_header(header)?;
-    cursor += 1;
-
-    // The body: every line up to the unindented `end` that closes the block.
-    let body_start = cursor;
-    let closing = loop {
-        let (offset, line) = lines.get(cursor).copied()?;
-        // Only an **unindented** `end` closes the wrapper: an indented one closes a block inside the
-        // body, which is where every nested `do` in a real program ends.
-        if mask.is_code(offset)
-            && !line.starts_with([' ', '\t'])
-            && let Some(closing) = closes_thread(line)
-        {
-            break closing;
-        }
-        cursor += 1;
-    };
-    if cursor == body_start {
-        return None;
-    }
-    let body = lines[body_start].0..lines[cursor].0;
-
-    // How the thread is waited on: on the closing line for the immediate shape, on a line of its own
-    // for the declared one — and in both cases with nothing after it.
-    let (wrapper, tail) = match (&opened, closing) {
-        (Opened::Immediate, Closing::Joined) => (AsyncWrapper::Immediate, cursor + 1),
-        (Opened::Named(name), Closing::Bare) => {
-            let waited = skip_blank(&lines, cursor + 1);
-            let (offset, line) = lines.get(waited).copied()?;
-            if !mask.is_code(offset) || !is_join_of(line, name) {
-                return None;
-            }
-            (AsyncWrapper::Declared, waited + 1)
-        }
-        _ => return None,
-    };
-    if skip_blank(&lines, tail) != lines.len() {
-        return None;
-    }
-
-    Some(Unwrapped {
-        wrapper,
-        text: dedent(text, mask, body),
-        // Ruby has no suspension token, so nothing of that kind was deleted and nothing is reported.
-        awaits: 0,
-    })
-}
-
-/// What the line that opens the thread said.
-enum Opened {
-    /// `Thread.new do` — created and waited on where it is written, so it has no name.
-    Immediate,
-    /// `worker = Thread.new do` — bound to a name the join below has to match.
-    Named(String),
-}
-
-/// How the block's `end` line ended: waiting on the thread, or merely closing it.
-#[derive(Clone, Copy)]
-enum Closing {
-    /// `end.join` — the immediate shape's wait.
-    Joined,
-    /// `end` — the declared shape's close, whose wait is on the next line.
-    Bare,
-}
-
-/// Whether `line` is the `require` that would have made `Thread` reachable.
-fn is_thread_require(line: &str) -> bool {
-    matches!(
-        line.trim(),
-        "require \"thread\"" | "require 'thread'" | "require \"thread\";" | "require 'thread';"
-    )
-}
-
-/// What `line` opens, when it is `Thread.new do` or `name = Thread.new do` and nothing else.
-///
-/// The trailing `do` is required and has to end the line: a block whose parameters run on — or which
-/// is written with braces spanning lines — is a shape only a parser could delimit.
-fn thread_header(line: &str) -> Option<Opened> {
-    let line = line.trim();
-    let (name, rest) = match find_assignment(line) {
-        Some(at) => {
-            let target = line[..at].trim_end();
-            if !is_name_shaped(target) || target.contains(['.', '[', ':']) {
-                return None;
-            }
-            (Some(target.to_string()), line[at + 1..].trim_start())
-        }
-        None => (None, line),
-    };
-    let rest = rest.strip_prefix("Thread.new")?.trim_start();
-    // `Thread.new()` and `Thread.new` are both written; anything else is a call this cannot delimit.
-    let rest = rest.strip_prefix("()").unwrap_or(rest);
-    // The line has to end on the bare `do` that opens the block. A block that names its parameters
-    // (`do |name|`) is one whose body only a parser could delimit, and a brace block spanning lines
-    // is one expression rather than a statement — both decline here rather than being guessed at.
-    if rest.trim() != "do" {
-        return None;
-    }
-    Some(match name {
-        Some(name) => Opened::Named(name),
-        None => Opened::Immediate,
-    })
-}
-
-/// How `line` closes the thread's block, when it closes it at all.
-fn closes_thread(line: &str) -> Option<Closing> {
-    match line.trim().trim_end_matches(';').trim_end() {
-        "end" => Some(Closing::Bare),
-        "end.join" | "end.join()" | "end.value" => Some(Closing::Joined),
-        _ => None,
-    }
-}
-
-/// Whether `line` is exactly the wait on the thread `name` holds.
-fn is_join_of(line: &str, name: &str) -> bool {
-    let tail = line.trim().trim_end_matches(';').trim_end();
-    tail == format!("{name}.join")
-        || tail == format!("{name}.join()")
-        || tail == format!("{name}.value")
-}
-
-/// The index of the next line with something on it, from `from`.
-fn skip_blank(lines: &[(usize, &str)], from: usize) -> usize {
-    let mut index = from;
-    while lines
-        .get(index)
-        .is_some_and(|(_, line)| line.trim().is_empty())
-    {
-        index += 1;
-    }
-    index
-}
-
-/// The wrapper's body, dedented by the common indentation of the lines that begin in code context.
-///
-/// `body` is the byte range of the body inside `text`, so the surviving lines keep their own
-/// terminators and a `\r\n` program stays a `\r\n` program. A line that begins inside a heredoc or a
-/// `%`-literal carries data rather than indentation and is neither measured nor stripped, which is
-/// what keeps a repaired program's embedded text byte-identical.
-fn dedent(text: &str, mask: &CodeMask, body: std::ops::Range<usize>) -> String {
-    let inner = &text[body.clone()];
-    let base = body.start;
-
-    let indent = lines_with_offsets(inner)
-        .filter(|(offset, line)| !line.trim().is_empty() && mask.is_code(base + offset))
-        .map(|(_, line)| &line[..line.len() - line.trim_start().len()])
-        .reduce(common_prefix)
-        .unwrap_or_default()
-        .to_string();
-
-    let mut out = String::with_capacity(inner.len());
-    let mut offset = 0;
-    for raw in inner.split_inclusive('\n') {
-        let start = offset;
-        offset += raw.len();
-        let dedented = match mask.is_code(base + start) {
-            true => raw.strip_prefix(indent.as_str()).unwrap_or(raw),
-            false => raw,
-        };
-        out.push_str(dedented);
-    }
-    out.trim().to_string()
 }
 
 #[cfg(test)]

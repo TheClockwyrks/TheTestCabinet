@@ -70,7 +70,7 @@ use std::sync::OnceLock;
 use serde_json::{Value, json};
 use test_cabinet_core::gg::GgProgramLanguage;
 
-use crate::healing::{CodeMask, Dialect, Unwrapped};
+use crate::healing::{CodeMask, Dialect};
 use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
@@ -785,7 +785,7 @@ Search these for the function you need, then open a documentation view of it.
 /// The fixture's [dialect](Dialect): the same questions, different answers.
 ///
 /// Every method here disagrees with TypeScript's on some input the tests exercise — a different
-/// fence tag, a different import keyword, a different declaration form — which is what turns "the
+/// fence tag, a different shape of code, a different comment marker — which is what turns "the
 /// skeleton asks the dialect" from a claim into an observation.
 pub(crate) static FIXTURE_DIALECT: FixtureDialect = FixtureDialect;
 
@@ -829,37 +829,12 @@ impl Dialect for FixtureDialect {
         Some(CodeMask::from_flags(flags))
     }
 
-    /// `use x`, not `import x from "y"`.
-    fn is_import_statement(&self, line: &str) -> bool {
-        is_use(line.trim())
-    }
-
-    fn declares_a_redeclarable_binding(&self, text: &str, mask: &CodeMask, base: usize) -> bool {
-        let mut offset = 0;
-        for line in text.split_inclusive('\n') {
-            let indent = line.len() - line.trim_start().len();
-            if line.trim_start().starts_with("def ") && mask.is_code(base + offset + indent) {
-                return true;
-            }
-            offset += line.len();
-        }
-        false
-    }
-
-    /// `None`, always: the fixture language has no concurrency construct to unwrap.
-    ///
-    /// A legal answer, and one worth having a non-inert dialect give — it is the shape of every
-    /// language whose programs are synchronous by construction, and it keeps `unwrap-async` from
-    /// looking like a step every dialect must implement.
-    fn unwrap_async(&self, _text: &str, _mask: &CodeMask) -> Option<Unwrapped> {
-        None
-    }
-
     /// Replies in this language that the delete-only invariant is re-asserted over.
     ///
     /// One per repair the dialect can drive, plus the shapes where it must decline: a fenced
-    /// program, prose around a bare one, a `use` line to drop, a doubled `def`, and a reply that is
-    /// nothing but prose.
+    /// program under each of its two tags, the first of them with prose around it; a bare program
+    /// pasted out twice with a blank line between the copies; a bare program carrying a `use` line
+    /// and a comment; a reply that is nothing but prose; and the empty reply.
     fn fixtures(&self) -> &'static [&'static str] {
         &[
             "Here is the program.\n\n```fixture\ndef main\n  total = 1 + 2\n```\n\nThat should do it.",

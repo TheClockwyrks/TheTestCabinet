@@ -8,8 +8,8 @@
 //! * [`source`] — what gg does to a model's Java before javac sees it: the wrapper, the import
 //!   hoist and the export scan, all line-preserving;
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
-//!   questions of: the fence tags, the two predicates, the text-block lexer, the redeclaration
-//!   proof, and the thread wrapper — four of whose answers are this arm's alone;
+//!   questions of: the fence tags, the two predicates, and the text-block lexer — two of whose
+//!   answers are this arm's alone;
 //! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
 //!   in Java's syntax;
 //! * `packages/gg-sandbox-java/src/gg/` — the SDK, and every word of prose a model reads about it;
@@ -348,10 +348,7 @@ pub(super) fn open_file_statement(
 /// view.
 ///
 /// A list and a loop rather than one statement per name because the list is as long as the family —
-/// eleven calls written out would be a program a model reads as a style to copy — and an enhanced
-/// `for` rather than `forEach` with a lambda, because a lambda is the one construct this arm's
-/// [healing dialect](self::healing) hunts for as a concurrency wrapper and a generated program
-/// should not teach a shape gg spends effort undoing.
+/// eleven calls written out would be a program a model reads as a style to copy.
 ///
 /// `List.of` rather than an array literal because it is what a Java author writes today, and it
 /// needs no import: `java.util.*` is in the header gg writes. The empty case is `List.of()`, whose

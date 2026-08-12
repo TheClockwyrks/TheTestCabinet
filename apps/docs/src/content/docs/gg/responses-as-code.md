@@ -241,11 +241,10 @@ pasted second draft looks like. A notice is the only channel that fact has.
 
 Between the raw reply and the preparation step sits a **deletion-only healing pass**: it
 unwraps a Markdown fence a model wrapped its program in, drops explanatory lines around
-it, removes `import` lines for a surface that is already in scope, and unwraps an
-`async` wrapper whose continuation this sandbox would have run only after the program
-had already returned. The pass itself is language-independent — what an import looks
-like, and what a whole-program concurrency wrapper looks like, are asked of the run's
-language's [dialect](/gg/response-healing/#the-skeleton-and-the-dialect).
+it, and — for a run that asks for it — halves a reply the transport delivered as a
+byte-identical copy of itself. The pass itself is language-independent — which fence
+tags mark a program, and what tells a line of code from a line of prose, are asked of
+the run's language's [dialect](/gg/response-healing/#the-skeleton-and-the-dialect).
 Every repair is counted on the run and disclosed to the run's
 operator, so a healed response is a measurement rather than a rescue — but nothing about it
 is said to the model, for the same reason nothing else about a working program is. The
@@ -1798,7 +1797,7 @@ The capability is `responses-as-code`, under **Models & tools** in the
 | `timeoutSecs` | `30` | The per-program guest-execution timeout, in seconds. |
 | `maxMemoryBytes` | `268435456` | The per-program linear-memory cap. |
 | `docViewTypes` | `return` | Which SDK types opening a function's documentation opens beside it: `return` (the return position), `return-and-parameters` (everything the signature names), or `off` (nothing). Labelled **Documentation types** in the editor. |
-| `healing` | each strategy at its own default | Which [response-healing](/gg/response-healing/#configuration) repairs are armed. Five of the six are on unless a run says otherwise; `drop-doubled-response` is [armed deliberately](/gg/response-healing/#the-one-strategy-you-have-to-ask-for). |
+| `healing` | each strategy at its own default | Which [response-healing](/gg/response-healing/#configuration) repairs are armed. Two of the three are on unless a run says otherwise; `drop-doubled-response` is [armed deliberately](/gg/response-healing/#the-one-strategy-you-have-to-ask-for). |
 
 The two numeric params each fall back to their default when absent, non-numeric, or
 non-positive. `timeoutSecs` is a wall-clock time, so a **fraction** is honoured — `0.5` is

@@ -112,18 +112,6 @@
           "minimum": 0,
           "type": "integer"
         },
-        "dropDuplicateProgram": {
-          "description": "Applications of\n[`drop-duplicate-program`](GgHealingStrategy::DropDuplicateProgram) — how often a model sent\nthe same program twice in one reply.",
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "dropImports": {
-          "description": "Applications of [`drop-imports`](GgHealingStrategy::DropImports).",
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
         "enabled": {
           "default": [],
           "description": "The [strategies](GgHealingStrategy) that were **armed** for this run, in the order gg\napplies them — the resolved configuration, recorded rather than left to be re-derived from\nthe capability set.\n\nThis is what makes an ablation legible from the telemetry alone. Every counter above is a\nmeasurement of what fired, and a run in which nothing fired is byte-identical whether its\nstrategies were all armed or all disabled — so without this field the healing-off arm of a\nstudy and its healing-on arm are indistinguishable in the data, and a study slicing on the\narm has to go back to the invocation files that produced it.\n\nEmpty means every strategy was disabled **for a responses-as-code run**, and means nothing\nat all for a tool-calling one, where healing never runs;\n[`execution_mode`](GgSessionSummary::execution_mode) is what tells those two apart.\n\nSerialized **always, empty list and all** — deliberately no `skip_serializing_if`. The empty\nlist is the one value this field exists to publish, so a key that vanished exactly when it\nmeant \"every strategy was off\" would leave the healing-off arm byte-identical on the wire to\na build with no such field, reopening one level down the very hole described above. Only\n[`Deserialize`] treats it as optional, so a summary recorded before the field existed still\nreads — as an empty armed set, which for those runs is the truth rather than a guess.",
@@ -149,23 +137,9 @@
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
-        },
-        "unwrapAsync": {
-          "description": "Applications of [`unwrap-async`](GgHealingStrategy::UnwrapAsync).",
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
         }
       },
-      "required": [
-        "healed",
-        "applications",
-        "stripFences",
-        "stripProse",
-        "dropDuplicateProgram",
-        "dropImports",
-        "unwrapAsync"
-      ],
+      "required": ["healed", "applications", "stripFences", "stripProse"],
       "type": "object"
     },
     "GgLimitBreach": {
@@ -340,13 +314,10 @@
       "default": {
         "applications": 0,
         "dropDoubledResponse": 0,
-        "dropDuplicateProgram": 0,
-        "dropImports": 0,
         "enabled": [],
         "healed": 0,
         "stripFences": 0,
-        "stripProse": 0,
-        "unwrapAsync": 0
+        "stripProse": 0
       },
       "description": "What gg had to do to the models' responses before it could run them — the run's\n[response-healing](GgHealingSummary) rollup, folded from the same\n[`CodeExecution`](GgTelemetryKind::CodeExecution) events\n[`code_executions`](Self::code_executions) counts. All zeroes for a tool-calling run."
     },

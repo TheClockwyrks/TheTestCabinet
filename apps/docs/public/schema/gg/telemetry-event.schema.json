@@ -486,7 +486,7 @@
       "type": "object"
     },
     "GgHealingStrategy": {
-      "description": "One [response-healing](https://docs.testcabinet.ai/gg/response-healing/) strategy — a named,\nindependently toggleable repair gg may apply to a model's response before running it.\n\nThe wire values are the strategy ids, spelled exactly as the\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `healing` param keys are\n(`{\"healing\": {\"strip-fences\": false}}`), because the id is one thing: a config key, a metric\nname, and a telemetry value. Kebab-case rather than this module's usual snake_case for exactly\nthat reason.\n\nEvery application is disclosed to the model in its turn feedback — a repair the model is never\ntold about teaches it nothing and corrupts the ablation, whose whole question is whether models\nlearn the contract.\n\nMost strategies are armed unless a configuration turns them off, because for those, repairing is\nstrictly safer than not: the reply they delete from could not have run as sent. The exception is\n[`drop-doubled-response`](Self::DropDoubledResponse), which is **off** unless a configuration\narms it — see its own documentation for why that asymmetry exists.",
+      "description": "One [response-healing](https://docs.testcabinet.ai/gg/response-healing/) strategy — a named,\nindependently toggleable repair gg may apply to a model's response before running it.\n\nThe wire values are the strategy ids, spelled exactly as the\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `healing` param keys are\n(`{\"healing\": {\"strip-fences\": false}}`), because the id is one thing: a config key, a metric\nname, and a telemetry value. Kebab-case rather than this module's usual snake_case for exactly\nthat reason.\n\nEvery application is disclosed to the model in its turn feedback — a repair the model is never\ntold about teaches it nothing and corrupts the ablation, whose whole question is whether models\nlearn the contract.\n\nTwo of the three are armed unless a configuration turns them off, because for those, repairing\nis strictly safer than not: the reply they delete from could not have run as sent. The exception\nis [`drop-doubled-response`](Self::DropDoubledResponse), which is **off** unless a configuration\narms it — see its own documentation for why that asymmetry exists.",
       "oneOf": [
         {
           "const": "strip-fences",
@@ -500,22 +500,7 @@
         },
         {
           "const": "drop-doubled-response",
-          "description": "The whole reply was one completion concatenated with a byte-identical copy of itself, and the\ntrailing copy was deleted. The shape a provider produces when it emits (or a proxy records)\nthe same completion twice: the reply's text is exactly `X + X`, with no fence, no blank line\nand no declaration to separate the halves.\n\nThe coarser, whole-reply sibling of\n[`drop-duplicate-program`](Self::DropDuplicateProgram), applied **before** it so the finer\ntest only ever sees a reply that is not a clean doubling. It is the one strategy that is\n**off unless a configuration arms it**: the half it deletes is valid code under any reading\nother than \"the transport duplicated this\", so unlike every other repair here, applying it to\na model that genuinely meant to do the work twice changes behaviour rather than restoring it.\nAn operator arms it for the models observed to exhibit the defect.",
-          "type": "string"
-        },
-        {
-          "const": "drop-duplicate-program",
-          "description": "The response was one program pasted after an identical copy of itself, and the trailing copy\nwas deleted. The shape a model produces when it drafts two programs and sends both with no\nfence to separate them: the repeat redeclares every `const` in the first copy, so the reply\nas sent could not execute a single statement, which is what makes deleting it a repair\nrather than a change of behaviour.",
-          "type": "string"
-        },
-        {
-          "const": "drop-imports",
-          "description": "Whole `import`/`require` statements were removed: the tool surface is already in the\nprogram's scope, so there is nothing to import and the sandbox has no module loader to\nimport it with.",
-          "type": "string"
-        },
-        {
-          "const": "unwrap-async",
-          "description": "An `async function` wrapper (or an async IIFE) was unwrapped and the `await`s it implied\ndeleted. Every function on the model-facing surface is synchronous and returns its value\ndirectly.",
+          "description": "The whole reply was one completion concatenated with a byte-identical copy of itself, and the\ntrailing copy was deleted. The shape a provider produces when it emits (or a proxy records)\nthe same completion twice: the reply's text is exactly `X + X`, with no fence, no blank line\nand no declaration to separate the halves.\n\nIt is the one strategy that is **off unless a configuration arms it**: the half it deletes\nis valid code under any reading other than \"the transport duplicated this\", so unlike the\nother repairs here, applying it to a model that genuinely meant to do the work twice changes\nbehaviour rather than restoring it. An operator arms it for the models observed to exhibit\nthe defect.",
           "type": "string"
         }
       ]

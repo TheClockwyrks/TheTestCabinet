@@ -398,12 +398,11 @@ fn find_token(bytes: &[u8], code: &[bool], from: usize, token: &[u8]) -> Option<
 /// The [dialect's own lexer](super::healing::scan), read leniently. That module owns the scan
 /// because healing is where the hardest questions are asked of it; what differs is only what the
 /// two readers do with a source that did not lex cleanly. Healing
-/// [declines](super::healing::code_mask) one, because every strategy that consults a mask is
-/// deciding whether to delete text and a reading already known to be wrong is the worst possible
-/// basis for that. This reader takes the best reading whatever happened, because the question it
-/// answers — does this reply define `main` — has its errors safe in the accepting direction: a
-/// program masked wrongly is at worst one that is compiled and traps, which is exactly what not
-/// looking at all would have given.
+/// [declines](super::healing::code_mask) one, because a reading already known to be wrong is the
+/// worst possible basis for anything drawn from it. This reader takes the best reading whatever
+/// happened, because the question it answers — does this reply define `main` — has its errors safe
+/// in the accepting direction: a program masked wrongly is at worst one that is compiled and traps,
+/// which is exactly what not looking at all would have given.
 pub(super) fn code_mask(source: &str) -> Vec<bool> {
     super::healing::scan(source).code
 }

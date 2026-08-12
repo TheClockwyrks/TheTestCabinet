@@ -3,24 +3,23 @@
 //! What is deliberately **not** here is a second copy of the skeleton's tests. Fence stripping,
 //! prose stripping, the fixpoint loop, the honesty disclosure and the delete-only invariant are
 //! asserted once in `healing.test.rs` against every registered dialect, this one included. What this
-//! file asserts is the part that is C++'s — and much of it is written as a **comparison against
-//! another arm**, because this dialect answers two of the seam's questions differently from every
-//! arm before it: `#` is a heading *and* a directive, and there is no concurrency wrapper to unwrap
-//! at all.
+//! file asserts is the part that is C++'s — chiefly the one question this dialect answers
+//! differently from every arm before it: `#` is a heading *and* a directive.
 
 use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::CPP_DIALECT;
-use crate::healing::{Dialect, Healed, HealingConfig, HealingStrategy, heal};
+use crate::healing::{Dialect, Healed, HealingConfig, heal};
 
 /// Replies in C++ that the [delete-only invariant](crate::healing::Dialect::fixtures) is re-earned
 /// over.
 ///
-/// Every one of them exercises an answer that is this dialect's rather than the skeleton's: a
+/// Most of them exercise an answer that is this dialect's rather than the skeleton's, and the rest
+/// are shapes no strategy takes anything off — which the invariant is worth re-earning over too: a
 /// `#include` that must **survive** every strategy, a `#define` that must not be deleted as prose, a
-/// Markdown heading that must stay deletable beside it, a doubled program whose repeat redefines
-/// `main`, a doubled fragment whose repeat redefines a helper, a raw string whose body is full of
-/// code-shaped text, a digit separator, a block comment that does not nest, a `template` and a
+/// Markdown heading that must stay deletable beside it, a reply that is one program pasted after a
+/// copy of itself, a reply that doubles a helper beside its `main`, a raw string whose body is full
+/// of code-shaped text, a digit separator, a block comment that does not nest, a `template` and a
 /// `concept` in one program, an apostrophe in a line of English, and two replies that are no program
 /// at all.
 pub(super) const FIXTURES: &[&str] = &[
@@ -51,12 +50,6 @@ fn healed(reply: &str) -> Healed {
 /// This dialect, as the skeleton takes it.
 fn cpp() -> &'static dyn Dialect {
     &CPP_DIALECT
-}
-
-/// [Rust's](super::super::rust::healing), whose concurrency wrapper this arm deliberately has no
-/// counterpart to.
-fn rust() -> &'static dyn Dialect {
-    crate::sandbox::language(GgProgramLanguage::Rust).healing()
 }
 
 /// The mask of `src`, for a test that is about what the lexer read.
@@ -111,11 +104,11 @@ fn a_heading_is_prose_and_a_directive_is_code() {
 
 /// **A `#include` a model wrote survives every strategy**, because the line works.
 ///
-/// The third arm to answer `is_import_statement` with `false`, and the argument is the strongest of
-/// the three: gg's surface and the standard library are already in front of the program, put there
-/// by a precompiled prelude, so a redundant include is de-duplicated against that header for
-/// nothing — and a header the prelude does not carry is a located diagnostic naming it, which is a
-/// better answer than a silent deletion.
+/// gg's surface and the standard library are already in front of the program, put there by a
+/// precompiled prelude, so a redundant include is de-duplicated against that header for nothing —
+/// and a header the prelude does not carry is a located diagnostic naming it, which is a better
+/// answer than a silent deletion. What healing must not do is take the line for prose on the way
+/// past, which is this dialect's own reading of `#` and the thing this asserts.
 #[test]
 fn an_include_is_never_deleted() {
     let reply = "#include <vector>\n#include <algorithm>\n\n\
@@ -132,124 +125,6 @@ fn an_include_is_never_deleted() {
         "an include was deleted: {}",
         result.program
     );
-    assert!(
-        !cpp().is_import_statement("#include <vector>"),
-        "this dialect does not treat an include as something to hoist"
-    );
-}
-
-// ---------------------------------------------------------------------------------------------
-// The concurrency wrapper that is not there
-// ---------------------------------------------------------------------------------------------
-
-/// **This arm has no concurrency wrapper to unwrap, and the Rust arm does.**
-///
-/// Two independent reasons, and the test asserts the shape rather than the reasoning: a reply's top
-/// level here is a translation unit rather than a statement list, so a program that is nothing but a
-/// wrapper does not exist in this grammar; and every header that would express one is off the
-/// library set, so a program reaching for concurrency is a located diagnostic on the turn that wrote
-/// it. The Rust arm's `std::thread::spawn` **compiles** and then does nothing at run time, which is
-/// why that arm deletes it and this one has nothing to delete.
-#[test]
-fn there_is_no_concurrency_wrapper_here_and_rusts_is_still_taken_off() {
-    let program = "int main() {\n  \
-                   std::thread worker([] { views::open_text(\"note\", \"done\"); });\n  \
-                   worker.join();\n  \
-                   return 0;\n\
-                   }\n";
-    let result = healed(program);
-    assert_eq!(
-        result.program,
-        program.trim_end(),
-        "nothing about a threaded C++ program is healed — the compiler is what answers it"
-    );
-    assert!(
-        cpp().unwrap_async(program, &mask(program)).is_none(),
-        "this dialect recognises no whole-program wrapper"
-    );
-
-    // The same question asked of the arm that does have one, so this test is a comparison rather
-    // than an assertion that a method returns `None`.
-    let rusty =
-        "std::thread::spawn(|| {\n    views::open_text(\"note\", \"done\")?;\n    Ok(())\n});";
-    assert!(
-        rust()
-            .unwrap_async(rusty, &rust().code_mask(rusty).expect("this source lexes"))
-            .is_some(),
-        "the Rust arm still takes its own wrapper off, so the absence here is this language's"
-    );
-}
-
-// ---------------------------------------------------------------------------------------------
-// Redeclaration
-// ---------------------------------------------------------------------------------------------
-
-/// **A doubled program is provably dead code here, because every program defines `main`.**
-///
-/// The strongest redeclaration proof of any registered arm, and this arm gets it from the shape of
-/// the language rather than from the reading: gg refuses a reply that defines no `main`, so a reply
-/// that is one program pasted after an identical copy of itself always carries two definitions of
-/// `main` — `redefinition of 'main'`, before a statement runs.
-#[test]
-fn a_doubled_program_redefines_main() {
-    let once = "int main() {\n  views::open_text(\"n\", \"1\");\n  return 0;\n}\n";
-    let result = healed(&format!("{once}{once}"));
-    assert_eq!(result.program, once.trim_end());
-    assert!(
-        result
-            .applied
-            .iter()
-            .any(|repair| repair.strategy == HealingStrategy::DropDuplicateProgram),
-        "the repair is disclosed: {:?}",
-        result.applied
-    );
-}
-
-/// **A reopened `namespace` is not a redefinition**, which is the one shape this reading must not
-/// get wrong.
-///
-/// C++ lets a namespace be opened as many times as an author likes, so `namespace helpers {`
-/// appearing twice is ordinary code. Reading it as a redefinition would let
-/// `drop-duplicate-program` delete a tail that would have run — the one failure this strategy must
-/// never have.
-#[test]
-fn a_reopened_namespace_is_not_a_redefinition() {
-    let source = "namespace helpers {\nint one() { return 1; }\n}\n";
-    let mask = mask(source);
-    assert!(
-        !cpp().declares_a_redeclarable_binding("namespace helpers {\n", &mask, 0),
-        "a namespace may be reopened, so opening one proves nothing"
-    );
-    assert!(
-        cpp().declares_a_redeclarable_binding("int one() { return 1; }\n", &mask, 20),
-        "a function definition may not appear twice"
-    );
-}
-
-/// **A declaration is not a definition**, which is the distinction the proof rests on.
-///
-/// `int helper();` written twice is legal C++ and `int helper() { … }` written twice is not, so a
-/// reading that could not tell them apart would either give up the strategy or delete a tail that
-/// could have run.
-#[test]
-fn a_forward_declaration_proves_nothing_and_a_definition_proves_everything() {
-    let cases: [(&str, bool); 6] = [
-        ("int helper();", false),
-        ("int helper() { return 1; }", true),
-        ("struct row;", false),
-        ("struct row {", true),
-        ("constexpr int limit = 40;", true),
-        ("extern \"C\" {", false),
-    ];
-    for (line, expected) in cases {
-        let source = format!("{line}\n");
-        let mask = mask(&source);
-        assert_eq!(
-            cpp().declares_a_redeclarable_binding(&source, &mask, 0),
-            expected,
-            "`{line}`"
-        );
-    }
 }
 
 // ---------------------------------------------------------------------------------------------

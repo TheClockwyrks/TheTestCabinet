@@ -1,7 +1,7 @@
 //! **C++'s [healing dialect](crate::healing::Dialect)** — the lexical half of
 //! [response healing](crate::healing), answered in C++'s own terms.
 //!
-//! Four of its answers are worth naming before the code, because each is the same rule reading a
+//! One of its answers is worth naming before the code, because it is the same rule reading a
 //! grammar no other arm here has.
 //!
 //! **`#` is both Markdown's heading and C++'s preprocessor, and case is what tells them apart.**
@@ -12,46 +12,6 @@
 //! **fourteen directive words, spelled lower-case**, is read as code by both predicates. A heading
 //! reading `# Include the manifest` is capital-I and is prose; `#include` is not. That is the same
 //! distinction case-sensitivity already buys every arm's keyword list, reached in a second place.
-//!
-//! **Nothing is done about an `#include`, and this is the third arm where that is because the line
-//! works.** [Rust](super::super::rust::healing) and [Swift](super::super::swift::healing) are the
-//! first two. gg's whole surface and the standard library are in front of a program already, put
-//! there by a **precompiled** prelude — so a model's `#include <vector>` is a second, redundant read
-//! of a header the preamble has seen, which clang de-duplicates against the precompiled header for
-//! nothing. A header the prelude does *not* carry is `error: no such file or directory` at the
-//! model's own line, which is a better answer than a silent deletion.
-//!
-//! It is worth saying that this is the *program*'s answer and not the module's. A code module is
-//! compiled inside `namespace lib::<key>`, `#include` is textual, and a header pulled into a
-//! namespace is a different thing entirely — so a module carrying one is
-//! [refused by name](super::source) while a program carrying one is left exactly as written. The
-//! asymmetry is real and it is the language's rather than gg's.
-//!
-//! **The redeclaration proof is the strongest of any registered arm's, and this arm gets it for
-//! free.** Every other language's version of it asks whether the repeated tail happens to declare
-//! something the compiler refuses twice. A C++ program *must* define `main` — gg
-//! [refuses one that does not](super::source::defines_main) — so a reply that is one program pasted
-//! after an identical copy of itself always carries two definitions of `main`, which is
-//! `redefinition of 'main'` before a statement runs. The reading below is wider than that, because a
-//! doubled *fragment* is worth catching too, but the everyday case is decided by the shape of the
-//! language.
-//!
-//! **There is no concurrency wrapper to unwrap**, and the reason is the grammar rather than the
-//! library set. A reply's top level is a **translation unit** rather than a statement list, so the
-//! shape the strategy looks for — a whole program that is one wrapper and nothing else — does not
-//! exist in this language at all. The model's work is inside `main` either way, and a thread it
-//! constructed there is a statement among statements rather than something wrapped around
-//! everything.
-//!
-//! What this arm is *not* is one where concurrency cannot be written. `<thread>`, `<future>` and
-//! `<atomic>` are off the [prelude](super::compile), and the prelude is what a program is compiled
-//! *against* rather than an allowlist — the whole of libc++ is on the include path, so a program
-//! that writes `#include <thread>` gets it. Measured against this arm's own flags: it compiles, it
-//! links, and `std::thread`'s constructor throws `system_error: thread constructor failed: Not
-//! supported` at run time. That is the same position the [Rust](super::super::rust::healing) arm is
-//! in — `std::thread::spawn` compiles there too — with a better ending, a recoverable exception
-//! carrying a sentence rather than a thread that silently never runs. What differs is only the
-//! wrapper: Rust's shape exists and has to be deleted, and this one's never existed.
 //!
 //! # What its lexer asks that no other arm's does
 //!
@@ -73,12 +33,12 @@
 //! # One scan, two readings
 //!
 //! [`scan`] is the only lexer this arm has, and it answers two different questions with one pass.
-//! [`code_mask`] gives healing a mask **only when the scan ended cleanly**, because every strategy
-//! that consults one is deciding whether to delete text and a reading already known to be wrong is
-//! the worst possible basis for that. [`source::code_mask`](super::source::code_mask) takes the same
-//! mask whatever happened, because the question *it* answers — does this reply define `main` — is
-//! one whose errors are safe in the accepting direction. Two lexers would have been two chances to
-//! disagree about what a raw string is.
+//! [`code_mask`] gives healing a mask **only when the scan ended cleanly**, because a reading
+//! already known to be wrong is the worst possible basis for anything drawn from it.
+//! [`source::code_mask`](super::source::code_mask) takes the same mask whatever happened, because
+//! the question *it* answers — does this reply define `main` — is one whose errors are safe in the
+//! accepting direction. Two lexers would have been two chances to disagree about what a raw string
+//! is.
 //!
 //! # None of these is a parser
 //!
@@ -89,7 +49,7 @@
 //! shape test with its errors pointed in the safe direction, and every one of them **declines**
 //! rather than guessing when it cannot tell.
 
-use crate::healing::{CodeMask, Dialect, Unwrapped, lines_with_offsets};
+use crate::healing::{CodeMask, Dialect};
 
 /// C++'s dialect. A unit struct: everything it "holds" is the `const` data below.
 pub(in crate::sandbox::language) struct CppDialect;
@@ -112,41 +72,6 @@ impl Dialect for CppDialect {
 
     fn code_mask(&self, src: &str) -> Option<CodeMask> {
         code_mask(src)
-    }
-
-    /// **`false`, always** — the third arm to answer so, and for
-    /// [Rust's reason](super::super::rust::healing) rather than for want of a loader.
-    ///
-    /// A `#include` in a program resolves where it stands and costs nothing: gg's surface and the
-    /// standard library are already in front of the model's first line, put there by a precompiled
-    /// prelude, so a redundant include is de-duplicated against that header and a header the prelude
-    /// does not carry is a located diagnostic naming it. There is nothing to hoist and nothing to
-    /// delete.
-    fn is_import_statement(&self, _line: &str) -> bool {
-        false
-    }
-
-    /// Whether the repeated tail **defines** something C++ refuses to see defined twice in one
-    /// translation unit — the proof that the reply as sent could not have compiled and therefore ran
-    /// nothing.
-    ///
-    /// The strongest of any registered arm's, and mostly by the shape of the language: see
-    /// [`defines_lexically`].
-    fn declares_a_redeclarable_binding(&self, text: &str, mask: &CodeMask, base: usize) -> bool {
-        defines_lexically(text, mask, base).next().is_some()
-    }
-
-    /// **`None`, always.** This arm has no whole-program concurrency wrapper to take off, and the
-    /// reason is written out in this module's own documentation: a reply's top level is a
-    /// **translation unit** rather than a statement list, so the shape the strategy looks for — a
-    /// whole program that is one wrapper and nothing else — cannot be written in this language. The
-    /// model's work is inside `main` either way.
-    ///
-    /// Not because concurrency is unreachable. A program may `#include <thread>` and it will
-    /// compile; what it will not do is run a thread. That is a run-time ending this arm reports
-    /// rather than a shape healing could remove.
-    fn unwrap_async(&self, _text: &str, _mask: &CodeMask) -> Option<Unwrapped> {
-        None
     }
 
     #[cfg(test)]
@@ -287,103 +212,6 @@ fn opens_a_directive(line: &str) -> bool {
         rest.strip_prefix(directive)
             .is_some_and(|after| !after.starts_with(is_ident_char))
     })
-}
-
-// ---------------------------------------------------------------------------------------------
-// Redeclaration
-// ---------------------------------------------------------------------------------------------
-
-/// Every **definition** `text` makes at its top level, in source order.
-///
-/// A definition rather than a declaration, and that distinction is C++'s own: `int helper();`
-/// written twice is legal, and `int helper() { … }` written twice is *redefinition of 'helper'*
-/// before a statement runs — which is exactly the proof
-/// [`drop-duplicate-program`](crate::healing::HealingStrategy::DropDuplicateProgram) needs.
-///
-/// The everyday case is decided by something stronger than any reading here: a C++ program must
-/// define `main` or gg refuses it, so a reply that is one program pasted after an identical copy of
-/// itself carries two definitions of `main` and could never have run a statement. What the wider
-/// reading below buys is the doubled *fragment* — a pair of helper functions, a pasted `struct` —
-/// which is the shape a model produces when it drafts twice and sends both.
-///
-/// "Top level" is read as *unindented*, which is what a namespace-scope definition is in every
-/// program a model writes and what keeps this from mistaking a definition inside a class, a
-/// namespace or a function body — legal, and legal twice, because it is a different scope — for a
-/// redefinition. `base` is where `text` starts inside the source `mask` was built over, so a caller
-/// may ask about a slice of it.
-fn defines_lexically<'a>(
-    text: &'a str,
-    mask: &'a CodeMask,
-    base: usize,
-) -> impl Iterator<Item = &'a str> {
-    lines_with_offsets(text).filter_map(move |(offset, line)| {
-        if !mask.is_code(base + offset) || line.starts_with([' ', '\t']) {
-            return None;
-        }
-        defines_something(line.trim_end()).then_some(line)
-    })
-}
-
-/// The keywords that open a line which is **not** a definition of a name, however much it may look
-/// like one.
-///
-/// `namespace` is the one that matters and it is the reason this list exists at all: a namespace may
-/// be **reopened** as many times as an author likes, so `namespace helpers {` written twice is
-/// ordinary C++ and reading it as a redefinition would let `drop-duplicate-program` delete a tail
-/// that would have run. `extern "C" {` is the same shape. The control-flow words are here because a
-/// `for (…) {` at an unindented top level is a line inside somebody's function that the *slice* this
-/// runs over happened to begin at.
-const NOT_A_DEFINITION: [&str; 18] = [
-    "namespace",
-    "extern",
-    "using",
-    "typedef",
-    "friend",
-    "template",
-    "concept",
-    "requires",
-    "static_assert",
-    "if",
-    "else",
-    "for",
-    "while",
-    "do",
-    "switch",
-    "try",
-    "catch",
-    "return",
-];
-
-/// Whether `line` **defines** something at namespace scope.
-///
-/// Three shapes and nothing else, each chosen so that a false positive would take a line that no
-/// C++ author writes twice:
-///
-/// * a tag definition — `struct row {`, `enum class kind {` — which is a `{` on the line that names
-///   it, where a forward declaration ends in `;`;
-/// * a function definition — a `(` and a `{` on one line that does **not** end in `;`, which is the
-///   one shape a declaration cannot have and a call cannot either;
-/// * a variable definition with an initialiser — a plain `=` and a `;`.
-fn defines_something(line: &str) -> bool {
-    let line = line.trim();
-    if line.is_empty() || line.starts_with(['#', '}', ')', '/', '*']) {
-        return false;
-    }
-    if NOT_A_DEFINITION
-        .iter()
-        .any(|word| keyword(line, word).is_some())
-    {
-        return false;
-    }
-    for tag in ["struct", "class", "union", "enum"] {
-        if keyword(line, tag).is_some() {
-            return line.contains('{');
-        }
-    }
-    if line.contains('(') && line.contains('{') && !line.ends_with(';') {
-        return true;
-    }
-    line.ends_with(';') && carries_an_assignment(line)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -595,9 +423,9 @@ fn is_ident_char(character: char) -> bool {
 
 /// Lex `src` into its [code mask](CodeMask) — this dialect's answer to [`Dialect::code_mask`].
 ///
-/// `None` means the source did not lex cleanly, and every strategy that needs the mask declines on
-/// it. That is the correct failure mode for a lexer that has lost its place: the alternative is
-/// deleting text on the strength of a reading already known to be wrong. Four states end a scan
+/// `None` means the source did not lex cleanly, and a caller that needs the mask stands down on it.
+/// That is the correct failure mode for a lexer that has lost its place: the alternative is
+/// answering on the strength of a reading already known to be wrong. Four states end a scan
 /// uncleanly — an unterminated block comment, an unterminated raw string, a single-line string or
 /// character literal still open at a newline (which C++ forbids), and a backslash with nothing after
 /// it.

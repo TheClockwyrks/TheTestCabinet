@@ -620,21 +620,6 @@ export const HEALING_STRATEGY_OPTIONS: ReadonlyArray<{
     defaultOff: true,
     hint: "Off unless you arm it, and the only strategy that is: the half it deletes is valid code under any other reading, so unlike every other repair here, not making it is the safer default. It fires only on a byte-exact doubling with nothing at all between the copies — a model that deliberately repeats a statement writes a separator, and any single character of separator makes the reply an odd number of bytes long, which the test declines on. Arm it for a model observed to concatenate its completion with itself.",
   },
-  {
-    value: "drop-duplicate-program",
-    label:
-      "drop-duplicate-program — delete a second, identical copy of the program in one reply",
-  },
-  {
-    value: "drop-imports",
-    label:
-      "drop-imports — drop import/require lines; every tool is already in scope",
-  },
-  {
-    value: "unwrap-async",
-    label:
-      "unwrap-async — unwrap an async wrapper and its awaits; every tool is synchronous",
-  },
 ];
 
 // How the assistant message a code turn records is derived from the model's reply

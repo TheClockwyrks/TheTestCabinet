@@ -3,25 +3,24 @@
 //! What is deliberately **not** here is a second copy of the skeleton's tests. Fence stripping,
 //! prose stripping, the fixpoint loop, the honesty disclosure and the delete-only invariant are
 //! asserted once in `healing.test.rs` against every registered dialect, this one included. What this
-//! file asserts is the part that is Rust's — and most of it is written as a **comparison against
-//! another arm**, because three of this dialect's answers are ones no other gives.
+//! file asserts is the part that is Rust's — the lexer that reads text no other arm's can, and the
+//! two predicates whose lists are this dialect's own. Where an answer is only interesting beside
+//! another arm's, the test is written as a **comparison** against it.
 
 use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::RUST_DIALECT;
-use crate::healing::{
-    AsyncWrapper, Dialect, Healed, HealingConfig, HealingDetail, HealingStrategy, heal,
-};
+use crate::healing::Dialect;
 
 /// Replies in Rust that the [delete-only invariant](crate::healing::Dialect::fixtures) is re-earned
 /// over.
 ///
-/// Every one of them exercises an answer that is this dialect's rather than the skeleton's: both
-/// shapes of the `thread::spawn` wrapper, the `use` line above one that must **survive** it, a
-/// `.await` the repair deletes, a doubled program whose repeat redeclares a `fn` (which is refused)
-/// and one whose repeat only rebinds a `let` (which is not), a raw string whose body must not be
-/// read as code, a lifetime and a character literal in the same program, an apostrophe in a line of
-/// English, a `#` line that is prose here, and two replies that are no program at all.
+/// The shapes a model really sends on this arm, whether or not any strategy has something to say
+/// about one: a fenced program with prose either side, programs written around `thread::spawn` and
+/// `.await`, a doubled program and a program doubled around nothing but `let`s, a `use` line above
+/// the work, a raw string whose body must not be read as code, a lifetime and a character literal in
+/// the same program, an apostrophe in a line of English, a `#` line that is prose here, and two
+/// replies that are no program at all.
 pub(super) const FIXTURES: &[&str] = &[
     "Here is the program.\n\n```rust\nlet rows = fs::list_dir(Some(\"src\"))?;\nview::open_text(\"rows\", &format!(\"{rows:?}\"))?;\n```\n\nThat lists the directory.",
     "std::thread::spawn(|| {\n    view::open_text(\"note\", \"done\")\n}).join().unwrap();",
@@ -38,21 +37,12 @@ pub(super) const FIXTURES: &[&str] = &[
     "I have finished the task. Everything works.",
 ];
 
-/// Heal `reply` with **this** language's dialect and the default configuration.
-fn healed(reply: &str) -> Healed {
-    heal(
-        reply,
-        &HealingConfig::default(),
-        crate::sandbox::language(GgProgramLanguage::Rust).healing(),
-    )
-}
-
 /// This dialect, as the skeleton takes it.
 fn rust() -> &'static dyn Dialect {
     &RUST_DIALECT
 }
 
-/// [Kotlin's](super::super::kotlin::healing), for the comparisons this file is largely made of.
+/// [Kotlin's](super::super::kotlin::healing), for the comparisons this file makes.
 fn kotlin() -> &'static dyn Dialect {
     crate::sandbox::language(GgProgramLanguage::Kotlin).healing()
 }
@@ -63,256 +53,14 @@ fn mask(src: &str) -> crate::healing::CodeMask {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The concurrency wrapper
-// ---------------------------------------------------------------------------------------------
-
-/// **`std::thread::spawn(|| { … })` comes off, and the `use` above it stays.**
-///
-/// The whole-program shape a Rust author reaches for, and the repair is worth making because the
-/// failure is real: `spawn` compiles for `wasm32-unknown-unknown` and then panics, because the
-/// target has no threads.
-///
-/// The import survives, which is [Java's answer](super::super::java::healing) and the opposite of
-/// [Kotlin's](super::super::kotlin::healing) — and the difference is this arm's library set rather
-/// than its family. `std::thread` really is linked here, so the line resolves; deleting it would be
-/// deleting a line that works.
-#[test]
-fn the_thread_wrapper_comes_off_and_the_import_stays() {
-    let result = healed(
-        "use std::thread;\n\n\
-         thread::spawn(move || {\n    \
-             let rows = fs::list_dir(Some(\"src\"))?;\n    \
-             view::open_text(\"rows\", &format!(\"{rows:?}\"))?;\n\
-         }).join().unwrap();",
-    );
-    assert_eq!(
-        result.program,
-        "use std::thread;\n\n\
-         let rows = fs::list_dir(Some(\"src\"))?;\n\
-         view::open_text(\"rows\", &format!(\"{rows:?}\"))?;"
-    );
-    assert_eq!(result.strategies(), vec![HealingStrategy::UnwrapAsync]);
-    assert!(
-        matches!(
-            result
-                .applied
-                .iter()
-                .find_map(|repair| match &repair.detail {
-                    HealingDetail::Async { wrapper, .. } => Some(*wrapper),
-                    _ => None,
-                }),
-            Some(AsyncWrapper::Immediate)
-        ),
-        "{:?}",
-        result.applied
-    );
-}
-
-/// **A handle bound with `let` and then joined is the declared shape.**
-#[test]
-fn a_bound_handle_that_is_joined_is_the_declared_shape() {
-    let result = healed(
-        "let handle = std::thread::spawn(|| {\n    \
-             view::open_text(\"note\", \"done\")\n\
-         });\n\
-         handle.join().expect(\"worker panicked\");",
-    );
-    assert_eq!(result.program, "view::open_text(\"note\", \"done\")");
-    assert!(
-        result.applied.iter().any(|repair| matches!(
-            repair.detail,
-            HealingDetail::Async {
-                wrapper: AsyncWrapper::Declared,
-                ..
-            }
-        )),
-        "{:?}",
-        result.applied
-    );
-}
-
-/// **A handle nothing waits on is left alone.**
-///
-/// Declining is free and unwrapping is a guess: a program that bound a handle and never touched it
-/// may have meant something this dialect cannot see, and the strategy's whole warrant is that the
-/// reply as sent could not have worked.
-#[test]
-fn a_handle_nothing_waits_on_is_not_unwrapped() {
-    let reply = "let handle = std::thread::spawn(|| {\n    \
-                     view::open_text(\"note\", \"done\")\n\
-                 });\n\
-                 view::open_text(\"other\", \"work\")?;";
-    assert_eq!(healed(reply).program, reply);
-}
-
-/// **A closure that is not a wrapper keeps every statement above it.**
-///
-/// Rust is full of calls that take a closure, and the match is **anchored** precisely so that a
-/// program whose last statement happens to be one is not read as a wrapper with everything above it
-/// inside.
-#[test]
-fn an_ordinary_closure_is_not_a_wrapper() {
-    let reply = "let rows = fs::list_dir(Some(\"src\"))?;\n\
-                 let names: Vec<_> = rows.iter().map(|row| {\n    \
-                     row.name.clone()\n\
-                 }).collect();\n\
-                 view::open_text(\"names\", &names.join(\"\\n\"))?;";
-    assert_eq!(healed(reply).program, reply);
-}
-
-/// **`.await` inside the wrapper comes off with it, and is counted.**
-///
-/// Rust marks suspension *after* the expression rather than in front of it, so what comes off is the
-/// whole postfix — the dot included, because `foo().await` without it is `foo().` and not a program.
-/// It is a repair rather than tidying: an `.await` outside an `async` context is `E0728` at the
-/// model's own line.
-#[test]
-fn the_await_inside_the_wrapper_is_deleted_and_counted() {
-    let result = healed(
-        "std::thread::spawn(|| {\n    \
-             let notes = fs::read_text_file(\"notes.md\", ReadOptions::default()).await;\n    \
-             view::open_text(\"notes\", &notes)?;\n\
-         }).join().unwrap();",
-    );
-    assert!(!result.program.contains(".await"), "{}", result.program);
-    assert!(
-        result.program.contains("ReadOptions::default());"),
-        "{}",
-        result.program
-    );
-    assert_eq!(
-        result
-            .applied
-            .iter()
-            .find_map(|repair| match repair.detail {
-                HealingDetail::Async { awaits, .. } => Some(awaits),
-                _ => None,
-            }),
-        Some(1)
-    );
-}
-
-/// **A wrapper written inside a raw string is not a wrapper.**
-///
-/// The mask is what makes this hold, and this arm's raw strings are the reason it is asserted here:
-/// `r#"…"#` may carry a `"` and mean nothing by it.
-#[test]
-fn a_wrapper_quoted_in_a_raw_string_is_left_alone() {
-    let reply = "let usage = r#\"\n\
-                 std::thread::spawn(|| {\n    \
-                     let total = 1;\n\
-                 });\n\
-                 \"#;\n\
-                 view::open_text(\"usage\", usage)?;";
-    assert_eq!(healed(reply).program, reply);
-}
-
-// ---------------------------------------------------------------------------------------------
-// Redeclaration
-// ---------------------------------------------------------------------------------------------
-
-/// **A repeated `let` is not a redeclaration here**, which is this dialect's sharpest divergence.
-///
-/// Rust shadows. `let total = 1; let total = 1;` is ordinary, deliberate Rust that compiles and
-/// runs, so a program doubled around nothing but `let`s and calls is one that would have run its
-/// work twice — and deleting the second half would be deleting work the model asked to have done.
-/// Every other registered arm refuses the same shape, so the same reply heals there and does not
-/// here.
-#[test]
-fn a_repeated_let_is_not_a_redeclaration_here_and_is_on_every_other_arm() {
-    let reply = "let total = 1;\n\
-                 view::open_text(\"n\", &total.to_string())?;\n\
-                 let total = 1;\n\
-                 view::open_text(\"n\", &total.to_string())?;";
-    assert_eq!(
-        healed(reply).program,
-        reply,
-        "a doubled program made only of `let`s must survive on this arm"
-    );
-
-    let doubled = "val total = 1\n\
-                   view.openText(\"n\", total.toString())\n\
-                   val total = 1\n\
-                   view.openText(\"n\", total.toString())";
-    let elsewhere = heal(doubled, &HealingConfig::default(), kotlin());
-    assert!(
-        elsewhere
-            .strategies()
-            .contains(&HealingStrategy::DropDuplicateProgram),
-        "the same shape is a redeclaration on an arm that does not shadow"
-    );
-}
-
-/// **A repeated `fn` is a redeclaration, and a repeated single-name `use` is too.**
-///
-/// Both were measured against `rustc`: a second `fn` of one name in a block is `E0428`, and a second
-/// `use` importing one name is `E0252`. Each stops the build before a statement runs, which is
-/// exactly the proof `drop-duplicate-program` needs.
-#[test]
-fn a_repeated_item_or_import_is_a_redeclaration() {
-    let half = "fn helper() -> usize { 1 }\nview::open_text(\"n\", &helper().to_string())?;";
-    let result = healed(&format!("{half}\n{half}"));
-    assert_eq!(result.program, half);
-    assert!(
-        result
-            .strategies()
-            .contains(&HealingStrategy::DropDuplicateProgram),
-        "{:?}",
-        result.strategies()
-    );
-
-    let imported = "use std::collections::HashMap;\nview::open_text(\"n\", \"1\")?;";
-    let result = healed(&format!("{imported}\n{imported}"));
-    assert_eq!(result.program, imported);
-}
-
-/// **A glob import is not a redeclaration**, because writing one twice is legal.
-///
-/// The guard matters: without it a doubled program whose only item is `use std::fmt::*;` would be
-/// deleted on the strength of a refusal that never happens.
-#[test]
-fn a_repeated_glob_import_is_not_a_redeclaration() {
-    let half = "use std::fmt::*;\nview::open_text(\"n\", \"1\")?;";
-    let reply = format!("{half}\n{half}");
-    assert_eq!(healed(&reply).program, reply);
-}
-
-// ---------------------------------------------------------------------------------------------
-// Imports
-// ---------------------------------------------------------------------------------------------
-
-/// **No `use` line is ever deleted**, and this is the one arm where that is because the line
-/// *works*.
-///
-/// A program here is a function body, Rust admits an item wherever a statement may stand, and
-/// `use std::collections::HashMap;` therefore resolves exactly where the model wrote it. There is
-/// nothing to hoist and nothing to delete.
-#[test]
-fn an_import_is_never_deleted_because_it_resolves_where_it_stands() {
-    for line in [
-        "use std::collections::HashMap;",
-        "use gg::fs;",
-        "use regex::Regex;",
-        "extern crate regex;",
-    ] {
-        assert!(!rust().is_import_statement(line), "{line}");
-    }
-    let reply = "use std::collections::HashMap;\n\
-                 let mut counts: HashMap<&str, usize> = HashMap::new();\n\
-                 counts.insert(\"src\", 1);\n\
-                 view::open_text(\"counts\", &format!(\"{counts:?}\"))?;";
-    assert_eq!(healed(reply).program, reply);
-}
-
-// ---------------------------------------------------------------------------------------------
 // The lexer
 // ---------------------------------------------------------------------------------------------
 
 /// **A lifetime is not an opening quote, and a character literal is.**
 ///
 /// The hazard no other arm's `'` carries. A scan that took the `'` of `&'static str` as an opener
-/// would swallow the rest of the program into a string, and every strategy that consults the mask
-/// would then be reading the wrong text.
+/// would swallow the rest of the program into a string, and every reading built on the mask would
+/// then be of the wrong text.
 #[test]
 fn a_lifetime_is_code_and_a_character_literal_is_not() {
     let src = "fn first(rows: &'static [&'static str]) -> char {\n    \

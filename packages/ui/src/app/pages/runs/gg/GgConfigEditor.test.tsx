@@ -671,7 +671,7 @@ describe("the skills capability's built-in skills", () => {
 });
 
 // Response healing's strategies are a `toggles` control whose members each sit at their
-// own default arm — five on, `drop-doubled-response` off. A subtractive control could not
+// own default arm — two on, `drop-doubled-response` off. A subtractive control could not
 // express arming the last one at all, so what the checkbox does is only visible by
 // rendering it and clicking.
 describe("the responses-as-code agent's healing strategies", () => {

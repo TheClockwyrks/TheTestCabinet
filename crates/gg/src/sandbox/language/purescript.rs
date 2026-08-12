@@ -10,8 +10,7 @@
 //! * [`modules`] — reading a code [skill](crate::skills)'s or [memory](crate::memories)'s own
 //!   module header for the names its namespace offers;
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
-//!   questions of: the fence tags, the two predicates, the nesting-and-primes lexer, the
-//!   redeclaration proof, and the `Aff` wrapper;
+//!   questions of: the fence tags, the two predicates, and the nesting-and-primes lexer;
 //! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
 //!   in PureScript's syntax;
 //! * `packages/gg-sandbox-purescript/src/Gg/**` — the hand-written SDK, compiled **into** the library

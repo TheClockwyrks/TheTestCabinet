@@ -684,9 +684,6 @@ pub(super) fn wire_strategy(strategy: HealingStrategy) -> GgHealingStrategy {
         HealingStrategy::StripFences => GgHealingStrategy::StripFences,
         HealingStrategy::StripProse => GgHealingStrategy::StripProse,
         HealingStrategy::DropDoubledResponse => GgHealingStrategy::DropDoubledResponse,
-        HealingStrategy::DropDuplicateProgram => GgHealingStrategy::DropDuplicateProgram,
-        HealingStrategy::DropImports => GgHealingStrategy::DropImports,
-        HealingStrategy::UnwrapAsync => GgHealingStrategy::UnwrapAsync,
     }
 }
 

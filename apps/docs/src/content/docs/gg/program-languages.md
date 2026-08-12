@@ -60,9 +60,8 @@ what those tokens buy — a type annotation costs tokens and buys a
 [checked program](/gg/responses-as-code/#stripped-and-checked); in what a model's
 *reflexes* cost it — `await` is the
 first thing many models reach for in JavaScript, and the sandbox is synchronous, so the
-reflex costs a [healing](/gg/response-healing/) repair or a refusal; in how a language
-handles a failure, and therefore how naturally a program written in it composes calls that
-can throw.
+reflex costs the turn a refusal; in how a language handles a failure, and therefore how
+naturally a program written in it composes calls that can throw.
 
 None of that is answered here. The point is that it is a *question a harness can answer by
 running two arms* — and that gg could not answer it at all while the language was a fact
@@ -167,28 +166,23 @@ the guest accepts — CPython 3.14 takes template strings and no third-party par
 rejection is a turn spent rewriting a correct program, which is the misattribution this codebase
 spends the most effort not making.
 
-### Its dialect says "no" three times, and each "no" is a decision
+### What its dialect says, and the answer the ECMAScript pair does not give
 
-[Healing](/gg/response-healing/) asks every language the same lexical questions. This arm answers
-three of them differently from the ECMAScript pair, and the differences are worth reading as a group
-because they are what a second real language looks like: not a translation, but a different set of
-things that are true.
+[Healing](/gg/response-healing/) asks every language the same three lexical questions. This arm
+answers one of them differently from the ECMAScript pair, and the difference is worth reading as
+what a second real language looks like: not a translation, but a different set of things that are
+true.
 
 | Question | This arm's answer | Why |
 | --- | --- | --- |
-| Is this line an import? | **Never** | The ECMAScript guest is baked with no module system, so every `import` there is dead text. This guest is a whole CPython: `import json` runs, `from gg import ToolError` runs. There is no lexical shape that is *certainly* dead, and deleting a working line is the failure the subsystem exists not to commit. `drop-imports` therefore never fires here. |
-| Does this text redeclare something the language refuses twice? | **Never** | Python has no such rule. `def main():` twice is legal and a program pasted twice *runs twice*, so `drop-duplicate-program` has no proof that the deletion changes nothing and gives itself up. The coarser `drop-doubled-response` — a transport artefact, and the one strategy that asks a dialect nothing — still fires. |
-| What is the whole-program concurrency wrapper? | `import asyncio`, an `async def`, and `asyncio.run(main())` — **three parts** | Python's runner is a *module* rather than a keyword. Unwrapping the middle and leaving the first would produce a program whose first line raises `ModuleNotFoundError`, since this guest is deliberately baked without `asyncio`. So the import comes off with the wrapper, which is how the arm can answer "no import is ever deleted" and still deliver the repair the pipeline's imports-before-async ordering was built to enable. |
+| Is a `#` line prose? | **Never** | `#` opens a Python comment **and** a Markdown heading, and nothing lexical tells them apart. A model that headed its explanation `## Plan` keeps that heading in its program, where the interpreter reads it as a comment and it costs nothing. The alternative is deleting the model's own comments, which is a deletion of code. |
 
-One smaller difference is worth naming because it looks like a bug and is not. `#` opens a Python
-comment **and** a Markdown heading, and nothing lexical tells them apart — so a `#` line is never
-deleted as prose. A model that headed its explanation `## Plan` keeps that heading in its program,
-where the interpreter reads it as a comment and it costs nothing. The alternative is deleting the
-model's own comments, which is a deletion of code.
-
-The `await` deletion differs too, in one byte: this arm takes the whitespace after the token with
-it. `    await work()` dedents to `await work()`, and deleting the token alone would leave ` work()`
-— a line opening with a space, which is an `IndentationError` rather than a program.
+Two smaller answers are its own without being disagreements. The statement-keyword clause of *is
+this line code?* is matched **case-sensitively**, which is what keeps `If you want to…` prose while
+`if x:` is code — the same distinction a real reply turned on for the other arm. And `print` is
+deliberately not on that list, even though it opens more lines of a model's Python than any keyword
+does: it is an ordinary name, the call clause already reads `print(` as code, and listing it would
+additionally stop `print the plan first` from ever being deleted as prose.
 
 ### What "native" bought, in the catalogue
 
@@ -445,38 +439,27 @@ One difference runs the *other* way from Python's, and is worth naming beside th
 in a host call, so the execution deadline reaches it exactly as it reaches any other runaway. A
 `sleep 30` under a 400 ms budget is stopped at the budget, and that has a test.
 
-### What its dialect says, and the two answers nobody else gives
+### What its dialect says, and the answer nobody else gives
 
-[Response healing](/gg/response-healing/) asks each language the same seven questions, and this
-arm is the only one that answers two of them the way it does.
+[Response healing](/gg/response-healing/) asks each language the same three questions, and the
+trait carries a fourth of the same kind that healing does not ask — the
+[lexical mask](/gg/response-healing/#the-lexical-mask-which-healing-does-not-ask-for), which
+[this arm's module analysis](#what-a-ruby-code-module-offers) reads. It is the fourth that this
+arm answers the way no other one does.
 
-**The concurrency wrapper is a `Thread`.** Ruby has no `async` keyword and no suspension token —
-every method call in the language already blocks — so the shape a model wraps a whole program in,
-when it wraps one at all, is `Thread.new do … end.join`, or the two-statement `worker =
-Thread.new do … end` … `worker.join`. That wrapper is not merely redundant here: this guest is
-Opal, which has no `Thread` at all, so a program wearing one raises `NameError: uninitialized
-constant Thread` before a single line of the model's own work runs. Both shapes are unwrapped,
-the `require "thread"` above either comes off with it, and the count of suspension tokens removed
-is **zero** — honestly, because there is no such token in this language and a number there would
-report a repair that never happened.
-
-**The lexer reads six string shapes and a heredoc.** `'…'`, `"…"` with `#{…}` interpolation
-delimited by *brace counting* (so `"total: #{rows["n"]}"` — which Ruby allows — stays one string),
-`` `…` ``, the `%w[…]` family with nesting, `<<~EOS` heredocs, and `=begin`/`=end` block
-comments. One shape is deliberately **not** read: a regular-expression literal, because `/…/`
+**The lexer reads five string shapes, one of them a heredoc.** `'…'`, `"…"` with `#{…}`
+interpolation delimited by *brace counting* (so `"total: #{rows["n"]}"` — which Ruby allows —
+stays one string), `` `…` ``, the `%w[…]`/`%q(…)` family with nesting, and `<<~EOS` heredocs —
+beside `#` line comments and `=begin`/`=end` block comments, which are comments rather than
+string shapes. One shape is deliberately **not** read: a regular-expression literal, because `/…/`
 cannot be told from division without knowing whether the previous token was a value, which is a
 parse. A regex carrying an apostrophe therefore opens a string that never closes and the scan
-declines — which is the right failure, because declining costs a repair and the alternative
+declines — which is the right failure, because declining costs a reading and the alternative
 reading costs a deletion.
 
-Three further answers agree with [Python's](#python-a-guest-that-carries-its-own-interpreter),
-and each is a decision rather than a gap. A `require` is **never** deleted, because this guest
-bakes a declared library set and `require "json"` is a working line — and a `require` of
-something it did not bake is no better a candidate, since a program may rescue the `LoadError`.
-Nothing is **refused twice**, because Ruby redeclares freely and a program pasted twice runs
-twice, so `drop-duplicate-program` gives itself up rather than delete work the model asked for
-(the coarser `drop-doubled-response`, which asks a dialect nothing, still fires). And a `#` line
-is never prose, because a Ruby comment and a Markdown heading are the same byte.
+One further answer agrees with [Python's](#python-a-guest-that-carries-its-own-interpreter), and
+it is a decision rather than a gap: a `#` line is never prose, because a Ruby comment and a
+Markdown heading are the same byte.
 
 ### What a Ruby code module offers
 
@@ -816,7 +799,7 @@ TypeScript's, with the leading run brought down whole rather than one character 
 
 ### What its dialect says, and the answer that runs the other way
 
-[Response healing](/gg/response-healing/) asks each language the same seven questions. Three of
+[Response healing](/gg/response-healing/) asks each language the same three questions. Two of
 this arm's answers are its own, and the first of them is the most interesting thing on this page
 about how a dialect is *derived* rather than copied.
 
@@ -846,44 +829,12 @@ sentence test reads the *shape English is written in* — a sentence opens with 
 with terminal punctuation, an application does neither — rather than the tokens, which are
 identical. The residue is a lower-case unpunctuated line of prose, which is kept.
 
-**The concurrency wrapper is a monad, not a block.** Every other arm's wrapper *encloses* the
-program: an `async function` with a body, an `async def` with an indented suite, a
-`Thread.new do … end`. PureScript's does not — the shape a model reaches for is
-`main = launchAff_ do`, and what makes that block asynchronous is the monad it is in. So the
-deletion is distributed: the wrapper token on `main`'s right-hand side, and the `Effect.Aff`
-import that made it reachable, exactly as Python's `asyncio` import comes off with its wrapper.
-What is left is the same `do` block in `Effect`, which is the monad every call in this SDK is
-already in.
-
-Two things make that repair provable rather than hopeful. `aff` is deliberately **not** in the
-shipped library set, so a program wearing the wrapper cannot compile at all and there is no
-working behaviour to preserve. And the wrapper must be on **`main`**, which is the one
-declaration gg's own entry module calls — so "the program invokes the wrapper", which every other
-arm has to look for in the text, is a property of the compile here. A wrapper on any other
-declaration, or a program that does more with `Aff` than wrap itself in it, is declined. The
-count of suspension tokens removed is **zero**, honestly, because PureScript has no `await`;
-`liftEffect` is the nearest thing and is left alone, since an `Effect` is a `MonadEffect` and
-`liftEffect` there is the identity.
-
-**A doubled program is halved, and the proof is the compiler's.** This is the first arm since the
-ECMAScript pair to answer `declares_a_redeclarable_binding` with anything but `false`, and every
-clause of it was measured against the real `purs`: two module headers is `ErrorParsingModule`
-(*Unexpected token 'module'*), and `main :: Effect Unit` or `main = …` twice is `RedefinedIdent`
-(*The value main has been defined multiple times*) whether the two are adjacent or not. What is
-deliberately *not* proof is a definition **with arguments** — `f 0 = 1` and `f n = n` are two
-equations of one declaration, which is ordinary PureScript — and that exclusion is what keeps the
-strategy from deleting work a model asked to have done.
-
 Two smaller answers are worth naming because both are places a naive lexer loses the source.
 `--` is only a comment when the run of dashes is followed by something that is **not** a symbol
 character, because `-->` is an operator a program may define; and a `'` is a **prime** on an
 identifier unless it opens a character literal that closes within the handful of bytes one can
-be. Reading either wrongly masks the rest of a line — and the rest of a line is where a wrapper
-lives.
-
-An import is **never** deleted, for the reason [Python's](#python-a-guest-that-carries-its-own-interpreter)
-never is and then some: `purs` resolves every one of them against a library set gg ships, and
-`import Gg` is the line without which a program has no surface at all.
+be. Reading either wrongly masks the rest of a line, and the rest of a line is where this arm's
+module scan reads a code module's imports from.
 
 ## Java: a warm JVM, and two compilers per program
 
@@ -1218,40 +1169,21 @@ the one it was built from. This arm therefore shares the ECMAScript guest, like 
 PureScript, and the seam's "no language is served another's artifacts" rule names all three pairs in
 its exemption table with that measurement as the reason.
 
-### What its dialect says, and the four answers nobody else gives
+### What its dialect says, and the two answers nobody else gives
 
 Java's syntax is the closest of any arm to TypeScript's, and handing it TypeScript's
-[healing dialect](/gg/response-healing/) would have been wrong in four places — each one the *same
+[healing dialect](/gg/response-healing/) would have been wrong in two places — each one the *same
 rule* reaching a different conclusion because the language is different.
 
 | Question | This arm's answer | Why |
 | --- | --- | --- |
-| Is this line an import? | **Never** | On the ECMAScript arms an `import` is dead text: the guest has no module loader, so dropping it can only help. Here gg's own wrapper **hoists** every `import` a model wrote into the compilation unit's header, so the line resolves and does its job — and one javac cannot resolve is a located compile error on the turn that wrote it, which is a better answer than a silent deletion. `drop-imports` never fires here. |
 | Is a `#` line prose? | **Yes, and it is deleted** | [Python](#python-a-guest-that-carries-its-own-interpreter) and [Ruby](#ruby-compiled-to-javascript-before-it-crosses) refuse to touch one, because `# Plan` is a comment in those languages as well as a Markdown heading. Java has no `#` at all — not a comment, not an operator, not a legal token — so a `#` line is certainly not Java and leaving one in a program is a syntax error rather than a surviving comment. What is never prose here is a `//` line. |
 | Is a **backtick** code punctuation? | **No** | Every other C-shaped dialect lists it, because in ECMAScript a backtick opens a template literal. Java has no template literal and no backtick anywhere in its grammar, so a line carrying one is *certainly* prose — which is what lets a lead-in written with an inline code span be deleted here where TypeScript's dialect has to keep it. |
-| What does the language refuse to declare twice? | A **local variable**, or a local type | ECMAScript makes redeclaring a `const` an early error; Java makes redeclaring a local in one block a compile error, and a program's statements *are* one block. So a repeated tail declaring `String plan = …`, or a local `class`/`record`/`interface`/`enum`, is a reply that could not have compiled as sent — which is exactly the proof `drop-duplicate-program` needs. A statement keyword followed by a name (`return value;`, `assert ok;`, a second identical `import`) is deliberately *not* proof, because every one of those may legally appear twice. |
-
-The concurrency wrapper is a **thread**. Java has no `async` keyword and no suspension token — every
-call in the language already blocks — so the shape a model wraps a whole program in is
-`new Thread(() -> { … }).start();`, or the same thing declared and started under a name, or a
-`CompletableFuture` run and joined. Unwrapping it is provably a repair rather than a change of
-behaviour: TeaVM schedules a started thread with `setTimeout`, which this sandbox denies, so a
-program wearing one fails before a line of the model's own work runs. **Zero** suspension tokens are
-reported, because this language has none to delete.
-
-Two details of that repair are its own. The match is **anchored to the constructor** — the text
-between where the wrapper may start and the lambda's `{` has to be one of the recognised
-constructors and nothing else — so a program whose *last* statement happens to start a thread keeps
-every statement above it. And the `import` above the wrapper **stays**, where Python's arm deletes
-the `import asyncio` and Ruby's the `require "thread"`: those two name something their guest does not
-carry, so leaving the line would leave the one line of the repaired program that still fails, while
-`java.util.concurrent` is in this arm's declared set, an unused import is legal Java, and deleting a
-working line is the one thing this subsystem must never do.
 
 Two smaller answers are worth naming because each is a place a naive scan loses the source. Every
-lexical scan on this arm — the healing dialect's *and* the wrapper's, which are two readings written
-for two purposes — compares **bytes** rather than slicing the source, because it walks one byte at a
-time and `&source[at..]` panics on any index that is not a character boundary: a single `é` in a
+lexical scan on this arm — the healing dialect's *and* the import hoist's, which are two readings
+written for two purposes — compares **bytes** rather than slicing the source, because it walks one
+byte at a time and `&source[at..]` panics on any index that is not a character boundary: a single `é` in a
 string, a comment or an identifier would otherwise take the turn down with a slice index error
 rather than reaching javac, which a model writing a message in any language but English produces on
 its first turn. And a leading `*` is **not** read as code, even though it is how a Javadoc
@@ -1585,20 +1517,17 @@ accepted and judges nothing about the program except that its classlib carries w
 reached. Naming a checker is also what has this arm's compile
 [recorded](#what-compiling-costs-and-where-it-is-recorded) on every turn, the failing path included.
 
-### What its dialect says, and the five answers the other JVM arm does not give
+### What its dialect says, and the two answers the other JVM arm does not give
 
 This is the arm that shows a [healing dialect](/gg/response-healing/) is **derived** rather than
 copied. Java is the language closest to Kotlin that gg registers, the two share a compiler road, a
-guest and a classlib, and gg's preparation does the same import hoist to both — and *five* of the
-lexical answers still differ. Every one of them is the same rule reading a different grammar.
+guest and a classlib, and gg's preparation does the same import hoist to both — and *two* of the
+lexical answers still differ. Both are the same rule reading a different grammar.
 
 | Question | Java's answer | Kotlin's |
 | --- | --- | --- |
 | Is a backtick code punctuation? | no — Java's grammar has no backtick | **yes** — backquoted identifiers |
 | Is `;` what says "this line is code"? | yes, its strongest single clause | **it says almost nothing** |
-| What proves a repeated tail could not have run? | a local variable or a local type | **any declaration at all**, `fun` and `object` included |
-| Does the import above a concurrency wrapper survive? | yes, it resolves | **no**, it names something unreachable |
-| Is there a suspension token to delete? | no, and zero is reported | **yes** — `suspend`, on a declaration |
 
 **A backtick is code here.** Kotlin has backquoted identifiers, so a line carrying one may perfectly
 well be code, and the rule that every clause of the prose predicate be a shape *only English has*
@@ -1614,48 +1543,12 @@ a Kotlin author breaks a long expression, and how nobody writes a sentence) and 
 C-shaped arm needs: a line that carries an **assignment**. Without it `total += 1` is a line the
 dialect could say nothing at all about.
 
-**Every declaration is keyword-led, so the redeclaration proof needs no deny list.** Java's reading
-has to recognise "a type, a name and a terminator" and then subtract two dozen statement keywords
-that match the same shape — `return value;`, `throw failure;`, a second identical `import`, each of
-which may legally appear twice. Kotlin puts `val`, `var`, `fun`, `class`, `object`, `interface` or
-`typealias` in front of every declaration it has, so the reading recognises the keyword and
-everything else declines by construction. It is also a **wider** proof than any arm's: a program's
-top level here is a *script's*, where the compiler refuses a second `fun` or `object` of one name as
-readily as a second `val` — measured, as `Overload resolution ambiguity` and `Duplicate JVM class
-name`.
-
-**The concurrency wrapper is three shapes, and all three are measured failures.**
-`runBlocking { … }` is `Unresolved reference 'kotlinx'`, because that library is deliberately not on
-[the program classpath](#what-a-program-may-reach-and-why-that-took-being-deliberate);
-`thread { … }` is refused by TeaVM inside `kotlin/concurrent/Thread.kt`; and `Thread { … }.start()`
-compiles and then fails with `setTimeout is not available in the sandbox` before a line of the
-model's own work runs. Kotlin's trailing-lambda syntax puts the block *outside* the parentheses, so
-`runBlocking(Dispatchers.Default) { … }` and `thread(start = false) { … }` are the same wrapper with
-an argument list in the middle — a shape Java's arm cannot have, since there the lambda is inside
-the call. The match is **anchored** to the head, which matters more here than anywhere: in Kotlin
-`something { … }` is the shape of half the expressions a program writes.
-
-**The import above it is deleted**, where Java's is kept, and that is the divergence that shows the
-rule is about the *program* rather than about the language family. Java keeps
-`import java.util.concurrent.CompletableFuture;` because that package is in its declared set, so the
-line resolves and an unused import is legal. Kotlin's wrapper library is not reachable at all, so
-leaving the line behind would leave the one line of the repaired program that still fails — which is
-[Python's answer](/gg/response-healing/) and Ruby's, reached from Kotlin's classpath rather than
-from theirs.
-
-**And this is the one arm with a suspension token to delete.** Kotlin marks suspension on the
-*declaration* rather than at the call site: there is no `await`, and a suspending call is written
-exactly like any other. But a `suspend fun` declared inside the wrapper cannot be called once the
-wrapper is off, so the modifier comes off with it and is counted — which is what makes the repair
-actually run, and what makes this arm report a non-zero count where Java's and Ruby's report the
-honest zero of a language with no such token.
-
 Two more answers are its own without being disagreements. The fence tags are `kotlin`, `kt` and
 **`kts`**, which is not a slip: a program here really is compiled as a script, so a model that
 tagged its block with the script extension tagged it correctly. And the arm carries **two lexers**
 rather than reusing one — the preparation's, which is total and tolerant because the compiler is
 downstream of it, and the dialect's, which must be able to say *I lost my place* and return nothing
-at all, because its answer decides whether gg deletes the model's work. Both read Kotlin's three
+at all rather than hand over a reading it already knows is wrong. Both read Kotlin's three
 awkward shapes (a `${…}` template, a **nested** block comment, a backquoted identifier), each of
 which is a place a Java-shaped scan silently loses the source rather than declining.
 
@@ -1699,35 +1592,16 @@ The ordinary path is not a panic at all. Every call returns `Result<_, ToolError
 wraps a program in returns `Result<(), Failure>`, so `?` is what a Rust author reaches for and an
 unhandled failure ends the turn with the failed call's own class attached.
 
-### What its dialect says, and the three answers nobody else gives
+### What its dialect says, and the one answer nobody else gives
 
 Its [healing dialect](/gg/response-healing/) is `crates/gg/src/sandbox/language/rust.healing.rs`, and
-three of its answers are ones no other registered arm gives.
-
-**`let` is not part of the redeclaration proof.** On every other arm the keyword that opens a
-binding is the whole of that proof — a second `const`, `val`, `def` or `let` of one name is refused
-before a statement runs, which is exactly the warrant
-[`drop-duplicate-program`](/gg/response-healing/) needs. Rust **shadows**: `let total = 1;
-let total = 2;` is ordinary, deliberate, everyday Rust, so a duplicated program made only of `let`s
-and calls is one that *runs its work twice* rather than one the compiler refuses. The proof here
-rests on **items** instead — `fn`, `struct`, `enum`, `union`, `trait`, `type`, `const`, `static`,
-`mod`, each `E0428` twice in one block — and on a single-name `use`, which is `E0252`. Both were
-measured against `rustc` rather than reasoned about, and a glob import is excluded because writing
-one twice is legal. A duplicated program with no item and no import declines, which is the honest
-answer: it would have run.
-
-**Nothing is done about an import, and nothing needs to be.** Every other arm either deletes the
-model's `import` lines — they have no module loader — or hoists them somewhere they resolve, which
-is what the two JVM arms do. Rust needs neither: a program here is a function body, Rust admits an
-**item** wherever a statement may stand, and `use std::collections::HashMap;` therefore resolves
-exactly where the model wrote it. This is the one arm that answers "no" to
-`is_import_statement` because the line *works*, rather than because gg moved it.
+one of its answers is one no other registered arm gives.
 
 **The lexer has to tell a character literal from a lifetime.** `'a'` is a `char` and `'a` is a
 lifetime, and they open with the same byte — a hazard no other arm's `'` carries. A scan that read
 the `'` of `&'static str` as an opening quote would swallow the rest of the program into a string,
-and every strategy that consults the mask would then be reading the wrong text. So a `'` here opens
-a literal **only** when what follows it is one character and then a closing `'`. That rule has a
+and anything reading the mask would then be reading the wrong text. So a `'` here opens a literal
+**only** when what follows it is one character and then a closing `'`. That rule has a
 second effect worth having: an apostrophe in a stray line of English (`don't`) is ordinary code
 punctuation rather than an unterminated literal, so a reply of prose around a program still lexes —
 where the identical apostrophe leaves Kotlin's scan with no mask at all.
@@ -1739,17 +1613,6 @@ other C-shaped arm; and a **raw** string carries its own fence (`r"…"`, `r#"�
 *off* the non-prose list, which is Java's answer and not Kotlin's: Rust has no backtick anywhere in
 its grammar — an identifier that needs escaping is written `r#type` — so a lead-in written with an
 inline code span may be deleted here.
-
-Its concurrency wrapper is `std::thread::spawn(|| { … })`, in both the immediate and the
-bound-and-joined shapes, and it is a **measured** failure rather than an assumed one: `spawn`
-compiles for this target and then panics, because the target has no threads. The `use` lines above
-it are **kept**, which is Java's answer rather than Kotlin's and for this arm's own reason —
-`std::thread` really is in its library set, so the line resolves and an unused import is a warning
-gg has already silenced. `.await` inside the body comes off and is counted, which is Rust's
-suspension token in the one place it lives: after the expression rather than in front of it.
-Deliberately *not* recognised is any `async` shape — `block_on(async { … })` needs `futures` or
-`tokio`, neither of which is in the library set, so a program that reaches for one already gets
-`E0433` naming the crate before it runs.
 
 ### What a Rust program is, and the one shape it refuses
 
@@ -1866,38 +1729,19 @@ Because a module and the program are one Swift module, a module is checked with 
 rather than a build when it is read — there is nothing to optimise and nothing to link for
 something that will be compiled again as part of every program that uses it.
 
-### What its dialect says, and the three answers worth reading beside another arm's
+### What its dialect says, and the lexer that survives text two others do not
 
 Its [healing dialect](/gg/response-healing/) is
 `crates/gg/src/sandbox/language/swift.healing.rs`.
 
-**The redeclaration proof is the widest of any registered arm's**, and it is the exact inverse of
-Rust's. Rust shadows, so its proof had to retreat to items; Swift refuses a second `let`, `var`,
-`func`, `struct`, `class`, `enum`, `actor`, `protocol` or `typealias` of one name at one scope,
-before a statement runs. So the everyday doubled program — the one made of nothing but bindings and
-calls — is provably dead code here where it might have run there. `import` is the one declaration
-excluded, because writing one twice is legal, and `extension` because it declares no name of its
-own.
-
-**Nothing is done about an import, and this is the second arm where that is because the line
-works.** A program here is a whole top-level file, Swift admits an `import` anywhere in one —
-measured, not assumed — and every module of this arm's library set is on the search path the
-program is compiled with. A module that is *not* in the set is a located `no such module` on the
-turn that wrote it, which is a better answer than a silent deletion.
-
 **Its lexer survives text two of the others' do not, and asks two things no other's does.** Swift
 has **no character literal**, so an apostrophe in a stray line of English is ordinary punctuation
-here where the identical byte leaves Kotlin's scan with no mask at all. Interpolation is a **paren**
+here where the identical byte leaves Kotlin's scan with no mask at all — the same place
+[Rust](#rust-the-program-is-the-artifact)'s arm arrives at, reached by having no such literal
+rather than by a rule that tells one from a lifetime. Interpolation is a **paren**
 count rather than a brace count (`"total: \(rows["n"])"`), and inside a raw string the escape
 carries the fence too (`#"\#(value)"#`). A raw string's `#` fence has to be counted rather than
 looked for, `"""` may span a newline where `"` may not, and block comments nest.
-
-Its concurrency wrapper is `Task { … }`, in both the immediate and the bound-and-awaited shapes,
-and it is a **measured** failure rather than an assumed one: the artifact compiles, the task is
-scheduled, the program returns, and nothing is left to run it — which is the worst failure shape
-there is, a clean turn over a program that did nothing. The `import` lines above it are **kept**,
-for the same reason nothing is done about an import anywhere on this arm. `await` comes off as a
-**prefix**, which is where Swift puts suspension, and is counted.
 
 ## C++: the prelude is precompiled, and the exceptions work
 
@@ -2009,42 +1853,12 @@ read as code punctuation — a heading stays deletable — and a line whose `#` 
 the fourteen directive words **spelled lower-case** is code to both predicates. `# Include the
 manifest` is capital-I and is prose; `#include` is not.
 
-**The redeclaration proof is the strongest of any registered arm's, and this arm gets it from the
-shape of the language.** Every other arm's version of it asks whether the repeated tail happens to
-declare something the compiler refuses twice. A C++ program *must* define `main`, so a reply that
-is one program pasted after an identical copy of itself always carries two definitions of it —
-`redefinition of 'main'`, before a statement runs. The reading is wider than that, so a doubled
-*fragment* is caught too; the one shape it must not get wrong is a **reopened `namespace`**, which
-is ordinary C++ and is excluded by name.
-
-**Nothing is done about an `#include`, and this is the third arm where that is because the line
-works.** A redundant include is de-duplicated against the precompiled header for nothing, a
-standard header the prelude does not carry is read for real off libc++'s own include path, and a
-header that is not the standard library's is a located `file not found` on the turn that wrote it —
-each of which is a better answer than a silent deletion.
-
-**There is no concurrency wrapper to unwrap**, and the reason is the grammar rather than the library
-set. A reply's top level is a translation unit rather than a statement list, so the shape the
-strategy looks for — a whole program that is one wrapper and nothing else — does not exist in this
-language; the model's work is inside `main` either way, and a thread it constructed there is a
-statement among statements.
-
-It is **not** an arm where concurrency cannot be written, and the distinction matters for reading
-this arm beside Rust's. The prelude is what a program is compiled *against*, not an allowlist: the
-whole of libc++ is on the include path, so `#include <thread>` resolves, compiles and links.
-Measured against this arm's own flags, `std::thread`'s constructor then throws
-`system_error: thread constructor failed: Not supported`. That puts this arm in the **same**
-position as the [Rust](#rust-the-program-is-the-artifact) arm, whose `std::thread::spawn` also
-compiles — with a better ending, a recoverable exception carrying a sentence rather than a thread
-that silently never runs. What differs between them is only the wrapper: Rust's shape exists and is
-deleted, and this one's never existed.
-
 Its lexer asks three things no other arm's does. A **raw string's fence is chosen by its author**
 (`R"gg(…)gg"`), so it has to be read rather than looked for; `'` is a **digit separator** as often
 as it is a quote, and the rule that tells them apart is that a literal cannot open where a value
 has just ended; and **block comments do not nest**, which is the opposite of Swift's and Kotlin's.
-It is also the one lexer here with two readers: healing gets a mask **only when the scan ended
-cleanly**, because a strategy that deletes text must not act on a reading known to be wrong, while
+It is also the one lexer here with two readers: a mask is handed over **only when the scan ended
+cleanly**, because a reader that acts on one must not act on a reading known to be wrong, while
 the reader that asks whether a reply defines `main` takes the best reading whatever happened,
 because its errors are safe in the accepting direction.
 
@@ -2106,18 +1920,9 @@ wrong about, and all three are absences rather than rules:
   deliberately out of the default scope for that reason, though a program may still write the
   `using` itself.
 
-### What its dialect says, and the wrapper it declines to remove
+### What its dialect says, and the lexer that reads two shapes no other arm's does
 
 Its [healing dialect](/gg/response-healing/) is `crates/gg/src/sandbox/language/csharp.healing.rs`.
-
-**The redeclaration proof is the language's own, and it is the everyday case rather than the exotic
-one.** A C# program's top-level statements are **one scope**, so `var total = 0;` written twice is
-`CS0128` — *a local variable named 'total' is already defined in this scope* — before a statement
-runs. A reply that is one program pasted after an identical copy of itself is therefore refused by
-the compiler as long as the program declared anything at all, which is nearly every program anyone
-writes; a type declared twice is the same proof by `CS0101`. The two shapes C# really does allow
-twice — a `partial` type and a reopened `namespace` — are excluded by name, because reading one as a
-redeclaration would let `drop-duplicate-program` delete a tail that would have run.
 
 **`#` is both Markdown's heading and C#'s preprocessor**, which is
 [C++](#c-the-prelude-is-precompiled-and-the-exceptions-work)'s problem in a milder form and takes the
@@ -2125,35 +1930,18 @@ same answer: `#` is not read as code punctuation, so a heading stays deletable, 
 is followed by one of thirteen directive words **spelled lower-case** is code to both predicates.
 `#nullable enable` is a directive; `# Nullable reference types` is a heading.
 
-**Nothing is done about a `using`, and this is the fourth arm where that is because the line works.**
-gg's surface arrives through a `global using` the SDK declares in its own file, so a model's own
-`using Gg;` is a redundant directive C# accepts in silence, and a namespace the reference set does
-not carry is a located `CS0246` naming it — a better answer than a silent deletion. That is the
-*program*'s answer and not the module's: a module is compiled inside a `static class`, where a
-`using` is a syntax error, so gg hoists the run of them at the top of one out of the class body. The
-asymmetry is the language's rather than gg's.
-
-**There is no concurrency wrapper to unwrap, and here that is a measurement rather than a grammar.**
-C++'s answer was that the shape cannot be written. C#'s is that it *can* be written and it **works**:
-Roslyn lowers an `async Task Main` — and a top-level `await` — into a synthesized synchronous entry
-point that blocks on the result, and that entry point is the one the guest invokes. Both shapes are
-driven through the real compiler and the real prebuilt guest by
-`csharp_runs_a_program_written_the_async_way_a_model_reaches_for`, and both run. Taking a wrapper off
-that works would delete a class declaration and re-indent a body to no purpose, so this dialect
-declines.
-
 Its lexer asks two things no other arm's does. A **raw string's fence is a run of quotes chosen by
 its author** (`"""…"""`), so it has to be read rather than looked for; and an **interpolation hole is
 code that may contain another string** — `$"{items.First(x => $"{x}")}"` is one expression a scanner
 that stopped at the second quote would read as three. It shares C++'s two-reader arrangement for the
-same reason: healing gets a mask **only when the scan ended cleanly**, while the reader that lists a
-module's exports takes the best reading whatever happened, because its errors are safe in the
+same reason: a mask is handed over **only when the scan ended cleanly**, while the reader that lists
+a module's exports takes the best reading whatever happened, because its errors are safe in the
 accepting direction.
 
 Its `'` needs none of C++'s reasoning, because C# spells a digit separator `_`. What that costs is
 one shape and it costs nothing: a line of English with an apostrophe in it is a literal that never
-closes, so the scan reports itself unclean and healing declines — which is the same answer it gives
-any reply it cannot read, and exactly the state a fenced reply is in before its fences come off.
+closes, so the scan reports itself unclean rather than handing over a reading it has lost its place
+in — which is the same answer every dialect gives text it cannot read.
 
 ## What compiling costs, and where it is recorded
 
@@ -2577,7 +2365,7 @@ instantly in every gate that iterates languages.
 | **Preparing a module** | Turning a [code skill](/gg/skills/#code-skills)'s or [code memory](/gg/memories/#code-memories)'s file into something that yields a namespace, bound at `lib.<key>` — for an interpreted arm, source its guest evaluates; for a [compiled](#a-module-a-program-has-to-be-linked-against) one, source the *next program's* compile is built against. |
 | Its **guest component** | The prebuilt `.wasm` that evaluates the prepared source, embedded in the binary — or **nothing at all**, for an arm whose prepare step [compiles the component itself](#an-arm-whose-artifact-is-the-program). |
 | Its **signature catalogue** | The JSON reflected out of its own SDK by its own documentation tool — every object, signature, argument, type and type member the model reaches by searching and reads through `view.openDocsView()`. Generated by the build rather than checked in. See [the catalogue](#the-catalogue). |
-| A **healing dialect** | The language-shaped questions [response healing](/gg/response-healing/#the-skeleton-and-the-dialect) asks: which fence tags mean "this block is the program", which lines are certainly code and which are certainly prose, which bytes of a source are code rather than string or comment, what an import statement looks like, what makes a binding the language refuses to see twice, and what a whole-program concurrency wrapper looks like. |
+| A **healing dialect** | The language-shaped questions [response healing](/gg/response-healing/#the-skeleton-and-the-dialect) asks: which fence tags mean "this block is the program", and which lines are certainly code and which are certainly prose. It carries one further question of the same kind that healing itself does not ask — which bytes of a source are code rather than string or comment — because that is where the rest of the language's lexical answers live; the [module analysis](#a-module-a-program-has-to-be-linked-against) is what reads it. |
 | A **prompt dialect** | Its own `system-code.<id>.hbs` and `code-nothing-shown.<id>.hbs` templates, and nothing else. Not one function name: every call a template quotes is resolved from that language's catalogue when the template renders — see [nothing quotes a call by hand](#nothing-quotes-a-call-by-hand). |
 | **Healing fixtures** (tests only) | Replies its own dialect must survive, so that healing's delete-only invariant is re-earned per language rather than inherited. |
 

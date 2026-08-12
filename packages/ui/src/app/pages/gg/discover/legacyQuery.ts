@@ -80,31 +80,44 @@ const METRIC_FIELDS: Record<string, string> = {
  *
  * Everything else in that enum flattens to `summary.<camelCase>` directly, because the
  * document carries the whole session summary verbatim. These are the response-healing
- * counters, which lived on a nested `healing` struct and had the prefix folded into their
- * enum name.
+ * figures, which lived on a nested `healing` struct and had the prefix folded into their
+ * enum name: the two run-level totals, and the counters of the two surviving strategies
+ * the enum has a token for. A run records a third strategy counter — `dropDoubledResponse`
+ * — but the enum predates that strategy and never named it, so no legacy link can ask for
+ * it. The enum's remaining strategy counters name strategies that no longer exist, and are
+ * in {@link INEXPRESSIBLE_METRICS}.
  */
 const SUMMARY_FIELD_ALIASES: Record<string, string> = {
   responses_healed: "summary.healing.healed",
   healing_applications: "summary.healing.applications",
   healing_strip_fences: "summary.healing.stripFences",
   healing_strip_prose: "summary.healing.stripProse",
-  healing_drop_duplicate_program: "summary.healing.dropDuplicateProgram",
-  healing_drop_imports: "summary.healing.dropImports",
-  healing_unwrap_async: "summary.healing.unwrapAsync",
 };
 
 /**
- * The one legacy metric with **no** document field: `healing_rate` was a per-run ratio
- * the aggregator computed (`healed / codeExecutions`), and TCQ deliberately has no
- * `rate()` — averaging a boolean is a rate, and a ratio of two counts is not a scalar the
- * document carries.
+ * The legacy metrics with **no** document field, for the two ways a token ends up with
+ * none.
  *
- * A clause that names it is dropped rather than silently rewritten to the numerator,
- * which would answer a different question under the original question's label. The
- * redirect lands in an editor showing the transcoded text, so a dropped column is visible
- * rather than assumed.
+ * `healing_rate` never had one: it was a per-run ratio the aggregator computed
+ * (`healed / codeExecutions`), and TCQ deliberately has no `rate()` — averaging a boolean
+ * is a rate, and a ratio of two counts is not a scalar the document carries. The other
+ * three had one and lost it: their response-healing strategies were deleted, so no run
+ * records those counters and none ever will again.
+ *
+ * A clause that names any of them is dropped rather than silently rewritten — the ratio
+ * to its numerator, which would answer a different question under the original question's
+ * label, and a deleted counter to the `summary.<camelCase>` fallback, which does not even
+ * spell the field it used to have: `summary.healingDropImports` is a path the document
+ * has never carried, so the column would chart nothing while claiming to chart something.
+ * The redirect lands in an editor showing the transcoded text, so a dropped column is
+ * visible rather than assumed.
  */
-const INEXPRESSIBLE_METRICS = new Set(["healing_rate"]);
+const INEXPRESSIBLE_METRICS = new Set([
+  "healing_rate",
+  "healing_drop_duplicate_program",
+  "healing_drop_imports",
+  "healing_unwrap_async",
+]);
 
 /** Whether this query string is one the old aggregate surface wrote. */
 export function isLegacyAggregateQuery(params: URLSearchParams): boolean {

@@ -417,9 +417,9 @@ pub(super) enum Mask {
 /// Two readers, one scan. [`wrap_module`] and its helpers take the best reading whatever happened,
 /// because their errors are safe in the accepting direction — an unlisted export is a call the model
 /// was not told about and the compiler still resolves. [Healing](super::healing) takes a mask **only
-/// when the scan ended cleanly**, because every strategy that consults one is deciding whether to
-/// delete text, and a reading already known to be wrong is the worst possible basis for that. Two
-/// lexers would have been two chances to disagree about what a raw string is.
+/// when the scan ended cleanly**, because a caller that consults one is asking which bytes of a
+/// reply are really code, and a reading already known to be wrong is the worst possible basis for
+/// that answer. Two lexers would have been two chances to disagree about what a raw string is.
 pub(super) struct Scan {
     /// What every byte is.
     pub(super) mask: Vec<Mask>,

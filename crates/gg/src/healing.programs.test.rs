@@ -3,12 +3,12 @@
 //! `drop-doubled-response` end to end, and the two predicates measured against the replies real
 //! models sent.
 //!
-//! What is not here is what a [dialect](super::Dialect) decides.
-//! `drop-duplicate-program`, `drop-imports`, `unwrap-async` and the lexical mask all turn on a
-//! reading of one language's syntax, so their cases live with that language — TypeScript's in
+//! What is not here is what a [dialect](super::Dialect) decides. Which fence tags name a program,
+//! which lines could only be code and which could only be prose all turn on a reading of one
+//! language's syntax, so their cases live with that language — TypeScript's in
 //! `sandbox/language/typescript.healing.test.rs`. The split is the same one the code makes, and for
-//! the same reason: a case asserting that `require("x");` is dropped is a case about TypeScript,
-//! and it would be quietly wrong the day it was inherited by a language with no `require`.
+//! the same reason: a case asserting that `const x = 1;` reads as code is a case about TypeScript,
+//! and it would be quietly wrong the day it was inherited by a language with no `const`.
 //!
 //! The predicates are still measured here, through the dialect, because the property under test is
 //! the subsystem's asymmetry rather than either predicate's implementation: `looks_like_code` may
@@ -310,46 +310,6 @@ fn the_doubled_reply_is_left_alone_under_the_default_configuration() {
     assert!(result.applied.is_empty(), "{:?}", result.applied);
 }
 
-/// **The two duplicate strategies partition the shape, and the separator is the boundary.**
-///
-/// A model that pastes its program out twice puts a newline between the copies, which makes the
-/// reply odd-length — so `drop-doubled-response` declines and `drop-duplicate-program`, which
-/// searches for a repeated *tail* at a line start, is what repairs it. A provider that concatenates
-/// the same completion writes no separator at all, which puts the second copy mid-line where the
-/// tail search cannot see it — and that is exactly the gap `drop-doubled-response` was added to
-/// close.
-///
-/// Running the coarse test first therefore costs the finer one nothing: by the time it runs, the
-/// reply is not a clean doubling.
-#[test]
-fn the_newline_between_the_copies_is_what_decides_which_strategy_repairs_it() {
-    let program = "const root = listDir(\".\");\nwriteFile(\"a.md\", root.length);";
-
-    // Pasted twice, as a model writes it: a newline separates the copies.
-    let pasted = healed_doubled(&format!("{program}\n{program}"));
-    assert_eq!(pasted.program, program);
-    assert_eq!(
-        pasted.strategies(),
-        vec![HealingStrategy::DropDuplicateProgram],
-        "the coarse strategy claimed a reply the finer one already repairs"
-    );
-
-    // Concatenated, as the provider records it: nothing between the copies at all.
-    let concatenated = healed_doubled(&program.repeat(2));
-    assert_eq!(concatenated.program, program);
-    assert_eq!(
-        concatenated.strategies(),
-        vec![HealingStrategy::DropDoubledResponse]
-    );
-
-    // And the gap: without the new strategy, the concatenated reply is not repaired at all.
-    assert_eq!(
-        healed(&program.repeat(2)).program,
-        program.repeat(2),
-        "the finer strategy found a repeated tail that begins mid-line"
-    );
-}
-
 // ---------------------------------------------------------------------------------------------
 // Comments
 // ---------------------------------------------------------------------------------------------
@@ -399,9 +359,9 @@ fn a_fenced_program_is_untouched_when_fences_are_disarmed() {
 /// A [dialect](Dialect) that declines every question it is asked.
 ///
 /// It is what a language looks like on the day it is registered and before anyone has written its
-/// lexical rules: no fence tags, no predicates, no mask, no import shape, no wrapper. gg's promise is
-/// that such a language still *works* — the two strategies that need no dialect go on repairing, and
-/// the four that need one quietly do nothing — and this is the dialect that makes the promise
+/// lexical rules: no fence tags, no predicates, no mask. gg's promise is that such a language still
+/// *works* — everything the skeleton can repair without asking goes on being repaired, and every
+/// repair that needs an answer quietly does nothing — and this is the dialect that makes the promise
 /// checkable. Anything the skeleton achieves through it is achieved without knowing a single thing
 /// about any language.
 struct InertDialect;
@@ -422,21 +382,9 @@ impl Dialect for InertDialect {
         false
     }
 
-    /// `None`: a dialect that cannot lex its own source, which every strategy that needs a mask must
+    /// `None`: a dialect that cannot lex its own source, which every caller that needs a mask must
     /// treat as a reason to decline rather than as permission to guess.
     fn code_mask(&self, _src: &str) -> Option<CodeMask> {
-        None
-    }
-
-    fn is_import_statement(&self, _line: &str) -> bool {
-        false
-    }
-
-    fn declares_a_redeclarable_binding(&self, _text: &str, _mask: &CodeMask, _base: usize) -> bool {
-        false
-    }
-
-    fn unwrap_async(&self, _text: &str, _mask: &CodeMask) -> Option<Unwrapped> {
         None
     }
 
@@ -470,8 +418,7 @@ fn the_skeleton_repairs_what_needs_no_dialect_at_all() {
     assert_eq!(fenced.strategies(), vec![HealingStrategy::StripFences]);
 
     // Concatenated with nothing between the copies — the transport-level doubling, which is a fact
-    // about bytes. (A newline between them would make it the *other* strategy's repair, and that one
-    // needs a dialect to prove the tail could never have run.)
+    // about bytes.
     let program = "total = 1 + 2\nshow(total)";
     let doubled = heal(&program.repeat(2), &config, &INERT);
     assert_eq!(doubled.program, program);
@@ -481,7 +428,7 @@ fn the_skeleton_repairs_what_needs_no_dialect_at_all() {
     );
 }
 
-/// **The four strategies that need a dialect decline when it declines.**
+/// **The repairs that need a dialect decline when it declines.**
 ///
 /// Not "fail", and not "guess": the text comes back exactly as the model sent it, so a language with
 /// no lexical rules yet loses repairs rather than losing programs. Each of these replies is one the
@@ -490,12 +437,9 @@ fn the_skeleton_repairs_what_needs_no_dialect_at_all() {
 #[test]
 fn an_inert_dialect_declines_every_repair_that_needs_one() {
     let cases = [
-        // drop-imports: nothing is an import statement.
-        "import { readFile } from \"gg\";\nconst total = 1;\n",
-        // unwrap-async: nothing is a wrapper.
-        "async function main() {\n  const total = await readFile(\"a\");\n}\nmain();",
-        // drop-duplicate-program: nothing redeclares anything.
-        "const total = 1;\nconst total = 1;",
+        // strip-fences: a tagged block is neither recognised nor code-shaped, so nothing is a
+        // candidate — the two tiers of the ladder that ask the dialect.
+        "```ts\nconst total = 1;\n```",
         // strip-prose: nothing is prose.
         "Here is the program.\n\nconst total = 1;\n\nThat should do it.",
     ];
@@ -531,34 +475,12 @@ fn the_dialect_decides_which_fenced_block_is_the_program() {
     assert_eq!(fixture.program, "total = 1 + 2");
 }
 
-/// **What an import looks like is the dialect's answer too.**
-///
-/// The same reply carries one module import in each language's syntax. Each dialect drops its own and
-/// leaves the other's alone — which is the correct behaviour in both directions: a line that is not
-/// an import in the language being run is a line of the model's program, and deleting it would be
-/// the one failure this subsystem promises never to commit.
-#[test]
-fn the_dialect_decides_what_an_import_looks_like() {
-    let reply = "import { readFile } from \"gg\";\nuse tools;\ntotal = 1\n";
-
-    let typescript = heal(reply, &HealingConfig::default(), dialect());
-    assert_eq!(typescript.program, "use tools;\ntotal = 1");
-    assert_eq!(typescript.strategies(), vec![HealingStrategy::DropImports]);
-
-    let fixture = heal(reply, &HealingConfig::default(), fixture_dialect());
-    assert_eq!(
-        fixture.program,
-        "import { readFile } from \"gg\";\ntotal = 1"
-    );
-    assert_eq!(fixture.strategies(), vec![HealingStrategy::DropImports]);
-}
-
 /// **The delete-only invariant holds for every dialect there is**, not only for the registered
 /// languages'.
 ///
 /// The registered languages re-earn it over their own fixtures next door; this runs the whole shared
 /// corpus — replies real models sent — through the two dialects that are not a registered language's,
-/// under all 64 configurations. A skeleton that leaned on a TypeScript answer somewhere would show
+/// under all eight configurations. A skeleton that leaned on a TypeScript answer somewhere would show
 /// up here as text that came out of healing without having gone in.
 #[test]
 fn the_delete_only_invariant_holds_for_every_dialect_there_is() {

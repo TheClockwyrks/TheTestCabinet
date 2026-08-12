@@ -186,9 +186,6 @@ impl SummaryState {
                 GgHealingStrategy::StripFences => &mut rollup.strip_fences,
                 GgHealingStrategy::StripProse => &mut rollup.strip_prose,
                 GgHealingStrategy::DropDoubledResponse => &mut rollup.drop_doubled_response,
-                GgHealingStrategy::DropDuplicateProgram => &mut rollup.drop_duplicate_program,
-                GgHealingStrategy::DropImports => &mut rollup.drop_imports,
-                GgHealingStrategy::UnwrapAsync => &mut rollup.unwrap_async,
             };
             *count += 1;
         }

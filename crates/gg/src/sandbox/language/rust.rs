@@ -8,7 +8,7 @@
 //! * [`source`] — what gg writes around a model's Rust, on one line, the one shape it refuses, and
 //!   how a code module is declared below the program that reads it;
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
-//!   questions of, three of whose answers no other arm gives;
+//!   questions of, one of whose answers no other arm gives;
 //! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
 //!   in Rust's syntax;
 //! * `packages/gg-sandbox-rust/` — the crate a program is compiled against: the SDK, the shell, the

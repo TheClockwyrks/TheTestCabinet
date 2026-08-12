@@ -127,15 +127,6 @@ fn the_generated_documentation_program_is_java_statements() {
              gg.views.Views.openDocsView(name);\n\
          }\n"
     );
-
-    // The lambda is deliberately absent: it is the one construct this arm's healing dialect hunts
-    // for as a concurrency wrapper, and a program gg generates should not teach a shape gg spends
-    // effort undoing.
-    assert!(
-        !java()
-            .open_docs_views_statement(&["readFile"])
-            .contains("->")
-    );
 }
 
 /// **The generated catalogue is this language's**, and it carries the whole surface.

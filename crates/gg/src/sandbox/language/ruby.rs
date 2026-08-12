@@ -7,9 +7,9 @@
 //!   guest evaluates, the two failures it tells apart, and what it costs;
 //! * [`modules`] — reading a code [skill](crate::skills)'s or [memory](crate::memories)'s own top
 //!   level to say what its namespace offers;
-//! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
-//!   questions of: the fence tags, the two predicates, the six-shape lexer, and the `Thread`
-//!   wrapper;
+//! * [`healing`] — the [dialect](crate::healing::Dialect): the fence tags and the two predicates
+//!   response healing asks its lexical questions of, beside the five-string-shape lexer it never
+//!   asks for and [`modules`] reads;
 //! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
 //!   in Ruby's syntax;
 //! * [`COMPONENT`] — the guest, built by

@@ -440,15 +440,6 @@ fn the_healing_rollup_folds_every_code_execution() {
         GgHealingStrategy::StripFences,
         GgHealingStrategy::StripFences,
     ])));
-    // A program pasted after a copy of itself: one strategy, one heal.
-    tracker.observe(&code_turn(healed(&[
-        GgHealingStrategy::DropDuplicateProgram,
-    ])));
-    // An awaited wrapper around imported tools: two strategies, one heal.
-    tracker.observe(&code_turn(healed(&[
-        GgHealingStrategy::UnwrapAsync,
-        GgHealingStrategy::DropImports,
-    ])));
     // The pipeline could not reach a fixpoint, so every repair was discarded and the response ran
     // exactly as sent — an unusual response that was nonetheless healed of nothing.
     tracker.observe(&code_turn(GgResponseHealing {
@@ -458,20 +449,17 @@ fn the_healing_rollup_folds_every_code_execution() {
 
     let summary = tracker.finalize("completed");
     assert_eq!(
-        summary.code_executions, 6,
+        summary.code_executions, 4,
         "every code-shaped turn counts, including the two that needed nothing"
     );
     assert_eq!(
         summary.healing,
         GgHealingSummary {
-            healed: 4,
-            applications: 7,
+            healed: 2,
+            applications: 4,
             strip_fences: 3,
             strip_prose: 1,
             drop_doubled_response: 0,
-            drop_duplicate_program: 1,
-            drop_imports: 1,
-            unwrap_async: 1,
             // Nothing recorded an armed set on this tracker: `record_healing` is a launch-time
             // fact, and these events were folded on their own.
             enabled: Vec::new(),

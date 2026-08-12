@@ -13,8 +13,7 @@
 //!   its namespace, which is what a code [skill](crate::skills) or [memory](crate::memories) is
 //!   bound from;
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
-//!   questions of: the fence tags, the two predicates, the mask, the import shapes and the `async`
-//!   wrapper;
+//!   questions of: the fence tags, the two predicates, and the mask;
 //! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
 //!   in this language's syntax;
 //! * [`COMPONENT`] — the `componentize-js` guest, built by `gg-artifact-typescript`;

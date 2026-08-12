@@ -5,11 +5,9 @@
 //! Under [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) the model's whole
 //! reply *is* the program: there is no fenced block to extract, no language tag, and no
 //! first-block-wins rule. That contract is simple enough to state in one sentence and simple enough
-//! to break in half a dozen ways, and real models break it — they wrap the program in a Markdown
-//! fence, they glue a sentence onto the closing fence (which CommonMark does not accept as a close,
-//! so the sentence becomes part of the program), they explain themselves above and below the code,
-//! they `import` a surface that is already in scope, and they wrap everything in an `async function
-//! main()` whose `await`s this synchronous sandbox cannot honour.
+//! to break in several ways, and real models break it — they wrap the program in a Markdown fence,
+//! they glue a sentence onto the closing fence (which CommonMark does not accept as a close, so the
+//! sentence becomes part of the program), and they explain themselves above and below the code.
 //!
 //! Healing turns those replies into the program the model meant, and — because the point of the
 //! capability is to *measure* how well models follow a code-only contract — it counts and discloses
@@ -18,10 +16,11 @@
 //! # The invariant that makes it honest
 //!
 //! > **Healing only ever deletes.** Every strategy removes contiguous text;
-//! > [`unwrap-async`](HealingStrategy::UnwrapAsync) additionally removes leading whitespace from
-//! > the body's lines. No strategy inserts a character, moves a line, rewrites a token in place, or
-//! > reorders anything. Therefore **the healed program, with whitespace removed, is a subsequence
-//! > of the response with whitespace removed.**
+//! > [`strip-fences`](HealingStrategy::StripFences) and
+//! > [`strip-prose`](HealingStrategy::StripProse) additionally remove the leading whitespace every
+//! > line of the program they leave behind shares. No strategy inserts a character, moves a line,
+//! > rewrites a token in place, or reorders anything. Therefore **the healed program, with
+//! > whitespace removed, is a subsequence of the response with whitespace removed.**
 //!
 //! One machine-checkable sentence that covers "never invents code" and "never reorders" for every
 //! strategy at once; `every_healed_program_is_a_subsequence_of_the_response` holds the whole fixture
@@ -47,15 +46,15 @@
 //!
 //! Which repairs exist, in which order they run, what makes each of them *decline*, and what the
 //! model is told about the ones that fired are all facts about **gg's contract**, not about any one
-//! program language: a model that fences its program, explains it, doubles it or wraps it does so in
-//! whatever language it was asked to write. Those facts are this module — the skeleton.
+//! program language: a model that fences its program, explains it or doubles it does so in whatever
+//! language it was asked to write. Those facts are this module — the skeleton.
 //!
 //! What a language *does* own is the handful of lexical questions the skeleton asks along the way:
-//! which fence tags mean "this block is the program", whether a line is certainly code or certainly
-//! prose, which bytes of a source are code rather than string or comment text, whether a line is a
-//! complete module import, whether a repeated tail redeclares a binding the language refuses twice,
-//! and how a whole-program concurrency wrapper comes off. Each is a method on [`Dialect`], and each
-//! language's implementation lives with the rest of that language under `sandbox/language/`.
+//! which fence tags mean "this block is the program", and whether a line is certainly code or
+//! certainly prose. Each is a method on [`Dialect`], and each language's implementation lives with
+//! the rest of that language under `sandbox/language/`. The trait carries one further question of
+//! the same kind — [`code_mask`](Dialect::code_mask), which bytes of a source are code rather than
+//! string or comment text — that the skeleton itself does not ask; see [`CodeMask`] for who does.
 //!
 //! The trait is declared **here**, and [`heal`] takes it as a parameter, so the dependency arrow
 //! points `sandbox::language` → `healing` and this module keeps the property above: it still imports
@@ -73,12 +72,10 @@ use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig};
 
 /// The lexical questions [healing](self) asks about one **program language**.
 ///
-/// Every method is a question the skeleton needs answered before it can decide that a deletion is
-/// safe, and every one of them has a different answer per language while the decision built on it
-/// does not. A dialect is therefore small, total and side-effect-free: it looks at text and says
-/// yes, no, or "I could not tell", and it rewrites nothing except in
-/// [`unwrap_async`](Self::unwrap_async), whose rewrite is a deletion the invariant below still
-/// binds.
+/// Every method is a lexical question — most of them ones the skeleton needs answered before it can
+/// decide that a deletion is safe — and every one of them has a different answer per language while
+/// the decision built on it does not. A dialect is therefore small, total and side-effect-free: it
+/// looks at text and says yes, no, or "I could not tell", and it rewrites nothing at all.
 ///
 /// # The rule every implementation inherits
 ///
@@ -94,11 +91,12 @@ use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig};
 ///
 /// # Answering "no" is always safe
 ///
-/// A dialect that declines every question leaves the four dialect-driven strategies inert while the
-/// two that are pure skeleton — `strip-fences` over an untagged block, and `drop-doubled-response` —
-/// go on working exactly as they do now. That is what makes a language's dialect something it can
-/// grow into rather than a prerequisite for running at all, and it is what the tests' inert dialect
-/// asserts, so the skeleton is demonstrably not one language's rules with the labels filed off.
+/// A dialect that declines every question leaves `strip-prose` inert and narrows `strip-fences` to
+/// the untagged block it can recognise without help, while `drop-doubled-response` — the one
+/// strategy that is pure skeleton — goes on working exactly as it does now. That is what makes a
+/// language's dialect something it can grow into rather than a prerequisite for running at all, and
+/// it is what the tests' inert dialect asserts, so the skeleton is demonstrably not one language's
+/// rules with the labels filed off.
 ///
 /// Object-safe, for the reason [`ProgramLanguage`](crate::sandbox::ProgramLanguage) is: the registry
 /// hands out `&'static dyn Dialect`, and nothing that consults one is generic over it.
@@ -129,37 +127,11 @@ pub trait Dialect: Send + Sync + 'static {
 
     /// Which bytes of `src` are **code**, as opposed to string, interpolation or comment text.
     ///
-    /// `None` means the source did not lex cleanly, and every strategy that needs the mask declines
-    /// on it. That is the correct failure mode for a lexer that has lost its place: the alternative
-    /// is deleting text on the strength of a reading already known to be wrong.
+    /// `None` means the source did not lex cleanly, and every caller that needs the mask declines to
+    /// act on it. That is the correct failure mode for a lexer that has lost its place: the
+    /// alternative is acting on a reading already known to be wrong. No strategy in [healing](self)
+    /// asks it; see [`CodeMask`] for who does, and for why the method lives here anyway.
     fn code_mask(&self, src: &str) -> Option<CodeMask>;
-
-    /// Whether the trimmed `line` is a **complete single-line** module import.
-    ///
-    /// "Complete" is load-bearing: a statement whose end is somewhere below is one only a parser can
-    /// delete correctly, and healing is not a parser.
-    fn is_import_statement(&self, line: &str) -> bool;
-
-    /// Whether `text` makes, at its top level, a binding this language refuses to see **twice**.
-    ///
-    /// This is the proof that deleting a repeated tail removes text that could never have run: if
-    /// the reply as sent redeclares such a binding, the language refuses it before a statement
-    /// executes, so the deletion changes no behaviour because there was none to change. A language
-    /// with no such rule answers `false` and thereby gives up
-    /// [`drop-duplicate-program`](HealingStrategy::DropDuplicateProgram) — which is right, because
-    /// without the proof that strategy would be deleting work the model asked to have done twice.
-    ///
-    /// `base` is where `text` starts inside the source `mask` was built over, so a caller may ask
-    /// about a slice of it.
-    fn declares_a_redeclarable_binding(&self, text: &str, mask: &CodeMask, base: usize) -> bool;
-
-    /// Unwrap a concurrency wrapper around the **whole** program, if this language has one and
-    /// `text` is entirely made of it.
-    ///
-    /// Answers with the wrapper shape, the program that was inside it, and how many suspension
-    /// tokens went with it. A language with no such construct — or one whose guest could honour it —
-    /// answers `None`, and so does one that recognises a wrapper it must not remove.
-    fn unwrap_async(&self, text: &str, mask: &CodeMask) -> Option<Unwrapped>;
 
     /// Replies in this language that the delete-only invariant is re-asserted over.
     ///
@@ -173,13 +145,20 @@ pub trait Dialect: Send + Sync + 'static {
 
 /// Which bytes of a source are **code** — as opposed to string, interpolation or comment text.
 ///
-/// The question [`drop_imports`], [`unwrap_async`] and [`drop_duplicate_program`] each ask of it is
-/// the same one: is this byte code? — so that an import inside a string, a suspension keyword inside
-/// a comment, or a declaration inside a template literal is left alone.
+/// The question every caller asks of it is the same one: is this byte code? — so that an import
+/// inside a string, a keyword inside a comment, or a declaration inside a template literal is read
+/// as the text it is rather than as the statement it spells.
+///
+/// **Healing does not ask it.** No strategy in this module consults a mask; the callers are the
+/// per-language module analysis — `sandbox/language/python.modules.rs`, `purescript.modules.rs` and
+/// `ruby.modules.rs` — which reads a program's imports and must not mistake one written into a
+/// string for one the program makes. [`code_mask`](Dialect::code_mask) nonetheless belongs on the
+/// [dialect](Dialect) beside the rest of that language's lexical questions, so a later reader
+/// finding a trait method the skeleton never calls should not go looking for the call.
 ///
 /// The type lives here with a per-language *filler*, because the shape of the answer is the same in
 /// every language — one flag per byte, out of range is not code — and only the lexer that produces
-/// it differs. That is what lets a skeleton strategy index a mask without knowing whose it is.
+/// it differs. That is what lets a caller index a mask without knowing whose it is.
 pub struct CodeMask {
     /// Per byte: not string, interpolation, or comment text. An interpolation's own delimiters are
     /// code, because they are what a brace count has to see in order to come back out again.
@@ -191,8 +170,9 @@ impl CodeMask {
     /// [`Dialect`]'s own lexer returns through.
     ///
     /// The flags are taken by value rather than the field being public, so a mask is immutable once
-    /// built: every strategy that reads one is deciding whether to delete text, and a mask that
-    /// could be edited afterwards is a decision that could be revised behind the decider's back.
+    /// built: every caller that reads one is deciding what a stretch of a program means, and a mask
+    /// that could be edited afterwards is a decision that could be revised behind the decider's
+    /// back.
     pub fn from_flags(code: Vec<bool>) -> Self {
         Self { code }
     }
@@ -202,18 +182,6 @@ impl CodeMask {
     pub fn is_code(&self, index: usize) -> bool {
         self.code.get(index) == Some(&true)
     }
-}
-
-/// What a dialect's [unwrap](Dialect::unwrap_async) produced: the wrapper it recognised, the program
-/// that was inside it, and how many suspension tokens it deleted on the way out.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Unwrapped {
-    /// Which wrapper shape it was — what the model is told came off.
-    pub wrapper: AsyncWrapper,
-    /// The unwrapped program: the body, dedented, with its suspension tokens gone.
-    pub text: String,
-    /// How many of those tokens were deleted, which is the count the model's note carries.
-    pub awaits: usize,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -237,26 +205,16 @@ pub enum HealingStrategy {
     /// copy of itself — the transport-level doubling, as opposed to a model that wrote its program
     /// out twice.
     DropDoubledResponse,
-    /// Delete an exact repeated trailing copy of the program — the fence-free shape of a model that
-    /// sent the same program twice.
-    DropDuplicateProgram,
-    /// Remove `import`/`require` statements for a tool surface that is already in scope.
-    DropImports,
-    /// Unwrap an `async` wrapper around the whole program and delete the `await`s it implied.
-    UnwrapAsync,
 }
 
 impl HealingStrategy {
     /// Every strategy, in the order [`heal`] applies them — which is also the order the capability's
     /// config table, the docs page and the session summary list them in, so those four listings
     /// cannot drift apart.
-    pub const ALL: [HealingStrategy; 6] = [
+    pub const ALL: [HealingStrategy; 3] = [
         Self::StripFences,
         Self::StripProse,
         Self::DropDoubledResponse,
-        Self::DropDuplicateProgram,
-        Self::DropImports,
-        Self::UnwrapAsync,
     ];
 
     /// The strategy's stable id — the one spelling, in kebab-case.
@@ -265,38 +223,28 @@ impl HealingStrategy {
             Self::StripFences => "strip-fences",
             Self::StripProse => "strip-prose",
             Self::DropDoubledResponse => "drop-doubled-response",
-            Self::DropDuplicateProgram => "drop-duplicate-program",
-            Self::DropImports => "drop-imports",
-            Self::UnwrapAsync => "unwrap-async",
         }
     }
 
     /// Whether a run that says nothing about this strategy gets it.
     ///
     /// **The rule: a strategy is armed by default when repairing is strictly safer than not
-    /// repairing.** For five of the six it is, and the warrant is the same in each case — the reply
-    /// the strategy deletes from *could not have run as sent*. A fenced reply is not a program in
-    /// any language; nor is one with prose around it; a reply that redeclares a top-level binding
-    /// the language refuses twice is refused before a statement of it executes; an import has no
-    /// module loader to resolve it; a called concurrency wrapper cannot resolve its own suspensions
-    /// in a synchronous sandbox. Declining to
-    /// repair any of those costs the turn outright, so the default that loses least is *on*.
+    /// repairing.** For two of the three it is, and the warrant is the same in both cases — the
+    /// reply the strategy deletes from *could not have run as sent*. A fenced reply is not a program
+    /// in any language; nor is one with prose around it. Declining to repair either of those costs
+    /// the turn outright, so the default that loses least is *on*.
     ///
     /// [`DropDoubledResponse`](Self::DropDoubledResponse) is the exception, and the asymmetry is
     /// real rather than an abundance of caution: the half it deletes is **valid code under any
     /// reading other than "the transport duplicated this"**. A reply that runs its program twice is
-    /// a reply that runs — so where every other strategy turns a dead reply into a live one, this
-    /// one changes what a live reply does. That is a repair only for the models observed to emit
-    /// the defect, so it is armed **deliberately**, per run, by an operator who has seen it. See the
+    /// a reply that runs — so where the other two turn a dead reply into a live one, this one
+    /// changes what a live reply does. That is a repair only for the models observed to emit the
+    /// defect, so it is armed **deliberately**, per run, by an operator who has seen it. See the
     /// strategy's own documentation for why its match rule is nonetheless safe with almost no
     /// guards.
     pub const fn default_armed(self) -> bool {
         match self {
-            Self::StripFences
-            | Self::StripProse
-            | Self::DropDuplicateProgram
-            | Self::DropImports
-            | Self::UnwrapAsync => true,
+            Self::StripFences | Self::StripProse => true,
             Self::DropDoubledResponse => false,
         }
     }
@@ -320,9 +268,6 @@ pub struct HealingConfig {
     strip_fences: bool,
     strip_prose: bool,
     drop_doubled_response: bool,
-    drop_duplicate_program: bool,
-    drop_imports: bool,
-    unwrap_async: bool,
 }
 
 impl Default for HealingConfig {
@@ -330,7 +275,7 @@ impl Default for HealingConfig {
     /// thing as "everything on".
     ///
     /// A strategy absent from a run's `healing` param takes this arm, so a configuration that says
-    /// nothing gets the five repairs whose warrant holds unconditionally and does **not** get
+    /// nothing gets the two repairs whose warrant holds unconditionally and does **not** get
     /// [`drop-doubled-response`](HealingStrategy::DropDoubledResponse). This is the arm a study
     /// compares against.
     ///
@@ -355,9 +300,6 @@ impl HealingConfig {
         strip_fences: false,
         strip_prose: false,
         drop_doubled_response: false,
-        drop_duplicate_program: false,
-        drop_imports: false,
-        unwrap_async: false,
     };
 
     /// Whether `strategy` is armed.
@@ -366,9 +308,6 @@ impl HealingConfig {
             HealingStrategy::StripFences => self.strip_fences,
             HealingStrategy::StripProse => self.strip_prose,
             HealingStrategy::DropDoubledResponse => self.drop_doubled_response,
-            HealingStrategy::DropDuplicateProgram => self.drop_duplicate_program,
-            HealingStrategy::DropImports => self.drop_imports,
-            HealingStrategy::UnwrapAsync => self.unwrap_async,
         }
     }
 
@@ -414,9 +353,6 @@ impl HealingConfig {
             HealingStrategy::StripFences => &mut self.strip_fences,
             HealingStrategy::StripProse => &mut self.strip_prose,
             HealingStrategy::DropDoubledResponse => &mut self.drop_doubled_response,
-            HealingStrategy::DropDuplicateProgram => &mut self.drop_duplicate_program,
-            HealingStrategy::DropImports => &mut self.drop_imports,
-            HealingStrategy::UnwrapAsync => &mut self.unwrap_async,
         };
         *field = on;
     }
@@ -446,7 +382,7 @@ pub struct ResolvedHealing {
 /// [the defaults](HealingConfig::default) — which is *not* "everything on", because
 /// [`drop-doubled-response`](HealingStrategy::DropDoubledResponse) is
 /// [armed deliberately](HealingStrategy::default_armed) rather than by omission. Every row below
-/// that reads "the defaults" therefore means "the other five on, `drop-doubled-response` off".
+/// that reads "the defaults" therefore means "the other two on, `drop-doubled-response` off".
 ///
 /// | `params.healing` | Meaning |
 /// | --- | --- |
@@ -693,20 +629,6 @@ pub enum HealingDetail {
         /// defect — the first is the shape a length floor would have missed.
         chars: usize,
     },
-    /// An exact repeated trailing copy of the program was deleted.
-    DuplicateProgram,
-    /// Whole `import`/`require` statements were removed.
-    Imports {
-        /// How many lines went.
-        lines: usize,
-    },
-    /// An `async` wrapper was removed and the `await`s it implied deleted.
-    Async {
-        /// Which wrapper shape it was.
-        wrapper: AsyncWrapper,
-        /// How many `await` tokens were deleted with it.
-        awaits: usize,
-    },
 }
 
 /// How a fenced block ended — the three shapes measured in round 1.
@@ -720,23 +642,6 @@ pub enum FenceClose {
     Glued,
     /// No closing fence at all: the block ran to the end of the response.
     Unterminated,
-}
-
-/// Which asynchronous wrapper shape was unwrapped.
-///
-/// Two shapes, named for the *structure* rather than for one language's word for it, because this
-/// enum sits on the [dialect](Dialect) seam: every language's `unwrap_async` labels its own wrapper
-/// with one of these, and a language whose grammar has no "IIFE" must still be able to say which of
-/// the two it found.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AsyncWrapper {
-    /// A **declared** asynchronous function whose body is the program — declared under a name, with
-    /// or without a trailing call to it. TypeScript's `async function main() { … }`.
-    Declared,
-    /// An asynchronous callable **invoked where it is written**, so the wrapper is one expression
-    /// and there is no name. TypeScript's `(async () => { … })();` and
-    /// `(async function () { … })();`.
-    Immediate,
 }
 
 /// Heal one model response into the program gg will run.
@@ -755,22 +660,24 @@ pub enum AsyncWrapper {
 /// # The pipeline
 ///
 /// ```text
-/// trim  ->  [ strip-fences -> strip-prose -> drop-doubled-response
-///             -> drop-duplicate-program -> drop-imports -> unwrap-async ]*
-///               ^                                          |
-///               +--- repeat until a pass applies nothing ---+
+/// trim  ->  [ strip-fences -> strip-prose -> drop-doubled-response ]*
+///             ^                                                  |
+///             +------ repeat until a pass applies nothing -------+
 /// ```
 ///
-/// Fences first, because until the wrapper is off, "is this line prose?" and "is this line an
-/// import?" are questions about the wrong text. Prose before duplicates, so the two copies of a
-/// program are adjacent when they are compared. `drop-doubled-response` before
-/// `drop-duplicate-program`, because it is the coarser, whole-reply test of the same defect: running
-/// it first means the finer one — which searches for a repeated *tail* and has a lexical-declaration
-/// guard to satisfy — only ever sees a reply that is not a clean doubling. Both before imports and
-/// async, so a doubled reply is halved before either of those looks at it. Imports before async,
-/// because a leading `import` line is exactly what makes `unwrap-async` decline — one strategy's
-/// output enabling another's match is the reason this is a fixpoint rather than a list.
-/// [`HealingStrategy::ALL`] **is** this order.
+/// Fences first, because until the wrapper is off, "is this line prose?" is a question about the
+/// wrong text — and `strip-prose` says so itself, declining outright while an opening fence
+/// survives. `drop-doubled-response` last, because the doubling it recognises is a property of the
+/// **whole** text and the other two change what the whole text is: a fence around a doubled body is
+/// not itself a doubling, and becomes one the moment the fence comes off. Going last is what lets it
+/// see that in the same pass rather than the next. [`HealingStrategy::ALL`] **is** this order.
+///
+/// It is a fixpoint rather than a list because a pass's output is what the next pass reads. A fence
+/// nested inside a fence is one wrapper per pass and needs two; and a doubled reply whose halves are
+/// each a fenced program offers `strip-fences` two candidates, so it declines — until
+/// `drop-doubled-response` halves the reply at the end of the pass and leaves the single block the
+/// next pass unwraps. One strategy's output enabling another's match is the reason the loop runs
+/// until nothing applies.
 ///
 /// If the fixpoint is not reached within [`MAX_PASSES`], **every repair is discarded**, the response
 /// is returned as it was sent, and [`did_not_converge`](Healed::did_not_converge) says so. That
@@ -918,9 +825,6 @@ fn apply(strategy: HealingStrategy, text: &str, dialect: &dyn Dialect) -> Strate
         HealingStrategy::StripFences => strip_fences(text, dialect),
         HealingStrategy::StripProse => strip_prose(text, dialect),
         HealingStrategy::DropDoubledResponse => drop_doubled_response(text),
-        HealingStrategy::DropDuplicateProgram => drop_duplicate_program(text, dialect),
-        HealingStrategy::DropImports => drop_imports(text, dialect),
-        HealingStrategy::UnwrapAsync => unwrap_async(text, dialect),
     }
 }
 
@@ -1340,11 +1244,11 @@ fn strip_prose(text: &str, dialect: &dyn Dialect) -> StrategyOutcome {
 ///
 /// A provider returns a completion whose text is literally `X + X` — `"foo();\nbar();foo();\nbar();"`
 /// where the model produced `"foo();\nbar();"`. Nothing separates the halves: no blank line, no
-/// fence, not so much as a space. It is a **transport** fault rather than a model one, and
-/// [`drop-duplicate-program`](drop_duplicate_program) cannot catch it, because that strategy insists
-/// the repeated tail declare a
-/// [binding the language refuses twice](Dialect::declares_a_redeclarable_binding) at its top level
-/// before it will delete anything — a doubled body of bare statements offers no such proof.
+/// fence, not so much as a space. It is a **transport** fault rather than a model one: the model
+/// wrote one program and the reply carries two, with nothing in the text to say so. Where the
+/// doubling happens to redeclare something the language refuses twice a compiler at least reports
+/// it, but a doubled body of bare statements compiles and runs — doing everything the model asked
+/// for a second time — and the byte-exact concatenation is then the only evidence the fault leaves.
 ///
 /// # The match rule
 ///
@@ -1401,8 +1305,9 @@ fn strip_prose(text: &str, dialect: &dyn Dialect) -> StrategyOutcome {
 /// way for a language to get this wrong.
 ///
 /// It applies **once** per pass. A quadrupled reply is therefore halved twice by the
-/// [fixpoint loop](to_fixpoint), one halving per pass, which is the same shape
-/// [`drop-duplicate-program`](without_repeated_tail) converges in.
+/// [fixpoint loop](to_fixpoint), one halving per pass: each halving leaves a shorter text on which
+/// the same match either holds again or does not, so nothing here has to reason about how many times
+/// the transport repeated itself.
 fn drop_doubled_response(text: &str) -> StrategyOutcome {
     let trimmed = text.trim_end();
     let middle = trimmed.len() / 2;
@@ -1424,187 +1329,6 @@ fn drop_doubled_response(text: &str) -> StrategyOutcome {
         text: head.to_string(),
         detail: HealingDetail::DoubledResponse {
             chars: tail.chars().count(),
-        },
-    }
-}
-
-// ---------------------------------------------------------------------------------------------
-// drop-duplicate-program
-// ---------------------------------------------------------------------------------------------
-
-/// Repair — or refuse — the reply that is two programs, with no fence anywhere to tell gg so.
-///
-/// This is the fence-free counterpart of [`strip_fences`]'s D2. With fences gone from the contract,
-/// a model that drafts two programs has nothing left to separate them with: it pastes the second
-/// after the first, and the result is one source that declares `const files` twice. Round 2 measured
-/// exactly that from both of the strongest models — two of them byte-for-byte identical programs —
-/// and it reached the guest as `SyntaxError: redeclaration of const files`, with the whole reply
-/// wasted.
-///
-/// # Repair — an exact repeated tail
-///
-/// **Matches** a reply that ends with a byte-identical repetition of the text immediately before it
-/// (`A A` → `A`; `A A A` converges to `A` over two passes of the [fixpoint](to_fixpoint)), when the
-/// repeated text [declares a binding the language refuses
-/// twice](Dialect::declares_a_redeclarable_binding) at its top level.
-///
-/// That guard is what makes the deletion **provably semantics-preserving**, which is otherwise not
-/// obvious: deleting the second of two identical copies of `writeFile("a.md", "x");` really would
-/// change what a run does. It cannot here, because a repeated declaration of that kind is refused
-/// before a statement runs — the reply as sent could not execute anything at all — so the deletion
-/// removes text that had no behaviour and turns a reply that could never run into the program the
-/// model wrote once.
-///
-/// **Declines** on everything else — including two programs that are *not* identical, where there
-/// is nothing safe to delete: the reply goes on to be prepared, which refuses it with the
-/// redeclaration error it really is, naming the identifier, its line and its column. That is the
-/// compiler's diagnostic over the model's own text, which is a better answer than any count gg
-/// could infer. It also declines on a repeated tail with no lexical declaration in it (which really
-/// would run twice) and on a name declared twice in different scopes (ordinary shadowing, and
-/// legal).
-fn drop_duplicate_program(text: &str, dialect: &dyn Dialect) -> StrategyOutcome {
-    let Some(mask) = dialect.code_mask(text) else {
-        return StrategyOutcome::Declined;
-    };
-
-    if let Some(kept) = without_repeated_tail(text, &mask, dialect) {
-        return StrategyOutcome::Rewrote {
-            text: kept.to_string(),
-            detail: HealingDetail::DuplicateProgram,
-        };
-    }
-
-    StrategyOutcome::Declined
-}
-
-/// `text` without its exact repeated tail, when it has one that may be deleted.
-///
-/// The repetition is sought at **line starts only** (a program is written in lines, and a boundary
-/// inside one would mean the two copies are not the copies they appear to be), and the candidates
-/// are narrowed to offsets whose line equals the reply's first line — the second copy of a program
-/// begins the way the first did — so the scan is one pass over the lines with a byte comparison at
-/// the few that could possibly match.
-///
-/// The **last** viable offset wins, which is what makes `A A A` shrink one copy per pass instead of
-/// declining: the tail is compared with the text immediately preceding it, not with the whole head.
-fn without_repeated_tail<'a>(
-    text: &'a str,
-    mask: &CodeMask,
-    dialect: &dyn Dialect,
-) -> Option<&'a str> {
-    let first_line = text.lines().next()?.trim_end();
-    let mut best = None;
-    for (offset, line) in lines_with_offsets(text) {
-        if offset == 0 || line.trim_end() != first_line || !mask.is_code(offset) {
-            continue;
-        }
-        let head = text[..offset].trim_end();
-        let tail = text[offset..].trim_end();
-        if !tail.is_empty() && head.ends_with(tail) {
-            best = Some((offset, tail));
-        }
-    }
-    let (offset, tail) = best?;
-    // The guard that keeps this a deletion of text that could never have run. See the strategy's
-    // documentation: without it, `A A` over a program that declares nothing the language refuses
-    // twice is a program the model asked to run twice.
-    dialect
-        .declares_a_redeclarable_binding(tail, mask, offset)
-        .then_some(())?;
-    Some(text[..offset].trim_end())
-}
-// ---------------------------------------------------------------------------------------------
-// drop-imports
-// ---------------------------------------------------------------------------------------------
-
-/// Remove module-import statements for a surface that is already in scope.
-///
-/// In **code** lexical context only, deletes whole lines the language calls
-/// [a complete single-line import](Dialect::is_import_statement). Which spellings those are is the
-/// dialect's business; the per-line loop, the mask gate on the first non-space byte, and the
-/// preservation of every surviving line's own terminator are this function's.
-///
-/// **Declines** on anything the dialect does not call a complete statement — a multi-line import
-/// among them, since deciding where such a statement ends is a parse, and the language's own prepare
-/// step already names the import and says what to write instead; on an import the
-/// [mask](Dialect::code_mask) places inside a string, template literal or comment — a program
-/// *writing* a source file is ordinary gg work; and on anything at all when the mask does not lex
-/// cleanly.
-fn drop_imports(text: &str, dialect: &dyn Dialect) -> StrategyOutcome {
-    let Some(mask) = dialect.code_mask(text) else {
-        return StrategyOutcome::Declined;
-    };
-
-    let mut kept = String::with_capacity(text.len());
-    let mut removed = 0;
-    let mut offset = 0;
-    for raw in text.split_inclusive('\n') {
-        let line = raw.strip_suffix('\n').unwrap_or(raw);
-        let keyword_at = offset + (line.len() - line.trim_start().len());
-        offset += raw.len();
-        if mask.is_code(keyword_at) && dialect.is_import_statement(line) {
-            removed += 1;
-            continue;
-        }
-        // Concatenating the raw slices rather than re-joining keeps every surviving line's own
-        // terminator, so a `\r\n` program stays a `\r\n` program.
-        kept.push_str(raw);
-    }
-
-    if removed == 0 {
-        return StrategyOutcome::Declined;
-    }
-    StrategyOutcome::Rewrote {
-        text: kept.trim().to_string(),
-        detail: HealingDetail::Imports { lines: removed },
-    }
-}
-
-// ---------------------------------------------------------------------------------------------
-// unwrap-async
-// ---------------------------------------------------------------------------------------------
-
-/// Unwrap a concurrency wrapper around the whole program and delete the suspension tokens it
-/// implied.
-///
-/// The **shape** of the repair is this function's and the **recognition** is the
-/// [dialect](Dialect::unwrap_async)'s: which wrappers exist, how a body is delimited, how it is
-/// dedented and which token means "suspend here" are facts about one language, while "a wrapper came
-/// off, and here is what the model is told about it" is the same in every language.
-///
-/// **Declines** on an unclean [mask](Dialect::code_mask), and on any `None` from the dialect — which
-/// is where every language-shaped decline lives: a wrapper the program never **calls** (its body
-/// then never ran, so unwrapping would execute statements the response never asked to execute),
-/// anything at the top level besides the wrapper and its invocation, an invocation carrying a
-/// callback whose code dropping the call would delete, and a wrapper that was never asynchronous at
-/// all — one that already runs, so unwrapping it would change what the program evaluates to for no
-/// reason.
-///
-/// # The honest caveat
-///
-/// This is the one strategy that rewrites *structure*, and it does change what the program evaluates
-/// to. That is defensible only because a **called** concurrency wrapper cannot run in this sandbox
-/// at all — there is no event loop, so a suspension throws and a returned promise is rejected — and
-/// there is therefore no working behaviour to preserve; the repair turns a program that could not
-/// run into the straight-line program the model meant. Both halves of that warrant are
-/// load-bearing, which is why a dialect must decline unless the wrapper is the entire program *and*
-/// the program invokes it.
-///
-/// The deletion invariant still binds across the seam: whatever a dialect hands back must be the
-/// body with text removed and leading whitespace stripped, never text of its own.
-pub(crate) fn unwrap_async(text: &str, dialect: &dyn Dialect) -> StrategyOutcome {
-    let Some(mask) = dialect.code_mask(text) else {
-        return StrategyOutcome::Declined;
-    };
-    let Some(unwrapped) = dialect.unwrap_async(text, &mask) else {
-        return StrategyOutcome::Declined;
-    };
-
-    StrategyOutcome::Rewrote {
-        text: unwrapped.text,
-        detail: HealingDetail::Async {
-            wrapper: unwrapped.wrapper,
-            awaits: unwrapped.awaits,
         },
     }
 }
@@ -1634,10 +1358,10 @@ pub(crate) fn lines_with_offsets(src: &str) -> impl Iterator<Item = (usize, &str
 
 /// The longer common prefix of two strings, in whole characters.
 ///
-/// `pub(crate)` for the same reason [`lines_with_offsets`] is: the skeleton dedents the body it
-/// unwraps and a dialect dedents the body it unwraps out of an `async` wrapper, and two spellings of
-/// "how much indentation do these lines share" is exactly the drift one shared helper removes.
-pub(crate) fn common_prefix<'a>(left: &'a str, right: &'a str) -> &'a str {
+/// [`dedent`]'s reducer: the indentation a block's lines share is what every one of them has in
+/// common, folded pairwise. Whole characters rather than bytes, so a prefix can never be cut through
+/// the middle of one.
+fn common_prefix<'a>(left: &'a str, right: &'a str) -> &'a str {
     let end = left
         .char_indices()
         .zip(right.char_indices())

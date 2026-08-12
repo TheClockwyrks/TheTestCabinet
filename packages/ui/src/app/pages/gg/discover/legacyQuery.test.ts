@@ -91,15 +91,40 @@ describe("transcoding an aggregate query", () => {
       "| stats sum(summary.healing.stripFences) by preset",
     );
     expect(
-      transcode("metric=sum|summary:healing_drop_duplicate_program&group=preset"),
-    ).toBe("| stats sum(summary.healing.dropDuplicateProgram) by preset");
+      transcode("metric=sum|summary:healing_applications&group=preset"),
+    ).toBe("| stats sum(summary.healing.applications) by preset");
   });
 
-  it("drops the one metric the document model cannot express", () => {
+  it("drops the ratio the document model cannot express", () => {
     // `healing_rate` was a per-run ratio the aggregator computed. TCQ deliberately has no
     // `rate()`, and rewriting it to its numerator would answer a different question under
     // the original's label — so the column is dropped and the grouping keeps its count.
     expect(transcode("metric=avg|summary:healing_rate&group=preset")).toBe(
+      "| stats count() by preset",
+    );
+  });
+
+  it("drops a counter whose healing strategy was deleted", () => {
+    // Those three strategies are gone, so no run carries their counters. The camel-casing
+    // fallback would spell one `summary.healingDropImports` — a path the document has
+    // never carried — and chart nothing while claiming to chart something, so the column
+    // goes the way the ratio does and the grouping keeps its count.
+    expect(
+      transcode("metric=sum|summary:healing_drop_duplicate_program&group=preset"),
+    ).toBe("| stats count() by preset");
+    expect(transcode("metric=sum|summary:healing_drop_imports&group=preset")).toBe(
+      "| stats count() by preset",
+    );
+    expect(transcode("metric=avg|summary:healing_unwrap_async&group=preset")).toBe(
+      "| stats count() by preset",
+    );
+    // Nothing survives under a `summary.healing…` name either: what is asserted is the
+    // absence of the field, not just the absence of that one aggregation.
+    expect(
+      transcode("metric=sum|summary:healing_drop_imports&group=preset"),
+    ).not.toContain("healing");
+    // A metric *filter* naming one reads the same mapping, so it is dropped the same way.
+    expect(transcode("mf=summary:healing_unwrap_async|gt|0&group=preset")).toBe(
       "| stats count() by preset",
     );
   });

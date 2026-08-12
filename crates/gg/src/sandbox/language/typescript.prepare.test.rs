@@ -519,11 +519,12 @@ fn the_captured_two_draft_replies_report_their_dead_halves() {
     }
 }
 
-/// The two real round-2 replies that were the same program twice. Healing repairs these before the
-/// strip sees them; if it is ever disarmed, this is what the model gets instead — an early error
-/// that names the identifier, both places it was bound, and the source line at each.
+/// The two real round-2 replies that were the same program twice. No healing strategy touches this
+/// shape — `drop-doubled-response` wants a reply concatenated with a byte-identical copy of itself,
+/// and both of these carry a blank line between the halves — so this is what the model gets: an
+/// early error that names the identifier, both places it was bound, and the source line at each.
 #[test]
-fn the_captured_duplicate_replies_are_located_early_errors_when_healing_is_off() {
+fn the_captured_duplicate_replies_are_located_early_errors() {
     for (name, reply, identifier) in [
         (
             "round2-sol-duplicate-program",

@@ -200,10 +200,12 @@ fn a_code_module_is_a_namespace_opened_in_place() {
 /// says to delete it and write nothing in its place, which is surprising enough to have to be said
 /// outright: the prelude already declares the standard library and gg's whole surface.
 ///
-/// The asymmetry with a **program** is real and is the language's rather than gg's: a program's
-/// `#include` is left exactly as written, because a program is not compiled inside a namespace.
+/// Only the module half is asserted here. The asymmetry with a **program** is real and is the
+/// language's rather than gg's — a program's `#include` is left exactly as written, because a
+/// program is not compiled inside a namespace — but nothing in this arm now inspects a program's
+/// includes, so there is no behaviour left to pin it against.
 #[test]
-fn an_include_in_a_module_is_refused_and_an_include_in_a_program_is_not() {
+fn an_include_in_a_module_is_refused_by_name() {
     let refusal = source::namespaced("#include <vector>\nint one() { return 1; }\n", "csv_tools")
         .expect_err("a module carrying an include is refused");
     let rendered = refusal.to_string();
@@ -230,10 +232,6 @@ fn an_include_in_a_module_is_refused_and_an_include_in_a_program_is_not() {
         .is_ok(),
         "an include inside a raw string is not a directive"
     );
-
-    // And the dialect leaves a program's own include alone, which is the other half of the
-    // asymmetry.
-    assert!(!cpp().healing().is_import_statement("#include <vector>"));
 }
 
 /// **A module's namespace is everything it declares at its top level**, in source order.

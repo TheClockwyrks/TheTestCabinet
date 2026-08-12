@@ -8,9 +8,9 @@
 //! * [`source`] — what gg does to a model's Kotlin before the compiler sees it, which for a program
 //!   is almost nothing;
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
-//!   questions of: the fence tags, the two predicates, the template-aware lexer, the redeclaration
-//!   proof and the three concurrency wrappers — five of whose answers differ from
-//!   [Java's](super::java::healing), on the arm that shares a compiler with it;
+//!   questions of: the fence tags, the two predicates and the template-aware lexer — the two
+//!   predicates both answering differently from [Java's](super::java::healing), on the arm that
+//!   shares a compiler with it;
 //! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
 //!   in Kotlin's syntax;
 //! * `packages/gg-sandbox-kotlin/src/` — the SDK, and every word of prose a model reads about it;
@@ -349,10 +349,7 @@ pub(super) fn open_file_statement(
 /// A `listOf(…)` of names and a `for` over it, each iteration opening one documentation view.
 ///
 /// A list and a loop rather than one statement per name because the list is as long as the family —
-/// eleven calls written out would be a program a model reads as a style to copy — and a `for` rather
-/// than `forEach { … }` for a reason that is this arm's own: a **trailing lambda** is the shape this
-/// arm's [healing dialect](self::healing) reads as a whole-program concurrency wrapper, and a program
-/// gg generates should not teach a shape gg spends effort undoing.
+/// eleven calls written out would be a program a model reads as a style to copy.
 ///
 /// `listOf` needs no import — it is in `kotlin.collections`, which every Kotlin file imports by
 /// default — and the empty case is `listOf<String>()`, whose element type has to be written out

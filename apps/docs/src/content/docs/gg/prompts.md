@@ -142,8 +142,10 @@ The code arm teaches five things the tool-calling arm has no need of:
 - **That every call is synchronous.** `await` is not a thing to reach for and a return
   value is not a promise. A model brings the opposite reflex to a tool API, and it is
   worth a line up front rather than a wasted turn: a continuation parked on a promise
-  would resume only after the program had already returned, which is why
-  [healing](/gg/response-healing/) unwraps an `async` wrapper rather than running one.
+  would resume only after the program had already returned, and nothing downstream
+  repairs that — [healing](/gg/response-healing/) deletes what surrounds a program, it
+  does not rewrite what the program says. The prompt is the only place that reflex is
+  caught, so it is caught there.
 - **How to show itself something.** A program's values live and die inside the turn, so
   the opening paragraphs name the channel that carries — a **view**, of a value the
   program computed or of a file it read — and say plainly that nothing `console.log()`

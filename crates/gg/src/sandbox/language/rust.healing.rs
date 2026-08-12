@@ -1,33 +1,13 @@
 //! **Rust's [healing dialect](crate::healing::Dialect)** — the lexical half of
 //! [response healing](crate::healing), answered in Rust's own terms.
 //!
-//! Three of its answers are ones no other registered arm gives, and every one of them is the same
-//! rule reading a different grammar.
-//!
-//! **`let` is not part of the redeclaration proof.** On every other arm the keyword that opens a
-//! binding is the whole of that proof — a second `const`, `val`, `def` or `let` of one name is
-//! refused before a statement runs, which is exactly what
-//! [`drop-duplicate-program`](crate::healing::HealingStrategy::DropDuplicateProgram) needs. Rust
-//! **shadows**: `let total = 1; let total = 2;` is ordinary, deliberate, everyday Rust, and a
-//! duplicated program made only of `let`s and calls runs its work twice rather than being refused.
-//! So the proof here rests on *items* instead — `fn`, `struct`, `enum`, `union`, `trait`, `type`,
-//! `const`, `static`, `mod`, each of which is `E0428` twice in one block — and on `use`, which is
-//! `E0252`. Both were measured against `rustc` rather than reasoned about. A duplicated program with
-//! no item and no import in it declines, which is the honest answer: it would have run.
-//!
-//! **Nothing is done about an import, and nothing needs to be.** Every other arm either deletes the
-//! model's `import` lines (they have no loader) or hoists them somewhere they resolve (the JVM
-//! arms). Rust needs neither: a program here is a function body, Rust admits an **item** wherever a
-//! statement may stand, and `use std::collections::HashMap;` therefore resolves exactly where the
-//! model wrote it against the same extern prelude the program is compiled with. This is the one arm
-//! where [`is_import_statement`](crate::healing::Dialect::is_import_statement) answers `false` because the line *works*, rather than because gg
-//! moved it.
+//! What is this arm's own is all in its lexer, and it begins with a single character.
 //!
 //! **The lexer has to tell a character literal from a lifetime.** `'a'` is a `char` and `'a` is a
 //! lifetime, and they open with the same byte — a hazard no other arm's `'` carries. A scan that
 //! read the `'` of `&'static str` as an opening quote would swallow the rest of the program into a
-//! string and every strategy that consults the mask would then be reading the wrong text. So a `'`
-//! here is a literal **only** when what follows it is one character and then a closing `'`
+//! string, and every reading built on the mask would then be of the wrong text. So a `'` here is a
+//! literal **only** when what follows it is one character and then a closing `'`
 //! ([`char_literal_end`]), and anything else is ordinary code. That rule has a second effect worth
 //! having: an apostrophe in a stray line of English (`don't`) is code punctuation rather than an
 //! unterminated literal, so a reply with prose around its program still lexes, where the same
@@ -41,26 +21,6 @@
 //! fence: `r"…"`, `r#"…"#`, `r##"…"##`, with `b` and `c` prefixes in front of any of them. The
 //! fence has to be counted, because the bytes inside `r#"…"#` may hold a `"` and mean nothing by it.
 //!
-//! # The concurrency wrapper
-//!
-//! One shape, and it is a **measured** failure rather than an assumed one: `std::thread::spawn`
-//! compiles for `wasm32-unknown-unknown` and then panics at run time, because that target has no
-//! threads and `spawn` unwraps the `Unsupported` its builder returns. With this arm's
-//! [panic hook](super::source) the model is told `panicked: failed to spawn thread` at the line it
-//! wrote — which is a clear diagnostic and still a lost turn, so the repair is worth making.
-//!
-//! What is deliberately **not** recognised is every `async` shape: `block_on(async { … })` needs
-//! `futures` or `tokio`, neither of which is in this arm's
-//! [library set](super::compile), so a program that reaches for one gets `E0433` naming the crate
-//! before it runs. That is already the best diagnostic available, and a healing strategy that
-//! deleted the wrapper would replace it with a program full of `.await`s in a body that is not
-//! `async`.
-//!
-//! The `use` lines above a wrapper are **kept**, which is [Java's answer](super::super::java::healing)
-//! and not [Kotlin's](super::super::kotlin::healing), reached from this arm's own library set:
-//! `std::thread` is in it, the line resolves, and gg has already silenced the unused-import warning
-//! — so deleting it would be deleting a line that works.
-//!
 //! # None of these is a parser
 //!
 //! Not one predicate here parses, for the reason every other dialect gives: healing runs on text that
@@ -70,9 +30,7 @@
 //! errors pointed in the safe direction, and every one of them **declines** rather than guessing when
 //! it cannot tell.
 
-use crate::healing::{
-    AsyncWrapper, CodeMask, Dialect, Unwrapped, common_prefix, lines_with_offsets,
-};
+use crate::healing::{CodeMask, Dialect};
 
 /// Rust's dialect. A unit struct: everything it "holds" is the `const` data below.
 pub(in crate::sandbox::language) struct RustDialect;
@@ -95,39 +53,6 @@ impl Dialect for RustDialect {
 
     fn code_mask(&self, src: &str) -> Option<CodeMask> {
         code_mask(src)
-    }
-
-    /// **`false`, always** — and this is the one arm that answers so because the import *works*.
-    ///
-    /// A program here is the body of a function gg declares, and Rust admits an item wherever a
-    /// statement may stand: `use std::collections::HashMap;` written half way down a program brings
-    /// `HashMap` into scope for the whole block, resolved against the same extern prelude the
-    /// program is compiled with. There is nothing to hoist and nothing to delete. A `use` naming
-    /// something outside this arm's library set is a located `E0432` on the turn that wrote it,
-    /// which is a better answer than a silent deletion — and `use gg::…` is not even that, since
-    /// Rust lets an explicit `use` shadow the glob gg wrote above the program.
-    fn is_import_statement(&self, _line: &str) -> bool {
-        false
-    }
-
-    /// Whether the repeated tail declares an **item** or imports a name — the proof that the reply
-    /// as sent could not have compiled and therefore ran nothing.
-    ///
-    /// Narrower than every other arm's in the one place it matters: a `let` is **not** a
-    /// declaration for this purpose, because Rust shadows. See [`declares_lexically`].
-    fn declares_a_redeclarable_binding(&self, text: &str, mask: &CodeMask, base: usize) -> bool {
-        declares_lexically(text, mask, base).next().is_some()
-    }
-
-    /// `std::thread::spawn(|| { … })` as the whole program
-    /// ([`Immediate`](AsyncWrapper::Immediate)), and `let handle = std::thread::spawn(|| { … });`
-    /// followed by `handle.join()…` ([`Declared`](AsyncWrapper::Declared)) — with any `use` lines
-    /// above either kept.
-    ///
-    /// [`awaits`](Unwrapped::awaits) counts the `.await`s deleted from the body, which is Rust's
-    /// suspension token in the one place it lives: after the expression rather than in front of it.
-    fn unwrap_async(&self, text: &str, mask: &CodeMask) -> Option<Unwrapped> {
-        unwrap_async(text, mask)
     }
 
     #[cfg(test)]
@@ -191,396 +116,6 @@ const CODE_ENDINGS: [&str; 13] = [
 const NON_PROSE_CHARS: [char; 14] = [
     ';', '{', '}', '(', ')', '[', ']', '=', '<', '>', '|', '&', '$', '\\',
 ];
-
-// ---------------------------------------------------------------------------------------------
-// Redeclaration
-// ---------------------------------------------------------------------------------------------
-
-/// The keywords that open an **item** whose name the compiler refuses to see twice in one block.
-///
-/// Measured against `rustc` rather than reasoned about: a second `fn`, `struct`, `enum`, `union`,
-/// `trait`, `type`, `const`, `static` or `mod` of one name in a block is `E0428`, *the name … is
-/// defined multiple times*, and it stops the build before a statement runs — which is exactly the
-/// proof [`drop-duplicate-program`](crate::healing::HealingStrategy::DropDuplicateProgram) needs.
-///
-/// **`let` is not here**, and its absence is this dialect's sharpest divergence. Rust shadows: a
-/// second `let` of one name is legal, idiomatic and extremely common, so a duplicated program made
-/// only of `let`s and calls is a program that runs its work twice rather than one the compiler
-/// refuses. Reading a `let` as a redeclaration would let this strategy delete work the model asked
-/// to have done.
-///
-/// `impl` is not here either, for a different reason: it declares no name of its own.
-const ITEM_KEYWORDS: [&str; 9] = [
-    "fn", "struct", "enum", "union", "trait", "type", "const", "static", "mod",
-];
-
-/// Every modifier that may stand in front of one of those, and nothing else.
-///
-/// A **closed** list, read left to right and stopping at the first word that is not on it — so an
-/// ordinary identifier ends the run rather than being read as part of it. Being wrong here can only
-/// mean an item goes unrecognised, and an unrecognised item means `drop-duplicate-program` declines,
-/// which is the safe direction.
-const ITEM_MODIFIERS: [&str; 4] = ["unsafe", "async", "extern", "default"];
-
-/// Every declaration `text` makes at its **top level**, in source order.
-///
-/// "Top level" is read as *unindented*, which is what a top-level statement is in every program a
-/// model writes and what keeps this from mistaking an item inside a nested block, an `impl` or a
-/// `mod` — legal, and legal twice, because it is a different scope — for a redeclaration. `base` is
-/// where `text` starts inside the source `mask` was built over, so a caller may ask about a slice of
-/// it.
-///
-/// The reading is: an optional `pub` with its optional restriction, an optional run of
-/// [modifiers](ITEM_MODIFIERS), one [item keyword](ITEM_KEYWORDS), and then a name — or a `use` that
-/// imports exactly one name, which is `E0252` twice.
-fn declares_lexically<'a>(
-    text: &'a str,
-    mask: &'a CodeMask,
-    base: usize,
-) -> impl Iterator<Item = &'a str> {
-    lines_with_offsets(text).filter_map(move |(offset, line)| {
-        if !mask.is_code(base + offset) || line.starts_with([' ', '\t']) {
-            return None;
-        }
-        declared_name(line)
-    })
-}
-
-/// The name `line` declares, if it declares one.
-///
-/// A `use` answers with `use`, which is not a name and is not meant to be read as one: the caller
-/// asks only *whether* something was declared, and a fixed slice is the cheapest way to say "yes,
-/// and reading which name out of a path is not this function's job".
-fn declared_name(line: &str) -> Option<&str> {
-    let mut rest = line.trim();
-    if let Some(after) = keyword(rest, "use") {
-        return imports_one_name(after).then_some("use");
-    }
-    // `pub`, `pub(crate)`, `pub(super)`, `pub(in …)`.
-    if let Some(after) = rest.strip_prefix("pub") {
-        let after = match after.strip_prefix('(') {
-            Some(inner) => inner.split_once(')')?.1,
-            None => after,
-        };
-        rest = after.strip_prefix(char::is_whitespace)?.trim_start();
-    }
-    loop {
-        let (word, after) = identifier(rest)?;
-        let trimmed = after.trim_start();
-        // `const` is both an item keyword and a modifier: `const K: u32 = 1` declares `K`, while
-        // `const fn helper()` declares `helper`. What follows it decides which.
-        let modifier = ITEM_MODIFIERS.contains(&word)
-            || (word == "const" && identifier(trimmed).is_some_and(|(next, _)| next == "fn"));
-        if !modifier && ITEM_KEYWORDS.contains(&word) {
-            return identifier(trimmed).map(|(name, _)| name);
-        }
-        if !modifier {
-            return None;
-        }
-        // A modifier and what follows it are separated by whitespace; `async_reader` is a name.
-        if trimmed.len() == after.len() {
-            return None;
-        }
-        rest = trimmed;
-    }
-}
-
-/// Whether a `use`'s tail imports exactly one name, so that writing it twice is refused.
-///
-/// A **glob** (`use std::fmt::*;`) and an anonymous import (`use std::io::Write as _;`) are the two
-/// that may legally be written twice, and both are excluded — reading either as a redeclaration
-/// would let `drop-duplicate-program` delete a program that would have run.
-fn imports_one_name(tail: &str) -> bool {
-    let path = tail.trim().trim_end_matches(';').trim_end();
-    !path.is_empty() && !path.ends_with('*') && !path.ends_with("as _")
-}
-
-// ---------------------------------------------------------------------------------------------
-// The concurrency wrapper
-// ---------------------------------------------------------------------------------------------
-
-/// Take the concurrency wrapper off a program that is entirely made of one, keeping the imports
-/// above it and deleting the `.await`s inside it.
-fn unwrap_async(text: &str, mask: &CodeMask) -> Option<Unwrapped> {
-    let (prefix, body_start) = import_prefix(text, mask);
-    let (wrapper, body) = match_wrapper(text, mask, body_start)?;
-    let inner = dedented(text, mask, body);
-    let (inner, awaits) = without_await(&inner);
-    let program = match prefix.trim().is_empty() {
-        true => inner,
-        false => format!("{}\n\n{inner}", prefix.trim_end()),
-    };
-    Some(Unwrapped {
-        wrapper,
-        text: program,
-        awaits,
-    })
-}
-
-/// The leading run of `use` lines and blank lines, and the offset the wrapper may start at.
-///
-/// They are **kept** rather than deleted, which is [Java's answer](super::super::java::healing) and
-/// the opposite of [Kotlin's](super::super::kotlin::healing), and the difference is this arm's
-/// library set rather than its family: `std::thread` is in it, so `use std::thread;` resolves, and
-/// an import left unused is a warning gg has already silenced with `-Awarnings`. Deleting a line
-/// that works would be deleting more than the repair needs.
-fn import_prefix<'a>(text: &'a str, mask: &CodeMask) -> (&'a str, usize) {
-    let mut end = 0usize;
-    for (offset, line) in lines_with_offsets(text) {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let indent = line.len() - line.trim_start().len();
-        let import = mask.is_code(offset + indent)
-            && keyword(trimmed, "use").is_some()
-            && trimmed.ends_with(';');
-        if !import {
-            break;
-        }
-        end = offset + line.len();
-    }
-    (&text[..end], end)
-}
-
-/// The calls this dialect recognises as a whole-program wrapper, longest spelling first so a
-/// qualified call is matched whole rather than as its unqualified tail.
-///
-/// A closed list rather than "anything taking a closure", because the match is **anchored**: the
-/// text between where the wrapper may start and the closure's `{` is required to be one of these and
-/// nothing else. Rust is full of calls that take a closure — `iter().map(|row| { … })`,
-/// `unwrap_or_else(|| { … })` — so without the anchor a program whose *last* statement happened to
-/// be one would have every statement above it deleted, which is the one failure this strategy must
-/// not have.
-const WRAPPERS: [&str; 2] = ["std::thread::spawn", "thread::spawn"];
-
-/// The no-argument calls that may trail a wrapper: waiting on it, and unwrapping what the wait
-/// returned.
-const RUNNERS: [&str; 4] = ["join", "unwrap", "expect", "ok"];
-
-/// The wrapper `text` is entirely made of from `from` onwards, and the byte range of its body
-/// between the closure's braces.
-fn match_wrapper(
-    text: &str,
-    mask: &CodeMask,
-    from: usize,
-) -> Option<(AsyncWrapper, std::ops::Range<usize>)> {
-    if let Some(matched) = match_declared(text, mask, from) {
-        return Some(matched);
-    }
-    match_immediate(text, mask, from)
-}
-
-/// `std::thread::spawn(|| { … }).join().unwrap();` as the whole program — one expression, run where
-/// it is written, with no name.
-fn match_immediate(
-    text: &str,
-    mask: &CodeMask,
-    from: usize,
-) -> Option<(AsyncWrapper, std::ops::Range<usize>)> {
-    let (open, close, after) = spawn_call(text, mask, from)?;
-    let tail = strip_runners(text.get(after..)?.trim_start());
-    let tail = tail.strip_prefix(';').unwrap_or(tail);
-    tail.trim()
-        .is_empty()
-        .then_some((AsyncWrapper::Immediate, open + 1..close))
-}
-
-/// `let handle = std::thread::spawn(|| { … });` followed by exactly the calls that wait on it.
-///
-/// The trailing chain is **required**, which is one thing this shape asks that the immediate one
-/// does not: a handle a program never touches is a program whose author may have meant something
-/// else entirely, and declining costs nothing but a repair that was not certain.
-fn match_declared(
-    text: &str,
-    mask: &CodeMask,
-    from: usize,
-) -> Option<(AsyncWrapper, std::ops::Range<usize>)> {
-    let rest = text.get(from..)?;
-    let at = from + (rest.len() - rest.trim_start().len());
-    let first = text.get(at..)?.lines().next()?;
-    let bound = binding_name_of(first)?.to_string();
-    let equals = at + first.find('=')?;
-    let (open, close, after) = spawn_call(text, mask, equals + 1)?;
-    let mut tail = text.get(after..)?.trim_start();
-    tail = tail.strip_prefix(';').unwrap_or(tail).trim_start();
-    let after_name = tail
-        .strip_prefix(bound.as_str())
-        .filter(|rest| !rest.starts_with(is_ident_char))?
-        .trim_start();
-    let stripped = strip_runners(after_name);
-    // A runner must actually have been consumed: `let handle = spawn(…); handle;` is a program that
-    // never waited on anything, and unwrapping it would be a guess rather than a repair.
-    if stripped.len() == after_name.len() {
-        return None;
-    }
-    let stripped = stripped.strip_prefix(';').unwrap_or(stripped);
-    stripped
-        .trim()
-        .is_empty()
-        .then_some((AsyncWrapper::Declared, open + 1..close))
-}
-
-/// The name a `let` binds on `line`, when the line is a plain `let name = …`.
-///
-/// Deliberately not [`declared_name`], which answers about *items* and says nothing about a `let` —
-/// this is the one place in the dialect that has to read one, because a declared wrapper is bound to
-/// a name the trailing call then uses.
-fn binding_name_of(line: &str) -> Option<&str> {
-    let rest = keyword(line.trim(), "let")?.trim_start();
-    let rest = match keyword(rest, "mut") {
-        Some(after) => after.trim_start(),
-        None => rest,
-    };
-    identifier(rest).map(|(name, _)| name)
-}
-
-/// The `spawn(|| { … })` call standing at `from`: where its body opens and closes, and the offset
-/// just past the call's closing parenthesis.
-///
-/// The closure is **inside** the parentheses, which is where Rust puts it and where
-/// [Kotlin's](super::super::kotlin::healing) trailing lambda is not — so this reads
-/// `head` `(` `move`? `||` `{` body `}` `)` rather than a head followed by a block.
-fn spawn_call(text: &str, mask: &CodeMask, from: usize) -> Option<(usize, usize, usize)> {
-    let rest = text.get(from..)?.trim_start();
-    let at = text.len() - rest.len();
-    let head = WRAPPERS.iter().find(|head| {
-        rest.strip_prefix(**head)
-            .is_some_and(|after| !after.starts_with(is_ident_char))
-    })?;
-    let after_head = text.get(at + head.len()..)?.trim_start();
-    let rest = after_head.strip_prefix('(')?.trim_start();
-    // `move ||` and `move||` are both what a Rust author writes, so the boundary is "not an
-    // identifier character" rather than "whitespace".
-    let rest = match rest
-        .strip_prefix("move")
-        .filter(|after| !after.starts_with(is_ident_char))
-    {
-        Some(after) => after.trim_start(),
-        None => rest,
-    };
-    let rest = rest.strip_prefix("||")?.trim_start();
-    if !rest.starts_with('{') {
-        return None;
-    }
-    let open = text.len() - rest.len();
-    let close = matching_brace(text, mask, open)?;
-    let after = text.get(close + 1..)?.trim_start().strip_prefix(')')?;
-    Some((open, close, text.len() - after.len()))
-}
-
-/// The trailing chain of no-argument [runner](RUNNERS) calls at the front of `tail`, and what is
-/// left after it: `.join()`, `.unwrap()`, `.expect("worker panicked")`.
-fn strip_runners(tail: &str) -> &str {
-    let mut rest = tail;
-    while let Some(after) = rest.strip_prefix('.') {
-        let Some((call, after)) = identifier(after.trim_start()) else {
-            break;
-        };
-        if !RUNNERS.contains(&call) {
-            break;
-        }
-        let after = after.trim_start();
-        let Some(after) = after.strip_prefix('(') else {
-            break;
-        };
-        // `expect` takes a message, so the argument list is skipped whole rather than required to be
-        // empty. It cannot carry a nested parenthesis in any shape a model writes here, and a
-        // miscount can only make the match decline.
-        let Some(end) = after.find(')') else {
-            break;
-        };
-        rest = after[end + 1..].trim_start();
-    }
-    rest
-}
-
-/// The offset of the `}` that closes the `{` at `open`, counting braces in code context only.
-fn matching_brace(text: &str, mask: &CodeMask, open: usize) -> Option<usize> {
-    let mut depth = 0usize;
-    for (index, byte) in text.bytes().enumerate().skip(open) {
-        if !mask.is_code(index) {
-            continue;
-        }
-        match byte {
-            b'{' => depth += 1,
-            b'}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(index);
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-/// The wrapper's body, dedented by the common indentation of the lines that begin in code context.
-///
-/// A line that begins inside a raw string carries data rather than indentation, so it is left where
-/// the model put it — which is the whole reason this consults the mask instead of trimming every
-/// line, and it matters more here than on an arm whose strings cannot span a newline.
-fn dedented(text: &str, mask: &CodeMask, body: std::ops::Range<usize>) -> String {
-    let inner = &text[body.clone()];
-    let base = body.start;
-    let indent = lines_with_offsets(inner)
-        .filter(|(offset, line)| !line.trim().is_empty() && mask.is_code(base + offset))
-        .map(|(_, line)| &line[..line.len() - line.trim_start().len()])
-        .reduce(common_prefix)
-        .unwrap_or_default()
-        .to_string();
-
-    let mut out = String::with_capacity(inner.len());
-    let mut offset = 0usize;
-    for raw in inner.split_inclusive('\n') {
-        let start = offset;
-        offset += raw.len();
-        out.push_str(match mask.is_code(base + start) {
-            true => raw.strip_prefix(indent.as_str()).unwrap_or(raw),
-            false => raw,
-        });
-    }
-    out.trim().to_string()
-}
-
-/// The unwrapped body with every `.await` deleted, and how many went.
-///
-/// Rust marks suspension **after** the expression rather than in front of it, so what comes off is
-/// the whole postfix — the dot included, because `foo().await` without it is `foo().` and not a
-/// program. It is a repair rather than tidying: an `.await` outside an `async` context is `E0728` at
-/// the model's own line, so leaving one behind would leave the one part of the repaired program that
-/// still fails.
-///
-/// The mask is rebuilt over the dedented body rather than reused, because dedenting moved every
-/// offset the original one was indexed by. A body that no longer lexes is left exactly as it is,
-/// which is the same decline every strategy here makes.
-fn without_await(body: &str) -> (String, usize) {
-    const AWAIT: &str = ".await";
-    let Some(mask) = code_mask(body) else {
-        return (body.to_string(), 0);
-    };
-    let mut out = String::with_capacity(body.len());
-    let mut deleted = 0usize;
-    let mut at = 0usize;
-    for (index, character) in body.char_indices() {
-        if index < at {
-            continue;
-        }
-        let rest = &body[index..];
-        let suspension = mask.is_code(index)
-            && rest.starts_with(AWAIT)
-            && !rest[AWAIT.len()..].starts_with(is_ident_char);
-        if !suspension {
-            out.push(character);
-            at = index + character.len_utf8();
-            continue;
-        }
-        deleted += 1;
-        at = index + AWAIT.len();
-    }
-    (out, deleted)
-}
 
 // ---------------------------------------------------------------------------------------------
 // The predicates
@@ -797,28 +332,6 @@ fn has_letter_run(token: &str) -> bool {
     false
 }
 
-/// The identifier at the front of `text` and what follows it.
-fn identifier(text: &str) -> Option<(&str, &str)> {
-    let mut end = 0usize;
-    for (index, character) in text.char_indices() {
-        let acceptable = match index {
-            0 => is_ident_start(character),
-            _ => is_ident_char(character),
-        };
-        if !acceptable {
-            break;
-        }
-        end = index + character.len_utf8();
-    }
-    (end > 0).then(|| (&text[..end], &text[end..]))
-}
-
-/// The rest of `text` when it opens with `word` at an identifier boundary.
-fn keyword<'a>(text: &'a str, word: &str) -> Option<&'a str> {
-    text.strip_prefix(word)
-        .filter(|rest| rest.starts_with(|c: char| c.is_whitespace()))
-}
-
 /// Whether `c` may open a Rust identifier.
 ///
 /// ASCII-plus-Unicode-letters, which is close enough: a Unicode identifier is legal Rust and is
@@ -838,9 +351,9 @@ fn is_ident_char(c: char) -> bool {
 
 /// Lex `src` into its [code mask](CodeMask) — this dialect's answer to [`Dialect::code_mask`].
 ///
-/// `None` means the source did not lex cleanly, and every strategy that needs the mask declines on
-/// it. Two states end a scan uncleanly, and both are an unterminated *opener*: a block comment or a
-/// string literal that runs to the end of the text.
+/// `None` means the source did not lex cleanly, and every caller that needs the mask declines to act
+/// on it. Two states end a scan uncleanly, and both are an unterminated *opener*: a block comment or
+/// a string literal that runs to the end of the text.
 ///
 /// Rust asks three things of a lexer that [Java's](super::super::java::healing) does not:
 ///

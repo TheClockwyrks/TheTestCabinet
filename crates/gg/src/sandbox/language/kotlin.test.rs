@@ -146,15 +146,6 @@ fn the_generated_documentation_program_is_a_kotlin_script() {
              gg.views.openDocsView(name)\n\
          }\n"
     );
-
-    // `forEach { … }` is deliberately absent. A trailing lambda is the shape this arm's healing
-    // dialect reads as a whole-program concurrency wrapper, and a program gg generates should not
-    // teach a shape gg spends effort undoing.
-    assert!(
-        !kotlin()
-            .open_docs_views_statement(&["readFile"])
-            .contains("forEach")
-    );
 }
 
 /// **The generated catalogue is this language's**, and it carries the whole surface in Kotlin's own

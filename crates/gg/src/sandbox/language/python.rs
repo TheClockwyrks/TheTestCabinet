@@ -8,8 +8,7 @@
 //! * [`modules`] — reading a code [skill](crate::skills)'s or [memory](crate::memories)'s own top
 //!   level to say what its namespace offers;
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
-//!   questions of: the fence tags, the two predicates, the mask, and the three-part `asyncio`
-//!   wrapper;
+//!   questions of: the fence tags, the two predicates, and the mask;
 //! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
 //!   in Python's syntax;
 //! * [`COMPONENT`] — the `componentize-py` guest, CPython 3.14 linked

@@ -1,8 +1,8 @@
 //! **C#'s [healing dialect](crate::healing::Dialect)** — the lexical half of
 //! [response healing](crate::healing), answered in C#'s own terms.
 //!
-//! Four of its answers are worth naming before the code, because each is a rule this arm reaches for
-//! a reason no other arm's has.
+//! One of its answers is worth naming before the code, because it is the one place where a byte a
+//! model really writes means opposite things in Markdown and in C#.
 //!
 //! **`#` is both Markdown's heading and C#'s preprocessor, and case is the whole of the
 //! difference.** This is [C++](super::super::cpp::healing)'s problem in a milder form and it takes
@@ -11,42 +11,6 @@
 //! lower-case** is code to both predicates. `#nullable enable` and `#region parsing` are lines a C#
 //! author really writes; `# Nullable reference types` is a heading, and one letter's case is what
 //! tells them apart.
-//!
-//! **Nothing is done about a `using`, and this is the fourth arm where that is because the line
-//! works.** [Rust](super::super::rust::healing), [Swift](super::super::swift::healing) and
-//! [C++](super::super::cpp::healing) are the first three. gg's whole surface is in front of a
-//! program already, put there by a `global using Gg;` the [SDK](super::sdk) declares in its own
-//! file — so a model's `using Gg;` is a redundant directive C# accepts in silence, and
-//! `using System.Text;` is an ordinary line that resolves where it stands. A namespace the
-//! reference set does not carry is `CS0246` at the model's own line, which is a better answer than
-//! a silent deletion.
-//!
-//! As on the C++ arm, that is the *program*'s answer and not the module's. A code module is compiled
-//! inside a `static class`, where a `using` is a syntax error, so gg [hoists](super::source) the run
-//! of them at the top of a module out of the class body — an asymmetry that is the language's rather
-//! than gg's.
-//!
-//! **The redeclaration proof is the language's own, and it is the everyday case rather than the
-//! exotic one.** A C# program's top-level statements are **one scope**: `var total = 0;` written
-//! twice is `CS0128`, *a local variable named 'total' is already defined in this scope*, before a
-//! statement runs. So a reply that is one program pasted after an identical copy of itself is
-//! refused by the compiler as long as the program declared anything at all — which is nearly every
-//! program anyone writes. A type declaration is the same proof by a different error (`CS0101`), and
-//! `partial` and `namespace`, the two shapes C# really does allow twice, are excluded by name.
-//!
-//! **There is no concurrency wrapper to unwrap, and here that is a measurement rather than a
-//! grammar.** C++'s answer was that the shape cannot be written; C#'s is that it *can* be written
-//! and it **works**. Roslyn lowers an `async Task Main` — and a top-level `await` — into a
-//! synthesized synchronous entry point that blocks on the result, and that entry point is the one
-//! the guest invokes. `csharp_runs_a_program_written_the_async_way_a_model_reaches_for` in
-//! `csharp.substrate.test.rs` drives both shapes through the real `csc` and the real prebuilt guest
-//! and requires each to run. Unwrapping a wrapper that works would delete a class declaration and
-//! re-indent a body to no purpose, so this dialect declines.
-//!
-//! What that does *not* mean is that concurrency is reachable. `Task.Run` needs a thread pool this
-//! guest has no thread to pump, so work a program defers is work that reports success and never
-//! runs — the same position [Rust](super::super::rust::healing)'s `std::thread::spawn` is in, and a
-//! run-time ending rather than a shape healing could remove. The prompt says so in its own words.
 //!
 //! # What its lexer asks that no other arm's does
 //!
@@ -73,7 +37,7 @@
 //! shape test with its errors pointed in the safe direction, and every one of them **declines**
 //! rather than guessing when it cannot tell.
 
-use crate::healing::{CodeMask, Dialect, Unwrapped, lines_with_offsets};
+use crate::healing::{CodeMask, Dialect};
 
 use super::source::{Mask, scan};
 
@@ -98,41 +62,6 @@ impl Dialect for CSharpDialect {
 
     fn code_mask(&self, src: &str) -> Option<CodeMask> {
         code_mask(src)
-    }
-
-    /// **`false`, always** — the fourth arm to answer so, and for
-    /// [Rust's reason](super::super::rust::healing) rather than for want of a loader.
-    ///
-    /// A `using` in a program resolves where it stands and costs nothing: gg's surface arrives
-    /// through a `global using` the SDK declares, so a model's own `using Gg;` is redundant and
-    /// accepted, and a namespace the reference set does not carry is a located `CS0246` naming it.
-    /// There is nothing to hoist and nothing to delete.
-    fn is_import_statement(&self, _line: &str) -> bool {
-        false
-    }
-
-    /// Whether the repeated tail **declares** something C# refuses to see declared twice in one
-    /// compilation — the proof that the reply as sent could not have compiled and therefore ran
-    /// nothing.
-    ///
-    /// See [`declares_lexically`]: the everyday case is a top-level local, because a C# program's
-    /// top-level statements are one scope.
-    fn declares_a_redeclarable_binding(&self, text: &str, mask: &CodeMask, base: usize) -> bool {
-        declares_lexically(text, mask, base).next().is_some()
-    }
-
-    /// **`None`, always.** This arm has no whole-program concurrency wrapper to take off, and the
-    /// reason is written out in this module's own documentation: the wrapper a model reaches for
-    /// here — `class Program { static async Task Main() { … } }`, or a top-level `await` — is
-    /// lowered by Roslyn into a **synchronous** entry point that blocks on the result, and it is
-    /// that entry point the guest invokes. It works, so taking it off would delete a declaration
-    /// and re-indent a body to no purpose.
-    ///
-    /// Not because concurrency is useful. A `Task.Run` compiles and queues onto a thread pool
-    /// nothing in this guest will pump, which is a run-time ending this arm reports rather than a
-    /// shape healing could remove.
-    fn unwrap_async(&self, _text: &str, _mask: &CodeMask) -> Option<Unwrapped> {
-        None
     }
 
     #[cfg(test)]
@@ -287,178 +216,6 @@ fn opens_a_directive(line: &str) -> bool {
         rest.strip_prefix(directive)
             .is_some_and(|after| !after.starts_with(is_ident_char))
     })
-}
-
-// ---------------------------------------------------------------------------------------------
-// Redeclaration
-// ---------------------------------------------------------------------------------------------
-
-/// Every **declaration** `text` makes at its top level, in source order.
-///
-/// The proof [`drop-duplicate-program`](crate::healing::HealingStrategy::DropDuplicateProgram)
-/// rests on, and on this arm it is the language's own rather than a shape that had to be found. A C#
-/// program's top-level statements share **one scope**, so a local declared twice is `CS0128`, *a
-/// local variable named 'x' is already defined in this scope* — before a statement runs. A type
-/// declared twice is `CS0101` for the same reason. So a reply that is one program pasted after an
-/// identical copy of itself could not have compiled as long as the program declared anything, which
-/// is nearly every program anyone writes.
-///
-/// "Top level" is read as *unindented*, which is what a top-level statement is in every program a
-/// model writes and what keeps this from mistaking a declaration inside a method, a class or a block
-/// — legal, and legal twice, because it is a different scope — for a redeclaration. `base` is where
-/// `text` starts inside the source `mask` was built over, so a caller may ask about a slice of it.
-fn declares_lexically<'a>(
-    text: &'a str,
-    mask: &'a CodeMask,
-    base: usize,
-) -> impl Iterator<Item = &'a str> {
-    lines_with_offsets(text).filter_map(move |(offset, line)| {
-        if !mask.is_code(base + offset) || line.starts_with([' ', '\t']) {
-            return None;
-        }
-        declares_something(line.trim_end()).then_some(line)
-    })
-}
-
-/// The keywords that open a line which is **not** a declaration of a name C# refuses twice, however
-/// much it may look like one.
-///
-/// `partial` is the one that matters and it is the reason this list exists at all: a `partial class`
-/// may be declared as many times as an author likes, so reading one as a redeclaration would let
-/// `drop-duplicate-program` delete a tail that would have run. `namespace` is the same shape — a
-/// namespace may be reopened — and so is `using`, which is a directive rather than a declaration and
-/// may be written twice. The control-flow words are here because a `for (…) {` at an unindented top
-/// level is a line inside somebody's method that the *slice* this runs over happened to begin at.
-const NOT_A_DECLARATION: [&str; 20] = [
-    "partial",
-    "namespace",
-    "using",
-    "global",
-    "if",
-    "else",
-    "for",
-    "foreach",
-    "while",
-    "do",
-    "switch",
-    "case",
-    "try",
-    "catch",
-    "finally",
-    "return",
-    "throw",
-    "yield",
-    "lock",
-    "await",
-];
-
-/// The kinds of declaration whose name is the identifier that follows the keyword.
-const TYPE_KEYWORDS: [&str; 6] = ["class", "record", "struct", "enum", "interface", "delegate"];
-
-/// Whether `line` **declares** a name in the compilation unit's own scope.
-///
-/// Two shapes and nothing else, each chosen so that a false positive would take a line no C# author
-/// writes twice:
-///
-/// * a **type** — `record Point(int X, int Y);`, `class Parser {`, `enum Kind {` — which is a type
-///   keyword with an identifier after it;
-/// * a **local** or a **local function**, which is a type and then a name: `var total = 0;`,
-///   `List<string> names = [];`, `string Slug(string text) => …;`.
-///
-/// **Two whitespace-separated words is the whole of the rule** that tells a declaration from an
-/// assignment, and it is what the everyday false positives fail. `total = 0;` re-binds nothing;
-/// `rows[0] = "a";`, `counts["word"] = 1;` and `entry.Kind = …;` assign into something that already
-/// exists — every one of them is a single word before the `=`, where a declaration always has the
-/// thing's type in front of its name. The last of those words must be a plain **identifier**, which
-/// is what keeps `rows[0]` from reading as `rows` and `0`.
-fn declares_something(line: &str) -> bool {
-    let line = line.trim();
-    if line.is_empty() || line.starts_with(['#', '}', ')', ']', '/', '*', '[', '@']) {
-        return false;
-    }
-    if NOT_A_DECLARATION
-        .iter()
-        .any(|word| keyword(line, word).is_some())
-    {
-        return false;
-    }
-    let head = without_generics(match line.find(['=', '(', '{', ';']) {
-        Some(cut) => &line[..cut],
-        None => line,
-    });
-    let mut words = head.split_whitespace().peekable();
-    // `partial` anywhere in front of a type is the one modifier that makes a declaration legal
-    // twice, so it is read out of the whole head rather than only off its first word.
-    if head.split_whitespace().any(|word| word == "partial") {
-        return false;
-    }
-    while let Some(word) = words.peek() {
-        if !MODIFIERS.contains(word) {
-            break;
-        }
-        words.next();
-    }
-    let rest: Vec<&str> = words.collect();
-    let Some(first) = rest.first() else {
-        return false;
-    };
-    if TYPE_KEYWORDS.contains(first) {
-        // `record class Point` names the identifier after the second word.
-        let named = match rest.get(1) {
-            Some(second) if TYPE_KEYWORDS.contains(second) => rest.get(2),
-            other => other,
-        };
-        return named.is_some_and(|name| is_identifier(name));
-    }
-    // A local or a local function: its type, then its name. One word alone is an assignment target,
-    // a call or an expression statement rather than a binding.
-    rest.len() >= 2 && is_identifier(rest[rest.len() - 1])
-}
-
-/// Whether `word` is a bare C# identifier — no brackets, no dots, no digits leading.
-fn is_identifier(word: &str) -> bool {
-    let mut characters = word.chars();
-    characters.next().is_some_and(is_ident_start) && characters.all(is_ident_char)
-}
-
-/// Modifiers a declaration may carry before the thing that names it — read past rather than counted
-/// as the type or the name.
-const MODIFIERS: &[&str] = &[
-    "public",
-    "private",
-    "protected",
-    "internal",
-    "static",
-    "readonly",
-    "const",
-    "sealed",
-    "abstract",
-    "virtual",
-    "override",
-    "new",
-    "unsafe",
-    "extern",
-    "required",
-    "volatile",
-    "ref",
-    "scoped",
-    "file",
-];
-
-/// `line` with every `<…>` cut out, so the identifiers left are the declaration's own —
-/// `List<string> names` is two words rather than three.
-fn without_generics(line: &str) -> String {
-    let mut out = String::with_capacity(line.len());
-    let mut depth = 0usize;
-    for character in line.chars() {
-        match character {
-            '<' => depth += 1,
-            '>' => depth = depth.saturating_sub(1),
-            _ if depth == 0 => out.push(character),
-            _ => {}
-        }
-    }
-    out
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -663,17 +420,17 @@ fn is_ident_char(character: char) -> bool {
 
 /// Lex `src` into its [code mask](CodeMask) — this dialect's answer to [`Dialect::code_mask`].
 ///
-/// `None` means the source did not lex cleanly, and every strategy that needs the mask declines on
+/// `None` means the source did not lex cleanly, and a caller that needs the mask declines to act on
 /// it. That is the correct failure mode for a lexer that has lost its place: the alternative is
-/// deleting text on the strength of a reading already known to be wrong. What ends a scan uncleanly
-/// is [`Scan::clean`](super::source::Scan)'s business — an unterminated block comment, a literal
-/// still open at the end, or a `"…"` or `'…'` still open at a newline.
+/// acting on a reading already known to be wrong. What ends a scan uncleanly is
+/// [`Scan::clean`](super::source::Scan)'s business — an unterminated block comment, a literal still
+/// open at the end, or a `"…"` or `'…'` still open at a newline.
 ///
 /// An **interpolation hole is code**, and that is the one place this differs from the reading
 /// [`source`](super::source) takes of the same scan: over there a hole is kept apart so its braces
 /// are not counted as a class body's, and here there is no brace counting and a hole is exactly what
-/// it is — an expression, whose `using` or whose declaration is as real as one written outside a
-/// string.
+/// it is — an expression, whose text is code as surely as if it had been written outside the string
+/// altogether.
 pub(super) fn code_mask(src: &str) -> Option<CodeMask> {
     let scanned = scan(src);
     scanned.clean.then(|| {

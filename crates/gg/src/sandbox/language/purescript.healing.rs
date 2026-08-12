@@ -1,8 +1,12 @@
 //! **PureScript's [healing dialect](crate::healing::Dialect)** — the lexical half of
 //! [response healing](crate::healing), answered in PureScript's own terms.
 //!
-//! Every method here answers a question the healing skeleton asks and cannot answer itself. Three of
-//! the answers are this arm's alone, and each is a fact about the language rather than a preference.
+//! Three of the methods here answer questions the healing skeleton asks and cannot answer itself —
+//! the fence tags and the two line predicates — and two of those answers are this arm's alone, each
+//! a fact about the language rather than a preference. The fourth, the
+//! [mask](Dialect::code_mask), answers a lexical question of the same kind that healing never asks;
+//! it sits on the trait beside the others and is read by
+//! [this arm's module analysis](super::modules).
 //!
 //! # A `#` line is prose here, and that is the opposite of what the other arms say
 //!
@@ -32,46 +36,13 @@
 //! [`applies_a_named_function`] reads the shape English is written in — a sentence opens with a
 //! capital or closes with terminal punctuation — rather than the tokens, which are identical.
 //!
-//! # An import is never deleted
-//!
-//! `purs` resolves every `import` a program writes, against a library set that is a prebuilt
-//! artifact — compiled by this arm's build and carried inside gg's binary: `import Gg` is how a
-//! program reaches the surface at all, `import Prelude` is how it
-//! reaches `<>`, and `import Data.Map as Map` is how it reaches a map. There is no lexical shape here
-//! that is *certainly* dead — which is precisely what
-//! [`drop-imports`](crate::healing::HealingStrategy::DropImports) needs before it may delete a line —
-//! so [`is_import_statement`](Dialect::is_import_statement) answers `false` and that strategy never
-//! fires on this arm. The one import that *is* certainly dead, `Effect.Aff`, is not left behind
-//! either: it is part of the concurrency wrapper below and comes off with it, exactly as Python's
-//! `asyncio` does.
-//!
-//! # The concurrency wrapper is a monad, not a block
-//!
-//! Every other arm's wrapper *encloses* the program: an `async function` with a body, an `async def`
-//! with an indented suite, a `Thread.new do … end`. PureScript's does not. The shape a model reaches
-//! for is `main = launchAff_ do`, and what makes it asynchronous is the **monad the `do` block is
-//! in** rather than anything around the program. So the deletion is distributed — the wrapper token
-//! on `main`'s right-hand side, and the `Effect.Aff` import that made it reachable — and what is left
-//! is the same `do` block in `Effect`, which is the monad every call in this SDK is already in.
-//!
-//! Two things make that repair provable rather than hopeful. `aff` is deliberately **not** in this
-//! arm's shipped library set, so a program wearing the wrapper cannot compile at all and there is no
-//! working behaviour to preserve — the warrant
-//! [the skeleton](crate::healing::unwrap_async) asks for. And the wrapper must be on **`main`**,
-//! which is the one declaration gg's own entry module calls, so "the program invokes the wrapper" is
-//! a property of the compile rather than something to look for in the text.
-//!
-//! The count of suspension tokens removed is **zero**, and honestly so: PureScript has no `await`.
-//! `liftEffect` is the nearest thing and is deliberately left alone, because it goes on working — an
-//! `Effect` is a `MonadEffect`, so `liftEffect` in an `Effect` block is the identity.
-//!
 //! # None of this is a parser
 //!
 //! `purs` is a process and [the compile](super::compile) already spends one. Nothing here may spend a
 //! second, so every answer below is a lexical shape test over text that is not yet known to be a
 //! program, and each declines rather than guessing.
 
-use crate::healing::{AsyncWrapper, CodeMask, Dialect, Unwrapped, lines_with_offsets};
+use crate::healing::{CodeMask, Dialect};
 
 /// PureScript's dialect. A unit struct: everything it "holds" is the `const` data below.
 pub(in crate::sandbox::language) struct PureScriptDialect;
@@ -95,41 +66,6 @@ impl Dialect for PureScriptDialect {
 
     fn code_mask(&self, src: &str) -> Option<CodeMask> {
         code_mask(src)
-    }
-
-    /// **`false`, always.** See this module's own documentation: `purs` resolves every import a
-    /// program writes, against a library set gg ships, so an `import` line is load-bearing rather
-    /// than dead — and `import Gg` is the line without which a program has no surface at all.
-    fn is_import_statement(&self, _line: &str) -> bool {
-        false
-    }
-
-    /// **`true`** when `text` declares, at its top level, something `purs` refuses to see twice: a
-    /// module header, a type declaration, a nullary value binding, or a `data`/`newtype`/`type`/
-    /// `class` declaration.
-    ///
-    /// Each is measured rather than assumed. Two module headers is `ErrorParsingModule`
-    /// (*Unexpected token 'module'*); `x :: Int` twice, or `x = 1` twice, is `RedefinedIdent` (*The
-    /// value x has been defined multiple times*) whether the two are adjacent or not; a repeated
-    /// `data` or `type` is refused the same way.
-    ///
-    /// A binding **with arguments** is deliberately not one of them, and that is the whole reason
-    /// this is not simply "the line contains an `=`": `f 0 = 1` followed by `f n = n` is one
-    /// declaration with two equations, which is ordinary PureScript and which
-    /// [`drop-duplicate-program`](crate::healing::HealingStrategy::DropDuplicateProgram) must never
-    /// take as proof that a repeated tail could not have run.
-    fn declares_a_redeclarable_binding(&self, text: &str, mask: &CodeMask, base: usize) -> bool {
-        declares_a_redeclarable_binding(text, mask, base)
-    }
-
-    /// `main = launchAff_ do …`, with the `import Effect.Aff` that made the wrapper reachable — the
-    /// two-part shape, taken off together.
-    ///
-    /// [`Immediate`](AsyncWrapper::Immediate) is the only shape reported, because it is the only
-    /// shape PureScript has: the wrapper is applied where it is written rather than declared under a
-    /// name and called somewhere else.
-    fn unwrap_async(&self, text: &str, mask: &CodeMask) -> Option<Unwrapped> {
-        unwrap_async(text, mask)
     }
 
     #[cfg(test)]
@@ -485,9 +421,10 @@ enum Mode {
 
 /// Lex `src` into its [code mask](CodeMask) — this dialect's answer to [`Dialect::code_mask`].
 ///
-/// `None` means the source did not lex cleanly, and every strategy that needs the mask declines on
-/// it. Three states end a scan uncleanly: an ordinary string still open at a newline, a triple-quoted
-/// string still open at the end of input, and a block comment still open at the end of input.
+/// `None` means the source did not lex cleanly, and every caller that needs the mask goes without
+/// it — [the module scan](super::modules) reads such a source as though it were all code. Three
+/// states end a scan uncleanly: an ordinary string still open at a newline, a triple-quoted string
+/// still open at the end of input, and a block comment still open at the end of input.
 ///
 /// # The four shapes it reads, and the two subtleties in them
 ///
@@ -497,13 +434,13 @@ enum Mode {
 /// **A `--` is not always a comment.** PureScript operators are built out of symbol characters, so
 /// `-->` and `<--` are names a program may define and use, and only a run of dashes followed by
 /// something that is *not* a symbol character opens a comment. Reading `x --> y` as a comment would
-/// mask the rest of the line, which is a strategy declining to repair a program that was fine.
+/// mask the rest of the line, and everything declared on it would go unread.
 ///
 /// **A `'` is usually a prime.** `total'` is an ordinary identifier and `'a'` is a character literal,
 /// and the two are told apart the only way they can be: a quote that follows an identifier character
 /// continues a name, and one that does not opens a literal *only if* the literal closes within the
 /// handful of bytes a character literal can be. Anything else is left as code, because a mis-read
-/// quote would open a string that never closes and cost every strategy the mask.
+/// quote would open a string that never closes and cost the whole source its mask.
 fn code_mask(src: &str) -> Option<CodeMask> {
     let bytes = src.as_bytes();
     let mut code = vec![true; bytes.len()];
@@ -664,245 +601,6 @@ fn character_literal(bytes: &[u8], index: usize) -> Option<usize> {
         at += 1;
     }
     None
-}
-
-// ---------------------------------------------------------------------------------------------
-// The redeclaration proof
-// ---------------------------------------------------------------------------------------------
-
-/// Whether `text` declares, at its top level, something `purs` refuses twice.
-///
-/// `base` is where `text` begins inside the source `mask` was built over, so a caller may ask about
-/// a slice of it.
-fn declares_a_redeclarable_binding(text: &str, mask: &CodeMask, base: usize) -> bool {
-    lines_with_offsets(text).any(|(offset, line)| {
-        mask.is_code(base + offset)
-            && !line.starts_with([' ', '\t'])
-            && is_redeclarable(line.trim_end())
-    })
-}
-
-/// Whether the unindented `line` opens a declaration `purs` refuses to see a second time.
-fn is_redeclarable(line: &str) -> bool {
-    // Two module headers do not parse at all: `Unexpected token 'module'`.
-    if starts_with_any(line, &["module"]) {
-        return true;
-    }
-    // A second `data Colour`, `newtype Wrapper`, `type Alias` or `class Show2` is refused by name.
-    if starts_with_any(line, &["data", "newtype", "type", "class"]) {
-        return true;
-    }
-    // A value: `x :: Int` twice, or `x = 1` twice, is `RedefinedIdent`. A binding with **arguments**
-    // is not — `f 0 = 1` and `f n = n` are two equations of one declaration — so only the type
-    // declaration and the nullary definition count.
-    let Some(name) = super::modules::declared_value(line) else {
-        return false;
-    };
-    let rest = line[name.len()..].trim_start();
-    rest.starts_with("::") || rest.starts_with('=')
-}
-
-// ---------------------------------------------------------------------------------------------
-// The concurrency wrapper
-// ---------------------------------------------------------------------------------------------
-
-/// The module prefix of every import that exists only to make the wrapper reachable.
-const AFF_MODULE: &str = "Effect.Aff";
-
-/// The two names a whole-program wrapper is spelled with.
-///
-/// `launchAff_` is what a model writes when it wants the fiber's result discarded, `launchAff` when
-/// it does not and then discards it with `void` anyway. Both are the same reflex.
-const WRAPPERS: [&str; 2] = ["launchAff_", "launchAff"];
-
-/// The whole two-part `Aff` wrapper, if `text` wears one.
-///
-/// Each step declines rather than guessing, and the wrapper must be on **`main`** — see this
-/// module's own documentation for why that is what stands in for the invocation every other arm has
-/// to look for.
-fn unwrap_async(text: &str, mask: &CodeMask) -> Option<Unwrapped> {
-    let lines: Vec<(usize, &str)> = lines_with_offsets(text).collect();
-
-    // The one declaration that may wear it, and the byte range of the wrapper on its right-hand side.
-    let mut wrapper: Option<std::ops::Range<usize>> = None;
-    // Every `import Effect.Aff…` line, as a whole-line byte range.
-    let mut imports: Vec<std::ops::Range<usize>> = Vec::new();
-
-    for (index, (offset, line)) in lines.iter().copied().enumerate() {
-        if !mask.is_code(offset) || line.starts_with([' ', '\t']) {
-            continue;
-        }
-        if is_aff_import(line.trim_end()) {
-            let end = lines.get(index + 1).map_or(text.len(), |(next, _)| *next);
-            imports.push(offset..end);
-            continue;
-        }
-        let Some(span) = main_wrapper(line.trim_end()) else {
-            continue;
-        };
-        // Two declarations of `main` is not a program this repair understands.
-        if wrapper.is_some() {
-            return None;
-        }
-        wrapper = Some(offset + span.start..offset + span.end);
-    }
-
-    let wrapper = wrapper?;
-
-    // Anything else the program does with `Aff` is work this repair would not have fixed, and
-    // reporting a repair that leaves the program broken is worse than declining one.
-    if names_aff_elsewhere(text, mask, &wrapper, &imports) {
-        return None;
-    }
-
-    let mut removals = imports;
-    removals.push(wrapper);
-    removals.sort_by_key(|range| range.start);
-
-    let mut out = String::with_capacity(text.len());
-    let mut cursor = 0;
-    for range in removals {
-        out.push_str(&text[cursor..range.start]);
-        cursor = range.end;
-    }
-    out.push_str(&text[cursor..]);
-
-    Some(Unwrapped {
-        wrapper: AsyncWrapper::Immediate,
-        text: out.trim().to_string(),
-        // PureScript has no suspension token. Reporting a number here would report a repair that
-        // never happened, which is the one thing a healing note may not do.
-        awaits: 0,
-    })
-}
-
-/// Whether the unindented `line` imports `Effect.Aff` or something under it.
-fn is_aff_import(line: &str) -> bool {
-    let Some(rest) = line.strip_prefix("import") else {
-        return false;
-    };
-    let rest = rest.trim_start();
-    let Some(after) = rest.strip_prefix(AFF_MODULE) else {
-        return false;
-    };
-    // `Effect.Affair` is a different module; `Effect.Aff.Class` is not.
-    after.is_empty() || after.starts_with('.') || after.starts_with(char::is_whitespace)
-}
-
-/// The byte range of the wrapper on `main`'s right-hand side, when `line` is
-/// `main = <wrapper> do …` and nothing else.
-///
-/// The range covers everything between the `=` and the `do`, so deleting it leaves `main = do …` —
-/// the same block, in `Effect`.
-fn main_wrapper(line: &str) -> Option<std::ops::Range<usize>> {
-    let rest = line.strip_prefix("main")?;
-    let rest = rest.trim_start();
-    let rest = rest.strip_prefix('=')?;
-    // `main == x` is a comparison, not a binding.
-    if rest.starts_with(['=', '>']) {
-        return None;
-    }
-    let body = rest.trim_start();
-    // The deletion starts at the first thing after the `=` rather than at the `=` itself, so what is
-    // left reads `main = do` with the one space a program is written with.
-    let start = line.len() - body.len();
-    let mut cursor = start;
-
-    // `void $ ` or `void ` — the shape a model writes when it reached for `launchAff` rather than
-    // `launchAff_`.
-    let after_void = match take_word(&line[cursor..], "void") {
-        Some(rest) => {
-            let after = skip_dollar(rest);
-            Some(line.len() - after.len())
-        }
-        None => None,
-    };
-    if let Some(at) = after_void {
-        cursor = at;
-    }
-
-    // The wrapper itself, qualified or not.
-    let token: String = line[cursor..]
-        .chars()
-        .take_while(|c| is_ident_char(*c) || *c == '\'' || *c == '.')
-        .collect();
-    let bare = token.rsplit('.').next().unwrap_or(&token);
-    if !WRAPPERS.contains(&bare) {
-        return None;
-    }
-    // A qualifier is a module alias, which is capitalised; anything else is a record field access on
-    // something that is not the wrapper.
-    if token.len() > bare.len() {
-        let qualifier = &token[..token.len() - bare.len() - 1];
-        if !qualifier.starts_with(char::is_uppercase) {
-            return None;
-        }
-    }
-    cursor += token.len();
-
-    let rest = line[cursor..].strip_prefix(char::is_whitespace)?;
-    let rest = skip_dollar(rest.trim_start());
-    // The `do` really has to be the keyword: nothing may sit between the wrapper and the block, which
-    // is what makes the deletion exactly the wrapper and the repair exactly a change of monad.
-    take_word(rest, "do")?;
-    Some(start..line.len() - rest.len())
-}
-
-/// `text` with a leading `word` and the whitespace after it removed, or `None` when it does not open
-/// with that word at an identifier boundary.
-fn take_word<'a>(text: &'a str, word: &str) -> Option<&'a str> {
-    let rest = text.strip_prefix(word)?;
-    match rest.chars().next() {
-        None => Some(rest),
-        Some(c) if !is_ident_char(c) && c != '\'' => Some(rest.trim_start()),
-        Some(_) => None,
-    }
-}
-
-/// `text` with a leading `$` and the whitespace after it removed, when it has one.
-fn skip_dollar(text: &str) -> &str {
-    match text.strip_prefix('$') {
-        // `$$` and `$>` are operators of their own, and a program that wrote one meant it.
-        Some(rest) if !rest.starts_with(is_symbol) => rest.trim_start(),
-        _ => text,
-    }
-}
-
-/// Whether `c` is one of the characters a PureScript operator is built out of.
-fn is_symbol(c: char) -> bool {
-    c.is_ascii() && SYMBOL_BYTES.contains(&(c as u8))
-}
-
-/// Whether `text` names a wrapper anywhere the repair is not about to delete.
-fn names_aff_elsewhere(
-    text: &str,
-    mask: &CodeMask,
-    wrapper: &std::ops::Range<usize>,
-    imports: &[std::ops::Range<usize>],
-) -> bool {
-    for wrapper_name in WRAPPERS {
-        let mut from = 0;
-        while let Some(found) = text[from..].find(wrapper_name) {
-            let at = from + found;
-            let end = at + wrapper_name.len();
-            from = at + 1;
-            // `launchAff_` contains `launchAff`, so the shorter name matches inside the longer one —
-            // and `myLaunchAff` is somebody else's name rather than this one.
-            if text[end..].starts_with(|c: char| is_ident_char(c) || c == '\'')
-                || text[..at].ends_with(|c: char| is_ident_char(c) || c == '\'')
-            {
-                continue;
-            }
-            if !mask.is_code(at) {
-                continue;
-            }
-            if wrapper.contains(&at) || imports.iter().any(|range| range.contains(&at)) {
-                continue;
-            }
-            return true;
-        }
-    }
-    false
 }
 
 #[cfg(test)]

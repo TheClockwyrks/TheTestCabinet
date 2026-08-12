@@ -721,10 +721,6 @@ fn every_shape_of_entry_point_c_sharp_offers_is_one_a_model_may_write() {
 
 #[test]
 fn csharp_runs_a_program_written_the_async_way_a_model_reaches_for() {
-    // The claim this arm's [healing dialect](super::healing) rests on when it declines to unwrap a
-    // concurrency wrapper, and the reason it is a *measurement* rather than a grammatical argument
-    // like the C++ arm's.
-    //
     // A model told "everything is synchronous" still writes `static async Task Main` sometimes,
     // because it is the shape a decade of C# samples open with. On this arm that shape **works**,
     // and gg engineered none of it: Roslyn lowers an async entry point — and a top-level `await` —
@@ -732,9 +728,9 @@ fn csharp_runs_a_program_written_the_async_way_a_model_reaches_for() {
     // synthesized method the assembly's entry-point token names, so it is the one
     // `mono_wasi_assembly_get_entry_point` hands back.
     //
-    // If either of these ever stopped running, the dialect's `unwrap_async` would be declining to
-    // repair a reply it should be repairing — a whole turn lost, silently, on the arm where the
-    // wrapper is most idiomatic. So it is asserted here rather than reasoned about there.
+    // None of that lowering is gg's to keep working, and if it ever stopped the loss would be a
+    // whole turn — silently, on the arm where the wrapper is most idiomatic and a model has every
+    // reason to reach for it. So it is measured here rather than assumed.
     for source in [
         // The wrapper itself: a class, an async entry point, and an await inside it.
         "using System.Threading.Tasks;\npublic static class Program {\n  public static async Task \
@@ -749,8 +745,7 @@ fn csharp_runs_a_program_written_the_async_way_a_model_reaches_for() {
         assert_eq!(
             logs(&run(source)),
             ["ran"],
-            "this async shape did not run, so the healing dialect must stop declining to unwrap \
-             it: {source}"
+            "this async shape did not run: {source}"
         );
     }
 }

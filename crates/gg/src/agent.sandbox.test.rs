@@ -570,10 +570,9 @@ async fn a_sandbox_failure_is_a_turn_outcome_not_a_crash() {
             &[
                 // Not parseable at all.
                 "const x = ;",
-                // A module feature the sandbox has no implementation of. It is written across
-                // several lines deliberately: `drop-imports` declines a multi-line import (deciding
-                // where one ends is a parse), so this reaches the transpiler exactly as the model
-                // wrote it and fails there, which is the shape this test is about.
+                // A module feature the sandbox has no implementation of. Nothing in healing touches
+                // an import, so this reaches the transpiler exactly as the model wrote it and fails
+                // there, which is the shape this test is about.
                 "import {\n  readFileSync,\n} from \"node:fs\";\nreturn 1;",
             ],
         )
@@ -2122,19 +2121,14 @@ async fn the_armed_healing_strategies_are_logged_and_recorded() {
         .find(|message| message.starts_with("response healing:"))
         .unwrap_or_else(|| panic!("no healing line on the launch log: {logs:?}"));
     assert_eq!(
-        line, "response healing: strip-fences, drop-duplicate-program, drop-imports, unwrap-async",
+        line, "response healing: strip-fences",
         "the log must name the armed set, and only the armed set"
     );
 
     let summary = session_summary(&events).expect("a run emits one session summary");
     assert_eq!(
         summary.healing.enabled,
-        vec![
-            GgHealingStrategy::StripFences,
-            GgHealingStrategy::DropDuplicateProgram,
-            GgHealingStrategy::DropImports,
-            GgHealingStrategy::UnwrapAsync,
-        ],
+        vec![GgHealingStrategy::StripFences],
         "the summary must carry the same resolved set the log named"
     );
 }

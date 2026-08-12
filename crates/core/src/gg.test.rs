@@ -1284,7 +1284,7 @@ fn a_code_execution_carries_the_completion_and_the_healing_record() {
         healing: GgResponseHealing {
             strategies: vec![
                 GgHealingStrategy::StripFences,
-                GgHealingStrategy::DropImports,
+                GgHealingStrategy::StripProse,
             ],
             ..GgResponseHealing::default()
         },
@@ -1299,7 +1299,7 @@ fn a_code_execution_carries_the_completion_and_the_healing_record() {
             "apiCalls": 1,
             "durationMs": 9_100,
             "finished": "Built the game and wrote MANIFEST.md.",
-            "healing": { "strategies": ["strip-fences", "drop-imports"] },
+            "healing": { "strategies": ["strip-fences", "strip-prose"] },
         })
     );
     assert_eq!(
@@ -1372,16 +1372,10 @@ fn healing_strategy_ids_are_the_kebab_case_config_keys() {
     for (strategy, id) in [
         (GgHealingStrategy::StripFences, "strip-fences"),
         (GgHealingStrategy::StripProse, "strip-prose"),
-        (GgHealingStrategy::DropImports, "drop-imports"),
         (
             GgHealingStrategy::DropDoubledResponse,
             "drop-doubled-response",
         ),
-        (
-            GgHealingStrategy::DropDuplicateProgram,
-            "drop-duplicate-program",
-        ),
-        (GgHealingStrategy::UnwrapAsync, "unwrap-async"),
     ] {
         assert_eq!(serde_json::to_value(strategy).unwrap(), json!(id));
         assert_eq!(
@@ -1435,6 +1429,12 @@ fn every_program_language_round_trips_through_its_id() {
 /// both directions have to hold at once: a run recorded before it existed must still read (its
 /// healing rollup simply reports zero applications of it), and a run that arms it must round-trip
 /// the counter rather than dropping it as an unknown key.
+///
+/// The stored record proves the other edge of that property at the same time: it carries the
+/// counters of the three strategies since deleted — keys every run recorded before the deletion
+/// carries, and the whole historical record now does — and reading it must skip them rather than
+/// refuse the record. The rollup is additive in both directions at once: a newer field the record
+/// never had defaults, and an older field the type no longer has is ignored.
 #[test]
 fn the_doubled_response_strategy_is_readable_beside_the_runs_that_predate_it() {
     let stored = json!({
@@ -1451,6 +1451,10 @@ fn the_doubled_response_strategy_is_readable_beside_the_runs_that_predate_it() {
     assert_eq!(
         summary.drop_doubled_response, 0,
         "a rollup recorded before the strategy existed reports none of it rather than failing"
+    );
+    assert_eq!(
+        summary.strip_fences, 2,
+        "the deleted strategies' counters are stale keys the reader steps over, not a parse error"
     );
 
     let armed = GgHealingSummary {
@@ -1758,9 +1762,6 @@ fn a_session_summary_carries_the_healing_rollup_and_the_ceiling_that_stopped_the
             "stripFences": 3,
             "stripProse": 1,
             "dropDoubledResponse": 0,
-            "dropDuplicateProgram": 0,
-            "dropImports": 0,
-            "unwrapAsync": 0,
             "enabled": ["strip-fences", "strip-prose"],
         })
     );
@@ -1801,9 +1802,6 @@ fn a_session_summary_recorded_before_turn_outcomes_reads_with_an_empty_error_rol
             "applications": 0,
             "stripFences": 0,
             "stripProse": 0,
-            "dropDuplicateProgram": 0,
-            "dropImports": 0,
-            "unwrapAsync": 0,
             "enabled": [],
         },
     });
@@ -2221,17 +2219,14 @@ fn a_healing_rollup_written_before_the_armed_set_still_deserializes() {
         "issuesCompleted": 0,
         "healing": {
             "healed": 1,
-            "applications": 3,
+            "applications": 2,
             "stripFences": 1,
             "stripProse": 1,
-            "dropDuplicateProgram": 1,
-            "dropImports": 0,
-            "unwrapAsync": 0,
         },
     }))
     .expect("deserialize");
     assert_eq!(summary.healing.healed, 1);
-    assert_eq!(summary.healing.drop_duplicate_program, 1);
+    assert_eq!(summary.healing.strip_prose, 1);
     assert!(summary.healing.enabled.is_empty());
 
     // Re-serializing writes the new member out rather than dropping it again, so a record read and

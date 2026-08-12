@@ -1932,18 +1932,15 @@ export type GgToolFailure =
  * told about teaches it nothing and corrupts the ablation, whose whole question is whether models
  * learn the contract.
  *
- * Most strategies are armed unless a configuration turns them off, because for those, repairing is
- * strictly safer than not: the reply they delete from could not have run as sent. The exception is
- * [`drop-doubled-response`](Self::DropDoubledResponse), which is **off** unless a configuration
+ * Two of the three are armed unless a configuration turns them off, because for those, repairing
+ * is strictly safer than not: the reply they delete from could not have run as sent. The exception
+ * is [`drop-doubled-response`](Self::DropDoubledResponse), which is **off** unless a configuration
  * arms it — see its own documentation for why that asymmetry exists.
  */
 export type GgHealingStrategy =
   | "strip-fences"
   | "strip-prose"
-  | "drop-doubled-response"
-  | "drop-duplicate-program"
-  | "drop-imports"
-  | "unwrap-async";
+  | "drop-doubled-response";
 
 /**
  * The language a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program is written in — the
@@ -2058,20 +2055,6 @@ export type GgHealingSummary = {
    * with [`enabled`](Self::enabled) rather than as "this model never doubled a reply".
    */
   dropDoubledResponse: number;
-  /**
-   * Applications of
-   * [`drop-duplicate-program`](GgHealingStrategy::DropDuplicateProgram) — how often a model sent
-   * the same program twice in one reply.
-   */
-  dropDuplicateProgram: number;
-  /**
-   * Applications of [`drop-imports`](GgHealingStrategy::DropImports).
-   */
-  dropImports: number;
-  /**
-   * Applications of [`unwrap-async`](GgHealingStrategy::UnwrapAsync).
-   */
-  unwrapAsync: number;
   /**
    * The [strategies](GgHealingStrategy) that were **armed** for this run, in the order gg
    * applies them — the resolved configuration, recorded rather than left to be re-derived from

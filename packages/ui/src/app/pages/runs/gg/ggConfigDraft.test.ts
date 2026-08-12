@@ -535,7 +535,7 @@ describe("gg filesystem capabilities", () => {
 });
 
 // The `responses-as-code` capability's `healing` param: a `toggles` control whose members
-// each sit at their own default — five on, `drop-doubled-response` off — so only the ones
+// each sit at their own default — two on, `drop-doubled-response` off — so only the ones
 // an operator MOVES are ever written, in whichever direction they moved.
 const CODE = "responses-as-code";
 
@@ -583,9 +583,6 @@ describe("gg response-healing toggles", () => {
     expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
       "strip-fences": false,
       "strip-prose": false,
-      "drop-duplicate-program": false,
-      "drop-imports": false,
-      "unwrap-async": false,
     });
   });
 
@@ -632,13 +629,13 @@ describe("gg response-healing toggles", () => {
       {
         id: CODE,
         enabled: true,
-        params: { healing: { "drop-imports": false } },
+        params: { healing: { "strip-fences": false } },
       },
     ]);
     const draft = draftFromCapabilitySet(configured);
-    expect(healingDraft(draft)).toBe("drop-imports");
+    expect(healingDraft(draft)).toBe("strip-fences");
     expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
-      "drop-imports": false,
+      "strip-fences": false,
     });
   });
 

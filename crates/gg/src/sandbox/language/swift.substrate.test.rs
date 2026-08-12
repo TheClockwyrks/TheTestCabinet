@@ -27,8 +27,7 @@
 //! Swift runtime failure — which cannot be caught by anything inside the guest — still reaches the
 //! model with what it was and where; that what a program writes to stderr on purpose reaches it
 //! too; that a **code module** compiles into the same artifact and is reached at `lib.<key>` with
-//! its author's argument labels; that a `Task` is scheduled and never run, which is the measurement
-//! this arm's healing dialect rests on; and the two bands `swiftc` produces between them.
+//! its author's argument labels; and the two bands `swiftc` produces between them.
 //!
 //! Isolation is **not** here, in any form. The seam's own gate drives this arm's program and module
 //! steps sixteen ways along with every other language's, and it needs nothing from this arm to do
@@ -583,21 +582,6 @@ fn a_code_module_is_checked_on_its_own_and_reports_its_names() {
         }
         other => panic!("a module that does not type-check is a program failure, not {other:?}"),
     }
-}
-
-#[test]
-fn a_task_is_scheduled_and_never_run_which_is_why_the_dialect_unwraps_one() {
-    // The measurement behind this arm's concurrency wrapper. `Task { … }` compiles and the program
-    // is accepted; what does NOT happen is the body. A turn like this is reported as a clean run
-    // over a program that did nothing, which round 1 established is the one failure a model cannot
-    // recover from — so the healing dialect takes the wrapper off, and this is the evidence that it
-    // should.
-    let inside = run("Task {\n    gg.log(\"inside\")\n}\ngg.log(\"after\")\n");
-    assert_eq!(
-        logs(&inside),
-        ["after"],
-        "a Task's body ran, which would make this arm's `unwrap-async` a repair it must not make"
-    );
 }
 
 #[test]
