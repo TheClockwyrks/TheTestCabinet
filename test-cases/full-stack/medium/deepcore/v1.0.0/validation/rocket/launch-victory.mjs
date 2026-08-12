@@ -26,6 +26,7 @@ export default function item() {
 
     // The launch and the sequence it plays out are the behavior — and the clip is the win itself.
     async act(api) {
+      await api.advance(45); // 45 ticks = 0.75 s on the completed rocket before the launch
       await api.call("launch");
       // Poll until the launch sequence resolves to Victory rather than advancing a fixed span:
       // specs/rocket.md mandates launch -> Victory but bounds no duration for the lift-off
@@ -36,6 +37,12 @@ export default function item() {
         poll: 6,
       });
       snap = r.snap;
+      // Rest on the Victory screen. The sweep above stops on the frame the screen turns over, so
+      // without this the clip ends the instant the win lands and the run summary — which this item
+      // explicitly asserts is shown — is never on screen to be read. It also makes the clip's
+      // length independent of how long a build's lift-off animation runs: the sweep's duration
+      // varies per build, this tail does not.
+      await api.advance(120); // 120 ticks = 2 s on the Victory screen and its summary
     },
 
     async assert(api, check) {

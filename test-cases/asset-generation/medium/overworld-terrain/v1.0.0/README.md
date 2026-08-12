@@ -27,7 +27,7 @@ against it.
 
 | File | Seeded? | Purpose |
 | --- | --- | --- |
-| `test-case.toml` | — | Manifest: metadata, `[canvas]`/`[tool]`/`[output]`, two domains + review checklist. |
+| `test-case.toml` | — | Manifest: metadata, `[canvas]`/`[tool]`/`[output]`, domain. |
 | `prompt.hbs` | — | The instruction rendered per run (points at the brief, the tool, and the grid). |
 | `specs/brief.md` | **yes** | The self-contained brief — grid layout, the nine tile assignments, seamless-tiling rules, palette. |
 | `variants/base.toml` | — | The single default variant (`base`). |

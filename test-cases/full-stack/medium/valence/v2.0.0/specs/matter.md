@@ -4,7 +4,7 @@ This file defines the matter you defend against: how a unit takes damage, the
 three damage types, the three stackable traits that gate what can hurt or even
 see it, the specific matter types and their stats, and how a wave is built. It
 builds on the board and paths in `specs/board.md`, the towers in
-`specs/towers.md`, and the round progression in `specs/campaign.md`. Speeds are
+`specs/towers.md`, and the round progression in `specs/gameplay.md`. Speeds are
 in logical pixels per second; energy and integrity values are unitless game
 numbers.
 
@@ -21,7 +21,7 @@ points and traits, and any tower that can reach it chips it down. Concretely:
   points. A damage tower's shot removes a number of shells (its damage); a unit
   stripped to zero shells is neutralized and removed, with a neutralize burst
   (`specs/assets.md`). Energy is paid for the damage that stripped it, not for
-  the kill (`specs/campaign.md`).
+  the kill (`specs/gameplay.md`).
 - There are three damage types, one per damage-tower family (`specs/towers.md`):
   energy, kinetic, and nuclear. On an ordinary unit all three strip shells the
   same way; what differs is how each interacts with a unit's traits (below).
@@ -50,7 +50,16 @@ lock. As the pool drains past each fragment threshold the cluster sheds a free
 atom off its leading end, a molecule becoming a spray of atoms, and when the
 pool is spent the cluster's last atom travels on free. A `k`-atom cluster sheds
 `k − 1` atoms as its bonds are chipped away and continues as the final free
-atom, so it releases `k` free atoms in all.
+atom, so it releases `k` free atoms in all — never `k + 1`. Each threshold the
+pool crosses takes one atom off the count still wrapped in it, so what is left to
+release when the pool finally breaks is only what has not already been shed.
+
+Bonded is a state, not a lineage. A unit is bonded while its pool still has
+points in it and is not bonded from the moment the pool is spent: the snapshot's
+`traits.bonded` reads `false` from then on, and its `bond` is spent (`0`, or
+`null` once the unit no longer carries a pool at all —
+`specs/instrumentation.md`). A cluster that still reports itself bonded with an
+empty pool is reporting a state it is no longer in.
 
 - Kinetic damage is best against bonds: a kinetic shot deals its damage to the
   bond pool times a bonus (base `×2`; the Cleaver deepens it). So a Cleaver
@@ -80,8 +89,14 @@ transmutes into a lighter isotope that travels on:
 
 An isotope's decay chain is a fixed sequence of these emissions (its identity);
 it sheds them one per decay step as it is cracked, and when its shells are
-finally spent it has reached a stable nucleus and is neutralized with a split
-flash (`specs/assets.md`). So a cracked heavy is not two
+finally spent it emits every step still left on its chain at once, reaches a
+stable nucleus, and is neutralized with a split flash (`specs/assets.md`). That
+last part is not a detail of the boss: a heavy always emits its WHOLE chain, so
+that its total shells are its own plus every particle it was carrying. An
+Isotope's `9` shells and its two alphas and a beta are exactly the `23` total
+shells the roster gives it. Nothing swallows a step — neither a hard hit that
+spends the nucleus in one blow, nor a chain whose last step falls where the
+shells run out. So a cracked heavy is not two
 tidy daughters but a stream of alpha and beta particles the energy strippers
 behind the kinetic/nuclear line must clean up. A Shroud (below) decays the same
 way, and the particles it emits stay inert. An Isotope carries `9` shells and a
@@ -134,14 +149,14 @@ its damage type can reach it.
 ## Matter types
 
 The roster. These values are fixed and do not change with the round: a Dimer is
-the same unit in Round 3 and Round 38 (`specs/campaign.md`).
+the same unit in Round 3 and Round 38 (`specs/gameplay.md`).
 
 `Structure` is what the unit is made of. For an Atom it is the electron count
 (`1`–`6`), which is its shells and its hit points; for an isotope, its starting
 shells and its decay chain; for a bonded cluster, its constituent atom count and
 its outer bond-integrity pool. `Total shells` is everything the board must strip
 to finish the unit outright, its own hit points plus everything it fragments
-into, which is also exactly what it pays out (`specs/campaign.md`).
+into, which is also exactly what it pays out (`specs/gameplay.md`).
 
 | Type            | Traits         | Structure                          | Total shells | Speed  | Leak                    | What it asks of the board                |
 | --------------- | -------------- | ---------------------------------- | ------------ | ------ | ----------------------- | ---------------------------------------- |
@@ -194,7 +209,7 @@ the same way.
 
 A Macromass is the heaviest matter in the game: a super-heavy, highly unstable
 nucleus behind its own containment, and the whole of Round 40
-(`specs/campaign.md`). It is the only unit carrying both traits at once. A
+(`specs/gameplay.md`). It is the only unit carrying both traits at once. A
 containment pool of `180` sits in front of it, chipped like any bond pool, and
 behind that a nucleus of `132` shells that only kinetic or nuclear reaches. It is
 immune to being slowed by a Moderator, moves slowly (speed 28) and leaks `12`
@@ -308,7 +323,7 @@ a multi-path map every path receives the same kind of matter at the same time
 
 ### What each round asks of the board
 
-Reading the next-round preview (`specs/board.md`, `specs/campaign.md`), which
+Reading the next-round preview (`specs/board.md`, `specs/gameplay.md`), which
 names each coming type and what it asks of the board (detect / kinetic-nuclear /
 chip-bonds), and re-shaping the board for it is the between-round game.
 

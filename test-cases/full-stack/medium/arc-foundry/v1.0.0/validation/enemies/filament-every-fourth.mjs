@@ -5,11 +5,21 @@
 // tower), and each live wave is watched for a Filament. Waves 1-3 must produce none; Wave 4
 // must produce one — this reads the REAL, naturally-composed wave, not a fabricated spawn.
 //
-// Only the opening of the run is arranged. The four-level progression is all in the act: each
-// level's placement and keep are control ops (legal mid-act), and the watching and clearing
-// consume time. The run is never reset in between, so no phase rule is broken.
+// WHY THE PROGRESSION IS NO LONGER FILMED. Four waves used to be walked out inside `act`, on
+// `until`/`actClearWave`, which advance in REAL time in the record pass. Four waves of an
+// undefended-but-for-one-tower yard is most of a minute, and the still this item declares is taken
+// at the END of it — so the whole thing rested on the recording budget outlasting however fast a
+// given build happens to pace its waves. The budget was raised to 60 s to cover it, which only
+// moved the threshold: one run implementation still ran past it, unwound before `screenshot` ever
+// ran, and was recorded as producing no output at all — which reads as a broken debug API and
+// failed the point, for a build whose Filaments work.
+//
+// The progression is the journey to the evidence rather than the evidence, so it moves to
+// `arrange` on `skip`: the same real waves, naturally composed, watched exactly as before, but
+// instant in both passes. Nothing about the verdict changes — the validate pass was always
+// instant. The act is then the one thing worth a picture: Wave 4 with its flyer on the floor.
 
-import { startBuild, placeCandidate, actClearWave, SECOND } from "../_helpers.mjs";
+import { startBuild, placeCandidate, skipClearWave, SECOND } from "../_helpers.mjs";
 
 const SPOTS = [
   [2, 7],
@@ -18,11 +28,12 @@ const SPOTS = [
   [2, 10],
 ];
 
-// 120 s of game time = 7200 ticks, polled every 0.25 s = 15 ticks — the coarse cadence the old
-// script used, and enough because a contingent is on the floor for far longer than a quarter
-// second once it is released.
+// 120 s of game time, polled every 0.25 s — a contingent is on the floor far longer than a
+// quarter second once released, so nothing can slip between samples.
 const WATCH_TICKS = 120 * SECOND;
 const POLL_TICKS = 0.25 * SECOND;
+// A beat on the fourth wave with its flyer up, so the still is taken on a live board.
+const SHOW_TICKS = 1.5 * SECOND;
 
 export default function item() {
   // Whether a Filament turned up before Wave 4, and whether one turned up on it.
@@ -32,26 +43,17 @@ export default function item() {
   return {
     id: "enemies.filament-every-fourth",
 
-    // The still this item declares is the fourth wave's flyer, and progressing four
-    // waves takes ~38 s of real play — far past the 8 s default record budget, so the
-    // record pass would unwind before `screenshot` ever ran and the declared output
-    // would never land. The item declares no video, so this lengthens only the record
-    // pass, not any media it produces.
-    clipMs: 60000,
-
     async arrange(api) {
       await startBuild(api, { difficulty: "easy" });
       await api.call("setIntegrity", 999);
-    },
 
-    async act(api) {
       for (let level = 1; level <= 4; level += 1) {
         const [c, r] = SPOTS[level - 1];
         const cand = await placeCandidate(api, "capacitor", 3, c, r); // strong: clears the wave fast
         await api.call("keep", cand.id); // launches this level's wave
 
         // Watch the live wave until a Filament appears or it clears.
-        const res = await api.until(
+        const res = await api.skipUntil(
           (s) => s.units.some((u) => u.type === "filament") || s.phase === "build" || s.screen !== "playing",
           { max: WATCH_TICKS, poll: POLL_TICKS },
         );
@@ -59,9 +61,15 @@ export default function item() {
         if (level < 4 && hasFilament) filamentBeforeFour = true;
         if (level === 4 && hasFilament) filamentOnFour = true;
 
-        await actClearWave(api, { maxTicks: 120 * SECOND }); // finish the wave to reopen the build phase
+        // Waves 1-3 are run out to reopen the build phase for the next level. Wave 4 is left
+        // running with its flyer on the floor, which is what the act is there to show.
+        if (level < 4) await skipClearWave(api, { maxTicks: 120 * SECOND });
       }
+    },
 
+    async act(api) {
+      // Wave 4, live, with its Filament contingent up.
+      await api.advance(SHOW_TICKS);
       await api.screenshot("flyer");
     },
 

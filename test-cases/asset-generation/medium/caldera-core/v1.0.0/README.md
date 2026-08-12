@@ -34,12 +34,13 @@ contradict the required `idle` and `upgrade`.
 
 ## The accent region
 
-The Core's **crown ring and banner trim** must be sculpted in `#2f7d72` and that color must
-appear nowhere else on the model. This is not decoration: the `caldera` build finds every
-voxel of that color and repaints it per upgrade level (brass dark at level 0, then steel,
-gold, and white-hot), so one model serves all four levels without new geometry. The contract
-is documented in the end-to-end case's `specs/assets.md`, and a review item scores whether
-the region is contiguous, correctly colored, and visible from more than one angle.
+The Core's **crown ring and banner trim** must be sculpted in `#2f7d72` and that color
+must appear nowhere else on the model. This is not decoration: the `caldera` build finds
+every voxel of that color and repaints it per upgrade level (brass dark at level 0, then
+steel, gold, and white-hot), so one model serves all four levels without new geometry.
+The contract is documented in the end-to-end case's `specs/assets.md`, and the reviewer
+checks whether the region is contiguous, correctly colored, and visible from more than
+one angle.
 
 The brief also forbids steel `#b8bcc2`, gold `#ffce54`, and white `#dfeaea` anywhere on the
 model, since a game paints those onto the accent at run time.
@@ -63,11 +64,12 @@ the contract.
 
 ## Variants
 
-The Core ships three variants, sculpting the same keep at three sizes: `base` (the case's
-80×70×80 volume, the default), `half` (each extent ~halved), and `double` (each doubled).
-The `half` and `double` variant files override `[voxel]`, and the brief is rendered at the
-selected variant's dimensions. All three seed the common brief and are rated on the case's
-single `fidelity` scoring domain; they add no specs, review items, or domains of their own.
+The Core ships three variants, sculpting the same keep at three sizes: `base` (the
+case's 80×70×80 volume, the default), `half` (each extent ~halved), and `double` (each
+doubled). The `half` and `double` variant files override `[voxel]`, and the brief is
+rendered at the selected variant's dimensions. All three seed the common brief and are
+rated on the case's single `overall` scoring domain; they add no specs or domains of
+their own.
 
 ## Versioning
 

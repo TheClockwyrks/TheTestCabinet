@@ -5,7 +5,18 @@
 // alternating directions. Read straight from the snapshot after a fresh crossing.
 // See validation/_helpers.mjs.
 
+// THE BAND IS FILMED, NOT PHOTOGRAPHED. What this item asserts is a shape that only
+// motion makes legible: eight lanes whose directions ALTERNATE. A still frame shows
+// eight rows of vehicles and says nothing about which way any of them is going, so a
+// reviewer had no way to see the fact being scored. A few seconds of the band running
+// shows every lane's direction at once, and the weave of opposing traffic is the thing
+// the item is named for.
+
 import { startCrossing, ICE_TOP } from "../_helpers.mjs";
+
+// How long the band is filmed. Long enough for the slowest lane (1.5 tiles/second,
+// specs/hazards.md) to carry a vehicle several tiles, so its direction is unmistakable.
+const RUN_TICKS = 420; // 3.5 s
 
 export default function item() {
   // The ice band as posed, read instantly — the item checks the band's shape, which
@@ -21,12 +32,9 @@ export default function item() {
     },
 
     // Nothing has to happen for the check; the clip's job is to show the band the
-    // assertions describe, so let it draw and capture it.
+    // assertions describe, running, so the alternating directions can be read off it.
     async act(api) {
-      // 0.12 s is 14.4 ticks, which the tick contract rejects rather than rounds. This
-      // is a paint settle, so it rounds UP to 15 — never shorter than it was.
-      await api.advance(15);
-      await api.screenshot("scene");
+      await api.advance(RUN_TICKS);
     },
 
     async assert(api, check) {

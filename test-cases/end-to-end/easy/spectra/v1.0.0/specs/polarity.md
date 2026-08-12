@@ -26,12 +26,12 @@ destroys the drone depends only on the two bands:
 
 - Match: the bullet's band equals the drone's current band. The drone is destroyed
   (for the Prism, the matching layer is destroyed; see `specs/drones.md`), it
-  scores (see `specs/stages.md`), and the bullet is consumed.
+  scores (see `specs/gameplay.md`), and the bullet is consumed.
 - Mismatch: the bullet's band is the opposite of the drone's current band. The
   drone is not destroyed, and the bullet is consumed. You cannot harm a drone of
   the band you are not currently tuned to. What else a mismatched shot does,
   whether it simply goes to waste or has a further effect, is defined by the
-  active mode in `specs/mode.md`.
+  active mode in `specs/gameplay.md`.
 
 So to destroy a drone you must be tuned to its band. Because the formation always
 holds both bands (`specs/playfield.md`), clearing a wave means constantly flipping
@@ -46,7 +46,7 @@ Your current band is also your hull's shield. When an enemy bullet
   Absorbing it builds resonance (below). Your ship is immune to fire of the band
   it is currently tuned to.
 - Opposite band to your current band: the bullet hits you and costs a life (see
-  Lives in `specs/stages.md`).
+  Lives in `specs/gameplay.md`).
 
 Drone bodies are always dangerous. Direct contact between your ship and any
 drone's body costs a life regardless of band. You can never ride out a collision
@@ -108,7 +108,7 @@ cannot save you. Spend it well; you rebuild the meter from `0`.
 Spectra's combat is three interlocking band rules:
 
 - Offense is matched: you can only destroy a drone of your current band; a
-  wrong-band shot never destroys it (`specs/mode.md` defines what else it does).
+  wrong-band shot never destroys it (`specs/gameplay.md` defines what else it does).
 - Defense is matched: only opposite-band bullets can kill you; your own band is
   absorbed and feeds the discharge.
 - The field is mixed: both bands are always present, so every moment forces a

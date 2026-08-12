@@ -199,17 +199,6 @@ struct TemplateVariant<'a> {
     description: Option<&'a str>,
 }
 
-impl<'a> TemplateVariant<'a> {
-    /// Build the template view of a resolved [`Variant`].
-    fn new(variant: &'a Variant) -> Self {
-        Self {
-            slug: &variant.slug,
-            name: &variant.name,
-            description: variant.description.as_deref(),
-        }
-    }
-}
-
 /// A single seeded spec, as exposed to a prompt template.
 #[derive(Debug, Serialize)]
 struct PromptSpec {
@@ -266,10 +255,10 @@ pub fn render_prompt(
 /// The distinctness section appended to a game-jam prompt when earlier entries have
 /// been seeded, telling the model to read them and build something clearly different.
 ///
-/// `count` is how many prior entries of the same jam (same harness, same model) were
-/// seeded into [`GAME_JAM_PRIOR_ENTRIES_DIR`]; it is only called with `count > 0`.
-/// The seeded folder is reference material, not part of the submission, so the model
-/// is told where it is and that it is git-ignored.
+/// `count` is how many prior entries of the same jam by the same model (under any
+/// harness) were seeded into [`GAME_JAM_PRIOR_ENTRIES_DIR`]; it is only called with
+/// `count > 0`. The seeded folder is reference material, not part of the submission,
+/// so the model is told where it is and that it is git-ignored.
 fn game_jam_distinctness_section(count: usize) -> String {
     let entries = if count == 1 {
         "one earlier entry".to_string()
@@ -277,7 +266,7 @@ fn game_jam_distinctness_section(count: usize) -> String {
         format!("{count} earlier entries")
     };
     format!(
-        "You have already built {entries} for this exact jam with this same harness and model. \
+        "You have already built {entries} for this exact jam. \
          The player-facing README from each is in the `{GAME_JAM_PRIOR_ENTRIES_DIR}/` folder at \
          your project root — reference material only, git-ignored and NOT part of your \
          submission. Read them before you design anything.\n\n\
@@ -386,25 +375,69 @@ pub(crate) fn render_spec(
     variant: &Variant,
     source_path: &Path,
 ) -> Result<String> {
-    let render_err = |detail: String| Error::SpecRender {
+    let spec = source_path.display().to_string();
+
+    let template = std::fs::read_to_string(source_path).map_err(|err| Error::SpecRender {
         slug: test_case.slug.clone(),
         version: test_case.version.clone(),
-        spec: source_path.display().to_string(),
-        detail,
-    };
+        spec: spec.clone(),
+        detail: format!("could not read {}: {err}", source_path.display()),
+    })?;
 
-    let template = std::fs::read_to_string(source_path)
-        .map_err(|err| render_err(format!("could not read {}: {err}", source_path.display())))?;
+    render_spec_from_template(
+        &test_case.slug,
+        &test_case.version,
+        &spec,
+        &template,
+        &variant.slug,
+        &variant.name,
+        variant.description.as_deref(),
+        test_case.voxel_for(variant),
+    )
+}
 
+/// Render a spec from its already-loaded template text and resolved variant
+/// inputs, without reading a manifest or the template from disk.
+///
+/// This is the rendering core that the crate-internal `render_spec` delegates to
+/// once it has read the template off disk. It is exposed for callers that hold
+/// the raw template
+/// and the variant directly — notably the backend catalog APIs, which render each
+/// seeded spec per variant for the gallery's Inputs tab (live) and bake the
+/// rendered bodies into the public snapshot (static), the exact spec analogue of
+/// how [`render_prompt_from_template`] renders a variant's prompt. `spec` is a
+/// label used only in error messages (the spec's source key or dest). Rendering
+/// uses the same strict, no-escape engine as a real run's seed, so the displayed
+/// spec matches the file the harness receives.
+#[allow(clippy::too_many_arguments)]
+pub fn render_spec_from_template(
+    slug: &str,
+    version: &str,
+    spec: &str,
+    template: &str,
+    variant_slug: &str,
+    variant_name: &str,
+    variant_description: Option<&str>,
+    voxel: Option<&VoxelSpec>,
+) -> Result<String> {
     let context = SpecContext {
-        version: &test_case.version,
-        variant: TemplateVariant::new(variant),
-        voxel: test_case.voxel_for(variant).map(TemplateVoxel::new),
+        version,
+        variant: TemplateVariant {
+            slug: variant_slug,
+            name: variant_name,
+            description: variant_description,
+        },
+        voxel: voxel.map(TemplateVoxel::new),
     };
 
     template_engine()
-        .render_template(&template, &context)
-        .map_err(|err| render_err(err.to_string()))
+        .render_template(template, &context)
+        .map_err(|err| Error::SpecRender {
+            slug: slug.to_string(),
+            version: version.to_string(),
+            spec: spec.to_string(),
+            detail: err.to_string(),
+        })
 }
 
 /// A Handlebars engine configured the way every test case template is rendered:

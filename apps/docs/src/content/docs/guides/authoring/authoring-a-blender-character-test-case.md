@@ -63,7 +63,7 @@ adding a new version, never by editing a published one.
 
 ```text
 test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml         # manifest: type, asset_kind, [voxel], [tool], [output], [model], domains
+  test-case.toml         # manifest: type, asset_kind, [voxel], [tool], [output], [model], the overall domain
   variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)
   description.md         # site-facing prose (NOT seeded)
@@ -250,16 +250,13 @@ source = "specs/brief.md"
 [[spec]]
 source = "specs/build.py"             # the starter script (dest defaults to build.py)
 
-# At least one scoring domain, rated for EVERY variant. Reporter-side; NOT seeded.
+# The single scoring domain, rated for EVERY variant — and the whole review. The
+# asset is judged as a WHOLE against its brief, so the case declares NO
+# [[review_item]]s. Reporter-side; NOT seeded. Copy it verbatim.
 [[domain]]
-id          = "fidelity"
-name        = "Fidelity"
-description = "How faithfully the character matches the brief."
-
-[[domain]]
-id          = "deformation"
-name        = "Deformation"
-description = "How convincingly the skin deforms across joints in each animation."
+id = "overall"
+name = "Overall"
+description = "How good the produced asset is overall, judged against the brief."
 ```
 
 Key manifest rules for a Blender character case:
@@ -288,7 +285,10 @@ Key manifest rules for a Blender character case:
   provenance re-run is not a cheat-divergence check.
 - **Metadata and seeding** — `name`, `difficulty`, `tags`, `type =
   "asset-generation"` (required), the `variants` list, and the `[[spec]]` /
-  `[[domain]]` rules behave exactly as for any asset-generation case.
+  `[[domain]]` rules behave exactly as for any asset-generation case — the single
+  `overall` domain and **no `[[review_item]]` checklist**, the character judged as a
+  whole against its brief (see
+  [Judged on one overall rating](/testing/asset-generation/manifests/#judged-on-one-overall-rating)).
 
 The default variant file (`variants/base.toml`) is a standalone document that adds
 only what varies from the common set — here nothing beyond identity, since the base
@@ -299,8 +299,6 @@ only what varies from the common set — here nothing beyond identity, since the
 slug = "base"
 name = "Base"
 spec = []                              # ADDITIVE specs on top of the common specs
-# review_item = [...]                  # ADDITIVE reviewer items (may name a common domain)
-# [[domain]]                           # ADDITIONAL scoring domains, rated only for this variant
 ```
 
 ### 6. Write the non-seeded docs

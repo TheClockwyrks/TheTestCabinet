@@ -106,105 +106,14 @@ auto_play = true
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the meshed, rigged model reads as the Aegis and poses correctly — a \
-colossal walking fortress, far larger than any buildable unit, its surface a bold, \
-low-poly faceted Marching Cubes mesh, striding on legs that plant and lift their feet, \
-a dominant forward main cannon and two flanking side turrets that work under the \
-weapon animation, a radar that sweeps on its own, and a hull that stays put — with a \
-clear solar-amber accent and the disciplined Duneforged palette."""
-
-[[review_item]]
-id = "reads-as-fortress"
-title = "Reads as a giant multi-legged walking fortress"
-text = """
-From more than one angle the model reads unmistakably as a giant walking fortress — \
-plainly far bigger and broader than an ordinary war machine, a colossal striding \
-stronghold that dwarfs every buildable unit: an armored citadel (not a plain box) \
-riding raised on multiple heavy legs, a big main turret with a long forward cannon on \
-top, a rotating turret out on each side, and a sweeping radar vane above. It is a \
-bristling, detailed multi-gun war machine, not an abstract stack of primitives on \
-legs."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "legs-walk"
-title = "Legs stride on planted feet without clipping the ground"
-text = """
-Playing `march` strides the fortress forward on its legs. The clip is authored \
-IN PLACE — the body holds its ground and does not drift across the scene; the \
-forward stride is carried entirely by the legs, so played on its own the feet cycle \
-and the planted foot slides straight back under the body (a treadmill) while a game \
-supplies the real movement. Each foot has a clear \
-PLANTED STANCE — flat and still on the ground while the fortress passes over it — then \
-lifts clear, swings forward, and plants again with weight; the legs cycle so the \
-machine is always supported and pushes itself forward, NOT flailing its legs in a \
-continuous arc. The feet stay flat as they carry the body (they don't tip onto toe or \
-heel), no foot is dragged or driven down through the ground, and the legs stay \
-attached to the hull across the whole cycle. The model had to invent an articulated \
-leg (more than one segment and joint) for this to read as walking rather than swinging \
-rigid poles."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "bold-faceted-surface"
-title = "A bold, low-poly faceted Marching Cubes surface"
-text = """
-The surface reads as a deliberate, confident LOW-POLY form: chunky faceted planes and \
-crisp silhouettes that lean into the Marching Cubes character rather than fighting it \
-for smoothness. Forms are composited from clean additive/subtractive primitives — bold \
-massing, readable at a glance — with no stray floating blobs, no thin slivers that mesh \
-into noise, and no surface so busy it muddies the low-poly read. The fortress looks \
-purpose-built for a faceted, mid-poly aesthetic."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "main-gun-forward"
-title = "Main cannon aims forward and elevates"
-text = """
-The dominant main cannon points FORWARD along the fortress's centerline, up on the \
-main turret. Playing `bombardment` works it convincingly: it holds its forward facing \
-(fine corrections only, never spinning to the sides) and elevates up and down, with no \
-geometry tearing away from its mount or clipping into the hull as it moves."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "side-turrets-traverse"
-title = "Two side turrets each cover their own flank"
-text = """
-Two secondary turrets are plainly mounted OUT ON THE SIDES of the hull (one per flank, \
-not on top), and each traverses to aim independently — the left turret sweeping the \
-left side, the right turret the right — swinging only within an arc that covers its own \
-flank, each about its own mount without detaching from the hull, as `bombardment` \
-plays."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "hull-fixed"
-title = "Hull stays put; only the moving parts move"
-text = """
-The armored hull is the fixed base of the machine: it stays put, never carried along \
-by the turrets, the legs, or the radar. When `bombardment` plays, the guns work while \
-the legs stay planted; when `march` plays, the legs stride while the guns hold; the \
-decorative radar vane sweeps on its own throughout (`radar_spin`). Nothing but the \
-moving parts moves."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Duneforged palette discipline"
-text = """
-Uses only the Duneforged colors from the brief (brass and bronze armor, iron legs \
-and gun barrels, and the solar-amber accent) with a clear amber accent, no \
-out-of-palette colors, and no stray primitives drifting off the parts."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

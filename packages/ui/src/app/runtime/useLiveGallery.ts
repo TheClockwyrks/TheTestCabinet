@@ -166,6 +166,11 @@ async function toTestCaseSummary(
         weight: item.weight,
         graded: item.graded ?? false,
         domain: item.domain ?? null,
+        // Whether this point counts toward the score. `false` only when the
+        // version's errata (`excludeFromScore`) retired it — carried through so the
+        // reviewer UIs can flag it "not scored". Dropping it here left the console
+        // (unlike the static site) silently unable to mark excluded points.
+        scored: item.scored,
         subItems: (item.subItems ?? []).map((sub) => ({
           id: sub.id,
           title: sub.title,
@@ -173,6 +178,9 @@ async function toTestCaseSummary(
           weight: sub.weight,
           reference: sub.reference ?? null,
           proof: sub.proof ?? null,
+          // Same as the whole-item `scored` above: preserved so an erratum that
+          // excludes one sub-item of a category still surfaces as "not scored".
+          scored: sub.scored,
         })),
       })),
       // The variant's effective scoring domains (common + its own), already
@@ -580,6 +588,11 @@ export function useLiveGallery(
       const toDetail = (stored: StoredRun): RunDetail => ({
         record: stored.record,
         reviews: stored.reviews ?? [],
+        // The store's own publish flag, not the produced worklist: a run this
+        // console did not produce (or one produced before the worklist loaded)
+        // must still read as published so the review surfaces don't offer to
+        // publish it a second time.
+        published: stored.published ?? false,
       });
       try {
         // Prefer the worker (execution) client whenever one is connected. In the

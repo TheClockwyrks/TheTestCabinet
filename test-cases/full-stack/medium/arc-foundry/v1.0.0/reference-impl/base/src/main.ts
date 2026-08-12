@@ -15,7 +15,7 @@ import { Bursts } from "./particles";
 import { installDebugApi, drawDebugOverlay } from "./debug";
 import { Game } from "./sim";
 import { Input } from "./input";
-import { menuItems } from "./menus";
+import { menuItems, isMenuState, debugMenuAction } from "./menus";
 import { render, setMenuIndex, setMuted, setOverlays, setRenderTime } from "./render";
 import type { Clickable, ComboType, Difficulty, MapDef } from "./types";
 
@@ -97,7 +97,7 @@ async function main(): Promise<void> {
         break;
       case "menu:restart":
       case "menu:again":
-        // Replay the same campaign on the same chosen map + difficulty (specs/flow.md).
+        // Replay the same campaign on the same chosen map + difficulty (specs/gameplay.md).
         game.startOn(game.map, game.diff);
         game.reseedPress(randomSeed()); // a fresh roll sequence on the replay too
         menuIndex = 0;
@@ -126,7 +126,7 @@ async function main(): Promise<void> {
         break;
       case "keep":
         // KEEP the selected candidate — the level's harvest, which immediately LAUNCHES the wave
-        // (there is no SEND; every level must harvest to advance — specs/build.md, specs/flow.md).
+        // (there is no SEND; every level must harvest to advance — specs/build.md, specs/gameplay.md).
         game.keepSelected();
         break;
       case "combine":
@@ -179,7 +179,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // Open the Esc overlay menu, which also freezes the board (specs/flow.md).
+  // Open the Esc overlay menu, which also freezes the board (specs/ui.md).
   function openPauseMenu(): void {
     if (game.state !== "playing") return;
     game.state = "paused";
@@ -221,7 +221,7 @@ async function main(): Promise<void> {
     if (game.state === "playing") {
       if (k === " ") {
         // There is no SEND — a wave launches when you commit the level's harvest (K / C), not on
-        // Space (specs/build.md, specs/flow.md). Space only toggles the interactive (in-place)
+        // Space (specs/build.md, specs/gameplay.md). Space only toggles the interactive (in-place)
         // pause while a wave is live; in the build phase it does nothing.
         if (game.phase === "wave") game.togglePause();
         return;
@@ -362,6 +362,42 @@ async function main(): Promise<void> {
       clickables
         .filter((c) => c.panel)
         .map((c) => ({ action: c.action, label: c.label ?? "", x: c.x, y: c.y, w: c.w, h: c.h, disabled: Boolean(c.disabled) })),
+    // The status bar's controls from the last rendered frame, each with the value it is currently
+    // reading: `mute` and `pause` report whether they are engaged, `speed` the live multiplier.
+    // The rectangles are the ones the click router hit-tests, so clicking the middle of a reported
+    // control activates it (specs/instrumentation.md). Empty off the board, where there is no bar.
+    statusControls: () => {
+      if (isMenuState(game.state)) return [];
+      const state: Record<string, boolean | number> = {
+        speed: game.speed,
+        pause: game.paused,
+        mute: audio.muted,
+      };
+      return clickables
+        .filter((c) => c.action in state)
+        .map((c) => ({
+          action: c.action,
+          label: c.label ?? "",
+          x: c.x,
+          y: c.y,
+          w: c.w,
+          h: c.h,
+          state: state[c.action]!,
+        }));
+    },
+    // The current menu's choices from the last rendered frame, in presentation order, each under
+    // the fixed identifier the debug contract names it by. The rectangles are the ones the click
+    // router itself hit-tests, so clicking the middle of a reported entry activates that choice.
+    menuButtons: () => {
+      if (!isMenuState(game.state)) return [];
+      const out = [];
+      for (const c of clickables) {
+        const action = debugMenuAction(c.action);
+        if (!action) continue;
+        out.push({ action, label: c.label ?? "", x: c.x, y: c.y, w: c.w, h: c.h, disabled: Boolean(c.disabled) });
+      }
+      return out;
+    },
   });
 
   let last = performance.now();

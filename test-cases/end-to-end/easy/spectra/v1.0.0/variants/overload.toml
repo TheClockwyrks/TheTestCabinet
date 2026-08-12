@@ -6,10 +6,11 @@ slug = "overload"
 name = "Overload"
 description = "Overload, where mismatched shots feed the drone toward an overload instead of being wasted."
 
-# This variant's mode spec, seeded to the stable path `specs/mode.md` (the same
-# path every variant seeds its mode spec to). It is self-contained: it defines the
-# single Overload mode and its menu entry, replacing the base Sortie mode.
-spec = [{ source = "specs/mode-overload.md", dest = "specs/mode.md" }]
+# This variant seeds no spec of its own: the Overload mode — its menu entry
+# `OVERLOAD`, and the mismatched-shot charge/overload rules that replace the base
+# Sortie's wasted mismatch — is the `overload` branch of the common
+# `specs/gameplay.md.hbs`, selected by the variant slug when that template is
+# rendered for this variant.
 
 # This variant's own `title` reference (its menu lists the OVERLOAD mode, replacing
 # the base Sortie), captured from this variant's reference-impl build and served

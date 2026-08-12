@@ -48,7 +48,7 @@ quantized to the grid.
   from the near shore (row 19, `specs/playfield.md`) once the critter has advanced a
   few tiles forward off the near shore, so a fresh crossing always begins with a
   short head start, not an instant threat.
-- Reset on a new crossing. When a crossing ends (the critter dies, `specs/flow.md`,
+- Reset on a new crossing. When a crossing ends (the critter dies, `specs/gameplay.md`,
   or fills a bay, `specs/water.md`, and a new crossing begins) the bear is removed
   and re-emerges only after the new critter has again advanced a few tiles forward.
   The bear is never sitting on top of a just-respawned critter.
@@ -69,6 +69,15 @@ does, and it can be taken out by the hazards:
   row. It then re-emerges from the near shore after a short delay, exactly as when a
   crossing begins. So driving the bear in front of a hazard is a real tool: it buys
   you the whole time it takes the bear to re-emerge and cross back up to you.
+- A vehicle's tile is closed to the bear. The bear cannot travel onto a tile a
+  vehicle currently covers: the move is refused and the bear stays where it is,
+  unharmed and un-reset, exactly as the critter's hop into an occupied tile is
+  refused (`specs/hazards.md`). The two share the board and the rule. A vehicle
+  resets the bear only when the vehicle's own motion brings it onto a tile the bear
+  occupies, so traffic never punishes either of them for moving toward it, only for
+  arriving on them. It takes nothing away from the hazards: every vehicle in a lane
+  is always moving, so a bear lured into a sweeping lane is still knocked out when
+  that vehicle arrives.
 
 The critter is killed by the hazards, but the bear is only reset by them; the hunt
 returns rather than being permanently removed.
@@ -87,7 +96,7 @@ for its current state:
 
 If the bear reaches the critter (its position lands on the critter's, or comes
 within about half a tile) the critter is caught and loses a life
-(`specs/flow.md`), wherever they are on the strait. This is the pressure behind the
+(`specs/gameplay.md`), wherever they are on the strait. This is the pressure behind the
 whole game: you can never stop and wait, because the bear is always closing.
 
 ## Difficulty

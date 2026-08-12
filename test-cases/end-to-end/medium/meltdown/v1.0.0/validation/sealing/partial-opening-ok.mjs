@@ -1,7 +1,7 @@
 // Automated validation for the Sealing sub-item `partial-opening-ok`.
 //
 // A tower may partially cover a vent or exhaust opening — only fully sealing it is
-// forbidden (specs/reactor.md). The left vent spans rows 16-19; a 2x2 tower at
+// forbidden (specs/playfield.md). The left vent spans rows 16-19; a 2x2 tower at
 // (0,16) covers rows 16-17 but leaves 18-19 open, so it is a valid placement.
 
 import { newGame, build, tower } from "../_helpers.mjs";

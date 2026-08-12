@@ -5,7 +5,16 @@
 // auto-repeats hops at the hop cooldown. Both are driven with real injected input
 // down the game's own play code. See validation/_helpers.mjs.
 
-import { hopPocket, ICE_TOP } from "../_helpers.mjs";
+// THE HELD RUN STARTS WHERE THE TAP LEFT OFF. The two halves used to be separated by
+// a `placeCritter` back to the pocket's centre, which on camera is the critter
+// jumping a tile to the RIGHT for no reason a reviewer can see — in the middle of a
+// clip whose whole subject is what one leftward key does. Nothing needed it: `b2` is
+// read from the snapshot either way, the pocket is cleared ice for the width of the
+// board, and five auto-repeated hops from the tap's landing stay well inside it. So
+// the clip is now one continuous run of the same critter: one hop for the tap, then
+// several for the hold.
+
+import { hopPocket } from "../_helpers.mjs";
 
 // 0.6 s at 120 Hz: long enough that a tap has plainly stopped moving while a held
 // key has had time for several cooldowns' worth of hops.
@@ -27,10 +36,7 @@ export default function item() {
       await hopPocket(api);
     },
 
-    // A tap, then the same span with the key held. The re-pose between them is
-    // `placeCritter` alone rather than another `hopPocket` — that helper leads with
-    // `startCrossing`, whose reset would take the clock back mid-`act` and freeze the
-    // recording; the pocket's cleared lanes survive, so a re-place restores it.
+    // A tap, then the same span with the key held, both from where the critter stands.
     async act(api) {
       // A single press moves exactly one tile, even across a long span.
       b1 = (await api.snapshot()).critter;
@@ -39,7 +45,6 @@ export default function item() {
       a1 = (await api.snapshot()).critter;
 
       // A held key auto-repeats several hops over the same span.
-      await api.call("placeCritter", 20, ICE_TOP);
       b2 = (await api.snapshot()).critter;
       await api.call("keyDown", "ArrowLeft");
       await api.advance(SPAN_TICKS);

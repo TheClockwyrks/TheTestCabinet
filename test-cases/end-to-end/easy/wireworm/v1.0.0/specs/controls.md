@@ -36,11 +36,11 @@ The cursor fires bolts straight up (`specs/charge.md`, `specs/worm.md`).
 ## Pause and system controls
 
 - Pause. P or Escape pauses the game from the in-game state, opening the pause menu
-  (Resume, Restart, Quit to menu, see `specs/screens.md`). Pausing freezes the
+  (Resume, Restart, Quit to menu, see `specs/ui.md`). Pausing freezes the
   simulation.
 - Menus. In the title and end screens, the menu is navigable by keyboard (arrow
   keys or W/S to move the selection, Enter or Space to confirm).
-- Mute. Audio is required (`specs/screens.md`); provide a mute toggle, for example
+- Mute. Audio is required (`specs/ui.md`); provide a mute toggle, for example
   M.
 
 Keyboard only for this version; no mouse, touch, or gamepad.

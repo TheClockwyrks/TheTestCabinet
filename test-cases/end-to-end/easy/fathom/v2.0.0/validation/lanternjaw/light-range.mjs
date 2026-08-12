@@ -4,10 +4,11 @@
 // The lit sight line is posed instantly (`arrange`); the fix it produces takes the real
 // sim, so it is `act` and is what the clip shows.
 import {
-  startPlaying,
-  findSightLine,
   denAllExcept,
+  findSightLine,
   pred,
+  quietBoard,
+  startPlaying,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -20,16 +21,12 @@ export default function item() {
       const snap = await startPlaying(api);
       const line = findSightLine(snap, 3); // 96 px apart, clear line of sight
       await denAllExcept(api, ["lanternjaw"]);
-      await api.call("setForager", {
-        tx: line.forager.tx,
-        ty: line.forager.ty,
-      });
       await api.call("setPredator", "lanternjaw", {
         tx: line.pred.tx,
         ty: line.pred.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton");
+      await quietBoard(api, line.forager);
       await api.call("setBrightness", 1); // R = 320 px, well past the 96 px gap
     },
 

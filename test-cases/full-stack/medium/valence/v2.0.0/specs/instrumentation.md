@@ -125,6 +125,24 @@ meant to produce; you arrange the situation, `step()` runs the real systems, and
 - `startRound()` starts (or, during a between-round countdown, sends early) the
   next round exactly as the START ROUND control would, spawning the real wave
   over time and paying the early-send bonus when a countdown is running.
+- `startScenario()` opens a **scenario round**: a live round the wave system
+  leaves empty and that does not end on its own. Everything else about it is an
+  ordinary round. `phase` reads `"round"`, and the simulation behaves exactly as
+  it does mid-round — towers acquire and fire, matter flows, decomposes and
+  leaks, damage pays out, auras apply. What it does not do is send anything or
+  finish: the round table is not consulted and nothing is queued, the round
+  number does not advance, no early-send bonus is paid, and the round does not
+  clear when the board is (or becomes) empty, so a scenario may kill, leak, and
+  pose further matter without the run sliding back to the build phase. Losing is
+  unaffected — integrity reaching `0` still fails containment and ends the run.
+  Call it from a build phase during a run; it returns `true` once the scenario
+  round is live. To leave one, begin another run with `selectMap` or `reset()`.
+
+  This is the board a scripted scenario runs on, and the reason it exists is that
+  `startRound()` cannot be one: it always sends the round's real wave, and a
+  scenario needs the game's real round behavior over a board holding only what
+  the scenario itself posed. Nothing a player does reaches a scenario round — it
+  is opened only by this call.
 - `spawnUnit(spec)` puts one unit onto a path through the real spawn system, so
   it flows, is targeted, decomposes, leaks, and pays out like any other spawned
   unit. `spec` may set `type` (one of the matter types in `specs/matter.md`,
@@ -160,9 +178,13 @@ meant to produce; you arrange the situation, `step()` runs the real systems, and
 - `setSpeed(multiplier)` sets the game speed (for example `1`, `2`, or `3`), as
   the speed control would.
 
-A typical check calls `selectMap`, `setEnergy` and `placeTower` to build a tower
-beside a lane, `spawnUnit` to pose a unit in its range, `step()` a few ticks to
-run the real firing and damage, and reads the result from `snapshot()`.
+A typical check calls `selectMap` and `startScenario` to open a live board with
+nothing on it, `setEnergy` and `placeTower` to build a tower beside a lane,
+`spawnUnit` to pose a unit in its range, `step()` a few ticks to run the real
+firing and damage, and reads the result from `snapshot()`. The scenario round is
+what makes the reading unambiguous: the only matter on the board is the unit the
+check posed, so the energy, integrity and targeting it observes are that unit's
+and nothing else's.
 
 ### Input operations
 

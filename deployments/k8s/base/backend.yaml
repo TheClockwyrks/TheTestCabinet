@@ -81,12 +81,22 @@ spec:
           volumeMounts:
             - name: state
               mountPath: /state
+          # Readiness and liveness MUST stay on different endpoints. /readyz is 503
+          # until the definition store holds versions, which on a store that starts
+          # empty means until an ingest has filled it — minutes for a cold catalog.
+          # Pointing liveness at that signal would kill the pod mid-ingest; pointing
+          # readiness at /healthz (which is always 200 while the process serves)
+          # admits traffic to an empty store, where every run dies on a spurious
+          # "is not ingested" 404.
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /readyz
               port: 8787
             initialDelaySeconds: 5
             periodSeconds: 10
+            # No failureThreshold ceiling on purpose: an unready pod is only held out
+            # of the Service, never restarted, so a long first ingest is free to run
+            # as long as it needs.
           livenessProbe:
             httpGet:
               path: /healthz

@@ -54,68 +54,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id   = "read"
-name = "Effect read"
+id = "overall"
+name = "Overall"
 description = """
-How well the simulated effect reads as gentle ambient snowfall — many soft-edged \
-white flakes of varied sizes, calm and wintry, in a cool white and pale-blue \
-palette."""
-
-[[domain]]
-id   = "motion"
-name = "Motion & timing"
-description = """
-How well the snow moves — a slow downward drift with a light side-to-side sway, \
-smaller flakes falling slower for parallax — and how cleanly the 3 s window loops \
-as a continuous, seamless ambient layer."""
-
-[[review_item]]
-id     = "reads-as-snowfall"
-title  = "Reads as gentle snowfall"
-text   = """
-The effect reads at a glance as calm, ambient snowfall: many soft white flakes \
-drifting gently downward across the field — not driving rain, not a blizzard or \
-storm, not a sparse scatter of a handful of dots."""
-weight = 3
-domain = "read"
-
-[[review_item]]
-id     = "varied-soft-flakes"
-title  = "Soft flakes of varied sizes"
-text   = """
-The flakes are soft-edged and rounded (not hard squares or sharp streaks) and come \
-in a range of sizes, with a few flakes slowly twinkling or rotating as they fall so \
-the snow feels alive rather than uniform."""
-weight = 2
-domain = "read"
-
-[[review_item]]
-id     = "palette"
-title  = "Cool white and pale-blue palette"
-text   = """
-Uses only the cool wintry colors from the brief — bright white, cool white, and \
-pale blue — reading as soft snow against a cool sky. No warm hues, no harsh \
-saturated colors, no muddy fill."""
-weight = 1
-domain = "read"
-
-[[review_item]]
-id     = "drift-and-sway"
-title  = "Slow drift, sway, and parallax"
-text   = """
-The flakes fall slowly downward with a light side-to-side sway, as if on a gentle \
-breeze rather than straight down; smaller flakes fall slower than larger ones so \
-the snow reads with depth and parallax rather than moving as one flat sheet."""
-weight = 3
-domain = "motion"
-
-[[review_item]]
-id     = "seamless-loop"
-title  = "Seamless continuous loop"
-text   = """
-The 3 s window loops as a continuous, seamless ambient layer: the field stays \
-evenly populated from start to finish with no build-up at the start or thinning at \
-the end, and no visible pop or gap where the loop repeats."""
-weight = 2
-domain = "motion"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

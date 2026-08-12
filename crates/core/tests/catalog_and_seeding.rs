@@ -159,11 +159,11 @@ fn carom_instrumentation_renders_per_variant_ball_count() {
 }
 
 #[test]
-fn resolves_dead_mans_switch_game_jam() {
+fn resolves_locomotivation_game_jam() {
     let catalog = TestCaseCatalog::new(catalog_root());
     let resolved = catalog
-        .resolve("dead-mans-switch", "v1.0.0")
-        .expect("resolve the dead-mans-switch jam");
+        .resolve("locomotivation", "v1.0.0")
+        .expect("resolve the locomotivation jam");
 
     // A game jam: full-stack-style build, no domains, and the generic graded
     // checklist injected because the manifest declares no categories of its own.
@@ -215,10 +215,10 @@ fn resolves_carom_from_its_manifest() {
         .expect("resolve latest carom by folder name");
     assert_eq!(version.slug, "pong");
     // The prompt template and the decomposed common specs are resolved from the
-    // manifest. Every variant seeds the overview spec and the common modes spec;
-    // the obstacle and ball rules that differ per variant are seeded from each
-    // variant's own file (to the stable `specs/obstacles.md` and `specs/balls.md`
-    // paths the common specs reference).
+    // manifest. Every variant seeds the overview spec and both common per-mode
+    // specs (Solo and Versus, decomposed by concern under `specs/modes/`); the
+    // rules that differ per variant are not separate per-variant files but
+    // branches inside the common `.hbs` specs (see the multi assertions below).
     assert!(version.prompt_path.ends_with("prompt.hbs"));
     assert!(
         version
@@ -231,8 +231,15 @@ fn resolves_carom_from_its_manifest() {
         version
             .common_specs
             .iter()
-            .any(|spec| spec.dest == Path::new("specs/modes.md")),
-        "the modes spec should be common to every variant"
+            .any(|spec| spec.dest == Path::new("specs/modes/single-player.md")),
+        "the single-player mode spec should be common to every variant"
+    );
+    assert!(
+        version
+            .common_specs
+            .iter()
+            .any(|spec| spec.dest == Path::new("specs/modes/versus.md")),
+        "the versus mode spec should be common to every variant"
     );
     // Site-facing metadata is surfaced from the manifest. Carom declares all of
     // it, including a site-facing description that is resolved but never seeded.
@@ -262,16 +269,32 @@ fn resolves_carom_from_its_manifest() {
     // independent balls), and gyre (swaying, rotating obstacles).
     let variant_slugs: Vec<&str> = version.variants.iter().map(|v| v.slug.as_str()).collect();
     assert_eq!(variant_slugs, ["base", "multi", "gyre"]);
-    // The multi variant seeds its own ball rules on top of the common specs,
-    // replacing the single ball at the stable `specs/balls.md` path the common
-    // specs reference.
+    // Under the decomposed layout no variant seeds a spec of its own: the rules
+    // that differ per variant (multi's three balls, gyre's moving obstacles) are
+    // branches inside the common `.hbs` specs, rendered for the selected variant
+    // before they land. So multi's ball rules ride the common `specs/balls.md`
+    // (rendered from `specs/balls.md.hbs`) rather than a variant-specific file.
     let multi = version.variant("multi").expect("multi variant");
     assert!(
-        multi
-            .specs
+        multi.specs.is_empty(),
+        "multi seeds no spec of its own; its rules branch inside the common .hbs specs"
+    );
+    assert!(
+        version
+            .common_specs
             .iter()
             .any(|spec| spec.dest == Path::new("specs/balls.md")),
-        "multi should seed its ball rules to specs/balls.md"
+        "the common balls spec seeds to specs/balls.md for every variant"
+    );
+    // What multi actually adds over the common case is its reviewer checklist: the
+    // `multi-ball` category (three balls, distinct spawns, ball-to-ball collision,
+    // …) rides along only when multi is the selected variant.
+    assert!(
+        version
+            .review_items_for(multi)
+            .iter()
+            .any(|item| item.id == "multi-ball"),
+        "multi contributes its multi-ball review category"
     );
     // The `gameplay` and `game-over` views are common to every variant; the
     // `title` view is variant-specific because the main menu differs per variant,
@@ -977,68 +1000,55 @@ fn resolves_lattice_performance_from_its_manifest() {
 }
 
 #[test]
-fn resolves_sprite_sheet_cases_with_review_item_sequence_refs() {
-    // The bundled sprite-sheet asset-generation cases resolve through the real
-    // catalog, and their animation-centric review items name the sheet sequences
-    // they are about so the reviewer UI can surface exactly those animations. Each
-    // referenced slug must name a declared `[[sheet.sequence]]` — the resolution
-    // that rejects an unknown slug is what makes this a real check of the manifests.
+fn asset_generation_cases_are_reviewed_on_one_overall_rating() {
+    // A produced asset is judged as a WHOLE against its brief — too subjective to
+    // break into pass/fail checklist items — so every asset-generation case is
+    // reviewed on a single `overall` scoring domain with no reviewer checklist at
+    // all: the one rating the reviewer gives is the run's rating. Only each case's
+    // LATEST version is held to this; a frozen version keeps whatever checklist the
+    // runs recorded against it were judged by.
     let catalog = TestCaseCatalog::new(catalog_root());
-
-    // (case, review item id, the sequence slugs it should reference).
-    let expected: &[(&str, &str, &[&str])] = &[
-        (
-            "flarefish",
-            "four-directions",
-            &["walk-down", "walk-up", "walk-left", "walk-right"],
-        ),
-        (
-            "gloamfin",
-            "four-directions",
-            &["walk-down", "walk-up", "walk-left", "walk-right"],
-        ),
-        (
-            "lanternjaw",
-            "four-directions",
-            &["walk-down", "walk-up", "walk-left", "walk-right"],
-        ),
-        ("lanternjaw", "jellyfish-disguise", &["disguise"]),
-        (
-            "glimmerfin",
-            "four-directions",
-            &["graze-down", "graze-up", "graze-left", "graze-right"],
-        ),
-        (
-            "glimmerfin",
-            "chomp",
-            &["graze-down", "graze-up", "graze-left", "graze-right"],
-        ),
-        ("drifter", "sway-loop", &["drift"]),
-        (
-            "flare-bloom",
-            "charge-to-bloom",
-            &["flare-charge", "flare-bloom", "flare-fade"],
-        ),
-        (
-            "trench-walls",
-            "corners-junctions",
-            &["corners", "junctions"],
-        ),
-    ];
-
-    for (slug, item_id, sequences) in expected {
+    let mut checked = 0;
+    for case in catalog.list().expect("list catalog") {
         let version = catalog
-            .resolve_latest(slug)
-            .unwrap_or_else(|e| panic!("resolve {slug}: {e}"));
-        // The referenced items here are all common items, shared by every variant.
-        let item = version
-            .common_review_items
-            .iter()
-            .find(|item| &item.id == item_id)
-            .unwrap_or_else(|| panic!("{slug} should declare review item `{item_id}`"));
+            .resolve_latest(&case.slug)
+            .unwrap_or_else(|e| panic!("resolve {}: {e}", case.slug));
+        if version.test_type != TestType::AssetGeneration {
+            continue;
+        }
+        let domains: Vec<&str> = version.domains.iter().map(|d| d.id.as_str()).collect();
         assert_eq!(
-            item.sequences, *sequences,
-            "{slug}/{item_id} should reference {sequences:?}"
+            domains,
+            ["overall"],
+            "{} should declare the single `overall` domain",
+            case.slug
         );
+        assert!(
+            version.common_review_items.is_empty(),
+            "{} should declare no review items",
+            case.slug
+        );
+        for variant in &version.variants {
+            let effective = version.domains_for(variant);
+            let domains: Vec<&str> = effective.iter().map(|d| d.id.as_str()).collect();
+            assert_eq!(
+                domains,
+                ["overall"],
+                "{} variant {} should be rated on `overall` alone",
+                case.slug,
+                variant.slug
+            );
+            assert!(
+                version.review_items_for(variant).is_empty(),
+                "{} variant {} should declare no review items",
+                case.slug,
+                variant.slug
+            );
+        }
+        checked += 1;
     }
+    assert!(
+        checked > 100,
+        "expected the bundled asset-generation catalog, checked only {checked} cases"
+    );
 }

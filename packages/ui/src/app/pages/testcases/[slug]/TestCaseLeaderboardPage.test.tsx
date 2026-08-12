@@ -89,7 +89,7 @@ describe("resolveRunScore", () => {
     const run = summary({ score: null, rating: null });
     const writeup: ParsedWriteup = {
       ratings: [],
-      // The category "fun" earned a `great` (5 pts × weight 1) and the reserved
+      // The category "fun" earned a `great` (8 pts × weight 1) and the reserved
       // overall verdict is the run's grade badge.
       checklist: [
         { id: "fun", status: "great" },
@@ -98,7 +98,7 @@ describe("resolveRunScore", () => {
       body: "",
     };
     expect(resolveRunScore(run, jamVariant, () => writeup, {})).toEqual({
-      earned: 5,
+      earned: 8,
       total: 10,
       rating: null,
       grade: "neutral",

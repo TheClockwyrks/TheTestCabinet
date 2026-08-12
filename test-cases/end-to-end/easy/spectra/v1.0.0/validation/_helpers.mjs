@@ -43,6 +43,14 @@
 export const FIELD_W = 1280;
 export const FIELD_H = 720;
 
+// The play field: everything that moves lives in `y` in [64, 656] across the full
+// width, with the HUD strips above and below reserved (`specs/playfield.md`). A drone
+// may cross a strip only in transit — a dive exiting through the bottom and
+// re-appearing from the top — which is what makes these the boundaries a wrap is
+// recognized by.
+export const PLAY_TOP = 64;
+export const PLAY_BOTTOM = 656;
+
 // The simulation rate, and the finest granularity a sweep can poll at. One tick is
 // one fixed simulation step (this replaces the old `FIXED = 1/120` seconds
 // constant); pass `poll: TICK` to `api.until` when the exact instant of an event
@@ -73,16 +81,143 @@ export const RES_MAX = 100;
 export const SWAY_AMP = 20; // formation sway amplitude, px
 export const SWAY_PERIOD = 5; // formation sway period, seconds
 export const SWAY_PERIOD_TICKS = 600; // 5 s
-export const SWAY_PEAK_T = 1.25; // waveTime of the +amplitude peak
-export const SWAY_PEAK_TICKS = 150; // 1.25 s
-export const SWAY_TROUGH_T = 3.75; // waveTime of the -amplitude trough
-export const SWAY_TROUGH_TICKS = 450; // 3.75 s
+export const SWAY_SWING = 2 * SWAY_AMP; // peak to trough: +20 px down to -20 px
+//
+// There are deliberately no SWAY_PEAK / SWAY_TROUGH constants. `specs/playfield.md`
+// fixes the sway's amplitude and period and nothing else: where in the sinusoid a
+// wave STARTS is a build's own choice, so "the peak is 1.25 s into the wave" is a
+// property of one implementation rather than a spec fact, and sampling at that
+// instant reads an arbitrary point on a conformant build whose phase begins
+// elsewhere. Sweep a whole period and read the swing out of it instead
+// (`swarm/sways.mjs`).
 
 export const DIVE_SPEED = 300; // stage-1 dive speed, px/s
 export const PRISM_INVERT_Y = 640; // a diving Prism crossing this inverts the field
 export const EXTRA_LIFE_AT = 20000;
 export const READY_HOLD = 1.3; // seconds of READY hold after a hit
 export const READY_HOLD_TICKS = 156; // 1.3 s
+
+// ---- Filming the event, not its aftermath ----------------------------------
+//
+// The record pass films `act` from its first frame, so whatever `act` does first is
+// what the clip is mostly OF. An item that poses a scenario and resolves it in the
+// first few ticks films a couple of frames of the event and then however many
+// seconds of aftermath follow — and for this case the aftermath is often a screen
+// of its own. Destroying the only drone on the field clears the wave, so the rest of
+// `act` plays out over `STAGE 1 CLEARED`; taking a hit starts the READY hold, so the
+// rest plays out over a respawn. Either way the reviewer is shown the consequence
+// and never the thing under test.
+//
+// So an item whose event resolves quickly opens `act` with a beat of the posed
+// pre-state, and — where it can — lets the shot ARRIVE under its own motion
+// (`shootFromLane`, `dropEnemyBullet` below) so the approach is itself the lead-in
+// and the reviewer watches the event happen rather than being handed its result.
+//
+// This changes nothing about a verdict: the validate pass advances instantly, so a
+// lead-in costs it nothing and the assertions read the same state either way.
+//
+// Keep it short, and mind `FORMATION_WINDOW_TICKS` below: a lead-in spends part of
+// the only window in which a posed drone is guaranteed to sit still.
+export const LEAD_IN_TICKS = 72; // 0.6 s — enough to read the scene, short enough to act in
+
+/**
+ * How long a posed formation drone can be relied on to hold its slot WHEN THE
+ * SWARM IS LIVE: the assault sends its first dive about `2.0 s` after the formation
+ * assembles (`specs/drones.md`), and posing a drone into formation is what starts
+ * that clock.
+ *
+ * Past it the game is entitled to peel the drone into a dive, where it crosses more
+ * ground during a bullet's flight than a lane shot can lead — and a diving Prism
+ * that reaches the bottom triggers a spectral inversion, which swaps the band every
+ * drone answers to.
+ *
+ * This bounds only the scenarios that deliberately leave the swarm running (the
+ * dive, entrance, and challenge items). Anything that just needs a target to stand
+ * still calls {@link holdDrones} instead and is not bounded by this at all.
+ *
+ * Note this is the ASSAULT's clock, not the field's: whether `clearField` re-arms it
+ * is a build's own business, and one that does not is still conformant, so nothing
+ * here may assume clearing the field buys a fresh window.
+ */
+export const FORMATION_WINDOW_TICKS = 240; // 2 s
+
+/**
+ * Hold the swarm still for the rest of the scenario — `setDroneAI(false)`
+ * (`specs/instrumentation.md`).
+ *
+ * WHY ALMOST EVERY POSED-TARGET ITEM WANTS THIS. A drone posed into `formation`
+ * does not sit where it was put. It rides the formation sway, a `±20 px` sinusoid
+ * (`specs/playfield.md`), and about two seconds later the assault is entitled to
+ * peel it into a dive (`FORMATION_WINDOW_TICKS`). Both are correct behavior, and
+ * both wreck a scenario that is about something else: a lane shot misses a drone
+ * that swayed out from under it, a Prism left standing for three hits dives and
+ * fires — and its own bullets feed the resonance meter the check is reading. The
+ * old scripts fought this with re-aiming retries and posed-on-drone fallbacks,
+ * which made a MISS and a correctly-applied rule look identical.
+ *
+ * Holding the swarm removes the variable instead of compensating for it. What the
+ * item is actually about — the collision, the band rule, the meter, the burst —
+ * still runs, because the freeze stops the drones' own movement and decisions and
+ * nothing else (the ship, bullets in flight, every collision, the discharge,
+ * scoring, and a Flux's band clock all keep running).
+ *
+ * A build that does not implement the op fails here rather than silently reverting
+ * to the flaky path: it is a required control operation, and an item that quietly
+ * worked around its absence would report the wrong thing about the build.
+ *
+ * NOT for the items whose subject IS the motion — `swarm/sways`,
+ * `swarm/dive-*`, `swarm/fly-in`, `drones/prism-escort`, `stages/challenge-*`.
+ * Those need the swarm live and say so.
+ *
+ * It is a control op, so it consumes no time and is callable from either phase.
+ */
+export async function holdDrones(api) {
+  await api.call("setDroneAI", false);
+}
+
+/** Let the swarm move and decide again, after a {@link holdDrones}. */
+export async function releaseDrones(api) {
+  await api.call("setDroneAI", true);
+}
+
+/**
+ * Lives posed for a scenario that lets a drone ATTACK while it measures something
+ * else — see {@link protectShip}.
+ */
+export const SAFE_LIVES = 99;
+
+/**
+ * Make the ship un-killable for the rest of the scenario, so an item that has to let
+ * the swarm attack cannot fail on the attack succeeding.
+ *
+ * WHY THIS IS NEEDED. A few items must leave a drone live and hostile because the
+ * hostility IS the behavior — a dive's round trip, a Prism's plunge to the bottom.
+ * Those drones fire while they fly (`specs/drones.md`), and their bullets reach the
+ * ship, and the ship starts with three lives. Nothing about that is a fault in the
+ * build; it is the game working. But it ends the item: the third hit is a GAME OVER,
+ * which leaves `inWave` entirely, and from there the wave stops advancing — so the
+ * diver never completes its round trip and the Prism never reaches the bottom. The
+ * item then reports that a correct build cannot return from a dive, when what
+ * actually happened is that the build shot the driver's ship.
+ *
+ * The inversion drive makes this concrete: it retries up to twenty Prism dives, and
+ * measured against the reference a single successful dive costs a life. Three
+ * unlucky attempts and the run is over before the roll that would have inverted.
+ *
+ * WHY NOT JUST MOVE THE SHIP ASIDE. Because there is no aside. A dive "bends toward
+ * the player ship's `x`" by specification, and a diver biases its aim toward the
+ * player — so parking the ship elsewhere moves the attack rather than avoiding it.
+ * The only reliable lever is the one the debug API offers for exactly this:
+ * `setLives`, which `specs/instrumentation.md` documents as a precondition.
+ *
+ * A lost life is still perfectly legal mid-scenario and changes nothing an item
+ * reads: `specs/gameplay.md` requires the wave to continue where it was, with the
+ * drones, the formation, any active dive, and the resonance meter all kept. What is
+ * removed here is only the RUN ending underneath the measurement.
+ */
+export async function protectShip(api) {
+  await api.call("setLives", SAFE_LIVES);
+}
 
 // ---- Scenario setup (arrange only — these reset) ----------------------------
 //
@@ -123,6 +258,30 @@ export function findDrone(snap, id) {
   return snap.drones.find((d) => d.id === id) ?? null;
 }
 
+/** The other band. */
+export function opposite(band) {
+  return band === "cyan" ? "magenta" : "cyan";
+}
+
+/**
+ * The band a drone currently READS AND COUNTS AS — the band a shot must carry to
+ * destroy it (`specs/polarity.md`), and the one thing a check about matching should
+ * ever aim by.
+ *
+ * This is `effectiveBand`, not `band`: `specs/instrumentation.md` defines the former
+ * as "what it currently reads/counts as" and the latter as the drone's stored band,
+ * and the two come apart in two ways a scenario meets by accident. A spectral
+ * inversion swaps every drone field-wide for five seconds — and a posed Prism that
+ * dives to the bottom triggers one — so the band that kills a given core is not
+ * fixed. And a Flux's oscillation may be carried in either field depending on the
+ * build. Aiming by `effectiveBand` is correct under both, and identical to `band`
+ * when neither applies. Falls back to `band` for a build that omits the field.
+ */
+export function readsAs(snap, id) {
+  const d = findDrone(snap, id);
+  return d ? (d.effectiveBand ?? d.band) : null;
+}
+
 export function enemyBullets(snap) {
   return snap.bullets.filter((b) => !b.friendly);
 }
@@ -156,12 +315,251 @@ export async function shootDrone(api, id, band) {
 }
 
 /**
+ * Fire a player bullet from the SHIP'S LANE, aimed up the column a drone is
+ * currently in, so the shot has to travel to reach it.
+ *
+ * The difference from `shootDrone` is only where the bullet starts: both pose one
+ * real bullet and let the real collision decide what it does, but this one spends
+ * the ~0.3 s of flight the game itself would, which is what makes the hit visible
+ * on film (see `LEAD_IN_TICKS`). Reading the drone's x to aim the column is setup,
+ * exactly as `shootDrone`'s read is — the observed outcome is still whatever the
+ * collision does when the shot arrives.
+ *
+ * Returns whether the drone was found to aim at.
+ */
+export async function shootFromLane(
+  api,
+  id,
+  band,
+  { fromY = SHIP_Y - 20 } = {},
+) {
+  const d = findDrone(await api.snapshot(), id);
+  if (!d) return false;
+  await api.call("spawnPlayerBullet", { x: d.x, y: fromY, band });
+  return true;
+}
+
+/**
+ * Pose a bystander drone well away from a scenario's target, purely so the field is
+ * never empty while the scenario runs.
+ *
+ * An empty field is a CLEARED WAVE (`specs/gameplay.md`), and the game is entitled
+ * to say so the moment it sees one — it does not ask how the field came to be empty,
+ * so `startClean`'s own `clearField` reads exactly like the player having shot the
+ * last drone. Two things follow, and both bite:
+ *
+ *   * The clip. The record pass keeps filming for about a second after `act`
+ *     returns, so an item that kills its only drone spends the end of its clip —
+ *     often most of it — on the `STAGE n CLEARED` interstitial rather than on the
+ *     field.
+ *   * The verdict. `stageCleared` is a screen of its own: the wave stops updating,
+ *     so the ship no longer answers a held movement or fire key and a keyboard
+ *     action bound to the live wave (the flip) does nothing at all. An item that
+ *     poses an empty field and then drives the controls is not testing the controls,
+ *     it is testing a build that has already left the wave — and it reads as the
+ *     binding being unwired.
+ *
+ * So a bystander is not only for scenarios that destroy something: any item that
+ * `startClean`s and then spends time WITHOUT posing a drone of its own needs one, or
+ * the wave ends underneath it on the first tick.
+ *
+ * It is never fired at and never read by an assertion: each check finds its own drone
+ * by the id `spawnDrone` gave it. Park it off to one side of whatever column the
+ * scenario shoots up, so a shot cannot reach it. Note `clearField` removes it like
+ * any other drone — an item that clears mid-scenario poses a fresh one after.
+ */
+export async function spawnBystander(api, { x = 180, y = 160 } = {}) {
+  return spawnDrone(api, {
+    kind: "shard",
+    band: "magenta",
+    x,
+    y,
+    phase: "formation",
+  });
+}
+
+/**
+ * Fire shots at a drone until `resolved(snap)` holds, or `attempts` are spent.
+ * Returns `until`'s `{ snap, hit, spent }` from the shot that resolved it (or from
+ * the last one tried).
+ *
+ * `band` is either a band string or a function of the current snapshot, so a caller
+ * can aim by whatever the drone reads as at the moment of firing — see `readsAs`,
+ * which is what makes this correct under a spectral inversion.
+ *
+ * A single lane shot is what a reviewer should watch, but it can miss for reasons
+ * that have nothing to do with the rule under test: the formation sways while the
+ * bullet is in flight, and a posed drone peels into a dive once the assault's
+ * `FORMATION_WINDOW_TICKS` is up. So the first attempts fly up from the lane —
+ * re-aiming each time, exactly as a player who missed would — and the LAST is posed
+ * on the drone, where contact is certain. A drone that has committed to a dive
+ * crosses too much ground during a bullet's flight for any lane shot to connect, and
+ * this item is not about marksmanship.
+ *
+ * Use this only where a hit must CHANGE something, so a miss shows up as the change
+ * failing to happen. Where a hit must change NOTHING — a mismatch that has to be
+ * seen to do no damage — a miss is indistinguishable from the rule working, so those
+ * shots are posed with `shootDrone` from the start.
+ */
+export async function shootUntil(
+  api,
+  id,
+  band,
+  resolved,
+  { attempts = 4, max = 150 } = {},
+) {
+  const bandFor = typeof band === "function" ? band : () => band;
+  let r = { snap: await api.snapshot(), hit: false, spent: 0 };
+  if (resolved(r.snap)) return { ...r, hit: true };
+  for (let i = 0; i < attempts; i += 1) {
+    const snap = await api.snapshot();
+    if (!findDrone(snap, id)) break; // the drone is already gone
+    const shoot = i === attempts - 1 ? shootDrone : shootFromLane;
+    await shoot(api, id, bandFor(snap));
+    r = await api.until(resolved, { max });
+    if (r.hit) return r;
+  }
+  return r;
+}
+
+/**
  * Send an enemy bullet onto the ship — a precondition; the real dual-use shield
  * then decides absorb / hit. Placed on the ship's current center.
  */
 export async function shieldBullet(api, band) {
   const s = (await api.snapshot()).ship;
   await api.call("spawnEnemyBullet", { x: s.x, y: SHIP_Y, band });
+}
+
+/**
+ * Send an enemy bullet at the ship from HIGH IN THE FIELD, so it falls the length
+ * of the field before the shield resolves it.
+ *
+ * Same precondition as `shieldBullet` — one real enemy bullet on the ship's column,
+ * the real shield deciding absorb or hit — but posed at `fromY` instead of on the
+ * hull, so the ~1.5 s of fall is filmed and the reviewer watches the bullet reach
+ * the ship rather than being shown a life already lost (see `LEAD_IN_TICKS`).
+ *
+ * The default drop is from just inside the top of the play field. At the enemy
+ * bullet speed that is about `1.5 s`, so an item awaiting the outcome needs a
+ * matching budget — `DROP_MAX_TICKS` is that wait with room for a build whose
+ * bullets are slower.
+ */
+export async function dropEnemyBullet(api, band, { fromY = 120 } = {}) {
+  const s = (await api.snapshot()).ship;
+  await api.call("spawnEnemyBullet", { x: s.x, y: fromY, band });
+}
+
+/**
+ * How long to wait for a `dropEnemyBullet` to reach the ship: the fall itself is
+ * ~1.5 s, and this allows three times that, so a build with slower-than-specified
+ * enemy bullets still resolves within the window rather than reading as "the
+ * shield never fired".
+ */
+export const DROP_MAX_TICKS = 540; // 4.5 s
+
+/**
+ * The band a shot must carry to break whatever layer of `d` is currently exposed.
+ *
+ * Same idea as {@link readsAs}, but it works from a drone object already in hand
+ * and — crucially for the Prism — reads the EXPOSED LAYER rather than the drone's
+ * top-level band. `specs/instrumentation.md` reports a Prism's layers separately
+ * (`shellAlive`, `shellBand`, `coreBand`) precisely because whether the top-level
+ * `band` follows the exposed layer is a build's own choice, so a rake that aimed by
+ * `band` alone would fire a mismatch at half the Prisms it met — harmless in Sortie,
+ * but in Overload a mismatch CHARGES the drone toward an overload reaction, which
+ * would set the swarm off in the middle of a scenario about something else.
+ */
+export function exposedBand(snap, d) {
+  if (d.kind !== "prism") return d.effectiveBand ?? d.band;
+  const stored = d.shellAlive === false ? d.coreBand : d.shellBand;
+  // A build that omits the layer fields leaves nothing better to aim by.
+  if (stored === undefined) return d.effectiveBand ?? d.band;
+  return snap.inversionActive ? opposite(stored) : stored;
+}
+
+/**
+ * ARRANGE-side: let the stage's REAL wave fly in and assemble, then hold it there.
+ *
+ * The result is a full, correct formation standing still — the game's own wave, not
+ * a posed approximation of one — which is what an item wants when it needs a
+ * realistic field on screen but must not have that field moving underneath its
+ * measurement. The entrance runs live (a wave that never assembled is not a wave);
+ * only what happens after it is held.
+ *
+ * All of it is instant (`skipUntil`, exact in both passes), so none of the assembly
+ * reaches the clip: the recording opens on the assembled formation.
+ *
+ * Call it after `startStageClean(api, n, { clear: false })`, which is what leaves
+ * the real wave in place to assemble.
+ */
+export async function arrangeAssembledWave(api, { assembleMax = 1800 } = {}) {
+  await api.skipUntil(
+    (s) => s.drones.length > 0 && !s.drones.some((d) => d.phase === "entering"),
+    { max: assembleMax, poll: 12 },
+  );
+  await holdDrones(api);
+}
+
+/**
+ * ARRANGE-side drive for the three items about a wave ENDING: destroy the real
+ * stage's whole formation except one drone, instantly, and return that survivor's
+ * id so `act` can film the last kill and the clear it triggers.
+ *
+ * WHY THESE ITEMS CANNOT BE POSED. Each of them used to `startStageClean` (which
+ * calls `clearField`), pose a single drone, and shoot it — treating "the field is
+ * empty again" as equivalent to "the wave was destroyed". That rests on an unwritten
+ * side effect. `specs/instrumentation.md` says `clearField` removes the drones and
+ * bullets and leaves "the stage, score, lives, resonance, and ship untouched"; it
+ * says nothing about whether the wave stays live afterwards, and a build is entitled
+ * to read a debug clear as "the caller is posing a scenario", not as the player
+ * having shot the last drone — indeed the alternative fires STAGE 1 CLEARED the
+ * instant a script clears the field to pose anything at all, which is why
+ * {@link spawnBystander} exists. A build that disarms the stage-end check on
+ * `clearField` is conformant, and on it these three items reported that clearing the
+ * wave does not clear the wave, that the stage-cleared screen is unreachable, and
+ * that no stage-clear cue plays — none of which was true of the game.
+ *
+ * So the wave under test is the REAL one: let the stage's own formation fly in and
+ * assemble, then rake it with real matching shots through the real collisions. What
+ * remains is the game's own stage-end path, reached the way a player reaches it.
+ *
+ * The swarm is held once the formation has assembled, so the rake is not a moving
+ * target and no diver reaches the ship and costs a life part-way through. The
+ * entrance itself runs live, because a wave that never assembled is not a wave.
+ *
+ * All of it is instant (`skip`/`skipUntil`, exact in both passes), so none of it
+ * reaches the clip: the recording opens on the last drone still standing.
+ *
+ * Returns the surviving drone's id, or `null` if the wave could not be raked down
+ * to exactly one (which the caller should report rather than assert around).
+ */
+export async function arrangeWaveToLastDrone(
+  api,
+  { assembleMax = 1800, passes = 16, settleTicks = 12 } = {},
+) {
+  await arrangeAssembledWave(api, { assembleMax });
+
+  for (let i = 0; i < passes; i += 1) {
+    const snap = await api.snapshot();
+    if (snap.drones.length <= 1) break;
+    // Keep a Shard back as the survivor where there is one: it dies to a single
+    // matching shot, so the filmed last kill is one clean event rather than a
+    // Prism's two-layer sequence.
+    const keep = snap.drones.find((d) => d.kind === "shard") ?? snap.drones[0];
+    for (const d of snap.drones) {
+      if (d.id === keep.id) continue;
+      await api.call("spawnPlayerBullet", {
+        x: d.x,
+        y: d.y,
+        band: exposedBand(snap, d),
+      });
+    }
+    await api.skip(settleTicks);
+  }
+
+  const left = (await api.snapshot()).drones;
+  return left.length === 1 ? left[0].id : null;
 }
 
 // ---- Input-driven helpers --------------------------------------------------
@@ -242,6 +640,159 @@ export async function actHoldSample(
   return elapsed;
 }
 
+// ---- One item per key binding ----------------------------------------------
+//
+// Several of Spectra's controls answer to more than one key: move is arrows OR
+// A/D, fire is Space OR Up OR W, flip is F OR either Shift, pause is Esc OR P
+// (`specs/controls.md`). Each of those bindings is its own review sub-item rather
+// than one assertion inside a shared one, so a build that wires Left but forgot A
+// fails exactly the binding it missed — the same "one observable behavior per item"
+// taxonomy the rest of the case's checklist follows.
+//
+// That would otherwise mean ten near-identical scripts, so the item body for each
+// FAMILY lives here and each per-binding script is its id and its key code. Every
+// one of them drives the game the way a player does — injected keyboard input
+// through the real key handling — never a control op that would bypass the binding
+// under test.
+//
+// Each opens with `LEAD_IN_TICKS` of the pre-state, because these are one-press
+// actions that resolve instantly and would otherwise land inside the opening the
+// record pass never films.
+//
+// Each also keeps a drone on the field for the whole hold. A controls item drives
+// the keyboard and then lets time run, and an empty field is a wave the game may
+// call cleared on the first tick — which takes the game out of the live wave, where
+// nothing answers the key under test (see `spawnBystander`). The bystander is never
+// read by an assertion; it is only what keeps the wave running long enough for the
+// binding to have somewhere to act.
+
+/**
+ * A movement-binding item: hold `code` and confirm the ship travels `direction`
+ * ("left" or "right"). The ship starts centred, far enough from either bound that
+ * the clamp (which `move-clamp` owns) cannot cut the hold short.
+ */
+export function moveItem({ id, code, direction }) {
+  return function item() {
+    let moved;
+    return {
+      id,
+      async arrange(api) {
+        await startClean(api);
+        await spawnBystander(api); // keeps the wave live; nothing here shoots at it
+        await api.call("setShipX", 640);
+      },
+      async act(api) {
+        await api.advance(LEAD_IN_TICKS);
+        // `actHoldMoveX` captures the displacement after exactly its measured
+        // window and only then holds a further readable moment for the clip, so
+        // the extra travel the reviewer sees can never leak into `dx`.
+        moved = await actHoldMoveX(api, code);
+      },
+      async assert(api, check) {
+        const label = `holding ${code} moves the ship ${direction}`;
+        if (direction === "left") check.expectLt(label, moved.dx, -50);
+        else check.expectGt(label, moved.dx, 50);
+      },
+    };
+  };
+}
+
+/**
+ * A fire-binding item: hold `code` briefly and confirm the real fire code spawns a
+ * friendly bullet carrying the ship's current band. The ship's column is empty, so
+ * nothing can consume the shot before it is counted — the one drone on the field is
+ * the bystander that keeps the wave live, parked well off to the side.
+ */
+export function fireItem({ id, code }) {
+  return function item() {
+    let bullets;
+    return {
+      id,
+      async arrange(api) {
+        await startClean(api);
+        await spawnBystander(api); // off the ship's column: it cannot eat the shot
+        await api.call("setShipX", 640); // ..so pin the column the shot goes up
+        await api.call("setShipBand", "cyan");
+      },
+      async act(api) {
+        await api.advance(LEAD_IN_TICKS);
+        await api.call("keyDown", code);
+        await api.advance(6); // 6 ticks (0.05 s) — plenty for one shot to land
+        await api.call("keyUp", code);
+        bullets = friendlyBullets(await api.snapshot());
+        // Let the shot travel a readable distance; it is already captured, so this
+        // cannot affect the verdict.
+        await api.advance(90);
+      },
+      async assert(api, check) {
+        check.expectGt(`${code} fires a bullet`, bullets.length, 0);
+        if (bullets.length > 0) {
+          check.expectEq(
+            `${code} fires a bullet of the ship's band`,
+            bullets[0].band,
+            "cyan",
+          );
+        }
+      },
+    };
+  };
+}
+
+/**
+ * A flip-binding item: press `code` once and confirm the ship's band swaps. The
+ * wave is kept so the clip shows the flip against live play, which is when a player
+ * actually flips; nothing on the field is read by the assertion.
+ */
+export function flipItem({ id, code }) {
+  return function item() {
+    let after;
+    return {
+      id,
+      async arrange(api) {
+        await startClean(api, { clear: false });
+        await api.call("setShipBand", "cyan");
+      },
+      async act(api) {
+        await api.advance(LEAD_IN_TICKS);
+        await api.call("press", code);
+        // Read the instant the press lands: a flip is instant, not timed.
+        after = (await api.snapshot()).ship.band;
+        await api.advance(90); // hold on the flipped ship
+      },
+      async assert(api, check) {
+        check.expectEq(`${code} flips the band`, after, "magenta");
+      },
+    };
+  };
+}
+
+/**
+ * A pause-binding item: press `code` during a live wave and confirm the game
+ * pauses. The wave is kept so the pause lands over actual play, which is both the
+ * scenario the rule describes and what makes the clip legible.
+ */
+export function pauseItem({ id, code }) {
+  return function item() {
+    let after;
+    return {
+      id,
+      async arrange(api) {
+        await startClean(api, { clear: false });
+      },
+      async act(api) {
+        await api.advance(LEAD_IN_TICKS);
+        await api.call("press", code);
+        // Pausing is instant, so read it now.
+        after = (await api.snapshot()).screen;
+        await api.advance(90); // hold on the paused screen so it is readable
+      },
+      async assert(api, check) {
+        check.expectEq(`${code} pauses the wave`, after, "paused");
+      },
+    };
+  };
+}
+
 // ---- A live wave -----------------------------------------------------------
 
 /**
@@ -279,6 +830,12 @@ export async function actLiveWave(api, { ticks = 156 } = {}) {
  */
 export async function arrangeInversion(api, { seed = 1, stage = 1 } = {}) {
   await startStageClean(api, stage, { seed });
+  // The drive below flies up to twenty real Prism dives at the ship, and a diving
+  // Prism fires a two-band burst — one of whose bands is always the opposite of the
+  // ship's, so it always has a lethal shot. Three of those and the run is over,
+  // which takes the game out of `inWave` and stops the wave advancing, so no later
+  // attempt can ever reach the bottom. See `protectShip`.
+  await protectShip(api);
 }
 
 /**
@@ -424,6 +981,51 @@ export async function sampleSaturated(api, x0, y0, x1, y1, nx = 9, ny = 9) {
     }
   }
   return best;
+}
+
+// ---- Audio (reads the Web Audio cues the build actually schedules) ----------
+//
+// Spectra's cues are synthesized with the Web Audio API (specs/ui.md), so the
+// driver reports every source the build starts (see `api.audio`). The game must
+// not autoplay: it starts audio only on the first user gesture (a keydown, in this
+// build's `onFirstPress`). A build may instead unlock audio only from a real DOM
+// pointer event rather than a key, so arming uses both `api.userKey` and a corner
+// `api.userClick` rather than a debug `press` — exactly the genuine gesture a real
+// player's first interaction would be. `KeyZ` is not one of `input.ts`'s
+// `GAME_KEYS`, and Spectra is keyboard-only (`specs/ui.md` Out of scope — no
+// pointer input is ever read), so the (4, 4) corner click can never disturb game
+// state either way. From there a cue is confirmed by the audio log growing across
+// the driven event.
+export async function armAudio(api) {
+  await api.userKey("KeyZ");
+  await api.userClick(4, 4);
+}
+
+/** The number of Web Audio sources the build has started so far. */
+export async function audioCount(api) {
+  return (await api.audio()).length;
+}
+
+/**
+ * ACT-side read of the audio log, settled first.
+ *
+ * Every audio item compares the source count before an event with the count after
+ * it, and both reads must go through here. The reason is that a build may
+ * legitimately QUEUE the cues its fixed-step simulation emits and start them from
+ * its `requestAnimationFrame` loop, a frame later — nothing in `specs/ui.md`
+ * requires the sound to start inside the simulation step. `api.advance` cannot
+ * settle that: in the validate pass it is an instant `step` that paints no frame at
+ * all. Only `settle` is real time in both passes.
+ *
+ * Without this, an item that drives an event and reads straight back races the
+ * build's render loop and reports "no cue" for a perfectly conformant build — while
+ * an item whose cue happens to follow a long `until` sweep passes by accident, on
+ * the incidental latency of the sweep's round trips. Settling BOTH reads keeps the
+ * comparison honest and makes every audio item behave the same way.
+ */
+export async function actAudioCount(api, { settleMs = 120 } = {}) {
+  await api.settle(settleMs);
+  return audioCount(api);
 }
 
 /**

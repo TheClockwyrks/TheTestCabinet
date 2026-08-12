@@ -187,6 +187,7 @@ export default defineConfig({
                 "quickstarts/devops/publish-a-reference",
                 "quickstarts/devops/publish-errata",
                 "quickstarts/devops/roll-prod-service-images",
+                "quickstarts/devops/cut-a-release",
               ],
             },
           ],
@@ -242,9 +243,11 @@ export default defineConfig({
               collapsed: true,
               items: [
                 "guides/devops/adding-or-updating-a-model",
+                "guides/devops/authoring-errata",
                 "guides/devops/publishing-a-test-run-result",
                 "guides/devops/publishing-a-reference-implementation",
                 "guides/devops/rolling-prod-service-images",
+                "guides/devops/cutting-a-release",
               ],
             },
           ],
@@ -253,6 +256,7 @@ export default defineConfig({
           label: "Changelogs",
           collapsed: true,
           items: [
+            "changelogs/v0.6.1",
             "changelogs/v0.6.0",
             "changelogs/v0.5.1",
             "changelogs/v0.5.0",

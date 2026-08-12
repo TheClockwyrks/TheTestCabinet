@@ -45,7 +45,7 @@ The combo is shown in the HUD, centered near `x = 640`: the current multiplier a
 `x2` through `x5`, with a thin window bar beneath it that drains from full to empty
 over the 3.5 s combo window, in the combo accent color. The combo readout and bar
 are shown only while `M` is at least `2`; at `M = 1` the combo area is empty. The
-full HUD layout is in `specs/interface.md`.
+full HUD layout is in `specs/ui.md`.
 
 ## High score
 

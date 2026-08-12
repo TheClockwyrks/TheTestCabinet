@@ -76,95 +76,14 @@ fps = 8
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated sheet matches the Lattice sink — its flat top-down \
-test-rig drain housing with a West intake aperture, the red drain accent that \
-sets it apart from the green source emitter, the strict grey-blue-and-red \
-palette, and the six-frame consume pulse that flashes the intake red as it \
-consumes — the fixture's own reaction, with no item drawn — and loops \
-seamlessly."""
-
-[[review_item]]
-id = "reads-as-drain-fixture"
-title = "Reads as a test-fixture drain"
-text = """
-Every frame reads as measurement equipment — a sealed top-down housing/panel \
-with an intake aperture on its West (left) edge and a status indicator — not as a \
-length of conveyor belt or a crafting machine. It must look like a rig that \
-swallows and counts items, distinct from any normal Lattice entity."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "consume-pulse"
-title = "Consume pulse reacts to one item"
-text = """
-Played in order, the six frames read as the sink consuming one item: frame 0 is \
-idle, then the red indicator brightens and the intake flashes red at its peak as \
-an item is consumed, then the flash and indicator dim back to idle. Frame 5 loops \
-seamlessly back to frame 0 with no jump or backward slip, so the cycle reads as \
-'consume one item' repeating. NO item is drawn in the sprite — the pulse is the \
-fixture's own reaction, and the renderer draws the actual item being swallowed."""
-sequences = ["consume"]
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "no-fixed-item"
-title = "No fixed item drawn into the sprite"
-text = """
-The sprite draws the fixture ONLY — no item is painted into any frame. A fixed \
-item baked into the sprite would show the same item in every frame regardless of \
-what the sink is actually consuming, so a plate or other specific cargo drawn at \
-the aperture counts against the sprite. The consuming is conveyed by the fixture's \
-red intake flash and pulsing indicator, not by a drawn item."""
-sequences = ["consume"]
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "west-intake"
-title = "West-facing intake"
-text = """
-The intake aperture/port sits on the West (left) edge of the tile, where items \
-arrive from the West and are drawn inward (rightward) as they are swallowed — \
-never on another edge and never emitting outward. The fixture clearly receives, \
-it does not output."""
-sequences = ["consume"]
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "red-drain-accent"
-title = "Red drain accent"
-text = """
-The sink's signature accent is red — a red status indicator and a red intake \
-flash on the swallow frames — marking it as the output/drain. The red must read \
-clearly and must not be confused with the green accent of the source emitter \
-fixture."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "framing"
-title = "Frame framing"
-text = """
-The fixture fills most of its own 32x32 frame, centered with a small even margin \
-of a pixel or two, neither tiny in a corner nor clipped at the edges. The housing \
-sits the same in every frame; only the red intake flash and the indicator's \
-brightness change."""
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Strict palette adherence"
-text = """
-Uses only the sink palette from the brief — the dark outline/shadow, the three \
-grey-blue housing tones, and the three red drain-accent tones — with no \
-out-of-palette colors and no halo of stray or anti-aliased pixels."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

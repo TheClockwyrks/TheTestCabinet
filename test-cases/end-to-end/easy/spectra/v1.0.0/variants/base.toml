@@ -5,10 +5,10 @@ slug = "base"
 name = "Base"
 description = "The standard Sortie defense only."
 
-# This variant's mode spec, seeded to the stable path `specs/mode.md` that every
-# variant seeds its mode spec to (so the common specs can reference it by name).
-# It defines only the standard Sortie mode.
-spec = [{ source = "specs/mode-base.md", dest = "specs/mode.md" }]
+# This variant seeds no spec of its own: the standard Sortie mode is the default
+# branch of the common `specs/gameplay.md.hbs` (menu entry `LAUNCH`, and a
+# mismatched shot simply wasted), selected by the variant slug when that template
+# is rendered for this variant.
 
 # The main menu lists a different mode per variant, so each variant supplies its
 # own `title` reference, captured from this variant's reference-impl build and

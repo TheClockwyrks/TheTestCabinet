@@ -32,12 +32,19 @@ export default function item() {
     },
 
     async assert(api, check) {
+      // A build that lets an undetected inert unit be shot may have killed it outright, which
+      // is the failure under test — so the reads are guarded. Dereferencing a dead unit threw
+      // out of the item, and a throw is reported as a broken debug API, not as this failure.
       const u = unitById(now, unitId);
       check.expectOk("the inert unit is still alive", u != null);
-      check.expectEq("the inert unit is unrevealed", u.revealed, false);
+      check.expectEq(
+        "the inert unit is unrevealed",
+        u ? u.revealed : true,
+        false,
+      );
       check.expectEq(
         "an undetected inert unit is untouched (hp unchanged)",
-        u.hp,
+        u ? u.hp : 0,
         hp0,
       );
       check.expectEq(

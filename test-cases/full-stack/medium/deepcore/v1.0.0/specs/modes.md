@@ -4,7 +4,7 @@ This file defines the two modes a player chooses before an expedition, and the
 mode-select menu that leads into them. It builds on the miner's death conditions
 (`specs/character.md`: out of fuel, hull destroyed, and the Core Sample detonation of
 `specs/hazards.md`), the cargo and materials (`specs/mining.md`), and the states and
-menus (`specs/flow.md`).
+menus (`specs/ui.md`).
 
 There is exactly one campaign and one balance. The mode changes only what happens when
 the miner dies, nothing else. The world generation, the ore values, the fuel and hull
@@ -15,11 +15,11 @@ the death rule.
 ## The menu flow
 
 The title menu's play action is a single NEW EXPEDITION entry (followed by HOW TO PLAY;
-see Game states in `specs/flow.md`). Choosing it does not start a game directly; it
+see Game states in `specs/ui.md`). Choosing it does not start a game directly; it
 opens the mode select menu. From there:
 
 - Choosing Standard or Hardcore advances to the world size select (`specs/world.md`,
-  `specs/flow.md`); picking a size there starts a fresh expedition in the chosen mode at
+  `specs/ui.md`); picking a size there starts a fresh expedition in the chosen mode at
   the chosen size. The size is independent of the mode; it scales only how deep the mine
   goes, not the death rule.
 - A BACK choice returns to the title menu.
@@ -41,10 +41,10 @@ undoes.
 ## Standard
 
 The forgiving mode: a death costs you your progress since the last save, not the whole
-run. It relies on the save system (`specs/flow.md`): the player banks progress at the
+run. It relies on the save system (`specs/gameplay.md`): the player banks progress at the
 surface Save Pad, and a death lets them restore it.
 
-- On death, the run ends at the Game Over screen (`specs/flow.md`) showing the run
+- On death, the run ends at the Game Over screen (`specs/ui.md`) showing the run
   summary. There is no respawn and no dropped cache; a death simply ends the current
   run.
 - If a save exists, the Game Over screen offers CONTINUE FROM SAVE, which restores the
@@ -63,7 +63,7 @@ surface Save Pad, and a death lets them restore it.
 The unforgiving mode: death ends the expedition for good.
 
 - On death, the run is over immediately; the game goes to the Game Over state
-  (`specs/flow.md`), showing the run summary (deepest depth, Credits, components
+  (`specs/ui.md`), showing the run summary (deepest depth, Credits, components
   installed, and how the miner died).
 - There is no respawn and no dropped cache, and the save is deleted; Hardcore is
   permadeath, so even a save banked at the pad does not survive the death. PLAY AGAIN

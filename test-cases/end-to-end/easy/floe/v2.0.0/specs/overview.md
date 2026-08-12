@@ -29,7 +29,7 @@ start; they cross-reference each other by name and form one specification.
   coordinate system, the palette and type, and the visual design.
 - `specs/playfield.md`: the geometry of the strait, the tile grid, the near shore,
   the ice band, the median shelf, the water band, the far shore and its bays, and
-  the HUD layout.
+  the HUD bar's place on the stage.
 - `specs/hunter.md`: the signature system, the bear, how it pursues, and how it
   navigates hazards and water. Read this carefully.
 - `specs/hazards.md`: the ice band, the sliding vehicles, their lanes and speeds,
@@ -37,9 +37,9 @@ start; they cross-reference each other by name and form one specification.
 - `specs/water.md`: the water band, the drifting floes, riding and drifting with
   them, drowning and off-edge death, and reaching the far-shore bays.
 - `specs/controls.md`: the keyboard controls, the one-tile hop, and pause.
-- `specs/flow.md`: the playable mode, scoring, lives, the timer, the level
-  progression and victory, the game states, the HUD, audio, and the simulation
-  model.
+- `specs/gameplay.md`: the playable mode, scoring, lives, the timer, the level
+  progression and victory, and the simulation model.
+- `specs/ui.md`: the screens and menus, the game states, the HUD, and audio.
 - `specs/assets.md`: the provided sprite art you render the game with, how it is
   organized, and the rule for loading it so the build works at any base path.
 - `specs/instrumentation.md`: the `window.__floe` debugging and automation API, the
@@ -80,7 +80,7 @@ demo.
   produce the static production build, and the controls.
 - Expose the `window.__floe` API and the read-only debug overlay described in
   `specs/instrumentation.md`, backed by the deterministic, steppable core the
-  simulation model in `specs/flow.md` requires. This is a required part of the
+  simulation model in `specs/gameplay.md` requires. This is a required part of the
   build.
 
 ### Free choices
@@ -93,7 +93,7 @@ particular technology.
 The gameplay parameters are not among these free choices. The lane speeds, the
 vehicles' and floes' directions, sizes, and spacing, the spawn model, the bear's
 speed, and the per-level pacing are all fixed and given explicitly in
-`specs/hazards.md`, `specs/water.md`, `specs/hunter.md`, and `specs/flow.md`.
+`specs/hazards.md`, `specs/water.md`, `specs/hunter.md`, and `specs/gameplay.md`.
 Implement them exactly as written.
 
 ## Coordinate system and presentation
@@ -170,7 +170,7 @@ bear, and the cold field. The canonical palette and type are below; match them.
   ice or a floe and the submerged swim frame while it is on the water
   (`specs/hunter.md`).
 - The three canonical screens (the title screen, the in-game view, and the
-  game-over screen) are described in full under Game states in `specs/flow.md`.
+  game-over screen) are described in full under Game states in `specs/ui.md`.
   Implement each as described, in this palette and type.
 
 ## Reference images

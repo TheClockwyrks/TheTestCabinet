@@ -51,8 +51,14 @@ Review stays exactly the same as the base: each regenerated **frame** is judged
 against the brief — **per frame**, with no whole-sheet aggregate. The sequences only
 drive the review UI's animated playback.
 
-A variant's `spec` and `review_item` entries are **additive** — they layer on top
-of the common ones rather than replacing them.
+A variant's `spec` entries are **additive** — they layer on top of the common ones
+rather than replacing them. A variant adds **no review items**: an asset-generation
+case has no reviewer checklist at all, and the produced asset is judged as a whole
+against the brief the run was seeded with, on the case's single `overall` domain
+(see
+[Judged on one overall rating](/testing/asset-generation/manifests/#judged-on-one-overall-rating)).
+The variant brief is therefore the *only* place its constraint is recorded — write
+it precisely enough that a reviewer can weigh it.
 
 ## Procedure
 
@@ -85,18 +91,7 @@ subject, frames, and palette as the brief, except …"):
 A variant spec **may** reference the common specs freely (they are always seeded)
 but must **not** reference another variant's spec.
 
-### 3. Add review items for what the variation makes observable
-
-In the manifest, add `[[review_item]]`s under the variant for the thing the
-variation makes checkable that the base does not — for a sheet this can be
-something the **animation** reveals, for example "the walk sequences keep a
-constant silhouette height across all frames" or "uses flat fills only, with no
-gradients or dithering." Each item is reporter-side (never seeded), carries a
-stable `id` unique within the variant's effective set, and a scoring `domain`. It
-must **not** carry a `reference` field — there is no target to point at, and one is
-rejected.
-
-### 4. Create the variant file and list it
+### 3. Create the variant file and list it
 
 Write `variants/<slug>.toml` as a standalone TOML document whose **top-level keys
 are the variant's fields**, then add its path to the `variants` array in
@@ -110,9 +105,6 @@ slug = "flat"
 name = "Flat Shading"
 description = "Same brief and sheet, drawn with flat fills only — no gradients or dithering, across every frame."
 spec = [{ source = "specs/flat.md" }]
-review_item = [
-  { id = "flat-fills", title = "Flat fills only", text = "Every frame is filled with flat colors — no gradients or dithering in any cell.", domain = "technique" },
-]
 ```
 
 ```toml
@@ -129,9 +121,8 @@ Rules enforced at resolution:
   may declare one.
 - **No per-variant `[sheet]` / `asset_kind`** — the sheet's frames and sequences,
   and the asset kind, are version-level; a variant cannot redeclare them.
-- `review_item` entries are additive on the common ones; an item `id` must be
-  unique within the variant's effective set, and an item must not carry a
-  `reference`.
+- **No `review_item` entries** — an asset-generation case declares no reviewer
+  checklist, on the case or on a variant.
 
 Also update the human-readable comment in the manifest that enumerates the
 variants so the list stays accurate.

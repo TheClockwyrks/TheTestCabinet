@@ -22,7 +22,7 @@ to any particular game.
 
 ```text
 v1.0.0/
-  test-case.toml      # manifest: type, asset_kind, [particle]/[tool]/[output], domains, review
+  test-case.toml      # manifest: type, asset_kind, [particle]/[tool]/[output], domain
   prompt.hbs          # the instruction rendered per run (NOT seeded)
   description.md      # site-facing blurb (NOT seeded)
   README.md           # this file (NOT seeded)

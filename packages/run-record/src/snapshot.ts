@@ -444,9 +444,13 @@ export type CaseVariantOut = {
    */
   prompt: string;
   /**
-   * The variant's own seeded spec files (additive to the common ones), with
-   * their bodies inlined so the static gallery shows the exact specs a run of
-   * this variant is seeded with.
+   * This variant's complete seeded spec set, in seed order (the common specs
+   * first, then the variant's own), each body rendered for this variant and
+   * inlined so the static gallery shows the exact specs a run of this variant is
+   * seeded with, without a live backend. Because a template spec renders to
+   * different text per variant, every variant carries its own fully-rendered set
+   * here — the spec analogue of [`Self::prompt`] — rather than the case sharing
+   * one common list.
    */
   seededInputs: Array<CaseSeededInputOut>;
   /**
@@ -536,13 +540,6 @@ export type CaseMetadata = {
    */
   changelog: string;
   variants: Array<CaseVariantOut>;
-  /**
-   * The seeded spec files shared by every variant, with their bodies inlined so
-   * the static gallery's Inputs tab can show them without a live backend. A
-   * variant's own additive specs ride on [`CaseVariantOut::seeded_inputs`]; the
-   * site concatenates the two (common first) exactly as a run is seeded.
-   */
-  commonSeededInputs: Array<CaseSeededInputOut>;
   /**
    * The Test Cabinet runtime packages this case ships into every run, each with
    * its UI-only description, so the static gallery's Inputs tab can show them.

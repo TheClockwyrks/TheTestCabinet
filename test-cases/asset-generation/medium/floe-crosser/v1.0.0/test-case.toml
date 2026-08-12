@@ -101,55 +101,14 @@ fps = 6
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated crosser matches the brief — one small, round, \
-warm-furred, big-eyed critter, the same creature in every frame, hopping in four \
-distinct directions as crouch-then-leap pairs, in the warm palette on \
-transparency."""
-
-[[review_item]]
-id = "small-warm-prey"
-title = "Reads as small, warm prey"
-text = """
-The sprite reads at a glance as a small, round, fuzzy, big-eyed critter — warm and \
-endearing, clearly harmless prey, not a predator — and it is warm-colored so it \
-pops against pale ice and dark water rather than blending in. It sits within the \
-frame as a little animal, not filling the whole tile."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "four-way-hop"
-title = "Four-direction hop"
-text = """
-The critter faces and hops down (0–1), up (2–3), left (4–5), and right (6–7), each \
-a two-frame crouch-then-leap that springs when played. The facings are clearly \
-distinct — face and eyes visible facing down, back and ears facing up, clean \
-profiles left and right (right a mirror of left)."""
-sequences = ["hop-down", "hop-up", "hop-left", "hop-right"]
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "consistent-creature"
-title = "One consistent creature"
-text = """
-Every frame is clearly the same critter — the same body shape, size, warm fur and \
-cream face/belly, and big dark eyes — centered and the same size throughout, only \
-its facing and crouch/leap pose changing."""
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "palette-and-transparency"
-title = "Warm palette on transparency"
-text = """
-Uses only the warm palette from the brief (the warm fur, cream belly/face, fur \
-shadow, dark eyes/nose, and paws) on full transparency — no out-of-palette pixels, \
-no anti-aliased fringes, and no opaque background fill; only the critter's pixels \
-are opaque so it composites onto the ice and water."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

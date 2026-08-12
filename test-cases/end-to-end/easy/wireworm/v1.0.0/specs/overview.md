@@ -38,7 +38,7 @@ start; they cross-reference each other by name and form one specification.
 - `specs/controls.md` — the keyboard controls: moving in the band, firing, and
   pausing.
 - `specs/progression.md` — lives, the level progression and victory, and scoring.
-- `specs/screens.md` — the game states, the main menu, the HUD, and audio.
+- `specs/ui.md` — the game states, the main menu, the HUD, and audio.
 - `specs/assets.md` — the provided sprite art you must render the game with, how
   it is organized, and the rule for loading it so the build works at any base
   path.
@@ -96,6 +96,17 @@ of the worm and foes are given in `specs/worm.md`, `specs/foes.md`, and
 All positions, sizes, speeds, and ranges in this document are given in logical
 pixels on a fixed 1280 x 720 stage (16:9). The origin `(0, 0)` is the top-left;
 `x` increases to the right and `y` increases downward.
+
+**An entity's position is its center.** Wherever a moving thing — the defrag
+cursor, a foe, a bolt — is given, taken, or reported as an `(x, y)` pair, that pair
+is the center of the entity, not the top-left corner of its sprite. A 32 x 32 foe
+at `(x, y)` therefore covers `[x - 16, x + 16]` by `[y - 16, y + 16]`, and it sits
+squarely on tile `(c, r)` exactly when `(x, y)` is that tile's center,
+`(32c + 16, 80 + 32r + 16)` (`specs/board.md`). The tile a foe occupies is the one
+containing its center, `c = floor(x / 32)` and `r = floor((y - 80) / 32)`. This is
+one convention for the whole game: it fixes where a sprite is drawn relative to the
+position that drives it, which tile a foe's effects land on, and what
+`window.__wireworm` reports and accepts (`specs/instrumentation.md`).
 
 - The stage scales uniformly to fit the browser window while preserving its 16:9
   aspect ratio, letterboxed with the background color on the remaining space. The
@@ -173,7 +184,7 @@ below; match them.
   charge ramp. The corruptor's amber stinger matches the node overcharge color,
   because charging nodes to critical is exactly what it does (`specs/foes.md`).
 - The three canonical screens, the title screen, the in-game view, and the
-  game-over screen, are described in full under Game states in `specs/screens.md`.
+  game-over screen, are described in full under Game states in `specs/ui.md`.
   Implement each as described, in this palette and type.
 
 ## Reference images

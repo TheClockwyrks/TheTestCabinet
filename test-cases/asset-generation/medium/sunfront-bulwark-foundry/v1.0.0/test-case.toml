@@ -88,70 +88,14 @@ auto_play = true
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Sunfront Bulwark \
-Foundry and animates correctly — a heavy armored Duneforged bunker-forge whose \
-blast door raises and drops and whose flywheel turns on their own auto-play \
-animations while the building body stays put, with a clear solar-amber forge \
-accent and the disciplined Duneforged palette."""
-
-[[review_item]]
-id = "reads-as-bunker-forge"
-title = "Reads as an armored bunker-forge"
-text = """
-From more than one angle the model reads unmistakably as a heavy, armored \
-Duneforged bunker-forge: a squat, thick-walled fortified building with a broad \
-blast door set into its front and a great drive flywheel on its flank. It is a \
-massive fortified forge, not an abstract stack of boxes."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "elements-cycle"
-title = "Blast door and flywheel cycle on their own"
-text = """
-The animated elements cycle on their own. Playing `blast_door_raise` lifts the \
-heavy front blast door straight up, holds it open for a beat, then drops it back \
-shut along a clean vertical track — a weighty portcullis cycle, not a \
-constant-speed slide. Playing `flywheel_spin` turns the great flank wheel steadily \
-about its axle, a full continuous revolution each loop with no jerk at the seam. \
-Across each cycle nothing tears away from its mount or clips into the building."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "base-fixed"
-title = "Building body stays fixed"
-text = """
-Only the moving elements move: the front blast door as it raises and the flank \
-flywheel as it spins. The bunker-forge body is the fixed base of the foundry — it \
-stays put, never carried along by the door or the wheel. Both idles (\
-`blast_door_raise` and `flywheel_spin`) run continuously while nothing else \
-shifts."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "parts-attached"
-title = "Door and flywheel stay attached"
-text = """
-The blast door and the flywheel each stay attached to the building across their \
-full range of motion: the door meets its front frame with no gap as it raises and \
-the wheel meets its flank axle with no gap as it turns, neither floating free nor \
-detaching at any point in the cycle."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Duneforged palette discipline"
-text = """
-Uses only the Duneforged colors from the brief (brass and bronze plating, \
-sandstone masonry, iron mechanisms, and the solar-amber forge accent) with a \
-clear amber accent, no out-of-palette colors, and no stray voxels drifting off \
-the parts."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

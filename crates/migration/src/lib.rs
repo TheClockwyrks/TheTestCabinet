@@ -34,6 +34,8 @@ mod m20260715_000014_create_coverage_plan;
 mod m20260715_000015_add_review_plan_migrated;
 mod m20260719_000016_create_review_revision;
 mod m20260721_000017_create_case_reference_sheet;
+mod m20260731_000023_add_job_test_type;
+mod m20260808_000024_publish_job_unique_queued_run;
 
 pub struct Migrator;
 
@@ -58,6 +60,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260715_000015_add_review_plan_migrated::Migration),
             Box::new(m20260719_000016_create_review_revision::Migration),
             Box::new(m20260721_000017_create_case_reference_sheet::Migration),
+            Box::new(m20260731_000023_add_job_test_type::Migration),
+            Box::new(m20260808_000024_publish_job_unique_queued_run::Migration),
         ]
     }
 }

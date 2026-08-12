@@ -41,12 +41,15 @@ components:
   # + cert-manager controllers are a Helm-installed cluster prerequisite (task-4).
   - ../../components/internal-ingress
   # Passwordless (Microsoft Entra managed-identity) Postgres auth for backend + auth.
-  # COMMENTED until the prod CUTOVER, which is gated on the v0.5.0 image roll (the
-  # service pins above still carry db-auth-less images). Turning it on requires that
-  # image, the in-DB Entra roles, and the passwordless DB-URL Secret; prod's DB-auth
-  # identity clientIDs are baked into the component, so no per-env patch is needed.
-  # See components/postgres-azure-ad and the deployment runbook for the cutover order.
-  # - ../../components/postgres-azure-ad
+  # ENABLED at the v0.6.0-rc2 cutover (2026-07-26): the pods run the db-auth service
+  # image, the in-DB Entra login roles exist on the private server (tcab-backend-db-prod
+  # / tcab-auth-db-prod, each a member of prod's tcab_backend_app / tcab_auth_app owner
+  # role — note prod's owner roles are the *_app names, not the runbook's bare
+  # tcab_backend/tcab_auth), and the Key Vault DB-URL secrets carry the passwordless
+  # role@host form. prod's DB-auth identity clientIDs are baked into the component, so no
+  # per-env patch is needed. See components/postgres-azure-ad and the deployment runbook
+  # for the cutover order.
+  - ../../components/postgres-azure-ad
 
 # TCAB_DRIVER_IMAGE is an env value, not a container image: field, so the images
 # transformer can't reach it — patch it to match the driver image.
@@ -83,50 +86,64 @@ patches:
 # rather than :latest in a real deployment.
 #
 # All service images are pinned to ONE git-sha so they version together, currently
-# `c68566c5` (the v0.5.1 build — the `master` tip at which `build-service-images`
-# rebuilt and published multi-arch (amd64+arm64) for every service). Bumped from the
-# v0.5.0 pin `a74d1414`.
+# `e376e0fa` (the v0.6.1-rc5 build — the `staging` branch tip at which
+# `build-service-images` rebuilt and published multi-arch (amd64+arm64) for every
+# service). Bumped from the v0.6.0-rc2 pin `518e7ae4`, promoting prod onto the same
+# build staging runs: prod and overlays/azure-staging are now pinned to the SAME sha,
+# which staging has been exercising since that bump.
+#
+# What the promotion carries, over the 113 commits since `518e7ae4`: the
+# run-record/contract-codegen contract changes and core validation fixes, the UI
+# package, in-cluster publishing repairs for game jams, the dispatcher fix that stops a
+# killed driver orphaning its sandbox pod, and a batch of per-case validation repairs.
+# It also carries ONE schema migration, `m20260731_000023_add_job_test_type` — an
+# additive `job.test_type` column with a `""` default (already-queued rows stay valid)
+# and a working `down`, applied by the backend at startup and already exercised against
+# the staging Postgres.
 #
 # The RUN-CONTAINER images (test-cabinet-base/-base-wasm/-sprite/-sprite-sheet/-adversarial/
 # -performance, plus the voxel/mesh/skin/ui/material/particle/audio kinds) are pinned
 # SEPARATELY via TCAB_CONTAINER_TAG in patch-dispatcher-driver-image.yaml and are NOT
 # generally in lockstep with the service images — they only rebuild when
-# `build-containers` runs. For v0.5.1 they are back OUT of lockstep: unlike v0.5.0, the
-# v0.5.1 work (backend media-export, scripts, UI) did NOT touch the asset-generation/foray
-# crates `build-containers` watches, so `build-containers` did not run at `c68566c5` and
-# TCAB_CONTAINER_TAG stays at the v0.5.0 build `a74d1414`. Still re-pin TCAB_CONTAINER_TAG
-# only to a sha at which `build-containers` actually published. Roll the service images —
-# staging before prod — when promoting a build.
+# `build-containers` runs. At v0.6.1-rc5 they remain OUT of lockstep, and the gap has
+# widened: every `staging` build since v0.6.0-beta4 — v0.6.0-rc1, rc2 and v0.6.1-rc1,
+# rc4, rc4.1, rc5 — ran only `build-service-images`, NOT `build-containers`, so
+# TCAB_CONTAINER_TAG stays at the v0.6.0-beta4 build `e6afbee6` (the latest sha at which
+# `build-containers` published). It stays benign for the same reason it does on staging:
+# nothing under containers/ has changed on the branch since `e6afbee6`, so the beta4 run
+# images are still content-current. Still re-pin TCAB_CONTAINER_TAG only to a sha at
+# which `build-containers` actually published. Roll the service images — staging before
+# prod — when promoting a build.
 images:
   - name: REPLACE_REGISTRY/tcab-backend
     newName: ghcr.io/theclockwyrks/tcab-backend
-    newTag: c68566c5405b1f771763d12c178a3a45fbe666ed
+    newTag: e376e0fa9e228b62d60e60a60cdfbd27549d686b
   - name: REPLACE_REGISTRY/tcab-auth-service
     newName: ghcr.io/theclockwyrks/tcab-auth-service
-    newTag: c68566c5405b1f771763d12c178a3a45fbe666ed
+    newTag: e376e0fa9e228b62d60e60a60cdfbd27549d686b
   - name: REPLACE_REGISTRY/tcab-dispatcher
     newName: ghcr.io/theclockwyrks/tcab-dispatcher
-    newTag: c68566c5405b1f771763d12c178a3a45fbe666ed
+    newTag: e376e0fa9e228b62d60e60a60cdfbd27549d686b
   - name: REPLACE_REGISTRY/tcab-driver
     newName: ghcr.io/theclockwyrks/tcab-driver
-    newTag: c68566c5405b1f771763d12c178a3a45fbe666ed
+    newTag: e376e0fa9e228b62d60e60a60cdfbd27549d686b
   - name: REPLACE_REGISTRY/tcab-artifacts
     newName: ghcr.io/theclockwyrks/tcab-artifacts
-    newTag: c68566c5405b1f771763d12c178a3a45fbe666ed
+    newTag: e376e0fa9e228b62d60e60a60cdfbd27549d686b
   - name: REPLACE_REGISTRY/tcab-arena
     newName: ghcr.io/theclockwyrks/tcab-arena
-    newTag: c68566c5405b1f771763d12c178a3a45fbe666ed
+    newTag: e376e0fa9e228b62d60e60a60cdfbd27549d686b
   # The publisher image is referenced as an env VALUE (TCAB_PUBLISHER_IMAGE in
   # patch-dispatcher-publisher.yaml), not a container image: field, so this entry
   # rewrites nothing today — it is kept for parity so the registry/tag set stays
   # complete and a future container-image reference to the publisher is covered.
   - name: REPLACE_REGISTRY/tcab-publisher
     newName: ghcr.io/theclockwyrks/tcab-publisher
-    newTag: c68566c5405b1f771763d12c178a3a45fbe666ed
+    newTag: e376e0fa9e228b62d60e60a60cdfbd27549d686b
   # The in-cluster web console image (the internal-ingress component's tcab-web
   # Deployment). One environment-agnostic build per git-sha; the per-env backend/auth
   # URLs are injected at runtime via env, not baked. GHCR package is Public/anonymously
   # pullable.
   - name: REPLACE_REGISTRY/tcab-web
     newName: ghcr.io/theclockwyrks/tcab-web
-    newTag: c68566c5405b1f771763d12c178a3a45fbe666ed
+    newTag: e376e0fa9e228b62d60e60a60cdfbd27549d686b

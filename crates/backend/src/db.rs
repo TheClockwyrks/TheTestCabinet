@@ -59,6 +59,27 @@ const ACTIVE_SLOT_STATES: [&str; 3] = ["dispatched", "starting", "running"];
 /// they are left for the dispatcher to drain once it reconnects.
 const REAPABLE_STATES: [&str; 3] = ["dispatched", "starting", "running"];
 
+/// The publish-job states that mean a release is already under way for a run: it is
+/// waiting to be claimed, or a `tcab-publisher` Job is carrying it out. A run with
+/// one of these must not enqueue a second publish — a publish is **not** idempotent
+/// on the Cloudflare side (`wrangler pages deploy` mints a brand-new deployment on
+/// every invocation), so a duplicate job leaves an orphaned public build behind.
+/// The `gh` side hides the problem by reusing an existing repo, which is why the
+/// duplication only ever shows up as extra Pages deployments.
+const ACTIVE_PUBLISH_STATES: [&str; 2] = ["queued", "dispatched"];
+
+/// How long a `dispatched` publish job may go without an update before it stops
+/// blocking a fresh publish.
+///
+/// Nothing reaps a publish job whose publisher pod died before reporting — the run
+/// queue has a startup reconciliation ([`Db::fail_in_flight_jobs`]) but the publish
+/// queue has no equivalent, so such a job sits in `dispatched` forever. Without this
+/// cutoff the enqueue-time dedup would wedge that run's publishing permanently,
+/// which is a worse failure than the duplicate deploy it prevents. A real publish
+/// takes minutes, so an hour only ever releases a job whose publisher is genuinely
+/// gone.
+const PUBLISH_JOB_STALE_AFTER: time::Duration = time::Duration::hours(1);
+
 /// A stored run: the full record, its reviews, and its links. This is the shape
 /// `GET /runs/{id}` and the snapshot's per-run file are built from. A run may be
 /// pushed (private, [`published`](Self::published) false) or published; it may
@@ -987,19 +1008,20 @@ impl Db {
         self.assemble(rows).await
     }
 
-    /// The gameplay READMEs of earlier game-jam runs of jam `slug` built with the
-    /// same `harness` and `model_id`, oldest first — the material a repeated jam run
-    /// is briefed with so it can build something distinct.
+    /// The gameplay READMEs of earlier game-jam runs of jam `slug` built by
+    /// `model_id`, oldest first — the material a repeated jam run is briefed with so
+    /// it can build something distinct.
     ///
-    /// Matches on the exact `(slug, harness, model, test_type = game-jam)` tuple
-    /// across **all** prior runs regardless of publish state (a run is persisted here
-    /// on completion, before any publish), and returns only those that actually
-    /// captured a README. A row whose stored record no longer deserializes is skipped
-    /// (as elsewhere) rather than failing the lookup.
+    /// Matches on `(slug, model, test_type = game-jam)` **across harnesses**: what
+    /// repeats a game is the model, not the tool driving it, so an entry the same
+    /// model built under another harness is exactly the history a new run must not
+    /// retread. It spans **all** prior runs regardless of publish state (a run is
+    /// persisted here on completion, before any publish), and returns only those that
+    /// actually captured a README. A row whose stored record no longer deserializes is
+    /// skipped (as elsewhere) rather than failing the lookup.
     pub async fn game_jam_prior_readmes(
         &self,
         slug: &str,
-        harness: &str,
         model_id: &str,
     ) -> Result<Vec<PriorGameJamEntry>> {
         let rows: Vec<(String, String, String)> = run::Entity::find()
@@ -1008,7 +1030,6 @@ impl Db {
             .column(run::Column::FinishedAt)
             .column(run::Column::RecordJson)
             .filter(run::Column::TestCaseSlug.eq(slug.to_string()))
-            .filter(run::Column::HarnessSlug.eq(harness.to_string()))
             .filter(run::Column::ModelId.eq(model_id.to_string()))
             .filter(run::Column::TestType.eq(TestType::GameJam.as_str()))
             .order_by_asc(run::Column::FinishedAt)
@@ -1364,6 +1385,28 @@ async fn gate_publishable<C: ConnectionTrait>(
         }
     }
     Ok(())
+}
+
+/// Whether a publish job has gone quiet long enough to be treated as **abandoned**
+/// — its publisher died without ever reporting a terminal result, so it must stop
+/// blocking new publishes for its run (see [`PUBLISH_JOB_STALE_AFTER`]).
+///
+/// Only a `dispatched` job can be abandoned: a `queued` one has no publisher yet and
+/// the dispatcher will claim it, however long it has waited. A timestamp that does
+/// not parse is treated as *not* abandoned, so a malformed row fails closed —
+/// blocking a duplicate publish rather than silently permitting one.
+fn is_abandoned_publish_job(job: &publish_job::Model, now: &str) -> bool {
+    if job.state != "dispatched" {
+        return false;
+    }
+    use time::format_description::well_known::Rfc3339;
+    let (Ok(updated), Ok(now)) = (
+        time::OffsetDateTime::parse(&job.updated_at, &Rfc3339),
+        time::OffsetDateTime::parse(now, &Rfc3339),
+    ) else {
+        return false;
+    };
+    now - updated > PUBLISH_JOB_STALE_AFTER
 }
 
 /// Decode a `review` row into the in-memory [`StoredReview`], parsing its
@@ -2096,6 +2139,9 @@ pub struct NewJob {
     pub test_case_version: String,
     /// The variant, lifted for the active-run list.
     pub variant: String,
+    /// The resolved test case's type, lifted so the queue can serialize the run
+    /// types that must not overlap (see [`job::Model::test_type`]).
+    pub test_type: String,
     /// The harness slug, lifted for the active-run list.
     pub harness_slug: String,
     /// The opaque model id, lifted for the active-run list.
@@ -2120,6 +2166,7 @@ fn new_job_model(new: NewJob) -> job::ActiveModel {
         test_case_slug: Set(new.test_case_slug),
         test_case_version: Set(new.test_case_version),
         variant: Set(new.variant),
+        test_type: Set(new.test_type),
         harness_slug: Set(new.harness_slug),
         model_id: Set(new.model_id),
         job_token: Set(new.job_token),
@@ -2180,17 +2227,28 @@ impl Db {
     /// (`ACTIVE_SLOT_STATES` — `dispatched`/`starting`/`running`). A harness with
     /// no configured limit is always claimable.
     ///
+    /// It additionally **serializes a game jam per model**: a `game-jam` job is not
+    /// claimable while another run of the same jam and model occupies a slot, no
+    /// matter which harness either uses. A repeated jam run is briefed with the
+    /// gameplay READMEs of that model's earlier entries so it builds something
+    /// distinct, and those READMEs only exist once the earlier runs have finished —
+    /// dispatching a model's jam runs in parallel would hand every one of them an
+    /// empty history and invite the same game three times over. Runs of *different*
+    /// jams, or of the same jam by different models, share no history and stay
+    /// parallel.
+    ///
     /// The same pass **reconciles the display state** of every non-selected waiting
-    /// job: a `queued`/`pending` job whose harness is at its cap is moved to
-    /// `pending` (held back, visible as such), and one whose harness is back under
-    /// its cap is released to `queued`. So an operator sees exactly which waiting
-    /// runs are deliberately held versus merely next in line. Selection stays FIFO
-    /// (oldest `created_at`, then `id`) across harnesses, skipping any at their cap.
+    /// job: a `queued`/`pending` job that is held back — because its harness is at
+    /// its cap, or because it is a jam run waiting its turn behind the same model's
+    /// earlier entry — is moved to `pending` (visible as such), and one that is
+    /// claimable again is released to `queued`. So an operator sees exactly which
+    /// waiting runs are deliberately held versus merely next in line. Selection stays
+    /// FIFO (oldest `created_at`, then `id`) across harnesses, skipping any held back.
     ///
     /// The select-then-updates run in one transaction; SQLite serializes writers
     /// (single-writer WAL), so two dispatchers cannot claim the same job.
     pub async fn claim_next_job(&self, now: &str) -> Result<Option<job::Model>> {
-        use std::collections::HashMap;
+        use std::collections::{HashMap, HashSet};
 
         let txn = self.conn().begin().await?;
 
@@ -2203,13 +2261,19 @@ impl Db {
             .filter_map(|row| row.max_parallelism.map(|max| (row.harness_slug, max)))
             .collect();
 
-        // How many runs of each harness already occupy a parallelism slot.
+        // How many runs of each harness already occupy a parallelism slot, and which
+        // (jam, model) pairs are already running one — the pairs whose next entry
+        // must wait, so it can be seeded with the finished run's README.
         let mut active_by_harness: HashMap<String, i64> = HashMap::new();
+        let mut jams_in_flight: HashSet<(String, String)> = HashSet::new();
         for job in job::Entity::find()
             .filter(job::Column::State.is_in(ACTIVE_SLOT_STATES))
             .all(&txn)
             .await?
         {
+            if job.test_type == TestType::GameJam.as_str() {
+                jams_in_flight.insert((job.test_case_slug.clone(), job.model_id.clone()));
+            }
             *active_by_harness.entry(job.harness_slug).or_insert(0) += 1;
         }
 
@@ -2219,9 +2283,9 @@ impl Db {
             caps.get(harness).is_none_or(|&max| active < i64::from(max))
         };
 
-        // Walk the waiting jobs oldest-first: claim the first whose harness is under
-        // its cap, and reconcile the pending/queued display state of the rest so a
-        // held-back run reads as `pending` and a now-claimable one as `queued`.
+        // Walk the waiting jobs oldest-first: claim the first that is not held back,
+        // and reconcile the pending/queued display state of the rest so a held-back
+        // run reads as `pending` and a now-claimable one as `queued`.
         let waiting = job::Entity::find()
             .filter(job::Column::State.is_in(["queued", "pending"]))
             .order_by_asc(job::Column::CreatedAt)
@@ -2235,14 +2299,24 @@ impl Db {
                 .get(&job.harness_slug)
                 .copied()
                 .unwrap_or(0);
-            let has_room = under_cap(&job.harness_slug, active);
+            let jam_key = (job.test_case_slug.clone(), job.model_id.clone());
+            // A jam run waits its turn behind any in-flight run of the same jam by
+            // the same model — including one claimed earlier in this very pass, so a
+            // single sweep never dispatches two entries of the same pair.
+            let jam_turn =
+                job.test_type != TestType::GameJam.as_str() || !jams_in_flight.contains(&jam_key);
+            let has_room = under_cap(&job.harness_slug, active) && jam_turn;
 
             if claimed.is_none() && has_room {
                 // Claim this one: it now occupies a slot for its harness, so bump the
-                // count for the reconcile of any later same-harness jobs.
+                // count for the reconcile of any later same-harness jobs, and (for a
+                // jam) hold the jam+model pair against the entries behind it.
                 *active_by_harness
                     .entry(job.harness_slug.clone())
                     .or_insert(0) += 1;
+                if job.test_type == TestType::GameJam.as_str() {
+                    jams_in_flight.insert(jam_key);
+                }
                 let mut active_model = job.into_active_model();
                 active_model.state = Set("dispatched".to_string());
                 active_model.updated_at = Set(now.to_string());
@@ -2428,8 +2502,48 @@ impl Db {
         gate_publishable(&self.conn(), run_id, &run.run_state).await
     }
 
+    /// The publish job already releasing `run_id` — one that is `queued`, or
+    /// `dispatched` recently enough that its publisher may still be running — or
+    /// `None` when the run has no release under way.
+    ///
+    /// This is the enqueue-time idempotency check: `POST /runs/{id}/publish` answers
+    /// with the job this finds instead of inserting a second one, so a double-click,
+    /// a second console tab, or a retry after a dropped live stream re-attaches to
+    /// the publish already running rather than starting another. That matters
+    /// because each publish job deploys a *new* Cloudflare Pages deployment, so a
+    /// duplicate leaves an orphaned public build behind.
+    ///
+    /// Terminal (`succeeded`/`failed`) jobs never block — a failed publish must stay
+    /// retryable — and neither does a `dispatched` job gone quiet long enough to be
+    /// treated as abandoned, since nothing reaps one whose publisher died before
+    /// reporting. `now` is the RFC 3339 instant that staleness is measured against.
+    /// The oldest still-live job wins, so the caller re-attaches to the publish that
+    /// started first.
+    pub async fn active_publish_job_for_run(
+        &self,
+        run_id: &str,
+        now: &str,
+    ) -> Result<Option<publish_job::Model>> {
+        let candidates = publish_job::Entity::find()
+            .filter(publish_job::Column::RunId.eq(run_id))
+            .filter(publish_job::Column::State.is_in(ACTIVE_PUBLISH_STATES))
+            .order_by_asc(publish_job::Column::CreatedAt)
+            .order_by_asc(publish_job::Column::Id)
+            .all(&self.conn())
+            .await?;
+
+        Ok(candidates
+            .into_iter()
+            .find(|job| !is_abandoned_publish_job(job, now)))
+    }
+
     /// Enqueue a publish job: insert it in the `queued` state for the dispatcher to
     /// claim. Mirrors [`Db::enqueue_job`] for the publish path.
+    ///
+    /// Callers gate with [`Db::active_publish_job_for_run`] first; a partial unique
+    /// index on `run_id` (where the state is `queued`) backs that check in the
+    /// database, so two concurrent enqueues cannot both land a queued job for the
+    /// same run even if they race past the application-level check.
     pub async fn enqueue_publish_job(&self, new: NewPublishJob) -> Result<()> {
         publish_job::Entity::insert(publish_job::ActiveModel {
             id: Set(new.id),

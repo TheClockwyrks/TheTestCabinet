@@ -99,68 +99,14 @@ auto_play = false
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, skinned model reads as the Caldera Slag and \
-deforms correctly — a hunched molten mass whose one continuous skin flexes across \
-its joints without tearing while it advances, slams, and emerges, glowing magma \
-sheathed in cracked cooling-basalt crust in the disciplined Caldera palette."""
-
-[[review_item]]
-id = "reads-as-slag"
-title = "Reads as a molten Slag creature"
-text = """
-From more than one angle the model reads unmistakably as a lumbering molten \
-elemental: a hunched, top-heavy mass of glowing magma sheathed in a cracked \
-cooling-basalt crust, with limbs it hauls itself along on. It is a living creature \
-of magma, not an abstract lump or a rigid rock. Its surface is one smooth, \
-continuous skin — a single body, never a stack of detached chunks."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "advance-deforms"
-title = "Advance deforms as one continuous body"
-text = """
-Playing `advance` walks the creature with weight: its limbs plant and swing while \
-the pelvis, spine, and crust flex smoothly ACROSS the joints, so the skin stretches \
-and folds at each bend rather than tearing or leaving a seam. The whole molten mass \
-rolls as one lumbering body, easing rather than sliding at a constant rate, and it \
-loops seamlessly."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "slam-deforms"
-title = "Slam carries through the skin"
-text = """
-Playing `slam` rears the creature and brings its mass down in one heavy blow, the \
-impact carrying up through the shoulders and spine as continuous-skin deformation — \
-the body compresses and recoils as one piece, with the skin folding across the \
-joints and no part tearing away — then settles and holds its last pose."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "emerge-deforms"
-title = "Emerge forms and rises"
-text = """
-Playing `emerge` heaves the creature up out of the ground into its standing pose: \
-the body unfolds and the skin stretches into shape across the joints as it rises, \
-reading as a molten mass forming and lifting rather than a rigid model snapping \
-upright, and holds its final standing pose."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Caldera palette discipline"
-text = """
-Uses only the Caldera colors from the brief (incandescent orange-yellow molten \
-core, bright yellow hottest seams, deep-red fissures, and near-black basalt crust) \
-with no out-of-palette colors — the magma reading hot and the crust reading like \
-cooled, cracked rock — and no stray geometry drifting off the body."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

@@ -1,17 +1,25 @@
 // Automated validation for states.mapselect: the map-select state is reachable from the title.
 //
-// Only the reset is arranged; NAVIGATING to the state is the behavior under test, so the
-// confirm is the act.
+// SALVAGE is clicked on the main menu the way a player clicks it — on the entry's own reported
+// rectangle (`menuButtons()`), so the click lands wherever this build drew it.
+//
+// WHY THE MOUSE AND NOT `Enter`. This used to press `Enter` at the title. `specs/controls.md`
+// makes the pointer the primary path and the keyboard "an alternative", so a build that binds no
+// menu keys is conformant — and one failed this item, reporting the map-select screen as
+// unreachable when it is reachable by mouse in a single click. The claim here is that the STATE is
+// reachable, so the check takes the path the spec guarantees. See `clickMenu` in `_helpers.mjs`.
+//
+// Only the reset is arranged; NAVIGATING to the state is the behavior under test, so the click is
+// the act and the clip shows the menu being walked.
 
-import { snap } from "../_helpers.mjs";
+import { clickMenu, snap } from "../_helpers.mjs";
 
-// The old script waited 80 ms after the reset for the title to come up. At 60 Hz that is 4.8
-// ticks; the tick contract rejects a fraction rather than rounding it, so round UP to 5 — a
-// settle must never come out shorter than it was.
-const SETTLE_TICKS = 5;
+// A real pause so the arrived-at screen has painted before the still is taken.
+const PAINT_MS = 300;
 
 export default function item() {
-  // The screen the confirm landed on, read by `assert`.
+  // The entry that was clicked and the screen it landed on, both read by `assert`.
+  let entry;
   let screen;
 
   return {
@@ -22,15 +30,15 @@ export default function item() {
     },
 
     async act(api) {
-      await api.advance(SETTLE_TICKS);
-      await api.call("press", "Enter"); // confirm SALVAGE at the title
+      entry = await clickMenu(api, "salvage"); // confirm SALVAGE at the title
       screen = (await snap(api)).screen;
 
-      await api.advance(SETTLE_TICKS); // let the screen paint before the still
+      await api.settle(PAINT_MS); // let the screen paint before the still
       await api.screenshot("mapselect");
     },
 
     async assert(api, check) {
+      check.expectOk("the title menu offers SALVAGE as a clickable choice", Boolean(entry));
       check.expectEq("the map-select screen is reachable", screen, "mapselect");
     },
   };

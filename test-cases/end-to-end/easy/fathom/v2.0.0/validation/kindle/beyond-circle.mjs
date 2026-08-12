@@ -1,21 +1,23 @@
 // kindle.beyond-circle: the amber lights are clipped to the vision circle — a drifter
-// beyond it does not show (unlike the Trench dive).
+// beyond it does not show (unlike the Maze dive).
 //
 // The distant drifter is posed instantly (`arrange`); `act` lets the pose settle, gives
 // the build a frame to paint, and reads back what was drawn where the drifter is.
 import {
-  startPlaying,
   denAllExcept,
   findFarTile,
+  quietBoard,
   sampleColor,
-  isDark,
+  startPlaying,
 } from "../_helpers.mjs";
+import { isFogBlack, sampleFog } from "./_kindle.mjs";
 
 export default function item() {
   let hasDrifter;
   let dist;
   let windowRadius;
   let col;
+  let fog;
 
   return {
     id: "kindle.beyond-circle",
@@ -25,7 +27,7 @@ export default function item() {
       await denAllExcept(api, []);
       const far = findFarTile(snap, snap.forager, 9); // beyond the vision circle
       await api.call("spawnDrifter", { tx: far.tx, ty: far.ty });
-      await api.call("poseLastPlankton");
+      await quietBoard(api);
     },
 
     async act(api) {
@@ -38,6 +40,10 @@ export default function item() {
       // A REAL pause (the old wait(120)) so the scene has been painted before sampling.
       await api.settle(120);
       col = await sampleColor(api, d.x, d.y);
+      // Compare against the build's own flat fog rather than an absolute darkness cut:
+      // a dim-but-drawn amber glow, or ground a build with no vision circle is still
+      // painting out there, both read as "dark" while plainly not being clipped.
+      fog = await sampleFog(api, s, [s.forager, d]);
       await api.screenshot("clipped");
     },
 
@@ -49,8 +55,8 @@ export default function item() {
         windowRadius,
       );
       check.expectOk(
-        "the amber drifter is clipped to black beyond the circle",
-        isDark(col),
+        "the amber drifter is clipped to the flat fog beyond the circle",
+        isFogBlack(col, fog),
       );
     },
   };

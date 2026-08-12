@@ -5,15 +5,39 @@
 // placed and an un-targeted combine committed from one standing tower. It must consume the
 // FRESH candidate (which hardens into a blocker) and leave the OTHER standing tower intact.
 //
-// Only Level 1's placement and keep can be arranged; from the first wave onward the script
-// depends on waves ENDING, which consumes time. So both clears, the second level's build, the
-// fresh candidate and the auto-resolved combine all live in `act` — placements, keeps and
-// combines are control ops, legal mid-act, and the run is never reset in between.
+// WHY THE TWO WAVES ARE NO LONGER IN THE ACT. Getting two standing towers onto the board takes
+// two levels, and a level ends by clearing a wave. Those clears used to run inside the act on
+// `actClearWave`, which advances in REAL time in the record pass — so the recording spent its
+// whole budget watching Wave 1 and Wave 2 walk an undefended yard, and unwound before the
+// combine, before the screenshot, and before the item's declared output was ever produced.
+//
+// That is not a hypothetical. Two of the three run implementations produced NO media for this
+// item at all — recorded as "script did not produce declared output(s)", which reads as a broken
+// debug API and failed the point — purely because their waves took longer to walk than the
+// reference's did. The budget was raised to 30 s to paper over it, which only moved the
+// threshold: the check was still resting on how fast an arbitrary build's Load happens to move.
+//
+// So both clears move to `arrange` on `skipClearWave`: the same real simulation, the same board
+// at the end of it, instant in BOTH passes. Nothing about the verdict changes — the validate pass
+// was always instant — and the record pass now reaches the act with its budget untouched, on
+// every build, regardless of how its waves are paced.
+//
+// WHAT IS FILMED. The item's evidence used to be a still of the aftermath, which is a board of
+// three pieces in states a reviewer has to take on trust: they cannot see which of the two
+// standing towers was the initiator, nor that the third piece was a fresh candidate a moment ago
+// rather than always a blocker. The claim is about a CHOICE between two things the fold could
+// have eaten, so the clip shows both of them standing, the fresh roll landing beside them, and
+// the fold taking the fresh one.
 
-import { startBuild, placeCandidate, towerAt, snap, actClearWave, SECOND } from "../_helpers.mjs";
+import { startBuild, placeCandidate, towerAt, snap, skipClearWave, SECOND } from "../_helpers.mjs";
 
-// A frame for the still, so the capture shows the board the assertions read. 100 ms = 6 ticks.
-const SETTLE_TICKS = 6;
+// A beat on the two standing towers before anything fresh is placed, so the pair the fold could
+// choose between is on screen as a pair.
+const LEAD_TICKS = 1.5 * SECOND;
+// A beat on the fresh candidate once it lands, so it reads as the third, expendable piece.
+const FRESH_TICKS = 1.5 * SECOND;
+// A beat on the board the fold left behind.
+const TAIL_TICKS = 2.5 * SECOND;
 
 export default function item() {
   // The initiator, and the board after the auto-resolved combine.
@@ -23,13 +47,6 @@ export default function item() {
   return {
     id: "quality.auto-resolve-prefers-fresh",
 
-    // The still this item declares is the board after two waves clear, which takes ~17
-    // s of real play — far past the 8 s default record budget, so the record pass would
-    // unwind before `screenshot` ever ran and the declared output would never land. The
-    // item declares no video, so this lengthens only the record pass, not any media it
-    // produces.
-    clipMs: 30000,
-
     async arrange(api) {
       await startBuild(api);
       await api.call("setIntegrity", 999);
@@ -38,25 +55,26 @@ export default function item() {
       const a = await placeCandidate(api, "capacitor", 3, 2, 7);
       aId = a.id;
       await api.call("keep", a.id);
-    },
-
-    async act(api) {
-      await actClearWave(api, { maxTicks: 200 * SECOND });
+      await skipClearWave(api, { maxTicks: 300 * SECOND });
 
       // Level 2: a second standing capacitor@3 (B).
       const b = await placeCandidate(api, "capacitor", 3, 6, 7);
       await api.call("keep", b.id);
-      await actClearWave(api, { maxTicks: 200 * SECOND });
+      await skipClearWave(api, { maxTicks: 300 * SECOND });
+    },
+
+    async act(api) {
+      await api.advance(LEAD_TICKS); // A and B standing, both matching, either one foldable
 
       // Level 3: a fresh matching candidate (C), then an un-targeted combine from A.
       await placeCandidate(api, "capacitor", 3, 10, 7);
+      await api.advance(FRESH_TICKS);
+
       await api.call("setCombineSet", []); // no explicit set → auto-resolve
       await api.call("combine", aId);
-
       s = await snap(api);
 
-      await api.advance(SETTLE_TICKS);
-      await api.screenshot("fresh");
+      await api.advance(TAIL_TICKS); // the fresh roll consumed, the standing partner untouched
     },
 
     async assert(api, check) {

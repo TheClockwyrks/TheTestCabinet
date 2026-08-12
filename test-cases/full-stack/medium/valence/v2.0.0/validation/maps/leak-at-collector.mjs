@@ -5,7 +5,13 @@
 // real unit is posed just short of the collector, and running the real sim carries it
 // the rest of the way; the snapshot confirms it is gone and integrity fell.
 
-import { startRun, pathGeom, spawnAt, unitById, MAP } from "../_helpers.mjs";
+import {
+  startScenario,
+  pathGeom,
+  spawnAt,
+  unitById,
+  MAP,
+} from "../_helpers.mjs";
 
 export default function item() {
   let id;
@@ -16,7 +22,7 @@ export default function item() {
     id: "maps.leak-at-collector",
 
     async arrange(api) {
-      const snap = await startRun(api, MAP.single, { integrity: 100000 });
+      const snap = await startScenario(api, MAP.single, { integrity: 100000 });
       const g = pathGeom(snap.paths[0]);
       id = await spawnAt(api, {
         type: "atom",

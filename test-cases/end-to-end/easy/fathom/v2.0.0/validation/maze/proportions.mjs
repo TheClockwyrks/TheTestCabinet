@@ -1,5 +1,5 @@
 // maze.proportions: the board reads as corridors and its corridor proportions fall
-// inside the hard ranges the spec fixes (specs/trench.md). Three metrics, computed over
+// inside the hard ranges the spec fixes (specs/maze.md). Three metrics, computed over
 // the corridor tiles (the open floor the forager can enter, excluding the den and gate):
 //
 //   * openness — mean open neighbors per corridor tile. Kept low so the board is

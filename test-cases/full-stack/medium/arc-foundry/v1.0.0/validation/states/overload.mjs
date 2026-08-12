@@ -1,46 +1,60 @@
 // Automated validation for states.overload: driving Grid Integrity to 0 reaches the Overload
 // (defeat) screen.
 //
-// Posing the integrity and releasing the Slug are control ops (the arrange); the crawl that
-// grounds it out and the defeat screen it reaches are the behavior under test and are the act.
+// Posing the integrity, releasing the Slug and walking it to the Collector's doorstep are the
+// arrange; the ground-out and the defeat screen it reaches are the behavior under test and are
+// the act.
+//
+// The walk used to be filmed. A Slug's crawl to the Collector takes about 89 s, so the record
+// pass needed a `clipMs` of 135000 just to reach the `screenshot` at the end — two and a quarter
+// minutes of recording to capture one still, and if anything about the build made the crawl
+// slower the budget ran out and the declared output never landed at all. Skipping the crawl
+// (instant in both passes) reaches the same state, decides the same verdict, and leaves the
+// still to be taken a couple of seconds in.
 
-import { startBuild, spawnControlled, snap, SECOND } from "../_helpers.mjs";
+import {
+  startBuild,
+  spawnControlled,
+  skipUntilNearCollector,
+  snap,
+  TICK,
+  SECOND,
+} from "../_helpers.mjs";
 
-// 150 s of game time = 9000 ticks, polled every 0.5 s = 30 ticks — the screen is constant
-// between the leak and the overload, so a coarse poll misses nothing.
-const WALK_TICKS = 150 * SECOND;
-const POLL_TICKS = 0.5 * SECOND;
+const OVERLOAD_TICKS = 30 * SECOND;
+// A beat on the defeat screen before the still, so it has drawn.
+const SETTLE_TICKS = 1 * SECOND;
 
 export default function item() {
   // Whether the overload happened, and the screen it left behind.
+  let arrived;
   let overloaded;
   let screen;
 
   return {
     id: "states.overload",
 
-    // The still this item declares is the Overload screen, and the Slug's crawl to the
-    // Collector takes ~89 s — far past the 8 s default record budget, so the record
-    // pass would unwind before `screenshot` ever ran and the declared output would
-    // never land. The item declares no video, so this lengthens only the record pass,
-    // not any media it produces.
-    clipMs: 135000,
-
     async arrange(api) {
       await startBuild(api);
       await api.call("setIntegrity", 1);
-      await spawnControlled(api, "slug"); // leak 2 -> integrity below zero
+      const [slug] = await spawnControlled(api, "slug"); // leak 2 -> integrity below zero
+      arrived = await skipUntilNearCollector(api, slug.id);
     },
 
     async act(api) {
-      const r = await api.until((s) => s.screen === "overload", { max: WALK_TICKS, poll: POLL_TICKS });
+      const r = await api.until((s) => s.screen === "overload", {
+        max: OVERLOAD_TICKS,
+        poll: TICK,
+      });
       overloaded = r.hit;
       screen = (await snap(api)).screen;
 
+      await api.advance(SETTLE_TICKS);
       await api.screenshot("overload");
     },
 
     async assert(api, check) {
+      check.expectOk("the Slug walked the chain to the Collector", arrived.hit);
       check.expectOk("the run overloads (defeat)", overloaded);
       check.expectEq("the Overload screen shows", screen, "overload");
     },

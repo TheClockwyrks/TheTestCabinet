@@ -48,15 +48,15 @@ reference/screenshots/sonar.png                  # common — the sonar wavefron
 reference/screenshots/kindle/vision-circle.png   # Kindle only — the outer vision circle
 ```
 
-- **`gameplay`** shows the intended look of the dark trench: a lit pocket of
+- **`gameplay`** shows the intended look of the dark maze: a lit pocket of
   revealed corridors fading into black fog around the forager, plankton in the
   corridors, an amber light glimpsed in the dark, and the HUD.
 - **`sonar`** captures a sonar pulse mid-flight — the traveling wavefront flooding
   the corridors as glowing arcs, reaching past the light to reveal terrain beyond
   the line-of-sight pocket. (It is the still counterpart to the `proof/sonar.webm`
   clip the build submits.)
-- **`vision-circle`** is the Kindle dive's defining in-trench look: a wide, crisp
-  circular window of the explored trench centered on a well-fed (bright) forager,
+- **`vision-circle`** is the Kindle dive's defining in-maze look: a wide, crisp
+  circular window of the explored maze centered on a well-fed (bright) forager,
   pitch black beyond it — even over ground already explored.
 
 Seeding is keyed by the view slug, so the source path here is purely

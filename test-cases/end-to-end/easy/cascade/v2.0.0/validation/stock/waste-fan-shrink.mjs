@@ -11,11 +11,15 @@
 //
 // The check poses a waste of `turnCount` freshly-turned cards over three buried ones
 // (six in all) and plays the turned cards off the top one at a time, reading the
-// build's own `wasteVisibleCount` after each. It reads `turnCount` from the snapshot
-// and derives every expected count from it, so the one item validates either deal
-// mode: Draw Three counts 3 -> 2 -> 1 -> 1, and Draw One (which only ever fans one)
-// stays 1 -> 1. Buried cards always remain, so the waste never empties and the count
-// never falls below one.
+// fanned count after each through the `wasteVisible` helper. That count comes from
+// the build's own `wasteVisibleCount` field, which is a Draw Three affordance
+// present only in that build (specs/instrumentation.md); the Draw One deal never
+// fans more than a single card and does not report the field, so the helper reads a
+// missing value as one. It reads `turnCount` from the snapshot and derives every
+// expected count from it, so the one item validates either deal mode: Draw Three
+// counts 3 -> 2 -> 1 -> 1, and Draw One (which only ever fans one) stays 1 -> 1.
+// Buried cards always remain, so the waste never empties and the count never falls
+// below one.
 //
 // The turned cards are three Aces, played home onto three empty foundations (an empty
 // foundation takes any Ace), so each removal is a real, legal move through the game's
@@ -25,7 +29,7 @@
 // `advance`, not `settle`: a move resolves instantly (the build's `step` is a no-op
 // off a running cascade), so an advance moves no game state and is purely clip pacing.
 
-import { card, pose, ticksFor } from "../_helpers.mjs";
+import { card, pose, ticksFor, wasteVisible } from "../_helpers.mjs";
 
 export default function item() {
   // The build's own turn count, the initial waste length, and the fanned count read
@@ -59,7 +63,7 @@ export default function item() {
       const s0 = await api.snapshot();
       tc = s0.turnCount;
       wasteLen0 = s0.waste.length;
-      visible.push(s0.wasteVisibleCount);
+      visible.push(wasteVisible(s0));
     },
 
     async act(api) {
@@ -74,7 +78,7 @@ export default function item() {
         );
         accepted.push(ok);
         await api.advance(ticksFor(450)); // 54 ticks — let the fan shrink on screen
-        visible.push((await api.snapshot()).wasteVisibleCount);
+        visible.push(wasteVisible(await api.snapshot()));
       }
     },
 

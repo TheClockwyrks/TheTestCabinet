@@ -139,4 +139,4 @@ describe (using the palette in `specs/overview.md`):
 - The splash / spray when the critter drowns or is crushed, and the bear's wake
   ripple on the water beyond what the swim frames carry.
 - The entire HUD (score, lives, level, timer, bay markers) and all text, menus,
-  panels, and overlays (`specs/flow.md`).
+  panels, and overlays (`specs/ui.md`).

@@ -257,10 +257,14 @@ test-cabinet-entities = { path = "crates/entities" }
 test-cabinet-migration = { path = "crates/migration" }
 # SigV4 signing for R2's S3-compatible API (the backend holds the only write
 # credential). Implemented directly over `hmac`/`sha2` rather than pulling the
-# full AWS SDK, since R2 only needs PutObject.
+# full AWS SDK, since R2 only needs PutObject, ListObjectsV2 and DeleteObjects.
 sha2 = "0.10"
 hmac = "0.12"
 hex = "0.4"
+# S3's batch `DeleteObjects` authenticates its request body with a `Content-MD5`
+# header — the one place the R2 client needs a digest other than SHA-256. Same
+# RustCrypto family as `sha2`/`hmac`, so it costs no new dependency tree.
+md-5 = "0.10"
 percent-encoding = "2"
 
 # The standalone auth service hashes passwords with Argon2id (the password-hashing

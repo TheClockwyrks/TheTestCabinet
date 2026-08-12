@@ -22,17 +22,17 @@ conserved: wider and shorter when it squashes, taller and narrower when it stret
 Because it is drawn on full transparency, the slime composites onto any scene.
 
 The case declares **no `[[reference]]`, no `[build]`, and no `[[check]]`**: an
-asset-generation case has no target image and is human-reviewed. Two domains
-(fidelity and animation) carry five weighted review items — the headline "reads as
-a cute green slime", the "convincing squash-and-stretch", and the "clean loop"
-carrying the most weight — and the named `bounce` sequence plays back as a live
-animation in the review UI.
+asset-generation case has no target image and is human-reviewed. It carries no
+reviewer checklist either: the sheet is judged as a whole against the brief — does
+it read as a cute green slime, is the squash-and-stretch convincing, does the loop
+run clean — as one overall rating, with the named `bounce` sequence playing back
+as a live animation in the review UI.
 
 ## Layout
 
 ```text
 v1.0.0/
-  test-case.toml      # manifest: type, asset_kind, tables, domains, review items
+  test-case.toml      # manifest: type, asset_kind, tables, domain
   prompt.hbs          # the instruction rendered per run (NOT seeded)
   description.md      # site-facing blurb (NOT seeded)
   README.md           # this file (NOT seeded)
@@ -60,8 +60,8 @@ tcab seed   --test-case slime-bounce --version v1.0.0 --variant base --out-dir <
 ## Variants
 
 This case ships a single variant, `base` (the standard 32×32, six-frame sheet). It
-adds no specs, review items, or domains of its own and declares no `[canvas]`
-override, so the frame size and sequence never vary.
+adds no specs or domains of its own and declares no `[canvas]` override, so the
+frame size and sequence never vary.
 
 ## Versioning
 

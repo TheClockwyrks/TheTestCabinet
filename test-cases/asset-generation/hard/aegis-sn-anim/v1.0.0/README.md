@@ -15,16 +15,16 @@ builds toward the seeded brief and is reviewed subjectively against it.
 
 ## The meshing tool: Surface Nets
 
-Unlike a cube voxel case, `sn-anim` does not place discrete cells. It maintains
-a **continuous signed-distance field** the model shapes by **compositing
+Unlike a cube voxel case, `sn-anim` does not place discrete cells. It maintains a
+**continuous signed-distance field** the model shapes by **compositing
 primitives** — `add-`/`subtract-` spheres, boxes, ellipsoids, and cylinders, a
 `--blend` radius for smooth joins, plus
 `mirror`/`translate`/`copy`/`replace-color`/`clear` — and extracts its surface
 with **Surface Nets**: a **smooth, watertight, uniformly tessellated, rounded**
-mesh with no sharp edges. A `[[review_item]]` scores whether the extracted
-surface shows Surface Nets' smooth, rounded character rather than fighting the
-algorithm for crisp edges it cannot deliver. Each part's authored field is
-emitted as a per-part `.glb` (binary glTF) automatically by core, and that is the
+mesh with no sharp edges. The reviewer weighs whether the extracted surface shows
+Surface Nets' smooth, rounded character rather than fighting the algorithm for
+crisp edges it cannot deliver. Each part's authored field is emitted as a
+per-part `.glb` (binary glTF) automatically by core, and that is the
 authoritative geometry a reviewer and the frontend read. The binary's `--help` is
 the contract; no operations schema is seeded.
 
@@ -74,8 +74,7 @@ emitted per-part `.glb` plus `rig.json` are the authoritative output.
 
 The Aegis ships a single default variant — `base`, declared in
 `variants/base.toml`. It seeds the common brief and is rated on the case's
-single `fidelity` scoring domain; it adds no specs, review items, or domains of
-its own.
+single `overall` scoring domain; it adds no specs or domains of its own.
 
 ## Versioning
 

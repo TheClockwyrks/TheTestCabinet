@@ -63,7 +63,7 @@ the skeleton). There is no target model and no operations schema — the binary'
 The Lancer ships three size variants: **`base`** (the case's 32×50×50 volume, the
 default), **`half`** (each extent ~halved, 16×25×25), and **`double`** (each doubled,
 64×100×100). Each declares its own `[voxel]` override and renders the brief at those
-dimensions; all share the single `fidelity` scoring domain and its review items.
+dimensions; all share the single `overall` scoring domain.
 
 ## Versioning
 

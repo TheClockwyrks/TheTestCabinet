@@ -43,69 +43,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the clip reads as the bright, upbeat title theme the brief \
-describes — a cheerful, inviting main-menu cue with a playful bouncy melody, a \
-peppy pulse, and a small triumphant lift, energetic but light and never heavy or \
-dark."""
-
-[[domain]]
-id = "craft"
-name = "Craft"
-description = """
-Musicianship in the writing — a clear, catchy tune with a coherent tonality and \
-pulse, sensible instrument choices and voicings from the gm-lite bank that read as \
-colorful and bouncy, a clean loopable ending, and a balanced, open stereo mix with \
-real width and depth."""
-
-[[review_item]]
-id = "bright-upbeat"
-title = "Bright and upbeat"
-text = """
-The clip reads at once as a bright, cheerful, inviting title theme — sunny and \
-energetic, the kind of colorful cue that plays under a casual game's main menu at \
-"press start" — not somber, tense, or heavy."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "playful-bouncy"
-title = "Playful and bouncy"
-text = """
-A light, catchy, bouncing melody carries the cue — playful and skipping, buoyed by \
-a peppy pulse — so it feels fun and light on its feet rather than plodding or \
-serious."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "triumphant-lift"
-title = "A small triumphant lift"
-text = """
-The cue builds to a small, satisfying lift or fanfare-like high point — an \
-inviting "welcome in" moment — so it feels warm and rewarding without turning \
-grand, martial, or overblown."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "loopable-ending"
-title = "Comes to rest for a clean loop"
-text = """
-The end returns cleanly toward the opening with no click, gap, or jarring seam, so \
-the theme can repeat while the player lingers on the menu."""
-weight = 1
-domain = "craft"
-
-[[review_item]]
-id = "stereo-mix"
-title = "Open, balanced stereo mix"
-text = """
-The clip is stereo with an open, lively image that gives the mallets, strings, and \
-plucks room to spread with a sense of space and depth, and holds a clean balance \
-with no clipping and no one voice swamping the rest."""
-weight = 1
-domain = "craft"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

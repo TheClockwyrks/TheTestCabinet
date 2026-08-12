@@ -89,74 +89,14 @@ auto_play = false
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Caldera Sapper and poses \
-correctly — the tall, spindly, insectile obsidian technician on four thin high-kneed \
-legs, holding its narrow body high on a long segmented spine, carrying a row of acid-green \
-beads along that spine and one contiguous accent region, whose spidery stalk and scissoring \
-cut read as the only Slag that carries tools, in the disciplined Caldera palette."""
-
-[[review_item]]
-id = "reads-as-sapper"
-title = "Reads as the Sapper"
-text = """
-From more than one angle the model reads unmistakably as the Sapper: a TALL, SPINDLY, \
-insectile obsidian creature standing on four thin, high-kneed legs, its narrow body held \
-high on a long segmented spine that curves up to a small, narrow head. Two long \
-multi-jointed CUTTING SHEAR ARMS reach from the front — scissoring blades, not fists — the \
-only Slag that carries tools. A row of acid-green beads runs along each segment of the \
-spine, and there is NO other acid glow anywhere on the model — no eye, no chest seams — \
-that beaded spine is the Sapper's whole glow signature. Nothing about it reads as armored, \
-heavy, or brawling: it is the tall, thin technician."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "move-reads"
-title = "Move stalks quick and in place"
-text = """
-Playing `move` stalks the Sapper forward: its four thin legs pick their way with a quick, \
-spidery, high-stepping gait while the narrow body stays held high and level, so it reads as \
-a light, precise creature stepping rather than flailing, gliding, or sliding weightlessly. \
-The body does not translate across the scene — the leg cycle alone carries the stride — and \
-the body holds high and level as the legs work under it. It loops seamlessly."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "attack-reads"
-title = "Attack scissors the shears shut"
-text = """
-Playing `attack` opens the two shear arms wide and scissors them shut in one clean cutting \
-stroke, then resets to its stance, with the feet staying planted. It reads unmistakably as \
-a tool cutting through a pipe or structure — a scissoring shear, not a punch — with the \
-blades meeting cleanly at the close."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "accent-plates"
-title = "A contiguous accent region on the shear arms"
-text = """
-The plates along the outer faces of both cutting shear arms — and only those — are sculpted \
-in the accent color `#4a4358`, as coherent contiguous plates (one plate group per arm), not \
-scattered flecks, and clearly visible from more than one angle. That color appears NOWHERE \
-else on the model — not one stray voxel, highlight, or seam. The game finds every voxel of \
-it and repaints it to show the Sapper's tier, so a scattered, broken, or misplaced accent \
-region breaks the tier system outright."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Caldera palette discipline"
-text = """
-Uses only the brief's four colors — obsidian body, obsidian-dark recesses, the accent \
-plate, and the acid glow — with no out-of-palette colors, and in particular NO steel \
-`#c9ced6` and NO violet `#b56bff` anywhere on the model, since a game paints those on \
-at run time. No stray voxels drift off the body."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

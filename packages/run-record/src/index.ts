@@ -1478,29 +1478,27 @@ export type PerformanceCaseResult = {
    * The per-snapshot checksums the submission actually produced, in schedule
    * order. Empty when the engine could not be run at all.
    *
-   * Recorded so browser playback can *prove* what it is drawing: playback loads the
-   * run's own engine module and steps it, and at each graded tick inside the played
-   * window it compares the module's checksum against the one recorded here, warning
-   * when they differ. That is a cheap assertion that the wasm it is animating is the
-   * engine the run graded, not a stand-in.
+   * Recorded so [browser playback](crate::validation) can *prove* what it is
+   * drawing: playback loads the run's **own** engine module and steps it, and at
+   * each scheduled snapshot tick can compare the module's checksum against the one
+   * recorded here — a cheap assertion that the wasm it is animating is the engine
+   * the run graded, not a stand-in.
    *
-   * The checksums are worth comparing against because the grader derived them from
-   * state rather than accepting them as reported: the host re-serializes each
-   * returned snapshot to canonical bytes and rejects a checksum that is not its own
-   * state's. A run recorded before that gate existed carries checksums that were
-   * taken on trust.
+   * `#[serde(default)]` because run records written before this field existed
+   * must still load.
    */
   snapshots: Array<PerformanceSnapshotCheck>;
   /**
-   * Run-root-relative path to the published, browser-playable scenario, or `null`
-   * when the case's input could not be read.
+   * Run-root-relative path to the published, browser-playable scenario, or
+   * `None` when the case's input could not be read.
    *
-   * Browser playback loads the run's own engine module (see {@link
-   * PerformanceResult.moduleWasm}) and steps it over this scenario to reconstruct the
-   * factory the submission actually computed — a run records only a handful of
-   * scheduled snapshots, thousands of ticks apart, so there is nothing to
-   * interpolate between. Publishing the scenario alongside the result is what feeds
-   * that playback, exactly as an adversarial run publishes its `replayJson`.
+   * Browser playback loads the run's own engine module (see
+   * [`PerformanceResult::module_wasm`]) and steps it over this scenario to
+   * reconstruct the factory the submission actually computed — a run records only
+   * a handful of scheduled snapshots, thousands of ticks apart, so there is
+   * nothing to interpolate between. Publishing the scenario alongside the result
+   * is what feeds that playback, exactly as an adversarial run publishes its
+   * [`replay_json`](AdversarialReplay::replay_json).
    */
   scenarioJson: string | null;
 };
@@ -1544,17 +1542,17 @@ export type PerformanceResult = {
    */
   cases: Array<PerformanceCaseResult>;
   /**
-   * Run-root-relative path to the published **engine module** — the submission's own
-   * `engine.wasm`, the one artifact a performance run authoritatively produces — or
-   * `null` when the build emitted no module.
+   * Run-root-relative path to the published **engine module** — the submission's
+   * own `engine.wasm`, the one artifact a performance run authoritatively
+   * produces — or `None` when the build emitted no module.
    *
    * Published so browser playback can load and step the **run's own engine** over
-   * each case's {@link PerformanceCaseResult.scenarioJson scenario}, reconstructing
+   * each case's [scenario](PerformanceCaseResult::scenario_json), reconstructing
    * the factory the submission actually computed (divergences and all) rather than
    * re-simulating with the reference engine. There is one module per run — every
-   * case's playback drives the same wasm — so it is recorded here at the run level,
-   * not per case. The module built by the buildkit exports the tick-at-a-time
-   * playback ABI the renderer drives, alongside the scored `simulate` entry.
+   * case's playback drives the same wasm — so it is recorded here at the run
+   * level, not per case. The module built by the buildkit exports the tick-at-a-
+   * time playback ABI the renderer drives, alongside the scored `simulate` entry.
    */
   moduleWasm: string | null;
   /**
@@ -1873,6 +1871,34 @@ export type RunStatus = {
 };
 
 /**
+ * One earlier game-jam run's gameplay README, as served back to a new run of the
+ * same jam by the same model (under any harness) so the new run can build something
+ * distinct from what came before.
+ *
+ * One type serves both ends of that trip: it is what the backend returns from
+ * `GET /game-jams/{slug}/prior-readmes` and the driver threads into seeding and the
+ * prompt, *and* what the new run records in
+ * [`RunRecord::game_jam_prior_entries`](RunRecord::game_jam_prior_entries) as the
+ * inputs it was given. The `readme` is the prior run's captured
+ * [`RunRecord::game_jam_readme`].
+ */
+export type PriorGameJamEntry = {
+  /**
+   * The prior run's id, carried so an entry can be traced back to its run.
+   */
+  runId: string;
+  /**
+   * RFC 3339 timestamp of when the prior run finished, used to order and label
+   * the entries (oldest first) when they are seeded.
+   */
+  finishedAt: string;
+  /**
+   * The gameplay README the prior run produced.
+   */
+  readme: string;
+};
+
+/**
  * The complete run record emitted by every run.
  *
  * This is the contract consumed by the site and published with each run. Its
@@ -1926,11 +1952,28 @@ export type RunRecord = {
    * other test type, and for a game-jam run that shipped no README.
    *
    * This is what makes a later jam run aware of what earlier runs already built:
-   * the backend serves the prior runs' READMEs (matched on the same jam, harness,
-   * and model) back to a new run, which seeds them and is asked to build something
-   * distinct. Kept out of a run's other surfaces — it exists to brief the *next*
-   * run, not to be displayed. Defaulted and omitted when absent so records written
-   * before the field existed still deserialize and non-jam records stay slim.
+   * the backend serves the prior runs' READMEs (matched on the same jam and model,
+   * across harnesses) back to a new run, which seeds them and is asked to build
+   * something distinct. Kept out of a run's other surfaces — it exists to brief the
+   * *next* run, not to be displayed. Defaulted and omitted when absent so records
+   * written before the field existed still deserialize and non-jam records stay
+   * slim.
    */
   gameJamReadme?: string | null;
+  /**
+   * The earlier entries this **game-jam** run was seeded with and briefed to build
+   * something distinct from: every prior run of the same jam by the same model whose
+   * gameplay README was written into the run's `previous-entries/` folder, oldest
+   * first — README body included, exactly as this run was shown it.
+   *
+   * Empty for a jam's first run by a model (and for every other test type). Unlike
+   * [`game_jam_readme`](Self::game_jam_readme) these *are* meant to be shown: they
+   * are inputs to the run, the only ones not shared with every other run of the jam,
+   * and the Inputs tab renders each README inline beside the jam's prompt and specs.
+   * The bodies are carried here rather than looked up from the runs that produced
+   * them, because that is what makes them readable as inputs — a prior run may never
+   * be published, and a record has to stand on its own. Defaulted and omitted when
+   * empty so records written before the field existed still deserialize.
+   */
+  gameJamPriorEntries?: Array<PriorGameJamEntry>;
 };

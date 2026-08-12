@@ -272,7 +272,7 @@ s add-reverb --bus master --size 0.6 --mix 0.24
 s render
 
 # ================================= ALARM: FUEL ===============================
-# The LOW-FUEL WARNING KLAXON (specs/character.md, specs/flow.md): a tense, insistent two-tone
+# The LOW-FUEL WARNING KLAXON (specs/character.md, specs/ui.md): a tense, insistent two-tone
 # warble that says "get to the surface NOW" without screaming. A detuned square-pair pulses a
 # high-then-low klaxon twice, with a buzzing vibrato and a little distortion for the cheap-suit
 # alarm grit, over a steady sub. Urgent and repeating — the game may loop it while fuel is low.

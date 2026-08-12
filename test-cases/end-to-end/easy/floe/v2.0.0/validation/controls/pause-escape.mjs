@@ -18,11 +18,16 @@ export default function item() {
     },
 
     // Play briefly, then pause — so the clip shows the pause landing over live play
-    // rather than over a board that has not moved yet.
+    // rather than over a board that has not moved yet — and then HOLD on the paused
+    // screen, for the reason in `pause-p`: without a tail the recording ends on the tick
+    // the key was pressed and never shows the pause menu it is about. The reading is
+    // taken before the tail, and a paused simulation is frozen (specs/controls.md), so
+    // the tail is camera time and nothing else.
     async act(api) {
       await api.advance(60); // 0.5 s of live play before the pause
       await api.call("press", "Escape");
       screen = (await api.snapshot()).screen;
+      await api.advance(150); // 1.25 s holding on the paused screen
     },
 
     async assert(api, check) {

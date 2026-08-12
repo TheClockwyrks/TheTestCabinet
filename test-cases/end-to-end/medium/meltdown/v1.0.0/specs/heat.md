@@ -7,7 +7,7 @@ up to a per-tower redline and holds it there, how pushing all the way to the tri
 takes it offline, how a tower sheds heat only through the faces that touch open air,
 how heat conducts between packed towers, and how the Forge and Sink move heat to and
 from their neighbors. Read this file carefully. It builds on the tile grid and tower
-footprints in `specs/reactor.md` and is the rule that the towers in `specs/towers.md`
+footprints in `specs/playfield.md` and is the rule that the towers in `specs/towers.md`
 are all built on.
 
 ## Emitter heat
@@ -15,7 +15,7 @@ are all built on.
 Each emitter (every tower that fires, the six in `specs/towers.md`; the Forge and
 Sink do not fire and have no heat of their own) carries a heat value `H`, a number
 from 0 (stone cold) to 100 (the trip). Heat is shown on its footprint and in the
-inspector (`specs/reactor.md`), and it changes continuously as the tower runs:
+inspector (`specs/ui.md`), and it changes continuously as the tower runs:
 
 - Firing heats it. Each shot a tower fires adds `heatPerShot / mass` to `H` (`mass`
   is the tower's thermal mass, below). A fast-firing or heavy-hitting tower piles on
@@ -68,11 +68,11 @@ lives, so you must funnel the surge past your guns (a maze) to keep them hot.
   a heavy, stable gun has a high redline (it only maxes out right near the trip, but
   is steady enough to be held there). Each tower's `R` is in `specs/towers.md`.
 - The band `[R, 100]` is the sweet spot: full damage, still online. The redline
-  marker on the heat read (`specs/reactor.md`, `specs/overview.md`) sits at `R`, so
+  marker on the heat read (`specs/ui.md`, `specs/overview.md`) sits at `R`, so
   the player can see how much room a tower has between full power and the trip.
 - The multiplier is on screen. The selected-tower inspector shows the tower's
   current per-shot damage and its heat damage multiplier side by side (the live
-  value of `heatMultiplier(H, R)`, for example `x3.5 heat`; `specs/reactor.md`). The
+  value of `heatMultiplier(H, R)`, for example `x3.5 heat`; `specs/controls.md`). The
   player watches the multiplier climb as the tower heats and then hold flat once heat
   reaches `R`. The plateau is visible directly, not inferred from the glow. Because
   the multiplier stops rising at `R`, driving heat on past the redline buys only trip
@@ -182,7 +182,7 @@ touch the mover's footprint.
   baking. Its output rises with its level (16 -> 24 -> 36 per edge, `specs/towers.md`).
   Sinks stack, and shield a Rime from stray heat.
 
-Both are still walls like any tower (`specs/reactor.md`), so they also shape the
+Both are still walls like any tower (`specs/playfield.md`), so they also shape the
 maze, and a face touching a mover sheds no heat to air. Where you place and how you
 pack a Forge or a Sink is as much a part of the puzzle as where the guns go.
 

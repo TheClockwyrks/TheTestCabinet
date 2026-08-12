@@ -5,8 +5,8 @@ their stats, their damage types, their detection, and the two-branch upgrade
 choice each offers. It builds on the board and its free tower placement in
 `specs/board.md`, the hit points / damage-type / trait model in
 `specs/matter.md`, the controls in `specs/controls.md`, and the economy in
-`specs/campaign.md`. Ranges are in logical pixels; costs and energy are the
-unitless values of `specs/campaign.md`.
+`specs/gameplay.md`. Ranges are in logical pixels; costs and energy are the
+unitless values of `specs/gameplay.md`.
 
 The stat numbers below are fixed; implement them exactly as written. Equally
 important is the behavior: no tower is a lock for one form, no capability is
@@ -169,7 +169,7 @@ and both branches of a tower are worth taking.
 - Sell. A selected tower sells for a `70%` refund of everything spent on it
   (build plus upgrades), rounded down, except a tower sold during the same build
   phase it was placed on, before that round has started, which refunds its full
-  spend. During the untimed opening build phase (`specs/campaign.md`) you can
+  spend. During the untimed opening build phase (`specs/gameplay.md`) you can
   freely place, re-shape, and sell back your opening board without penalty.
   Selling frees the spot immediately.
 

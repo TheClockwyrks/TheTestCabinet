@@ -33,7 +33,7 @@ the same jam can produce wholly different games and both be excellent.
 A jam provides:
 
 - A **theme** — a short, evocative brief rendered into the prompt (for example
-  _Dead Man's Switch_). The model interprets it however it finds most interesting.
+  _Locomotivation_). The model interprets it however it finds most interesting.
 - A stated **time budget** — the prompt tells the model how many wall-clock hours it
   has (`{{time_limit_hours}}`, from the case's `max_runtime_hours`) and that it can
   run `date` in the container to see the current time and pace itself.
@@ -111,20 +111,34 @@ the same game, each run is briefed on what earlier runs already built:
 - **Capture.** When a jam run finishes, its gameplay README is captured into the run
   record (`RunRecord.gameJamReadme`), so it persists regardless of whether the run is
   ever published.
+- **Queue.** A model's runs of one jam are dispatched **one at a time**. The backend
+  will not claim a queued `game-jam` job while another run of the same jam and model
+  occupies a slot — whichever harness either uses — so a later entry always starts
+  after the earlier one has finished and stored its README. Held-back entries show as
+  `pending` in the console's active-run list. Runs of *different* jams, or of the same
+  jam by different models, are unaffected and still run in parallel.
 - **Seed.** Before a new run seeds, the driver asks the backend
-  (`GET /game-jams/{slug}/prior-readmes`) for the READMEs of every earlier run of the
-  **same jam, harness, and model** — across all prior runs, published or not. Those
-  READMEs are seeded into a `previous-entries/` folder in the workspace. The folder is
-  reference material, not part of the submission, so it is git-ignored (via
-  `.git/info/exclude`) and never committed — not by the seed, and not by the model's
-  own `git add`.
+  (`GET /game-jams/{slug}/prior-readmes?model=`) for the READMEs of every earlier run
+  of the **same jam by the same model** — across every harness, and across all prior
+  runs, published or not. Those READMEs are seeded into a `previous-entries/` folder in
+  the workspace. The folder is reference material, not part of the submission, so it is
+  git-ignored (via `.git/info/exclude`) and never committed — not by the seed, and not
+  by the model's own `git add`.
 - **Prompt.** When at least one earlier entry was seeded, the prompt gains a
   distinctness section telling the model to read `previous-entries/` and build a
   genuinely different game — a different core idea, genre, or mechanic — rather than a
   reskin or variation.
+- **Record.** The entries a run was briefed with are recorded on it as the inputs they
+  are (`RunRecord.gameJamPriorEntries` — each earlier run's id, finish time, and the
+  README body itself), and the run's **Inputs** tab renders each README inline at the
+  `previous-entries/entry-NN.md` path the model read it at, alongside the jam's prompt.
+  So what a run was actually shown is readable on the run rather than inferred from the
+  games.
 
-The match is exact on `(jam, harness, model)`: a *different* model's runs never
-influence this one. A jam's first run for a given model sees no prior entries and
+The match is on `(jam, model)` and deliberately spans harnesses: what repeats a game
+is the model, not the tool driving it, so an entry the same model built under another
+harness is exactly the history a new run must not retread. A *different* model's runs
+never influence this one. A jam's first run for a given model sees no prior entries and
 carries no distinctness section, so it renders exactly as before.
 
 ## The two things that are judged

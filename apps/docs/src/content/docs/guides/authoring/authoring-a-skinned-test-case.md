@@ -80,7 +80,7 @@ adding a new version, never by editing a published one.
 
 ```text
 test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml         # manifest: type, asset_kind, [voxel], [tool], [output], [model], domains
+  test-case.toml         # manifest: type, asset_kind, [voxel], [tool], [output], [model], the overall domain
   variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)
   description.md         # site-facing prose (NOT seeded)
@@ -231,16 +231,13 @@ auto_play = false
 [[spec]]
 source = "specs/brief.md"
 
-# At least one scoring domain, rated for EVERY variant. Reporter-side; NOT seeded.
+# The single scoring domain, rated for EVERY variant — and the whole review. The
+# asset is judged as a WHOLE against its brief, so the case declares NO
+# [[review_item]]s. Reporter-side; NOT seeded. Copy it verbatim.
 [[domain]]
-id          = "fidelity"
-name        = "Fidelity"
-description = "How faithfully the character matches the brief."
-
-[[domain]]
-id          = "deformation"
-name        = "Deformation"
-description = "How convincingly the skin deforms across joints in each animation."
+id = "overall"
+name = "Overall"
+description = "How good the produced asset is overall, judged against the brief."
 ```
 
 The default variant file (`variants/base.toml`) is a standalone document that adds only
@@ -252,8 +249,6 @@ brief:
 slug = "base"
 name = "Base"
 spec = []                              # ADDITIVE specs on top of the common specs
-# review_item = [...]                  # ADDITIVE reviewer items (may name a common domain)
-# [[domain]]                           # ADDITIONAL scoring domains, rated only for this variant
 ```
 
 Key manifest rules for a skinned case:
@@ -287,7 +282,11 @@ Key manifest rules for a skinned case:
   `type = "asset-generation"` (required; omitting it defaults to `end-to-end`, which then
   rejects these tables), the `variants` list (first is the default; at least one, usually
   `base`), and the `[[spec]]`/`[[domain]]` seeding rules behave exactly as for any
-  asset-generation case.
+  asset-generation case — including the single `overall` domain and **no
+  `[[review_item]]` checklist**: how faithfully the character matches the brief and how
+  convincingly the skin deforms across its joints are judged together, as one rating
+  (see
+  [Judged on one overall rating](/testing/asset-generation/manifests/#judged-on-one-overall-rating)).
 
 ### 5. Write the non-seeded docs
 

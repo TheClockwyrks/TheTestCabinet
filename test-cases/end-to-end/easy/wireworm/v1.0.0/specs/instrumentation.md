@@ -65,6 +65,15 @@ directly. Cursor, foe, bolt, and arc coordinates are in the logical-pixel space 
 `specs/overview.md`; node and worm-segment positions are tile coordinates
 `(c, r)` on the grid of `specs/board.md`.
 
+Every `(x, y)` this API reports or accepts is the entity's CENTER, per the
+convention in `specs/overview.md` — never the top-left corner of its sprite. That
+holds in both directions: `setCursor(x, y)` and `spawnFoe`'s `x`/`y` place the
+entity's center there, and `snapshot()` reports the center back. A caller aiming at
+a tile therefore passes that tile's center, `(32c + 16, 80 + 32r + 16)`, and reads
+the same value back for an entity sitting on it. Reporting a sprite's corner where
+its center is asked for is off by half a tile in each axis, which silently puts an
+entity on the wrong tile.
+
 ### Core operations
 
 - `reset(options)` returns the game to its initial title state and switches to
@@ -94,6 +103,21 @@ play uses, arranging the world rather than faking outcomes. To see a mechanic fi
 arrange its precondition with these, then `step()` and read the result from
 `snapshot()`.
 
+None of these operations starts a run on its own. `step()` only advances live play,
+so a scenario that wants to run the simulation must first reach it — with
+`enterPlay()` below (instant, for a posed scenario) or `startRun()` (a real run,
+opening on its banner). Posing the world while the game sits on a menu is legal, but
+nothing will move until you do.
+
+- `enterPlay()` puts the game directly into live play (`screen` `"playing"`, `phase`
+  `"active"`) and returns immediately, so a posed scenario is live the instant the
+  call returns. It lays a fresh scattered field and leaves the board clear of worms
+  and foes, the cursor centred in the band, and — unlike a real respawn — with **no
+  level banner and no spawn-in invulnerability**, so a posed hit lands on the very
+  next tick. Score, lives, and level are left as they are, so it can be called in any
+  order with the other control operations. If live play is already running it does
+  nothing. This is the operation a scripted check uses to reach a playable state
+  without spending ticks; `startRun()` is for exercising the real entry path.
 - `startRun()` starts a real run at level 1, exactly as choosing `DESCEND` from the
   menu would. The run opens on its level banner; step past it to reach live play.
 - `setLevel(n)` sets the current level to `n` (`1..12`) as a precondition, and
@@ -116,18 +140,19 @@ arrange its precondition with these, then `step()` and read the result from
   `spec.dv` (`+1` down, `-1` up) set its heading (defaulting to right and down).
   The worm then winds, charges, dives, splits, and is shot exactly like any other.
 - `spawnFoe(kind, options)` adds one foe of `kind` (`"glitch"`, `"dropper"`, or
-  `"corruptor"`) to the board. `options` may set `x` and `y` (logical-pixel
-  position), `vx` (horizontal velocity), and, for a corruptor, `row` (the grid row
-  it crawls). The foe then moves and interacts through its real behavior
-  (`specs/foes.md`) when you step.
+  `"corruptor"`) to the board. `options` may set `x` and `y` (the foe's CENTER, in
+  logical pixels), `vx` (horizontal velocity), and, for a corruptor, `row` (the grid
+  row it crawls, which places its center on that row's center line). The foe then
+  moves and interacts through its real behavior (`specs/foes.md`) when you step.
 - `fire()` fires a bolt straight up from the cursor's current position now,
   bypassing the fire cadence so a scenario can shoot on demand. The bolt travels
   and resolves its hit through the real shot code as the simulation steps.
 
-A typical check calls `startRun()`, steps past the banner, uses `clearField`,
-`setNode`, `setWorm`, and `setCursor` to arrange the exact situation wanted, calls
-`fire()`, then `step()` a handful of ticks to run the real resolution and reads the
-result from `snapshot()`.
+A typical check calls `enterPlay()`, uses `clearField`, `setNode`, `setWorm`, and
+`setCursor` to arrange the exact situation wanted, calls `fire()`, then `step()` a
+handful of ticks to run the real resolution and reads the result from `snapshot()`.
+A check that means to exercise the real entry path uses `startRun()` instead and
+steps past the banner to reach live play.
 
 ### Input operations
 
@@ -189,6 +214,14 @@ pass) so the cursor moves or a bolt fires, then `keyUp` to release it, reading
   foes: [
     {
       kind: "glitch" | "dropper" | "corruptor",
+      // `x`/`y` are the CENTER of the foe (specs/overview.md), so the tile it is on
+      // is `floor(x / 32)`, `floor((y - 80) / 32)` — the same tile its effects (a
+      // glitch's eat, a dropper's drop, a corruptor's slam) land on.
+      // `vx`/`vy` are the foe's ACTUAL current velocity in logical px/s — what its
+      // position is changing by right now, including any weave or dart its movement
+      // applies. A foe whose horizontal motion reverses reports a `vx` that reverses
+      // sign with it; reporting only an underlying drift while the foe visibly moves
+      // some other way does not meet this contract.
       x: <number>, y: <number>, vx: <number>, vy: <number>,
       firstHit: <boolean>,  // a dropper that has taken its speed-up hit
     },

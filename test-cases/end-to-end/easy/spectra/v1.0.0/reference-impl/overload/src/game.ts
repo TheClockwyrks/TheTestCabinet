@@ -4,7 +4,7 @@
 // inversion. Simulation runs on a fixed timestep (main.ts) decoupled from render.
 //
 // See specs/polarity.md (bands, shield, discharge), specs/controls.md,
-// specs/enemies.md (drones), specs/flow.md (stages, scoring, states), and
+// specs/drones.md (drones), specs/gameplay.md (stages, scoring, states), and
 // specs/playfield.md (geometry).
 
 import {
@@ -89,13 +89,13 @@ import type { Bullet, Drone, DroneKind, DronePhase, GameState } from "./types";
 
 // This variant seeds the single Overload mode (it replaces the base Sortie), so
 // the title menu lists just OVERLOAD and HOW TO PLAY (see
-// reference/menu-overload.html and specs/mode.md "Menu entry").
+// reference/menu-overload.html and specs/gameplay.md "Menu entry").
 const TITLE_MENU = ["OVERLOAD", "HOW TO PLAY"];
 const PAUSE_MENU = ["RESUME", "RESTART", "QUIT TO MENU"];
 const GAMEOVER_MENU = ["PLAY AGAIN", "MENU"];
 
 // The playable mode. Overload replaces the base Sortie's "mismatch is wasted"
-// rule with the charge/overload mechanic (specs/mode.md). The "sortie" member is
+// rule with the charge/overload mechanic (specs/gameplay.md). The "sortie" member is
 // retained for the shared rule paths but is not offered by this variant's menu.
 export type Mode = "sortie" | "overload";
 
@@ -139,7 +139,7 @@ export class Game {
   dischargeR = 0;
   private dischargeTimer = 0;
 
-  // Spectral inversion (specs/enemies.md).
+  // Spectral inversion (specs/drones.md).
   inversionTimer = 0;
 
   // Challenge stage bookkeeping.
@@ -159,6 +159,13 @@ export class Game {
   // it renders every frame but advances only when step() is called. reset() and
   // step() set it false; setAutoStep toggles it.
   autoStep = true;
+  // The swarm's own movement and decision-making (specs/instrumentation.md).
+  // True in ordinary play. While false the drones hold station — the formation
+  // stops swaying and no path advances — no further entrant is released, the
+  // assault launches no dives, and no drone fires. Everything else (the ship,
+  // bullets in flight, collisions, the discharge, scoring, the stage-end check,
+  // and a Flux's band clock) runs exactly as usual. reset() restores it.
+  droneAI = true;
   // When on, render.ts draws the read-only debug overlay. Toggled with backtick;
   // off by default; never affects gameplay.
   debugOverlay = false;
@@ -344,8 +351,9 @@ export class Game {
     if (this.fireCd > 0) this.fireCd = Math.max(0, this.fireCd - dt);
     if (this.inversionTimer > 0) this.inversionTimer = Math.max(0, this.inversionTimer - dt);
 
-    // Release entrants whose time has come.
-    if (this.entrants.length > 0) {
+    // Release entrants whose time has come. Held while the swarm's AI is off:
+    // a frozen field must not grow underneath a posed scenario.
+    if (this.droneAI && this.entrants.length > 0) {
       const still: Entrant[] = [];
       for (const e of this.entrants) {
         if (this.waveTime >= e.releaseAt) this.drones.push(e.drone);
@@ -370,7 +378,7 @@ export class Game {
     this.stepBullets(dt);
     this.stepDischarge(dt);
     this.collisions();
-    this.maybeDive(dt);
+    if (this.droneAI) this.maybeDive(dt);
     this.checkStageEnd();
   }
 
@@ -424,7 +432,12 @@ export class Game {
 
     for (const d of this.drones) {
       if (d.dead) continue;
+      // The Flux's band clock is the drone's own oscillation, not its movement,
+      // so it keeps running while the swarm is held — a frozen Flux still
+      // shimmers and settles on the beat (specs/instrumentation.md).
       this.updateFlux(d, dt);
+      // Held: keep the phase and the position exactly as they stand.
+      if (!this.droneAI) continue;
 
       switch (d.phase) {
         case "entering": {
@@ -445,7 +458,7 @@ export class Game {
         }
         case "diving": {
           // A Shard in its Overload headlong plunge travels faster than a normal
-          // dive (specs/mode.md).
+          // dive (specs/gameplay.md).
           const diveSpeed = d.headlong ? OVERLOAD_DIVE_SPEED : DIVE_SPEED;
           d.pathDist += diveSpeed * speedMult * dt;
           const p = d.path!.at(d.pathDist);
@@ -552,7 +565,7 @@ export class Game {
     const spd = EBULLET_SPEED * enemyBulletMult(this.stage);
     const aim = Math.max(-0.35, Math.min(0.35, (this.shipX - d.x) / 400));
     if (d.kind === "prism") {
-      // A two-band burst: one cyan, one magenta (specs/enemies.md).
+      // A two-band burst: one cyan, one magenta (specs/drones.md).
       this.spawnEnemyBullet(d.x - 6, d.y, aim, spd, CYAN);
       this.spawnEnemyBullet(d.x + 6, d.y, aim, spd, MAGENTA);
     } else if (d.kind === "flux") {
@@ -804,7 +817,7 @@ export class Game {
     }
   }
 
-  // ---- Overload mode (specs/mode.md) ----------------------------
+  // ---- Overload mode (specs/gameplay.md) ----------------------------
   // A mismatched shot adds a charge; at OVERLOAD_CHARGE the drone overloads with
   // its per-type reaction and its charge resets to 0 (it can overload again).
   private chargeDrone(d: Drone): void {
@@ -1013,11 +1026,18 @@ export class Game {
     this.autoStep = enabled;
   }
 
+  // Turn the swarm's own movement and decision-making on or off. See the
+  // `droneAI` field, and specs/instrumentation.md for the contract.
+  debugSetDroneAI(enabled: boolean): void {
+    this.droneAI = enabled;
+  }
+
   // Return to the title, reseed all randomness, and re-arm manual stepping.
   debugReset(seed?: number): void {
     this.rng = makeRng(seed ?? DEFAULT_SEED);
     this.nextDroneId = 1;
     this.autoStep = false;
+    this.droneAI = true;
     this.input.releaseAll();
     this.simTime = 0;
     this.score = 0;
@@ -1160,7 +1180,7 @@ export class Game {
   }
 
   // OVERLOAD only: set a drone's mismatched-shot charge as a precondition, so a
-  // real mismatch then tips it into its overload reaction (specs/mode.md).
+  // real mismatch then tips it into its overload reaction (specs/gameplay.md).
   debugSetDroneCharge(id: number, charge: number): void {
     const d = this.drones.find((x) => x.id === id && !x.dead);
     if (d) d.charge = Math.max(0, Math.min(OVERLOAD_CHARGE, Math.round(charge)));

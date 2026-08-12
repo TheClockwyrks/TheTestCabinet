@@ -88,73 +88,14 @@ auto_play = false
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Caldera Repeater and poses \
-correctly — the slim brass post crowned by a rotating drum of many short iron barrels, \
-carrying one contiguous verdigris accent collar, whose drum ticks over on its own and \
-cycles its muzzles in a rapid burst while the post and base stay fixed, in the \
-disciplined Holdfast palette."""
-
-[[review_item]]
-id = "reads-as-repeater"
-title = "Reads as the Repeater"
-text = """
-From more than one angle the model reads unmistakably as the Repeater: a SLIM, \
-medium-height brass post founded on the ground, rising to a ROTATING DRUM OF MANY SHORT \
-IRON BARRELS — a cluster of muzzles arranged around a spinning axis, like a rotary gun. \
-It reads as the cheap, fast, light workhorse: many short barrels is the whole tell. It \
-is not squat, needle-thin, or barrel-less, and carries no single fat upward tub, long \
-horizontal rail, or ring of nozzles. It is brass-and-iron machinery — a static \
-emplacement, not a creature."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "idle-reads"
-title = "Idle ticks the drum over on its own"
-text = """
-Playing `idle` turns the barrel drum slowly and continuously about its spin axis, ticking \
-over on its own with no caller, so the tower reads as live and powered even when it is not \
-firing. It loops seamlessly with an eased, deliberate cadence rather than a mechanical \
-linear slide. Only the drum turns — the post and the ground base stay fixed, never carried \
-along — and no barrel tears away from the drum."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "fire-reads"
-title = "Fire cycles the muzzles in a rapid burst"
-text = """
-Playing `fire` spins the drum up fast and cycles the barrels, one muzzle coming round after \
-another in a rapid burst, reading as a light, fast-firing rotary gun rather than a single \
-heavy shot. The drum turns as one solid piece about its axis with every barrel staying \
-attached, and the post and ground base stay fixed throughout."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "accent-collar"
-title = "A contiguous verdigris accent collar"
-text = """
-A collar ring where the barrel drum meets the top of the post is sculpted as ONE \
-CONTIGUOUS band in the accent color `#2f7d72`, and clearly visible from more than one \
-angle. That color appears NOWHERE else on the model — not one stray voxel, highlight, or \
-seam. The game finds every voxel of it and repaints it to show the tower's upgrade level, \
-so a scattered, broken, or misplaced accent region breaks the upgrade system outright."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Holdfast palette discipline"
-text = """
-Uses only the brief's four colors — brass plating, brass dark, iron mechanisms, and the \
-verdigris accent — with no out-of-palette colors, and in particular NO steel `#b8bcc2`, NO \
-gold `#ffce54`, and NO white `#dfeaea` anywhere on the model, since a game paints those \
-onto the accent collar at run time to show the upgrade level. No stray voxels drift off the \
-model."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

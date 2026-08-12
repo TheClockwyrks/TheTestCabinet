@@ -9,7 +9,11 @@
 
 import { startBuild, placeCandidate, towerAt, snap, SECOND } from "../_helpers.mjs";
 
-const CLIP_TICKS = 2 * SECOND;
+// A beat on the matching PAIR before the fold. The claim is a climb — one tier becoming the next
+// — and a climb is only legible against the rung it started on. The act used to open on the
+// combine, so the pair was already one piece and a blocker before the first frame.
+const LEAD_TICKS = 1.5 * SECOND;
+const CLIP_TICKS = 2.5 * SECOND;
 
 export default function item() {
   // The initiator, and the board after the fold.
@@ -28,6 +32,8 @@ export default function item() {
     },
 
     async act(api) {
+      await api.advance(LEAD_TICKS); // the two Scrap pieces standing, before either resolves
+
       await api.call("combine", aId);
       s = await snap(api);
 

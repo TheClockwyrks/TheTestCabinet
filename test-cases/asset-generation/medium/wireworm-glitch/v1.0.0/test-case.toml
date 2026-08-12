@@ -70,55 +70,14 @@ fps = 10
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated glitch matches the brief — an angular error-red \
-mass split by cyan/magenta chromatic fringes, torn by scanlines, and dotted with \
-white static, jittered to a different corruption in each of four frames, in the \
-tight glitch palette on transparency."""
-
-[[review_item]]
-id = "corruption-read"
-title = "Reads as visible corruption"
-text = """
-The sprite reads as corruption made visible — a jagged, angular mass split by \
-red/cyan/magenta chromatic-aberration fringes, torn by scanline breaks, and \
-scattered with white static — not a smooth, solid creature with a face or legs. A \
-glance says hostile error."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "flicker"
-title = "Unstable flicker, not a walk"
-text = """
-Played fast, the four frames read as one mass jittering and tearing in place — the \
-blob shifts a couple of px, the scanline tears and chromatic fringes move, and the \
-static re-scatters each frame — never holding still and never traveling or growing \
-across the loop. It is instability, not a walk cycle."""
-sequences = ["flicker"]
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "palette-and-transparency"
-title = "Glitch palette on transparency"
-text = """
-Uses only the glitch palette from the brief (error-red core, cyan and magenta \
-fringes, deep shadow, and white static) on full transparency — no out-of-palette \
-pixels and no opaque background fill; only the glitch's pixels are opaque so it \
-composites onto the dark board."""
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "framing"
-title = "Centered and uncropped"
-text = """
-The mass stays centered near (16, 16) and its jitter keeps it inside the 32×32 \
-frame rather than clipping flat against an edge, with the rest of each frame fully \
-transparent."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

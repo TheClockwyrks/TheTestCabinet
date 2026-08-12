@@ -45,49 +45,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated sprite matches the Foray seed cache — a centered \
-cluster of rounded golden seeds that reads as a valuable little heap, in the \
-fixed shared gold palette (never recolored)."""
-
-[[review_item]]
-id = "reads-as-cache"
-title = "Reads as a cache of seeds"
-text = """
-The sprite reads as a small heap of two or three rounded golden seeds nestled \
-together — a cache, not a single dot or one perfect circle — slightly irregular \
-as a real pile would be, with each seed outlined so the individuals read apart."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "valuable-glint"
-title = "Rounded, glinting gold"
-text = """
-A brighter gold glint sits on top of the seeds so they read as rounded and \
-catch the light, making the cache look valuable and worth raiding — not a flat \
-gold patch."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Shared gold palette"
-text = """
-Uses only the shared gold palette from the brief (seed gold, bright glint, dark \
-outline) — never recolored, no red or blue, no out-of-palette colors or halo of \
-stray pixels."""
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "framing"
-title = "Canvas framing"
-text = """
-The cache is centered, filling most of the 16x16 tile with about a pixel of \
-margin, neither tiny in a corner nor clipped at an edge."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

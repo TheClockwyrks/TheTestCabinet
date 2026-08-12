@@ -32,6 +32,7 @@ export interface WirewormDebugApi {
   snapshot(): WirewormSnapshot;
   setAutoStep(enabled: boolean): void;
   // Control
+  enterPlay(): void;
   startRun(): void;
   setLevel(n: number): void;
   setScore(n: number): void;
@@ -110,6 +111,10 @@ export function installDebugApi(game: Game): void {
     // recording a motion clip), false returns to manual stepping.
     setAutoStep(enabled) {
       game.autoStep = Boolean(enabled);
+    },
+
+    enterPlay() {
+      game.debugEnterPlay();
     },
 
     startRun() {

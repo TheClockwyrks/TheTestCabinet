@@ -34,10 +34,7 @@ import {
   LANTERNJAW_RANGE_BASE,
   LANTERNJAW_RANGE_GAIN,
   MAX_DRIFTERS,
-  predatorSpeedMult,
-  RELEASE_FLAREFISH,
-  RELEASE_GLOAMFIN,
-  RELEASE_LANTERNJAW,
+  RELEASE_STAGGER,
   ROWS,
   SCORE_CLEAR,
   SCORE_DRIFTER,
@@ -119,6 +116,13 @@ export class Game {
   // driving the clock itself, and back on (setAutoStep(true)) to record live clips.
   autoStep = true;
 
+  // The creatures' own minds (specs/instrumentation.md). On by default, as normal
+  // play requires; a scenario turns them off so a posed predator or drifter holds
+  // where it was put and an interaction with it is reproducible rather than a bet on
+  // where its wander happened to take it. Only their initiative is suspended — the
+  // forager, the light, cooldowns, waves, ink, eating, scoring, and contact all run.
+  creatureAI = true;
+
   // The read-only debug overlay, toggled with the backtick key. Off by default;
   // never affects gameplay (specs/instrumentation.md).
   debugOverlay = false;
@@ -135,12 +139,53 @@ export class Game {
     this.rng = makeRng(this.seed);
   }
 
+  // The predator roster for the current depth (specs/predators.md): one of each at
+  // DEPTH 1, then one more predator per depth cycling Gloamfin, Lanternjaw, Flarefish,
+  // capped at two of each (six total) from DEPTH 4 on.
+  private predatorRoster(): PredKind[] {
+    const roster = [PredKind.Lanternjaw, PredKind.Gloamfin, PredKind.Flarefish];
+    const added = [PredKind.Gloamfin, PredKind.Lanternjaw, PredKind.Flarefish];
+    const extra = Math.min(Math.max(this.depth - 1, 0), added.length);
+    for (let i = 0; i < extra; i++) roster.push(added[i]);
+    return roster;
+  }
+
   private buildPredators(): void {
-    this.predators = [
-      new Predator(PredKind.Lanternjaw, 17, 8, RELEASE_LANTERNJAW),
-      new Predator(PredKind.Gloamfin, 18, 8, RELEASE_GLOAMFIN),
-      new Predator(PredKind.Flarefish, 16, 8, RELEASE_FLAREFISH),
+    // Den spawn tiles inside the den bounds (specs/maze.md), reused in order; each
+    // predator leaves RELEASE_STAGGER seconds after the one before it.
+    const denTiles: [number, number][] = [
+      [17, 8],
+      [18, 8],
+      [16, 8],
+      [19, 8],
+      [17, 7],
+      [18, 7],
     ];
+    this.predators = this.predatorRoster().map((kind, i) => {
+      const [tx, ty] = denTiles[i % denTiles.length];
+      return new Predator(kind, tx, ty, i * RELEASE_STAGGER);
+    });
+  }
+
+  // Put every predator back in the den, its timer armed to its staggered release.
+  private denPredators(): void {
+    for (const p of this.predators) {
+      p.state = PredState.Den;
+      p.denTimer = p.releaseAt;
+      p.hasFix = false;
+      p.linger = 0;
+      p.blindT = 0;
+      p.markT = 0;
+      p.alertT = 0;
+      p.pulseT = GLOAMFIN_PING_INTERVAL;
+      p.pingLock = 0;
+      p.searching = false;
+      p.searchT = 0;
+      p.searchPingT = 0;
+      p.chaseSpeed = GLOAMFIN_CHASE_SPEED;
+      p.flareT = FLARE_INTERVAL;
+      p.flaring = false;
+    }
   }
 
   // ---- ink helpers ------------------------------------------------------
@@ -189,23 +234,7 @@ export class Game {
   private resetPositions(): void {
     this.forager = new Forager(START_COL, START_ROW, FORAGER_SPEED);
     this.buildPredators();
-    for (const p of this.predators) {
-      p.state = PredState.Den;
-      p.denTimer = p.releaseAt;
-      p.hasFix = false;
-      p.linger = 0;
-      p.blindT = 0;
-      p.markT = 0;
-      p.alertT = 0;
-      p.pulseT = GLOAMFIN_PING_INTERVAL;
-      p.pingLock = 0;
-      p.searching = false;
-      p.searchT = 0;
-      p.searchPingT = 0;
-      p.chaseSpeed = GLOAMFIN_CHASE_SPEED;
-      p.flareT = FLARE_INTERVAL;
-      p.flaring = false;
-    }
+    this.denPredators();
     this.drifters = [];
     this.clouds = [];
     this.waves.length = 0;
@@ -507,7 +536,7 @@ export class Game {
       forager: this.forager,
       fcol: this.forager.col,
       frow: this.forager.row,
-      depthMult: predatorSpeedMult(this.depth),
+      depthMult: 1,
       predators: this.predators,
       drifters: this.drifters,
       rand: this.rng,
@@ -515,7 +544,9 @@ export class Game {
       inkBetween: this.inkBetween,
       spawnWave: this.spawnWave,
     };
-    for (const p of this.predators) updatePredator(p, dt, world);
+    if (this.creatureAI) {
+      for (const p of this.predators) updatePredator(p, dt, world);
+    }
 
     // Bonus drifters.
     this.updateDrifters(dt);
@@ -545,16 +576,20 @@ export class Game {
 
   private updateDrifters(dt: number): void {
     // Existing drifters wander until eaten — a drifter is permanent, no fade-out
-    // (specs/playfield.md), so an amber glimmer you spot stays out there.
-    for (const d of this.drifters) {
-      advance(
-        d,
-        dt,
-        this.maze,
-        () => wanderDir(d, this.maze, this.rng),
-        (c, r) => this.maze.foragerOpen(c, r) && !this.maze.isWrapEdge(c, r),
-        () => true,
-      );
+    // (specs/playfield.md), so an amber glimmer you spot stays out there. A drifter is
+    // a creature, so its wander is one of the minds `setCreatureAI(false)` suspends;
+    // being eaten and scoring below are not, and keep working either way.
+    if (this.creatureAI) {
+      for (const d of this.drifters) {
+        advance(
+          d,
+          dt,
+          this.maze,
+          () => wanderDir(d, this.maze, this.rng),
+          (c, r) => this.maze.foragerOpen(c, r) && !this.maze.isWrapEdge(c, r),
+          () => true,
+        );
+      }
     }
     // Eat any drifter the forager is on (score each).
     const before = this.drifters.length;
@@ -614,12 +649,19 @@ export class Game {
     this.depth = 1;
     this.buildTrench(true);
     this.autoStep = false;
+    this.creatureAI = true;
   }
 
   // Turn automatic (wall-clock) stepping on or off. Input and the other control
   // ops do not change it.
   debugSetAutoStep(enabled: boolean): void {
     this.autoStep = enabled;
+  }
+
+  // Turn the creatures' own minds on or off. With them off every predator and drifter
+  // holds its tile, facing, and state; nothing else about the simulation changes.
+  debugSetCreatureAI(enabled: boolean): void {
+    this.creatureAI = enabled;
   }
 
   // Begin a dive, exactly as choosing DIVE from the title menu (opens on the
@@ -636,10 +678,14 @@ export class Game {
     }
   }
 
-  // Set the trench depth; the real depth-scaling then governs predator speeds and
-  // the sonar range, which recompute from `depth` when the sim is stepped/read.
+  // Set the current depth; the real depth-scaling then governs the derived values —
+  // the predator roster (how many of each) and the sonar range — which recompute from
+  // `depth`. Rebuild the roster and return them to the den so a caller reads the
+  // scaled results back (specs/instrumentation.md, specs/progression.md).
   debugSetDepth(d: number): void {
     this.depth = Math.max(1, Math.round(d));
+    this.buildPredators();
+    this.denPredators();
   }
 
   // Place the forager, at rest, on an open corridor tile (snapped to its center

@@ -11,16 +11,35 @@
 //!   terminally-failed driver pod died (image-pull failure, OOMKill, a non-zero
 //!   exit), for the death-detection report, so a hung job ends with a real
 //!   diagnostic rather than a bare "run failed".
+//! - [`delete_sandbox_pods`](Kube::delete_sandbox_pods) — reap the *sandbox* pods a
+//!   dead driver left behind, which nothing else can (see below).
 //!
 //! It deliberately holds no durable state: the in-flight set is recomputed from the
 //! live cluster, and the backend's `job` table is the source of truth.
+//!
+//! ## Why the dispatcher reaps sandboxes
+//!
+//! The driver creates the sandbox pod and normally deletes it itself — at the end of
+//! a run, and on cancellation. Both paths are *in-process*, so a driver that dies by
+//! `SIGKILL` (OOM kill, eviction, node drain, spot preemption) executes neither. The
+//! sandbox it left behind has no `ownerReference` — it cannot have a useful one,
+//! since its only candidate parent is the driver `Job`, which `ttlSecondsAfterFinished`
+//! reaps a few minutes after the run ends and which would then cascade-delete healthy
+//! sandboxes mid-run — so nothing garbage-collects it and its `sleep infinity`
+//! keep-alive runs forever, holding its requests against the node.
+//!
+//! The dispatcher is the only component positioned to clean this up: it is long-lived,
+//! it already watches every driver `Job` it created, and it learns the moment one
+//! fails terminally. So the death-detection path reaps the sandbox by the job-id label
+//! the driver stamped on it. (The sandbox pod carries a per-run `activeDeadlineSeconds`
+//! as a further backstop for the case where the dispatcher itself is down.)
 
 use k8s_openapi::api::batch::v1::Job;
 use k8s_openapi::api::core::v1::Pod;
-use kube::api::{ListParams, LogParams, PostParams};
+use kube::api::{DeleteParams, ListParams, LogParams, PostParams};
 use kube::{Api, Client};
 
-use crate::job::{JOB_ID_LABEL, managed_selector};
+use crate::job::{JOB_ID_LABEL, SANDBOX_MANAGED_BY, managed_selector};
 
 /// The classification of a driver `Job`'s lifecycle, derived from its status
 /// conditions. A `Job` with `backoffLimit: 0` settles into exactly one of these.
@@ -54,13 +73,20 @@ pub struct ManagedJob {
 pub struct Kube {
     client: Client,
     namespace: String,
+    /// The namespace the *driver* creates sandbox pods in (`TCAB_K8S_NAMESPACE`).
+    /// Usually identical to [`namespace`](Self::namespace) — a deployment that
+    /// separates them must grant the dispatcher's ServiceAccount the pod
+    /// `list`/`delete` verbs in this namespace too, or sandbox reaping silently
+    /// fails there (it is logged, never fatal).
+    sandbox_namespace: String,
 }
 
 impl std::fmt::Debug for Kube {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // `kube::Client` is not `Debug`; summarize by the namespace.
+        // `kube::Client` is not `Debug`; summarize by the namespaces.
         f.debug_struct("Kube")
             .field("namespace", &self.namespace)
+            .field("sandbox_namespace", &self.sandbox_namespace)
             .finish_non_exhaustive()
     }
 }
@@ -68,20 +94,25 @@ impl std::fmt::Debug for Kube {
 impl Kube {
     /// Connect to the cluster the dispatcher is running in (the in-cluster service
     /// account in a deployment, or the ambient kubeconfig locally), scoped to
-    /// `namespace`.
-    pub async fn connect(namespace: impl Into<String>) -> anyhow::Result<Self> {
+    /// `namespace` for `Job`s and `sandbox_namespace` for the driver's sandbox pods.
+    pub async fn connect(
+        namespace: impl Into<String>,
+        sandbox_namespace: impl Into<String>,
+    ) -> anyhow::Result<Self> {
         let client = Client::try_default().await?;
-        Ok(Self {
-            client,
-            namespace: namespace.into(),
-        })
+        Ok(Self::with_client(client, namespace, sandbox_namespace))
     }
 
     /// Build a wrapper around an existing client (used by tests).
-    pub fn with_client(client: Client, namespace: impl Into<String>) -> Self {
+    pub fn with_client(
+        client: Client,
+        namespace: impl Into<String>,
+        sandbox_namespace: impl Into<String>,
+    ) -> Self {
         Self {
             client,
             namespace: namespace.into(),
+            sandbox_namespace: sandbox_namespace.into(),
         }
     }
 
@@ -90,9 +121,15 @@ impl Kube {
         Api::namespaced(self.client.clone(), &self.namespace)
     }
 
-    /// The pods API in the dispatcher's namespace.
+    /// The pods API in the dispatcher's namespace — driver pods, for reading the
+    /// status and logs of one that died.
     fn pods(&self) -> Api<Pod> {
         Api::namespaced(self.client.clone(), &self.namespace)
+    }
+
+    /// The pods API in the namespace the driver creates *sandbox* pods in.
+    fn sandbox_pods(&self) -> Api<Pod> {
+        Api::namespaced(self.client.clone(), &self.sandbox_namespace)
     }
 
     /// Create one driver `Job`.
@@ -132,6 +169,43 @@ impl Kube {
         format!("driver Job `{job_name}` failed without a diagnostic pod status")
     }
 
+    /// Delete every **sandbox** pod belonging to `job_id`, returning how many were
+    /// removed. This is the cleanup a `SIGKILL`ed driver never got to run.
+    ///
+    /// The selector pins **both** the job id and the driver's `managed-by` value.
+    /// The job-id label alone is not enough: the driver `Job` and its own pod carry
+    /// the same `tcab.dev/job-id`, so a single-label selector would delete the
+    /// driver pod out from under the very failure the dispatcher is diagnosing —
+    /// destroying the logs [`failure_detail`](Self::failure_detail) reads.
+    ///
+    /// Deleted with a zero grace period: the run is already over and the sandbox
+    /// holds nothing worth draining. A pod that is already gone is success, so this
+    /// is safe to call more than once for the same job. Listing-then-deleting
+    /// (rather than `delete_collection`) keeps to the `list`/`delete` verbs the
+    /// dispatcher's Role grants — no extra RBAC — and mirrors what the driver's own
+    /// teardown does.
+    pub async fn delete_sandbox_pods(&self, job_id: &str) -> anyhow::Result<usize> {
+        let listed = self
+            .sandbox_pods()
+            .list(&ListParams::default().labels(&sandbox_selector(job_id)))
+            .await?;
+        let params = DeleteParams::default().grace_period(0);
+        let mut deleted = 0;
+        for pod in listed {
+            let Some(name) = pod.metadata.name else {
+                continue;
+            };
+            match self.sandbox_pods().delete(&name, &params).await {
+                Ok(_) => deleted += 1,
+                // Already gone — the driver may have torn it down itself, or a
+                // previous pass removed it. Either way there is nothing to do.
+                Err(kube::Error::Api(err)) if err.code == 404 => {}
+                Err(err) => return Err(err.into()),
+            }
+        }
+        Ok(deleted)
+    }
+
     /// The newest pod created by a `Job` (selected via the controller-set
     /// `job-name` label), for reading its failure status. `None` when none exist.
     async fn newest_job_pod(&self, job_name: &str) -> Option<Pod> {
@@ -154,6 +228,16 @@ impl Kube {
             _ => None,
         }
     }
+}
+
+/// The label selector matching exactly the **sandbox** pods belonging to `job_id`.
+///
+/// Both labels are load-bearing. The driver `Job` and its pod carry the same
+/// `tcab.dev/job-id` as the sandbox they belong to, so selecting on the job id alone
+/// would also match the driver's own pod — and the caller deletes what this matches.
+/// Pinning the driver's `managed-by` value narrows it to pods the driver created.
+fn sandbox_selector(job_id: &str) -> String {
+    format!("{JOB_ID_LABEL}={job_id},app.kubernetes.io/managed-by={SANDBOX_MANAGED_BY}")
 }
 
 /// Classify a `Job` into a [`ManagedJob`] from its conditions and labels. A

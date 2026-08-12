@@ -18,8 +18,11 @@
 #      can't be a patch). Their ClusterIP Services and everything else in the base
 #      are untouched; the replacement Deployments reuse the same selector labels, so
 #      the Services keep routing.
-#   2. Adds the stateless backend + auth Deployments (no PVC), with the connection
-#      strings wired from each environment's Secret. See secrets.postgres.example.yaml.
+#   2. Adds the replacement backend + auth Deployments, with the connection strings
+#      wired from each environment's Secret. See secrets.postgres.example.yaml. The
+#      auth Deployment is fully stateless; the backend keeps ONE volume — a
+#      `tcab-backend-state` PVC for its definition store + ingest checkout, which is
+#      regenerable but expensive to regenerate (see deployment-backend.yaml).
 apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component
 

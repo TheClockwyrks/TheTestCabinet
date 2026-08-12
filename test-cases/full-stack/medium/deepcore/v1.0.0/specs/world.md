@@ -5,7 +5,7 @@ system, the camera, the four depth bands and the Core chamber, every tile kind, 
 ore, materials, and hazards are placed, and the surface and its six buildings. It is
 referenced by `specs/character.md` (movement and drilling), `specs/mining.md` (ore
 and materials), `specs/hazards.md` (gas, lava, the core), `specs/upgrades.md` and
-`specs/rocket.md` (the surface buildings), and `specs/flow.md` (the loop). The
+`specs/rocket.md` (the surface buildings), and `specs/gameplay.md` (the loop). The
 numeric values here are fixed; implement them exactly.
 
 ## The tile grid
@@ -67,7 +67,7 @@ The world is a grid of square tiles, each 80 x 80 logical pixels.
 ## World size (Quick / Standard / Marathon)
 
 When starting a new expedition, after choosing the mode (`specs/modes.md`) the
-player chooses a world size, how deep the mine goes (`specs/flow.md`). The size only
+player chooses a world size, how deep the mine goes (`specs/ui.md`). The size only
 scales the mine's vertical extent; it is not a difficulty mode and does not change
 the four bands' identities, the hazards, the economy, the upgrade ladder, the
 rocket, or how hard a given fraction of the descent is. It is the same game over a
@@ -99,7 +99,7 @@ The rules that scale with the size:
 Everything else (tile size, the 32-column width, drill costs, fuel, cargo, weight,
 upgrade prices, the five-part rocket) is identical across sizes. The chosen size is
 persisted in the save so a restored expedition keeps its dimensions
-(`specs/flow.md`), and Play Again and Restart replay the same size.
+(`specs/gameplay.md`), and Play Again and Restart replay the same size.
 
 ## The four depth bands and the Core chamber
 
@@ -286,19 +286,19 @@ is no digging up here.
 
 Six buildings sit on the surface, each a produced sprite (`specs/assets.md`) the
 miner activates by standing at it. Most open an overlay panel (`specs/controls.md`,
-`specs/flow.md`); the Save Pad has no menu, and activating it saves on the spot:
+`specs/ui.md`); the Save Pad has no menu, and activating it saves on the spot:
 
 - Fuel Depot: where you buy fuel and hull repair. Nothing refills on its own; at the
   depot you spend Credits to add fuel (per unit) and to repair hull (per point), up
-  to your current maxima (`specs/flow.md`, `specs/character.md`). The panel lets you
+  to your current maxima (`specs/gameplay.md`, `specs/character.md`). The panel lets you
   buy a fixed increment or fill and repair to full (paying only for what is missing,
   and only as far as you can afford). The depot is a shop, not a free top-up: refuel
   and repair compete for Credits with upgrades and rocket parts.
 - Ore Market: sells the ore in your cargo for Credits at the listed values
-  (`specs/mining.md`, `specs/flow.md`), emptying the cargo.
+  (`specs/mining.md`, `specs/gameplay.md`), emptying the cargo.
 - Save Pad: the checkpoint pad where you save the expedition to its single save slot;
   the only way to save. It has no menu: activating the pad (key or click) banks
-  progress on the spot, with a note either way (`specs/flow.md`, `specs/modes.md`).
+  progress on the spot, with a note either way (`specs/gameplay.md`, `specs/modes.md`).
 - Upgrade Shop: buys the next tier on any of the seven upgrade tracks (fuel tank,
   drill, cargo bay, hull, jetpack, radiator, scanner) for Credits
   (`specs/upgrades.md`). It sells only upgrades, not consumables.

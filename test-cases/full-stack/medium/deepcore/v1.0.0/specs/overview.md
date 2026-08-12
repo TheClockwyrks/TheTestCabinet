@@ -78,10 +78,12 @@ start; they cross-reference each other by name and form one specification.
 - `specs/rocket.md` is the escape rocket you build to win: its five components,
   what each costs and which exotic material it needs, the launch pad, fabrication,
   and victory.
-- `specs/flow.md` is the economy (Credits, selling, buying, fabricating), the
-  surface loop and refuel/repair, saving and continuing (the Save Pad and single
-  slot), the game state machine, the required menus, the HUD, scoring, and what is
-  out of scope.
+- `specs/gameplay.md` is the single expedition this build plays (its `NEW EXPEDITION`
+  main-menu entry, the mode-select-to-world-size flow, and the start conditions), the
+  economy (Credits, selling, buying, fabricating), the surface loop and refuel/repair,
+  saving and continuing (the Save Pad and single slot), and scoring.
+- `specs/ui.md` is the game state machine, the required menus and building panels, the
+  HUD, and what is out of scope.
 - `specs/modes.md` is the two modes, Standard and Hardcore, chosen at an in-game
   menu: they change only what happens when you die (Standard lets you restore from
   your last save; Hardcore deletes it and ends the run), nothing else.
@@ -100,8 +102,6 @@ start; they cross-reference each other by name and form one specification.
   deterministic steppable core, the `window.__deepcore` API to drive and inspect the
   game from code, and the read-only debug overlay.
 - `specs/proof.md` is the proof-of-implementation captures the finished build writes.
-- `specs/mode.md` is the expedition start this run plays and its main-menu entry.
-  Implement the start it defines; the main menu lists that start, then `HOW TO PLAY`.
 
 ## Goal of this build
 
@@ -269,7 +269,7 @@ palette and type are below; match them.
   feedback all come from your code, in this palette.
 - The canonical screens (the title screen, the live mine, the surface with its
   buildings and the assembling rocket, and the end screens for Victory and the
-  Hardcore Game Over) are described in full under Game states in `specs/flow.md`.
+  Hardcore Game Over) are described in full under Game states in `specs/ui.md`.
   Implement each as described, in this palette and type.
 
 ## Reference images

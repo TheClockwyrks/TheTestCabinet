@@ -7,8 +7,11 @@
 # INSIDE the backend pod as a sidecar: it shares the `state` volume (writing the
 # /state/checkout the backend ingests) and calls POST /ingest over localhost — intra-pod
 # traffic, so the NetworkPolicy never applies and no service token / extra route is
-# needed. It runs a ONE-SHOT ingest on backend start to self-heal the ephemeral
-# (emptyDir) store after a reschedule, then idles.
+# needed. It runs a ONE-SHOT ingest on backend start, then idles. /state is a PVC (see
+# components/postgres/deployment-backend.yaml), so the store normally survives a
+# reschedule and this is a cheap refresh; it is what fills the store on a genuinely
+# cold volume (first deploy, replaced disk), and /readyz holds the pod out of its
+# Service until it lands.
 #
 # BRANCH: ingest the `staging` branch TIP, so a fresh pod and `scripts/reingest-cluster.sh`
 # pick up pushed test-case edits and reference-build lockfile updates on demand — that
@@ -53,6 +56,9 @@ spec:
                   && git clone --depth 1 --branch "$BRANCH" "$REPO" "$CHECKOUT" \
                   || echo "ingest: clone failed"
               fi
+              # Wait on /healthz (LIVENESS), never /readyz: readiness is 503 until the
+              # store is populated, which is what the POST below is about to do, so
+              # gating on it would deadlock the sidecar against itself.
               echo "ingest: waiting for backend healthz"
               until curl -fsS -o /dev/null http://127.0.0.1:8787/healthz; do sleep 3; done
               n=0

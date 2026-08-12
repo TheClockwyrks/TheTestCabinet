@@ -41,39 +41,12 @@ import {
   type Rating,
 } from "../../../data/ratings";
 import { ReviewList } from "./ReviewList";
+import {
+  autoVerdictMap,
+  overriddenAutoVerdictIds,
+  type VerdictDraft,
+} from "./autoVerdicts";
 import styles from "../RunExec.module.scss";
-
-/**
- * One auto-decided verdict from a run's debug scripts, keyed for pre-fill lookup by
- * verdict id (a review item's own id, or the `<item>.<sub>` composite).
- */
-interface AutoVerdictInfo {
-  status: VerdictStatus;
-  note: string;
-}
-
-/**
- * The auto verdicts a run's debug scripts decided, keyed by verdict id. The
- * reviewer's checklist pre-fills from these (binary pass/fail), shown desaturated
- * until the reviewer overrides one. Empty when the case declares no automated
- * validation.
- */
-function autoVerdictMap(run: RunRecord): Map<string, AutoVerdictInfo> {
-  const map = new Map<string, AutoVerdictInfo>();
-  for (const script of run.validation.debugScripts ?? []) {
-    for (const v of script.verdicts) {
-      // The reviewer's note is left blank: a verdict's proof is its assertions,
-      // shown in the automated-validation list, not stuffed into the note field.
-      map.set(v.id, { status: v.pass ? "pass" : "fail", note: "" });
-    }
-  }
-  return map;
-}
-
-interface VerdictDraft {
-  status: VerdictStatus | "";
-  note: string;
-}
 
 const STATUSES: VerdictStatus[] = ["pass", "fail"];
 
@@ -113,10 +86,12 @@ function GradeChoice({
   value,
   onChange,
   ariaLabel,
+  disabled = false,
 }: {
   value: GradeStatus | "";
   onChange: (next: GradeStatus | "") => void;
   ariaLabel: string;
+  disabled?: boolean;
 }) {
   return (
     <div
@@ -135,7 +110,8 @@ function GradeChoice({
             aria-checked={selected}
             aria-label={`${meta.label} (${meta.points} ${meta.points === 1 ? "pt" : "pts"})`}
             title={`${meta.label} — ${meta.points} ${meta.points === 1 ? "pt" : "pts"}`}
-            tabIndex={selected || (!value && i === 0) ? 0 : -1}
+            disabled={disabled}
+            tabIndex={disabled ? -1 : selected || (!value && i === 0) ? 0 : -1}
             className={`${styles.verdictOption} ${styles.gradeOption}${
               selected ? ` ${styles.verdictOptionActive}` : ""
             }`}
@@ -171,6 +147,14 @@ function GradeChoice({
 // publish into one *solo* command, so there the editor offers a single
 // "Publish run" that saves the review and publishes in one step.
 //
+// Publishing is a one-way door: once the run is public the editor drops the
+// Publish action on both paths and keeps only the review controls, so a reviewer
+// revising their own published review is never offered a second publish the
+// backend would refuse. This lifecycle is identical for every test type — a game
+// jam is reviewed and published exactly the way a test run is; only the shape of
+// the review differs (graded categories plus a whole-game overall grade instead
+// of per-domain ratings and pass/fail items).
+//
 // Every mutating action requires a signed-in account; signing in and viewing the
 // account live on their own pages (reached from the top bar's account control),
 // so the editor only links to the sign-in page when signed out. A review is
@@ -187,6 +171,7 @@ function GradeChoice({
 export function RunReviewEditor({
   run,
   reviews,
+  published,
   onChanged,
 }: {
   run: RunRecord;
@@ -194,6 +179,12 @@ export function RunReviewEditor({
    * editor seeds from the current account's prior review and gates Publish on the
    * run carrying at least one. */
   reviews: StoredReview[];
+  /** Whether the run has already been published. A published run is public and
+   * cannot be published again (the backend refuses it), so the editor drops the
+   * Publish action entirely and offers only the review controls — a reviewer can
+   * still revise their own review, which refreshes the public snapshot on its
+   * own. */
+  published: boolean;
   onChanged: () => void;
 }) {
   const runId = run.id;
@@ -240,6 +231,10 @@ export function RunReviewEditor({
   // Reviews this account has submitted this session, so Publish enables without a
   // refetch right after submitting.
   const [submittedThisSession, setSubmittedThisSession] = useState(false);
+  // Whether a publish succeeded this session, so the Publish action retires
+  // immediately rather than waiting for the refreshed record to report the run as
+  // published.
+  const [publishedThisSession, setPublishedThisSession] = useState(false);
   // Whether the review form is open. A reviewer who has not yet reviewed this run
   // sees it open to write their first review; once they carry one it collapses to
   // the summary so the form is not in the way of publishing. Deriving the
@@ -345,21 +340,25 @@ export function RunReviewEditor({
         // Verdicts are keyed by verdict id — the item's own id when it is graded
         // as a whole, or a `<item>.<sub>` composite per sub-item. Seed each draft
         // from, in precedence: the account's own prior verdict of the same id (a
-        // re-review keeps the reviewer's earlier call, a manual value); otherwise
-        // this run's auto verdict (pre-filled and marked auto-set); otherwise unset.
+        // re-review keeps the reviewer's earlier call); otherwise this run's auto
+        // verdict (pre-filled); otherwise unset. Either way a draft that agrees
+        // with what validation decided is marked auto-set, so re-opening a review
+        // shows at a glance which points still stand on the machine's call and
+        // which the reviewer overrode.
         const drafts: Record<string, VerdictDraft> = {};
         const autoIds = new Set<string>();
         for (const item of loaded) {
           for (const vid of verdictIdsForItem(item)) {
+            const autoVerdict = auto.get(vid);
             const existing = prior.get(vid);
             if (existing) {
               drafts[vid] = {
                 status: existing.status,
                 note: existing.note ?? "",
               };
+              if (autoVerdict?.status === existing.status) autoIds.add(vid);
               continue;
             }
-            const autoVerdict = auto.get(vid);
             if (autoVerdict) {
               drafts[vid] = { ...autoVerdict };
               autoIds.add(vid);
@@ -432,8 +431,20 @@ export function RunReviewEditor({
   // no scoring domains; every category carries `graded`, so the presence of a
   // graded item makes this a jam review. The two scales never mix within a case.
   const jam = items.some((it) => it.graded);
-  const itemAddressed = (item: ReviewItem) =>
-    verdictIdsForItem(item).every((vid) => verdicts[vid]?.status);
+  // A point excluded from scoring for the version (an erratum's `excludeFromScore`)
+  // no longer counts, so grading it is optional — it must not block submission. A
+  // whole-item exclusion clears the item; within a category, only the excluded
+  // sub-items are exempt while the rest still require a verdict.
+  const itemAddressed = (item: ReviewItem) => {
+    if (item.scored === false) return true;
+    const subs = item.subItems ?? [];
+    if (subs.length === 0) return Boolean(verdicts[item.id]?.status);
+    return subs.every(
+      (sub) =>
+        sub.scored === false ||
+        Boolean(verdicts[subItemVerdictId(item.id, sub.id)]?.status),
+    );
+  };
   const allAddressed = items.every(itemAddressed);
   // A jam is fully rated once the whole-game overall grade is picked (it has no
   // domains); a domain-scored case once every domain carries a rating.
@@ -466,12 +477,64 @@ export function RunReviewEditor({
     });
   }
 
+  // Put the given verdicts back to what this run's validation decided, undoing the
+  // reviewer's overrides. The machine's calls live in the immutable run record, not
+  // in the review, so they stay recoverable however many edits later — this is the
+  // only way back once an override has been submitted, since a stored verdict keeps
+  // no memory of having been auto-set.
+  //
+  // Only the pass/fail is restored: validation writes no note, so a note is the
+  // reviewer's own prose and is left for them to clear (or keep, where it still
+  // explains the point). Each restored verdict re-joins the auto-set group and so
+  // reads desaturated again.
+  function restoreAutoVerdicts(ids: string[]) {
+    if (ids.length === 0) return;
+    setVerdicts((prev) => {
+      const next = { ...prev };
+      for (const id of ids) {
+        const decided = auto.get(id);
+        if (!decided) continue;
+        next[id] = { status: decided.status, note: prev[id]?.note ?? "" };
+      }
+      return next;
+    });
+    setAutoVerdictIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) if (auto.has(id)) next.add(id);
+      return next;
+    });
+  }
+
+  // The declared points whose answer currently differs from what validation decided
+  // — the reviewer's overrides. Drives both the per-verdict Restore control and the
+  // rail's bulk restore, so the two never disagree about what there is to undo.
+  const overriddenIds = useMemo(
+    () => overriddenAutoVerdictIds(items, auto, verdicts),
+    [items, auto, verdicts],
+  );
+  const overriddenSet = useMemo(() => new Set(overriddenIds), [overriddenIds]);
+
+  // Restore every overridden point at once, from the rail. Confirmed first because
+  // it discards the reviewer's own calls wholesale — the mirror image of "Mark
+  // unplayable", which overwrites them wholesale.
+  function restoreAllAutoVerdicts() {
+    const n = overriddenIds.length;
+    if (n === 0) return;
+    if (
+      !window.confirm(
+        `Restore ${n} overridden ${n === 1 ? "verdict" : "verdicts"} to what this run's automated validation decided? Your own Pass/Fail on ${n === 1 ? "that point" : "those points"} will be discarded; notes are kept.`,
+      )
+    )
+      return;
+    restoreAutoVerdicts(overriddenIds);
+  }
+
   // The pass/fail control (and its optional note) for one gradable unit, keyed by
   // its verdict id — the item's own id, or a `<item>.<sub>` composite for a
   // sub-item. Shared so a whole-item verdict and each sub-item's verdict use the
   // identical radiogroup: Pass/Fail as two radio-like buttons, a roving tabindex +
   // arrow keys, and clicking the selected option clearing it back to unset.
-  function renderVerdict(verdictId: string) {
+  function renderVerdict(verdictId: string, disabled = false) {
     const d = verdicts[verdictId] ?? { status: "", note: "" };
     // Whether this verdict is still holding its pre-filled auto value (the reviewer
     // has not overridden it). Its selected option renders desaturated to mark it as
@@ -547,7 +610,10 @@ export function RunReviewEditor({
                   type="button"
                   role="radio"
                   aria-checked={selected}
-                  tabIndex={selected || (!d.status && i === 0) ? 0 : -1}
+                  disabled={disabled}
+                  tabIndex={
+                    disabled ? -1 : selected || (!d.status && i === 0) ? 0 : -1
+                  }
                   className={`${styles.verdictOption} ${
                     s === "pass"
                       ? styles.verdictOptionPass
@@ -556,9 +622,11 @@ export function RunReviewEditor({
                     selected && isAuto ? ` ${styles.verdictOptionAuto}` : ""
                   }`}
                   title={
-                    selected && isAuto
-                      ? "Auto-set from this run's debug script — click to override"
-                      : undefined
+                    disabled
+                      ? "Excluded from scoring by an erratum — not rated"
+                      : selected && isAuto
+                        ? "Auto-set from this run's debug script — click to override"
+                        : undefined
                   }
                   onClick={() =>
                     setVerdict(verdictId, { status: selected ? "" : s })
@@ -589,7 +657,22 @@ export function RunReviewEditor({
             value={d.note}
             onChange={(e) => setVerdict(verdictId, { note: e.target.value })}
             placeholder="note (optional)"
+            disabled={disabled}
           />
+          {/* Offered only where the reviewer's answer differs from a verdict
+              validation actually decided — so it never appears as a no-op, and
+              never on a point the machine left to human judgement. */}
+          {!disabled && overriddenSet.has(verdictId) && (
+            <button
+              type="button"
+              className={styles.verdictRestore}
+              onClick={() => restoreAutoVerdicts([verdictId])}
+              title={`Restore this verdict to ${VERDICT_META[auto.get(verdictId)!.status].label} — what this run's debug script decided. Your note is kept.`}
+              aria-label="Restore this verdict to the automated validation's result"
+            >
+              Restore
+            </button>
+          )}
         </div>
       </>
     );
@@ -597,7 +680,7 @@ export function RunReviewEditor({
 
   // The graded (game-jam) counterpart of {@link renderVerdict}: the five-emoji
   // grade picker plus the same optional note, keyed by the item's verdict id.
-  function renderGradeVerdict(verdictId: string) {
+  function renderGradeVerdict(verdictId: string, disabled = false) {
     const d = verdicts[verdictId] ?? { status: "", note: "" };
     return (
       <div className={styles.checklistControls}>
@@ -605,12 +688,14 @@ export function RunReviewEditor({
           value={isGrade(d.status) ? d.status : ""}
           onChange={(next) => setVerdict(verdictId, { status: next })}
           ariaLabel="Grade"
+          disabled={disabled}
         />
         <input
           className={styles.input}
           value={d.note}
           onChange={(e) => setVerdict(verdictId, { note: e.target.value })}
           placeholder="note (optional)"
+          disabled={disabled}
         />
       </div>
     );
@@ -661,14 +746,22 @@ export function RunReviewEditor({
     // One verdict per verdict id: the item's own when graded as a whole, or one
     // per sub-item (keyed by the `<item>.<sub>` composite) when it has sub-items.
     const verdictList = items.flatMap((item) =>
-      verdictIdsForItem(item).map((vid) => {
+      verdictIdsForItem(item).flatMap((vid) => {
         const draft = verdicts[vid] ?? { status: "", note: "" };
+        // Omit an unrated point rather than sending an empty status the backend's
+        // `VerdictStatus` enum would reject (422). With the completeness gate this
+        // only arises for a point excluded from scoring (an erratum's
+        // `excludeFromScore`) that the reviewer chose to skip — it simply carries no
+        // verdict, exactly as it carries no score.
+        if (!draft.status) return [];
         const note = draft.note.trim();
-        return {
-          id: vid,
-          status: draft.status as VerdictStatus,
-          ...(note ? { note } : {}),
-        };
+        return [
+          {
+            id: vid,
+            status: draft.status,
+            ...(note ? { note } : {}),
+          },
+        ];
       }),
     );
     // A jam rides its whole-game overall grade in the same checklist, under the
@@ -752,6 +845,9 @@ export function RunReviewEditor({
         setMessage(`Publishing… ${progress.message}`);
       });
       setMessage(result.published ? "Published." : "Publish did not complete.");
+      // Only a terminal success retires the action: a publish that did not
+      // complete must stay retryable.
+      if (result.published) setPublishedThisSession(true);
     });
 
   if (!client) {
@@ -768,6 +864,11 @@ export function RunReviewEditor({
   // Whether the run can be published: it carries at least one review (an existing
   // one or one just submitted this session). The backend is the real gate.
   const canPublish = reviews.length > 0 || submittedThisSession || solo;
+  // A run published this session (the enqueued publish reported success) reads as
+  // published straight away, without waiting for the detail record to be refetched
+  // — so the action disappears the moment it succeeds rather than lingering as a
+  // second, doomed Publish.
+  const isPublished = published || publishedThisSession;
 
   // Show the form when re-reviewing (Edit) or when this account has no review yet
   // — so a first-time reviewer always lands on the form, and a reviewer who has
@@ -808,6 +909,11 @@ export function RunReviewEditor({
   const item = slot ? items[slot.itemIndex] : undefined;
   const sub =
     slot && slot.subIndex >= 0 ? item?.subItems?.[slot.subIndex] : undefined;
+  // Whether the current point is excluded from scoring for the version (an erratum's
+  // `excludeFromScore`): a whole-item exclusion clears the item, a sub-item one just
+  // that sub. Shown as a "not scored" badge in place of the point value.
+  const slotNotScored =
+    item?.scored === false || (sub ? sub.scored === false : false);
   // The verdict id for the current slot — the sub-item's composite, or the item's own.
   const slotVerdictId = item
     ? sub
@@ -833,6 +939,10 @@ export function RunReviewEditor({
     const it = items[s.itemIndex];
     if (!it) return false;
     const subItem = s.subIndex >= 0 ? it.subItems?.[s.subIndex] : undefined;
+    // An excluded point (erratum `excludeFromScore`) needs no verdict — treat it as
+    // addressed so it neither drags the progress count nor traps Previous/Next on a
+    // point the reviewer is free to skip.
+    if (it.scored === false || subItem?.scored === false) return true;
     const vid = subItem ? subItemVerdictId(it.id, subItem.id) : it.id;
     return Boolean(verdicts[vid]?.status);
   };
@@ -929,15 +1039,12 @@ export function RunReviewEditor({
           gate) and the detail of any failure. This is reference context, not a task
           for the reviewer — the automated validation already pre-fills the checklist
           verdicts, so surfacing it while the review is still being written only buries
-          the form the reviewer is here to complete. Show it only once a review has
-          been submitted for this run, where it stands as evidence behind the verdict. */}
-      {debugScripts.length > 0 &&
-        (reviews.length > 0 || submittedThisSession) && (
-          <DebugScriptList
-            scripts={debugScripts}
-            heading="Automated validation"
-          />
-        )}
+          the form the reviewer is here to complete. Show it only once *this* reviewer
+          has submitted their own review, where it stands as evidence behind their
+          verdict — another reviewer's review must not reveal it early. */}
+      {debugScripts.length > 0 && (ownReview || submittedThisSession) && (
+        <DebugScriptList scripts={debugScripts} heading="Automated validation" />
+      )}
 
       {/* The review form proper — the checklist questions, the writeup, and the
           per-domain ratings — shown only while writing or revising a review. */}
@@ -950,8 +1057,11 @@ export function RunReviewEditor({
               its debug scripts ran (right-aligned) and expands to the per-script
               pass/fail breakdown — so a build where the checks never ran (e.g. a stale
               service image left the scripts ungraded) shows a plain "0 / N checks ran"
-              rather than looking silently unscored. */}
-          {liveScore && !jam && (
+              rather than looking silently unscored. A game jam scores the same way —
+              each graded category is worth `weight × 10` and earns its tier's points
+              — so it gets the same running total; it simply never declares automated
+              validation, so it always takes the plain branch. */}
+          {liveScore && (
             <div className={styles.notice}>
               {debugScripts.length > 0 ? (
                 <>
@@ -1040,6 +1150,30 @@ export function RunReviewEditor({
                 >
                   Mark unplayable
                 </button>
+                {/* Put every overridden point back to the machine's call. Shown
+                    only for a run that carries automated verdicts at all, and
+                    inert until at least one is overridden — so it reads as the
+                    undo it is rather than a mystery control. */}
+                {auto.size > 0 && (
+                  <button
+                    type="button"
+                    className={styles.restoreAuto}
+                    onClick={restoreAllAutoVerdicts}
+                    disabled={busy || overriddenIds.length === 0}
+                    title={
+                      overriddenIds.length === 0
+                        ? "Every automatically-decided verdict already matches this run's validation"
+                        : `Discard your Pass/Fail on ${overriddenIds.length} overridden ${
+                            overriddenIds.length === 1 ? "point" : "points"
+                          } and restore what this run's validation decided`
+                    }
+                  >
+                    Restore validator verdicts
+                    {overriddenIds.length > 0
+                      ? ` (${overriddenIds.length})`
+                      : ""}
+                  </button>
+                )}
                 {/* An accordion of categories. Each category is a header row; the
                 one holding the current review item expands to list its items, and
                 selecting an item shows that item — one at a time — in the panel. A
@@ -1178,11 +1312,18 @@ export function RunReviewEditor({
                   <span className={styles.checklistNumber}>
                     {slotIndex + 1}.
                   </span>{" "}
-                  {sub ? sub.title : item.title} (
-                  {sub
-                    ? formatPoints(sub.weight ?? 1)
-                    : itemPoints(item, verdicts[item.id]?.status)}
-                  )
+                  {sub ? sub.title : item.title}{" "}
+                  {slotNotScored ? (
+                    <span className={styles.notScored}>Not scored</span>
+                  ) : (
+                    <>
+                      (
+                      {sub
+                        ? formatPoints(sub.weight ?? 1)
+                        : itemPoints(item, verdicts[item.id]?.status)}
+                      )
+                    </>
+                  )}
                 </span>
                 {/* The point's prose: a sub-item's own description, or a whole item's
                 text (a category itself carries none). */}
@@ -1226,8 +1367,8 @@ export function RunReviewEditor({
                 automated-validation media backing the point renders at the top of the
                 verdict control. */}
                 {item.graded
-                  ? renderGradeVerdict(item.id)
-                  : renderVerdict(slotVerdictId)}
+                  ? renderGradeVerdict(item.id, slotNotScored)
+                  : renderVerdict(slotVerdictId, slotNotScored)}
 
                 {/* Previous / Next jump to the nearest unreviewed item on that side
                 and disable when none remains — the wrapper carries the explanatory
@@ -1414,7 +1555,25 @@ export function RunReviewEditor({
         // already stored on the backend (the driver pushes it on completion), so
         // neither flow has a separate push step. The reviewer identity is left-aligned;
         // the buttons are pushed to the right of the row.
-        if (solo) {
+        //
+        // An ALREADY-PUBLISHED run offers no Publish action on either path — it is
+        // public, the backend refuses a second publish, and a revised review
+        // refreshes the public snapshot by itself. What remains is the review
+        // control: the solo path, which has no separate submit button, gets the
+        // web flow's "Update review" so a desktop reviewer can still correct a
+        // published review. Every type behaves the same here — a game jam runs the
+        // identical submit -> publish lifecycle a test run does.
+        const submitButton = (
+          <button
+            className={isPublished ? styles.primary : styles.secondary}
+            onClick={onSubmitReview}
+            disabled={busy || needAccount || !reviewReady}
+            title={needAccount ? "Sign in to review" : reviewTitle}
+          >
+            {ownReview ? "Update review" : "Submit review"}
+          </button>
+        );
+        if (solo && !isPublished) {
           return (
             <div className={styles.actions}>
               {reviewingAs}
@@ -1432,34 +1591,32 @@ export function RunReviewEditor({
             </div>
           );
         }
+        const publishButton = isPublished ? null : (
+          <button
+            className={styles.primary}
+            onClick={onPublish}
+            disabled={busy || needAccount || !canPublish}
+            title={
+              needAccount
+                ? "Sign in to publish"
+                : !canPublish
+                  ? "Submit at least one review before publishing"
+                  : undefined
+            }
+          >
+            Publish run
+          </button>
+        );
+        // With the form collapsed on a published run there is nothing left to
+        // offer — no submit, no publish, nothing to cancel — so the row is dropped
+        // rather than left as an empty band of padding.
+        if (!showForm && !publishButton && !cancelButton) return null;
         return (
           <div className={styles.actions}>
             {reviewingAs}
             <div className={styles.actionsEnd}>
-              {showForm && (
-                <button
-                  className={styles.secondary}
-                  onClick={onSubmitReview}
-                  disabled={busy || needAccount || !reviewReady}
-                  title={needAccount ? "Sign in to review" : reviewTitle}
-                >
-                  {ownReview ? "Update review" : "Submit review"}
-                </button>
-              )}
-              <button
-                className={styles.primary}
-                onClick={onPublish}
-                disabled={busy || needAccount || !canPublish}
-                title={
-                  needAccount
-                    ? "Sign in to publish"
-                    : !canPublish
-                      ? "Submit at least one review before publishing"
-                      : undefined
-                }
-              >
-                Publish run
-              </button>
+              {showForm && submitButton}
+              {publishButton}
               {cancelButton}
             </div>
           </div>

@@ -88,7 +88,7 @@ async function main(): Promise<void> {
     }
     if (action.startsWith("mode:")) {
       // Choosing a mode advances to the world-size screen; the expedition starts once a size
-      // is picked (specs/flow.md).
+      // is picked (specs/gameplay.md).
       game.chooseMode(action.slice(5) === "hardcore" ? "hardcore" : "standard");
       menuIndex = 0;
       return;
@@ -131,7 +131,7 @@ async function main(): Promise<void> {
     switch (action) {
       case "again":
       case "restart":
-        // Replay keeps the same mode AND world size as the run just finished (specs/flow.md).
+        // Replay keeps the same mode AND world size as the run just finished (specs/gameplay.md).
         game.newExpedition(game.mode, game.worldSize);
         menuIndex = 0;
         break;
@@ -142,7 +142,7 @@ async function main(): Promise<void> {
         break;
       case "save":
         // The Save Pad has no menu — activating it (key or click) banks directly with a
-        // note either way (specs/flow.md).
+        // note either way (specs/gameplay.md).
         game.trySave();
         break;
       case "resume":

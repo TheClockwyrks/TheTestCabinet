@@ -38,42 +38,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated sprite matches the brief — a compact amber data \
-parcel with a down-chevron glyph, rising speed-line trails, and a leading glow, \
-symmetric and clearly falling downward, in the warm amber palette on \
-transparency."""
-
-[[review_item]]
-id = "falling-motion"
-title = "Reads as falling downward"
-text = """
-The sprite reads at a glance as a packet in downward motion — the parcel sits low \
-in the frame with speed-line trails rising above it and a leading glow beneath — \
-not a static box. Its motion clearly reads top-to-bottom."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "packet-read"
-title = "Reads as a data packet"
-text = """
-It reads as a compact data parcel — a rounded square carrying a downward-pointing \
-chevron glyph on its face — symmetric about its vertical center line, not a \
-creature or the player's ship."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette-and-framing"
-title = "Amber palette, transparency, and framing"
-text = """
-Uses only the warm amber palette from the brief (body, dark shade, edge, glyph, \
-trail) on full transparency — no out-of-palette pixels, no fringes, no background \
-fill — and sits centered horizontally, filling the frame top-to-bottom with its \
-trail without clipping flat against an edge."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

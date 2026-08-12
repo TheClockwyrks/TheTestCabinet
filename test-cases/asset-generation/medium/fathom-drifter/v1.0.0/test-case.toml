@@ -84,64 +84,14 @@ fps = 8
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated sheet matches the bonus drifter — its glowing amber \
-bell with a bright core, the frilled skirt and gently swaying tendrils, and the \
-single directionless drift loop that reads as a harmless jellyfish (the very frames \
-the Lanternjaw wears as its disguise)."""
-
-[[review_item]]
-id = "amber-bell"
-title = "Glowing amber bell"
-text = """
-Every frame carries a rounded glowing amber bell (the "bulb") with a bright core at \
-the top of the sprite — the drifter's defining feature and its brightest element. It \
-sits in the same place in every frame, unchanging, as a jellyfish's bell would."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "sway-loop"
-title = "Gentle drift loop"
-text = """
-The eight frames read as a jellyfish drifting in place: the frilled skirt and the \
-tendrils hanging below the bell ripple and sway a pixel or two across the loop, so \
-playing 0→7 reads as a smooth, continuous drift. It is directionless — a single \
-sway loop, not per-facing swim pairs."""
-sequences = ["drift"]
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "jellyfish-form"
-title = "Reads as a jellyfish"
-text = """
-The creature reads as a bell-and-tendrils jellyfish — an amber bell with a frilled \
-skirt and a few tendrils hanging beneath it — NOT as a swimming fish with a \
-head and forked tail. These frames must be able to pass for the Lanternjaw's \
-wandering disguise, so nothing predatory (no jaws, no teeth) may show."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Amber palette"
-text = """
-Uses the drifter's palette from the brief (amber bell, bright core, dim-amber \
-tendrils and skirt, near-black outline) with no out-of-palette colors and no halo \
-of stray pixels."""
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "framing"
-title = "Frame framing"
-text = """
-Each jellyfish fills most of its own 32x32 frame cell, centered with a small \
-margin, neither tiny in a corner nor spilling across the grid lines into the \
-neighboring frame."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

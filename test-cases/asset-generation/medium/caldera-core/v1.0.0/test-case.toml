@@ -89,75 +89,14 @@ auto_play = false
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Caldera Core and poses \
-correctly — the broad stepped brass keep, a ziggurat of receding tiers rising to a \
-crowned summit with hanging banners and a beacon, the largest built thing of the \
-roster, carrying one contiguous verdigris accent, whose banners and beacon stir on \
-their own and whose upgrade grinds the tiers up and locks in a satisfying moment of \
-power, in the disciplined Holdfast palette."""
-
-[[review_item]]
-id = "reads-as-core"
-title = "Reads as the Core"
-text = """
-From more than one angle the model reads unmistakably as the Holdfast Core: a BROAD \
-STEPPED BRASS KEEP — a ziggurat of receding tiers rising to a crowned summit, with \
-BANNERS hanging from the upper tiers and a BEACON at the very top. It reads as a SEAT \
-OF POWER, architecture rather than machinery, and plainly the LARGEST built thing of \
-the roster. Nothing about it reads as small, slight, or machine-like."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "idle-reads"
-title = "Idle keeps the Core alive on its own"
-text = """
-Playing `idle` turns the beacon at the summit and stirs the banners hanging from the \
-upper tiers, cycling on its own with no caller, so the Core reads as alive and \
-garrisoned even when nothing is happening. It loops seamlessly with an eased, \
-deliberate cadence rather than a mechanical linear slide. Only the beacon and the \
-banners move — the tiered keep beneath them stays fixed, never carried along — and \
-nothing tears away from its mount."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "upgrade-reads"
-title = "Upgrade grinds the tiers up and holds"
-text = """
-Playing `upgrade` plays ONCE and HOLDS its final pose: the keep's tiers grind and \
-rise, the crown ring lifts and locks, and the beacon flares — a single visible, \
-satisfying moment of the Core becoming more powerful, not a loop. Each moving element \
-travels as one solid piece and stays attached, and the keep reads as taller and prouder \
-at the end, holding that stronger pose rather than snapping back to its start."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "accent-region"
-title = "A contiguous verdigris accent"
-text = """
-The crown ring at the summit and the trim edging the banners — and only those — are \
-sculpted in the accent color `#2f7d72`, each a clean, unbroken run and clearly visible \
-from more than one angle. That color appears NOWHERE else on the model — not one stray \
-voxel, highlight, or seam. The game finds every voxel of it and repaints it to show the \
-Core's upgrade level, so a scattered, broken, or misplaced accent region breaks the \
-upgrade system outright."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Holdfast palette discipline"
-text = """
-Uses only the brief's four colors — brass plating, brass dark, iron mechanisms, and the \
-verdigris accent — with no out-of-palette colors, and in particular NO steel `#b8bcc2`, \
-NO gold `#ffce54`, and NO white `#dfeaea` anywhere on the model, since a game paints \
-those onto the accent at run time to show the Core's upgrade level. No stray voxels \
-drift off the model."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

@@ -3,10 +3,10 @@
 ## Overview
 
 This file defines the money, bounties, interest, and bonuses that fund your defense,
-the lives you lose to leaks, and the score the end screens show. It refers to the
-floor in `specs/reactor.md`, the towers in `specs/towers.md`, the surge in
-`specs/surge.md`, the run in `specs/waves.md`, and the modes and difficulties in
-`specs/modes.md`.
+and the score the end screens show. The lives you lose to leaks are defined in
+`specs/gameplay.md`. It refers to the floor in `specs/playfield.md`, the towers in
+`specs/towers.md`, the surge in `specs/surge.md`, the run in `specs/gameplay.md`, and
+the modes and difficulties in `specs/modes.md`.
 
 The numeric values here are fixed; implement them exactly as written.
 
@@ -33,15 +33,6 @@ a defense that is still being built up.
   by selling it, or its full spend if you sell it during the same build phase you
   placed it on, before that wave starts, so a tower that never fought is fully
   refundable (`specs/towers.md`). You can never spend below 0.
-
-## Lives and leaks
-
-- You start with 20 lives.
-- When a surge unit reaches an exhaust (`specs/reactor.md`) it leaks, costing its leak
-  value in lives (`specs/surge.md`: most units are worth 1, a Hulk is worth 2, and a
-  Core is worth 5) and is removed.
-- Lives never regenerate. If lives reach 0 or below, the reactor breaches and the game
-  ends (`specs/states.md`), even mid-wave.
 
 ## Scoring
 

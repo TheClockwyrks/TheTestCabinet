@@ -93,76 +93,14 @@ auto_play = true
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Sunfront Reliquary \
-and runs correctly — a tall, precious monument cradling a glowing solar core, \
-whose orbital ring turns, core rises and falls, and guardian fins counter-rotate \
-on their own self-playing animations while the plinth stays put, with a heavy \
-solar-hot and amber core glow and the disciplined Duneforged palette."""
-
-[[review_item]]
-id = "reads-as-reliquary"
-title = "Reads as a solar reliquary monument"
-text = """
-From more than one angle the model reads unmistakably as a precious, holy \
-Duneforged monument: a tall masonry plinth and cradle holding a glowing solar \
-core at its heart, encircled by an orbital ring and crowned by guardian fins. It \
-looks like a revered reliquary enshrining its core, not an abstract stack of \
-boxes."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "elements-cycle"
-title = "Ring turns, core pulses, and fins counter-rotate on their own"
-text = """
-The three animated elements cycle on their own, each on its self-playing animation, \
-while the plinth stays fixed: playing `ring_spin` turns the orbital ring a full \
-revolution about the vertical axis, `core_pulse` lifts the solar core up and settles \
-it back in a breathing rise and fall, and `fins_spin` turns the guardian fins a full \
-revolution the opposite way, so the ring and fins visibly counter-rotate. Across each \
-cycle no voxel of the ring, core, or fins tears away from its mount or clips the \
-monument — each moves as one solid piece about a clean, sensible axis. The orbital ring \
-in particular stays fully encased within the monument as it turns: its whole circle \
-clears the surrounding cradle and plinth walls with a gap and never passes through, \
-protrudes from, or clips any wall. The model had \
-to work out where to split the monument into a fixed body and these three independently \
-moving pieces for this to read at all."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "base-fixed"
-title = "The monument's body stays fixed"
-text = """
-Only the moving elements move: the orbital ring as it turns, the core as it rises \
-and falls, and the guardian fins as they counter-rotate. The monument plinth and its \
-cradle are the fixed root of the machine — they stay put throughout, never carried \
-along or dragged by the ring, the core, or the fins."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "parts-attached"
-title = "Ring, core, and fins stay attached"
-text = """
-Each moving element stays attached to the monument across its whole cycle: the orbital \
-ring stays centered as it turns, the core stays cradled in the monument as it rises \
-and falls, and the guardian fins stay seated on their crown as they counter-rotate — \
-with no gap opening up and nothing floating free or detaching."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Duneforged palette discipline"
-text = """
-Uses only the Duneforged colors from the brief (brass and bronze masonry, \
-sandstone panels, iron mechanisms, and the solar-amber and solar-hot energy \
-accents) with a clear, heavy amber and solar-hot glow at the core, no \
-out-of-palette colors, and no stray voxels drifting off the parts."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

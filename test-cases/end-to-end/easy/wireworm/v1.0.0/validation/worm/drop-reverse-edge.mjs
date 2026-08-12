@@ -7,11 +7,18 @@
 
 import {
   actWormStep,
+  actWormToColumn,
   freshBoard,
   head,
   setWorm,
   straightWorm,
 } from "../_helpers.mjs";
+
+const R = 5;
+// Six tiles of empty board between the head and the left edge, so the clip opens
+// on the worm winding toward the wall rather than on the turn (see
+// `actWormToColumn`).
+const START_C = 6;
 
 export default function item() {
   let snap;
@@ -21,13 +28,14 @@ export default function item() {
 
     async arrange(api) {
       await freshBoard(api);
-      // Head at column 0 heading left, so the next step runs into the side edge.
-      await setWorm(api, straightWorm(0, 5, 4, -1), -1, 1);
+      // Heading left, several tiles short of the side edge it will turn on.
+      await setWorm(api, straightWorm(START_C, R, 4, -1), -1, 1);
     },
 
-    // The one tile-step into the edge is the clip: the reviewer watches the drop and
-    // reversal the assertions read.
+    // The run-up and the tile-step into the edge are the clip: the reviewer watches
+    // the worm reach the wall, then the drop and reversal the assertions read.
     async act(api) {
+      await actWormToColumn(api, 0); // ~0.84s of visible approach to the edge
       snap = await actWormStep(api);
       // The snapshot is captured; the sim runs on only so the clip shows the worm
       // heading back across the board rather than a single tile-step.
@@ -35,7 +43,7 @@ export default function item() {
     },
 
     async assert(api, check) {
-      check.expectEq("the worm drops one row at the edge", head(snap).r, 6);
+      check.expectEq("the worm drops one row at the edge", head(snap).r, R + 1);
       check.expectEq("the worm reverses its heading", snap.worms[0].dh, 1);
       check.expectEq(
         "the edge turn charges nothing (no node created)",

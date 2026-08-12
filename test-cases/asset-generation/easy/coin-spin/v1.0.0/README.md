@@ -22,9 +22,10 @@ brief fixes **what the coin is** — a shiny gold disc with a dark rim, a hint o
 inner face, and a sweeping glint — and the **gold palette on transparency**, and
 leaves the exact silhouette and technique to the model.
 
-The headline review item scores whether the frames read as one continuous rotation;
-others score the clean loop, the read as a valuable gold coin, the sweeping glint,
-and staying on-palette on full transparency.
+The reviewer judges the sheet as a whole — whether the frames read as one
+continuous rotation, whether the loop is clean, whether it reads as a valuable
+gold coin, whether the glint sweeps the face, and whether it stays on-palette on
+full transparency — and gives it one overall rating.
 
 ## Layout
 
@@ -32,7 +33,7 @@ and staying on-palette on full transparency.
 | --- | --- | --- |
 | `specs/brief.md` | **Yes** | The self-contained brief (plain Markdown). |
 | `prompt.hbs` | No | Rendered into the model's prompt; not seeded. |
-| `test-case.toml` | No | Manifest: canvas, tool, sheet, domains, review. |
+| `test-case.toml` | No | Manifest: canvas, tool, sheet, domain. |
 | `variants/` | No | One TOML file per variant (listed in `variants`). |
 | `description.md` | No | Site blurb. |
 | `changelog.md` | No | This version's changelog entry. |
@@ -58,8 +59,8 @@ and the blank frames a run starts from.
 ## Variants
 
 This case ships a single variant, `base` (the case's 32×32 six-frame sheet). It
-adds no specs, review items, or domains of its own, and declares no `[canvas]` or
-`[sheet]` override, so the sheet never varies.
+adds no specs or domains of its own, and declares no `[canvas]` or `[sheet]`
+override, so the sheet never varies.
 
 ## Versioning
 

@@ -16,8 +16,17 @@ const HOLD_TICKS = 216; // 216 ticks = the old 1.8 s
 // SAMPLING poll watching for the first enemy bullet to exist, and reading more often
 // can only catch that bullet earlier, never miss it. The budget is set to 240 ticks so
 // the window stays the original 2 s (120 reads at 2 ticks).
+// The old window was 2 s, which was barely enough: a diver may not fire until well
+// into its run (nothing in `specs/drones.md` fixes how far down it shoots from), so
+// on a build that fires late the sweep ended just as the bullet appeared — and the
+// clip ended with it, which is why the shot could not be seen. Raised to 5 s so a
+// late-firing diver is still caught.
 const POLL_TICKS = 2;
-const WINDOW_TICKS = 240;
+const WINDOW_TICKS = 600;
+
+// Held after the first enemy bullet appears, so the clip shows it actually leaving
+// the diver and travelling rather than cutting on the frame it spawns.
+const SHOT_HOLD_TICKS = 180; // 1.5 s
 
 export default function item() {
   // The drones, the formation's bullet count, and whether the diver fired.
@@ -64,6 +73,11 @@ export default function item() {
         await api.advance(POLL_TICKS);
         if (enemyBullets(await api.snapshot()).length > 0) fired = true;
       }
+
+      // Stay on the shot. The sweep stops the instant the first bullet exists, which
+      // is the earliest possible frame to end a clip on — the reviewer needs to see
+      // it leave the diver.
+      await api.advance(SHOT_HOLD_TICKS);
     },
 
     async assert(api, check) {

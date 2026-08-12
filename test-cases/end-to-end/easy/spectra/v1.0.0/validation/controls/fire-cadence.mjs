@@ -7,6 +7,8 @@
 
 import {
   startClean,
+  holdDrones,
+  spawnBystander,
   friendlyBullets,
   actHoldSample,
   TICK,
@@ -34,10 +36,26 @@ export default function item() {
   return {
     id: "controls.fire-cadence",
 
-    // A clean wave with the ship centered, so nothing on the field can consume a
-    // bullet and perturb the count the cadence is read from.
+    // A clean wave with ONE held bystander drone parked well off to the side, and
+    // the ship centered under an empty column.
+    //
+    // The bystander is not decoration. `startClean` empties the field, and an empty
+    // field is a CLEARED WAVE the game may act on immediately (see
+    // `spawnBystander`): the build leaves `inWave` for the stage-cleared
+    // interstitial, where the ship no longer answers a held fire key at all. The old
+    // script posed nothing, so on a build that ends the wave promptly this item read
+    // "held fire produced one shot and then stopped" and failed a perfectly
+    // conformant cadence — it was measuring a game that had already left the wave.
+    // The three fire-binding items (`fireItem`) always posed one, which is why they
+    // passed on the same builds this failed.
+    //
+    // The bystander is held still (`holdDrones`) and sits at x 180 while the ship
+    // fires up the column at x 640, so it can neither drift into the ship's column
+    // nor consume a shot and perturb the count the cadence is read from.
     async arrange(api) {
       await startClean(api);
+      await holdDrones(api);
+      await spawnBystander(api);
       await api.call("setShipX", 640);
     },
 

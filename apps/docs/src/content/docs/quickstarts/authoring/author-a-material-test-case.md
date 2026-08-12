@@ -21,7 +21,7 @@ reference it — revise by adding a new version, not by editing a published one.
 
 ```text
 test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml         # manifest: type, asset_kind, material, tool, output, domains
+  test-case.toml         # manifest: type, asset_kind, material, tool, output, the overall domain
   variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered into the harness instruction (NOT seeded)
   specs/brief.md         # the surface + which maps to emit + how the tools behave — SEEDED
@@ -59,9 +59,9 @@ target image** and **no `reference/` directory**; `description.md` and `README.m
    - `[output]` — `actions = "actions.json"`, a single interleaved log (**not** a `{map}`
      template; each op carries `--map`). Core emits the per-map PNGs and `material.json`
      automatically — neither is declared.
-   - `[[domain]]`s plus `[[review_item]]`s (reporter-side, NOT seeded; each carries only a
-     `domain` — **no `reference`**). **No `[[reference]]`, `[build]`, or `[[check]]`** —
-     resolution rejects them.
+   - the single `overall` `[[domain]]` (reporter-side, NOT seeded) and **no
+     `[[review_item]]`s** — the material is judged as a whole against its brief, on one
+     rating. **No `[[reference]]`, `[build]`, or `[[check]]`** — resolution rejects them.
 
 [Authoring a Material Test Case](/guides/authoring/authoring-a-material-test-case/) is the
 full procedure. The worked example is `caldera-basalt`.
