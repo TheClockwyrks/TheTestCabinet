@@ -308,11 +308,10 @@ fn the_isolation_subject_is_a_module_rather_than_a_program() {
 /// real C++ path a program could write.
 ///
 /// The spelling is the module's own namespace and the function's own name — `gg::files::read_file`
-/// — rather than gg's `(object, key)` pair, which is the whole of what converting this arm to the
-/// [normalized doc model](crate::sandbox::SchemaVersion::V2) changed about what gg quotes back at a
-/// model. The two halves are checked separately because they fail differently: a spelling that is
-/// not the catalogue's own name is gg assembling a path, and a path that is not module-qualified is
-/// a name a second module could collide with.
+/// — rather than gg's `(object, key)` pair, which is gg's own vocabulary and not a path a program
+/// could write. The two halves are checked separately because they fail differently: a spelling that
+/// is not the catalogue's own name is gg assembling a path, and a path that is not module-qualified
+/// is a name a second module could collide with.
 #[test]
 fn the_generated_catalogue_is_this_languages() {
     let catalogue = cpp().catalogue();
@@ -323,8 +322,8 @@ fn the_generated_catalogue_is_this_languages() {
         let spelled = crate::sandbox::spell(cpp(), operation.call);
         let canonical = functions
             .iter()
-            .find(|function| function.operation == Some(id.as_str()) && function.alias_of.is_none())
-            .map(|function| function.fqn.expect("a converted arm names every entry"));
+            .find(|function| function.operation == id && function.alias_of.is_none())
+            .map(|function| function.fqn);
         assert_eq!(
             canonical,
             Some(spelled.as_str()),

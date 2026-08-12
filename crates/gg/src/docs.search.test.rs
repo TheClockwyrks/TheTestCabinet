@@ -59,7 +59,7 @@ fn key_of(name: &str) -> String {
         .into_iter()
         .find(|function| function.name == name)
     {
-        return function.fqn.unwrap_or(function.name).to_string();
+        return function.fqn.to_string();
     }
     crate::sandbox::type_declaration(language, name)
         .map(|declared| declared.key().to_string())
@@ -291,9 +291,8 @@ fn a_types_modules_are_narrowed_to_what_this_agent_binds() {
             GgProgramLanguage::Rust,
         )
     };
-    // Searched by the type's own name and found by its KEY, which on a converted arm are two
-    // different strings: a query is words, and a key is the fully-qualified name a view is opened
-    // by.
+    // Searched by the type's own name and found by its KEY, which are two different strings: a
+    // query is words, and a key is the fully-qualified name a view is opened by.
     let modules_of = |docs: &DocsRuntime, key: &str| -> String {
         docs.search(ask("ToolError"))
             .expect("a usable query")
@@ -676,7 +675,7 @@ fn every_language_answers_only_with_what_its_agent_binds() {
         let bound: Vec<&str> = crate::sandbox::catalogue_functions(language)
             .into_iter()
             .filter(|function| docs.bound(function))
-            .map(|function| function.fqn.unwrap_or(function.name))
+            .map(|function| function.fqn)
             .collect();
         for hit in found
             .hits

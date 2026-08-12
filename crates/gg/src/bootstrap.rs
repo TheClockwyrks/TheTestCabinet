@@ -123,16 +123,14 @@ pub(crate) fn seed_bootstrap(context: &mut ContextModel, docs: &DocsRuntime) -> 
 
 /// This arm's model-facing keys for the [bootstrap calls](BOOTSTRAP_CALLS), in that order.
 ///
-/// The **fully-qualified name** where the arm emits one, which is the key its catalogue advertises,
-/// the key search files a hit under, and the only one of the two spellings that two modules each
-/// offering a `close` could not both claim. The bare name is the fallback, and is all a
-/// [`V1`](crate::sandbox::SchemaVersion::V1) catalogue has.
+/// The **fully-qualified name**, which is the key the catalogue advertises, the key search files a
+/// hit under, and the only spelling that two modules each offering a `close` could not both claim.
 ///
 /// Resolved by the **operation** each entry names rather than by the grouping it was filed under,
-/// because gg's `(object, key)` pair is identity and an arm whose surface is capability modules
-/// carries neither half of it. A call this arm does not catalogue yields nothing and is skipped: gg
-/// cannot open a view of a name that is in no catalogue, and guessing one would seed the model a key
-/// that resolves to nothing.
+/// because gg's `(object, key)` pair is its own identity and an arm's surface carries neither half
+/// of it. A call this arm does not catalogue yields nothing and is skipped: gg cannot open a view of
+/// a name that is in no catalogue, and guessing one would seed the model a key that resolves to
+/// nothing.
 fn bootstrap_keys(docs: &DocsRuntime) -> Vec<String> {
     let functions = catalogue_functions(docs.language());
     BOOTSTRAP_CALLS
@@ -147,7 +145,7 @@ fn bootstrap_keys(docs: &DocsRuntime) -> Vec<String> {
                             operation.call.object == call.object && operation.call.key == call.key
                         })
                 })
-                .map(|function| function.fqn.unwrap_or(function.name).to_string())
+                .map(|function| function.fqn.to_string())
         })
         .collect()
 }

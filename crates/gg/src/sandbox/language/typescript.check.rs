@@ -614,7 +614,7 @@ fn surface(catalogue: &SignatureCatalogue) -> String {
         for declaration in catalogue
             .types
             .iter()
-            .filter(|declaration| declaration.module.as_deref() == Some(module.id.as_str()))
+            .filter(|declaration| declaration.module == module.id)
         {
             out.push_str(&format!("    {}\n", declaration.declaration));
         }
@@ -630,12 +630,9 @@ fn surface(catalogue: &SignatureCatalogue) -> String {
         }
     }
     for declaration in &catalogue.types {
-        let Some(module) = declaration.module.as_deref() else {
-            continue;
-        };
         out.push_str(&format!(
-            "import {} = gg.{module}.{};\n",
-            declaration.name, declaration.name
+            "import {} = gg.{}.{};\n",
+            declaration.name, declaration.module, declaration.name
         ));
     }
     out

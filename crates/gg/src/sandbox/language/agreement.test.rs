@@ -171,7 +171,7 @@ fn a_surface_that_offers_the_same_capabilities_in_another_shape_agrees() {
     let binding = |operation: &str| {
         functions
             .iter()
-            .find(|function| function.operation == Some(operation) && function.alias_of.is_none())
+            .find(|function| function.operation == operation && function.alias_of.is_none())
             .unwrap_or_else(|| panic!("the fixture binds `{operation}`"))
     };
 
@@ -557,14 +557,6 @@ fn a_catalogue_that_does_not_cover_gg_s_capabilities_is_caught() {
                     json!("filePath");
             }),
             "documents an argument `filePath` its signature does not name",
-        ),
-        (
-            "a whole catalogue written in the schema this gate no longer reads",
-            Box::new(|document: &mut Value| {
-                *document = serde_json::from_str(crate::sandbox::signatures::fixture::V1)
-                    .expect("the doc model's v1 fixture is valid JSON");
-            }),
-            "emits a catalogue in schema 1",
         ),
     ];
 

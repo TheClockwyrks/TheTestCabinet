@@ -398,17 +398,17 @@ fn the_program_library_is_documented_only_when_the_agent_keeps_one() {
 /// tell them apart:
 ///
 /// 1. the key a catalogued function advertises — its
-///    [fully-qualified name](crate::sandbox::CatalogueFunction::fqn) where its arm emits one, which
-///    is also what a search hit is filed under;
+///    [fully-qualified name](crate::sandbox::CatalogueFunction::fqn), which is also what a search
+///    hit is filed under;
 /// 2. the name a program calls that function by, which is what a call site writes;
 /// 3. the **spelling** every type reference writes into a signature — `Files.FileRead`,
-///    `files::FileRead` — which is neither the type's key nor its bare name on a converted arm, and
-///    which is the string a model most often copies, because it is printed inside the signature of
-///    the very function whose documentation it just opened.
+///    `files::FileRead` — which is neither the type's key nor its bare name, and which is the string
+///    a model most often copies, because it is printed inside the signature of the very function
+///    whose documentation it just opened.
 ///
-/// It passes vacuously on an arm whose spellings *are* its keys, which is every unconverted arm, and
-/// that is the point: it is the assertion that converting an arm cannot quietly cost the model the
-/// ability to open what the conversion made it read. It is asked of an agent holding everything,
+/// The third is the one an arm can quietly cost a model: a spelling printed in a signature and
+/// resolving to nothing is a name the model reads and cannot open. It is asked of an agent holding
+/// everything,
 /// because what a *withheld* name answers is a different question with its own tests
 /// ([`a_type_only_a_withheld_function_reaches_is_not_readable`]).
 #[test]
@@ -431,7 +431,7 @@ fn every_name_a_model_is_shown_opens_on_every_arm() {
                 if !docs.bound(&function) {
                     continue;
                 }
-                for key in [function.fqn.unwrap_or(function.name), function.name] {
+                for key in [function.fqn, function.name] {
                     assert!(
                         docs.read_any(key).is_some(),
                         "{arm}: `{key}` is a name this arm advertises for `{}` and opens nothing",

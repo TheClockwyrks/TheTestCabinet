@@ -59,7 +59,7 @@
 use std::collections::BTreeSet;
 use std::fmt;
 
-use super::{EntryKind, SchemaVersion, SignatureCatalogue};
+use super::{EntryKind, SignatureCatalogue};
 
 /// Which of the three shapes a name is expected to have.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -263,11 +263,7 @@ fn segments(tail: &str) -> Vec<&str> {
 
 /// Every way `catalogue`'s names fail the rule. Empty is the passing answer.
 ///
-/// **Inert below [`V2`](SchemaVersion::V2)**, and not as a concession: a v1 catalogue emits no
-/// fully-qualified names at all, so there is nothing here to be right or wrong about, and a gate
-/// that invented names to check would be checking gg's invention rather than the arm's.
-///
-/// What it holds a v2 catalogue to, beyond the per-name rule:
+/// What it holds a catalogue to, beyond the per-name rule:
 ///
 /// * every entry's module is one the catalogue declares — a name qualified by a module nobody
 ///   documented is a name whose prefix means nothing;
@@ -284,9 +280,6 @@ fn segments(tail: &str) -> Vec<&str> {
 /// * every [member function](super::MemberFunction) a type lists is itself catalogued under that
 ///   name, so the menu a type view shows is a menu of things that can actually be opened.
 pub(crate) fn faults(catalogue: &SignatureCatalogue) -> Vec<String> {
-    if catalogue.schema < SchemaVersion::V2 {
-        return Vec::new();
-    }
     let mut out: Vec<String> = Vec::new();
     let mut claimed: BTreeSet<&str> = BTreeSet::new();
     let path_of = |id: &str| {
@@ -299,7 +292,7 @@ pub(crate) fn faults(catalogue: &SignatureCatalogue) -> Vec<String> {
     let declared: BTreeSet<&str> = catalogue
         .types
         .iter()
-        .filter_map(|declaration| declaration.fqn.as_deref())
+        .map(|declaration| declaration.fqn.as_str())
         .collect();
     // The two questions a reference answers, gathered as the functions are walked: which
     // declarations are reached at all, and under which written spellings a model has seen them.
@@ -367,17 +360,8 @@ pub(crate) fn faults(catalogue: &SignatureCatalogue) -> Vec<String> {
     }
 
     for declaration in &catalogue.types {
-        let Some(fqn) = declaration.fqn.as_deref() else {
-            out.push(format!(
-                "the type `{}` has no fully-qualified name, so nothing can open it",
-                declaration.name
-            ));
-            continue;
-        };
-        let Some(module) = declaration.module.as_deref() else {
-            out.push(format!("the type `{fqn}` belongs to no module"));
-            continue;
-        };
+        let fqn = declaration.fqn.as_str();
+        let module = declaration.module.as_str();
         let Some(path) = path_of(module) else {
             out.push(format!(
                 "the type `{fqn}` belongs to the module `{module}`, which the catalogue does not \

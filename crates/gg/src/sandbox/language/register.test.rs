@@ -25,26 +25,15 @@ fn prose_written_in_the_register_passes() {
     assert_eq!(complaints(fixture::v2()), Vec::new());
 }
 
-/// **Every registered arm's prose passes**, and the two halves of that sentence mean different
-/// things.
+/// **Every registered arm's prose passes the register** — every brief one line, every detail in the
+/// register, every parameter description short and closed, and every operation id resolving to a row
+/// of gg's table.
 ///
-/// For an arm that has not been converted it means the gate is **inert**, which is the property
-/// that lets the arms move one commit at a time: a v1 catalogue's brief is derived from a paragraph
-/// nobody wrote to have one, and holding a derived line to a rule about authored lines would fail
-/// ten arms for a property none of them has claimed.
-///
-/// For a converted arm it means the gate **passed** — every brief one line, every detail in the
-/// register, every parameter description short and closed, and every operation id resolving to a
-/// row of gg's table. That is the whole of what this file exists to assert, and it is asserted here
-/// over each arm's real catalogue rather than over the fixture, because a fixture that passes
-/// says nothing about the arm a model actually runs on.
-///
-/// One test for the two because the list of converted arms belongs in one place
-/// (`crate::sandbox::signatures`'s `CONVERTED`), and because the assertion is
-/// literally the same call either way: *no complaints*.
+/// That is the whole of what this file exists to assert, and it is asserted here over each arm's
+/// real catalogue rather than over the fixture, because a fixture that passes says nothing about the
+/// arm a model actually runs on.
 #[test]
 fn every_registered_arms_prose_passes_the_register() {
-    assert_eq!(complaints(fixture::v1()), Vec::new());
     for language in crate::sandbox::all_languages() {
         let found = complaints(language.catalogue());
         assert!(
@@ -398,7 +387,7 @@ fn a_types_own_prose_is_held_to_the_rule() {
 /// still compiles it and still documents it to every human who reads the source. One
 /// character costs a capability and nothing else in the tree changes colour.
 ///
-/// A converted arm writes about forty-seven of these by hand, which is why the gate quotes the id
+/// An arm writes about forty-seven of these by hand, which is why the gate quotes the id
 /// back rather than reporting that something did not resolve.
 #[test]
 fn an_operation_id_gg_does_not_have_is_caught() {

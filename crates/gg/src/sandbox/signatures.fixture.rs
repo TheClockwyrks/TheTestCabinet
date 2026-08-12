@@ -1,32 +1,21 @@
-//! **One surface, written twice** — the matched pair of catalogues every test of the doc model
-//! reads: the same four calls and two types in the [`V1`](SchemaVersion::V1) shape every arm commits
-//! today, and in the [`V2`](SchemaVersion::V2) shape they are converted to.
+//! **One small surface**, written as a catalogue — the fixture every test of the doc model reads.
 //!
-//! # Why a matched pair rather than two unrelated fixtures
-//!
-//! Because the property worth proving is not that each schema parses — that is a `serde` derive
-//! working — but that **the two describe the same thing**, and that a consumer reading them through
-//! [`catalogue_functions`](super::catalogue_functions) cannot tell which it was handed. That is the
-//! whole basis on which an arm is converted in its own commit while the other ten stay where they
-//! are, and it is only testable against two catalogues that are supposed to agree.
-//!
-//! So the two are written to agree deliberately, down to the prose: each v1 entry's `doc` is its v2
-//! `brief`, a blank line, and its v2 `detail`, which is exactly the shape the
-//! [transitional split](super::Prose::from_paragraph) recovers. Where they *cannot* agree, the tests
-//! say so rather than the fixture papering over it — a v1 entry has no fully-qualified name, no
-//! module and no return position, because its schema has nowhere to put one.
+//! It has no arm behind it, which is the point: the properties worth proving about the model are
+//! about the *document* — that a catalogue projects into the same
+//! [`CatalogueFunction`](super::CatalogueFunction) shape every consumer reads, and that each gate
+//! written over it can be shown catching a damaged one — and giving them a component, a checker and
+//! a healing dialect to hang off would be a great deal of apparatus for a question about JSON.
 //!
 //! # What the surface was chosen to be
 //!
 //! Four calls, one per kind of [binding](crate::sandbox::Binding) gg has — a tool
 //! (`files.read_file`), an unconditional view (`views.close`), an ending (`session.finish`) and a
-//! capability (`programs.get`) — so that the v2 projection's gate synthesis is exercised on every
-//! arm of the match rather than on the one that happened to be written down. They are real gg
-//! operations, because an operation gg does not have would make the fixture prove the opposite of
-//! what it is for.
+//! capability (`programs.get`) — so that the projection's gate synthesis is exercised on every arm of
+//! the match rather than on the one that happened to be written down. They are real gg operations,
+//! because an operation gg does not have would make the fixture prove the opposite of what it is for.
 //!
-//! Their v2 shapes are deliberately not uniform: a free function, a **method** on a handle type, and
-//! a **static method** whose owning class is the module itself — which is how a language with no
+//! Their shapes are deliberately not uniform: a free function, a **method** on a handle type, and a
+//! **static method** whose owning class is the module itself — which is how a language with no
 //! standalone functions spells what every other arm spells as one. That is the axis
 //! [the name rule](super::fqn) has to survive, so it is in the fixture rather than only in prose.
 
@@ -36,115 +25,8 @@ use serde_json::Value;
 
 use super::{SchemaVersion, SignatureCatalogue};
 
-/// The surface in the [`V1`](SchemaVersion::V1) shape: five sections, an API object per entry, the
-/// gate written on the entry, and one `doc` paragraph each.
-pub(crate) const V1: &str = r#"{
-  "language": "rust",
-  "generatedFrom": "the doc model's own fixture — no SDK, no reflector",
-  "objects": [
-    { "object": "fs", "doc": "Read, write and edit files in the workspace." },
-    { "object": "view", "doc": "Put material into the agent's own context window." },
-    { "object": "harness", "doc": "End the session." },
-    { "object": "programs", "doc": "The programs already run in this session." }
-  ],
-  "session": [
-    {
-      "key": "finish",
-      "name": "finish",
-      "object": "harness",
-      "ending": "standard",
-      "signatures": [
-        {
-          "signature": "finish(summary: &str)",
-          "parameters": [
-            { "name": "summary", "type": "&str", "optional": false, "kind": "positional",
-              "default": null, "doc": "What was done, in a sentence or two.", "fields": [] }
-          ]
-        }
-      ],
-      "doc": "End the session, reporting what was done.\n\nIt does not stop the program: whatever follows it still runs.",
-      "types": []
-    }
-  ],
-  "views": [
-    {
-      "key": "close",
-      "requires": null,
-      "name": "close",
-      "object": "view",
-      "signatures": [
-        {
-          "signature": "close(selector: &str)",
-          "parameters": [
-            { "name": "selector", "type": "&str", "optional": false, "kind": "positional",
-              "default": null, "doc": "Which views to take back out.", "fields": [] }
-          ]
-        }
-      ],
-      "doc": "Take a view back out of the context window.\n\nThe tokens it held are reclaimed for the turns that follow.",
-      "types": ["OpenView"]
-    }
-  ],
-  "programs": [
-    {
-      "key": "get",
-      "name": "get",
-      "object": "programs",
-      "signatures": [
-        {
-          "signature": "get(id: &str) -> ProgramSummary",
-          "parameters": [
-            { "name": "id", "type": "&str", "optional": false, "kind": "positional",
-              "default": null, "doc": "Which program to read back.", "fields": [] }
-          ]
-        }
-      ],
-      "doc": "Read one program that has already run.\n\nThe source is what executed, not what was written.",
-      "types": []
-    }
-  ],
-  "tools": [
-    {
-      "tool": "read_file",
-      "name": "read_file",
-      "object": "fs",
-      "signatures": [
-        {
-          "signature": "read_file(path: &str) -> FileRead",
-          "parameters": [
-            { "name": "path", "type": "&str", "optional": false, "kind": "positional",
-              "default": null, "doc": "The file to read, relative to the workspace.", "fields": [] }
-          ]
-        }
-      ],
-      "doc": "Read a file's bytes into the program.\n\nReading an image does not show it; opening a view of it does.",
-      "types": ["FileRead"]
-    }
-  ],
-  "helpers": [],
-  "types": [
-    {
-      "name": "FileRead",
-      "declaration": "enum FileRead { Text(String), Image(Vec<u8>) }",
-      "doc": "The result of a file read.\n\nNarrow it before use: the two arms carry different things.",
-      "members": [
-        { "name": "Text", "type": null, "doc": "A text file, decoded." },
-        { "name": "Image", "type": null, "doc": "An image file, as bytes." }
-      ]
-    },
-    {
-      "name": "OpenView",
-      "declaration": "struct OpenView { selector: String }",
-      "doc": "One view that is open right now.",
-      "members": [
-        { "name": "selector", "type": "String", "doc": "What the view was opened under." }
-      ]
-    }
-  ]
-}"#;
-
-/// The same surface in the [`V2`](SchemaVersion::V2) shape: modules, operations, fully-qualified
-/// names, authored briefs and resolved type references.
+/// The surface as a catalogue: modules, operations, fully-qualified names, authored briefs and
+/// resolved type references.
 pub(crate) const V2: &str = r#"{
   "schema": 2,
   "language": "rust",
@@ -297,15 +179,7 @@ pub(crate) const V2: &str = r#"{
   ]
 }"#;
 
-/// The [`V1`](SchemaVersion::V1) fixture, parsed once.
-pub(crate) fn v1() -> &'static SignatureCatalogue {
-    static PARSED: OnceLock<SignatureCatalogue> = OnceLock::new();
-    let catalogue = PARSED.get_or_init(|| parse(V1));
-    assert_eq!(catalogue.schema, SchemaVersion::V1);
-    catalogue
-}
-
-/// The [`V2`](SchemaVersion::V2) fixture, parsed once.
+/// The fixture, parsed once.
 pub(crate) fn v2() -> &'static SignatureCatalogue {
     static PARSED: OnceLock<SignatureCatalogue> = OnceLock::new();
     let catalogue = PARSED.get_or_init(|| parse(V2));
@@ -313,8 +187,8 @@ pub(crate) fn v2() -> &'static SignatureCatalogue {
     catalogue
 }
 
-/// The [`V2`](SchemaVersion::V2) fixture with `edit` applied to it first — the damaged input every
-/// assertion that a gate **catches** something is built from.
+/// The fixture with `edit` applied to it first — the damaged input every assertion that a gate
+/// **catches** something is built from.
 ///
 /// Each call leaks one catalogue, which is what lets a single test hold a healthy fixture and a
 /// damaged one at once and compare what each produces. A test binary that runs a handful of these

@@ -125,9 +125,9 @@ fn documented_function(
     views: &[DocsRuntime],
     function: &CatalogueFunction,
 ) -> Option<GgReferenceEntry> {
-    // The fully-qualified name where the arm emits one, which is what a view is opened by; the bare
-    // name is the fallback a v1 arm is keyed by, and the runtime accepts either.
-    let key = function.fqn.unwrap_or(function.name);
+    // The fully-qualified name, which is what a view is opened by; the bare name is a fallback the
+    // runtime also accepts, and is not what the page files an entry under.
+    let key = function.fqn;
     let view = views.iter().find(|view| view.bound(function))?;
     Some(GgReferenceEntry {
         kind: GgReferenceEntryKind::Function,
@@ -136,11 +136,11 @@ fn documented_function(
         // gg's id for the module, so the page's folders and its entries are joined on the one name
         // that is not a spelling — and so a reader comparing two arms is comparing the same module
         // rather than two strings that happen to differ.
-        module: function.module.unwrap_or(function.object).to_string(),
+        module: function.module.to_string(),
         category: category_of(function),
         brief: function.prose.brief.to_string(),
         body: view.read(key)?,
-        operation: function.operation.map(str::to_string),
+        operation: Some(function.operation.to_string()),
         alias_of: function.alias_of.map(str::to_string),
         receiver: function.receiver.map(str::to_string),
         gate: function.gate.map(str::to_string),
@@ -167,7 +167,7 @@ fn documented_type(
     declaration: &TypeDeclaration,
 ) -> Option<GgReferenceEntry> {
     let key = declaration.key();
-    let module = declaration.module.clone().unwrap_or_default();
+    let module = declaration.module.clone();
     let body = views.iter().find_map(|view| view.read_type(key))?;
     Some(GgReferenceEntry {
         kind: GgReferenceEntryKind::Type,
@@ -200,9 +200,7 @@ fn documented_type(
 fn category_of(function: &CatalogueFunction) -> Option<String> {
     operation_of(function)
         .map(|operation| operation.family.to_string())
-        .or_else(|| {
-            family_of_module(function.module.unwrap_or(function.object)).map(str::to_string)
-        })
+        .or_else(|| family_of_module(function.module).map(str::to_string))
 }
 
 /// The type views gg would open beside `key`'s own under `mode`, as the run itself computes them.

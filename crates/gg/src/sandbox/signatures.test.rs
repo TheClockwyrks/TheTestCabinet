@@ -36,13 +36,11 @@ fn catalogue() -> &'static SignatureCatalogue {
     typescript().catalogue()
 }
 
-/// TypeScript's surface as every consumer reads it — the normalized projection of the one shape its
-/// catalogue is written in.
+/// TypeScript's surface as every consumer reads it — the projection of its catalogue.
 ///
-/// The expectations below are about spellings, and a spelling is a property of an *entry*; which
-/// section of the artifact that entry arrived in is the thing the two schemas disagree about and the
-/// thing [`catalogue_functions`] exists to hide. So the lookups here go through the projection, and
-/// a reshaping of the arm's SDK moves what they say rather than which field they read.
+/// The expectations below are about spellings, and a spelling is a property of an *entry* rather
+/// than of how the artifact is laid out. So the lookups here go through the projection, and a
+/// reshaping of the arm's SDK moves what they say rather than which field they read.
 fn functions() -> Vec<CatalogueFunction> {
     catalogue_functions(typescript())
 }
@@ -278,7 +276,7 @@ fn typescript_spells_its_view_calls_as_its_sdk_declares_them() {
             .iter()
             .filter_map(|function| function.alias_of.map(|alias| (function.fqn, alias)))
             .collect::<Vec<_>>(),
-        [(Some("gg.views.OpenView.close"), "views.close")],
+        [("gg.views.OpenView.close", "views.close")],
         "and its one alias says which operation it is a second way to reach"
     );
 
@@ -417,21 +415,21 @@ fn the_catalogue_tells_the_truth_about_pictures() {
     assert!(
         !own.contains("pixels are shown to you"),
         "`{}` must not promise a picture it does not show: {own}",
-        read.fqn.unwrap_or(read.name)
+        read.fqn
     );
     assert!(
         own.contains("shows nothing") || own.contains("does not show"),
         "`{}` must say plainly that reading an image does not show it: {own}",
-        read.fqn.unwrap_or(read.name)
+        read.fqn
     );
 
     // The call that DOES show one, quoted as this arm's own catalogue spells it rather than typed
     // here — a hand-written spelling in a test is the same defect the prompt gate exists for.
     let shows = functions()
         .into_iter()
-        .find(|function| function.operation == Some("views.open_file"))
+        .find(|function| function.operation == "views.open_file")
         .expect("this arm binds the call that shows a file");
-    let spelled = shows.fqn.unwrap_or(shows.name);
+    let spelled = shows.fqn;
     let reachable = read
         .types
         .iter()
@@ -475,68 +473,32 @@ fn the_catalogue_tells_the_truth_about_pictures() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The two schemas
+// The doc model
 //
 // What follows is about the doc model rather than about TypeScript: that a catalogue says which
-// shape it is written in, that both shapes parse, and — the load-bearing one — that a consumer
-// reading either through `catalogue_functions` cannot tell which it was handed. That last property
-// is what makes converting one arm per commit possible, so it is asserted against a matched pair of
-// fixtures rather than inferred from the two halves working separately.
+// shape it is written in and is refused when that is a shape this gg cannot render, and that the
+// projection every consumer reads carries the identity, the gate and the prose the document states.
+// Asserted against a fixture rather than against an arm, because the subject is the document.
 // ---------------------------------------------------------------------------------------------
 
 use super::fixture;
 
-/// **Which arms have been converted, named.**
+/// **Every registered arm is written in the one schema gg reads.**
 ///
-/// Stated rather than assumed, because it is what makes every "inert below v2" claim in the gates a
-/// claim about the tree that exists: an arm absent from this list is one the register gate and the
-/// name rule say nothing about, and that is only acceptable while it is *known* to be absent.
-///
-/// It fails in both directions, which is the point. Converting an arm and forgetting to name it
-/// here leaves the tree quietly holding a v2 catalogue to no v2 gate; naming one that has not been
-/// converted claims a coverage nothing provides.
-const CONVERTED: [GgProgramLanguage; 11] = [
-    GgProgramLanguage::Cpp,
-    GgProgramLanguage::CSharp,
-    GgProgramLanguage::Java,
-    GgProgramLanguage::JavaScript,
-    GgProgramLanguage::Kotlin,
-    GgProgramLanguage::PureScript,
-    GgProgramLanguage::Python,
-    GgProgramLanguage::Ruby,
-    GgProgramLanguage::Rust,
-    GgProgramLanguage::Swift,
-    GgProgramLanguage::TypeScript,
-];
-
+/// Stated rather than assumed, because every gate over the doc model — the register gate, the name
+/// rule, the capability gate — is written against that one shape and has nothing to say about any
+/// other. An arm emitting something else would fail to parse at all, and this says so where the
+/// failure names the arm.
 #[test]
-fn every_registered_arm_is_written_in_the_schema_this_tree_says_it_is() {
+fn every_registered_arm_is_written_in_the_schema_this_tree_reads() {
     for language in language::all_languages() {
-        let expected = if CONVERTED.contains(&language.id()) {
-            SchemaVersion::V2
-        } else {
-            SchemaVersion::V1
-        };
         assert_eq!(
             language.catalogue().schema,
-            expected,
-            "{} is written in a schema this tree does not expect — an arm's conversion commit adds \
-             it to `CONVERTED`, which is what turns the v2 gates on for it",
+            SchemaVersion::V2,
+            "{} is written in a schema this tree does not read",
             language.display_name()
         );
     }
-}
-
-/// **A catalogue declares which schema it is written in, and the absence of the key means the first
-/// one** — the only honest reading of an artifact written before the key existed.
-#[test]
-fn a_catalogue_declares_its_schema_and_absence_means_the_first() {
-    assert_eq!(fixture::v1().schema, SchemaVersion::V1);
-    assert_eq!(fixture::v2().schema, SchemaVersion::V2);
-    assert!(
-        !fixture::V1.contains("\"schema\""),
-        "the v1 fixture is the shape that predates the key, and must not declare one"
-    );
 }
 
 /// **A schema this gg does not know is refused, not rounded down to one it does.**
@@ -553,71 +515,18 @@ fn a_schema_from_a_newer_gg_is_refused() {
     );
 }
 
-/// **One surface written in either schema projects the same way.**
-///
-/// This is the property the whole version dispatch exists for. The two fixtures describe the same
-/// four calls — same identities, same gates, same prose, same shapes — and every field a consumer
-/// routes, gates or renders on comes out equal, so a converted arm is not a different arm.
+/// **The projection carries the identity the document states**: the name it is opened by, the module
+/// it is filed under, the operation it binds and the return position its reflector resolved.
 #[test]
-fn one_surface_written_in_either_schema_projects_the_same_way() {
-    let old = super::functions_of(fixture::v1());
-    let new = super::functions_of(fixture::v2());
-    assert_eq!(
-        old.len(),
-        new.len(),
-        "the two fixtures describe one surface"
-    );
-
-    for (old, new) in old.iter().zip(&new) {
-        assert_eq!(old.key, new.key, "identity is the same in either schema");
-        assert_eq!(old.name, new.name);
-        assert_eq!(old.gate, new.gate, "`{}` is gated the same way", old.key);
-        assert_eq!(old.ending, new.ending);
-        assert_eq!(old.capability, new.capability);
-        assert_eq!(
-            old.prose.brief, new.prose.brief,
-            "`{}`'s brief is the same line the transitional split recovers",
-            old.key
-        );
-        assert_eq!(old.prose.detail, new.prose.detail);
-        assert_eq!(
-            old.prose.rendered(),
-            new.prose.rendered(),
-            "`{}` reads identically in a documentation view",
-            old.key
-        );
-        assert_eq!(
-            old.signatures.len(),
-            new.signatures.len(),
-            "the shape of a call was never the thing that needed normalizing"
-        );
-    }
-}
-
-/// **A v2 entry carries what a v1 entry structurally cannot**, and the projection says so rather
-/// than inventing it: a name, a module, an operation and a return position.
-#[test]
-fn a_v2_entry_carries_the_identity_a_v1_entry_has_nowhere_to_put() {
-    let old = super::functions_of(fixture::v1());
-    for function in &old {
-        assert!(function.fqn.is_none(), "a v1 entry has no name of its own");
-        assert!(function.module.is_none());
-        assert!(function.operation.is_none());
-        assert!(
-            function.returns.is_empty(),
-            "a v1 catalogue records no return position, which is why the depth-one rule has to \
-             sort returns from arguments by elimination"
-        );
-    }
-
-    let new = super::functions_of(fixture::v2());
-    let read = new
+fn an_entry_carries_the_identity_its_document_states() {
+    let functions = super::functions_of(fixture::v2());
+    let read = functions
         .iter()
         .find(|function| function.name == "read_file")
         .expect("the fixture reads files");
-    assert_eq!(read.fqn, Some("gg::files::read_file"));
-    assert_eq!(read.module, Some("files"));
-    assert_eq!(read.operation, Some("files.read_file"));
+    assert_eq!(read.fqn, "gg::files::read_file");
+    assert_eq!(read.module, "files");
+    assert_eq!(read.operation, "files.read_file");
     assert_eq!(read.kind, EntryKind::Function);
     assert!(read.receiver.is_none());
     assert_eq!(
@@ -630,22 +539,22 @@ fn a_v2_entry_carries_the_identity_a_v1_entry_has_nowhere_to_put() {
 
     // The one entry whose idiomatic shape is a member: the receiver is recorded, and it is what
     // adds the third segment to the name.
-    let close = new
+    let close = functions
         .iter()
         .find(|function| function.name == "close")
         .expect("the fixture closes views");
     assert_eq!(close.kind, EntryKind::Method);
     assert_eq!(close.receiver, Some("OpenView"));
-    assert_eq!(close.fqn, Some("gg::views::OpenView::close"));
+    assert_eq!(close.fqn, "gg::views::OpenView::close");
 }
 
-/// **A v2 entry's gate is gg's own**, synthesized from the operation it names rather than read out
-/// of the artifact — which is why the schema has no field for one.
+/// **An entry's gate is gg's own**, synthesized from the operation it names rather than read out of
+/// the artifact — which is why the schema has no field for one.
 ///
 /// All four kinds of binding are exercised, because the failure worth catching is a projection that
 /// gets one of them right and silently answers `None` for the rest.
 #[test]
-fn the_gate_of_a_v2_entry_is_synthesized_from_ggs_own_table() {
+fn the_gate_of_an_entry_is_synthesized_from_ggs_own_table() {
     let functions = super::functions_of(fixture::v2());
     let by_name = |name: &str| {
         functions
@@ -668,15 +577,15 @@ fn the_gate_of_a_v2_entry_is_synthesized_from_ggs_own_table() {
     let close = by_name("close");
     assert!(close.gate.is_none() && close.ending.is_none() && close.capability.is_none());
 
-    // The `V2` fixture never says any of that: the JSON carries an operation id and no gate at all.
+    // The fixture never says any of that: the JSON carries an operation id and no gate at all.
     assert!(!fixture::V2.contains("\"requires\""));
     assert!(!fixture::V2.contains("\"ending\""));
 }
 
-/// **An operation named on the declaration resolves to gg's row for it**, which is the join a
-/// converted arm uses in place of the `(object, key)` pair.
+/// **An operation named on the declaration resolves to gg's row for it** — the one join between an
+/// arm's surface and gg's own vocabulary.
 #[test]
-fn a_v2_entry_resolves_to_its_operation_by_id() {
+fn an_entry_resolves_to_its_operation_by_id() {
     let functions = super::functions_of(fixture::v2());
     let read = functions
         .iter()
@@ -687,22 +596,10 @@ fn a_v2_entry_resolves_to_its_operation_by_id() {
     assert_eq!(operation.id.key, "read_file");
 }
 
-/// **A module is read the same way in either schema**, and a v1 catalogue's API objects are
-/// projected as the modules they are — path and id both the object's own name, because that is the
-/// most identity an unconverted arm has.
+/// **A module carries gg's id and the arm's own path**, which is what lets one module be one module
+/// across eleven arms that spell it eleven ways.
 #[test]
-fn modules_are_read_the_same_way_in_either_schema() {
-    let old = super::modules_of(fixture::v1());
-    assert_eq!(
-        old.iter().map(|module| module.path).collect::<Vec<_>>(),
-        ["fs", "view", "harness", "programs"]
-    );
-    assert!(old.iter().all(|module| module.id == module.path));
-    assert!(
-        old.iter().all(|module| module.import.is_none()),
-        "a v1 catalogue has nowhere to record an import line"
-    );
-
+fn a_module_carries_ggs_id_and_the_arms_own_path() {
     let new = super::modules_of(fixture::v2());
     assert_eq!(
         new.iter().map(|module| module.path).collect::<Vec<_>>(),
@@ -722,54 +619,26 @@ fn modules_are_read_the_same_way_in_either_schema() {
     );
 }
 
-/// **A brief is the first LINE, never the first sentence** — the defect that made the old
-/// derivation wrong in any language.
-///
-/// A period followed by a newline is not a sentence end, so a first-sentence rule ran on past the
-/// paragraph break and swallowed the paragraph after it. Measured on today's catalogues,
-/// that is every one of the eight arms whose docs have paragraph breaks.
-#[test]
-fn a_brief_is_the_first_line_and_never_the_first_sentence() {
-    let doc = "Run a command. A non-zero exit is not a failure.\n\nRead the exit code instead.";
-    let prose = Prose::from_paragraph(doc);
-    assert_eq!(
-        prose.brief,
-        "Run a command. A non-zero exit is not a failure."
-    );
-    assert_eq!(prose.detail, Some("Read the exit code instead."));
-    assert_eq!(
-        prose.rendered(),
-        doc,
-        "a v1 paragraph is rendered back verbatim, so nothing a model already reads moves"
-    );
-
-    // And a paragraph with no break at all is a brief that is the whole of it, which reads as *this
-    // arm has not authored a brief yet* rather than as a line cut short mid-code-span.
-    let flowing = Prose::from_paragraph("Read a file, returning either `text` or `image`.");
-    assert_eq!(
-        flowing.brief,
-        "Read a file, returning either `text` or `image`."
-    );
-    assert!(flowing.detail.is_none());
-}
-
 /// **An authored brief and detail render as one block**, with the blank line between them a
-/// documentation view needs and a v1 paragraph already had.
+/// documentation view needs.
 #[test]
 fn authored_prose_renders_as_one_block() {
-    let authored = Prose::of(Some("Read a file."), Some("Narrow it before use."), "");
+    let authored = Prose::authored("Read a file.", Some("Narrow it before use."));
     assert_eq!(authored.rendered(), "Read a file.\n\nNarrow it before use.");
 
-    let brief_only = Prose::of(Some("Read a file."), None, "");
+    let brief_only = Prose::authored("Read a file.", None);
     assert_eq!(brief_only.rendered(), "Read a file.");
 
-    // An authored brief wins over a `doc` that is not there to be split, which is what stops a v2
-    // entry that forgot its brief from being handed a plausible-looking one.
-    let empty = Prose::of(Some(""), None, "Read a file.\n\nNarrow it.");
+    // A blank brief stays blank rather than being filled in from somewhere, which is what lets the
+    // register gate name an entry whose author forgot one.
+    let empty = Prose::authored("", None);
     assert_eq!(
         empty.brief, "",
         "an absent brief stays absent, and the gate names it"
     );
+
+    // A detail that is only whitespace is no detail, so nothing renders a trailing blank line.
+    assert_eq!(Prose::authored("Read a file.", Some("  ")).detail, None);
 }
 
 /// **A type reference carries the resolved name and the written spelling**, and says which is which
@@ -800,38 +669,34 @@ fn a_type_reference_carries_both_the_spelling_and_the_resolution() {
     );
 }
 
-/// **A type declaration reads the same way in either schema**, and a converted one carries the name
-/// it is opened by, the module it belongs to and the shape of each member.
+/// **A type declaration carries the name it is opened by, the module it belongs to and the shape of
+/// each member.**
 #[test]
-fn a_type_is_read_the_same_way_in_either_schema() {
-    let old = fixture::v1()
+fn a_type_carries_the_name_it_is_opened_by() {
+    let declared = fixture::v2()
         .types
         .iter()
         .find(|declaration| declaration.name == "FileRead")
-        .expect("the v1 fixture declares it");
-    let new = fixture::v2()
-        .types
-        .iter()
-        .find(|declaration| declaration.name == "FileRead")
-        .expect("the v2 fixture declares it");
+        .expect("the fixture declares it");
 
-    assert_eq!(old.prose().brief, new.prose().brief);
-    assert_eq!(old.prose().detail, new.prose().detail);
-    assert_eq!(old.prose().rendered(), new.prose().rendered());
-    assert!(old.fqn.is_none() && old.module.is_none());
-    assert_eq!(new.fqn.as_deref(), Some("gg::files::FileRead"));
-    assert_eq!(new.module.as_deref(), Some("files"));
+    assert_eq!(declared.fqn, "gg::files::FileRead");
+    assert_eq!(declared.key(), "gg::files::FileRead");
+    assert_eq!(declared.module, "files");
+    assert_eq!(declared.prose().brief, "The result of a file read.");
+    assert_eq!(
+        declared.prose().detail,
+        Some("Narrow it before use: the two arms carry different things.")
+    );
 
-    // A member's shape is stated where the catalogue states it and derived where it does not, and
-    // the two agree: an arm of a union carries no type of its own, because the arm is the value.
-    for (old, new) in old.members.iter().zip(&new.members) {
-        assert_eq!(old.kind(), new.kind());
-        assert_eq!(old.kind(), MemberKind::Variant);
-        assert_eq!(old.prose().brief, new.prose().brief);
+    // A member states its own shape: an arm of a union carries no type of its own, because the arm
+    // is the value.
+    for member in &declared.members {
+        assert_eq!(member.kind, MemberKind::Variant);
+        assert!(!member.prose().brief.is_empty());
     }
 
-    // And a converted type carries the menu of what can be done with a value of it, which is what
-    // makes opening a function's return type land the model somewhere useful.
+    // And a type carries the menu of what can be done with a value of it, which is what makes
+    // opening a function's return type land the model somewhere useful.
     let view = fixture::v2()
         .types
         .iter()

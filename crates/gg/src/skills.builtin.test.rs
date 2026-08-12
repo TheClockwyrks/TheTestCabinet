@@ -100,19 +100,18 @@ fn the_code_arm_carries_an_on_use_script_and_no_body() {
     assert!(script.contains("\"readFile\""), "{script}");
 }
 
-/// **A built-in family skill is generated for every registered arm**, whichever
-/// [schema](crate::sandbox::SchemaVersion) its catalogue is written in.
+/// **A built-in family skill is generated for every registered arm.**
 ///
 /// The script is generated from the family's own functions, and a family that came back empty makes
 /// `built_in_code` decline to generate a skill at all — silently, because declining is also the
-/// right answer for a family this run withheld. That is exactly what happened when the functions
-/// were asked for by **API object**: an arm whose surface is capability modules files the
-/// filesystem family under `gg::files` rather than under `fs`, so gg's own word for the object
-/// matched nothing and every converted arm quietly lost all eleven of its built-in skills. It is
-/// asked for by family now, which is gg's identity on both shapes of catalogue, and this is the
-/// gate that says so for every arm at once rather than for whichever one the tests above picked.
+/// right answer for a family this run withheld. That is exactly what happens if the functions are
+/// asked for by **API object**: an arm files the filesystem family under `gg::files` rather than
+/// under `fs`, so gg's own word for the object matches nothing and the arm quietly loses all eleven
+/// of its built-in skills. They are asked for by family, which is gg's identity for the grouping,
+/// and this is the gate that says so for every arm at once rather than for whichever one the tests
+/// above picked.
 #[test]
-fn every_arm_generates_the_built_in_family_skills_whatever_schema_it_is_written_in() {
+fn every_arm_generates_the_built_in_family_skills() {
     for language in crate::sandbox::all_languages() {
         let skills = builtin_skills(
             &["read_file".to_string()],

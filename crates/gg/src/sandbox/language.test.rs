@@ -83,10 +83,9 @@ fn every_registered_language_carries_its_artifacts() {
                 language.id()
             ),
         }
-        // The catalogue is loaded through the normalized projection rather than by reaching into a
-        // section, because which section a call arrives in is exactly what the two schemas disagree
-        // about — and what this asserts is that the artifact carries a surface at all, which is the
-        // same question whichever shape it was written in.
+        // Loaded through the projection every consumer reads rather than out of the raw document,
+        // because what this asserts is that the artifact carries a surface at all — which is a
+        // question about what an arm offers, not about how its JSON is laid out.
         assert!(
             !crate::sandbox::catalogue_functions(language).is_empty(),
             "{}'s catalogue documents no model-facing call at all",
@@ -284,9 +283,8 @@ fn every_model_facing_call_resolves_in_every_language() {
                     )
                 });
             // Both halves of the quoted spelling are the ARM's: the grouping a program writes
-            // before the separator, and the name after it. On an arm whose surface is API objects
-            // the grouping is gg's own word for it and nothing changes; on a converted arm it is
-            // the module path, which is the only form a program could compile.
+            // before the separator, and the name after it. The grouping is the module path, which
+            // is the only form a program could compile.
             assert_eq!(
                 crate::sandbox::spell(language, call),
                 format!(
@@ -669,9 +667,8 @@ fn no_language_serves_another_languages_artifacts() {
         "both languages report the same name"
     );
 
-    // Resolved through the normalized projection rather than out of a section, because which
-    // section a call arrives in is what the two schemas disagree about — and the question here is
-    // only whose *spelling* of one call came back.
+    // Resolved through the projection rather than out of the raw document, because the question
+    // here is only whose *spelling* of one call came back.
     let spelling = |language: &'static dyn ProgramLanguage| {
         crate::sandbox::catalogue_functions(language)
             .into_iter()

@@ -247,9 +247,9 @@ fn each_objects_description_and_its_place_come_from_the_catalogue() {
         GgProgramLanguage::TypeScript,
     );
 
-    // Read through the normalized reading of the two schemas, which is what `api_surface` itself
-    // reads: this arm groups its surface into capability modules, so the grouping the surface names
-    // is the module path and the sentence introducing it is the module's authored brief and detail.
+    // Read through the module projection `api_surface` itself reads: this arm groups its surface
+    // into capability modules, so the grouping the surface names is the module path and the sentence
+    // introducing it is the module's authored brief and detail.
     let catalogue =
         crate::sandbox::catalogue_modules(crate::sandbox::language(GgProgramLanguage::TypeScript));
     for api in &apis {
@@ -571,12 +571,10 @@ fn the_surface_reports_the_bound_catalogue_and_nothing_else() {
     for api in &apis {
         let expected: Vec<GgAgentApiFunction> = crate::sandbox::catalogue_functions(language)
             .into_iter()
-            .filter(|function| {
-                function.module.unwrap_or(function.object) == api.module && docs.bound(function)
-            })
+            .filter(|function| function.module == api.module && docs.bound(function))
             .map(|function| GgAgentApiFunction {
                 name: function.name.to_string(),
-                operation: function.operation.unwrap_or_default().to_string(),
+                operation: function.operation.to_string(),
             })
             .collect();
         assert_eq!(

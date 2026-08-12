@@ -846,8 +846,8 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
     assert_eq!(
         catalogue["schema"].as_u64(),
         Some(2),
-        "this arm is written in the normalized doc model, and a catalogue that stopped saying so \
-         would be read as the shape that predates it"
+        "a catalogue declares which shape it is written in, and one that stopped saying so would \
+         not be readable at all"
     );
 
     // Identity: the modules, in the order the surface is presented in, spelled the way a program

@@ -222,7 +222,7 @@ impl DocIndex {
             };
             let brief = function.prose.brief;
             entries.push(DocEntry {
-                key: function.fqn.unwrap_or(function.name),
+                key: function.fqn,
                 kind: DocKind::Function,
                 modules: vec![DocModule {
                     id: operation.id.namespace,

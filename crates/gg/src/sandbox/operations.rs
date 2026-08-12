@@ -39,14 +39,6 @@
 //! configuration surface, which is the one thing an arm cannot be held to. The
 //! [projection](super::signatures::CatalogueFunction::capability) that carries the id to the docs
 //! runtime reads it off the [`Binding`] here, and this table is the only place it is written down.
-//!
-//! # The transitional field
-//!
-//! [`Operation::call`] is gg's own `(object, key)` name for an operation. Every arm now writes its
-//! operation id on the declaration itself, so no catalogue is *resolved* through this pair any more
-//! — what still is, is gg's own sentences: the [`SurfaceCall`] constants are how a prompt or a
-//! refusal names a call, and [`spell`](super::language::spell) turns one into the arm's spelling by
-//! way of this field. It goes when those constants are replaced by operation ids.
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -196,13 +188,12 @@ pub struct Operation {
     /// one grouping that survives every arm being idiomatic, and therefore the one the
     /// [id](Self::id) is namespaced on.
     pub family: &'static str,
-    /// The `(object, key)` pair today's catalogues file this operation under.
+    /// The `(object, key)` pair gg names this operation by in its **own** sentences.
     ///
-    /// Transitional, and the only field here that is about *spelling*: it exists because an arm's
-    /// reflected catalogue still says which API object a function hangs off, and that pair is the
-    /// only join gg has to it until each arm writes the operation id on the declaration itself. It
-    /// is also what gg [spells](super::language::spell) the operation with when it names the call
-    /// back at a model.
+    /// The one field here that is about *spelling*. It is what the [`SurfaceCall`] constants are
+    /// written in — how a prompt, a refusal or the membrane's own record names a call — and what
+    /// [`spell`](super::language::spell) turns into the arm's spelling when gg names the call back
+    /// at a model.
     pub call: SurfaceCall,
     /// What buys it. gg decides this; **no arm declares it**.
     pub binding: Binding,
@@ -720,20 +711,7 @@ pub const OPERATIONS: &[Operation] = &[
 /// `every_catalogued_function_has_an_operation` proves the case unreachable for every registered
 /// language, while the capability gate (`language/agreement.rs`) is what reports it *by name*.
 pub fn operation_of(function: &CatalogueFunction) -> Option<&'static Operation> {
-    match function.operation {
-        // A catalogue in the [normalized schema](super::signatures::SchemaVersion::V2) names its
-        // operation on the declaration itself, which is the end state this join was always heading
-        // for: the id is the entry's identity rather than something recovered from where it was
-        // filed. An id no row carries is not silently re-resolved through the pair below — an arm
-        // that named an operation gg does not have has said something wrong, and answering it with
-        // whatever `(object, key)` happens to match would hide that.
-        Some(id) => operation_by_id(id),
-        // The transitional half, for the catalogues still filing entries under an API object. It
-        // goes with the last of them.
-        None => OPERATIONS.iter().find(|operation| {
-            operation.call.object == function.object && operation.call.key == function.key
-        }),
-    }
+    operation_by_id(function.operation)
 }
 
 /// The operation `id` names, written as a catalogue writes it — `files.read_file` — or `None` for an

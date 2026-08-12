@@ -626,7 +626,7 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
     let mut catalogued: Vec<&str> = crate::sandbox::catalogue_functions(kotlin)
         .iter()
         .filter(|function| function.receiver.is_some())
-        .filter_map(|function| function.fqn)
+        .map(|function| function.fqn)
         .collect();
     catalogued.sort_unstable();
     assert_eq!(

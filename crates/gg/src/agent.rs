@@ -8572,25 +8572,20 @@ fn api_surface(
         program_language,
     );
     let language = docs.language();
-    // In the catalogue's order, which is the order the SDK declares them in — read through the
-    // normalized reading of the two schemas, so that an arm whose surface is API objects and an arm
-    // whose surface is modules both arrive here as the same list of groupings.
+    // In the catalogue's order, which is the order the SDK declares them in.
     let modules = crate::sandbox::catalogue_modules(language);
     // Keyed by gg's module id rather than by the arm's spelling of it, because that id is the half
     // of an operation a consumer groups eleven arms by; the spelling comes off the module view
-    // below. An unconverted arm's id is its object's own name, so the two coincide there.
+    // below.
     let mut bound: BTreeMap<&'static str, Vec<GgAgentApiFunction>> = BTreeMap::new();
     for function in crate::sandbox::catalogue_functions(language) {
         if docs.bound(&function) {
             bound
-                .entry(function.module.unwrap_or(function.object))
+                .entry(function.module)
                 .or_default()
                 .push(GgAgentApiFunction {
                     name: function.name.to_string(),
-                    // An entry naming an operation gg does not have reports none rather than a
-                    // fabricated one: it is a defect the capability gate reports by name, and a
-                    // guess here would put a call under an id nothing else in the run uses.
-                    operation: function.operation.unwrap_or_default().to_string(),
+                    operation: function.operation.to_string(),
                 });
         }
     }

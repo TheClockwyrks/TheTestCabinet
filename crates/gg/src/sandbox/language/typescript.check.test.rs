@@ -227,10 +227,7 @@ fn the_generated_surface_declares_every_module_the_catalogue_carries() {
         assert!(surface.contains(alias), "the surface declares `{alias}`");
     }
     for declaration in &catalogue.types {
-        let module = declaration
-            .module
-            .as_deref()
-            .expect("a v2 type has a module");
+        let module = declaration.module.as_str();
         assert!(
             surface.contains(&format!(
                 "import {} = gg.{module}.{};",

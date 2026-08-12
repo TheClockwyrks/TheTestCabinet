@@ -335,10 +335,9 @@ fn a_search_close_reports_its_own_band() {
 /// quarters of what it was looking for — which is the exact failure the envelope's `total` exists to
 /// prevent and which a rendering that dropped it would undo.
 ///
-/// The hit carries a `key` that differs from its `name` on purpose. A hit whose two identifiers are
-/// the same string — which is what a schema-v1 arm produced, and what this case used to build —
-/// cannot tell the two apart, so it would pass just as readily against a rendering that printed the
-/// wrong one.
+/// The hit carries a `key` that differs from its `name` on purpose. A hit whose two identifiers were
+/// the same string could not tell the two apart, so it would pass just as readily against a
+/// rendering that printed the wrong one.
 #[test]
 fn the_results_view_says_how_much_of_the_answer_it_is() {
     let query = DocSearchQuery {

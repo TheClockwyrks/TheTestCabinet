@@ -50,7 +50,7 @@ fn every_catalogued_function_is_documented() {
             id.id()
         );
         for function in &catalogued {
-            let key = function.fqn.unwrap_or(function.name);
+            let key = function.fqn;
             assert!(
                 emitted.contains(key),
                 "{}'s `{key}` is documented by the catalogue and missing from the page",
@@ -139,7 +139,7 @@ fn every_body_opens_the_way_a_documentation_view_opens() {
         for entry in of_kind(&document, GgReferenceEntryKind::Function) {
             let function = catalogue_functions(arm)
                 .into_iter()
-                .find(|function| function.fqn.unwrap_or(function.name) == entry.fqn)
+                .find(|function| function.fqn == entry.fqn)
                 .expect("every emitted function is a catalogued one");
             let first = &function.signatures[0].signature;
             assert!(
@@ -304,7 +304,7 @@ fn every_referenced_type_resolves_to_a_declaration() {
         for entry in of_kind(&document, GgReferenceEntryKind::Function) {
             let function = catalogue_functions(arm)
                 .into_iter()
-                .find(|function| function.fqn.unwrap_or(function.name) == entry.fqn)
+                .find(|function| function.fqn == entry.fqn)
                 .expect("every emitted function is a catalogued one");
             assert_eq!(
                 entry.types.len(),

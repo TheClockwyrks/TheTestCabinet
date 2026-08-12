@@ -51,7 +51,7 @@
 //! function, because that is precisely the set a search will hand over.
 
 use super::{TEMPLATES, render_code_nothing_shown_for, render_system_for};
-use crate::sandbox::{ProgramLanguage, all_languages, catalogue_functions, catalogue_objects};
+use crate::sandbox::{ProgramLanguage, all_languages, catalogue_functions};
 
 /// Every template gg renders, as `(name, source)` — the shared ones plus each registered language's
 /// pair and the fixture's.
@@ -107,9 +107,7 @@ fn call_spellings(language: &'static dyn ProgramLanguage) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for function in catalogue_functions(language) {
         out.push(format!("{}{separator}{}", function.object, function.name));
-        if let Some(fqn) = function.fqn {
-            out.push(fqn.to_string());
-        }
+        out.push(function.fqn.to_string());
     }
     out.sort();
     out.dedup();
@@ -139,16 +137,13 @@ fn backticked(text: &str) -> Vec<&str> {
 /// Every **grouping** `language` presents its surface under — the string that stands before the
 /// member separator in a name gg writes.
 ///
-/// It is one function because the two questions asked over it have one answer with two shapes. A
-/// [`V1`](crate::sandbox::SchemaVersion::V1) catalogue's grouping is its API object, a single
-/// identifier (`fs`); a converted arm's is its **module path**, which is several (`gg.files`,
-/// `GG::Board`, `Gg.Files`). Both are read here, so a rule written over this covers the registered
-/// arms and the seam's frozen fixture with one implementation.
+/// The grouping is the arm's **module path**, which is several identifiers (`gg.files`, `GG::Board`,
+/// `Gg.Files`) rather than one, and is read off the calls themselves so that what a rule matches is
+/// exactly what some catalogued function is listed under.
 fn groupings_of(language: &'static dyn ProgramLanguage) -> Vec<&'static str> {
-    let mut out: Vec<&'static str> = catalogue_objects(language)
-        .iter()
-        .map(|object| object.object.as_str())
-        .chain(catalogue_functions(language).into_iter().map(|f| f.object))
+    let mut out: Vec<&'static str> = catalogue_functions(language)
+        .into_iter()
+        .map(|function| function.object)
         .collect();
     out.sort_unstable();
     out.dedup();
@@ -161,13 +156,11 @@ fn groupings_of(language: &'static dyn ProgramLanguage) -> Vec<&'static str> {
 ///
 /// # Why the grouping is matched rather than parsed
 ///
-/// It used to read exactly one leading identifier, which was right while every arm grouped its calls
-/// under a single-identifier API object and became **wrong for all eleven** when the last was
-/// converted: a rendered `gg.files.readFile` has the head `gg.files`, so reading one identifier
-/// yields `gg` and every span in every shipped template fell through the caller's lookup. That was
-/// measured rather than reasoned: a hand-typed `` `gg.files.thisCallDoesNotExist(x)` `` planted in a
-/// shipped template passed the rendered rule. So the head is matched against the groupings the
-/// language really publishes, **longest first**, which is a question with one answer whatever
+/// Reading exactly one leading identifier would be wrong on every arm: a rendered `gg.files.readFile`
+/// has the head `gg.files`, so one identifier yields `gg` and every span in every shipped template
+/// falls through the caller's lookup — a hand-typed
+/// `` `gg.files.thisCallDoesNotExist(x)` `` would pass. So the head is matched against the groupings
+/// the language really publishes, **longest first**, which is a question with one answer whatever
 /// punctuation an arm's module path is written with.
 ///
 /// # Why it scans rather than anchoring at the start
@@ -323,15 +316,13 @@ fn every_name_a_rendered_prompt_writes_under_a_module_is_one_it_publishes() {
             .collect();
         let mut published: Vec<String> = Vec::new();
         for declaration in &language.catalogue().types {
-            let Some(fqn) = declaration.fqn.as_deref() else {
-                continue;
-            };
+            let fqn = declaration.fqn.as_str();
             published.push(fqn.to_string());
             let Some(prefix) = fqn.strip_suffix(declaration.name.as_str()) else {
                 continue;
             };
             for member in &declaration.members {
-                if member.kind() == crate::sandbox::MemberKind::Variant {
+                if member.kind == crate::sandbox::MemberKind::Variant {
                     published.push(format!("{prefix}{}", member.name));
                 }
             }

@@ -179,9 +179,7 @@ use crate::sandbox::operations::{
     Applicability, Binding, FAMILY_DOCS, FAMILY_PROGRAMS, FAMILY_VIEWS, OPERATIONS, Operation,
     OperationId,
 };
-use crate::sandbox::signatures::{
-    CatalogueFunction, EntryKind, Parameter, SchemaVersion, SignatureEntry,
-};
+use crate::sandbox::signatures::{CatalogueFunction, EntryKind, Parameter, SignatureEntry};
 
 /// What a complaint about gg's own [operations table](OPERATIONS) is filed under, where an arm's
 /// complaint is filed under the arm's display name.
@@ -660,15 +658,6 @@ fn coverage(
     let subject = language.display_name();
     let mut complain = |detail: String| out.push(Disagreement { subject, detail });
 
-    if language.catalogue().schema < SchemaVersion::V2 {
-        complain(
-            "emits a catalogue in schema 1, which named no operation and asserted its own gates \
-             — this gate reads the normalized model and has nothing to hold such a catalogue to"
-                .to_string(),
-        );
-        return;
-    }
-
     // The arm's identity mapping: operation id → the bindings it wrote for it. A `Vec` rather than
     // one value because two canonical bindings of one operation is precisely the thing to report,
     // and reporting it needs both.
@@ -677,22 +666,7 @@ fn coverage(
 
     for function in crate::sandbox::catalogue_functions(language) {
         let named = named(&function);
-        // **Unreachable while every readable catalogue is in the normalized schema**, and kept
-        // rather than unwrapped because that is a property of the schema refusal above rather than
-        // of this loop. A V2 entry's operation is a required, non-optional field, so the projection
-        // fills it in unconditionally; a V1 catalogue never reaches here at all. A catalogue whose
-        // reflector dropped the key therefore does not produce this sentence — it fails earlier and
-        // harder, where the arm parses the document its build wrote (`SignatureCatalogue::parse` in
-        // each arm's `catalogue`), with `missing field `operation``. That is an acceptable place to fail,
-        // and this arm exists so that the field going optional again is a complaint rather than a
-        // panic.
-        let Some(id) = function.operation else {
-            complain(format!(
-                "`{named}` names no operation at all, so gg has no identity to gate, record or \
-                 document it under"
-            ));
-            continue;
-        };
+        let id = function.operation;
         let Some(operation) = resolve(operations, id) else {
             complain(format!(
                 "`{named}` binds the operation `{id}`, which gg does not have — an entry gg cannot \
@@ -791,7 +765,7 @@ fn takes_input(
         if function.alias_of.is_some() {
             continue;
         }
-        let Some(operation) = function.operation.and_then(|id| resolve(operations, id)) else {
+        let Some(operation) = resolve(operations, function.operation) else {
             // Already reported, in the sentence that diagnoses it.
             continue;
         };
@@ -866,10 +840,10 @@ impl fmt::Display for Shape {
     }
 }
 
-/// How a complaint names one binding: its fully-qualified name where the arm emits one, and the
-/// name a program calls it by otherwise.
+/// How a complaint names one binding: its fully-qualified name, which is the key everything gg emits
+/// about it uses.
 fn named(function: &CatalogueFunction) -> String {
-    function.fqn.unwrap_or(function.name).to_string()
+    function.fqn.to_string()
 }
 
 /// The row of `operations` the rendered id `id` names, or `None` for one no row carries.
@@ -932,7 +906,7 @@ fn usable_spellings(language: &'static dyn ProgramLanguage, out: &mut Vec<Disagr
     // name with a free function, which is why the receiver is part of the key rather than ignored.
     let mut seen: BTreeSet<(&str, Option<&str>, &str)> = BTreeSet::new();
     for function in crate::sandbox::catalogue_functions(language) {
-        let where_ = function.fqn.unwrap_or(function.name);
+        let where_ = function.fqn;
         if function.name.trim().is_empty() {
             complain(format!("`{where_}` has no name a program could call"));
         }
@@ -999,12 +973,7 @@ fn usable_spellings(language: &'static dyn ProgramLanguage, out: &mut Vec<Disagr
 /// resolves to what a program would have to write — `gg.files.readFile`, `gg::files::read_file`,
 /// `Gg.Files.ReadFile`, `GG::Views::OpenView#close`. A separator is enough: what the qualifier *is*
 /// differs per language and none of them is gg's to choose.
-fn qualified(fqn: Option<&'static str>, name: &'static str) -> bool {
-    let Some(fqn) = fqn else {
-        // No fully-qualified name at all is the strongest form of the failure: the arm is saying
-        // the bare name is the whole of what a program writes.
-        return false;
-    };
+fn qualified(fqn: &'static str, name: &'static str) -> bool {
     let Some(prefix) = fqn.strip_suffix(name) else {
         // An arm whose fqn does not end in the name it calls the function by is answering a
         // different question from the one asked; treated as unqualified rather than excused, since

@@ -329,8 +329,8 @@ impl DocsRuntime {
     pub fn read_type(&self, name: &str) -> Option<String> {
         let declaration = type_declaration(self.language, name)?;
         // Reachability is asked under the string a reference RESOLVES to rather than under the bare
-        // name a signature wrote, because those are two different strings on a converted arm and
-        // asking under the wrong one refuses every type it declares. See `TypeDeclaration::key`.
+        // name a signature wrote, because those are two different strings and asking under the
+        // wrong one refuses every type the arm declares. See `TypeDeclaration::key`.
         self.type_is_reachable(declaration.key())
             .then(|| self.declare(declaration))
     }
@@ -342,12 +342,9 @@ impl DocsRuntime {
     /// *means*, and `shown: boolean` on a `FileRead` is not a thing a model can infer. A union arm
     /// carries no type of its own — the arm is the value — so it is rendered as the bare literal.
     ///
-    /// Both the type's paragraph and each member's line are read through
-    /// [`Prose`](crate::sandbox::Prose) rather than off the `doc` field they used to be, because
-    /// that field is the shape a [`V1`](crate::sandbox::SchemaVersion::V1) catalogue writes and a
-    /// [`V2`](crate::sandbox::SchemaVersion::V2) one omits entirely. Reaching for it directly
-    /// renders a converted arm's every type view as a declaration with nothing under it — the one
-    /// half of a type view a model cannot reconstruct for itself.
+    /// Both the type's own lines and each member's are read through
+    /// [`Prose`](crate::sandbox::Prose), which is where the authored brief and the detail under it
+    /// live.
     ///
     /// # Why the member functions are here, and why they are gated
     ///
@@ -426,11 +423,9 @@ impl DocsRuntime {
     /// The single entry point everything that re-derives a [docview](crate::context::OpenDocview)
     /// from its key goes through, so a re-seeded window cannot come back holding a different kind of
     /// block than the one it lost. Functions win a collision because a function is what a model
-    /// calls, and a name it can write into a program is the one it more likely meant. On a
-    /// [`V1`](crate::sandbox::SchemaVersion::V1) arm, whose keys are bare names, that is a
-    /// judgement; on a converted arm both halves are keyed by their module-qualified name and the
-    /// two namespaces cannot meet, so the judgement is only ever reached through the *fallback*
-    /// names each half also answers to.
+    /// calls, and a name it can write into a program is the one it more likely meant. Both halves
+    /// are keyed by their module-qualified name and the two namespaces cannot meet, so the
+    /// judgement is only ever reached through the *fallback* bare names each half also answers to.
     pub fn read_any(&self, key: &str) -> Option<String> {
         self.read(key).or_else(|| self.read_type(key))
     }
@@ -449,7 +444,7 @@ impl DocsRuntime {
     /// exists to support.
     ///
     /// So matching stays lenient and *identity* is canonicalized here: a function's
-    /// [fully-qualified name](CatalogueFunction) where its arm emits one, and a type's
+    /// [fully-qualified name](CatalogueFunction), and a type's
     /// [`key`](crate::sandbox::TypeDeclaration::key) — which is the normalization the type half
     /// already applied to itself. A caller that holds a canonical key already (a
     /// [restore](crate::persistence::restore_docviews), a [compaction](crate::compaction)) is
@@ -460,7 +455,7 @@ impl DocsRuntime {
     /// collision.
     pub fn docview_key(&self, name: &str) -> Option<String> {
         if let Some(function) = self.function(name) {
-            return Some(function.fqn.unwrap_or(function.name).to_string());
+            return Some(function.fqn.to_string());
         }
         let declaration = type_declaration(self.language, name)?;
         self.type_is_reachable(declaration.key())
@@ -497,16 +492,15 @@ impl DocsRuntime {
     ///
     /// # How the return position is told from the arguments
     ///
-    /// By elimination, over that narrowed set: a catalogued type named by one of the function's own
-    /// documented **parameters** is an argument type, and every other type the signature names is
-    /// reached through what it hands back. The catalogue records no return position of its own, so
-    /// this is the closest honest reading of it available — and it errs toward *showing* rather than
-    /// withholding, since a type named only by a field of an argument's type is not named by the
-    /// argument itself. The [normalized schema](crate::sandbox::SchemaVersion::V2) carries a real
-    /// return position — [`CatalogueFunction::returns`](crate::sandbox::CatalogueFunction) — and an
-    /// arm that has been converted to it replaces this inference with a field lookup;
-    /// [`ReturnAndParameters`](DocViewTypes::ReturnAndParameters) and [`Off`](DocViewTypes::Off) are
-    /// exact today and are unaffected either way.
+    /// By the catalogue's own [return position](crate::sandbox::CatalogueFunction), which each
+    /// reflector resolves out of its arm's type system. A call that returns nothing an SDK type
+    /// names states an empty one, and there the answer falls back to elimination over the narrowed
+    /// set: a catalogued type named by one of the function's own documented **parameters** is an
+    /// argument type, and every other type the signature names is reached through what it hands
+    /// back. That fallback errs toward *showing* rather than withholding, since a type named only by
+    /// a field of an argument's type is not named by the argument itself.
+    /// [`ReturnAndParameters`](DocViewTypes::ReturnAndParameters) and [`Off`](DocViewTypes::Off) do
+    /// not ask the question at all.
     pub fn types_to_open(&self, name: &str, mode: DocViewTypes) -> Vec<&'static str> {
         if mode == DocViewTypes::Off {
             return Vec::new();
@@ -551,14 +545,14 @@ impl DocsRuntime {
     /// name resolves to.
     fn function(&self, name: &str) -> Option<CatalogueFunction> {
         let mut functions = catalogue_functions(self.language);
-        // The fully-qualified name first, because on a converted arm that is the key: it is what
-        // the catalogue advertises, what search files a hit under, and the only one of the two that
-        // two modules offering a `close` could not both claim. The bare name stays as the fallback
-        // for the same reason [`type_declaration`](crate::sandbox::type_declaration) keeps one — it
-        // is what a model reads at a call site — and on a v1 arm it is the only name there is.
+        // The fully-qualified name first, because that is the key: it is what the catalogue
+        // advertises, what search files a hit under, and the only one of the two that two modules
+        // offering a `close` could not both claim. The bare name stays as the fallback for the same
+        // reason [`type_declaration`](crate::sandbox::type_declaration) keeps one — it is what a
+        // model reads at a call site.
         let found = functions
             .iter()
-            .position(|function| function.fqn == Some(name) && self.bound(function))
+            .position(|function| function.fqn == name && self.bound(function))
             .or_else(|| {
                 functions
                     .iter()
@@ -589,7 +583,7 @@ impl DocsRuntime {
         for function in &functions {
             if self.bound(function) {
                 candidates.push(function.name);
-                candidates.extend(function.fqn);
+                candidates.push(function.fqn);
             }
         }
         for declaration in &self.language.catalogue().types {
@@ -599,9 +593,8 @@ impl DocsRuntime {
             candidates.push(declaration.name.as_str());
             candidates.push(declaration.key());
         }
-        // The spelling a signature writes, which is neither of the two above on a converted arm and
-        // is the one a model is likeliest to have mistyped, since it is what the signature it just
-        // read printed.
+        // The spelling a signature writes, which is neither of the two above and is the one a model
+        // is likeliest to have mistyped, since it is what the signature it just read printed.
         for function in &functions {
             if !self.bound(function) {
                 continue;
@@ -704,12 +697,11 @@ fn names_a_signature(function: &CatalogueFunction, type_name: &str) -> bool {
 /// Whether `reference` is in `function`'s **return** position — stated where the catalogue states
 /// it, and inferred by elimination where it does not.
 ///
-/// The [normalized schema](crate::sandbox::SchemaVersion::V2) carries a real return position, so an
-/// arm that has been converted answers this from a field its reflector resolved out of a type
-/// system. An arm that has not carries nothing, and the honest reading of its signature is the one
-/// [`types_to_open`](DocsRuntime::types_to_open) documents: a type named by one of the function's
-/// own documented parameters is an argument type, and everything else it names is reached through
-/// what it hands back.
+/// A catalogue carries a real return position, resolved by its arm's reflector out of that arm's own
+/// type system, and that is what this reads. Where a call states an empty one, the honest reading of
+/// its signature is the one [`types_to_open`](DocsRuntime::types_to_open) documents: a type named by
+/// one of the function's own documented parameters is an argument type, and everything else it names
+/// is reached through what it hands back.
 ///
 /// A function that states an **empty** return position falls through to the inference rather than
 /// answering `false` outright, and that costs nothing: a call that hands nothing back names no type

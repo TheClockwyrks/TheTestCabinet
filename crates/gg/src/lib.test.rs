@@ -335,19 +335,18 @@ fn string_literals(line: &str) -> Vec<&str> {
 /// being a constant in this crate at all. gg names a call by
 /// [identity](crate::sandbox::SurfaceCall), which carries the object already.
 ///
-/// # Where the vocabulary comes from, and why it moved
+/// # Where the vocabulary comes from
 ///
-/// The names were read out of the registered arms' catalogues until the eleventh arm was converted,
-/// at which point every one of them declared **no** API objects — the
-/// [normalized schema](crate::sandbox::SchemaVersion::V2) groups a call under a module path instead
-/// — and this rule quietly had nothing to search for. It was measured vacuous rather than reasoned
-/// so: a `const PROBE_OBJECT: &str = "fs";` planted in this crate passed it.
+/// From **gg's own side**, off the [operations table](crate::sandbox::OPERATIONS), rather than out
+/// of the arms' catalogues. No catalogue declares an API object at all — a catalogue groups a call
+/// under a module path — so a rule that searched for the needles there would have nothing to search
+/// for and would pass vacuously, which was measured rather than reasoned: a
+/// `const PROBE_OBJECT: &str = "fs";` planted in this crate passed such a rule.
 ///
-/// The subject never went anywhere, though. gg's own API-object vocabulary is
-/// [`SurfaceCall::object`](crate::sandbox::SurfaceCall::object) — still on the wire, still what the
-/// console groups by, still what a `format!` could join a function name onto — so the needles are
-/// now read from gg's side, off the [operations table](crate::sandbox::OPERATIONS), where they are
-/// stated once and cannot be emptied by an arm being reshaped.
+/// The subject is real all the same. gg's API-object vocabulary is
+/// [`SurfaceCall::object`](crate::sandbox::SurfaceCall::object) — on the wire, what the console
+/// groups by, and what a `format!` could join a function name onto — and stating the needles where
+/// gg states the vocabulary is what keeps the rule from being emptied by an arm's own shape.
 #[test]
 fn no_object_name_is_a_constant_waiting_to_be_joined() {
     let mut objects: Vec<&str> = crate::sandbox::OPERATIONS

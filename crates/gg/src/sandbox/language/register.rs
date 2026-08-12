@@ -33,17 +33,6 @@
 //! spans **close**, and that it does not read as a fragment torn off a paragraph. Every one of those
 //! is answerable by looking at one string.
 //!
-//! # Why it is inert on a v1 catalogue
-//!
-//! A [`V1`](SchemaVersion::V1) entry has no authored brief. Its brief is
-//! [derived](crate::sandbox::Prose::from_paragraph) from a paragraph that was written before anyone
-//! decided a brief existed, and holding a derived line to a rule about authored lines would fail
-//! eleven arms for a property none of them has claimed. The gate therefore reports nothing below
-//! `V2`, and an arm's conversion commit is the moment its prose becomes gg's problem. Measured over
-//! today's catalogues, the longest derived first line is 249 characters on seven arms,
-//! 130 on C#, 1,160 on the two ECMAScript arms and 1,239 on Python — which is not eleven failures
-//! to fix, it is eleven arms that have not authored briefs yet.
-//!
 //! # Why it returns complaints rather than asserting them
 //!
 //! For the reason the [agreement gate](super::agreement) does: a gate that only panics can be shown
@@ -62,7 +51,7 @@
 //! unresolvable operation as *not offered* rather than as *wrong*, which is the correct thing for a
 //! run to do and the wrong thing for nobody to notice.
 //!
-//! Each converted arm writes ~47 of these ids by hand, so the failure is a keystroke away, and the
+//! Each arm writes ~47 of these ids by hand, so the failure is a keystroke away, and the
 //! symptom — one capability quietly missing from a model's surface — is invisible in a diff and
 //! invisible in a run. So it is caught here, beside the other rules about what an arm puts in front
 //! of a model, and it names the id it could not resolve.
@@ -72,7 +61,7 @@ use std::fmt;
 use test_cabinet_core::gg::GgProgramLanguage;
 
 use crate::sandbox::operations::operation_by_id;
-use crate::sandbox::signatures::{Parameter, Prose, SchemaVersion, SignatureCatalogue};
+use crate::sandbox::signatures::{Parameter, Prose, SignatureCatalogue};
 
 /// The longest a brief may be, in characters.
 ///
@@ -131,14 +120,8 @@ impl fmt::Display for Complaint {
 }
 
 /// Every way `catalogue`'s documentation departs from the register. Empty is the passing answer.
-///
-/// **Inert below [`V2`](SchemaVersion::V2)** — see this module's header for why that is a design
-/// decision rather than a gap.
 pub(crate) fn complaints(catalogue: &SignatureCatalogue) -> Vec<Complaint> {
     let mut out = Vec::new();
-    if catalogue.schema < SchemaVersion::V2 {
-        return out;
-    }
     let language = catalogue.language;
     // Identity before prose: an entry gg cannot resolve to an operation is an entry no model is
     // shown at all, so it is reported first and in its own words rather than buried under whatever
@@ -226,8 +209,8 @@ pub(crate) fn complaints(catalogue: &SignatureCatalogue) -> Vec<Complaint> {
 /// compiles it, still exports it, and still documents it to every human who reads the source. One
 /// wrong character costs a whole capability and changes nothing a build or a run can see.
 ///
-/// So the id is checked against the table that defines it, by name, here — where a converted arm is
-/// already being read entry by entry — and the complaint quotes the id it could not resolve, because
+/// So the id is checked against the table that defines it, by name, here — where the arm is already
+/// being read entry by entry — and the complaint quotes the id it could not resolve, because
 /// the whole point is to make a misspelling legible as a misspelling.
 ///
 /// All three sites are checked rather than only the first: an alias and a type's member list are the

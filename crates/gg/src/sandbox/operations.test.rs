@@ -1,6 +1,6 @@
 //! What is left here after the [capability gate](crate::sandbox::language) was re-founded on this
-//! table: the checks about the **transitional join**, which are the ones that die with
-//! [`Operation::call`] rather than outliving it.
+//! table: the two checks that are about the table being reachable from a real arm rather than about
+//! the table being well formed.
 //!
 //! # Where everything else went, and why
 //!
@@ -32,14 +32,14 @@ use super::*;
 use crate::sandbox::catalogue_functions;
 use crate::sandbox::language::all_languages;
 
-/// The id's key is the key the catalogue join uses.
+/// The id's key is the key gg names the operation by in its own sentences.
 ///
-/// While [`Operation::call`] exists at all, an id whose key said one thing and whose join said
-/// another would be two names for one operation with nothing choosing between them. When the join
-/// goes, the id is what is left — so it has to be right now, while there is still something to check
-/// it against.
+/// [`Operation::id`] is what a catalogue joins on and [`Operation::call`] is what a prompt or a
+/// refusal writes. An id whose key said one thing and whose surface call said another would be two
+/// names for one operation with nothing choosing between them, and a model would read gg naming a
+/// call it cannot find.
 #[test]
-fn an_ids_key_is_the_key_it_is_catalogued_under() {
+fn an_ids_key_is_the_key_gg_names_it_by() {
     for operation in OPERATIONS {
         assert_eq!(
             operation.id.key, operation.call.key,

@@ -19,11 +19,10 @@
 //! # What used to be here, and what covers it now
 //!
 //! A hand-wired comparison of this arm's catalogue against the **Rust** arm's, entry by entry,
-//! written when neither was registered and kept afterwards as a second opinion. It is gone, because
-//! the arm it compared against has been converted to the
-//! [normalized doc model](crate::sandbox::SchemaVersion::V2) and no longer has the five-part
-//! identity tuple — section, object, key, gate, ending — the comparison read; against a v2 catalogue
-//! it would report every section missing rather than finding a disagreement.
+//! written when neither was registered and kept afterwards as a second opinion. It is gone: it read
+//! a five-part identity tuple — section, object, key, gate, ending — that no catalogue carries, and
+//! a comparison of two catalogues neither of which has it reports every section missing rather than
+//! finding a disagreement.
 //!
 //! What covers it is stronger than what it did:
 //! `operations.test.rs::every_operation_is_offered_by_every_arm_that_is_not_excused` asserts the

@@ -14,8 +14,6 @@
 //! are the subject: a scheme that stops accepting `#`-separated members or a `/` inside a module
 //! prefix has been narrowed, and narrowing it is what this table is here to notice.
 
-use serde_json::Value;
-
 use super::*;
 use crate::sandbox::signatures::fixture;
 
@@ -430,20 +428,12 @@ fn the_v2_fixture_names_are_whole() {
     assert_eq!(faults(fixture::v2()), Vec::<String>::new());
 }
 
-/// **Every registered arm's names hold together**, whichever schema it committed.
-///
-/// For an arm that emits no fully-qualified names the rule is inert — there is nothing to be right
-/// or wrong about, and a gate that invented names to check would be checking gg's invention rather
-/// than the arm's. For a converted arm it is the whole rule: module-qualified, of the right shape
-/// for its kind, unique, and every type and member reference resolving to something the same
-/// catalogue declares.
+/// **Every registered arm's names hold together**: module-qualified, of the right shape for its
+/// kind, unique, and every type and member reference resolving to something the same catalogue
+/// declares.
 #[test]
 fn every_registered_arms_names_are_whole() {
-    assert_eq!(faults(fixture::v1()), Vec::<String>::new());
     for language in crate::sandbox::all_languages() {
-        // Inert for an arm that emits no fully-qualified names at all, and the real rule for one
-        // that does — the same call either way, which is what keeps a converted arm from needing a
-        // second test to be held by.
         assert_eq!(
             faults(language.catalogue()),
             Vec::<String>::new(),
@@ -509,19 +499,4 @@ fn a_member_function_that_is_not_catalogued_is_caught() {
     let faults = faults(damaged);
     assert_eq!(faults.len(), 1, "{faults:?}");
     assert!(faults[0].contains("reopen"), "{faults:?}");
-}
-
-/// **A type with no name of its own cannot be opened**, and is reported rather than skipped.
-#[test]
-fn a_type_without_a_name_is_caught() {
-    let damaged = fixture::v2_with(|json| {
-        json["types"][0]["fqn"] = Value::Null;
-    });
-    let faults = faults(damaged);
-    assert!(
-        faults
-            .iter()
-            .any(|fault| fault.contains("has no fully-qualified name")),
-        "{faults:?}"
-    );
 }

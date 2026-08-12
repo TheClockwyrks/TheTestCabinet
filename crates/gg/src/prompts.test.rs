@@ -2347,7 +2347,7 @@ fn a_rendered_prompt_names_no_function_but_the_one_that_ends_the_session() {
                 for module in crate::sandbox::catalogue_modules(language) {
                     let has_functions = crate::sandbox::catalogue_functions(language)
                         .iter()
-                        .any(|function| function.module == Some(module.id));
+                        .any(|function| function.module == module.id);
                     assert!(
                         !has_functions || rendered_modules.contains(&module.path),
                         "{name}: `{}` binds functions but no configuration here renders it, so \
@@ -2365,7 +2365,7 @@ fn a_rendered_prompt_names_no_function_but_the_one_that_ends_the_session() {
             for function in crate::sandbox::catalogue_functions(language) {
                 for spelling in [
                     format!("{}{separator}{}", function.object, function.name),
-                    function.fqn.unwrap_or(function.name).to_string(),
+                    function.fqn.to_string(),
                 ] {
                     if allowed.contains(&spelling.as_str()) {
                         continue;

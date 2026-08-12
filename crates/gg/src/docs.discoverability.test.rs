@@ -141,7 +141,7 @@ fn spellings(
         .into_iter()
         .filter(|function| {
             // Matched on the operation each entry resolves to rather than on the grouping it was
-            // filed under: gg's `(object, key)` pair is identity, and a converted arm carries
+            // filed under: gg's `(object, key)` pair is gg's own identity, and an arm carries
             // neither half of it — it groups by module and names the operation.
             crate::sandbox::operation_of(function).is_some_and(|resolved| {
                 operations.iter().any(|(object, key)| {
@@ -150,7 +150,7 @@ fn spellings(
             })
         })
         // The key a hit is filed under, which is the fully-qualified name where the arm emits one.
-        .map(|function| function.fqn.unwrap_or(function.name))
+        .map(|function| function.fqn)
         .collect()
 }
 
@@ -283,7 +283,7 @@ fn a_granted_capability_is_findable_by_its_natural_words() {
                 let bound: Vec<&str> = catalogue_functions(language)
                     .into_iter()
                     .filter(|function| docs.bound(function))
-                    .map(|function| function.fqn.unwrap_or(function.name))
+                    .map(|function| function.fqn)
                     .collect();
                 for hit in found
                     .hits

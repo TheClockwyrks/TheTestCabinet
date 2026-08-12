@@ -183,26 +183,16 @@ pub use {
 };
 
 // The catalogue types nothing outside `sandbox` names *yet*, exported all the same because they are
-// fields of types it does: an `ObjectDoc` comes back from `catalogue_objects`, a `SignatureEntry`
-// hangs off every `CatalogueFunction`, and a `TypeMember` off every `TypeDeclaration`. A type a
+// fields of types it does: a `SignatureEntry` hangs off every `CatalogueFunction`, a `TypeMember`
+// off every `TypeDeclaration`, and `Prose` is every piece of documentation in either. A type a
 // reader has to reach into a private module to read is a type nobody reads, and the crate denies
-// warnings.
-//
-// The normalized doc model's own types are here for the same reason and one more: they are the
-// shape each arm is converted *into*, one commit at a time, so the readers that move onto them
-// arrive stage by stage rather than all at once. `SchemaVersion` is what a reader dispatches on,
-// `ModuleView` and `catalogue_modules` are the module half of the projection, `Prose` is every
-// piece of documentation in it, and `EntryKind`, `MemberKind`, `MemberFunction`, `ModuleDoc` and
-// `TypeReference` are its fields.
-//
-// `catalogue_objects` is here for the opposite reason: every reader that must answer for both
-// schemas has already moved onto `catalogue_modules`, and what is left of it is the gates whose
-// subject is an API object specifically. Those are `#[cfg(test)]`, so a build genuinely has no
-// caller for it, and it goes with the last v1 arm rather than being kept alive by a new one.
+// warnings. `SchemaVersion` is what a catalogue declares itself in, `ModuleView` and
+// `catalogue_modules` are the module half of the projection, and `EntryKind`, `MemberKind`,
+// `MemberFunction`, `ModuleDoc` and `TypeReference` are its fields.
 #[allow(unused_imports)]
 pub use signatures::{
-    EntryKind, LibraryGroup, MemberFunction, MemberKind, ModuleDoc, ModuleView, ObjectDoc, Prose,
-    SchemaVersion, SignatureEntry, TypeMember, TypeReference, catalogue_modules, catalogue_objects,
+    EntryKind, LibraryGroup, MemberFunction, MemberKind, ModuleDoc, ModuleView, Prose,
+    SchemaVersion, SignatureEntry, TypeMember, TypeReference, catalogue_modules,
 };
 
 /// One code module as the guest binds it: the key it is reached at under `lib`, and the source

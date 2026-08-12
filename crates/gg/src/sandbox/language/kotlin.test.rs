@@ -172,8 +172,7 @@ fn the_generated_catalogue_is_this_languages() {
         .expect("`read_file` is catalogued");
     assert_eq!(read_file.name, "readFile");
     assert_eq!(
-        read_file.fqn,
-        Some("gg.files.readFile"),
+        read_file.fqn, "gg.files.readFile",
         "the name a documentation view is opened by is the path a program writes"
     );
     // The two shapes that say the reflection is Kotlin's rather than Java's: a return type after a
