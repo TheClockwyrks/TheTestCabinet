@@ -56,7 +56,7 @@ autoloaded specification is re-framed as a `user` message across a
 its synthesized read was answered under, so the tag is the only thing left that
 says which file the biggest band in the window is.
 
-A stream recorded before gg carried the tag falls back to the `read_file` call
+A view gg could not determine a selector for falls back to the `read_file` call
 the view answers. Whatever neither resolves is reported as unattributed rather
 than dropped, so the view list never understates the band it decomposes. A path
 and a label are kept apart even when they read the same: a workspace file called

@@ -510,17 +510,16 @@ export function errorRatePhrase(errors: GgErrorTally): string {
 
 /**
  * A scope's errored turns ranked by specific type, most common first — or, where there is
- * no ranking to draw, which of the three nothings it is.
+ * no ranking to draw, which of the two nothings it is.
  *
  * The ranking is over the SPECIFIC types (`byType`), not the six base kinds: "top error
  * types" over six buckets is barely a narrowing, and the base each type rolls up into
  * rides along on every row as a badge, so nothing the per-kind split said is lost.
  *
- * The three nothings stay three nothings, and conflating them would each time claim
- * something the scope does not say. No outcomes at all is not evidence of a clean run; a
- * clean run is not a run whose types went unrecorded; and a run recorded before gg typed
- * its errors has errors this console cannot rank — rendering that as "no errors" would
- * report the opposite of what happened.
+ * The two nothings stay two nothings, and conflating them would claim something the scope
+ * does not say: no outcomes at all is not evidence of a clean run. There is no third — every
+ * errored turn names its type, so `byType` sums to the errored turns and an empty ranking
+ * with errors above it cannot occur.
  */
 export function ErrorTypeRanking({ errors }: { errors: GgErrorTally }) {
   const top = topErrorTypes(errors, TOP_ERROR_TYPES_SHOWN);
@@ -529,9 +528,7 @@ export function ErrorTypeRanking({ errors }: { errors: GgErrorTally }) {
       <span className={styles.metricUnit}>
         {errors.turns === 0
           ? "no turn outcomes reported yet"
-          : errors.errors === 0
-            ? "no errors to rank"
-            : "not recorded — this run predates per-type errors"}
+          : "no errors to rank"}
       </span>
     );
   }
@@ -591,11 +588,9 @@ export const TOP_CALL_FAILURES_SHOWN = 3;
  * ranking that did not say which it was drawn from would be a figure whose population a
  * reader could not state (see `callFailureSurface`).
  *
- * The nothing is one nothing rather than the type ranking's three, and it says *recorded*
- * on purpose. A stream written before gg published failure classes has an empty record here
- * exactly as a scope whose calls all succeeded does, and this tally holds no count of calls
- * to tell them apart — so the honest line is that nothing was recorded, not that nothing
- * failed.
+ * The nothing is one nothing rather than the type ranking's two: every failed call carries
+ * its class, so an empty record here is a scope whose calls all succeeded — or one that made
+ * none, which this tally holds no count of calls to tell apart.
  */
 export function CallFailureRanking({
   errors,
@@ -662,9 +657,9 @@ export function ErrorsWidget({
     <div className={cardClass(bare, className)}>
       <span className={styles.cardLabel}>Errors</span>
       <div className={styles.widgetTotals}>
-        {/* A stream with no outcomes on it at all — a record written before gg published
-            them, or a scope that has not finished its first turn — says so rather than
-            claiming a clean record, which is what a bare "0" would claim. */}
+        {/* A stream with no outcomes on it at all — a scope that has not finished its
+            first turn — says so rather than claiming a clean record, which is what a bare
+            "0" would claim. */}
         <Stat
           label="errored turns"
           value={turns === 0 ? null : failed}

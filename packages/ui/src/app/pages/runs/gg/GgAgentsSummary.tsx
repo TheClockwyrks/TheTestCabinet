@@ -402,10 +402,9 @@ function Figure({
 // configuration here would draw precisely that chip, on the panel whose whole job is telling
 // "the harness never gave it" apart from "the model ignored it".
 //
-// The configuration is the fallback and only the fallback: a profile the run never spawned,
-// and every profile of a record written before gg emitted a surface, has no account to
-// prefer. There the chips still say what the arm asked for — losing that would leave an
-// unexercised arm undescribed — but they say it as a request rather than as an outcome.
+// The configuration is the fallback and only the fallback: a profile the run never spawned has
+// no account to prefer. There the chips still say what the arm asked for — losing that would
+// leave an unexercised arm undescribed — but they say it as a request rather than as an outcome.
 function agentAblation(agent: GgAgentSummary): {
   tools: readonly string[];
   applied: boolean;
@@ -451,7 +450,7 @@ function AgentDetail({ agent }: { agent: GgAgentSummary }) {
           later: those chips are what the configuration asked for, this is what gg resolved
           out of them for the instances that actually ran — with the struck chips above
           already gg's own (see `agentAblation`). It renders nothing at all for a profile
-          whose instances reported no surface — every record written before gg emitted one. */}
+          the run never spawned, whose instances therefore reported no surface. */}
       <SurfaceSection agent={agent} />
 
       {ran ? (
@@ -567,9 +566,6 @@ function SurfaceSection({ agent }: { agent: GgAgentSummary }) {
     shown.some((entry) => entry.offeredBy < surface.reportingInstances)
       ? `A fraction marks an entry only some of the ${plural(surface.reportingInstances, "instance")} were offered — where an instance stands in its state machine gates what it may call.`
       : null,
-    counts.some((count) => count == null)
-      ? "An entry with no figure comes from a record written before gg counted a call per function — which is not the same as a count of zero."
-      : null,
   ].filter((note): note is string => note != null);
 
   return (
@@ -632,17 +628,14 @@ function SurfaceSection({ agent }: { agent: GgAgentSummary }) {
 
 // How often one offered entry was called: its own figure, on its own identity.
 //
-// Null only where the entry carries no identity at all — a surface record written before gg
-// counted a call per function. That is a fact about the RECORD, and the views say so; a zero
-// there would read as "the model ignored this", which is the one thing it does not mean.
+// Every entry carries an identity — a tool's own name, or gg's operation id — so every entry
+// has a figure, and a zero is a measurement rather than an absence.
 function entryCount(
   entry: GgAgentSurfaceEntry,
   calls: ReadonlyMap<string, number>,
-): number | null {
-  if (!entry.key) return null;
-  // The key is whole on both surfaces — a tool's own name, or gg's operation id — so nothing
-  // is prefixed here. It used to be, because an API function's key was bare and had to be
-  // qualified by the object it hung off; the operation carries its own namespace.
+): number {
+  // The key is whole on both surfaces, so nothing is prefixed here: an operation carries its
+  // own namespace.
   return calls.get(entry.key) ?? 0;
 }
 
@@ -688,14 +681,12 @@ function SurfaceEntries({
               title={entryTitle(qualified, entry, count, instances)}
             >
               <span>{entry.name}</span>
-              {count != null && (
-                // Grouped, like every other count on this panel and like the same figure
-                // on an instance's own surface file: a profile summing twelve instances'
-                // calls is exactly where a four-digit figure turns up.
-                <span className={styles.surfaceEntryCalls}>
-                  {numberFmt.format(count)}×
-                </span>
-              )}
+              {/* Grouped, like every other count on this panel and like the same figure
+                  on an instance's own surface file: a profile summing twelve instances'
+                  calls is exactly where a four-digit figure turns up. */}
+              <span className={styles.surfaceEntryCalls}>
+                {numberFmt.format(count)}×
+              </span>
               {partial && (
                 <span className={styles.surfaceEntryPartial}>
                   {entry.offeredBy}/{instances}
@@ -715,7 +706,7 @@ function SurfaceEntries({
 function entryTitle(
   qualified: string,
   entry: GgAgentSurfaceEntry,
-  count: number | null,
+  count: number,
   instances: number,
 ): string {
   const outcome = surfaceCallPhrase(qualified, count);

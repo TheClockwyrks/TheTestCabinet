@@ -9,7 +9,7 @@
             "minimum": 0,
             "type": "integer"
           },
-          "description": "The same errors split by their **specific** [type](GgTurnErrorType) rather than by base kind\n— the breakdown a *\"top error types\"* ranking is built from, keyed by\n[`GgTurnErrorType::wire_id`].\n\nTwo invariants hold for any run this gg writes: it sums to [`errors`](Self::errors), and\nregrouping it by [`GgTurnErrorType::kind`] reproduces the six named counters above exactly.\nThe named counters stay because persisted records, stored queries and the console's\nside-by-side split all read them; this joins them rather than replacing them.\n\n# Why a string key rather than the enum\n\nA map keyed by `GgTurnErrorType` would fail to deserialize *the whole summary* the first\ntime a newer gg wrote a type an older backend or console had never heard of — a run recorded\ntoday must still read back tomorrow, which is exactly what an open breakdown is for. With a\nstring key an unknown type degrades to one unlabelled row in a ranking instead. The\ncompile-time totality this codebase normally insists on is not lost, only moved: the\nproducing side is the enum, and the generated label table is total over it, so a type cannot\nbe added without being labelled.\n\nEmpty — and omitted from the wire — for a run with no errors, and for one recorded before\ngg published types at all. A reader must therefore not read an empty map as \"no errors of\nany type\"; [`errors`](Self::errors) is what says whether there were any.",
+          "description": "The same errors split by their **specific** [type](GgTurnErrorType) rather than by base kind\n— the breakdown a *\"top error types\"* ranking is built from, keyed by\n[`GgTurnErrorType::wire_id`].\n\nTwo invariants hold: it sums to [`errors`](Self::errors), and regrouping it by\n[`GgTurnErrorType::kind`] reproduces the six named counters above exactly.\nThe named counters stay because persisted records, stored queries and the console's\nside-by-side split all read them; this joins them rather than replacing them.\n\n# Why a string key rather than the enum\n\nA map keyed by `GgTurnErrorType` would fail to deserialize *the whole summary* the first\ntime a newer gg wrote a type an older backend or console had never heard of — a run recorded\ntoday must still read back tomorrow, which is exactly what an open breakdown is for. With a\nstring key an unknown type degrades to one unlabelled row in a ranking instead. The\ncompile-time totality this codebase normally insists on is not lost, only moved: the\nproducing side is the enum, and the generated label table is total over it, so a type cannot\nbe added without being labelled.\n\nEmpty — and omitted from the wire — for a run with no errors, and only for one: it sums to\n[`errors`](Self::errors), so an empty map and a zero there are the same statement.",
           "type": "object"
         },
         "errors": {
@@ -64,8 +64,7 @@
           "type": "object"
         },
         "toolchain": {
-          "default": 0,
-          "description": "Errors of kind [`toolchain`](GgTurnErrorKind::Toolchain) — turns lost because the language's\n**compiler** could not finish, rather than because the model wrote anything wrong.\n\nThe one per-kind counter that is not a count of the model's failures, which is why it is a\ncounter of its own: an arm whose image is missing a compiler and an arm whose model cannot\nsatisfy a type checker are different findings, and pooled they are one bad number.\n\n`0` for every run of a language whose preparation invokes no compiler. It is\n[`default`](Default)ed on the way *in* only, like every field added after the rollup shipped:\na summary recorded before this counter existed reads back as a zero, which for those runs is\nthe truth rather than a guess, while a run this gg writes always states it so the per-kind\ncounters still sum to [`errors`](Self::errors).",
+          "description": "Errors of kind [`toolchain`](GgTurnErrorKind::Toolchain) — turns lost because the language's\n**compiler** could not finish, rather than because the model wrote anything wrong.\n\nThe one per-kind counter that is not a count of the model's failures, which is why it is a\ncounter of its own: an arm whose image is missing a compiler and an arm whose model cannot\nsatisfy a type checker are different findings, and pooled they are one bad number.\n\n`0` for every run of a language whose preparation invokes no compiler — stated rather than\nomitted, so the per-kind counters still sum to [`errors`](Self::errors).",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -91,6 +90,7 @@
         "transpile",
         "programFault",
         "sandboxLimit",
+        "toolchain",
         "missingCompletion",
         "loopAborts"
       ],

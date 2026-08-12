@@ -38,8 +38,8 @@
 // A **view** — a file the agent opened, a value it composed and showed itself, or a page of
 // tool documentation it opened — is attributed to its *selector* by the
 // [tag](PooledMessage.label) gg records on the pooled message: a path for a file view, the
-// agent's own label for a text view, the function's name for a docs view. A stream recorded
-// before gg carried that tag falls back to the `read_file` call the view answers (matching its
+// agent's own label for a text view, the function's name for a docs view. A view gg could not
+// determine a selector for falls back to the `read_file` call the view answers (matching its
 // `toolCallId` to the arguments of the assistant call that made it), which covers an ordinary
 // read but not a pinned, autoloaded specification whose `tool` message was re-framed by a
 // compaction. What neither resolves is reported as unattributed rather than dropped, so the
@@ -304,15 +304,10 @@ function viewRowsFrom(
 /**
  * Which kind of view a pooled message is, or null when it is not a view at all.
  *
- * All four view bands map straight across. A `skill` message is never a view: skills and
- * documentation used to share that band and be told apart by whether the message carried a label,
- * and now do not — documentation has a band of its own, and a read skill is authored material an
- * operator pinned rather than something the agent opened and can close.
- *
- * An older stream still carries labelled `skill` messages for the documentation its agent opened,
- * and they are counted in that band rather than promoted into the view list. That is the honest
- * reading of a record written before the split: the band it was recorded under is what the run
- * actually reported.
+ * All four view bands map straight across. A `skill` message is never a view: documentation has a
+ * band of its own, and a read skill is authored material an operator pinned rather than something
+ * the agent opened and can close. A `docs_view` message carries the name of what it documents, so
+ * one without that tag names nothing a view list could file it under.
  */
 function viewKindOf(
   source: GgContextSource,
@@ -327,7 +322,7 @@ function viewKindOf(
 
 /**
  * The selector a pooled view message shows: the tag gg records on it — a path for a file view,
- * the agent's label for a text view — or, on a stream recorded before gg carried one, the
+ * the agent's label for a text view — or, for a view gg could not determine one for, the
  * `path` argument of the `read_file` call the view answers, resolved through `callPaths`. Null
  * when neither is available.
  */

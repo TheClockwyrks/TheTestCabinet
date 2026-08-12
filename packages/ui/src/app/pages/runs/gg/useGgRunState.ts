@@ -381,8 +381,7 @@ export interface PooledMessage {
   // shows, or the label an agent gave a text view it composed. It is what makes the
   // window's material attributable to a *thing* rather than only to its band (see
   // ggContextAttribution), and it survives a compaction that re-frames a pinned view and
-  // drops its `toolCallId` pairing. Absent on an ordinary message, and on a stream
-  // recorded before gg carried it.
+  // drops its `toolCallId` pairing. Absent on an ordinary message, which selects nothing.
   label?: string;
 }
 
@@ -522,9 +521,7 @@ export interface GgErrorTally {
   //
   // Sparse, unlike `byKind`, and for the opposite reason: twenty rows at zero is not a
   // readable side-by-side, and the ranking this feeds shows the top few rather than the
-  // whole set. Sums to `errors` for any stream gg wrote; a stream recorded before gg
-  // published types leaves it empty while `errors` is non-zero, which a reader must
-  // render as "not recorded" rather than as "nothing went wrong".
+  // whole set. Sums to `errors`, so an empty record and a zero `errors` say the same thing.
   byType: Record<string, number>;
   // CALLS that failed, keyed by failure class — a different population from everything
   // above, which counts turns.
@@ -660,11 +657,12 @@ export function topCallFailures(
 // A tool-calling agent is read on `"tool"` because it has no API surface whatsoever; there
 // is nothing to choose between.
 //
-// `executionMode` is absent for a stream recorded before gg emitted a surface, and may name
-// a mode from a newer gg than this console (the field is a plain string for exactly that
-// reason). Both fall back to the evidence in the tally: only a responses-as-code agent can
-// have recorded an API failure at all, so one that did is read as the model-facing surface,
-// and one with nothing there is read on the record that might hold something.
+// `executionMode` is absent for a scope that has reported no surface — a placeholder node an
+// out-of-order status event created, or an instance read before its `agent_surface` arrived —
+// and may name a mode from a newer gg than this console (the field is a plain string for
+// exactly that reason). Both fall back to the evidence in the tally: only a responses-as-code
+// agent can have recorded an API failure at all, so one that did is read as the model-facing
+// surface, and one with nothing there is read on the record that might hold something.
 export function callFailureSurface(
   errors: GgErrorTally,
   executionMode?: string,
@@ -2054,9 +2052,9 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
           errors.byKind[gg.error] += 1;
         }
         // The specific type rides on the same event as the base kind and is emitted from
-        // one value, so it is folded from `errorType` alone rather than re-derived: a
-        // stream recorded before gg published types leaves this empty while `byKind` is
-        // not, which is the honest reading of a record that never carried the figure.
+        // one value, so it is folded from `errorType` alone rather than re-derived: two
+        // mechanisms could hand a reader a base and a type that disagree. It is present on
+        // exactly the turns `error` is, so this fold and the one above stay in step.
         if (gg.errorType) {
           errors.byType[gg.errorType] = (errors.byType[gg.errorType] ?? 0) + 1;
         }
@@ -2285,7 +2283,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         // ...and the CLOSING half is where a failed call says why. It is the only record
         // of the class for a call that never reached a tool — a carve-out, or one the
         // membrane refused — which is exactly the population a `tool_result` fold cannot
-        // see. Absent on a success, and on a stream recorded before gg published it.
+        // see. Absent on a success and present on every failure, so a class is never lost.
         if (gg.failure) {
           errors.apiFailures[gg.failure] =
             (errors.apiFailures[gg.failure] ?? 0) + 1;

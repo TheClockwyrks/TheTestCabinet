@@ -567,9 +567,8 @@ function ErrorsRow({ errors }: { errors: GgErrorTally }) {
           two turns as though it meant something. The rate is on the line under it, beside
           the denominator it was taken against, so the two can never be read apart — 50% of
           two turns and 50% of two hundred are not the same claim about a configuration. A
-          stream with no outcomes on it at all (a run recorded before gg published them, or
-          one that has not finished its first turn) says so rather than claiming a clean
-          record. */}
+          stream with no outcomes on it at all (a run that has not finished its first turn)
+          says so rather than claiming a clean record. */}
       <div
         className={styles.card}
         title="Errored turns across every agent in the run, against the turns that reported an outcome at all"

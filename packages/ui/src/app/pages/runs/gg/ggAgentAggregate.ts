@@ -101,9 +101,6 @@ export interface GgAgentSurfaceEntry {
    * {@link GgAgentSummary.toolCalls} for a tool entry, {@link GgAgentSummary.apiCalls} for an
    * API one. Equal to {@link name} for a tool; gg's own operation id (`files.read_file`) for a
    * function, which is what its calls are recorded under whatever language wrote them.
-   *
-   * Empty only on a record written before gg counted a call per function, where a consumer
-   * must say the record predates the accounting rather than report a zero.
    */
   key: string;
   /**
@@ -464,7 +461,7 @@ export function mergeAgentSurfaces(
         else
           group.functions.set(fn.name, {
             name: fn.name,
-            key: fn.operation ?? "",
+            key: fn.operation,
             offeredBy: 1,
           });
       }

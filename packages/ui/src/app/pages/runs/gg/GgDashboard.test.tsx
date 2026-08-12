@@ -604,34 +604,14 @@ describe("the gg Dashboard's error row", () => {
   });
 
   it("claims nothing at all for a stream that carries no outcomes", () => {
-    // A run recorded before gg published outcomes, or one that has not finished its first
-    // turn. A "0" there would read as a clean record it has no evidence for — in every one
-    // of the three tiles, not just the total.
+    // A run that has not finished its first turn. A "0" there would read as a clean record
+    // it has no evidence for — in every one of the three tiles, not just the total.
     renderErrors();
     expect(headline(errorTile("Total errors"))).toBe("—");
     expect(headline(errorTile("Max consecutive errors"))).toBe("—");
     expect(screen.getAllByText("no turn outcomes reported yet")).toHaveLength(
       3,
     );
-  });
-
-  it("says an untyped run's errors went unrecorded rather than calling it clean", () => {
-    // A run recorded before gg typed its errors has errors and no types. Rendering that as
-    // "no errors to rank" would report the opposite of what happened.
-    renderErrors(
-      outcome("root", 1, {
-        outcome: "error",
-        error: "model_api",
-        consecutiveErrors: 1,
-      }),
-    );
-    expect(headline(errorTile("Total errors"))).toBe("1");
-    expect(rankedTypes()).toEqual([]);
-    expect(
-      within(errorTile("Top error types")).getByText(
-        "not recorded — this run predates per-type errors",
-      ),
-    ).toBeInTheDocument();
   });
 
   it("reports the replies loop detection threw away, and only when there were any", () => {

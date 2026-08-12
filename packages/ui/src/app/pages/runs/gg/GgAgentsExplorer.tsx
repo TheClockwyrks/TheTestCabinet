@@ -1269,9 +1269,8 @@ function ApiSurface({
                   key={fn.name}
                   name={`${api.path}.${fn.name}`}
                   // On gg's OWN identity for the call, which is what its records name it
-                  // by. A record written before gg counted per function carries no
-                  // operation, and says so rather than reporting a zero it cannot support.
-                  count={fn.operation ? (calls.get(fn.operation) ?? 0) : null}
+                  // by — every bound function states one, so every row carries a figure.
+                  count={calls.get(fn.operation) ?? 0}
                 />
               ))}
             </ul>
@@ -1345,20 +1344,15 @@ function WithheldTools({ tools }: { tools: readonly string[] }) {
 //
 // There is deliberately no third state for "nothing counts this". Every model-facing call
 // is recorded under its own identity, tool or no tool, so a view call and an ending call
-// have figures exactly as a file read does. The only null left is a RECORD too old to
-// carry a function's identity, which is a fact about the record rather than about the
-// agent — its cell is left empty and its tooltip says why, because a zero there would
-// accuse a model of ignoring everything it was given.
-function SurfaceRow({ name, count }: { name: string; count: number | null }) {
+// have figures exactly as a file read does, and every row on this list carries one.
+function SurfaceRow({ name, count }: { name: string; count: number }) {
   return (
     <li
       className={`${panels.toolRow} ${panels.surfaceRow}`}
       data-uncalled={count === 0 ? "" : undefined}
       title={surfaceCallPhrase(name, count)}
     >
-      <span className={panels.toolCallCount}>
-        {count == null ? "" : `${numberFmt.format(count)}×`}
-      </span>
+      <span className={panels.toolCallCount}>{numberFmt.format(count)}×</span>
       <span className={panels.toolName}>{name}</span>
     </li>
   );

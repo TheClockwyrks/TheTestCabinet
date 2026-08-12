@@ -182,8 +182,8 @@ is, and three functions over one core (`gg.files.readFile`,
 `gg.files.readTextFile` and `gg.views.openFile` all run a `read_file`) are three
 figures rather than one shared between them. The file's own heading names the
 documentation mode this instance ran under, because the tokens that mode cost are
-this agent's own. A row with no figure at all is one read off a record written
-before gg counted per function, and says so on hover.
+this agent's own. Every row carries a figure, so a `0×` is a bound function the
+model did not use rather than a gap in the record.
 
 ### The Overview file
 

@@ -643,12 +643,12 @@ export type GgAgentApiFunction = {
    * by, so a count survives a run whose programs were written in another language with other
    * spellings.
    *
-   * Absent on a record written before gg recorded a call per function, and on the vanishingly
-   * rare entry whose arm named an operation gg does not have — in both cases a consumer must say
-   * there is no count rather than report a zero, since zero accuses the model of ignoring what it
-   * was offered.
+   * Every bound entry states one, so joining a surface to a run's calls is a join and never a
+   * guess: an arm's catalogue names the operation of each function it declares, and an entry
+   * naming an operation gg does not have binds nothing at all — an unresolvable operation buys
+   * no gate — so it never reaches this list to be reported without a count.
    */
-  operation?: string;
+  operation: string;
 };
 
 /**
@@ -2157,11 +2157,8 @@ export type GgErrorSummary = {
    * counter of its own: an arm whose image is missing a compiler and an arm whose model cannot
    * satisfy a type checker are different findings, and pooled they are one bad number.
    *
-   * `0` for every run of a language whose preparation invokes no compiler. It is
-   * [`default`](Default)ed on the way *in* only, like every field added after the rollup shipped:
-   * a summary recorded before this counter existed reads back as a zero, which for those runs is
-   * the truth rather than a guess, while a run this gg writes always states it so the per-kind
-   * counters still sum to [`errors`](Self::errors).
+   * `0` for every run of a language whose preparation invokes no compiler — stated rather than
+   * omitted, so the per-kind counters still sum to [`errors`](Self::errors).
    */
   toolchain: number;
   /**
@@ -2182,8 +2179,8 @@ export type GgErrorSummary = {
    * — the breakdown a *"top error types"* ranking is built from, keyed by
    * [`GgTurnErrorType::wire_id`].
    *
-   * Two invariants hold for any run this gg writes: it sums to [`errors`](Self::errors), and
-   * regrouping it by [`GgTurnErrorType::kind`] reproduces the six named counters above exactly.
+   * Two invariants hold: it sums to [`errors`](Self::errors), and regrouping it by
+   * [`GgTurnErrorType::kind`] reproduces the six named counters above exactly.
    * The named counters stay because persisted records, stored queries and the console's
    * side-by-side split all read them; this joins them rather than replacing them.
    *
@@ -2197,9 +2194,8 @@ export type GgErrorSummary = {
    * producing side is the enum, and the generated label table is total over it, so a type cannot
    * be added without being labelled.
    *
-   * Empty — and omitted from the wire — for a run with no errors, and for one recorded before
-   * gg published types at all. A reader must therefore not read an empty map as "no errors of
-   * any type"; [`errors`](Self::errors) is what says whether there were any.
+   * Empty — and omitted from the wire — for a run with no errors, and only for one: it sums to
+   * [`errors`](Self::errors), so an empty map and a zero there are the same statement.
    */
   byType?: { [key in string]: number };
   /**
@@ -2538,9 +2534,9 @@ export type GgTelemetryKind =
        * one inferred afterwards from the summary's prose.
        *
        * Present on exactly the results whose [`ok`](Self::ToolResult::ok) is `false`, with
-       * [`Other`](GgToolFailure::Other) for a failure raised outside a tool implementation;
-       * absent on every success, and on a stream recorded before gg published the class, which is
-       * the only case a reader must tolerate `ok == false` with no class.
+       * [`Other`](GgToolFailure::Other) for a failure raised outside a tool implementation, and
+       * absent on every success — so `failure != null` and `ok == false` are the same statement,
+       * and a reader never meets a failure with no class.
        *
        * `ok` stays the authoritative "did it fail?". This says how.
        */
@@ -2585,7 +2581,7 @@ export type GgTelemetryKind =
        * carve-outs, which no arm's catalogue spells and which therefore name no operation. They
        * are already recorded under gg's own words for them, so `object`.`function` reads exactly
        * as an operation id would (`docs`.`search`) — the identity is there, it is simply not the
-       * operations table's to give. Also absent on a stream recorded before gg carried it.
+       * operations table's to give. That is the one case, and every other call states it.
        */
       operation?: string;
     }
@@ -2712,8 +2708,7 @@ export type GgTelemetryKind =
        * The window item's **selector tag**, when it carries one: the workspace path a
        * [`FileView`](GgContextSource::FileView) shows (the same tag
        * `evict_file_view { path }` targets), and the sentinel naming the rebuilt
-       * fullness signal. Absent for an ordinary message, and on a stream recorded
-       * before gg carried it.
+       * fullness signal. Absent for an ordinary message, which selects nothing.
        *
        * It is what makes a window's *material* attributable rather than only its band:
        * a `file_view` message says how many tokens a file occupied, and the label says
@@ -3501,10 +3496,8 @@ export type GgTelemetryKind =
        * construction: gg holds one value and derives both halves from it when it emits this
        * event, for the same reason the outcome and the kind are settled together — a reader that
        * could be handed a base and a type from two different mechanisms could be handed two that
-       * disagree.
-       *
-       * Absent on a stream recorded before gg published the type, which is the only case a reader
-       * must tolerate `error != null && errorType == null`.
+       * disagree. So `error != null && errorType == null` never occurs, and a reader ranking
+       * types never has to account for an errored turn that named none.
        */
       errorType?: GgTurnErrorType;
       /**
@@ -3676,9 +3669,9 @@ export type GgTelemetryEvent = {
        * one inferred afterwards from the summary's prose.
        *
        * Present on exactly the results whose [`ok`](Self::ToolResult::ok) is `false`, with
-       * [`Other`](GgToolFailure::Other) for a failure raised outside a tool implementation;
-       * absent on every success, and on a stream recorded before gg published the class, which is
-       * the only case a reader must tolerate `ok == false` with no class.
+       * [`Other`](GgToolFailure::Other) for a failure raised outside a tool implementation, and
+       * absent on every success — so `failure != null` and `ok == false` are the same statement,
+       * and a reader never meets a failure with no class.
        *
        * `ok` stays the authoritative "did it fail?". This says how.
        */
@@ -3723,7 +3716,7 @@ export type GgTelemetryEvent = {
        * carve-outs, which no arm's catalogue spells and which therefore name no operation. They
        * are already recorded under gg's own words for them, so `object`.`function` reads exactly
        * as an operation id would (`docs`.`search`) — the identity is there, it is simply not the
-       * operations table's to give. Also absent on a stream recorded before gg carried it.
+       * operations table's to give. That is the one case, and every other call states it.
        */
       operation?: string;
     }
@@ -3850,8 +3843,7 @@ export type GgTelemetryEvent = {
        * The window item's **selector tag**, when it carries one: the workspace path a
        * [`FileView`](GgContextSource::FileView) shows (the same tag
        * `evict_file_view { path }` targets), and the sentinel naming the rebuilt
-       * fullness signal. Absent for an ordinary message, and on a stream recorded
-       * before gg carried it.
+       * fullness signal. Absent for an ordinary message, which selects nothing.
        *
        * It is what makes a window's *material* attributable rather than only its band:
        * a `file_view` message says how many tokens a file occupied, and the label says
@@ -4639,10 +4631,8 @@ export type GgTelemetryEvent = {
        * construction: gg holds one value and derives both halves from it when it emits this
        * event, for the same reason the outcome and the kind are settled together — a reader that
        * could be handed a base and a type from two different mechanisms could be handed two that
-       * disagree.
-       *
-       * Absent on a stream recorded before gg published the type, which is the only case a reader
-       * must tolerate `error != null && errorType == null`.
+       * disagree. So `error != null && errorType == null` never occurs, and a reader ranking
+       * types never has to account for an errored turn that named none.
        */
       errorType?: GgTurnErrorType;
       /**

@@ -4,8 +4,8 @@
 // answers "could this agent have called that?", and it only answers it if it lands on the
 // right instance: a root's toolset shown against a subagent would turn the feature into a
 // lie that reads exactly like the truth. So these check both folds — the whole stream and
-// the per-agent partitions — and the absence case, since every run recorded before gg
-// emitted the event must still reduce to no surface at all rather than an empty one.
+// the per-agent partitions — and the absence case, since an instance read before its
+// surface arrives must reduce to no surface at all rather than to an empty one.
 
 import { describe, expect, it } from "vitest";
 import type {
@@ -250,8 +250,8 @@ describe("agent surface reduction", () => {
   });
 
   it("leaves a stream that never reported one with no surface", () => {
-    // Every run recorded before gg emitted the event. Nothing degrades: the node is exactly
-    // what it was, and the absence is what tells a read-out to render nothing.
+    // An instance read before its `agent_surface` arrived. Nothing degrades: the node is
+    // exactly what it was, and the absence is what tells a read-out to render nothing.
     const state = reduceGgEvents([
       spawn("root", "Root"),
       gg("root", { type: "turn_started" } as GgTelemetryKind),
@@ -308,20 +308,5 @@ describe("apiCallSpellings", () => {
     expect(spellings.get("delegation.send_message")).toBe(
       "gg.delegation.sendMessage",
     );
-  });
-
-  it("skips a function with no recorded identity rather than guessing one", () => {
-    // A record written before gg counted a call per function. No rule turns one vocabulary
-    // into the other, so the entry is simply absent and its caller falls back to the identity
-    // the call was actually recorded under.
-    const spellings = apiCallSpellings([
-      {
-        module: "files",
-        path: "gg.files",
-        description: "the workspace",
-        functions: [{ name: "readFile" }],
-      },
-    ]);
-    expect(spellings.size).toBe(0);
   });
 });

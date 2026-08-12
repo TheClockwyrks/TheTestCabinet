@@ -19,7 +19,7 @@ A run emits exactly one per model call it made.
 | --- | --- |
 | `outcome` | `progressed` (the turn did its declared work), `finished` (the turn ended the session, which is never an error), `error`, or `fatal` (gg's own machinery broke, recorded so the turn accounting stays whole and deliberately not charged to the model's error budget). |
 | `error` | Why, at the base level, on an `error` outcome, and absent on every other, so `error != null` and `outcome == "error"` are the same statement. One of `model_api`, `transpile`, `program_fault`, `sandbox_limit`, `toolchain`, `missing_completion`. |
-| `errorType` | Why, specifically: the leaf of the two-level taxonomy. Present on exactly the turns `error` is, and its base is the `error` beside it, since gg holds one value and derives both halves when it emits the event. Absent only on a stream recorded before gg published types. |
+| `errorType` | Why, specifically: the leaf of the two-level taxonomy. Present on exactly the turns `error` is, and its base is the `error` beside it, since gg holds one value and derives both halves when it emits the event. |
 | `consecutiveErrors` | This agent's failing streak after this turn. |
 | `turns` | How many turns this agent has recorded, including this one. It is this agent's own running total rather than the run's, and the same figure its turn ceiling is measured against. |
 | `loopAborts` | How many replies [loop detection](/gg/loop-detection/) discarded before this turn produced one. Omitted when zero. |
@@ -113,14 +113,13 @@ runs' rates, and the one thing that must be trustworthy here is that the numbers
 add up.
 
 `byType` is the same errors split by their specific type, keyed by the
-`errorType` wire id. Two things hold for any run this gg writes: it sums to
-`errors`, and regrouping it by each type's base reproduces the six named counters
-exactly. It is a map keyed by a string rather than by the enum, so that a run
-recorded by a newer gg still reads back in an older backend or console: an
-unknown enum key would fail the whole summary, where an unknown string degrades
-to one unlabelled row in a ranking. It is omitted from the wire when empty, which
-a reader must render as "not recorded" rather than as "nothing went wrong".
-`errors` is what says whether there were any.
+`errorType` wire id. Two things hold: it sums to `errors`, and regrouping it by
+each type's base reproduces the six named counters exactly. It is a map keyed by
+a string rather than by the enum, so that a run recorded by a newer gg still
+reads back in an older backend or console: an unknown enum key would fail the
+whole summary, where an unknown string degrades to one unlabelled row in a
+ranking. It is omitted from the wire when empty, which is exactly a run with no
+errors.
 
 `toolFailures` counts calls rather than turns: every dispatched tool call that
 failed, by [class](/gg/telemetry/agent-surface/#failure-classes), whether or

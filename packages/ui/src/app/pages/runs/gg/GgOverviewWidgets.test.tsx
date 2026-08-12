@@ -87,9 +87,9 @@ describe("the Errors widget's failed-call ranking", () => {
   });
 
   it("falls back to the evidence for an instance that reported no surface", () => {
-    // Every stream recorded before gg emitted `agent_surface`. Only a responses-as-code
-    // agent can have recorded an API failure, so one that did is read as the surface it
-    // must have had rather than as the execution record it also has.
+    // A scope read before its `agent_surface` arrived. Only a responses-as-code agent can
+    // have recorded an API failure, so one that did is read as the surface it must have had
+    // rather than as the execution record it also has.
     render(
       <ErrorsWidget
         errors={tally({
@@ -147,9 +147,9 @@ describe("the Errors widget's failed-call ranking", () => {
   });
 
   it("says nothing was recorded rather than that nothing failed", () => {
-    // There is no count of CALLS in this tally, so an empty record is equally a scope
-    // whose calls all succeeded and a stream written before gg published failure classes.
-    // The line says which of those it can support: neither.
+    // There is no count of CALLS in this tally, so an empty record is equally a scope whose
+    // calls all succeeded and one that made none. The line says which of those it can
+    // support: neither.
     render(
       <ErrorsWidget
         errors={tally({ turns: 3 })}

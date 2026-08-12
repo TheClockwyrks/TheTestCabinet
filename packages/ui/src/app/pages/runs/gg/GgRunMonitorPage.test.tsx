@@ -3423,9 +3423,9 @@ describe("GgRunMonitorPage", () => {
     // A run killed mid-call leaves an opening half with no result. A bracket cannot
     // outlive the turn it was opened in — a program runs inside one turn — so the damage
     // is bounded to that turn instead of one unclosed bracket eating the rest of the
-    // agent's feed. Note also that the surface here reports no `key` for `readFile`, so
-    // the row falls back to the identity the call was RECORDED under rather than guessing
-    // at a spelling.
+    // agent's feed. The stranded call is a documentation carve-out, which no arm's
+    // catalogue spells and which therefore names no operation: the row falls back to the
+    // identity the call was RECORDED under rather than guessing at a spelling.
     renderMonitor([
       sessionStarted(["filesystem"]),
       gg({
@@ -3442,12 +3442,16 @@ describe("GgRunMonitorPage", () => {
             module: "files",
             path: "gg.files",
             description: "Read and write the workspace.",
-            functions: [{ name: "readFile" }],
+            functions: [{ name: "readFile", operation: "files.read_file" }],
           },
         ],
       ),
       gg({ type: "turn_started" }),
-      apiCall("files", "read_file"),
+      gg({
+        type: "api_call",
+        object: "docs",
+        function: "search",
+      } as GgTelemetryKind),
       gg({ type: "turn_started" }),
       gg({ type: "tool_call", name: "read_file", args: { path: "c.ts" } }),
     ]);
@@ -3455,7 +3459,7 @@ describe("GgRunMonitorPage", () => {
     openFile("root activity");
 
     // The unresolvable spelling reads as the wire's, never as a blank and never as a guess.
-    expect(screen.getByText("files.read_file")).toBeInTheDocument();
+    expect(screen.getByText("docs.search")).toBeInTheDocument();
     // The next turn's tool row is its own row, not swallowed into the stranded bracket.
     expect(screen.getByText("read_file")).toBeInTheDocument();
     expect(screen.getByText('{"path":"c.ts"}')).toBeInTheDocument();

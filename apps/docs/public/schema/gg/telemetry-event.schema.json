@@ -34,11 +34,11 @@
           "type": "string"
         },
         "operation": {
-          "description": "gg's own identity for what this call does — `files.read_file`, `views.open_docs_view`,\n`session.finish` — which is what its [`ApiCall`](GgTelemetryKind::ApiCall) records name it\nby, so a count survives a run whose programs were written in another language with other\nspellings.\n\nAbsent on a record written before gg recorded a call per function, and on the vanishingly\nrare entry whose arm named an operation gg does not have — in both cases a consumer must say\nthere is no count rather than report a zero, since zero accuses the model of ignoring what it\nwas offered.",
+          "description": "gg's own identity for what this call does — `files.read_file`, `views.open_docs_view`,\n`session.finish` — which is what its [`ApiCall`](GgTelemetryKind::ApiCall) records name it\nby, so a count survives a run whose programs were written in another language with other\nspellings.\n\nEvery bound entry states one, so joining a surface to a run's calls is a join and never a\nguess: an arm's catalogue names the operation of each function it declares, and an entry\nnaming an operation gg does not have binds nothing at all — an unresolvable operation buys\nno gate — so it never reaches this list to be reported without a count.",
           "type": "string"
         }
       },
-      "required": ["name"],
+      "required": ["name", "operation"],
       "type": "object"
     },
     "GgAgentModule": {
@@ -398,7 +398,7 @@
             "minimum": 0,
             "type": "integer"
           },
-          "description": "The same errors split by their **specific** [type](GgTurnErrorType) rather than by base kind\n— the breakdown a *\"top error types\"* ranking is built from, keyed by\n[`GgTurnErrorType::wire_id`].\n\nTwo invariants hold for any run this gg writes: it sums to [`errors`](Self::errors), and\nregrouping it by [`GgTurnErrorType::kind`] reproduces the six named counters above exactly.\nThe named counters stay because persisted records, stored queries and the console's\nside-by-side split all read them; this joins them rather than replacing them.\n\n# Why a string key rather than the enum\n\nA map keyed by `GgTurnErrorType` would fail to deserialize *the whole summary* the first\ntime a newer gg wrote a type an older backend or console had never heard of — a run recorded\ntoday must still read back tomorrow, which is exactly what an open breakdown is for. With a\nstring key an unknown type degrades to one unlabelled row in a ranking instead. The\ncompile-time totality this codebase normally insists on is not lost, only moved: the\nproducing side is the enum, and the generated label table is total over it, so a type cannot\nbe added without being labelled.\n\nEmpty — and omitted from the wire — for a run with no errors, and for one recorded before\ngg published types at all. A reader must therefore not read an empty map as \"no errors of\nany type\"; [`errors`](Self::errors) is what says whether there were any.",
+          "description": "The same errors split by their **specific** [type](GgTurnErrorType) rather than by base kind\n— the breakdown a *\"top error types\"* ranking is built from, keyed by\n[`GgTurnErrorType::wire_id`].\n\nTwo invariants hold: it sums to [`errors`](Self::errors), and regrouping it by\n[`GgTurnErrorType::kind`] reproduces the six named counters above exactly.\nThe named counters stay because persisted records, stored queries and the console's\nside-by-side split all read them; this joins them rather than replacing them.\n\n# Why a string key rather than the enum\n\nA map keyed by `GgTurnErrorType` would fail to deserialize *the whole summary* the first\ntime a newer gg wrote a type an older backend or console had never heard of — a run recorded\ntoday must still read back tomorrow, which is exactly what an open breakdown is for. With a\nstring key an unknown type degrades to one unlabelled row in a ranking instead. The\ncompile-time totality this codebase normally insists on is not lost, only moved: the\nproducing side is the enum, and the generated label table is total over it, so a type cannot\nbe added without being labelled.\n\nEmpty — and omitted from the wire — for a run with no errors, and only for one: it sums to\n[`errors`](Self::errors), so an empty map and a zero there are the same statement.",
           "type": "object"
         },
         "errors": {
@@ -453,8 +453,7 @@
           "type": "object"
         },
         "toolchain": {
-          "default": 0,
-          "description": "Errors of kind [`toolchain`](GgTurnErrorKind::Toolchain) — turns lost because the language's\n**compiler** could not finish, rather than because the model wrote anything wrong.\n\nThe one per-kind counter that is not a count of the model's failures, which is why it is a\ncounter of its own: an arm whose image is missing a compiler and an arm whose model cannot\nsatisfy a type checker are different findings, and pooled they are one bad number.\n\n`0` for every run of a language whose preparation invokes no compiler. It is\n[`default`](Default)ed on the way *in* only, like every field added after the rollup shipped:\na summary recorded before this counter existed reads back as a zero, which for those runs is\nthe truth rather than a guess, while a run this gg writes always states it so the per-kind\ncounters still sum to [`errors`](Self::errors).",
+          "description": "Errors of kind [`toolchain`](GgTurnErrorKind::Toolchain) — turns lost because the language's\n**compiler** could not finish, rather than because the model wrote anything wrong.\n\nThe one per-kind counter that is not a count of the model's failures, which is why it is a\ncounter of its own: an arm whose image is missing a compiler and an arm whose model cannot\nsatisfy a type checker are different findings, and pooled they are one bad number.\n\n`0` for every run of a language whose preparation invokes no compiler — stated rather than\nomitted, so the per-kind counters still sum to [`errors`](Self::errors).",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -480,6 +479,7 @@
         "transpile",
         "programFault",
         "sandboxLimit",
+        "toolchain",
         "missingCompletion",
         "loopAborts"
       ],
@@ -1429,7 +1429,7 @@
               "type": "null"
             }
           ],
-          "description": "Why it failed, when it failed — the [class](GgToolFailure) the tool itself raised, never\none inferred afterwards from the summary's prose.\n\nPresent on exactly the results whose [`ok`](Self::ToolResult::ok) is `false`, with\n[`Other`](GgToolFailure::Other) for a failure raised outside a tool implementation;\nabsent on every success, and on a stream recorded before gg published the class, which is\nthe only case a reader must tolerate `ok == false` with no class.\n\n`ok` stays the authoritative \"did it fail?\". This says how."
+          "description": "Why it failed, when it failed — the [class](GgToolFailure) the tool itself raised, never\none inferred afterwards from the summary's prose.\n\nPresent on exactly the results whose [`ok`](Self::ToolResult::ok) is `false`, with\n[`Other`](GgToolFailure::Other) for a failure raised outside a tool implementation, and\nabsent on every success — so `failure != null` and `ok == false` are the same statement,\nand a reader never meets a failure with no class.\n\n`ok` stays the authoritative \"did it fail?\". This says how."
         },
         "name": {
           "description": "The tool's name.",
@@ -1463,7 +1463,7 @@
           "type": "string"
         },
         "operation": {
-          "description": "**The cross-arm join key**: gg's [operation](Self::ApiCall::operation) id for what was\ncalled — `files.read_file` — the same string the agent's\n[surface](GgAgentApiFunction::operation) reports the bound function under.\n\nIt is here because eleven arms legitimately spell one operation eleven ways, and by\ndesign they do: an arm's surface answers to its own language, so `read_file`,\n`readFile`, `ReadFile` and `readTextFile`-as-a-method are all real spellings of things\ngg has exactly one name for. A study comparing arms — or comparing two agents of one run\nwritten in two languages — joins on this and on nothing else.\n\n`None` for the [documentation](https://docs.testcabinet.ai/gg/responses-as-code/views/)\ncarve-outs, which no arm's catalogue spells and which therefore name no operation. They\nare already recorded under gg's own words for them, so `object`.`function` reads exactly\nas an operation id would (`docs`.`search`) — the identity is there, it is simply not the\noperations table's to give. Also absent on a stream recorded before gg carried it.",
+          "description": "**The cross-arm join key**: gg's [operation](Self::ApiCall::operation) id for what was\ncalled — `files.read_file` — the same string the agent's\n[surface](GgAgentApiFunction::operation) reports the bound function under.\n\nIt is here because eleven arms legitimately spell one operation eleven ways, and by\ndesign they do: an arm's surface answers to its own language, so `read_file`,\n`readFile`, `ReadFile` and `readTextFile`-as-a-method are all real spellings of things\ngg has exactly one name for. A study comparing arms — or comparing two agents of one run\nwritten in two languages — joins on this and on nothing else.\n\n`None` for the [documentation](https://docs.testcabinet.ai/gg/responses-as-code/views/)\ncarve-outs, which no arm's catalogue spells and which therefore name no operation. They\nare already recorded under gg's own words for them, so `object`.`function` reads exactly\nas an operation id would (`docs`.`search`) — the identity is there, it is simply not the\noperations table's to give. That is the one case, and every other call states it.",
           "type": ["string", "null"]
         },
         "type": {
@@ -1601,7 +1601,7 @@
           "type": "array"
         },
         "label": {
-          "description": "The window item's **selector tag**, when it carries one: the workspace path a\n[`FileView`](GgContextSource::FileView) shows (the same tag\n`evict_file_view { path }` targets), and the sentinel naming the rebuilt\nfullness signal. Absent for an ordinary message, and on a stream recorded\nbefore gg carried it.\n\nIt is what makes a window's *material* attributable rather than only its band:\na `file_view` message says how many tokens a file occupied, and the label says\n**which file**, so the console can total a run's context spend per path. The\ntag survives what the message envelope does not — a pinned, autoloaded\nspecification re-framed as a `user` message across a\n[compaction](https://docs.testcabinet.ai/gg/compaction/) boundary keeps its\npath, where its `tool_call_id` pairing does not.",
+          "description": "The window item's **selector tag**, when it carries one: the workspace path a\n[`FileView`](GgContextSource::FileView) shows (the same tag\n`evict_file_view { path }` targets), and the sentinel naming the rebuilt\nfullness signal. Absent for an ordinary message, which selects nothing.\n\nIt is what makes a window's *material* attributable rather than only its band:\na `file_view` message says how many tokens a file occupied, and the label says\n**which file**, so the console can total a run's context spend per path. The\ntag survives what the message envelope does not — a pinned, autoloaded\nspecification re-framed as a `user` message across a\n[compaction](https://docs.testcabinet.ai/gg/compaction/) boundary keeps its\npath, where its `tool_call_id` pairing does not.",
           "type": ["string", "null"]
         },
         "role": {
@@ -2467,7 +2467,7 @@
               "type": "null"
             }
           ],
-          "description": "Why it was an error **specifically** — the [type](GgTurnErrorType) under the base\n[kind](Self::TurnOutcome::error) beside it.\n\nPresent on exactly the turns `error` is present on, and `error_type.kind() == error` by\nconstruction: gg holds one value and derives both halves from it when it emits this\nevent, for the same reason the outcome and the kind are settled together — a reader that\ncould be handed a base and a type from two different mechanisms could be handed two that\ndisagree.\n\nAbsent on a stream recorded before gg published the type, which is the only case a reader\nmust tolerate `error != null && errorType == null`."
+          "description": "Why it was an error **specifically** — the [type](GgTurnErrorType) under the base\n[kind](Self::TurnOutcome::error) beside it.\n\nPresent on exactly the turns `error` is present on, and `error_type.kind() == error` by\nconstruction: gg holds one value and derives both halves from it when it emits this\nevent, for the same reason the outcome and the kind are settled together — a reader that\ncould be handed a base and a type from two different mechanisms could be handed two that\ndisagree. So `error != null && errorType == null` never occurs, and a reader ranking\ntypes never has to account for an errored turn that named none."
         },
         "loopAborts": {
           "description": "How many model responses [loop detection](GgLoopDetection) discarded before this turn\nproduced one, when any were. `0` — and omitted from the wire — for the ordinary turn, and\nfor every turn of every run that left the capability disarmed, which is the default.\n\nThis is the **one** place discarded attempts are published. A discarded attempt is never\na turn of its own (it produced nothing, and the request was retried), so it has no\n`TurnOutcome` event to be counted on; carrying it on the turn that eventually succeeded\nkeeps the count on the stream without inventing an event for a reply that does not exist,\nand lets [`GgErrorSummary::loop_aborts`] be a plain sum over these.",

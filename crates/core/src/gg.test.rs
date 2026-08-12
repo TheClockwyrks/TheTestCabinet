@@ -1897,9 +1897,9 @@ fn regrouping_the_per_type_breakdown_by_base_reproduces_the_per_kind_counters() 
     );
 }
 
-/// Both open breakdowns are omitted from the wire when empty, and both read back from a record
-/// written before they existed — the whole reason they are maps keyed by a stable id rather than by
-/// an enum, since an unknown enum key would fail the *whole* summary rather than one row.
+/// Both open breakdowns are omitted from the wire when empty, and both read back a key this build
+/// has never heard of — the whole reason they are maps keyed by a stable id rather than by an enum,
+/// since an unknown enum key would fail the *whole* summary rather than one row.
 #[test]
 fn the_open_breakdowns_are_omitted_when_empty_and_tolerate_an_unknown_key() {
     let empty = GgErrorSummary::default();
@@ -1911,9 +1911,6 @@ fn the_open_breakdowns_are_omitted_when_empty_and_tolerate_an_unknown_key() {
 
     // A run recorded by a *newer* gg, carrying a type this build has never heard of. It must read,
     // and the unknown row must survive — degrading to one unlabelled row in a ranking is the point.
-    // It is also missing `toolchain` entirely, the way every summary recorded before that counter
-    // existed is: a per-kind counter added later reads back as a zero rather than failing the whole
-    // summary.
     let newer = json!({
         "turns": 3,
         "errors": 1,
@@ -1922,6 +1919,7 @@ fn the_open_breakdowns_are_omitted_when_empty_and_tolerate_an_unknown_key() {
         "transpile": 0,
         "programFault": 0,
         "sandboxLimit": 0,
+        "toolchain": 0,
         "missingCompletion": 1,
         "loopAborts": 0,
         "byType": { "missing_completion_something_new": 1 },

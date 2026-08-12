@@ -115,9 +115,9 @@ three functions over one core (`gg.files.readFile`, `gg.files.readTextFile` and
 `gg.views.openFile` all run a `read_file`) are three figures, so a function the
 model ignored reads as ignored rather than inheriting its neighbour's calls.
 Where one arm offers two spellings of one operation, both rows carry the same
-figure, because gg counts what was done rather than which synonym did it. An
-entry with no figure comes from a record written before gg counted per function,
-and the console says so.
+figure, because gg counts what was done rather than which synonym did it. Every
+bound entry states its operation, so every entry carries a figure and a zero is
+a measurement.
 
 ### `withheld`
 
@@ -184,8 +184,7 @@ those, and a carve-out's are either trivial (`session.finish()`) or enormous
 ways. A program that wrote `readFile`, one that wrote `read_file` and one that
 wrote `ReadFile` are one operation, `files.read_file`, and it is the same string
 the agent's `agent_surface` reports the bound function under. It is absent only
-for a pair no operations row covers, and on a stream recorded before gg carried
-it.
+for a pair no operations row covers.
 
 The `object` and `function` pair is legacy and joins to nothing. It disagrees
 with the module vocabulary on eight of its twelve entries: `fs` against the
