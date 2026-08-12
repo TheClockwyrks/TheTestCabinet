@@ -613,24 +613,16 @@ async fn the_startup_backfills_move_updated_at_on_the_rows_they_rewrite() {
     }
 
     assert_eq!(db.backfill_sort_columns().await.unwrap(), 2);
-    let sorted = stamp(&lifted(&db, "r1").await.updated_at);
-    let gg_after_sort = stamp(&lifted(&db, "gg1").await.updated_at);
-
-    // `backfill_sort_columns` also fills `gg_preset`, so clear it again to give the
-    // preset backfill a candidate of its own.
-    let mut active = lifted(&db, "gg1").await.into_active_model();
-    active.gg_preset = Set(None);
-    active.update(&db.connection()).await.unwrap();
-
-    assert_eq!(db.backfill_gg_presets().await.unwrap(), 1);
-    let gg_after_preset = stamp(&lifted(&db, "gg1").await.updated_at);
-    assert!(
-        gg_after_sort < gg_after_preset,
-        "the preset backfill must move the stamp: {gg_after_sort} !< {gg_after_preset}"
+    // `stamp` rejects the empty default, so parsing both is the assertion that the
+    // backfill stamped every row it rewrote.
+    stamp(&lifted(&db, "r1").await.updated_at);
+    stamp(&lifted(&db, "gg1").await.updated_at);
+    // And the lifted columns themselves carry the record-derived values.
+    assert_eq!(
+        lifted(&db, "gg1").await.gg_preset.as_deref(),
+        Some("planning-A")
     );
-    // The non-gg row is outside the preset backfill's candidate set, so its stamp
-    // stands where the sort backfill left it.
-    assert_eq!(stamp(&lifted(&db, "r1").await.updated_at), sorted);
+    assert_ne!(lifted(&db, "r1").await.test_type, "");
 }
 
 #[tokio::test]
@@ -2298,45 +2290,6 @@ async fn repush_refreshes_the_lifted_gg_configuration_name() {
         lifted(&db, "r1").await.gg_preset.as_deref(),
         Some("planning-B")
     );
-}
-
-#[tokio::test]
-async fn backfill_gg_presets_fills_gg_rows_recorded_before_the_column() {
-    let db = Db::connect_in_memory().await.unwrap();
-    let mut named = gg_record("named");
-    named.subject.gg_capability_set.as_mut().unwrap().preset = Some("planning-A".to_string());
-    db.push(&named, &links(), None).await.unwrap();
-    // A gg run with no configuration name, and a non-gg run: neither is fillable.
-    let mut hand_assembled = gg_record("hand");
-    hand_assembled
-        .subject
-        .gg_capability_set
-        .as_mut()
-        .unwrap()
-        .preset = None;
-    db.push(&hand_assembled, &links(), None).await.unwrap();
-    db.push(&record_with_metrics("other"), &links(), None)
-        .await
-        .unwrap();
-
-    // Simulate rows that predate the column: it read NULL for every one of them.
-    for id in ["named", "hand", "other"] {
-        let mut active = lifted(&db, id).await.into_active_model();
-        active.gg_preset = Set(None);
-        active.update(&db.connection()).await.unwrap();
-    }
-
-    assert_eq!(db.backfill_gg_presets().await.unwrap(), 1);
-    assert_eq!(
-        lifted(&db, "named").await.gg_preset.as_deref(),
-        Some("planning-A")
-    );
-    assert_eq!(lifted(&db, "hand").await.gg_preset, None);
-    assert_eq!(lifted(&db, "other").await.gg_preset, None);
-
-    // Settles to a no-write pass: the preset-less gg run is re-read every boot but
-    // never rewritten, and the filled row has left the candidate set entirely.
-    assert_eq!(db.backfill_gg_presets().await.unwrap(), 0);
 }
 
 #[tokio::test]

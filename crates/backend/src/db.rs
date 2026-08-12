@@ -3823,10 +3823,6 @@ impl Db {
     /// Best-effort per row: a legacy record that no longer deserializes is left for
     /// a later boot (exactly as [`Self::normalize_free_model_ids`] and
     /// `assemble` tolerate such rows). Returns how many rows were filled.
-    ///
-    /// `gg_preset` arrived later than the rest, so a row this routine has *already*
-    /// settled carries none: [`Self::backfill_gg_presets`] fills those separately,
-    /// against its own candidate set.
     pub async fn backfill_sort_columns(&self) -> Result<usize> {
         let rows = run::Entity::find()
             .filter(run::Column::TestType.eq(""))
@@ -3879,45 +3875,6 @@ impl Db {
         Ok(backfilled)
     }
 
-    /// Backfill the lifted `gg_preset` column for gg runs recorded before it existed,
-    /// so the listing's search and MODEL / CONFIG sort see their configuration names
-    /// instead of falling back to the model.
-    ///
-    /// Scoped to gg rows that are still `NULL`: no other harness can ever hold a
-    /// preset, and a row written since the column existed already carries its value.
-    /// A `NULL` here is genuinely ambiguous — it means either "not yet backfilled" or
-    /// "this gg run was assembled by hand and has no configuration name" — so unlike
-    /// [`Self::backfill_sort_columns`] this cannot settle to an empty candidate set.
-    /// It settles to a **no-write** one instead: the residue is only those preset-less
-    /// gg runs, and each is re-parsed but never rewritten, so a later boot does no
-    /// work beyond the read. Best-effort per row, as the sort-column backfill is: a
-    /// record that no longer deserializes is left for a later boot. Returns how many
-    /// rows were filled.
-    pub async fn backfill_gg_presets(&self) -> Result<usize> {
-        let rows = run::Entity::find()
-            .filter(run::Column::HarnessSlug.eq(HarnessSlug::Gg.as_str()))
-            .filter(run::Column::GgPreset.is_null())
-            .all(&self.conn())
-            .await?;
-
-        let mut backfilled = 0usize;
-        for row in rows {
-            let Ok(record) = serde_json::from_str::<RunRecord>(&row.record_json) else {
-                continue;
-            };
-            let Some(preset) = lifted_gg_preset(&record) else {
-                continue;
-            };
-            let id = row.id.clone();
-            let mut active = row.into_active_model();
-            active.gg_preset = Set(Some(preset));
-            active.update(&self.conn()).await?;
-            touch_run(&self.conn(), &id).await?;
-            backfilled += 1;
-        }
-        Ok(backfilled)
-    }
-
     /// Backfill the lifted `code_analyzer_version` column for runs whose record already
     /// carries a code analysis but which were stored before the column existed.
     ///
@@ -3930,8 +3887,7 @@ impl Db {
     /// number that is *already in the record blob* into a column that can be queried.
     ///
     /// Scoped to rows that are still `NULL` **and whose record blob actually mentions an
-    /// analysis**, so the candidate set settles to empty rather than to
-    /// [`Self::backfill_gg_presets`]'s no-write residue.
+    /// analysis**, so the candidate set settles to empty.
     ///
     /// The second filter is what makes the difference, and it is not an optimization of
     /// degree. A `NULL` here is ambiguous — "not yet lifted" or "carries no analysis" —
@@ -3945,8 +3901,7 @@ impl Db {
     /// so the substring is a sound over-approximation of "has an analysis": it can only
     /// fail toward including a row, never toward skipping one that needed the lift. A
     /// spurious match — the string occurring somewhere else in the record — parses, finds
-    /// nothing to lift and stays `NULL`, which is the same harmless no-write residue the
-    /// preset backfill carries, minus the corpus. The same pushdown
+    /// nothing to lift and stays `NULL`: a harmless no-write residue. The same pushdown
     /// [`Self::has_free_tag_candidates`] uses to keep a boot's price fetch off the wire.
     ///
     /// Best-effort per row: a record that no longer deserializes is left for a later

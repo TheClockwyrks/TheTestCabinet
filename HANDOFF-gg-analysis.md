@@ -716,8 +716,8 @@ All verified at `4af242d9`.
 - Route `/gg/aggregate` `crates/backend/src/api.rs:295`.
 - `crates/backend/src/db.rs`: `push` `:293`, `add_review` `:418`, `publish` `:558`,
   `delete_run` `:600`, `list_gg_runs` `:1004`, `LiftedRunMetrics` `:1491`,
-  `lifted_run_metrics` `:1509`, `backfill_gg_presets` `:3546` (the shape to copy
-  for a startup backfill).
+  `lifted_run_metrics` `:1509`, `backfill_code_analyzer_version` `:3909` (the
+  shape to copy for a startup backfill).
 - Snapshot: `MEDIA_PREFIX` `crates/backend/src/snapshot.rs:52`,
   `with_existing_media` `:219`, `scrub_json` `:361`.
 - UI: `packages/ui/src/app/pages/gg/` (`GgAggregatePage`,

@@ -8,12 +8,8 @@
 //! and order by what the cell actually shows rather than by the model behind it.
 //!
 //! Nullable, defaulting to `NULL`: every third-party-harness run carries no
-//! capability set, a gg run assembled by hand carries no configuration name, and
-//! any row already stored when this migration runs reads as `NULL` and stays
-//! valid. The backend's idempotent startup backfill
-//! ([`Db::backfill_gg_presets`](../../test_cabinet_backend/db/struct.Db.html))
-//! then fills the real values from each gg row's record; every write after this
-//! sets the column directly.
+//! capability set, and a gg run assembled by hand carries no configuration name.
+//! Every write sets the column directly.
 //!
 //! No index of its own. The `model` sort becomes an ordering over
 //! `COALESCE(gg_preset, model_id)`, which `idx_run_model` could not have served

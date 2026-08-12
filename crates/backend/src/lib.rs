@@ -119,20 +119,11 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         Err(err) => tracing::warn!(error = %err, "skipping run sort-column backfill"),
     }
 
-    // The gg configuration name lifted onto the run row arrived after the columns
-    // above, so rows the backfill has already settled need their own pass. Same
-    // contract: idempotent, best-effort, never blocks startup.
-    match db.backfill_gg_presets().await {
-        Ok(0) => {}
-        Ok(backfilled) => tracing::info!(backfilled, "backfilled run gg configuration names"),
-        Err(err) => tracing::warn!(error = %err, "skipping run gg-configuration backfill"),
-    }
-
     // The static analyzer's generation, lifted out of records that already carry a code
     // analysis but were stored before the column existed. This lifts a number the record
     // blob already holds — it never *analyses* anything, because a historical run's tree
     // can only be re-read post-validation and those are not comparable figures. Same
-    // contract as the two above: idempotent, best-effort, never blocks startup.
+    // contract as the one above: idempotent, best-effort, never blocks startup.
     match db.backfill_code_analyzer_version().await {
         Ok(0) => {}
         Ok(backfilled) => tracing::info!(backfilled, "backfilled run code-analyzer versions"),
