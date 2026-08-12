@@ -62,7 +62,10 @@ gg --config <PATH>
     "preset": "minimal",
     "capabilities": [
       { "id": "shell", "enabled": true },
-      { "id": "filesystem", "enabled": true }
+      { "id": "read-file", "enabled": true },
+      { "id": "write-file", "enabled": true },
+      { "id": "edit-file", "enabled": true },
+      { "id": "list-dir", "enabled": true }
     ],
     "slots": [
       { "slot": "primary", "modelId": "anthropic/claude-opus-4-8" }

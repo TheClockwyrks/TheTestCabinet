@@ -4,9 +4,9 @@ use super::*;
 use serde_json::json;
 use tempfile::TempDir;
 use test_cabinet_core::gg::{
-    CAPABILITY_EDIT_FILE, CAPABILITY_FILESYSTEM, CAPABILITY_LIST_DIR, CAPABILITY_READ_FILE,
-    CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_WRITE_FILE, FILESYSTEM_TOOL_CAPABILITIES,
-    GgAgentConfig, GgCapabilityConfig, SHELL_OUTPUT_OFFLOAD,
+    CAPABILITY_EDIT_FILE, CAPABILITY_LIST_DIR, CAPABILITY_READ_FILE, CAPABILITY_SHELL,
+    CAPABILITY_SKILLS, CAPABILITY_WRITE_FILE, GgAgentConfig, GgCapabilityConfig,
+    SHELL_OUTPUT_OFFLOAD,
 };
 
 use crate::archive::ArchiveRuntime;
@@ -16,6 +16,14 @@ use crate::model::ToolCall;
 use crate::modules::ModuleHandle;
 use crate::skills::{SkillLibrary, SkillsRuntime};
 use crate::tasks::TasksRuntime;
+
+/// The four per-tool filesystem capabilities — one per filesystem primitive.
+const FILESYSTEM_CAPABILITIES: [&str; 4] = [
+    CAPABILITY_READ_FILE,
+    CAPABILITY_WRITE_FILE,
+    CAPABILITY_EDIT_FILE,
+    CAPABILITY_LIST_DIR,
+];
 
 /// The [capability modules](CapabilityModules) a registry is assembled against when only the skill
 /// `library` is bound. An empty library still binds a module — an *enabled* skills module with
@@ -34,10 +42,9 @@ fn set_with(capabilities: Vec<GgCapabilityConfig>) -> GgAgentConfig {
     }
 }
 
-/// The four per-tool filesystem capabilities, all enabled — the modern spelling of what
-/// used to be one `filesystem` capability.
+/// The four per-tool filesystem capabilities, all enabled — every filesystem primitive on.
 fn filesystem_enabled() -> Vec<GgCapabilityConfig> {
-    FILESYSTEM_TOOL_CAPABILITIES
+    FILESYSTEM_CAPABILITIES
         .iter()
         .map(|id| GgCapabilityConfig::enabled(*id))
         .collect()
@@ -88,7 +95,7 @@ fn registry_excludes_shell_tool_when_shell_capability_disabled() {
 fn registry_excludes_filesystem_tools_when_their_capabilities_are_disabled() {
     let mut capabilities = vec![GgCapabilityConfig::enabled(CAPABILITY_SHELL)];
     capabilities.extend(
-        FILESYSTEM_TOOL_CAPABILITIES
+        FILESYSTEM_CAPABILITIES
             .iter()
             .map(|id| GgCapabilityConfig::disabled(*id)),
     );
@@ -111,7 +118,7 @@ fn registry_gates_each_filesystem_tool_on_its_own_capability() {
         (CAPABILITY_EDIT_FILE, "edit_file"),
         (CAPABILITY_LIST_DIR, "list_dir"),
     ] {
-        let capabilities = FILESYSTEM_TOOL_CAPABILITIES
+        let capabilities = FILESYSTEM_CAPABILITIES
             .iter()
             .map(|id| {
                 if *id == capability {
@@ -133,38 +140,6 @@ fn registry_gates_each_filesystem_tool_on_its_own_capability() {
             "`{capability}` off should leave the other three filesystem tools"
         );
     }
-}
-
-/// A capability set saved before the filesystem split names only the umbrella id. It stays
-/// launchable: all four tools are offered, and `read_file` reads whole files, exactly as it
-/// did when that set was written.
-#[test]
-fn registry_honors_the_legacy_filesystem_capability() {
-    let set = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_FILESYSTEM)]);
-    let registry = ToolRegistry::from_capabilities(&set);
-
-    for name in ["read_file", "write_file", "edit_file", "list_dir"] {
-        assert!(offers(&registry, name), "expected `{name}` to be offered");
-    }
-    assert_eq!(read_policy(&set), ReadPolicy::Unlimited);
-
-    // And a legacy set that turned the umbrella *off* still offers nothing.
-    let off = set_with(vec![GgCapabilityConfig::disabled(CAPABILITY_FILESYSTEM)]);
-    assert!(ToolRegistry::from_capabilities(&off).is_empty());
-}
-
-/// An explicit per-tool capability wins over the legacy umbrella beside it, so an ablation
-/// arm that deliberately withholds one tool is not overridden by a stale `filesystem` row.
-#[test]
-fn an_explicit_filesystem_tool_capability_overrides_the_legacy_umbrella() {
-    let registry = ToolRegistry::from_capabilities(&set_with(vec![
-        GgCapabilityConfig::enabled(CAPABILITY_FILESYSTEM),
-        GgCapabilityConfig::disabled(CAPABILITY_EDIT_FILE),
-    ]));
-
-    assert!(!offers(&registry, "edit_file"));
-    assert!(offers(&registry, "read_file"));
-    assert_eq!(registry.len(), 3);
 }
 
 /// The read-file capability's implementation and `lineCap` param decide the
@@ -306,10 +281,9 @@ async fn dispatch_unknown_tool_returns_error_outcome() {
 #[tokio::test]
 async fn dispatch_withheld_tool_returns_error_outcome() {
     let dir = TempDir::new().unwrap();
-    let registry = ToolRegistry::from_capabilities(&set_with(vec![
-        GgCapabilityConfig::disabled(CAPABILITY_SHELL),
-        GgCapabilityConfig::enabled(CAPABILITY_FILESYSTEM),
-    ]));
+    let mut capabilities = vec![GgCapabilityConfig::disabled(CAPABILITY_SHELL)];
+    capabilities.extend(filesystem_enabled());
+    let registry = ToolRegistry::from_capabilities(&set_with(capabilities));
     let ctx = ToolContext::new(dir.path());
 
     let call = ToolCall {
@@ -788,7 +762,8 @@ fn a_terminal_state_is_offered_no_transition_tool() {
     );
 }
 
-/// The two [agent-transition](CAPABILITY_AGENT_TRANSITIONS) calls are offered on **different**
+/// The [`exec`](test_cabinet_core::gg::CAPABILITY_EXEC) and
+/// [`fork`](test_cabinet_core::gg::CAPABILITY_FORK) calls are offered on **different**
 /// conditions, and each is withheld when the thing that would make it usable is missing.
 ///
 /// `exec` needs a roster (there has to be something to become) and is withheld inside a machine,
@@ -849,14 +824,6 @@ fn the_agent_transition_tools_are_offered_on_their_own_terms() {
     ]);
     fork_only.subagents.push(GgSubagentRef::any(ROOT_AGENT));
     assert_eq!(offered(&fork_only, None), (false, true));
-
-    // And a set stored under the old `agent-transitions` id still enables the pair it enabled then.
-    let mut legacy = set_with(vec![
-        GgCapabilityConfig::enabled(test_cabinet_core::gg::CAPABILITY_AGENT_TRANSITIONS),
-        GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS),
-    ]);
-    legacy.subagents.push(GgSubagentRef::any(ROOT_AGENT));
-    assert_eq!(offered(&legacy, None), (true, true));
 
     // **And an agent whose only child can be a copy of itself is given the calls that collect
     // one.** The roster is what `spawn_subagent` needs, not what `fork` needs, so gating waiting

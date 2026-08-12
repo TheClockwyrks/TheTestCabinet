@@ -18,14 +18,13 @@ use time::format_description::well_known::Rfc3339;
 use super::GgRunDoc;
 use crate::code_analysis::{CodeAnalysisSummary, CodeLanguage};
 use crate::gg::{
-    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_AGENT_PERSISTENCE, CAPABILITY_AGENT_TRANSITIONS,
-    CAPABILITY_AUTOLOAD_SPECS, CAPABILITY_COMPACTION, CAPABILITY_COMPLETION,
-    CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_DOCVIEW_CLOSE, CAPABILITY_EDIT_FILE,
-    CAPABILITY_EXEC, CAPABILITY_FILESYSTEM, CAPABILITY_FORK, CAPABILITY_FSM, CAPABILITY_LIST_DIR,
-    CAPABILITY_MEMORIES, CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_PROJECT_MANAGEMENT,
-    CAPABILITY_READ_FILE, CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL,
-    CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WRITE_FILE,
-    GgCapabilitySet, GgSessionSummary,
+    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_AGENT_PERSISTENCE, CAPABILITY_AUTOLOAD_SPECS,
+    CAPABILITY_COMPACTION, CAPABILITY_COMPLETION, CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
+    CAPABILITY_DOCVIEW_CLOSE, CAPABILITY_EDIT_FILE, CAPABILITY_EXEC, CAPABILITY_FORK,
+    CAPABILITY_FSM, CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES, CAPABILITY_PROGRAM_LIBRARY,
+    CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE, CAPABILITY_REPLAY,
+    CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS,
+    CAPABILITY_TASKS, CAPABILITY_WRITE_FILE, GgCapabilitySet, GgSessionSummary,
 };
 use crate::review::Rating;
 use crate::run_record::RunRecord;
@@ -52,7 +51,6 @@ use crate::run_record::RunRecord;
 /// all runs.
 pub const GG_CAPABILITY_CATALOG: &[&str] = &[
     CAPABILITY_SHELL,
-    CAPABILITY_FILESYSTEM,
     CAPABILITY_READ_FILE,
     CAPABILITY_WRITE_FILE,
     CAPABILITY_EDIT_FILE,
@@ -68,7 +66,6 @@ pub const GG_CAPABILITY_CATALOG: &[&str] = &[
     CAPABILITY_PROJECT_MANAGEMENT,
     CAPABILITY_SUBAGENTS,
     CAPABILITY_FSM,
-    CAPABILITY_AGENT_TRANSITIONS,
     CAPABILITY_EXEC,
     CAPABILITY_FORK,
     CAPABILITY_RESPONSES_AS_CODE,
@@ -359,9 +356,8 @@ fn insert_capability_set(doc: &mut GgRunDoc, set: &GgCapabilitySet) {
     for agent in &set.agents {
         for id in &ids {
             // Sparse: only the agents that have it, and only as `true`. Read through
-            // `is_enabled` rather than off the declaration so a profile that inherits a
-            // tool capability through a legacy alias answers the same question the
-            // run-wide flag did.
+            // `is_enabled` so a profile that declares a capability and disables it
+            // answers the same question the run-wide flag did.
             if agent.is_enabled(id) {
                 doc.insert(format!("agent.{}.cap.{id}", agent.name), true);
             }

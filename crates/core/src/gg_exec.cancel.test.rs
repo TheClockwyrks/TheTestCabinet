@@ -24,7 +24,7 @@ const IN_FLIGHT: &[&str] = &[
 /// The epilogue a *canceled* gg session emits on its way out — the part that exists only
 /// because the host asked it to stop rather than killing it.
 const EPILOGUE: &[&str] = &[
-    r#"{"timestamp":"2026-07-30T00:00:04Z","sessionId":"run-1","type":"session_summary","summary":{"terminalStatus":"canceled","agentsSpawned":1,"subagentCount":0,"maxSubagentDepth":0,"compactions":0,"ranOutOfContext":false,"contextOverflowCount":0,"finalFullness":0.0222,"codeReviews":0,"reviewCycles":0,"issuesReopened":0,"speculations":0,"executionMode":"tool_calling","codeExecutions":0,"issuesCreated":0,"issuesCompleted":0,"slotCosts":[{"slot":"primary","modelId":"mock/echo","tokens":{"uncachedInput":2600,"cachedInput":null,"output":240,"reasoning":null},"cost":{"comparable":0.0063,"actual":0.0063}}]}}"#,
+    r#"{"timestamp":"2026-07-30T00:00:04Z","sessionId":"run-1","type":"session_summary","summary":{"terminalStatus":"canceled","agentsSpawned":1,"subagentCount":0,"maxSubagentDepth":0,"compactions":0,"ranOutOfContext":false,"contextOverflowCount":0,"finalFullness":0.0222,"issueReviews":0,"reviewCycles":0,"issuesReopened":0,"speculations":0,"executionMode":"tool_calling","codeExecutions":0,"issuesCreated":0,"issuesCompleted":0,"slotCosts":[{"slot":"primary","modelId":"mock/echo","tokens":{"uncachedInput":2600,"cachedInput":null,"output":240,"reasoning":null},"cost":{"comparable":0.0063,"actual":0.0063}}]}}"#,
     r#"{"timestamp":"2026-07-30T00:00:05Z","sessionId":"run-1","type":"session_ended","status":"canceled"}"#,
 ];
 

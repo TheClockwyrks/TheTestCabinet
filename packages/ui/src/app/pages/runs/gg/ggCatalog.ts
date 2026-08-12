@@ -357,25 +357,10 @@ export interface CapSpec {
   requiresAuthoring?: boolean;
 }
 
-// The legacy umbrella capability the four filesystem tool capabilities were split out
-// of. Nothing writes it any more, but capability sets saved before the split still
-// name it, so the editor expands one into the four (and the backend/gg treat it as an
-// alias). Kept here as a named constant so that migration has one spelling.
-export const LEGACY_FILESYSTEM_CAP_ID = "filesystem";
-
-// The per-tool filesystem capabilities, in editor order — the modern spelling of
-// [LEGACY_FILESYSTEM_CAP_ID].
-export const FILESYSTEM_CAP_IDS = [
-  "read-file",
-  "write-file",
-  "edit-file",
-  "list-dir",
-] as const;
-
 // How much of a file one `read_file` call returns — the read-file capability's
-// implementation, and the first per-tool A/B lever the split exists to allow. The
-// values are gg's implementation ids (`crates/gg/src/tools/filesystem.rs`); the empty
-// value is the default (unlimited), which is what gg has always done.
+// implementation, and the per-tool A/B lever one capability per filesystem primitive
+// exists to allow. The values are gg's implementation ids
+// (`crates/gg/src/tools/filesystem.rs`); the empty value is the default (unlimited).
 export const READ_MODE_OPTIONS = [
   { value: "", label: "Unlimited (default)" },
   { value: "default-cap", label: "Default cap" },
@@ -1224,8 +1209,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
   //
   // One capability per filesystem primitive rather than a single `filesystem`
   // umbrella: each tool is its own experimental variable, with its own
-  // implementation and params. Capability sets saved before the split name the
-  // umbrella; `draftFromCapabilitySet` expands one into these four.
+  // implementation and params.
   {
     id: "read-file",
     name: "Read file",

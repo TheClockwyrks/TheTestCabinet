@@ -14,9 +14,7 @@ others.
 | `list-dir` | `list_dir` | List a directory's entries (directories suffixed `/`). |
 
 All four are enabled in the default capability set, and they appear as their own
-Filesystem group in the [configuration](/gg/configurations/) editor. A stored
-capability set that names `filesystem` and none of the four is read as enabling
-all four, each with its default behavior.
+Filesystem group in the [configuration](/gg/configurations/) editor.
 
 `edit_file` replaces exactly one occurrence. Text that is absent and text that
 occurs several times are distinct failures with distinct recoveries: the first

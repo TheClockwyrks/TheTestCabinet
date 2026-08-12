@@ -123,10 +123,6 @@ describe("visibleSources", () => {
     );
   });
 
-  it("treats the legacy filesystem umbrella as read-file", () => {
-    expect(visibleSources(caps(["filesystem"]), series)).toContain("file_view");
-  });
-
   it("never hides a source that actually holds tokens", () => {
     // Hiding a band with tokens in it would drop it out of the stack and misstate
     // the total, so real material always wins over the configuration.

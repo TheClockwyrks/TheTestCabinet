@@ -35,7 +35,7 @@ import {
   type CompactionBoundary,
   type ContextSnapshot,
 } from "./useGgRunState";
-import { agentCapabilityOn, LEGACY_FILESYSTEM_CAP_ID } from "./ggCatalog";
+import { agentCapabilityOn } from "./ggCatalog";
 import { formatPercent } from "./GgOverviewWidgets";
 import styles from "./GgPanels.module.scss";
 
@@ -213,9 +213,7 @@ export const CONTEXT_SOURCE_COLORS: Record<GgContextSource, string> = {
 // errors band on every such run would be a permanent lie about what that run can even fail at.
 const SOURCE_CAPABILITIES: Partial<Record<GgContextSource, readonly string[]>> =
   {
-    // The umbrella capability that sets saved before the per-tool filesystem split
-    // still name counts as read-file, exactly as gg resolves it.
-    file_view: ["read-file", LEGACY_FILESYSTEM_CAP_ID],
+    file_view: ["read-file"],
     compiler_error: ["responses-as-code"],
     runtime_error: ["responses-as-code"],
     // A documentation view is opened by a program, so only a responses-as-code run can have one —

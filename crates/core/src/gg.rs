@@ -74,26 +74,6 @@ pub const SHELL_OUTPUT_MODES: [&str; 3] = [
     SHELL_OUTPUT_OFFLOAD,
 ];
 
-/// The stable id of the **legacy** umbrella filesystem capability: one switch for the
-/// agent's whole ability to read and write files in the run workspace.
-///
-/// It was split into the four per-tool capabilities below —
-/// [`read-file`](CAPABILITY_READ_FILE), [`write-file`](CAPABILITY_WRITE_FILE),
-/// [`edit-file`](CAPABILITY_EDIT_FILE), and [`list-dir`](CAPABILITY_LIST_DIR) — because a
-/// filesystem tool is exactly the kind of thing gg exists to vary one at a time, and an
-/// umbrella capability has only one [implementation](GgCapabilityConfig::implementation)
-/// and one [params](GgCapabilityConfig::params) bag to share among four tools. Splitting
-/// gives each tool its own A/B lever (the first of them: `read_file`'s
-/// [line-cap modes](https://docs.testcabinet.ai/gg/filesystem/)).
-///
-/// Nothing constructs it any more, but capability sets that predate the split are stored
-/// on accounts and recorded on runs, so it stays a **live alias**: a set that names it and
-/// none of the four is read as enabling all four, via
-/// [`effective_capability`](GgCapabilitySet::effective_capability). It carries no per-tool
-/// configuration of its own — a legacy set gets each tool's *default* behavior, which is
-/// what it had.
-pub const CAPABILITY_FILESYSTEM: &str = "filesystem";
-
 /// The stable id of the read-file capability: the agent's ability to read a file in the
 /// run workspace (the `read_file` tool).
 ///
@@ -117,15 +97,6 @@ pub const CAPABILITY_EDIT_FILE: &str = "edit-file";
 /// The stable id of the list-dir capability: the agent's ability to list a directory in
 /// the run workspace (the `list_dir` tool).
 pub const CAPABILITY_LIST_DIR: &str = "list-dir";
-
-/// The per-tool capabilities the [legacy umbrella](CAPABILITY_FILESYSTEM) stands in for
-/// when a stored capability set predates the split.
-pub const FILESYSTEM_TOOL_CAPABILITIES: &[&str] = &[
-    CAPABILITY_READ_FILE,
-    CAPABILITY_WRITE_FILE,
-    CAPABILITY_EDIT_FILE,
-    CAPABILITY_LIST_DIR,
-];
 
 /// The stable id of the context-window-override capability: when on, the agent's model is
 /// measured against the smaller window this capability's `windowLimit` param declares
@@ -1056,11 +1027,10 @@ where
 /// agent standing in an [FSM](CAPABILITY_FSM) state is **not** offered `exec` at all: where the run
 /// goes next is the machine's decision there, and `transition_state` is how it is made.
 ///
-/// Opt-in, like every Phase 2+ capability, and independent of [`fork`](CAPABILITY_FORK): the two
-/// used to share one `agent-transitions` capability with a per-tool ablation apiece, which made the
-/// interesting arm ("can it become something else, but not duplicate itself?") a toggle *inside* a
-/// capability rather than a capability of its own. A configuration stored under the old id still
-/// enables both.
+/// Opt-in, like every Phase 2+ capability, and independent of [`fork`](CAPABILITY_FORK): becoming
+/// something else and duplicating yourself are separate abilities, so the interesting arm ("can it
+/// become something else, but not duplicate itself?") is a capability of its own rather than a
+/// toggle inside a shared one.
 ///
 /// [exec]: https://docs.testcabinet.ai/gg/fork-and-exec/
 pub const CAPABILITY_EXEC: &str = "exec";
@@ -1079,18 +1049,10 @@ pub const CAPABILITY_EXEC: &str = "exec";
 /// standing in an [FSM](CAPABILITY_FSM) state — the copy is an ordinary child, not a second driver
 /// of the machine.
 ///
-/// Opt-in, and independent of [`exec`](CAPABILITY_EXEC). A configuration stored under the old
-/// `agent-transitions` id still enables both.
+/// Opt-in, and independent of [`exec`](CAPABILITY_EXEC).
 ///
 /// [fork]: https://docs.testcabinet.ai/gg/fork-and-exec/
 pub const CAPABILITY_FORK: &str = "fork";
-
-/// The id the [`exec`](CAPABILITY_EXEC) and [`fork`](CAPABILITY_FORK) capabilities were split out
-/// of — a single capability whose two tools were ablated individually.
-///
-/// Retained only as the legacy alias both fall back to, so a capability set stored before the
-/// split still enables the pair it enabled then. Nothing offers or configures it.
-pub const CAPABILITY_AGENT_TRANSITIONS: &str = "agent-transitions";
 
 /// The stable id of the Phase 6 [responses-as-code] capability: an **alternative to traditional
 /// tool calling** in which the agent emits a *program over the available tools* — loops,
@@ -1173,8 +1135,8 @@ pub const CAPABILITY_RESPONSES_AS_CODE: &str = "responses-as-code";
 /// # What `rerun` does, and what it does not
 ///
 /// It is **registered, not performed**, exactly as [`compact`](CAPABILITY_AGENT_MANAGED_CONTEXT) and
-/// a [transition](CAPABILITY_AGENT_TRANSITIONS) are: the call validates the source and returns, the
-/// calling program carries on to its end, and gg then compiles and runs what it was handed as the
+/// an [exec](CAPABILITY_EXEC) are: the call validates the source and returns, the calling program
+/// carries on to its end, and gg then compiles and runs what it was handed as the
 /// same turn's program. Nothing is undone — every call the registering program made stands — and the
 /// program that runs next sees exactly the world it left behind. The first registration stands and a
 /// second is refused; a program that then fails loses the registration along with everything else it
@@ -1356,8 +1318,9 @@ impl Default for GgCapabilitySet {
 
 impl GgCapabilitySet {
     /// The reasonable "minimal" set: a single [Root agent](ROOT_AGENT) bound to
-    /// `model_id` with the default capabilities ([`CAPABILITY_SHELL`], the four
-    /// [filesystem tools](FILESYSTEM_TOOL_CAPABILITIES), [`CAPABILITY_SKILLS`],
+    /// `model_id` with the default capabilities ([`CAPABILITY_SHELL`], the four filesystem
+    /// tools ([`CAPABILITY_READ_FILE`], [`CAPABILITY_WRITE_FILE`],
+    /// [`CAPABILITY_EDIT_FILE`], [`CAPABILITY_LIST_DIR`]), [`CAPABILITY_SKILLS`],
     /// [`CAPABILITY_MEMORIES`], and [`CAPABILITY_TASKS`]) present and enabled. This is a
     /// launchable configuration — the smallest set that runs a gg session end to end.
     pub fn minimal(model_id: impl Into<String>) -> Self {
@@ -1427,15 +1390,9 @@ impl GgCapabilitySet {
         self.root().is_enabled(id)
     }
 
-    /// The [Root agent's](Self::root) exact config for the capability with `id` (never
-    /// alias-resolved).
+    /// The [Root agent's](Self::root) config for the capability with `id`.
     pub fn capability(&self, id: &str) -> Option<&GgCapabilityConfig> {
         self.root().capability(id)
-    }
-
-    /// The [Root agent's](Self::root) effective (alias-aware) config for `id`.
-    pub fn effective_capability(&self, id: &str) -> Option<&GgCapabilityConfig> {
-        self.root().effective_capability(id)
     }
 
     /// Whether `tool` is withheld from the [Root agent](Self::root).
@@ -1747,26 +1704,18 @@ impl GgAgentConfig {
     /// The configuration for the capability with the given id, or `None` when it is
     /// absent from this agent (distinct from present-but-disabled).
     ///
-    /// **Exact** — it never falls back to a [legacy alias](Self::effective_capability),
-    /// so it is the right lookup for a capability's own
+    /// A capability id is matched **exactly**, so this is the one lookup for both a
+    /// capability's enabledness and its own
     /// [implementation](GgCapabilityConfig::implementation) and
     /// [params](GgCapabilityConfig::params).
     pub fn capability(&self, id: &str) -> Option<&GgCapabilityConfig> {
         self.capabilities.iter().find(|c| c.id == id)
     }
 
-    /// The configuration that decides whether the capability with the given id is on:
-    /// its own, or — only when this agent does not mention it at all — that of the
-    /// [legacy capability](CAPABILITY_FILESYSTEM) it was split out of.
-    pub fn effective_capability(&self, id: &str) -> Option<&GgCapabilityConfig> {
-        self.capability(id)
-            .or_else(|| legacy_alias(id).and_then(|legacy| self.capability(legacy)))
-    }
-
     /// Whether the capability with the given id is present **and** enabled for this
-    /// agent, honoring the [legacy aliases](Self::effective_capability).
+    /// agent.
     pub fn is_enabled(&self, id: &str) -> bool {
-        self.effective_capability(id).is_some_and(|c| c.enabled)
+        self.capability(id).is_some_and(|c| c.enabled)
     }
 
     /// Whether this profile is an **FSM shell**: a [machine](CAPABILITY_FSM) over the set's
@@ -2107,29 +2056,14 @@ fn default_agents() -> Vec<GgAgentConfig> {
     vec![GgAgentConfig::root()]
 }
 
-/// The capability a legacy umbrella id stands in for `id`, when `id` is one that was split
-/// out of it. Drives [`GgCapabilitySet::effective_capability`].
+/// The default enabled capabilities: the shell and the four filesystem tools
+/// ([`read-file`](CAPABILITY_READ_FILE), [`write-file`](CAPABILITY_WRITE_FILE),
+/// [`edit-file`](CAPABILITY_EDIT_FILE) and [`list-dir`](CAPABILITY_LIST_DIR)) the core agent
+/// loop needs to build a test case, plus [skills](CAPABILITY_SKILLS),
+/// [memories](CAPABILITY_MEMORIES), and [tasks](CAPABILITY_TASKS).
 ///
-/// Two splits are covered: the four [filesystem tools](FILESYSTEM_TOOL_CAPABILITIES) out of the
-/// `filesystem` umbrella, and [`exec`](CAPABILITY_EXEC)/[`fork`](CAPABILITY_FORK) out of
-/// [`agent-transitions`](CAPABILITY_AGENT_TRANSITIONS). In both cases a set stored before the split
-/// mentions only the umbrella, and reading the umbrella is what keeps that set running the tools it
-/// was configured with.
-fn legacy_alias(id: &str) -> Option<&'static str> {
-    if FILESYSTEM_TOOL_CAPABILITIES.contains(&id) {
-        return Some(CAPABILITY_FILESYSTEM);
-    }
-    (id == CAPABILITY_EXEC || id == CAPABILITY_FORK).then_some(CAPABILITY_AGENT_TRANSITIONS)
-}
-
-/// The default enabled capabilities: the shell and the four
-/// [filesystem tools](FILESYSTEM_TOOL_CAPABILITIES) the core agent loop needs to build a
-/// test case, plus [skills](CAPABILITY_SKILLS), [memories](CAPABILITY_MEMORIES), and
-/// [tasks](CAPABILITY_TASKS).
-///
-/// The filesystem tools are listed one capability apiece rather than under the
-/// [umbrella](CAPABILITY_FILESYSTEM) they used to share, so each carries its own
-/// implementation and params; all four are on, which is the same default toolset as before.
+/// Each filesystem tool is its own capability, so each carries its own implementation and
+/// params and can be varied one at a time; all four are on by default.
 ///
 /// The [context-window override](CAPABILITY_CONTEXT_WINDOW_OVERRIDE) is deliberately *not*
 /// here: it is an opt-in narrowing lever a study turns on when it wants to measure a model
@@ -5063,10 +4997,6 @@ pub struct GgSessionSummary {
     /// How many [issue reviews](GgTelemetryKind::IssueReview) the run triggered — one per
     /// [`Requested`](GgIssueReviewPhase::Requested) phase (an issue whose acceptance was gated on
     /// its reviewers). `0` when no issue named reviewers.
-    ///
-    /// The `codeReviews` alias reads a summary recorded while this figure was called that, so a
-    /// stored run's review counts survive the rename rather than silently reading as zero.
-    #[serde(alias = "codeReviews")]
     pub issue_reviews: u64,
     /// The total number of review **verdicts** the run's reviewers rendered — every
     /// [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) plus every

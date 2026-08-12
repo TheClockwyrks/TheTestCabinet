@@ -26,7 +26,12 @@ fn minimal_capability_set_binds_the_root_model_and_phase0_capabilities() {
     assert_eq!(set.preset.as_deref(), Some("minimal"));
     assert!(set.is_enabled(CAPABILITY_SHELL));
     // Each filesystem primitive is its own capability, so each carries its own config.
-    for capability in FILESYSTEM_TOOL_CAPABILITIES {
+    for capability in [
+        CAPABILITY_READ_FILE,
+        CAPABILITY_WRITE_FILE,
+        CAPABILITY_EDIT_FILE,
+        CAPABILITY_LIST_DIR,
+    ] {
         assert!(set.is_enabled(capability), "expected `{capability}` on");
     }
     // Context visibility is not a capability, so the context-window override is the only
@@ -60,42 +65,6 @@ fn default_capability_set_needs_no_model_and_binds_no_agent_model() {
     assert!(set.is_enabled(CAPABILITY_SHELL));
     assert!(set.is_enabled(CAPABILITY_READ_FILE));
     assert!(set.is_enabled(CAPABILITY_SKILLS));
-}
-
-/// A capability set written before the filesystem split names only the umbrella id. It
-/// keeps working: each per-tool capability reads as enabled through the alias, without any
-/// stored data being migrated.
-#[test]
-fn the_legacy_filesystem_capability_stands_in_for_the_per_tool_ones() {
-    let set = root_set(vec![GgCapabilityConfig::enabled(CAPABILITY_FILESYSTEM)]);
-    let root = set.root();
-    for capability in FILESYSTEM_TOOL_CAPABILITIES {
-        assert!(root.is_enabled(capability), "expected `{capability}` on");
-        // The alias supplies enabledness only: the per-tool capability is still absent, so
-        // nothing reads another capability's params as if they were its own.
-        assert!(root.capability(capability).is_none());
-        assert_eq!(
-            root.effective_capability(capability).map(|c| c.id.as_str()),
-            Some(CAPABILITY_FILESYSTEM)
-        );
-    }
-
-    // Turning the umbrella off turns all four off.
-    let off = root_set(vec![GgCapabilityConfig::disabled(CAPABILITY_FILESYSTEM)]);
-    for capability in FILESYSTEM_TOOL_CAPABILITIES {
-        assert!(!off.root().is_enabled(capability));
-    }
-
-    // An explicit per-tool capability wins over the umbrella beside it, in both directions.
-    let mixed = root_set(vec![
-        GgCapabilityConfig::enabled(CAPABILITY_FILESYSTEM),
-        GgCapabilityConfig::disabled(CAPABILITY_EDIT_FILE),
-    ]);
-    assert!(!mixed.root().is_enabled(CAPABILITY_EDIT_FILE));
-    assert!(mixed.root().is_enabled(CAPABILITY_READ_FILE));
-
-    // The alias is one-way: a modern set does not answer to the legacy id.
-    assert!(!GgCapabilitySet::default().is_enabled(CAPABILITY_FILESYSTEM));
 }
 
 /// [`any_agent_enabled`](GgCapabilitySet::any_agent_enabled) answers about the whole set,
@@ -1661,7 +1630,7 @@ fn a_session_summary_recorded_before_healing_and_limits_still_deserializes() {
         "ranOutOfContext": false,
         "contextOverflowCount": 0,
         "finalFullness": 0.61,
-        "codeReviews": 1,
+        "issueReviews": 1,
         "reviewCycles": 2,
         "issuesReopened": 1,
         "speculations": 0,
@@ -1679,9 +1648,7 @@ fn a_session_summary_recorded_before_healing_and_limits_still_deserializes() {
     });
     let summary: GgSessionSummary = serde_json::from_value(recorded).expect("deserialize");
 
-    // The pre-change fields still read exactly as they did — including the review count, which
-    // was recorded under its old `codeReviews` name and reads through the alias rather than
-    // silently defaulting to zero.
+    // The pre-change fields still read exactly as they did.
     assert_eq!(summary.terminal_status, "completed");
     assert_eq!(summary.code_executions, 7);
     assert_eq!(summary.effective_tools.len(), 3);

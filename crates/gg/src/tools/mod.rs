@@ -211,9 +211,8 @@ pub fn unknown_disabled_tools(capabilities: &GgAgentConfig) -> Vec<String> {
 /// The [read policy](ReadPolicy) `read_file` runs under for a capability set: the
 /// [read-file](CAPABILITY_READ_FILE) capability's implementation and params.
 ///
-/// The lookup is **exact** rather than following the legacy `filesystem` alias: an umbrella
-/// capability configures no individual tool, so a set that predates the split reads files
-/// the way it always did ([unlimited](ReadPolicy::Unlimited)).
+/// A set that does not configure the capability at all reads files
+/// [unlimited](ReadPolicy::Unlimited), the default policy.
 ///
 /// Resolved both here (to build the tool) and by the [loop](crate::agent), which states the
 /// resulting cap in the [system prompt](crate::prompts) — one resolution, so what the prompt

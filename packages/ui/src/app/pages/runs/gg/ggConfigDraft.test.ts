@@ -477,42 +477,6 @@ function agentDraft(draft: GgConfigDraft, name: string): GgAgentDraft {
 }
 
 describe("gg filesystem capabilities", () => {
-  it("expands a legacy `filesystem` capability into the per-tool ones", () => {
-    const legacy = capSet([
-      { id: "shell", enabled: true, params: {} },
-      { id: "filesystem", enabled: true, params: {} },
-    ]);
-    const draft = draftFromCapabilitySet(legacy);
-
-    for (const id of ["read-file", "write-file", "edit-file", "list-dir"]) {
-      expect(draftCaps(draft)[id]?.enabled, id).toBe(true);
-    }
-    expect(draftCaps(draft)["read-file"]?.implementation).toBe("");
-
-    const saved = capabilitySetFromDraft(draft, null);
-    const ids = setCaps(saved).map((cap) => cap.id);
-    expect(ids).toContain("read-file");
-    expect(ids).not.toContain("filesystem");
-  });
-
-  it("carries a disabled legacy capability through as four off rows", () => {
-    const legacy = capSet([{ id: "filesystem", enabled: false, params: {} }]);
-    const draft = draftFromCapabilitySet(legacy);
-    for (const id of ["read-file", "write-file", "edit-file", "list-dir"]) {
-      expect(draftCaps(draft)[id]?.enabled, id).toBe(false);
-    }
-  });
-
-  it("lets an explicit per-tool capability override the legacy umbrella", () => {
-    const mixed = capSet([
-      { id: "filesystem", enabled: true, params: {} },
-      { id: "edit-file", enabled: false, params: {} },
-    ]);
-    const draft = draftFromCapabilitySet(mixed);
-    expect(draftCaps(draft)["edit-file"]?.enabled).toBe(false);
-    expect(draftCaps(draft)["read-file"]?.enabled).toBe(true);
-  });
-
   it("round-trips a capped read mode and its line cap", () => {
     const configured = capSet([
       {
@@ -818,8 +782,8 @@ describe("gg removed capabilities", () => {
   // `completion` became an [agent-stop hook]: the same ending gate, declared once and
   // applying to every agent rather than to the profiles that remembered to enable it. A
   // stored set naming it opens (with its validation commands visible nowhere, because
-  // there is no row to show them in) and re-saves without it, exactly as the legacy
-  // `filesystem` umbrella does. The commands must be re-authored as an agent-stop hook.
+  // there is no row to show them in) and re-saves without it. The commands must be
+  // re-authored as an agent-stop hook.
   it("opens a configuration that still names `completion` and re-saves without it", () => {
     const stored = capSet([
       { id: "shell", enabled: true, params: {} },

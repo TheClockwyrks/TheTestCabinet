@@ -23,8 +23,9 @@
 //! all: there is nowhere to go, and a tool whose every call would be refused is worse than an
 //! absent one.
 //!
-//! `exec` and `fork` come from the
-//! [`agent-transitions`](test_cabinet_core::gg::CAPABILITY_AGENT_TRANSITIONS) capability on the
+//! `exec` and `fork` each come from their own capability
+//! ([`exec`](test_cabinet_core::gg::CAPABILITY_EXEC) and
+//! [`fork`](test_cabinet_core::gg::CAPABILITY_FORK)) on the
 //! agent's own profile. `exec` additionally needs a non-empty
 //! [roster](test_cabinet_core::gg::GgAgentConfig::subagents) (there has to be something to become)
 //! and is withheld from an agent standing in a machine state, where the machine decides where the

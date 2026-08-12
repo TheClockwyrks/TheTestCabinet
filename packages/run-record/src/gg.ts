@@ -2335,9 +2335,6 @@ export type GgSessionSummary = {
    * How many [issue reviews](GgTelemetryKind::IssueReview) the run triggered — one per
    * [`Requested`](GgIssueReviewPhase::Requested) phase (an issue whose acceptance was gated on
    * its reviewers). `0` when no issue named reviewers.
-   *
-   * The `codeReviews` alias reads a summary recorded while this figure was called that, so a
-   * stored run's review counts survive the rename rather than silently reading as zero.
    */
   issueReviews: number;
   /**

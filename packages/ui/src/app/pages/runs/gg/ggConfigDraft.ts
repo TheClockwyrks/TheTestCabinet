@@ -45,10 +45,8 @@ import {
   GG_BUILTIN_HOOK_IDS,
   DEFAULT_CAP_IDS,
   type GgHookScope,
-  FILESYSTEM_CAP_IDS,
   FSM_CAP_ID,
   FSM_STATES_PARAM,
-  LEGACY_FILESYSTEM_CAP_ID,
   LOOP_DETECTION_SPECS,
   MODULE_KINDS,
   PRIMARY_SLOT,
@@ -1089,9 +1087,7 @@ export function fsmStatesWarnings(
 
 /**
  * Fill an agent draft from a stored agent config, so every catalog capability has a
- * row even if the config predates it (or omits it, which means off). A config saved
- * before the `filesystem` capability was split names only the umbrella; it is expanded
- * into the four per-tool capabilities here, matching how gg reads it.
+ * row even if the config omits it, which means off.
  *
  * The stored config's cross-references are still *names* at this point: `slotIdByName`
  * resolves the model-slot binding, and the roster and `agent` params are resolved in a
@@ -1104,14 +1100,6 @@ function agentDraftFromConfig(
   const stored = new Map(
     (agent.capabilities ?? []).map((cap) => [cap.id, cap] as const),
   );
-  const legacyFilesystem = stored.get(LEGACY_FILESYSTEM_CAP_ID);
-  if (legacyFilesystem) {
-    for (const id of FILESYSTEM_CAP_IDS) {
-      if (!stored.has(id)) {
-        stored.set(id, { id, enabled: legacyFilesystem.enabled, params: {} });
-      }
-    }
-  }
   const capabilities: Record<string, GgCapabilityDraft> = {};
   for (const cap of CAPABILITIES) {
     const from = stored.get(cap.id);

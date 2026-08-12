@@ -25,9 +25,10 @@ use crate::client::{
 use crate::ending::Ending;
 use crate::telemetry::{CollectingSink, Emitter};
 use test_cabinet_core::gg::{
-    ALL_SUBAGENT_SCOPES, CAPABILITY_AGENT_TRANSITIONS, CAPABILITY_MEMORIES, CAPABILITY_SUBAGENTS,
-    CAPABILITY_TASKS, GgCapabilityConfig, GgContextSource, GgModuleDisposition, GgPromptRef,
-    GgSubagentRef, GgTelemetryEvent, GgTransitionModule, ROOT_AGENT,
+    ALL_SUBAGENT_SCOPES, CAPABILITY_EXEC, CAPABILITY_FORK, CAPABILITY_MEMORIES,
+    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, GgCapabilityConfig, GgContextSource,
+    GgModuleDisposition, GgPromptRef, GgSubagentRef, GgTelemetryEvent, GgTransitionModule,
+    ROOT_AGENT,
 };
 
 use super::super::transitions::{HandoffReason, fork_note, launch_warnings, succession_note};
@@ -287,15 +288,16 @@ fn a_fork_note_names_its_origin_and_carries_its_instructions() {
 // Launch diagnostics
 // ---------------------------------------------------------------------------
 
-/// A profile that carries `agent-transitions` and nothing to use it with earns a warning per
+/// A profile that carries `exec` and `fork` and nothing to use either with earns a warning per
 /// missing half, because an absent tool is the one misconfiguration a model can never report — it
 /// simply never makes the call.
 #[test]
 fn launch_warns_when_neither_half_of_the_capability_can_be_offered() {
     let mut set = GgCapabilitySet::minimal("mock/primary");
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_AGENT_TRANSITIONS));
+    set.agents[0].capabilities.extend([
+        GgCapabilityConfig::enabled(CAPABILITY_EXEC),
+        GgCapabilityConfig::enabled(CAPABILITY_FORK),
+    ]);
 
     let warnings = launch_warnings(&set);
 
@@ -316,7 +318,8 @@ fn launch_is_quiet_when_both_calls_can_be_offered() {
     let mut set = GgCapabilitySet::minimal("mock/primary");
     set.agents[0].subagents = vec![roster(ROOT_AGENT)];
     set.agents[0].capabilities.extend([
-        GgCapabilityConfig::enabled(CAPABILITY_AGENT_TRANSITIONS),
+        GgCapabilityConfig::enabled(CAPABILITY_EXEC),
+        GgCapabilityConfig::enabled(CAPABILITY_FORK),
         GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS),
     ]);
 
@@ -338,7 +341,7 @@ fn exec_set() -> GgCapabilitySet {
         ..GgAgentConfig::root()
     };
     before.capabilities = vec![
-        GgCapabilityConfig::enabled(CAPABILITY_AGENT_TRANSITIONS),
+        GgCapabilityConfig::enabled(CAPABILITY_EXEC),
         GgCapabilityConfig::enabled(CAPABILITY_TASKS),
     ];
     let after = GgAgentConfig {
@@ -752,7 +755,8 @@ fn fork_set() -> GgCapabilitySet {
         ..GgAgentConfig::root()
     };
     root.capabilities = vec![
-        GgCapabilityConfig::enabled(CAPABILITY_AGENT_TRANSITIONS),
+        GgCapabilityConfig::enabled(CAPABILITY_EXEC),
+        GgCapabilityConfig::enabled(CAPABILITY_FORK),
         GgCapabilityConfig::enabled(CAPABILITY_TASKS),
         subagents,
     ];
