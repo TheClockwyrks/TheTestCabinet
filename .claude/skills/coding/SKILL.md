@@ -28,6 +28,14 @@ Include a scope for commits that target specific components, e.g. `feat(foo):`.
 When implementing changes, do **NOT** attempt to optimize for change size.
 Always implement the most correct change, not the smallest change.
 
+### Documentation First
+
+The Test Cabinet's documentation is authoritative over the source code. If the
+documentation says one thing and the source says another, the source is wrong.
+This means that any intentional design-level changes to the source code must
+first be made to the documentation (following the documentation policies) before
+being made to the source code.
+
 ## Rust Tests
 
 Unit tests for Rust code must not follow standard Rust conventions of placing
