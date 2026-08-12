@@ -203,9 +203,7 @@ ownership, how this holder came by it, its read access, everything that has
 happened to it, what it costs this window every turn and what it costs across
 every live holder, and a chip per co-holder that opens that instance's same
 file. An unowned module says in words that this agent holds it while its prompt
-does not carry it. A store every holder has let go of is badged dropped. A
-record written before module identity existed is badged inferred, because
-its store ids are placeholders the console minted.
+does not carry it. A store every holder has let go of is badged dropped.
 
 The strip's link to the Modules tab is offered only when the run has that tab.
 Every instance of every run holds a window, so a `modules/history` file exists in

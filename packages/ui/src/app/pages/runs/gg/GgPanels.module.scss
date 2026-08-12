@@ -1545,8 +1545,7 @@ $context-palette: (
   // A hand-off is NOT sharing, so it deliberately does not borrow the shared badge's
   // accent: it is a neutral fact about a succession, and tinting it the same colour would
   // reintroduce by eye the very confusion the two badges exist to separate.
-  &[data-carried],
-  &[data-inferred] {
+  &[data-carried] {
     border-style: dashed;
   }
 }

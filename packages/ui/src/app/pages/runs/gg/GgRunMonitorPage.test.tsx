@@ -328,6 +328,15 @@ function surfaceRow(section: string, name: string): HTMLElement {
 // and a blocked task, two skills (one read), and one curated memory.
 const EVENTS: HarnessEvent[] = [
   sessionStarted(),
+  // The roster the run's one instance opens with — every store it is a holder of, which
+  // is what its modules folder lists and what the snapshots below attach to.
+  roster("root", [
+    held("history", "history-0"),
+    held("memories", "memories-0", { scope: "shared" }),
+    held("tasks", "tasks-0"),
+    held("board", "board-0"),
+    held("skills", "skills-0"),
+  ]),
   gg({ type: "assistant_message", text: "Planning the build." }),
   gg({
     type: "context_breakdown",
@@ -1149,13 +1158,19 @@ describe("GgRunMonitorPage", () => {
   });
 
   it("offers a file and a module for every enabled capability, even before it has data", () => {
-    // A narrow run: tasks + memories on, and NO tasks/memory events have arrived
-    // yet. What an agent's folder offers is gated by the run's configuration, not by
-    // whether data has streamed — so the `tasks` and `memories` modules are present
-    // (showing their own empty state), Context is unconditional, and the capabilities
-    // the run lacks (compaction, project management) offer nothing at all.
+    // A narrow run: tasks + memories on, the instance's roster reported, and NO
+    // tasks/memory events arrived yet. What an agent's folder offers is gated by the
+    // stores it reported holding, not by whether their contents have streamed — so the
+    // `tasks` and `memories` modules are present (showing their own empty state),
+    // Context is unconditional, and the capabilities the run lacks (compaction, project
+    // management) offer nothing at all.
     renderMonitor([
       sessionStarted(["shell", "tasks", "memories"]),
+      roster("root", [
+        held("history", "history-0"),
+        held("tasks", "tasks-0"),
+        held("memories", "memories-0"),
+      ]),
       gg({ type: "assistant_message", text: "Working." }),
     ]);
     openTab("Instances");
@@ -1194,6 +1209,7 @@ describe("GgRunMonitorPage", () => {
     // folder is the floor: one `history` row, and none of the stores it was never given.
     renderMonitor([
       sessionStarted(["shell", "filesystem"]),
+      roster("root", [held("history", "history-0")]),
       gg({ type: "assistant_message", text: "Working." }),
     ]);
     openTab("Instances");
@@ -1617,6 +1633,7 @@ describe("GgRunMonitorPage", () => {
         { name: "Root", capabilities: ["shell", "project-management"] },
         { name: "Coder", capabilities: ["shell", "tasks"] },
       ]),
+      roster("root", [held("history", "history-0"), held("board", "board-0")]),
       ggFrom("agent-0", undefined, {
         type: "agent_spawned",
         slot: "Coder",
@@ -1624,6 +1641,10 @@ describe("GgRunMonitorPage", () => {
         depth: 0,
         brief: "Implement the widget.",
       }),
+      roster("agent-0", [
+        held("history", "history-1"),
+        held("tasks", "tasks-0"),
+      ]),
       ggFrom("agent-0", undefined, {
         type: "tasks_state",
         moduleId: "tasks-0",
@@ -1950,6 +1971,7 @@ describe("GgRunMonitorPage", () => {
     // tab that can only ever list those is worse than no tab at all.
     renderMonitor([
       sessionStarted(["shell", "filesystem"]),
+      roster("root", [held("history", "history-0")]),
       gg({ type: "assistant_message", text: "Working." }),
     ]);
     expect(screen.queryByRole("radio", { name: "Modules" })).toBeNull();
@@ -2829,6 +2851,7 @@ describe("GgRunMonitorPage", () => {
     // the tree lost.
     renderMonitor([
       sessionStarted(["shell", "filesystem"]),
+      roster("root", [held("history", "history-0")]),
       gg({ type: "assistant_message", text: "Working." }),
     ]);
     expect(screen.queryByRole("radio", { name: "Modules" })).toBeNull();
@@ -2860,28 +2883,6 @@ describe("GgRunMonitorPage", () => {
     expect(history).not.toHaveAttribute("data-clickable");
     fireEvent.click(history);
     expect(screen.queryByRole("radio", { name: "Modules" })).toBeNull();
-  });
-
-  it("says a pre-identity run's store id is inferred rather than passing it off as a name", () => {
-    // A record written before module identity names no stores, so the console synthesizes
-    // one private instance per (agent, capability) with a `legacy:` id. Rendering that as
-    // the store's identity with nothing saying why sends a reader looking for it in a
-    // record that has never heard of it.
-    renderMonitor([
-      sessionStartedWith([
-        { name: "Root", capabilities: ["shell", "memories"] },
-      ]),
-      gg({ type: "assistant_message", text: "Working." }),
-    ]);
-    openTab("Instances");
-    openFolder("root modules");
-    openFile("root modules memories");
-
-    expect(screen.getByText("legacy:root:memories")).toBeInTheDocument();
-    expect(screen.getByText("inferred")).toBeInTheDocument();
-    expect(
-      screen.getByText(/This run predates module identity/),
-    ).toBeInTheDocument();
   });
 
   it("states a profile's and an instance's own generation rate in their Tokens read-out", () => {

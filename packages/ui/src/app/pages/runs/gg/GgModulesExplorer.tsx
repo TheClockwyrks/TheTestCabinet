@@ -226,7 +226,6 @@ export function GgModulesExplorer({
         <KindOverview
           kind={selectedGroup.kind}
           instances={selectedGroup.instances}
-          identified={modules.identified}
           onOpenModule={(moduleId) =>
             setSelection({ kind: "module", moduleId })
           }
@@ -375,13 +374,10 @@ function whose(module: GgModuleInstance): string {
 function KindOverview({
   kind,
   instances,
-  identified,
   onOpenModule,
 }: {
   kind: GgModuleKind;
   instances: GgModuleInstance[];
-  /** Whether the run reported rosters at all — see {@link GgModuleIndex.identified}. */
-  identified: boolean;
   onOpenModule: (moduleId: string) => void;
 }) {
   const holders = instances.flatMap((module) => module.holders);
@@ -446,14 +442,6 @@ function KindOverview({
           <div className={panels.moduleIdentity}>
             <span className={panels.moduleId}>{moduleKindLabel(kind)}</span>
           </div>
-          {!identified && (
-            <p className={panels.moduleNote}>
-              This run predates module identity, so every store below is
-              inferred from what each agent's capabilities say it must have held
-              — one private instance per agent, which is what module state was
-              back then.
-            </p>
-          )}
         </section>
 
         <ModuleStats label="Usage">

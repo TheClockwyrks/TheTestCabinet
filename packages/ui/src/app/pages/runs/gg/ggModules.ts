@@ -29,17 +29,9 @@
 // mechanism, and it needs no inference, no walking of the spawn tree, and no scope
 // heuristics. The transitions (`agent_transition`) supply the lifetime, and the per-module
 // snapshots (`DerivedGgState.moduleSnapshots`) supply the contents.
-//
-// # Records written before module identity existed
-//
-// Such a stream carries no rosters at all. Rather than going blank, this synthesizes one
-// private instance per (agent, enabled capability) with a `legacy:` id — so every surface
-// degrades to exactly today's per-agent behaviour, which is the difference between an old
-// run still being readable and not.
 
 import { useMemo } from "react";
 import type {
-  GgAgentModule,
   GgAgentStatus,
   GgAgentTransitionKind,
   GgCapabilitySet,
@@ -51,7 +43,6 @@ import type {
 import {
   MODULE_CAPABILITY_IDS,
   OWNERSHIP_MODULE_KINDS,
-  agentCapabilityOn,
   agentProfile,
   capabilityParam,
 } from "./ggCatalog";
@@ -174,15 +165,8 @@ export interface GgModuleInstance {
    */
   dropped: boolean;
   /**
-   * Whether this instance was **inferred** rather than reported — a record written before
-   * module identity existed, whose id is a `legacy:` placeholder rather than a name the run
-   * ever used. A surface showing the id has to say so; presenting a placeholder as the
-   * store's name is worse than showing no name at all.
-   */
-  synthesized: boolean;
-  /**
    * The latest snapshot of its contents, or null for a kind that reports none (history) or
-   * one whose holders never emitted (a legacy record, or a store nobody touched).
+   * one nobody has touched.
    */
   content: ModuleSnapshot | null;
   /**
@@ -307,12 +291,6 @@ export interface GgModuleIndex {
   byAgent: Map<string, GgModuleInstance[]>;
   /** What each agent PROFILE's instances hold, folded — the Agents tab's section. */
   byProfile: Map<string, GgAgentModuleSummary[]>;
-  /**
-   * Whether the run reported rosters at all. False on a record written before module
-   * identity existed, whose instances are synthesized — a surface can then soften its
-   * language ("this run predates module identity") rather than asserting things it inferred.
-   */
-  identified: boolean;
 }
 
 // The context band each kind occupies, for the cost attribution. The archive has none —
@@ -516,76 +494,6 @@ function sumCosts(costs: Array<GgModuleCost | null>): GgModuleCost | null {
   };
 }
 
-// A roster synthesized from what an instance's profile's capabilities say it must have held,
-// for a record written before rosters existed. The synthetic ids are private per (agent,
-// kind), which is exactly the shape module state had back then.
-//
-// Used only when the run reported **no** rosters at all — never per instance. An instance
-// with no roster in a run that has them has simply not opened yet: in a live stream the
-// module `state_events` land before the `agent_modules` that names them, so several renders
-// happen with the node present and its roster still in flight. Synthesizing there would
-// invent `legacy:` stores that flicker into the Modules tab's counts and out again, and
-// would report a phantom second store as a profile diverging from its declared scope.
-function legacyRoster(
-  node: AgentTreeNode,
-  profile: string,
-  state: DerivedGgState | undefined,
-  set: GgCapabilitySet | null,
-): GgAgentModule[] {
-  return MODULE_KIND_ORDER.filter((kind) => {
-    const capability = MODULE_CAPABILITY_IDS.get(kind);
-    // Every agent has a window, always; the rest are their capability's.
-    return capability == null || agentCapabilityOn(set, profile, capability);
-  }).map((kind) => ({
-    kind,
-    moduleId: `legacy:${node.id}:${kind}`,
-    enabled: true,
-    ownership: "owned" as GgModuleOwnership,
-    origin: "created" as GgModuleOrigin,
-    // The one thing a legacy record does carry: the scope its memory snapshots reported.
-    scope:
-      kind === "memories" && state?.memory?.scope
-        ? (state.memory.scope as GgMemoryScope)
-        : undefined,
-    writable: kind === "memories" ? (state?.memory?.writable ?? true) : true,
-  }));
-}
-
-// One holder's own view of what its module holds, as a snapshot.
-//
-// The per-module snapshots are the right source — a shared store has one content — but a
-// record written before module identity existed carries none of them: its state events
-// name no module, so `moduleSnapshots` is keyed by ids that record's synthesized
-// instances do not have. The holder's own reduced slice is exactly what that record's
-// per-agent panels showed, so falling back to it is what keeps an old run readable
-// instead of blank.
-function agentContent(
-  kind: GgModuleKind,
-  state: DerivedGgState | undefined,
-): ModuleSnapshot | null {
-  if (!state) return null;
-  switch (kind) {
-    case "memories":
-      return state.memory ? { kind: "memories", memory: state.memory } : null;
-    case "tasks":
-      return state.tasks.length > 0
-        ? { kind: "tasks", tasks: state.tasks }
-        : null;
-    case "board":
-      return state.board ? { kind: "board", board: state.board } : null;
-    case "skills":
-      return state.skills.length > 0
-        ? { kind: "skills", skills: state.skills }
-        : null;
-    case "archive":
-      return state.archive ? { kind: "archive", archive: state.archive } : null;
-    // A window reports itself as a context breakdown, per turn, per agent — never as a
-    // module snapshot.
-    case "history":
-      return null;
-  }
-}
-
 // The transitions in stream order, deduplicated. A transition is emitted once, on the
 // outgoing instance's stream, so the global list is already the run's — but the per-agent
 // slices carry the same events, and folding both would double every lifetime row.
@@ -629,25 +537,15 @@ export function deriveGgModules(
 
   const byId = new Map<string, GgModuleInstance>();
   const byAgent = new Map<string, GgModuleInstance[]>();
-  // Whether the RECORD reports rosters — asked of the whole run before anything is folded,
-  // because it decides how to read every instance in it. An instance with no roster in an
-  // identified run is one that has not opened yet, not one from another era.
-  const identified = ordered.some(
-    (node) => (perAgent.get(node.id)?.modules?.length ?? 0) > 0,
-  );
 
   for (const node of ordered) {
     const profile = agentProfileName(node, capabilitySet);
     const state = perAgent.get(node.id);
-    const reported = state?.modules ?? [];
-    const roster =
-      reported.length > 0
-        ? reported
-        : identified
-          ? []
-          : legacyRoster(node, profile, state, capabilitySet);
+    // An instance with no roster has simply not opened yet: in a live stream the module
+    // `state_events` land before the `agent_modules` that names them, so several renders
+    // happen with the node present and its roster still in flight.
     const held: GgModuleInstance[] = [];
-    for (const entry of roster) {
+    for (const entry of state?.modules ?? []) {
       // A disabled module has no store, so there is nothing to be a holder of.
       if (!entry.enabled || !entry.moduleId) continue;
       let module = byId.get(entry.moduleId);
@@ -661,16 +559,11 @@ export function deriveGgModules(
           profile: null,
           lifetime: [],
           dropped: false,
-          synthesized: !identified,
           content: moduleSnapshots.get(entry.moduleId) ?? null,
           totalCost: null,
         };
         byId.set(entry.moduleId, module);
       }
-      // A store whose own snapshot never arrived falls back to whichever of its holders
-      // reported one of its own — which for a pre-identity record is the only content
-      // there is, and for a live one is the holder that has emitted first.
-      module.content ??= agentContent(entry.kind, state);
       const holder: GgModuleHolder = {
         agentId: node.id,
         profile,
@@ -851,14 +744,7 @@ export function deriveGgModules(
     byId,
     byKind,
     byAgent,
-    byProfile: foldByProfile(
-      byId,
-      byAgent,
-      agentForest,
-      capabilitySet,
-      identified,
-    ),
-    identified,
+    byProfile: foldByProfile(byId, byAgent, agentForest, capabilitySet),
   };
 }
 
@@ -870,8 +756,6 @@ function foldByProfile(
   byAgent: ReadonlyMap<string, GgModuleInstance[]>,
   agentForest: readonly AgentTreeNode[],
   set: GgCapabilitySet | null,
-  /** Whether the holders below were REPORTED — see {@link GgModuleIndex.identified}. */
-  identified: boolean,
 ): Map<string, GgAgentModuleSummary[]> {
   // Instances grouped by the profile they ran under, in tree order.
   const instancesByProfile = new Map<string, AgentTreeNode[]>();
@@ -933,12 +817,12 @@ function foldByProfile(
         agentScoped,
         observedOwnership,
         declared,
-        // A record with no rosters has no observations to compare a declaration against:
-        // its holders' origin and ownership are placeholders this module invented, so every
-        // note derived from them would be a finding about nothing. See `legacyRoster`.
-        divergences: identified
-          ? moduleDivergences(declared, instances, holders, observedOwnership)
-          : [],
+        divergences: moduleDivergences(
+          declared,
+          instances,
+          holders,
+          observedOwnership,
+        ),
         cost: sumCosts(holders.map((holder) => holder.cost)),
       });
     }
@@ -1150,10 +1034,9 @@ export function declaredModuleConfig(
       : null;
   };
   return {
-    // Where the param exists, absent means its default, and the default is what every
-    // configuration written before it existed has. Where it does not — skills, memories and
-    // tasks, whose modules are always carried — the answer is that nothing was declared,
-    // not that `owned` was.
+    // Where the param exists, absent means its default. Where it does not — skills,
+    // memories and tasks, whose modules are always carried — the answer is that nothing was
+    // declared, not that `owned` was.
     ownership: OWNERSHIP_MODULE_KINDS.has(kind)
       ? (read("ownership") ?? "owned")
       : null,

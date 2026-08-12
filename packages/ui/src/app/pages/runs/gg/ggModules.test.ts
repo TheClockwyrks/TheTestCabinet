@@ -8,9 +8,8 @@
 //
 // The rest pin the derivations that make the three module surfaces trustworthy: the scope is
 // read off the observed holders and never off the declared configuration (the configuration
-// is the thing being audited), the lifetime is assembled from the transitions in order, the
-// cost is attributed per band, and a record written before module identity existed still
-// produces exactly today's per-agent shape rather than an empty screen.
+// is the thing being audited), the lifetime is assembled from the transitions in order, and
+// the cost is attributed per band.
 
 import { describe, expect, it } from "vitest";
 import type {
@@ -838,73 +837,6 @@ describe("deriveGgModules", () => {
     expect(memories.divergences).toEqual([]);
   });
 
-  it("synthesizes private instances for a record written before module identity", () => {
-    // No rosters at all — an old run. Every surface must degrade to exactly today's
-    // per-agent behaviour rather than going blank.
-    const events = [
-      spawn("root", "Root"),
-      gg("root", {
-        type: "memory_state",
-        strategy: "",
-        memories: [],
-        count: 0,
-        totalLen: 0,
-        totalLines: 0,
-        peak: { count: 0, totalLen: 0, totalLines: 0 },
-        caps: {
-          maxCount: null,
-          maxLenPerMemory: null,
-          maxTotalLen: null,
-          maxLenIndex: null,
-          maxLenDescription: null,
-          maxResults: null,
-        },
-        scope: "shared",
-        writable: true,
-        // No `moduleId`, which is the whole point of this fixture: it is what a record
-        // written before module identity existed looks like, and the cast is what lets the
-        // test build one the current contract would not.
-      } as unknown as GgTelemetryKind),
-      spawn("agent-0", "Reviewer", "root"),
-    ];
-
-    const modules = index(
-      events,
-      set([
-        ["Root", ["memories"]],
-        ["Reviewer", ["tasks"]],
-      ]),
-    );
-
-    expect(modules.identified).toBe(false);
-    // One private instance per (agent, enabled capability), plus each agent's window.
-    expect(modules.byAgent.get("root")!.map((m) => m.id)).toEqual([
-      "legacy:root:history",
-      "legacy:root:memories",
-    ]);
-    expect(modules.byAgent.get("agent-0")!.map((m) => m.id)).toEqual([
-      "legacy:agent-0:history",
-      "legacy:agent-0:tasks",
-    ]);
-    // Nothing is shared, because a record that could not say so must not be read as saying
-    // it — even though this one's snapshot claims a `shared` scope.
-    for (const module of modules.byId.values()) {
-      expect(module.scopeKind).toBe("instance");
-      expect(module.holders).toHaveLength(1);
-    }
-    expect(modules.byId.get("legacy:root:memories")!.holders[0]!.scope).toBe(
-      "shared",
-    );
-    // And it still has CONTENTS to show. A pre-identity record's state events name no
-    // module, so the per-module snapshots are keyed by ids these synthesized instances do
-    // not have; falling back to the holder's own reduced slice is what keeps an old run's
-    // module files readable instead of blank.
-    expect(modules.byId.get("legacy:root:memories")!.content).toEqual({
-      kind: "memories",
-      memory: expect.objectContaining({ scope: "shared" }),
-    });
-  });
-
   it("reads a store handed to a successor as carried, never as shared", () => {
     // Two holders, and only one of them ever had it. Every module surface reads `isShared`
     // and `scopeKind`, so deriving either from the raw holder count made an `exec` — and
@@ -1102,9 +1034,10 @@ describe("deriveGgModules", () => {
 
   it("does not invent stores for an instance whose roster is still in flight", () => {
     // A live stream always has a window between an instance's `agent_spawned` and its
-    // `agent_modules`. Falling back per instance filled it with `legacy:` stores that
-    // flickered into every count and out again — and briefly reported a profile as having
-    // two stores where its configuration asked for one. The fallback is about a RECORD.
+    // `agent_modules`. An instance in it holds nothing — inferring what its capabilities
+    // say it must have held would flicker phantom stores into every count and out again,
+    // and would briefly report a profile as having two stores where its configuration
+    // asked for one.
     const events = [
       spawn("root", "Root"),
       roster("root", [
@@ -1123,55 +1056,9 @@ describe("deriveGgModules", () => {
       ]),
     );
 
-    expect(modules.identified).toBe(true);
     expect(modules.byAgent.get("agent-0")).toEqual([]);
     expect([...modules.byId.keys()]).toEqual(["history-0", "memories-0"]);
     // And the profile that has not reported yet holds nothing rather than a phantom store.
     expect(modules.byProfile.get("Reviewer")).toEqual([]);
-  });
-
-  it("reports no divergences for a record that never named its stores", () => {
-    // The synthesized holders' `origin: created` / `ownership: owned` are placeholders this
-    // module invented, not observations. Comparing them against a real declaration produced
-    // notes with no evidence behind them at all — and the design calls those notes the
-    // highest-value thing on the Agents tab.
-    const declared = {
-      agents: [
-        {
-          name: "Root",
-          modelId: "acme/one",
-          capabilities: [
-            {
-              id: "memories",
-              enabled: true,
-              params: { scope: "inherited", ownership: "unowned" },
-            },
-          ],
-          disabledTools: [],
-          subagents: [],
-          promptCacheTtl: "default",
-        },
-      ],
-      slots: [],
-    } as unknown as GgCapabilitySet;
-
-    const modules = index([spawn("root", "Root")], declared);
-
-    expect(modules.identified).toBe(false);
-    const memories = modules.byProfile
-      .get("Root")!
-      .find((row) => row.kind === "memories")!;
-    expect(memories.divergences).toEqual([]);
-    // The synthesized store still says, of itself, that it is inferred — so a surface can
-    // explain the `legacy:` id it is about to render.
-    expect(modules.byId.get("legacy:root:memories")!.synthesized).toBe(true);
-  });
-
-  it("marks a run that reported rosters as identified", () => {
-    const modules = index(
-      [spawn("root", "Root"), roster("root", [held("history", "history-0")])],
-      set([["Root", []]]),
-    );
-    expect(modules.identified).toBe(true);
   });
 });

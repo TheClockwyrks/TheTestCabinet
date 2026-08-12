@@ -141,23 +141,7 @@ export function GgModuleHeader({
             dropped
           </span>
         )}
-        {module.synthesized && (
-          <span className={panels.moduleBadge} data-inferred="">
-            inferred
-          </span>
-        )}
       </div>
-
-      {/* A `legacy:` id is a placeholder this console minted, not a name the run ever used.
-          Rendering one as the store's identity without saying so invites a reader to go
-          looking for it in the record. */}
-      {module.synthesized && (
-        <p className={panels.moduleNote}>
-          This run predates module identity, so it never named its stores. The
-          id above is inferred — one private store per agent and capability,
-          which is the shape module state had then.
-        </p>
-      )}
 
       {/* How this holder stands to it: how it came by it, whether it may write it, and
           — where it declared a scope — what it asked for. The declared scope is worth
