@@ -160,14 +160,36 @@ export const DIFFICULTY = {
   },
 };
 
-// Per-wave HP scaling (constants.ts scaledHp, specs/enemies.md §7.1): the current linear
-// ramp plus a late-game exponential surcharge (~0 in the opening/mid waves). Only HP grows.
+// Per-wave HP scaling (specs/enemies.md "Per-wave HP scaling"): the linear ramp plus a
+// late-game exponential surcharge (~0 in the opening/mid waves). Only HP grows.
+//
+// The formula is EXACT and its result is not an integer: the spec writes it as
+// `HP(w) = baseHP × baseMult × [ (1 + k·(w−1)) + c·(r^(w−1) − 1) ]` and spells out that wave 1
+// yields `baseHP × baseMult` — 44 × 0.22 = 9.68 for a Medium Mote. This used to round, which
+// is what the reference implementation happens to do. See `ROUNDING_SLACK`.
 export function scaledHp(baseHp, wave, diffKey = "medium") {
   const d = DIFFICULTY[diffKey];
   const linear = 1 + d.k * (wave - 1);
   const surcharge = d.surchargeC * (Math.pow(d.surchargeR, wave - 1) - 1);
-  return Math.round(baseHp * d.baseMult * (linear + surcharge));
+  return baseHp * d.baseMult * (linear + surcharge);
 }
+
+// How far a reported figure may sit from the one the spec computes and still BE that figure:
+// one nearest-integer rounding.
+//
+// Two of this case's derived quantities are exact reals the spec never asks anyone to round —
+// scaled HP (`scaledHp`, a Wave-1 Medium Mote is 44 x 0.22 = 9.68) and aura-buffed damage (the
+// aura rule multiplies by `(1 + auraBonus)`, so a T1 Regulator takes a Capacitor's 6 to 6.6).
+// The reference implementation carries both as integers; nothing in the specs requires it, and
+// the damage TABLE is the only figure they ever call "rounded" (`specs/towers.md`). So a check
+// on one of these is written against the computed value with this slack rather than as an
+// equality, and a build reporting either form passes.
+//
+// It is a rounding, not a fudge factor — narrow enough that what the checks are for stays
+// visible. A Wave-1 Mote is 9.68 on Medium against 8.8 on Easy and 10.56 on Hard, both 0.88
+// away and comfortably outside; and the aura check gates on a strict `> base` before it uses
+// the slack at all.
+export const ROUNDING_SLACK = 0.5;
 
 // A few combination-tower recipes used by the combo/ability scripts (constants.ts COMBOS).
 // Each is the exact (type, tier) ingredient multiset a recipe-combine folds.
@@ -187,6 +209,73 @@ export const RECIPES = {
     ["discharge", 1],
     ["emitter", 1],
   ], // crit
+};
+
+// ---- The board: the three maps and the waypoint platform shape -----------------
+
+// The board's vertical centre row on the 50 x 33 grid (`specs/board.md`). The platform stem
+// rule is stated against it, so it is named rather than spelled `16` at each use.
+export const CENTER_ROW = 16;
+
+/**
+ * The row a waypoint platform's STEM sits on, given its anchor row.
+ *
+ * `specs/board.md` ("Waypoint platforms"): a platform is a T — `(c-1, r)`, `(c, r)`, `(c+1, r)`
+ * plus one stem tile one row off the anchor TOWARD the board's vertical centre, `(c, r+1)` when
+ * `r < 16` and `(c, r-1)` otherwise. The rule is total: an anchor sitting exactly on row 16
+ * takes the `else` branch, so its stem is `(c, 15)`.
+ *
+ * Which side the stem falls on is the whole of the difference between a conformant platform and
+ * a mirrored one, and a mirrored platform protects a tile the spec leaves buildable while
+ * leaving a platform tile open — so the two halves of the contract
+ * (`pathing/no-build-on-waypoint`, `pathing/build-beside-waypoint`) both turn on this and both
+ * read it from here rather than restating it.
+ */
+export function stemRow(row) {
+  return row < CENTER_ROW ? row + 1 : row - 1;
+}
+
+// The three maps exactly as `specs/board.md` pins them: the Entry, the ordered `WP1..WP6`
+// anchors, and the Collector, as tile `(col, row)` on the 50 x 33 grid. These are CHOSEN
+// coordinates, not generated ones — a build picks the topology out of the spec rather than
+// rolling it — which is what `pathing/three-maps` reads the reported chain back against.
+export const MAPS = {
+  substation: {
+    entry: { col: 0, row: 5 },
+    waypoints: [
+      { col: 44, row: 5 },
+      { col: 44, row: 27 },
+      { col: 5, row: 27 },
+      { col: 5, row: 14 },
+      { col: 36, row: 14 },
+      { col: 36, row: 20 },
+    ],
+    collector: { col: 49, row: 20 },
+  },
+  switchyard: {
+    entry: { col: 25, row: 0 },
+    waypoints: [
+      { col: 5, row: 26 },
+      { col: 44, row: 6 },
+      { col: 5, row: 6 },
+      { col: 44, row: 26 },
+      { col: 24, row: 16 },
+      { col: 5, row: 16 },
+    ],
+    collector: { col: 25, row: 32 },
+  },
+  transformer: {
+    entry: { col: 0, row: 2 },
+    waypoints: [
+      { col: 44, row: 5 },
+      { col: 24, row: 16 },
+      { col: 44, row: 28 },
+      { col: 24, row: 28 },
+      { col: 6, row: 28 },
+      { col: 6, row: 16 },
+    ],
+    collector: { col: 0, row: 30 },
+  },
 };
 
 // ---- The standard tower spot on the entry corridor (substation) ----------------
@@ -1328,6 +1417,21 @@ export function angDiff(a, b) {
 // another instant `step()`. `api.settle` is exactly that: a real pause in both the validate and
 // the record pass. `armAudio` settles after arming; a script settles again after driving its
 // cue's event, before reading the audio log.
+//
+// ONE CUE PER KEY, PER PAGE. An audio item may drive a given cue exactly ONCE. This is not a
+// style preference, it is the environment: the driver's Chromium is headless with no audio
+// device, and there an `AudioContext` reports `state: "running"` while its `currentTime` stays
+// pinned at `0` forever. Both the reference and every run implementation seen so far debounce a
+// flood of identical cues by comparing `currentTime` against the last play of the SAME cue key
+// (the reference at 0.03 s, one build at 28 ms) — and against a clock that never advances, that
+// debounce never expires. So the second `stamp` of a session is dropped by a perfectly
+// conformant build, however much real time has passed in between.
+//
+// Each item as written is safe because the runtime gives it its own page and it drives one cue
+// of one kind. An item that drove the same cue twice — to show a cue repeating, or to compare
+// one against another — would fail EVERY build including the reference, and would look exactly
+// like a missing sound. Reach for a different cue key instead; `audio/cues-survive-stepping`
+// needs three and uses three.
 export const AUDIO_SETTLE_MS = 150;
 
 /** ARRANGE. Arm audio with a genuine browser gesture (a key tap and a corner click), then
