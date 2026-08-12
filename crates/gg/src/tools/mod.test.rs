@@ -1152,33 +1152,6 @@ fn attaching_data_leaves_the_model_facing_text_alone() {
     assert_eq!(with_data.data, Some(ToolData::BytesWritten(5)));
 }
 
-/// The three **turn-level transitions** — `enter_plan_mode`, `submit_plan`, `advance_state` — are
-/// gone from the vocabulary along with the capabilities that offered them, and so is the partition
-/// that named them.
-///
-/// Asserted rather than merely deleted because a name removed from [`ALL_TOOL_NAMES`] is exactly
-/// what makes a stored `disabledTools` entry earn the "unknown disabled tool" launch warning — the
-/// loud outcome the removal wanted — and because a later stage adding a `transition_state` tool
-/// must not quietly resurrect the old names alongside it.
-#[test]
-fn the_removed_turn_level_transitions_are_not_tool_names() {
-    for name in ["enter_plan_mode", "submit_plan", "advance_state"] {
-        assert!(
-            !ALL_TOOL_NAMES.contains(&name),
-            "`{name}` was removed with the planning capability and the built-in machines"
-        );
-        assert!(
-            unknown_disabled_tools(&{
-                let mut set = set_with(Vec::new());
-                set.disabled_tools = vec![name.to_string()];
-                set
-            })
-            .contains(&name.to_string()),
-            "a stored override naming `{name}` is now flagged as unknown"
-        );
-    }
-}
-
 // ---------------------------------------------------------------------------
 // The serde contract the session recorder depends on
 // ---------------------------------------------------------------------------

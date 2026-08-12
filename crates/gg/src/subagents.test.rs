@@ -114,27 +114,26 @@ fn config_defaults_without_the_capability() {
     assert_eq!(config.max_depth, DEFAULT_MAX_DEPTH);
 }
 
-/// Explicit params override the defaults; a zero/absent value keeps the default; `max_parallel` is
-/// clamped to at least 1.
+/// An explicit `maxDepth` overrides the default; a zero/absent value keeps it. The capability's
+/// params bound its own recursion and nothing else — the parallelism cap is not read from here.
 #[test]
-fn config_reads_params_and_clamps_parallel() {
+fn config_reads_the_depth_param() {
     let mut set = GgCapabilitySet::minimal("mock/x");
     let mut cap = GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS);
-    cap.params = serde_json::json!({ "maxParallel": 2, "maxDepth": 5 });
+    cap.params = serde_json::json!({ "maxDepth": 5 });
     set.agents[0].capabilities.push(cap);
     let config = SubagentConfig::resolve(&set);
-    assert_eq!(config.max_parallel, 2);
     assert_eq!(config.max_depth, 5);
+    assert_eq!(
+        config.max_parallel, DEFAULT_MAX_PARALLEL,
+        "the capability's params do not carry the run's parallelism cap"
+    );
 
-    // A zero maxParallel is ignored (keeps the default), and any value is clamped to >= 1.
     let mut set = GgCapabilitySet::minimal("mock/x");
     let mut cap = GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS);
-    cap.params = serde_json::json!({ "maxParallel": 0 });
+    cap.params = serde_json::json!({ "maxDepth": 0 });
     set.agents[0].capabilities.push(cap);
-    assert_eq!(
-        SubagentConfig::resolve(&set).max_parallel,
-        DEFAULT_MAX_PARALLEL
-    );
+    assert_eq!(SubagentConfig::resolve(&set).max_depth, DEFAULT_MAX_DEPTH);
 }
 
 /// The parallelism cap is readable off the run's own limits — no subagents capability needed, which
@@ -151,24 +150,6 @@ fn config_reads_the_run_level_parallelism_cap() {
         SubagentConfig::resolve(&set).max_parallel,
         DEFAULT_MAX_PARALLEL
     );
-}
-
-/// The run-level cap wins over the legacy `maxParallel` param, which is still honored on its own so
-/// a configuration stored before the cap moved runs at the number it was written with.
-#[test]
-fn the_run_level_cap_overrides_the_legacy_param() {
-    let mut set = GgCapabilitySet::minimal("mock/x");
-    let mut cap = GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS);
-    cap.params = serde_json::json!({ "maxParallel": 2 });
-    set.agents[0].capabilities.push(cap);
-    assert_eq!(
-        SubagentConfig::resolve(&set).max_parallel,
-        2,
-        "the legacy param alone still resolves"
-    );
-
-    set.limits.max_parallel = Some(8);
-    assert_eq!(SubagentConfig::resolve(&set).max_parallel, 8);
 }
 
 // ---------------------------------------------------------------------------

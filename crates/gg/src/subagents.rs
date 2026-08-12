@@ -63,11 +63,6 @@ pub const DEFAULT_MAX_PARALLEL: usize = 16;
 /// an agent at depth `maxDepth` may not spawn (its child would be `maxDepth + 1`).
 pub const DEFAULT_MAX_DEPTH: usize = 3;
 
-/// The **legacy** subagents-capability param naming the global
-/// [parallelism cap](SubagentConfig::max_parallel), still honored for configurations stored before
-/// the cap moved to the run's [`limits`](test_cabinet_core::gg::GgRunLimits::max_parallel).
-const PARAM_MAX_PARALLEL: &str = "maxParallel";
-
 /// The subagents-capability param naming the recursion [depth cap](SubagentConfig::max_depth).
 const PARAM_MAX_DEPTH: &str = "maxDepth";
 
@@ -99,12 +94,10 @@ impl SubagentConfig {
     /// declares one — it is a run-level guardrail, so it is readable whether or not any profile
     /// enables the [subagents](CAPABILITY_SUBAGENTS) capability, which matters for a run that
     /// delegates purely through the [board](test_cabinet_core::gg::CAPABILITY_PROJECT_MANAGEMENT).
-    /// Failing that, the **legacy** [`maxParallel`](PARAM_MAX_PARALLEL) param on the root's subagents
-    /// capability is honored, so a configuration stored before the cap moved still runs at the number
-    /// it was written with. Failing both, the [default](DEFAULT_MAX_PARALLEL) applies. `max_depth`
-    /// comes from the subagents capability alone (it bounds *that* capability's recursion, nothing
-    /// else). A missing, zero, or non-integer value keeps the default everywhere, and
-    /// `max_parallel` is clamped to at least `1` so a run always makes progress.
+    /// Failing that, the [default](DEFAULT_MAX_PARALLEL) applies. `max_depth` comes from the
+    /// subagents capability alone (it bounds *that* capability's recursion, nothing else). A
+    /// missing, zero, or non-integer value keeps the default everywhere, and `max_parallel` is
+    /// clamped to at least `1` so a run always makes progress.
     pub fn resolve(set: &GgCapabilitySet) -> Self {
         let default = Self::default();
         let params = set.capability(CAPABILITY_SUBAGENTS).map(|cap| &cap.params);
@@ -113,7 +106,6 @@ impl SubagentConfig {
             .max_parallel
             .filter(|&max| max > 0)
             .map(|max| usize::try_from(max).unwrap_or(usize::MAX))
-            .or_else(|| params.and_then(|p| positive_usize(p, PARAM_MAX_PARALLEL)))
             .unwrap_or(default.max_parallel)
             .max(1);
         let max_depth = params

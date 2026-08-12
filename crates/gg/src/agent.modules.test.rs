@@ -37,7 +37,7 @@ use super::{ScriptedFactory, invocation};
 /// agents with memories between them.
 fn inherited_memories_set(child_scope: GgMemoryScope) -> GgCapabilitySet {
     let mut subagents = GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS);
-    subagents.params = json!({ "maxParallel": 2, "maxDepth": 3 });
+    subagents.params = json!({ "maxDepth": 3 });
     let roster = vec![GgSubagentRef {
         agent: "reader".to_string(),
         description: String::new(),

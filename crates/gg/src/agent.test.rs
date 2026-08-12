@@ -5036,13 +5036,13 @@ impl ClientFactory for ScriptedFactory {
     }
 }
 
-/// A capability set with subagents (`maxParallel`/`maxDepth`) on the Root plus one
+/// A capability set with the run's `maxParallel` and a subagents `maxDepth` on the Root, plus one
 /// [agent profile](GgAgentConfig) per named `extra_agent` (model `mock/<name>`, on the Root's
 /// primary `mock/primary`). Every profile may spawn every declared agent (a permissive test
-/// allowlist), and every profile carries the same subagents caps so a child can spawn a grandchild.
+/// allowlist), and every profile carries the same depth cap so a child can spawn a grandchild.
 fn subagent_set(max_parallel: u64, max_depth: u64, extra_agents: &[&str]) -> GgCapabilitySet {
     let mut subagents = GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS);
-    subagents.params = json!({ "maxParallel": max_parallel, "maxDepth": max_depth });
+    subagents.params = json!({ "maxDepth": max_depth });
     // The delegation allowlist shared by every profile: the Root plus each extra agent.
     let allowlist: Vec<GgSubagentRef> = std::iter::once(ROOT_AGENT)
         .chain(extra_agents.iter().copied())
@@ -5068,6 +5068,10 @@ fn subagent_set(max_parallel: u64, max_depth: u64, extra_agents: &[&str]) -> GgC
     }
     GgCapabilitySet {
         agents,
+        limits: test_cabinet_core::gg::GgRunLimits {
+            max_parallel: Some(max_parallel),
+            ..test_cabinet_core::gg::GgRunLimits::default()
+        },
         ..GgCapabilitySet::default()
     }
 }

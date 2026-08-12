@@ -352,7 +352,6 @@ configuration document has to stay interpretable by every arm.
 | --- | --- | --- |
 | `limits` absent | every default above | — |
 | `maxParallel: 0` or absent | `16` | — |
-| `maxParallel` in the subagents capability | honored; the run-level value wins | — |
 | `maxTurns: 0` or absent | unbounded | — |
 | `maxRuntimeSecs: 0` or absent | no budget | — |
 | `maxConsecutiveErrors` absent | `5` | — |
@@ -365,13 +364,10 @@ configuration document has to stay interpretable by every arm.
 | `maxCost` ≤ 0, or not finite | off | it must be greater than zero |
 | `replayMaxBytes` absent | 256 MiB | — |
 | `replayMaxBytes: 0` | off; capture unbounded | it would stop capture at once |
-| a ceiling in a capability's params | ignored | move it to `capabilitySet.limits` |
 
-The last row covers `maxTurns` and `maxRuntimeSecs`, and the warning names the
-capability and the param. The console round-trips undeclared params losslessly,
-so a stored configuration may carry `{"maxTurns": 8}` on some capability, and a
-ceiling the operator meant to set would otherwise leave the run unbounded in
-silence.
+Every ceiling is declared in `capabilitySet.limits`. A capability's params bound
+that capability alone, so the subagents capability's `maxDepth` is the only
+per-capability bound gg reads.
 
 ### Model API errors
 

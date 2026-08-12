@@ -1677,9 +1677,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     params: [
       // The parallelism cap is deliberately **not** here: it bounds the whole run's
       // concurrency (including the agents a board dispatches, with no subagents
-      // capability in sight), so it lives with the run limits below. A `maxParallel`
-      // left on this capability by an older configuration is still honored by gg, but
-      // the run-level field wins and is the only one this editor writes.
+      // capability in sight), so it lives with the run limits below.
       {
         key: "maxDepth",
         label: "Max depth",

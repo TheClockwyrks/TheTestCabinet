@@ -619,15 +619,6 @@ impl RunLimits {
     }
 }
 
-/// The two capability params that used to carry a ceiling, and no longer do.
-///
-/// Both were read from **any** capability's params, and the console round-trips undeclared params
-/// losslessly through its advanced-JSON field, so a configuration stored in the backend database
-/// may still carry `{"maxTurns": 8}` on some capability — a ceiling the operator meant to set that
-/// gg no longer reads there, so the run would run unbounded instead. Naming them here is what turns
-/// a silent behaviour change into a loud one.
-const LEGACY_CAPABILITY_PARAMS: [&str; 2] = ["maxTurns", "maxRuntimeSecs"];
-
 /// Resolve the run's ceilings from [`set.limits`](GgCapabilitySet::limits), appending an
 /// operator-facing warning for every declaration that cannot bound anything.
 ///
@@ -651,7 +642,6 @@ const LEGACY_CAPABILITY_PARAMS: [&str; 2] = ["maxTurns", "maxRuntimeSecs"];
 /// | `maxCost` ≤ 0, or not finite | off | it must be greater than zero |
 /// | `replayMaxBytes` absent | [`DEFAULT_REPLAY_MAX_BYTES`] | — |
 /// | `replayMaxBytes: 0` | off (capture unbounded) | it would stop capture before its first line |
-/// | `maxTurns`/`maxRuntimeSecs` in any capability's params | ignored | move it to `capabilitySet.limits` |
 ///
 /// The warnings are the caller's to emit: this function is pure, and the loop logs them on the
 /// root's stream before the first turn, alongside the rest of gg's launch diagnostics.
@@ -715,8 +705,6 @@ pub fn resolve_run_limits(set: &GgCapabilitySet, warnings: &mut Vec<String>) -> 
         Some(max) => Some(max),
         None => Some(DEFAULT_REPLAY_MAX_BYTES),
     };
-
-    warn_about_legacy_params(set, warnings);
 
     RunLimits {
         max_turns,
@@ -798,26 +786,6 @@ fn resolve_error_rate(
     }
 
     Some(ErrorRateLimit { max_rate, window })
-}
-
-/// Warn about every capability still carrying a ceiling in its params.
-///
-/// Presence is the whole signal — the value is not read, and is not worth reading, because the
-/// operator's mistake is having written the key somewhere gg no longer looks. Reported per
-/// capability and per param, so a set that carries the same stale key on three capabilities gets
-/// three lines naming three capabilities rather than one line naming none.
-fn warn_about_legacy_params(set: &GgCapabilitySet, warnings: &mut Vec<String>) {
-    for capability in set.agents.iter().flat_map(|agent| &agent.capabilities) {
-        for param in LEGACY_CAPABILITY_PARAMS {
-            if capability.params.get(param).is_some() {
-                warnings.push(format!(
-                    "capability `{}` carries a `{param}` param, which gg no longer reads; move it \
-                     to `capabilitySet.limits`.",
-                    capability.id
-                ));
-            }
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------------------------

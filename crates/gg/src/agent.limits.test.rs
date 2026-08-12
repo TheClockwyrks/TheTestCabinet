@@ -981,16 +981,13 @@ async fn a_subagents_error_ceiling_ends_it_alone() {
 ///
 /// A sweep's one shared configuration document has to stay interpretable by every arm, so a ceiling
 /// that cannot bound anything is a loud no-op rather than a refused launch — the same terms an
-/// unknown name in `disabled_tools` is read on. The stale capability params are the migration half:
-/// a configuration stored before the ceilings had a home may still carry `maxTurns` where gg no
-/// longer looks, and saying so is what turns a silent behaviour change into a loud one.
+/// unknown name in `disabled_tools` is read on.
 #[tokio::test]
 async fn unusable_limit_declarations_warn_on_the_root_stream_and_launch_anyway() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-warn".to_string()), Box::new(sink.clone()));
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    set.agents[0].capabilities[0].params = json!({ "maxTurns": 8 });
     let mut code = GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE);
     code.params = json!({ "healing": { "stripFences": false } });
     code.enabled = false;
@@ -1011,7 +1008,6 @@ async fn unusable_limit_declarations_warn_on_the_root_stream_and_launch_anyway()
         "maxConsecutiveErrors: 0",
         "maxErrorRate is set but errorRateWindow is not",
         "maxCost must be greater than zero",
-        "which gg no longer reads",
     ] {
         assert!(
             warned.contains(expected),
@@ -1038,8 +1034,8 @@ async fn unusable_limit_declarations_warn_on_the_root_stream_and_launch_anyway()
 /// **An unrecognized shell output mode warns on the root stream and launches anyway.**
 ///
 /// A mode gg does not recognize reads as the default one, so a typo runs the *default* arm under
-/// another arm's name. That is the same silent wrong-experiment failure a stale `maxTurns` is, and
-/// it is reported on the same terms: loudly, once, before the first turn, without failing the launch.
+/// another arm's name. That is a silent wrong-experiment failure, and it is reported on the same
+/// terms an unusable ceiling is: loudly, once, before the first turn, without failing the launch.
 #[tokio::test]
 async fn an_unknown_shell_output_mode_warns_and_launches_anyway() {
     let dir = TempDir::new().unwrap();

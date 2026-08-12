@@ -477,48 +477,6 @@ fn profile_binding(set: &GgCapabilitySet, profile: &str) -> Result<GgSlotBinding
         .with_loop_detection(agent.loop_detection))
 }
 
-/// The launch warnings a capability set earns for naming a capability gg **no longer implements**.
-///
-/// A capability id is an open string on the wire ([`GgCapabilityConfig::id`](test_cabinet_core::gg::GgCapabilityConfig::id)), so a set written
-/// against an older gg deserializes cleanly and its stale entry simply contributes nothing: no
-/// tools, no prompt section, no telemetry. That silence is the problem. An ablation arm whose whole
-/// identity is "planning on" would be recorded, scored and compared as a configured run rather than
-/// as the plain single agent it has become, and nothing in the record would say which it was. So the
-/// stale id is named, once, on the root's stream before the first turn.
-///
-/// Only capabilities gg has actually **removed** are listed. An id gg never had is not reported:
-/// a capability set is an extension point, and a study that carries its own annotations through it
-/// is doing something legitimate.
-fn removed_capability_warnings(set: &GgCapabilitySet) -> Vec<String> {
-    /// The removed ids, each with what replaced it (or with what its absence now means).
-    const REMOVED: &[(&str, &str)] = &[
-        (
-            "planning",
-            "gg no longer implements a read-only planning pass; the `enter_plan_mode` and \
-             `submit_plan` tools are gone. Ask for a plan in the prompt, or give the planning \
-             agent its own profile.",
-        ),
-        (
-            "replay",
-            "gg no longer has fidelities to escalate between; every run captures the same session \
-             record, and nothing reads this.",
-        ),
-    ];
-    let mut warnings = Vec::new();
-    for agent in &set.agents {
-        for (id, replacement) in REMOVED {
-            if agent.capability(id).is_some_and(|cap| cap.enabled) {
-                warnings.push(format!(
-                    "agent `{}`: the `{id}` capability is enabled, but it no longer exists — \
-                     {replacement}",
-                    agent.name
-                ));
-            }
-        }
-    }
-    warnings
-}
-
 /// Validate a run's [agent profiles](GgAgentConfig) before launch: the set must declare at least
 /// one profile (its [root](GgCapabilitySet::root) — the run has no model otherwise), every profile
 /// must have a non-empty name and — unless it is an [FSM shell](crate::fsm::is_shell), which runs
@@ -856,8 +814,8 @@ pub(crate) async fn run_with_seams(
     record_session_seed(&orch, invocation);
 
     // Every declaration gg could not act on, named on the root's stream before the first turn:
-    // a ceiling that cannot bound anything, a ceiling left on a capability where gg no longer reads
-    // it, a healing key that names nothing. None of them ever fails a launch — a sweep's one shared
+    // a ceiling that cannot bound anything, an unreachable state in a machine, a healing key that
+    // names nothing. None of them ever fails a launch — a sweep's one shared
     // configuration document must stay interpretable by every arm — so being loud here is the whole
     // of the defence against a typo silently running the wrong experiment.
     for warning in launch_warnings {
@@ -1607,12 +1565,6 @@ impl Orchestrator {
         for agent in &set.agents {
             warnings.extend(crate::modules::ownership_warnings(agent));
         }
-        // A capability id gg no longer implements is inert rather than fatal (ids are open strings,
-        // so a set naming one still deserializes), which is precisely why it has to be *said*: a
-        // sweep arm that still asks for the removed `planning` capability, or for a state machine,
-        // would otherwise be recorded as a differently-configured run rather than as the ordinary
-        // single agent it actually is.
-        warnings.extend(removed_capability_warnings(set));
         warnings.extend(crate::fsm::launch_warnings(set));
         // Memory scoping is checked for the same reason ownership is, and one reason more: a scope
         // decides which agents share a notebook, so a configuration that says something gg cannot

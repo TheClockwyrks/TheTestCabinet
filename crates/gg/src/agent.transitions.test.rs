@@ -744,7 +744,7 @@ async fn a_turn_that_compacts_and_execs_hands_over_the_compacted_window() {
 /// the depth refusal part of what this run covers.
 fn fork_set() -> GgCapabilitySet {
     let mut subagents = GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS);
-    subagents.params = json!({ "maxParallel": 4, "maxDepth": 1 });
+    subagents.params = json!({ "maxDepth": 1 });
     let mut root = GgAgentConfig {
         name: ROOT_AGENT.to_string(),
         model_id: "mock/fork".to_string(),

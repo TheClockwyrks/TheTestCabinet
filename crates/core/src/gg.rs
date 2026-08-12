@@ -906,8 +906,9 @@ pub const PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: &str = "mergeAgent";
 /// return, **message** a running child, and receive its **return value**.
 ///
 /// When enabled, the agent is offered the `spawn_subagent`/`wait_for_subagents`/`send_message`
-/// tools and its subagents are governed by a single global [scheduler]: a `maxParallel` param
-/// caps how many agents run at once (a spawn beyond the cap **blocks until a slot frees**), and a
+/// tools and its subagents are governed by a single global [scheduler]: the run's
+/// [`maxParallel`](GgRunLimits::max_parallel) caps how many agents run at once (a spawn beyond the
+/// cap **blocks until a slot frees**), and this capability's
 /// `maxDepth` param bounds recursion (a spawn at `maxDepth` is **refused**, not queued). A blocked
 /// parent frees its running slot so other work runs but retains priority over not-yet-started
 /// agents. Off (its default — it is opt-in), the tools vanish and a run stays single-agent. A

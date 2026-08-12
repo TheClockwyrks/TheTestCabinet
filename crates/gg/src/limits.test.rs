@@ -8,7 +8,6 @@
 //! liveness half — that the loop actually stops on the breach this module hands it, rather than
 //! recording one and running on — lives in `agent.limits.test.rs`, where there is a loop to stop.
 
-use serde_json::json;
 // `GgTurnOutcome` and `GgTurnErrorKind` arrive through the `super::*` glob below — the module under
 // test imports them for its own wire mapping.
 use test_cabinet_core::gg::{GgAgentConfig, GgCapabilityConfig, GgCapabilitySet, GgRunLimits};
@@ -310,62 +309,15 @@ fn a_non_positive_cost_ceiling_is_off_and_says_so() {
 }
 
 #[test]
-fn legacy_params_on_a_capability_are_warned_about() {
-    // The migration hazard: `maxTurns` used to be read from any capability's params, and the
-    // console round-trips undeclared params losslessly, so a stored configuration can still carry
-    // one. Silently running unbounded when the operator meant to set a ceiling is the failure this
-    // warning exists to prevent.
-    let set = GgCapabilitySet {
-        agents: vec![GgAgentConfig {
-            capabilities: vec![
-                GgCapabilityConfig {
-                    params: json!({ "maxTurns": 8 }),
-                    ..GgCapabilityConfig::enabled("shell")
-                },
-                GgCapabilityConfig {
-                    params: json!({ "maxRuntimeSecs": 600, "dir": "skills" }),
-                    ..GgCapabilityConfig::enabled("skills")
-                },
-            ],
-            ..GgAgentConfig::root()
-        }],
-        ..GgCapabilitySet::default()
-    };
-
-    let mut warnings = Vec::new();
-    let limits = resolve_run_limits(&set, &mut warnings);
-
-    assert_eq!(
-        limits.max_turns, None,
-        "the stale param configures nothing, so the run is unbounded"
-    );
-    assert_eq!(limits.max_runtime, None);
-    assert_eq!(
-        warnings,
-        vec![
-            "capability `shell` carries a `maxTurns` param, which gg no longer reads; move it to \
-             `capabilitySet.limits`."
-                .to_string(),
-            "capability `skills` carries a `maxRuntimeSecs` param, which gg no longer reads; move \
-             it to `capabilitySet.limits`."
-                .to_string(),
-        ]
-    );
-}
-
-#[test]
 fn resolution_never_fails_a_launch() {
-    // Every unusable declaration at once, on a set that also carries both legacy params. The run
-    // still resolves to a launchable configuration — here one with nothing armed, bounded only by
-    // the host's clock — because an ablation sweep shares one document across arms, and an arm that
-    // cannot launch measures nothing at all. (Every ceiling was declared unusable, so even the
-    // error defaults are suppressed: a half-declared rate is a mistake, not an unset field.)
+    // Every unusable declaration at once. The run still resolves to a launchable configuration —
+    // here one with nothing armed, bounded only by the host's clock — because an ablation sweep
+    // shares one document across arms, and an arm that cannot launch measures nothing at all.
+    // (Every ceiling was declared unusable, so even the error defaults are suppressed: a
+    // half-declared rate is a mistake, not an unset field.)
     let set = GgCapabilitySet {
         agents: vec![GgAgentConfig {
-            capabilities: vec![GgCapabilityConfig {
-                params: json!({ "maxTurns": 8, "maxRuntimeSecs": 600 }),
-                ..GgCapabilityConfig::enabled("shell")
-            }],
+            capabilities: vec![GgCapabilityConfig::enabled("shell")],
             ..GgAgentConfig::root()
         }],
         limits: GgRunLimits {
@@ -385,7 +337,7 @@ fn resolution_never_fails_a_launch() {
     let limits = resolve_run_limits(&set, &mut warnings);
 
     assert_eq!(limits, bare_limits());
-    assert_eq!(warnings.len(), 6, "{warnings:?}");
+    assert_eq!(warnings.len(), 4, "{warnings:?}");
 }
 
 #[test]

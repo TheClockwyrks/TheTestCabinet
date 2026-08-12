@@ -54,8 +54,7 @@ whatever profile or model it runs on. It is the run's
 otherwise. The cap is a run-level guardrail rather than a param on this
 capability because it bounds the run's concurrency as a whole, including the
 top-level agents a [board](/gg/project-management/) dispatches in a run where
-nothing has the subagents capability. A `maxParallel` carried on this capability
-applies when the run declares none.
+nothing has the subagents capability.
 
 The grant policy:
 
