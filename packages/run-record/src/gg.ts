@@ -352,10 +352,6 @@ export type GgCapabilityConfig = {
  * [result aggregation](https://docs.testcabinet.ai) can slice results by
  * configuration. Freeze the model and the test case, vary the capability set, and the
  * harness becomes a laboratory.
- *
- * A set stored before capabilities were per-agent — a flat `capabilities` / `slots` /
- * `disabledTools` shape — is migrated on deserialize (see `GgCapabilitySetRaw`) into
- * a single [Root agent](ROOT_AGENT), so no data migration is needed.
  */
 export type GgCapabilitySet = {
   /**
@@ -370,8 +366,9 @@ export type GgCapabilitySet = {
    * model binding, and delegation graph. **The first is the [root](Self::root)** — it
    * drives the top-level session and is the default profile for issue dispatch and
    * helper agents — whatever it happens to be *called*: the root is a position, not a
-   * name, so a configuration may rename it or promote another profile to it. Never
-   * empty: the migration and [`Default`] both guarantee at least one profile.
+   * name, so a configuration may rename it or promote another profile to it. A set
+   * that names the key at all must list at least one profile: an empty list is a
+   * configuration with no root, and a launch rejects it by name.
    */
   agents: Array<GgAgentConfig>;
   /**

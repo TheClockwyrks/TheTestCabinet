@@ -13,18 +13,21 @@ fn deserializes_a_full_invocation_file() {
         "prompt": "Build the game described in specs/README.md.",
         "capabilitySet": {
             "preset": "minimal",
-            "capabilities": [
-                { "id": "shell", "enabled": true },
+            "agents": [
                 {
-                    "id": "read-file",
-                    "enabled": true,
-                    "implementation": "default-cap",
-                    "params": { "lineCap": 250 }
-                },
-                { "id": "write-file", "enabled": true }
-            ],
-            "slots": [
-                { "slot": "primary", "modelId": "anthropic/claude-opus-4-8" }
+                    "name": "Root",
+                    "modelId": "anthropic/claude-opus-4-8",
+                    "capabilities": [
+                        { "id": "shell", "enabled": true },
+                        {
+                            "id": "read-file",
+                            "enabled": true,
+                            "implementation": "default-cap",
+                            "params": { "lineCap": 250 }
+                        },
+                        { "id": "write-file", "enabled": true }
+                    ]
+                }
             ]
         }
     }"#;

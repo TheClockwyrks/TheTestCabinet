@@ -1250,8 +1250,8 @@ function resolveAgentReferences(
 }
 
 /**
- * Fill a draft from a stored capability set. A set with no agents (which should never
- * happen — the backend migrates legacy sets to a root agent) is given a fresh one, so
+ * Fill a draft from a stored capability set. A set with no agents (which a launch
+ * refuses, and which nothing the editor writes can produce) is given a fresh one, so
  * the editor never opens on an empty agent list. Every model slot an agent defers to
  * is guaranteed present in the declared list, so a stored set with a dangling
  * reference still opens on a legible form. The wire format's root is `agents[0]`, which

@@ -395,7 +395,7 @@
   },
   "$id": "https://docs.testcabinet.ai/schema/gg/capability-set.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "The declarative, inspectable configuration of a gg run — its *independent\nvariable*.\n\nA gg run is configured by a capability set rather than a harness+model+orchestrator\ntuple. Its capabilities are **per agent**: the set declares one or more\n[agent profiles](GgAgentConfig) — the first is the [root](Self::root) —\neach with its own enabled capabilities, model binding, custom prompt, and the set\nof other agents it may spawn as subagents. The set is expressed as data so a run's\nexact configuration is recorded and reproducible, and so\n[result aggregation](https://docs.testcabinet.ai) can slice results by\nconfiguration. Freeze the model and the test case, vary the capability set, and the\nharness becomes a laboratory.\n\nA set stored before capabilities were per-agent — a flat `capabilities` / `slots` /\n`disabledTools` shape — is migrated on deserialize (see `GgCapabilitySetRaw`) into\na single [Root agent](ROOT_AGENT), so no data migration is needed.",
+  "description": "The declarative, inspectable configuration of a gg run — its *independent\nvariable*.\n\nA gg run is configured by a capability set rather than a harness+model+orchestrator\ntuple. Its capabilities are **per agent**: the set declares one or more\n[agent profiles](GgAgentConfig) — the first is the [root](Self::root) —\neach with its own enabled capabilities, model binding, custom prompt, and the set\nof other agents it may spawn as subagents. The set is expressed as data so a run's\nexact configuration is recorded and reproducible, and so\n[result aggregation](https://docs.testcabinet.ai) can slice results by\nconfiguration. Freeze the model and the test case, vary the capability set, and the\nharness becomes a laboratory.",
   "properties": {
     "agents": {
       "default": [
@@ -446,7 +446,7 @@
           "name": "Root"
         }
       ],
-      "description": "The agent profiles this run is configured with, each with its own capabilities,\nmodel binding, and delegation graph. **The first is the [root](Self::root)** — it\ndrives the top-level session and is the default profile for issue dispatch and\nhelper agents — whatever it happens to be *called*: the root is a position, not a\nname, so a configuration may rename it or promote another profile to it. Never\nempty: the migration and [`Default`] both guarantee at least one profile.",
+      "description": "The agent profiles this run is configured with, each with its own capabilities,\nmodel binding, and delegation graph. **The first is the [root](Self::root)** — it\ndrives the top-level session and is the default profile for issue dispatch and\nhelper agents — whatever it happens to be *called*: the root is a position, not a\nname, so a configuration may rename it or promote another profile to it. A set\nthat names the key at all must list at least one profile: an empty list is a\nconfiguration with no root, and a launch rejects it by name.",
       "items": {
         "$ref": "#/$defs/GgAgentConfig"
       },

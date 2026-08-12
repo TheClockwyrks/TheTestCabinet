@@ -94,22 +94,14 @@ fn a_run_wide_read_asks_every_agent_where_the_root_read_asks_one() {
     assert!(!set.any_agent_enabled(CAPABILITY_REPLAY));
 }
 
-/// A capability set stored in the legacy **flat** shape (top-level `capabilities`/`slots`) still
-/// deserializes: the migration folds it into a single [Root](ROOT_AGENT) agent.
+/// A capability set that names no profiles at all reads as a single [Root](ROOT_AGENT) agent with
+/// the default capabilities, so the smallest configuration anyone can write is still launchable.
 #[test]
-fn a_legacy_flat_capability_set_migrates_to_a_root_agent() {
-    let flat = json!({
-        "capabilities": [{ "id": CAPABILITY_SHELL, "enabled": true, "params": {} }],
-        "slots": [{ "slot": PRIMARY_SLOT, "modelId": "anthropic/claude-opus-4.8" }],
-    });
-    let set: GgCapabilitySet = serde_json::from_value(flat).expect("migrate legacy shape");
+fn a_capability_set_without_agents_reads_as_a_root_agent() {
+    let set: GgCapabilitySet = serde_json::from_value(json!({})).expect("deserialize");
     assert_eq!(set.agents.len(), 1);
     assert_eq!(set.root().name, ROOT_AGENT);
     assert!(set.root().is_enabled(CAPABILITY_SHELL));
-    assert_eq!(
-        set.root().resolved_model_id(),
-        Some("anthropic/claude-opus-4.8")
-    );
 }
 
 #[test]
@@ -197,9 +189,8 @@ fn the_prompt_cache_lifetime_is_per_agent_and_omitted_at_its_default() {
     assert!(back.agents[1].prompt_cache_ttl.is_standard());
 }
 
-/// A configuration stored before the lifetime was configurable — including one in the legacy flat
-/// shape — reads as the **standard** lifetime, so upgrading gg cannot double the input price of a
-/// run that never asked for it.
+/// A configuration that asks for no lifetime reads as the **standard** one, so a run only pays the
+/// extended lifetime's higher write premium when an operator asked for it by name.
 #[test]
 fn a_capability_set_without_a_prompt_cache_lifetime_reads_as_standard() {
     let stored = json!({
@@ -211,13 +202,6 @@ fn a_capability_set_without_a_prompt_cache_lifetime_reads_as_standard() {
     });
     let set: GgCapabilitySet = serde_json::from_value(stored).expect("deserialize");
     assert_eq!(set.root().prompt_cache_ttl, GgPromptCacheTtl::Standard);
-
-    let flat = json!({
-        "capabilities": [{ "id": CAPABILITY_SHELL, "enabled": true, "params": {} }],
-        "slots": [{ "slot": PRIMARY_SLOT, "modelId": "anthropic/claude-opus-4.8" }],
-    });
-    let migrated: GgCapabilitySet = serde_json::from_value(flat).expect("migrate legacy shape");
-    assert_eq!(migrated.root().prompt_cache_ttl, GgPromptCacheTtl::Standard);
 }
 
 /// The lifetime reaches the client through the [binding](GgSlotBinding) a profile is resolved into,
@@ -350,8 +334,8 @@ fn loop_detection_is_per_agent_and_omitted_when_nothing_was_declared() {
     assert!(back.agents[0].loop_detection.is_armed());
     assert!(back.agents[1].loop_detection.is_default());
 
-    // And the shape stored before the lever existed — including the legacy flat one — reads as
-    // disarmed rather than failing to parse.
+    // And a profile that says nothing about the lever reads as disarmed rather than failing to
+    // parse, so arming it is always something an operator did on purpose.
     let stored: GgCapabilitySet = serde_json::from_value(json!({
         "agents": [{
             "name": ROOT_AGENT,
@@ -436,14 +420,17 @@ fn run_limits_round_trip_camel_case_and_omit_every_unset_ceiling() {
     assert!(GgRunLimits::default().is_empty());
 }
 
-/// The backward-compatibility guarantee for every capability set stored before ceilings existed:
-/// it deserializes to a set that declares none, and serializing it back writes no `limits` key —
-/// so a stored configuration round-trips byte for byte through a gg that now understands ceilings.
+/// A set that arms no ceiling deserializes to one that declares none, and serializing it back
+/// writes no `limits` key — so an unbounded configuration round-trips byte for byte rather than
+/// growing an object full of nulls.
 #[test]
 fn a_capability_set_without_limits_deserializes_to_none_and_re_serializes_without_the_key() {
     let set: GgCapabilitySet = serde_json::from_value(json!({
-        "capabilities": [{ "id": "shell", "enabled": true }],
-        "slots": [{ "slot": "primary", "modelId": "anthropic/claude-opus-4.8" }],
+        "agents": [{
+            "name": ROOT_AGENT,
+            "capabilities": [{ "id": "shell", "enabled": true }],
+            "modelId": "anthropic/claude-opus-4.8",
+        }],
     }))
     .expect("deserialize");
     assert_eq!(set.limits, GgRunLimits::default());
@@ -681,18 +668,20 @@ fn bound_model_ids_lists_each_resolved_model_once() {
 
 #[test]
 fn a_set_without_model_slots_deserializes_unchanged() {
-    // Every configuration saved before model slots existed omits the field; a legacy flat set
-    // migrates to a single Root agent.
+    // A fully pinned configuration defers nothing to a launch, so it declares no slots at all.
     let set: GgCapabilitySet = serde_json::from_value(json!({
-        "capabilities": [{ "id": "shell", "enabled": true }],
-        "slots": [{ "slot": "primary", "modelId": "anthropic/claude-opus-4.8" }],
+        "agents": [{
+            "name": ROOT_AGENT,
+            "capabilities": [{ "id": "shell", "enabled": true }],
+            "modelId": "anthropic/claude-opus-4.8",
+        }],
     }))
     .expect("deserialize");
     assert!(set.model_slots.is_empty());
     assert!(set.root().model_slot.is_none());
     assert!(set.root().is_resolved());
-    // And a fully pinned set serializes without a `modelSlots` field, so a recorded run's
-    // configuration reads exactly as it did before.
+    // And it serializes without a `modelSlots` field, so a recorded run's configuration carries
+    // only the bindings it actually ran on.
     let value = serde_json::to_value(&set).expect("serialize");
     assert!(value.get("modelSlots").is_none());
     assert!(value["agents"][0].get("modelSlot").is_none());
@@ -2578,70 +2567,6 @@ fn state_events_without_a_module_id_still_deserialize() {
 }
 
 // --- Where a hook is declared -------------------------------------------------
-
-/// A set stored before the session/agent split reads back with its agent-scoped hooks on **every**
-/// agent, which is what those hooks did when they were the run's.
-///
-/// This is the one migration the split needs, and it has to be a copy rather than a move: the old
-/// list fired for every agent, so a configuration whose `pre-write` gate guarded four profiles
-/// still guards four. Reading it onto only the root would silently disarm the other three.
-#[test]
-fn a_stored_run_level_agent_hook_lands_on_every_agent() {
-    let set: GgCapabilitySet = serde_json::from_value(json!({
-        "agents": [
-            { "name": "Root", "capabilities": [] },
-            { "name": "reviewer", "capabilities": [] },
-        ],
-        "hooks": [
-            { "event": "pre-write", "action": { "type": "command", "command": "guard" } },
-            { "event": "session-end", "action": { "type": "command", "command": "report" } },
-        ],
-    }))
-    .expect("a pre-split capability set still parses");
-
-    // The session half stays on the run…
-    assert_eq!(set.hooks.len(), 1);
-    assert_eq!(set.hooks[0].event, GgHookEvent::SessionEnd);
-    // …and the agent half is now every agent's own.
-    for agent in &set.agents {
-        assert_eq!(agent.hooks.len(), 1, "on `{}`", agent.name);
-        assert_eq!(
-            agent.hooks[0].event,
-            GgHookEvent::PreWrite,
-            "on `{}`",
-            agent.name
-        );
-    }
-}
-
-/// An inherited hook runs **before** one the profile declares itself, because that is the order it
-/// ran in before the split: the run's hooks were the only hooks, so they went first.
-#[test]
-fn an_inherited_hook_keeps_its_place_ahead_of_the_agents_own() {
-    let set: GgCapabilitySet = serde_json::from_value(json!({
-        "agents": [{
-            "name": "Root",
-            "capabilities": [],
-            "hooks": [
-                { "event": "pre-shell", "action": { "type": "command", "command": "mine" } },
-            ],
-        }],
-        "hooks": [
-            { "event": "pre-shell", "action": { "type": "command", "command": "inherited" } },
-        ],
-    }))
-    .expect("a set with both kinds of declaration still parses");
-
-    let commands: Vec<&str> = set.agents[0]
-        .hooks
-        .iter()
-        .map(|hook| match &hook.action {
-            GgHookAction::Command { command, .. } => command.as_str(),
-            _ => unreachable!("both hooks are command hooks"),
-        })
-        .collect();
-    assert_eq!(commands, ["inherited", "mine"]);
-}
 
 /// Every event belongs to exactly one of the two declaration sites — the invariant the whole split
 /// rests on, asserted over the catalogue rather than over a sample so a new event cannot be added

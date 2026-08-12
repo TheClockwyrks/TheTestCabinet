@@ -1342,11 +1342,6 @@ back-compat requirement. They are listed so the release notes can carry them.
     capability-set schema's `owns` list (`:344-356`), or they are emitted as
     dangling `$ref`s.
 
-Note also the hand-written `Deserialize` for `GgCapabilitySet`
-(`crates/core/src/gg.rs:858-884` via `GgCapabilitySetRaw`): none of the above
-touches the container, but any future field must be added to **both** the
-canonical struct and `Raw`.
-
 ---
 
 ## 7. Sequencing

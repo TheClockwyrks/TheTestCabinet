@@ -1238,11 +1238,7 @@ pub const ROOT_AGENT: &str = "Root";
 /// [result aggregation](https://docs.testcabinet.ai) can slice results by
 /// configuration. Freeze the model and the test case, vary the capability set, and the
 /// harness becomes a laboratory.
-///
-/// A set stored before capabilities were per-agent — a flat `capabilities` / `slots` /
-/// `disabledTools` shape — is migrated on deserialize (see `GgCapabilitySetRaw`) into
-/// a single [Root agent](ROOT_AGENT), so no data migration is needed.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgCapabilitySet {
@@ -1257,8 +1253,9 @@ pub struct GgCapabilitySet {
     /// model binding, and delegation graph. **The first is the [root](Self::root)** — it
     /// drives the top-level session and is the default profile for issue dispatch and
     /// helper agents — whatever it happens to be *called*: the root is a position, not a
-    /// name, so a configuration may rename it or promote another profile to it. Never
-    /// empty: the migration and [`Default`] both guarantee at least one profile.
+    /// name, so a configuration may rename it or promote another profile to it. A set
+    /// that names the key at all must list at least one profile: an empty list is a
+    /// configuration with no root, and a launch rejects it by name.
     #[serde(default = "default_agents")]
     pub agents: Vec<GgAgentConfig>,
     /// The [launch-time model parameters](GgModelSlot) this set declares, for the
@@ -1337,8 +1334,8 @@ impl GgCapabilitySet {
     }
 
     /// The **root agent** — the first profile, which drives the top-level session.
-    /// Guaranteed to exist (the migration and [`Default`] never yield an empty agent
-    /// list), so this returns a reference rather than an `Option`.
+    /// Returns a reference rather than an `Option` because a launch refuses a set that
+    /// declares no profiles, so by the time anything runs there is always a first one.
     ///
     /// The root is identified by **position, never by name**: it is seeded as
     /// [`ROOT_AGENT`] but an operator may rename it, so looking one up by that name would
@@ -1466,82 +1463,6 @@ impl GgCapabilitySet {
     }
 }
 
-/// The migration shape [`GgCapabilitySet`] deserializes through: it accepts both the
-/// modern per-agent form (an `agents` list) and the legacy flat form (top-level
-/// `capabilities` / `slots` / `disabledTools`), folding the latter into a single
-/// [Root agent](ROOT_AGENT). This is why no stored configuration needs a data
-/// migration — every set ever written still reads back.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct GgCapabilitySetRaw {
-    #[serde(default)]
-    preset: Option<String>,
-    #[serde(default)]
-    agents: Option<Vec<GgAgentConfig>>,
-    #[serde(default)]
-    model_slots: Vec<GgModelSlot>,
-    #[serde(default)]
-    limits: GgRunLimits,
-    #[serde(default)]
-    hooks: Vec<GgHook>,
-    // --- legacy flat fields (pre per-agent) -----------------------------------
-    #[serde(default)]
-    capabilities: Option<Vec<GgCapabilityConfig>>,
-    #[serde(default)]
-    slots: Option<Vec<GgSlotBinding>>,
-    #[serde(default)]
-    disabled_tools: Option<Vec<String>>,
-}
-
-// Hand-written rather than derived so the migration shape ([`GgCapabilitySetRaw`]) drives
-// deserialization while `Serialize`/`ts_rs`/`schemars` still reflect the canonical
-// per-agent struct. (A `#[serde(from = …)]` would make schemars demand the Raw type also
-// implement `JsonSchema`, leaking the legacy fields into the generated schema.)
-impl<'de> Deserialize<'de> for GgCapabilitySet {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        Ok(GgCapabilitySetRaw::deserialize(deserializer)?.into())
-    }
-}
-
-impl From<GgCapabilitySetRaw> for GgCapabilitySet {
-    fn from(raw: GgCapabilitySetRaw) -> Self {
-        let mut agents = match raw.agents {
-            Some(agents) if !agents.is_empty() => agents,
-            _ => vec![GgAgentConfig::from_legacy(
-                raw.capabilities.unwrap_or_else(default_capabilities),
-                raw.slots.unwrap_or_default(),
-                raw.disabled_tools.unwrap_or_default(),
-            )],
-        };
-        // Hooks were once declared for the whole run whatever their event, and an agent-scoped one
-        // fired for **every** agent. Reading such a set back onto every profile is what keeps that
-        // promise: a stored configuration whose `pre-write` hook guarded all four of its agents
-        // still guards all four. Prepended rather than appended so a set that has *both* — a
-        // migrated hook and one an operator has since written on the profile — still runs the
-        // inherited gate first, which is the order it ran in before the split.
-        let (session, inherited): (Vec<GgHook>, Vec<GgHook>) = raw
-            .hooks
-            .into_iter()
-            .partition(|hook| hook.event.is_session());
-        if !inherited.is_empty() {
-            for agent in &mut agents {
-                let own = std::mem::replace(&mut agent.hooks, inherited.clone());
-                agent.hooks.extend(own);
-            }
-        }
-        GgCapabilitySet {
-            preset: raw.preset,
-            agents,
-            model_slots: raw.model_slots,
-            limits: raw.limits,
-            hooks: session,
-        }
-    }
-}
-
 /// A single **agent profile** within a [`GgCapabilitySet`] — the per-agent unit that
 /// makes gg's capabilities configurable independently for each agent in a run.
 ///
@@ -1655,37 +1576,6 @@ impl GgAgentConfig {
             model_id: String::new(),
             model_slot: None,
             disabled_tools: Vec::new(),
-            custom_instructions: None,
-            system_prompt_template: None,
-            prompt_cache_ttl: GgPromptCacheTtl::default(),
-            loop_detection: GgLoopDetection::default(),
-            subagents: Vec::new(),
-            hooks: Vec::new(),
-        }
-    }
-
-    /// Fold a legacy flat capability set (top-level `capabilities` / `slots` /
-    /// `disabledTools`) into a single [Root agent](ROOT_AGENT): its model is taken from
-    /// the legacy [`PRIMARY_SLOT`] binding (or the first binding), and the other role
-    /// slots — a pre-per-agent concept — are dropped.
-    fn from_legacy(
-        capabilities: Vec<GgCapabilityConfig>,
-        slots: Vec<GgSlotBinding>,
-        disabled_tools: Vec<String>,
-    ) -> Self {
-        let primary = slots
-            .iter()
-            .find(|b| b.slot == PRIMARY_SLOT)
-            .or_else(|| slots.first());
-        let (model_id, model_slot) = primary
-            .map(|b| (b.model_id.clone(), b.model_slot.clone()))
-            .unwrap_or_default();
-        Self {
-            name: ROOT_AGENT.to_string(),
-            capabilities,
-            model_id,
-            model_slot,
-            disabled_tools,
             custom_instructions: None,
             system_prompt_template: None,
             prompt_cache_ttl: GgPromptCacheTtl::default(),
@@ -2050,8 +1940,8 @@ impl GgLoopDetection {
     }
 }
 
-/// A single Root agent with the default capabilities — the [`Default`] and migration
-/// fallback for [`GgCapabilitySet::agents`].
+/// A single Root agent with the default capabilities — the [`Default`] for
+/// [`GgCapabilitySet::agents`], and what a set that names no profiles at all reads as.
 fn default_agents() -> Vec<GgAgentConfig> {
     vec![GgAgentConfig::root()]
 }
