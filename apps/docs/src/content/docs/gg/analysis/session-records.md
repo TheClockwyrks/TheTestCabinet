@@ -300,13 +300,13 @@ Gating on the gg version is wrong in both directions: a version bump with no
 prompt change must not invalidate every record on every release, and an
 uncommitted prompt edit within one build must not pass.
 
-Format 2 is the one format this build reads, and every other value is refused. A
-record from a newer gg may carry entry kinds this build has never heard of. An
-absent `formatVersion` means format 1, a different unpooled shape. Reporting
-either as a format-2 record would hand a reader entries it cannot mean, so
-parsing fails instead. The refusal costs nothing operationally, because the
-backend stores and serves records as opaque bytes, so any stored record still
-downloads with a run's archive.
+Format 1 is the one format this build reads, and every other value is refused. A
+record stating another format may carry entry kinds this build has never heard
+of, and reporting it as a format-1 record would hand a reader entries it cannot
+mean, so parsing fails instead. `formatVersion` is required: a record that states
+no format at all is malformed and does not parse. The refusal costs nothing
+operationally, because the backend stores and serves records as opaque bytes, so
+any stored record still downloads with a run's archive.
 
 ## Serving and consuming
 

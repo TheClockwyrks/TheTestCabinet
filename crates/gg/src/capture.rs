@@ -656,13 +656,12 @@ impl GgRecorder {
     /// Record one model call that **failed**: the request that was sent and the error the loop
     /// branched on.
     ///
-    /// v1 dropped model errors outright, which was a defect rather than an omission — both
-    /// classes of error that a loop *recovers* from change control flow. A
-    /// [vision refusal](GgSessionModelErrorKind::VisionUnsupported) strips the images and re-runs
-    /// the same turn, so a record without the refusal shows two nearly identical calls and no
-    /// reason for the second; a [retry exhaustion](GgSessionModelErrorKind::RetryExhausted) counts
-    /// against the run's error ceiling, so a record without it cannot explain why the run
-    /// stopped.
+    /// Both classes of error that a loop *recovers* from change control flow, so both are
+    /// recorded. A [vision refusal](GgSessionModelErrorKind::VisionUnsupported) strips the images
+    /// and re-runs the same turn, so a record without the refusal would show two nearly identical
+    /// calls and no reason for the second; a
+    /// [retry exhaustion](GgSessionModelErrorKind::RetryExhausted) counts against the run's error
+    /// ceiling, so a record without it could not explain why the run stopped.
     ///
     /// Recorded with the same request the successful call carries, because the request is what
     /// identifies *which* turn failed — a vision-refused turn and the stripped retry that follows
@@ -709,7 +708,7 @@ impl GgRecorder {
     ///
     /// A [hook's](crate::hooks) commands are the reason this exists as a seam of its own: they run
     /// `sh -c` through the same code path a `shell` tool call does but never reach tool dispatch,
-    /// so before this they were recorded nowhere at all — and an
+    /// so nothing below dispatch would see them — and an
     /// [agent-stop](test_cabinet_core::gg::GgHookEvent::AgentStop) gate decides whether the session
     /// is allowed to end, which is as control-flow-changing as an input gets.
     pub fn record_shell(
@@ -728,10 +727,10 @@ impl GgRecorder {
     /// Record one **`git` subprocess** gg's own orchestration ran — a worktree add, a commit, a
     /// merge, a diff.
     ///
-    /// In v1 these bypassed tool dispatch entirely and were captured nowhere, which mattered
-    /// because they are not bookkeeping a reader can take for granted: a merge that
-    /// conflicts changes the run, and a reviewer's verdict is rendered against whatever
-    /// `git diff --stat` printed.
+    /// These bypass tool dispatch entirely, so this seam is the only thing that captures them —
+    /// and they are not bookkeeping a reader can take for granted: a merge that conflicts
+    /// changes the run, and a reviewer's verdict is rendered against whatever `git diff --stat`
+    /// printed.
     pub fn record_git(&self, agent_id: &str, command: RecordedCommand<'_>) {
         self.record_command(
             agent_id,
@@ -1228,12 +1227,11 @@ impl ModelClient for RecordingClient {
 ///
 /// Three paths reach a command line — the [`shell`](crate::tools::SHELL_TOOL) tool, a
 /// [responses-as-code](crate::sandbox) program's `system.shell(…)`, and a
-/// [hook's](crate::hooks) commands — and for the whole of format v2's
-/// first milestones only the third of them was recorded, because it was the only one with a call
-/// site that happened to hold the recorder. A record of a session that used the shell tool
-/// therefore had no answer for a single one of its commands, and anything reading the
-/// [record](test_cabinet_core::gg_session_record::GgSessionRecord) back found a hole where every
-/// one of them should have been.
+/// [hook's](crate::hooks) commands — and only one of them, the hook, runs at a call site that
+/// holds the recorder. Capturing at the call sites would therefore leave a session that used the
+/// shell tool with no answer for a single one of its commands, and anything reading the
+/// [record](test_cabinet_core::gg_session_record::GgSessionRecord) back would find a hole where
+/// every one of them should have been.
 ///
 /// The seam is where all three meet, so the capture belongs here: one decorator, and the
 /// [origin](ShellRequest::origin) the caller stamped says which path it came from. Recording at the

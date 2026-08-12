@@ -255,12 +255,12 @@ fn filler(seed: u64, bytes: usize) -> String {
 /// nothing. This is that measurement, end to end through the real interner, the real
 /// assembly and the real gzip.
 ///
-/// The shape under test is the one that made v1 unaffordable — a **growing** conversation
-/// re-sent in full on every turn, with a large tool array offered alongside it — so the
-/// quadratic term is present and is exactly what pooling has to remove. The v1 figure is
-/// computed the way v1 actually wrote it (whole conversation plus whole toolset, per turn)
-/// rather than taken from the design note, so the collapse is measured here rather than
-/// asserted from memory.
+/// The shape under test is the one a plain transcript cannot afford — a **growing**
+/// conversation re-sent in full on every turn, with a large tool array offered alongside it —
+/// so the quadratic term is present and is exactly what pooling has to remove. The unpooled
+/// figure is computed the way a transcript would actually write it (whole conversation plus
+/// whole toolset, per turn) rather than taken from the design note, so the collapse is
+/// measured here rather than asserted from memory.
 #[test]
 fn an_always_on_capture_of_a_realistic_session_costs_a_fraction_of_a_megabyte() {
     const TURNS: u64 = 30;
@@ -270,15 +270,17 @@ fn an_always_on_capture_of_a_realistic_session_costs_a_fraction_of_a_megabyte() 
     let mut interner = GgJournalInterner::new();
     let mut lines = vec![header()];
     // gg's system prompt and its offered tool array: large, identical on every turn, and
-    // together the single biggest thing v1 re-serialized 30 times over.
+    // together the single biggest thing an unpooled transcript would re-serialize 30 times
+    // over.
     let tools = json!([{ "name": "shell", "schema": filler(1, 20_000) }]);
     let mut conversation = vec![message("system", &filler(2, 12_000))];
-    let mut v1_bytes: u64 = 0;
+    let mut unpooled_bytes: u64 = 0;
 
     for turn in 0..TURNS {
         conversation.push(message("user", &filler(100 + turn, 3_000)));
-        // What v1 wrote for this turn: the whole conversation and the whole tool array.
-        v1_bytes += serde_json::to_vec(&conversation).expect("serialize").len() as u64
+        // What a transcript would write for this turn: the whole conversation and the whole
+        // tool array.
+        unpooled_bytes += serde_json::to_vec(&conversation).expect("serialize").len() as u64
             + serde_json::to_vec(&tools).expect("serialize").len() as u64;
 
         let request = interner.intern_request(
@@ -312,9 +314,9 @@ fn an_always_on_capture_of_a_realistic_session_costs_a_fraction_of_a_megabyte() 
         assembly.compressed_bytes,
     );
     assert!(
-        v1_bytes / assembly.compressed_bytes >= 10,
-        "pooling should collapse the transcript by an order of magnitude or better; v1 would \
-         have written {v1_bytes} bytes and this record is {} bytes",
+        unpooled_bytes / assembly.compressed_bytes >= 10,
+        "pooling should collapse the transcript by an order of magnitude or better; unpooled it \
+         would have been {unpooled_bytes} bytes and this record is {} bytes",
         assembly.compressed_bytes,
     );
     // Each distinct body once, not once per turn it survived: the system prompt, one user

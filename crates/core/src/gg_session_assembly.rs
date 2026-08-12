@@ -2,8 +2,8 @@
 //! [capture journal](crate::gg_session_journal) into the served
 //! [session record](crate::gg_session_record::GgSessionRecord).
 //!
-//! This is the other half of the split [format v2](crate::gg_session_record) is built on. In the
-//! container gg appends one line per pinned input and assembles nothing; here, on the
+//! This is the other half of the split the [record format](crate::gg_session_record) is built
+//! on. In the container gg appends one line per pinned input and assembles nothing; here, on the
 //! host, after the working tree has been collected and the container is gone, those lines
 //! become the one document that explains, afterward, what each agent was asked and what
 //! came back. Everything about the placement is deliberate:
@@ -169,8 +169,9 @@ pub fn assemble_journal_to_gz(journal: &Path, output: &Path) -> Result<GgSession
                         journal,
                         format!(
                             "is in journal format {format_version}, which this build does not \
-                             assemble (it writes {GG_SESSION_FORMAT_VERSION}); a record from a gg \
-                             this one does not understand is refused rather than guessed at"
+                             assemble (it writes {GG_SESSION_FORMAT_VERSION}); a journal in a \
+                             format this build does not understand is refused rather than \
+                             guessed at"
                         ),
                     ));
                 }
@@ -260,9 +261,9 @@ pub fn assemble_journal_to_gz(journal: &Path, output: &Path) -> Result<GgSession
 /// Wired into [`RunEngine::session_assembler`](crate::RunEngine) by the host that drives
 /// runs. It applies only to **gg** runs — the seam invokes every wired stage
 /// unconditionally, so deciding "this run has nothing for me" is the stage's own job — and
-/// only to gg runs that actually captured something: a run whose capture never started
-/// (an older gg in the container, an unwritable workspace) leaves no journal, and a
-/// missing journal is an ordinary absence rather than a failure.
+/// only to gg runs that actually captured something: a run whose capture never started (an
+/// unwritable workspace, say) leaves no journal, and a missing journal is an ordinary absence
+/// rather than a failure.
 ///
 /// On success it **removes the journal from the collected tree**. The tree is copied
 /// verbatim into the run's `implementation/` directory and from there into the run-tree
@@ -348,7 +349,7 @@ struct JournalHeader {
 struct Provenance {
     /// The fixed identity the session started from, as the **last**
     /// [`Seed`](GgJournalLine::Seed) line stated it. Default — an empty envelope — for a
-    /// journal that carried none, which is every journal written before the line existed.
+    /// journal that carried none.
     seed: GgSessionSeed,
     /// One row per agent, in the order the run created them.
     agents: Vec<GgSessionAgent>,

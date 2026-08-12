@@ -1,17 +1,16 @@
-//! The gg **session record**, format v2: the content-addressed input log a gg session is
-//! captured into.
+//! The gg **session record**: the content-addressed input log a gg session is captured into.
 //!
 //! A session record pins what a [gg](crate::gg) session consumed, so a run that explains nothing
 //! on its own — one that hung, or outran its cap, and was torn down before its tree was ever
-//! collected — can still be explained. Format v1 was a *transcript*: every turn re-serialized the
-//! whole conversation and the whole offered-tool array, which is quadratic in messages and
-//! linear-times-`N` in tool definitions. Format v2 replaces it with the shape
+//! collected — can still be explained. Its shape is
 //!
 //! > [`seed`](GgSessionRecord::seed) (fixed identity) + three content-addressed pools + an
 //! > ordered [input log](GgSessionRecord::entries)
 //!
-//! so a record costs `O(unique bytes) + O(Σ window items)` instead. That is what makes capture
-//! affordable enough to be always-on rather than a debugging opt-in.
+//! so a record costs `O(unique bytes) + O(Σ window items)` rather than the cost of a plain
+//! transcript, which re-serializes the whole conversation and the whole offered-tool array on
+//! every turn — quadratic in messages and linear-times-`N` in tool definitions. That is what
+//! makes capture affordable enough to be always-on rather than a debugging opt-in.
 //!
 //! # The three pools
 //!
@@ -44,11 +43,10 @@
 //! prompt edit *within* one build must not pass.
 //!
 //! [`GG_SESSION_FORMAT_VERSION`] is the one format this build reads, and anything else is
-//! refused rather than guessed at — a newer record because it may hold entry kinds this
-//! build has never heard of, and a v1 record (the format an *absent*
-//! [`format_version`](GgSessionRecord::format_version) means) because it is a different,
-//! unpooled shape. v1 was readable only through an upgrade-on-read that existed for the
-//! reconstruction gg no longer has.
+//! refused rather than guessed at: a record stating another format may hold entry kinds this
+//! build has never heard of, and reading a session from a partial understanding of its inputs
+//! is worse than not reading it. Every record states its format, so one that states none is
+//! malformed and does not parse at all.
 //!
 //! Like the rest of the contract these types are the source of truth: the TypeScript
 //! bindings (`packages/run-record/src/gg-session-record.ts`) and the JSON Schemas
@@ -77,8 +75,8 @@ use crate::gg::{GgAgentStatus, GgCapabilitySet, GgContextSource, GgLimitBreach};
 #[path = "gg_session_record.test.rs"]
 mod tests;
 
-/// The session-record format version this build writes and is the newest it can read.
-pub const GG_SESSION_FORMAT_VERSION: u32 = 2;
+/// The session-record format version this build writes, and the only one it reads.
+pub const GG_SESSION_FORMAT_VERSION: u32 = 1;
 
 /// The number of lowercase-hex characters a pooled content address is truncated to: 32,
 /// i.e. the leading **128 bits** of a SHA-256 digest.
@@ -517,10 +515,10 @@ pub struct GgSessionRequest {
 
 /// Why a model call failed.
 ///
-/// v1 dropped model errors entirely, which is a straight defect rather than an omission:
-/// a vision refusal strips images and re-runs the turn, and a retry exhaustion counts
-/// against an error ceiling, so **both change control flow** — and the record
-/// diverged precisely where a developer was most likely to be looking.
+/// A failed call is an input like any other: a vision refusal strips images and re-runs the
+/// turn, and a retry exhaustion counts against an error ceiling, so **both change control
+/// flow** — and a record that dropped them would be blank precisely where a developer is
+/// most likely to be looking.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -664,9 +662,9 @@ pub struct GgSessionToolOutcome {
     /// time: a `read_file`'s `contents` (up to 256 KiB) and a `shell`'s `body`. Left inline they
     /// would be the largest thing in the record and the one thing in it that is neither pooled nor
     /// clipped — five reads of the same 100 KB file would store it five times, uncompressed, in a
-    /// format whose entire premise is that v1's per-turn re-serialization of payloads was the
-    /// defect worth fixing. Worse, an inline copy disagrees with a clipped
-    /// [`output`](Self::output), leaving the entry with two answers to what the tool returned.
+    /// format whose entire premise is that a payload is stored once. Worse, an inline copy
+    /// disagrees with a clipped [`output`](Self::output), leaving the entry with two answers to
+    /// what the tool returned.
     ///
     /// Pooling it fixes all three at once: the bytes are stored once, under the same ceiling
     /// `output` is clipped at, and — because a `read_file`'s `contents` and its `output` are
@@ -674,8 +672,7 @@ pub struct GgSessionToolOutcome {
     /// copy costs nothing at all.
     ///
     /// Which field it belongs to is determined by `data`'s own variant, so nothing has to be
-    /// recorded twice to say. Absent on a record whose tool produced no such payload, and on every
-    /// record written before the lift, whose `data` still carries its text inline.
+    /// recorded twice to say. Absent on a record whose tool produced no such payload.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub data_text: Option<u32>,
@@ -769,7 +766,7 @@ pub struct GgSessionCommand {
 /// One item of an agent's context window as it stood for a recorded turn.
 ///
 /// These four typed fields exist in gg's window model and are recoverable from
-/// **nowhere else** — not the telemetry stream, not the raw output, not a v1 record. The
+/// **nowhere else** — not the telemetry stream, not the raw output. The
 /// [`slot`](Self::slot) matters more than it looks: a system prompt and a rebuilt
 /// context-usage signal are otherwise indistinguishable on the wire, since both are
 /// [`System`](GgContextSource::System)-sourced, unlabelled and pinned.
@@ -844,9 +841,9 @@ pub struct GgSessionFileRegion {
 
 /// Which non-deterministic input one [entry](GgSessionEntry) pins.
 ///
-/// The vocabulary is enumerated exhaustively on purpose. v1 captured only the first and
-/// third of these and silently dropped four categories that **change control flow**, so a
-/// the record was blank exactly where a developer was most likely to be looking.
+/// The vocabulary is enumerated exhaustively on purpose: every category here **changes
+/// control flow**, and a capture that dropped one would leave the record blank exactly where
+/// a developer is most likely to be looking.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
     tag = "type",
@@ -915,8 +912,7 @@ pub enum GgSessionEntryKind {
     ///
     /// Recorded because its *result* explains a session that went wrong: a merge that
     /// conflicted changes the run, and a speculation judge scores whatever `git diff` printed.
-    /// It bypasses tool dispatch entirely, so this is the only place it is captured at all —
-    /// in v1 it was captured nowhere, and a run that ended in a conflict left no trace of it.
+    /// It bypasses tool dispatch entirely, so this is the only place it is captured at all.
     Git {
         /// The command and its result.
         command: GgSessionCommand,
@@ -1030,15 +1026,11 @@ pub struct GgSessionTruncation {
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgSessionRecord {
     /// The format **this document** is in. The compatibility contract, and the only
-    /// identity a reader may branch on. Absent ⇒ **1**, the pre-versioned format.
+    /// identity a reader may branch on.
     ///
-    /// [`GG_SESSION_FORMAT_VERSION`] is the one version this build reads. A record from a
-    /// *newer* gg is refused rather than read on a partial understanding of its entry kinds,
-    /// and so is a v1 record: v1 was a different, unpooled shape, readable only through an
-    /// upgrade-on-read that existed for the reconstruction that no longer does. Refusing it
-    /// is the honest answer — the alternative is reporting a v1 body as v2 and handing a
-    /// reader entries it cannot mean.
-    #[serde(default = "format_version_v1")]
+    /// [`GG_SESSION_FORMAT_VERSION`] is the one version this build reads; a record stating any
+    /// other is refused rather than read on a partial understanding of its entry kinds.
+    /// Required: a record that states no format is malformed, not a record to be guessed at.
     pub format_version: u32,
     /// Which build captured it. Explanatory; never a gate.
     #[serde(default)]
@@ -1085,12 +1077,6 @@ pub struct GgSessionRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub truncation: Option<GgSessionTruncation>,
-}
-
-/// The [format version](GgSessionRecord::format_version) an absent field means: the
-/// pre-versioned format, which predates the pools and is not readable by this build.
-fn format_version_v1() -> u32 {
-    1
 }
 
 impl GgSessionRecord {
@@ -1372,7 +1358,6 @@ impl GgSessionInterner for GgSessionPools {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GgSessionRecordRaw {
-    #[serde(default = "format_version_v1")]
     format_version: u32,
     #[serde(default)]
     recorder: GgSessionRecorder,
@@ -1406,12 +1391,9 @@ impl<'de> Deserialize<'de> for GgSessionRecord {
 
         let raw = GgSessionRecordRaw::deserialize(deserializer)?;
         if raw.format_version != GG_SESSION_FORMAT_VERSION {
-            // Refused rather than guessed at, in both directions. A record from a newer gg
-            // may hold entry kinds this build has never heard of, and reading a session
-            // from a partial understanding of its inputs is worse than not reading it. An
-            // older one — an absent field means 1 — is a different, unpooled shape whose
-            // upgrade-on-read went with the reconstruction it existed for; accepting it
-            // would report a v1 body as a v2 record.
+            // Refused rather than guessed at. A record stating another format may hold entry
+            // kinds this build has never heard of, and reading a session from a partial
+            // understanding of its inputs is worse than not reading it.
             return Err(D::Error::custom(format!(
                 "session record format {} is not the format this build reads ({GG_SESSION_FORMAT_VERSION})",
                 raw.format_version

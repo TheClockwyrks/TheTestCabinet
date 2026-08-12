@@ -390,7 +390,7 @@
           "type": "object"
         },
         {
-          "description": "One `git` subprocess gg's own orchestration ran — a worktree add, a commit, a\nmerge, a diff.\n\nRecorded because its *result* explains a session that went wrong: a merge that\nconflicted changes the run, and a speculation judge scores whatever `git diff` printed.\nIt bypasses tool dispatch entirely, so this is the only place it is captured at all —\nin v1 it was captured nowhere, and a run that ended in a conflict left no trace of it.",
+          "description": "One `git` subprocess gg's own orchestration ran — a worktree add, a commit, a\nmerge, a diff.\n\nRecorded because its *result* explains a session that went wrong: a merge that\nconflicted changes the run, and a speculation judge scores whatever `git diff` printed.\nIt bypasses tool dispatch entirely, so this is the only place it is captured at all.",
           "properties": {
             "command": {
               "$ref": "#/$defs/GgSessionCommand",
@@ -521,7 +521,7 @@
       "type": "object"
     },
     "GgSessionModelError": {
-      "description": "Why a model call failed.\n\nv1 dropped model errors entirely, which is a straight defect rather than an omission:\na vision refusal strips images and re-runs the turn, and a retry exhaustion counts\nagainst an error ceiling, so **both change control flow** — and the record\ndiverged precisely where a developer was most likely to be looking.",
+      "description": "Why a model call failed.\n\nA failed call is an input like any other: a vision refusal strips images and re-runs the\nturn, and a retry exhaustion counts against an error ceiling, so **both change control\nflow** — and a record that dropped them would be blank precisely where a developer is\nmost likely to be looking.",
       "properties": {
         "attempts": {
           "description": "How many attempts were made before giving up, for a retry exhaustion.",
@@ -589,7 +589,7 @@
       ]
     },
     "GgSessionPromptItem": {
-      "description": "One item of an agent's context window as it stood for a recorded turn.\n\nThese four typed fields exist in gg's window model and are recoverable from\n**nowhere else** — not the telemetry stream, not the raw output, not a v1 record. The\n[`slot`](Self::slot) matters more than it looks: a system prompt and a rebuilt\ncontext-usage signal are otherwise indistinguishable on the wire, since both are\n[`System`](GgContextSource::System)-sourced, unlabelled and pinned.",
+      "description": "One item of an agent's context window as it stood for a recorded turn.\n\nThese four typed fields exist in gg's window model and are recoverable from\n**nowhere else** — not the telemetry stream, not the raw output. The\n[`slot`](Self::slot) matters more than it looks: a system prompt and a rebuilt\ncontext-usage signal are otherwise indistinguishable on the wire, since both are\n[`System`](GgContextSource::System)-sourced, unlabelled and pinned.",
       "properties": {
         "label": {
           "description": "The item's selector tag, when it carries one — a file view's workspace path, or\nthe fullness signal's sentinel.",
@@ -820,7 +820,7 @@
           "description": "The structured facts a responses-as-code program branches on, when the tool\nproduced them — with the one unbounded text field lifted out into\n[`data_text`](Self::data_text)."
         },
         "dataText": {
-          "description": "The bulky text lifted out of [`data`](Self::data), as an index into\n[`texts`](GgSessionRecord::texts).\n\nTwo of gg's structured tool payloads carry the *whole* of what the tool returned a second\ntime: a `read_file`'s `contents` (up to 256 KiB) and a `shell`'s `body`. Left inline they\nwould be the largest thing in the record and the one thing in it that is neither pooled nor\nclipped — five reads of the same 100 KB file would store it five times, uncompressed, in a\nformat whose entire premise is that v1's per-turn re-serialization of payloads was the\ndefect worth fixing. Worse, an inline copy disagrees with a clipped\n[`output`](Self::output), leaving the entry with two answers to what the tool returned.\n\nPooling it fixes all three at once: the bytes are stored once, under the same ceiling\n`output` is clipped at, and — because a `read_file`'s `contents` and its `output` are\nusually the identical string — they normally dedup to the *same* pool entry, so the second\ncopy costs nothing at all.\n\nWhich field it belongs to is determined by `data`'s own variant, so nothing has to be\nrecorded twice to say. Absent on a record whose tool produced no such payload, and on every\nrecord written before the lift, whose `data` still carries its text inline.",
+          "description": "The bulky text lifted out of [`data`](Self::data), as an index into\n[`texts`](GgSessionRecord::texts).\n\nTwo of gg's structured tool payloads carry the *whole* of what the tool returned a second\ntime: a `read_file`'s `contents` (up to 256 KiB) and a `shell`'s `body`. Left inline they\nwould be the largest thing in the record and the one thing in it that is neither pooled nor\nclipped — five reads of the same 100 KB file would store it five times, uncompressed, in a\nformat whose entire premise is that a payload is stored once. Worse, an inline copy\ndisagrees with a clipped [`output`](Self::output), leaving the entry with two answers to\nwhat the tool returned.\n\nPooling it fixes all three at once: the bytes are stored once, under the same ceiling\n`output` is clipped at, and — because a `read_file`'s `contents` and its `output` are\nusually the identical string — they normally dedup to the *same* pool entry, so the second\ncopy costs nothing at all.\n\nWhich field it belongs to is determined by `data`'s own variant, so nothing has to be\nrecorded twice to say. Absent on a record whose tool produced no such payload.",
           "format": "uint32",
           "minimum": 0,
           "type": ["integer", "null"]
@@ -1022,8 +1022,7 @@
       "type": "array"
     },
     "formatVersion": {
-      "default": 1,
-      "description": "The format **this document** is in. The compatibility contract, and the only\nidentity a reader may branch on. Absent ⇒ **1**, the pre-versioned format.\n\n[`GG_SESSION_FORMAT_VERSION`] is the one version this build reads. A record from a\n*newer* gg is refused rather than read on a partial understanding of its entry kinds,\nand so is a v1 record: v1 was a different, unpooled shape, readable only through an\nupgrade-on-read that existed for the reconstruction that no longer does. Refusing it\nis the honest answer — the alternative is reporting a v1 body as v2 and handing a\nreader entries it cannot mean.",
+      "description": "The format **this document** is in. The compatibility contract, and the only\nidentity a reader may branch on.\n\n[`GG_SESSION_FORMAT_VERSION`] is the one version this build reads; a record stating any\nother is refused rather than read on a partial understanding of its entry kinds.\nRequired: a record that states no format is malformed, not a record to be guessed at.",
       "format": "uint32",
       "minimum": 0,
       "type": "integer"
@@ -1080,7 +1079,7 @@
       "description": "What the record is missing, when it is missing something. Absent on a complete\ncapture."
     }
   },
-  "required": ["sessionId", "capabilitySet"],
+  "required": ["formatVersion", "sessionId", "capabilitySet"],
   "title": "GgSessionRecord",
   "type": "object"
 }

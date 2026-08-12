@@ -1135,9 +1135,9 @@ impl ModelClient for FailingOnceClient {
     }
 }
 
-/// A failed model call is an **input**, and one this build records: v1 dropped every one of them,
-/// so a run that recovered from a vision refusal had nothing in its record at exactly the turn a
-/// developer had opened the record to look at.
+/// A failed model call is an **input**, and one this build records: a run that recovers from a
+/// vision refusal would otherwise have nothing in its record at exactly the turn a developer
+/// opened the record to look at.
 ///
 /// This is the vision-recovery shape end to end: the refused call and the stripped retry both go
 /// through the same wrapped client, so the record reads `model_error → model_io`, and the class
@@ -1352,9 +1352,9 @@ fn a_recorded_command_carries_its_origin_streams_and_working_directory() {
     assert_ne!(command.stdout, command.stderr);
 }
 
-/// gg's own `git` bypassed tool dispatch entirely in v1 and was captured nowhere, so a run that
-/// ended in a merge conflict left no trace of the conflict. It is recorded now, with its streams
-/// pooled like every other bulky payload.
+/// gg's own `git` bypasses tool dispatch entirely, so this seam is the only thing that records
+/// it — without it a run that ended in a merge conflict would leave no trace of the conflict. Its
+/// streams are pooled like every other bulky payload.
 #[test]
 fn a_recorded_git_invocation_interns_both_of_its_streams() {
     let (dir, recorder) = recorder_in(None);
@@ -1591,10 +1591,10 @@ fn a_standard_capture_still_clips_a_tool_payload_past_the_tool_ceiling() {
 /// A `read_file`'s structured payload repeats the file body a second time, and that copy is
 /// **pooled with the first** rather than inlined beside it.
 ///
-/// Inline, it was the one payload in the record that was neither deduped nor clipped: five reads of
-/// the same 100 KB file stored it five times, uncompressed, in a format whose whole premise is that
-/// per-turn re-serialization of payloads was v1's defect. Pooled, the body and the outcome's
-/// `output` are the same string and therefore the same pool entry — the second copy is free.
+/// Inline it would be the one payload in the record that is neither deduped nor clipped: five
+/// reads of the same 100 KB file would store it five times, uncompressed, in a format whose whole
+/// premise is that a payload is stored once. Pooled, the body and the outcome's `output` are the
+/// same string and therefore the same pool entry — the second copy is free.
 #[test]
 fn a_structured_file_payload_is_pooled_with_the_output_it_duplicates() {
     let (dir, recorder) = recorder_in(None);
@@ -1734,11 +1734,10 @@ fn the_deadline_clock_is_recorded() {
 /// three a live run stamps, and the retired one a record written before the ending gate became a
 /// hook still carries.
 ///
-/// Closing this gap is what made the recorded shell possible at all: for the whole of format v2's
-/// first milestones the only commands captured were the ones gg ran *without the model asking* —
-/// then the completion capability's validation build, today an [agent-stop
-/// hook's](crate::hooks) — because that was the only call site that happened to hold a recorder, so
-/// a record of a session that used the `shell` tool had no answer for a single one of its commands.
+/// The decorator is what makes that possible: only one of the three paths — a
+/// [hook's](crate::hooks) command, the one gg runs *without the model asking* — runs at a call
+/// site that holds a recorder, so capturing anywhere but the shared seam would leave a session
+/// that used the `shell` tool with no answer for a single one of its commands.
 ///
 /// [`CompletionValidation`](GgShellOrigin::CompletionValidation) is exercised alongside the three
 /// live origins rather than dropped with the capability: records written before it was retired are

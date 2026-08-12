@@ -370,10 +370,10 @@ export type GgSessionModelErrorKind =
 /**
  * Why a model call failed.
  *
- * v1 dropped model errors entirely, which is a straight defect rather than an omission:
- * a vision refusal strips images and re-runs the turn, and a retry exhaustion counts
- * against an error ceiling, so **both change control flow** — and the record
- * diverged precisely where a developer was most likely to be looking.
+ * A failed call is an input like any other: a vision refusal strips images and re-runs the
+ * turn, and a retry exhaustion counts against an error ceiling, so **both change control
+ * flow** — and a record that dropped them would be blank precisely where a developer is
+ * most likely to be looking.
  */
 export type GgSessionModelError = {
   /**
@@ -561,9 +561,9 @@ export type GgSessionToolOutcome = {
    * time: a `read_file`'s `contents` (up to 256 KiB) and a `shell`'s `body`. Left inline they
    * would be the largest thing in the record and the one thing in it that is neither pooled nor
    * clipped — five reads of the same 100 KB file would store it five times, uncompressed, in a
-   * format whose entire premise is that v1's per-turn re-serialization of payloads was the
-   * defect worth fixing. Worse, an inline copy disagrees with a clipped
-   * [`output`](Self::output), leaving the entry with two answers to what the tool returned.
+   * format whose entire premise is that a payload is stored once. Worse, an inline copy
+   * disagrees with a clipped [`output`](Self::output), leaving the entry with two answers to
+   * what the tool returned.
    *
    * Pooling it fixes all three at once: the bytes are stored once, under the same ceiling
    * `output` is clipped at, and — because a `read_file`'s `contents` and its `output` are
@@ -571,8 +571,7 @@ export type GgSessionToolOutcome = {
    * copy costs nothing at all.
    *
    * Which field it belongs to is determined by `data`'s own variant, so nothing has to be
-   * recorded twice to say. Absent on a record whose tool produced no such payload, and on every
-   * record written before the lift, whose `data` still carries its text inline.
+   * recorded twice to say. Absent on a record whose tool produced no such payload.
    */
   dataText?: number;
   /**
@@ -613,7 +612,7 @@ export type GgSessionFileRegion = {
  * One item of an agent's context window as it stood for a recorded turn.
  *
  * These four typed fields exist in gg's window model and are recoverable from
- * **nowhere else** — not the telemetry stream, not the raw output, not a v1 record. The
+ * **nowhere else** — not the telemetry stream, not the raw output. The
  * [`slot`](Self::slot) matters more than it looks: a system prompt and a rebuilt
  * context-usage signal are otherwise indistinguishable on the wire, since both are
  * [`System`](GgContextSource::System)-sourced, unlabelled and pinned.
@@ -654,9 +653,9 @@ export type GgSessionPromptItem = {
 /**
  * Which non-deterministic input one [entry](GgSessionEntry) pins.
  *
- * The vocabulary is enumerated exhaustively on purpose. v1 captured only the first and
- * third of these and silently dropped four categories that **change control flow**, so a
- * the record was blank exactly where a developer was most likely to be looking.
+ * The vocabulary is enumerated exhaustively on purpose: every category here **changes
+ * control flow**, and a capture that dropped one would leave the record blank exactly where
+ * a developer is most likely to be looking.
  */
 export type GgSessionEntryKind =
   | {
@@ -905,14 +904,11 @@ export type GgSessionTruncation = {
 export type GgSessionRecord = {
   /**
    * The format **this document** is in. The compatibility contract, and the only
-   * identity a reader may branch on. Absent ⇒ **1**, the pre-versioned format.
+   * identity a reader may branch on.
    *
-   * [`GG_SESSION_FORMAT_VERSION`] is the one version this build reads. A record from a
-   * *newer* gg is refused rather than read on a partial understanding of its entry kinds,
-   * and so is a v1 record: v1 was a different, unpooled shape, readable only through an
-   * upgrade-on-read that existed for the reconstruction that no longer does. Refusing it
-   * is the honest answer — the alternative is reporting a v1 body as v2 and handing a
-   * reader entries it cannot mean.
+   * [`GG_SESSION_FORMAT_VERSION`] is the one version this build reads; a record stating any
+   * other is refused rather than read on a partial understanding of its entry kinds.
+   * Required: a record that states no format is malformed, not a record to be guessed at.
    */
   formatVersion: number;
   /**

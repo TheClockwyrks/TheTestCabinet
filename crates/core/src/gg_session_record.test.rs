@@ -1,5 +1,5 @@
-//! Tests for the [format v2](super) session record: the pooled shape, the content addresses
-//! that make pooling safe, and the version check that refuses everything else.
+//! Tests for the [session record](super): the pooled shape, the content addresses that make
+//! pooling safe, and the version check that refuses everything else.
 
 use serde_json::{Value, json};
 
@@ -7,7 +7,7 @@ use super::*;
 use crate::gg::GgCapabilitySet;
 
 /// A minimal capability set, deserialized rather than constructed so the test does not
-/// have to track the set's own migration shape.
+/// have to track the set's own field list.
 fn capability_set() -> GgCapabilitySet {
     serde_json::from_value(json!({})).expect("an empty capability set deserializes")
 }
@@ -42,21 +42,19 @@ fn a_newer_format_version_is_refused_rather_than_guessed_at() {
 }
 
 #[test]
-fn an_absent_format_version_is_a_v1_record_and_is_refused_too() {
-    // Every record this build writes states its version, so an absent field can only be a
-    // capture from before the pools — a different shape, whose upgrade-on-read went with
-    // the reconstruction it existed for. Reading it as v2 would report a v1 body as a v2
-    // record, so it is refused.
+fn a_record_that_states_no_format_version_is_malformed() {
+    // The field is required rather than defaulted: a document that does not say what format
+    // it is in is not a record in some other format to be refused, it is not a record.
     let mut value =
         serde_json::to_value(GgSessionRecord::new("run_1", capability_set())).expect("serializes");
     value
         .as_object_mut()
         .expect("an object")
         .remove("formatVersion");
-    let error =
-        serde_json::from_value::<GgSessionRecord>(value).expect_err("a v1 record is refused");
+    let error = serde_json::from_value::<GgSessionRecord>(value)
+        .expect_err("a record without a format version does not parse");
     assert!(
-        error.to_string().contains("format 1 is not the format"),
+        error.to_string().contains("missing field `formatVersion`"),
         "unexpected error: {error}"
     );
 }
@@ -375,8 +373,6 @@ fn a_shell_cwd_is_recorded_relative_to_the_workspace() {
         json!({ "type": "absolute", "path": "/usr/lib" })
     );
 }
-
-// --- the v1 upgrade ---------------------------------------------------------
 
 // --- addressing -------------------------------------------------------------
 
