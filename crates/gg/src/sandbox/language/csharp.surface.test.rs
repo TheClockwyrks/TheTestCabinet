@@ -968,9 +968,9 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
     );
     assert_eq!(
         catalogue["schema"].as_u64(),
-        Some(2),
-        "this arm has been converted to the normalized doc model, and the schema number is what \
-         turns the gates that read it on"
+        Some(1),
+        "a catalogue declares which shape it is written in, and one that stopped saying so would \
+         not be readable at all"
     );
 
     // Identity: the modules, in the order the surface is presented in, each with gg's cross-arm id

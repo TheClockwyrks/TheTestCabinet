@@ -72,8 +72,8 @@ OUT = File.join(
 )
 
 # The schema this catalogue is written in — the normalized doc model, which `crates/gg/src/sandbox/
-# signatures.rs` dispatches on.
-SCHEMA = 2
+# signatures.rs` reads.
+SCHEMA = 1
 
 # What a reader of the emitted artifact would regenerate it from.
 GENERATED_FROM = "packages/gg-sandbox-ruby/src/gg/ + src/library.rb (YARD)"

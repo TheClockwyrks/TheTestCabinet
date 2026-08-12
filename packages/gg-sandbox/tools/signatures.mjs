@@ -23,10 +23,10 @@
 //
 // # What the shape is
 //
-// Schema 2, the normalized doc model: **modules** rather than API objects, one flat **functions**
-// array whose entries name a gg **operation** and are keyed by a module-qualified **fqn**, an
-// **authored** brief and optional detail rather than a derived summary, and type references
-// **resolved** to the declaration each one opens.
+// The normalized doc model: **modules** rather than API objects, one flat **functions** array
+// whose entries name a gg **operation** and are keyed by a module-qualified **fqn**, an **authored**
+// brief and optional detail rather than a derived summary, and type references **resolved** to the
+// declaration each one opens.
 //
 //   * a module is `src/gg/<id>.ts`, and its own file-leading JSDoc is what introduces it;
 //   * a function is an exported function of one of those files, and the gg operation it binds is
@@ -127,7 +127,7 @@ const HEADERS_DIR = path.join(PACKAGE_DIR, "dist", "headers", "gg");
 const LANGUAGES = ["typescript", "javascript"];
 
 /** The doc model this catalogue is written in. See the header. */
-const SCHEMA = 2;
+const SCHEMA = 1;
 
 /**
  * The provenance string written into the catalogue, so a reader of the JSON knows it is generated and

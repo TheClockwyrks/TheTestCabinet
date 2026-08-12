@@ -46,7 +46,7 @@ import catalogue  # noqa: E402  (the module table, beside this file)
 
 #: The schema this catalogue is written in — the normalized doc model: modules, operations,
 #: fully-qualified names, authored briefs and resolved type references.
-SCHEMA = 2
+SCHEMA = 1
 
 #: What the emitted catalogue records itself as reflected from.
 GENERATED_FROM = "packages/gg-sandbox-swift/Sources/SDK/ (swiftc -emit-symbol-graph)"

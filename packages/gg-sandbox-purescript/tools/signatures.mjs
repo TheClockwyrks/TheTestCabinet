@@ -101,7 +101,7 @@ const OUT = join(OUT_DIR, "purescript.signatures.json");
 
 /** The schema this catalogue is written in: modules, operations, fully-qualified names, authored
  * briefs and resolved type references. */
-const SCHEMA = 2;
+const SCHEMA = 1;
 
 /** What the emitted catalogue records itself as reflected from. */
 const GENERATED_FROM =

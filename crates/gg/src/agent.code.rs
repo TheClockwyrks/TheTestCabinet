@@ -2387,14 +2387,14 @@ fn docs_close_event(key: Option<&str>, closed: &ViewsClosed) -> Option<GgTelemet
 /// The identifier on a hit's line is the one the model is about to type into an
 /// [`open_docs_view`](ToolApi::open_docs_view), so it has to be the one that call takes: the
 /// **fully-qualified** [`key`](crate::docs::DocHit::key), not the bare
-/// [`name`](crate::docs::DocHit::name). A bare name is not an identity on a schema-v2 arm — several
+/// [`name`](crate::docs::DocHit::name). A bare name is not an identity on an arm — several
 /// modules offer a `close`, and [`DocsRuntime::function`](crate::docs::DocsRuntime) resolves a bare
 /// one to whichever the catalogue happens to list first — so a list rendered by name would hand the
 /// model an ambiguous string and silently answer with the wrong entry's page. Every arm's system
 /// prompt already promises the opposite, telling a model to open a view *by the fully-qualified name
 /// the brief carries*; this is the line that carries it.
 ///
-/// The module is not repeated beside it for the same reason: on a schema-v2 arm the key already
+/// The module is not repeated beside it for the same reason: the key already
 /// begins with the module, and a **type**'s [`module`](crate::docs::DocHit::module) is the joined
 /// list of every module whose functions mention it, which as a parenthesised suffix is a
 /// twelve-item blob rather than a fact worth reading.

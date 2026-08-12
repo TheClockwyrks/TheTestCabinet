@@ -494,7 +494,7 @@ fn every_registered_arm_is_written_in_the_schema_this_tree_reads() {
     for language in language::all_languages() {
         assert_eq!(
             language.catalogue().schema,
-            SchemaVersion::V2,
+            CATALOGUE_SCHEMA,
             "{} is written in a schema this tree does not read",
             language.display_name()
         );
@@ -507,11 +507,26 @@ fn every_registered_arm_is_written_in_the_schema_this_tree_reads() {
 /// whichever shape happens to parse is how a model is handed a signature nobody wrote.
 #[test]
 fn a_schema_from_a_newer_gg_is_refused() {
-    let ahead = fixture::V2.replacen("\"schema\": 2", "\"schema\": 3", 1);
-    let error = SignatureCatalogue::parse(&ahead).expect_err("schema 3 is not readable here");
+    let ahead = fixture::CATALOGUE.replacen("\"schema\": 1", "\"schema\": 2", 1);
+    let error = SignatureCatalogue::parse(&ahead).expect_err("schema 2 is not readable here");
     assert!(
         error.to_string().contains("schema"),
         "the refusal says which key it is about: {error}"
+    );
+}
+
+/// **A catalogue that does not say what it is written in is refused too.**
+///
+/// The key is required rather than defaulted, because a default would read a document of unknown
+/// shape as the one shape gg renders — the same signature nobody wrote, reached by omission instead
+/// of by a number.
+#[test]
+fn a_catalogue_that_declares_no_schema_is_refused() {
+    let silent = fixture::CATALOGUE.replacen("\"schema\": 1,", "", 1);
+    let error = SignatureCatalogue::parse(&silent).expect_err("a catalogue must say its shape");
+    assert!(
+        error.to_string().contains("schema"),
+        "the refusal says which key is missing: {error}"
     );
 }
 
@@ -519,7 +534,7 @@ fn a_schema_from_a_newer_gg_is_refused() {
 /// it is filed under, the operation it binds and the return position its reflector resolved.
 #[test]
 fn an_entry_carries_the_identity_its_document_states() {
-    let functions = super::functions_of(fixture::v2());
+    let functions = super::functions_of(fixture::catalogue());
     let read = functions
         .iter()
         .find(|function| function.name == "read_file")
@@ -555,7 +570,7 @@ fn an_entry_carries_the_identity_its_document_states() {
 /// gets one of them right and silently answers `None` for the rest.
 #[test]
 fn the_gate_of_an_entry_is_synthesized_from_ggs_own_table() {
-    let functions = super::functions_of(fixture::v2());
+    let functions = super::functions_of(fixture::catalogue());
     let by_name = |name: &str| {
         functions
             .iter()
@@ -578,15 +593,15 @@ fn the_gate_of_an_entry_is_synthesized_from_ggs_own_table() {
     assert!(close.gate.is_none() && close.ending.is_none() && close.capability.is_none());
 
     // The fixture never says any of that: the JSON carries an operation id and no gate at all.
-    assert!(!fixture::V2.contains("\"requires\""));
-    assert!(!fixture::V2.contains("\"ending\""));
+    assert!(!fixture::CATALOGUE.contains("\"requires\""));
+    assert!(!fixture::CATALOGUE.contains("\"ending\""));
 }
 
 /// **An operation named on the declaration resolves to gg's row for it** — the one join between an
 /// arm's surface and gg's own vocabulary.
 #[test]
 fn an_entry_resolves_to_its_operation_by_id() {
-    let functions = super::functions_of(fixture::v2());
+    let functions = super::functions_of(fixture::catalogue());
     let read = functions
         .iter()
         .find(|function| function.name == "read_file")
@@ -600,7 +615,7 @@ fn an_entry_resolves_to_its_operation_by_id() {
 /// across eleven arms that spell it eleven ways.
 #[test]
 fn a_module_carries_ggs_id_and_the_arms_own_path() {
-    let new = super::modules_of(fixture::v2());
+    let new = super::modules_of(fixture::catalogue());
     assert_eq!(
         new.iter().map(|module| module.path).collect::<Vec<_>>(),
         ["gg::files", "gg::views", "gg::session", "gg::programs"]
@@ -654,7 +669,7 @@ fn a_type_reference_carries_both_the_spelling_and_the_resolution() {
          a claim to have resolved it"
     );
 
-    let read = super::functions_of(fixture::v2())
+    let read = super::functions_of(fixture::catalogue())
         .into_iter()
         .find(|function| function.name == "read_file")
         .expect("the fixture reads files");
@@ -673,7 +688,7 @@ fn a_type_reference_carries_both_the_spelling_and_the_resolution() {
 /// each member.**
 #[test]
 fn a_type_carries_the_name_it_is_opened_by() {
-    let declared = fixture::v2()
+    let declared = fixture::catalogue()
         .types
         .iter()
         .find(|declaration| declaration.name == "FileRead")
@@ -697,11 +712,11 @@ fn a_type_carries_the_name_it_is_opened_by() {
 
     // And a type carries the menu of what can be done with a value of it, which is what makes
     // opening a function's return type land the model somewhere useful.
-    let view = fixture::v2()
+    let view = fixture::catalogue()
         .types
         .iter()
         .find(|declaration| declaration.name == "OpenView")
-        .expect("the v2 fixture declares it");
+        .expect("the fixture declares it");
     assert_eq!(
         view.member_functions
             .iter()

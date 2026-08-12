@@ -186,13 +186,13 @@ pub use {
 // fields of types it does: a `SignatureEntry` hangs off every `CatalogueFunction`, a `TypeMember`
 // off every `TypeDeclaration`, and `Prose` is every piece of documentation in either. A type a
 // reader has to reach into a private module to read is a type nobody reads, and the crate denies
-// warnings. `SchemaVersion` is what a catalogue declares itself in, `ModuleView` and
+// warnings. `CATALOGUE_SCHEMA` is what a catalogue declares itself in, `ModuleView` and
 // `catalogue_modules` are the module half of the projection, and `EntryKind`, `MemberKind`,
 // `MemberFunction`, `ModuleDoc` and `TypeReference` are its fields.
 #[allow(unused_imports)]
 pub use signatures::{
-    EntryKind, LibraryGroup, MemberFunction, MemberKind, ModuleDoc, ModuleView, Prose,
-    SchemaVersion, SignatureEntry, TypeMember, TypeReference, catalogue_modules,
+    CATALOGUE_SCHEMA, EntryKind, LibraryGroup, MemberFunction, MemberKind, ModuleDoc, ModuleView,
+    Prose, SignatureEntry, TypeMember, TypeReference, catalogue_modules,
 };
 
 /// One code module as the guest binds it: the key it is reached at under `lib`, and the source

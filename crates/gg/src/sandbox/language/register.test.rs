@@ -1,6 +1,6 @@
 //! Tests for [the register gate](super).
 //!
-//! Half of these are **teeth**: each takes the clean v2 fixture, damages one description in one
+//! Half of these are **teeth**: each takes the clean fixture, damages one description in one
 //! specific way, and asserts the gate names it. A register gate nobody has watched fail is a gate
 //! that will still be green the day the prose decays back into what it is today, which is the exact
 //! failure it was written to prevent.
@@ -12,7 +12,7 @@ use crate::sandbox::signatures::fixture;
 
 /// The complaints against a fixture whose `edit` damaged one description, as strings.
 fn against(edit: impl FnOnce(&mut Value)) -> Vec<String> {
-    complaints(fixture::v2_with(edit))
+    complaints(fixture::catalogue_with(edit))
         .into_iter()
         .map(|complaint| complaint.to_string())
         .collect()
@@ -22,7 +22,7 @@ fn against(edit: impl FnOnce(&mut Value)) -> Vec<String> {
 /// the fixture only because this holds.
 #[test]
 fn prose_written_in_the_register_passes() {
-    assert_eq!(complaints(fixture::v2()), Vec::new());
+    assert_eq!(complaints(fixture::catalogue()), Vec::new());
 }
 
 /// **Every registered arm's prose passes the register** — every brief one line, every detail in the
@@ -435,7 +435,7 @@ fn a_misspelled_alias_or_member_operation_is_caught() {
 /// eleven arms and reports a bare sentence is a gate whose failure costs a bisect.
 #[test]
 fn a_complaint_names_the_arm_and_the_subject() {
-    let complaint = complaints(fixture::v2_with(|json| {
+    let complaint = complaints(fixture::catalogue_with(|json| {
         json["functions"][3]["brief"] = "".into();
     }))
     .pop()

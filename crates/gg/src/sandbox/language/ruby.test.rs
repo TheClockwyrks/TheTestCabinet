@@ -125,7 +125,7 @@ fn the_generated_documentation_program_is_ruby() {
 fn the_generated_catalogue_is_this_languages() {
     let catalogue = ruby().catalogue();
     assert_eq!(catalogue.language, GgProgramLanguage::Ruby);
-    assert_eq!(catalogue.schema, crate::sandbox::SchemaVersion::V2);
+    assert_eq!(catalogue.schema, crate::sandbox::CATALOGUE_SCHEMA);
     assert!(!catalogue.functions.is_empty());
     // The spelling that says the reflection is Ruby's rather than an ECMAScript arm's: a
     // module-qualified constant path, with the method reached through `.` as Ruby reaches a

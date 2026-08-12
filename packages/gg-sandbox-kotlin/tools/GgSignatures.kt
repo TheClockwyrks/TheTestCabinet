@@ -51,7 +51,7 @@ import org.jetbrains.kotlin.psi.psiUtil.isPublic
  *
  * ## How a type reference is resolved without an analysis
  *
- * It is a **parse** rather than a semantic analysis, and the second schema asks for something a parse
+ * It is a **parse** rather than a semantic analysis, and the schema asks for something a parse
  * does not hand over for free: a type reference recorded as the declaration it *names* rather than as
  * the identifier the author happened to write. PSI's reference API cannot answer that here —
  * `KotlinReferenceProvidersService` is unregistered in a bare `KotlinCoreEnvironment`, so
@@ -86,7 +86,7 @@ private const val GENERATED_FROM: String =
         "(tools/GgSignatures.kt)"
 
 /** The schema this catalogue is written in: the normalized doc model. */
-private const val SCHEMA: Int = 2
+private const val SCHEMA: Int = 1
 
 /** The longest a brief may be, which is the cap the register gate holds every arm to. */
 private const val BRIEF_CAP: Int = 120
@@ -634,7 +634,7 @@ private class Libraries(val groups: List<Pair<String, List<String>>>) {
 // Rendering
 // -------------------------------------------------------------------------------------------
 
-/** One catalogued call, in the shape the second schema carries it. */
+/** One catalogued call, in the shape the schema carries it. */
 private class Entry(
     val operation: String,
     val aliasOf: String?,
@@ -1118,7 +1118,7 @@ private class Catalogue(val index: Index, val libraries: Libraries) {
         }
 
     /** One declared type, with a line per member and a menu of what a value of it offers. */
-    private fun type(fqn: String): Declared2 {
+    private fun type(fqn: String): TypeEntry {
         val declared = index.types[fqn] ?: fail("nothing declares the type `$fqn`")
         val names = Names(declared.file, index.types)
         val doc =
@@ -1184,7 +1184,7 @@ private class Catalogue(val index: Index, val libraries: Libraries) {
         if (out.isEmpty()) {
             fail("the type `$fqn` has no members to describe")
         }
-        return Declared2(
+        return TypeEntry(
             fqn = fqn,
             module = declared.module.id,
             name = declared.name,
@@ -1196,8 +1196,8 @@ private class Catalogue(val index: Index, val libraries: Libraries) {
         )
     }
 
-    /** One type declaration, in the shape the second schema carries it. */
-    private class Declared2(
+    /** One type declaration, in the shape the schema carries it. */
+    private class TypeEntry(
         val fqn: String,
         val module: String,
         val name: String,
@@ -1208,7 +1208,7 @@ private class Catalogue(val index: Index, val libraries: Libraries) {
         val memberFunctions: List<MemberFunction>,
     )
 
-    private fun Json.write(type: Declared2) {
+    private fun Json.write(type: TypeEntry) {
         field("fqn", type.fqn)
         field("module", type.module)
         field("name", type.name)

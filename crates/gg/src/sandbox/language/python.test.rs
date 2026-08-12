@@ -148,7 +148,7 @@ fn the_generated_documentation_program_is_python() {
 fn the_generated_catalogue_is_this_languages() {
     let catalogue = python().catalogue();
     assert_eq!(catalogue.language, GgProgramLanguage::Python);
-    assert_eq!(catalogue.schema, crate::sandbox::SchemaVersion::V2);
+    assert_eq!(catalogue.schema, crate::sandbox::CATALOGUE_SCHEMA);
     assert!(!catalogue.functions.is_empty());
     // The spellings that say the reflection is Python's rather than another arm's: the module is a
     // dotted package path and the function keeps the snake_case gg itself uses, which is the one

@@ -851,7 +851,7 @@ fn the_artifact_binds_exactly_the_tools_gg_offers() {
 #[test]
 fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
     let catalogue = catalogue();
-    assert_eq!(catalogue["schema"], 2);
+    assert_eq!(catalogue["schema"], 1);
     assert_eq!(catalogue["language"], "cpp");
     assert_eq!(
         text(&catalogue, "generatedFrom"),

@@ -98,7 +98,7 @@ import jdk.javadoc.doclet.Reporter;
  */
 public final class GgSignatures implements Doclet {
     /** The schema this catalogue is written in: the normalized doc model. */
-    private static final int SCHEMA = 2;
+    private static final int SCHEMA = 1;
 
     /** The block tag naming the gg operation a declaration binds. */
     private static final String OPERATION_TAG = "ggop";

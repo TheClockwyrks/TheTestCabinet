@@ -23,12 +23,12 @@ use std::sync::OnceLock;
 
 use serde_json::Value;
 
-use super::{SchemaVersion, SignatureCatalogue};
+use super::{CATALOGUE_SCHEMA, SignatureCatalogue};
 
 /// The surface as a catalogue: modules, operations, fully-qualified names, authored briefs and
 /// resolved type references.
-pub(crate) const V2: &str = r#"{
-  "schema": 2,
+pub(crate) const CATALOGUE: &str = r#"{
+  "schema": 1,
   "language": "rust",
   "generatedFrom": "the doc model's own fixture — no SDK, no reflector",
   "modules": [
@@ -180,10 +180,10 @@ pub(crate) const V2: &str = r#"{
 }"#;
 
 /// The fixture, parsed once.
-pub(crate) fn v2() -> &'static SignatureCatalogue {
+pub(crate) fn catalogue() -> &'static SignatureCatalogue {
     static PARSED: OnceLock<SignatureCatalogue> = OnceLock::new();
-    let catalogue = PARSED.get_or_init(|| parse(V2));
-    assert_eq!(catalogue.schema, SchemaVersion::V2);
+    let catalogue = PARSED.get_or_init(|| parse(CATALOGUE));
+    assert_eq!(catalogue.schema, CATALOGUE_SCHEMA);
     catalogue
 }
 
@@ -194,8 +194,8 @@ pub(crate) fn v2() -> &'static SignatureCatalogue {
 /// damaged one at once and compare what each produces. A test binary that runs a handful of these
 /// leaks a handful of catalogues and then exits, which is the same trade the
 /// [fixture language](super::super::language::fixture) already makes.
-pub(crate) fn v2_with(edit: impl FnOnce(&mut Value)) -> &'static SignatureCatalogue {
-    let mut json: Value = serde_json::from_str(V2).expect("the v2 fixture is valid JSON");
+pub(crate) fn catalogue_with(edit: impl FnOnce(&mut Value)) -> &'static SignatureCatalogue {
+    let mut json: Value = serde_json::from_str(CATALOGUE).expect("the fixture is valid JSON");
     edit(&mut json);
     Box::leak(Box::new(parse(&json.to_string())))
 }

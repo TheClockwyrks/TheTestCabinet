@@ -85,7 +85,7 @@ says whose spellings it carries, and asserted by the host against the language t
 which is what catches a build that generated eleven catalogues and wired one of them to the wrong
 arm."""
 
-SCHEMA = 2
+SCHEMA = 1
 """The schema this catalogue is written in — the normalized doc model: modules, operations,
 fully-qualified names, authored briefs and resolved type references."""
 

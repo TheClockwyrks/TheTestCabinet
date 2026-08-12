@@ -161,7 +161,7 @@ fn the_generated_catalogue_is_this_languages() {
     assert_eq!(catalogue.language, GgProgramLanguage::Kotlin);
     assert_eq!(
         catalogue.schema,
-        crate::sandbox::SchemaVersion::V2,
+        crate::sandbox::CATALOGUE_SCHEMA,
         "this arm is written in the normalized doc model"
     );
     assert!(!catalogue.functions.is_empty());

@@ -421,11 +421,11 @@ fn a_member_that_names_another_receiver_is_refused() {
     );
 }
 
-/// **The clean v2 fixture passes the whole catalogue check**, which is what makes every damaged
+/// **The clean fixture passes the whole catalogue check**, which is what makes every damaged
 /// variant below a statement about the damage rather than about the fixture.
 #[test]
-fn the_v2_fixture_names_are_whole() {
-    assert_eq!(faults(fixture::v2()), Vec::<String>::new());
+fn the_fixture_names_are_whole() {
+    assert_eq!(faults(fixture::catalogue()), Vec::<String>::new());
 }
 
 /// **Every registered arm's names hold together**: module-qualified, of the right shape for its
@@ -446,7 +446,7 @@ fn every_registered_arms_names_are_whole() {
 /// **A name qualified by a module nobody declared is a name whose prefix means nothing.**
 #[test]
 fn a_module_the_catalogue_does_not_declare_is_caught() {
-    let damaged = fixture::v2_with(|json| {
+    let damaged = fixture::catalogue_with(|json| {
         json["functions"][3]["module"] = "filesystem".into();
     });
     let faults = faults(damaged);
@@ -460,7 +460,7 @@ fn a_module_the_catalogue_does_not_declare_is_caught() {
 /// **Two entries may not claim one name**, because a name is what a documentation view is keyed by.
 #[test]
 fn a_duplicated_name_is_caught() {
-    let damaged = fixture::v2_with(|json| {
+    let damaged = fixture::catalogue_with(|json| {
         json["functions"][0]["fqn"] = "gg::files::read_file".into();
         json["functions"][0]["module"] = "files".into();
         json["functions"][0]["name"] = "read_file".into();
@@ -478,7 +478,7 @@ fn a_duplicated_name_is_caught() {
 /// function's return types a lookup rather than a guess.
 #[test]
 fn a_reference_to_an_undeclared_type_is_caught() {
-    let damaged = fixture::v2_with(|json| {
+    let damaged = fixture::catalogue_with(|json| {
         json["functions"][3]["returns"][0] = "gg::files::FileReadResult".into();
     });
     let faults = faults(damaged);
@@ -493,7 +493,7 @@ fn a_reference_to_an_undeclared_type_is_caught() {
 /// function the catalogue does not carry is caught.
 #[test]
 fn a_member_function_that_is_not_catalogued_is_caught() {
-    let damaged = fixture::v2_with(|json| {
+    let damaged = fixture::catalogue_with(|json| {
         json["types"][1]["memberFunctions"][0]["fqn"] = "gg::views::OpenView::reopen".into();
     });
     let faults = faults(damaged);

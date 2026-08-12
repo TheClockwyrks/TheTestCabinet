@@ -218,7 +218,7 @@ binds the WIT itself; it does not go through this package.
 directory `GG_SIGNATURES_OUT_DIR` names — that variable is the whole of the output
 contract, it is required, and a reflector run without it must fail saying so rather than
 guessing a path — in the same shape, with
-`language: "<language-id>"`, `schema: 2`, a `modules` section in presentation order, one
+`language: "<language-id>"`, `schema: 1`, a `modules` section in presentation order, one
 flat `functions` array whose entries name a gg **operation** and carry a module-qualified
 `fqn` and a `signatures` array (one entry per shape that language offers the function in,
 each with its own documented arguments), and every type with its own brief, its members'

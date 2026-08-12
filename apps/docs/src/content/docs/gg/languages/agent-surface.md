@@ -105,9 +105,9 @@ describes. A module's description comes from the comment on the module, an
 argument's from the annotation on that argument, and a type member's from the
 comment above the member.
 
-Every registered arm emits schema 2: three provenance lines naming the schema,
+Every registered arm emits schema 1: three provenance lines naming the schema,
 the language it was generated for and what it was reflected out of, then four
-sections.
+sections. A catalogue must declare its schema, and gg refuses any number but 1.
 
 | Section | What it carries |
 | --- | --- |

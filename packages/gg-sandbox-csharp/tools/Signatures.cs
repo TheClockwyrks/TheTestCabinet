@@ -8,11 +8,11 @@
 // catalogue is reflected by the same reading of the same sources that the model's program is
 // compiled against.
 //
-// WHY ROSLYN AND NOT A TEXT SCAN, restated for the second schema: a catalogue now records **resolved
-// type references**, and a resolution is something only a type system has. `Files.FileRead` written
-// in one file and `FileRead` written in another are one type, and the name a documentation view is
-// opened by is `Gg.Files.FileRead` whichever of the two the signature spelled. Roslyn hands that
-// over natively, and nothing that reads source as text can.
+// WHY ROSLYN AND NOT A TEXT SCAN. A catalogue records **resolved type references**, and a
+// resolution is something only a type system has. `Files.FileRead` written in one file and
+// `FileRead` written in another are one type, and the name a documentation view is opened by is
+// `Gg.Files.FileRead` whichever of the two the signature spelled. Roslyn hands that over natively,
+// and nothing that reads source as text can.
 //
 // WHAT IT REFUSES. A blank is an error rather than a gap a model discovers: a public member with no
 // `<summary>`, a parameter with no `<param>`, a type with no documentation, a member of one with
@@ -150,7 +150,7 @@ internal static class Signatures
         using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
         {
             writer.WriteStartObject();
-            writer.WriteNumber("schema", 2);
+            writer.WriteNumber("schema", 1);
             writer.WriteString("language", "csharp");
             writer.WriteString(
                 "generatedFrom",

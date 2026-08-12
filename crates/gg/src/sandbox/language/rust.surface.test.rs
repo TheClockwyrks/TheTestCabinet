@@ -845,7 +845,7 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
     );
     assert_eq!(
         catalogue["schema"].as_u64(),
-        Some(2),
+        Some(1),
         "a catalogue declares which shape it is written in, and one that stopped saying so would \
          not be readable at all"
     );

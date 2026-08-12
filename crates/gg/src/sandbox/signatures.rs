@@ -55,8 +55,8 @@
 //! # A catalogue declares the shape it is written in
 //!
 //! Every catalogue carries a [`schema`](SignatureCatalogue::schema), and gg reads exactly the one
-//! shape it knows — see [`SchemaVersion`]. A number it does not know is refused rather than read as
-//! the nearest thing gg understands, because a catalogue from a newer gg describes a surface this
+//! shape it knows — see [`CATALOGUE_SCHEMA`]. A number it does not know is refused rather than read
+//! as the nearest thing gg understands, because a catalogue from a newer gg describes a surface this
 //! one cannot render, and rendering it anyway is how a model is handed a signature nobody wrote.
 
 use std::borrow::Cow;
@@ -72,44 +72,41 @@ use super::operations::{Binding, operation_by_id};
 #[cfg(test)]
 use crate::tools::ALL_TOOL_NAMES;
 
-/// Which shape a catalogue is written in — declared by every catalogue, checked by every reader,
-/// and the thing that makes a surface gg cannot render refusable by name.
+/// The shape every catalogue is written in and the only number a reader accepts.
 ///
-/// [`V2`](Self::V2) is the doc model every arm emits: one flat
-/// [`functions`](SignatureCatalogue::functions) array whose entries name a gg
-/// [operation](super::operations) rather than asserting a gate of their own, live in a
-/// [module](ModuleDoc), are keyed by a module-qualified [`fqn`](FunctionSignature::fqn), carry an
-/// **authored** [brief and optional detail](Prose), and record their type references **resolved**
-/// rather than as written.
+/// It is the doc model every arm emits: one flat [`functions`](SignatureCatalogue::functions) array
+/// whose entries name a gg [operation](super::operations) rather than asserting a gate of their own,
+/// live in a [module](ModuleDoc), are keyed by a module-qualified [`fqn`](FunctionSignature::fqn),
+/// carry an **authored** [brief and optional detail](Prose), and record their type references
+/// **resolved** rather than as written.
 ///
 /// Gating is gg's and never an arm's ([`Binding`]), and a brief is written by whoever knows what the
 /// thing is rather than computed out of a paragraph — the two rules the shape exists to make
 /// structural.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
-#[serde(try_from = "u32")]
-pub enum SchemaVersion {
-    /// Modules, operations, fully-qualified names, authored briefs, resolved type references.
-    V2,
-}
+pub const CATALOGUE_SCHEMA: u32 = 1;
 
-impl TryFrom<u32> for SchemaVersion {
-    type Error = String;
-
-    /// The `schema` key as it is written in the JSON — a bare number, so that the artifact reads
-    /// `"schema": 2` rather than `"schema": "v2"`.
-    ///
-    /// An unknown number is an **error** rather than a fallback to the newest shape gg knows: a
-    /// catalogue from a future gg describes a surface this gg cannot render, and rendering it as
-    /// though it were the shape gg happens to understand is how a model is handed a signature
-    /// nobody wrote.
-    fn try_from(value: u32) -> Result<Self, Self::Error> {
-        match value {
-            2 => Ok(Self::V2),
-            other => Err(format!(
-                "`schema` is {other}, and this gg reads catalogue schema 2 — a catalogue from a \
-                 newer gg describes a surface this one cannot render"
-            )),
-        }
+/// Read the `schema` key, accepting [`CATALOGUE_SCHEMA`] and refusing every other number.
+///
+/// A number rather than a one-variant enum: there is one shape, so the version is never a choice a
+/// reader branches on, only a claim a reader checks. An enum would spell the same number twice — in
+/// a variant name and in the conversion that produces it — and hand every consumer a match arm none
+/// of them wants.
+///
+/// A number gg does not know is an **error** rather than a fallback to the shape gg does know: a
+/// catalogue from a newer gg describes a surface this gg cannot render, and rendering it as though
+/// it were the shape gg understands is how a model is handed a signature nobody wrote.
+fn deserialize_schema<'de, D>(deserializer: D) -> Result<u32, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let declared = u32::deserialize(deserializer)?;
+    if declared == CATALOGUE_SCHEMA {
+        Ok(declared)
+    } else {
+        Err(serde::de::Error::custom(format!(
+            "`schema` is {declared}, and this gg reads catalogue schema {CATALOGUE_SCHEMA} — a \
+             catalogue from a newer gg describes a surface this one cannot render"
+        )))
     }
 }
 
@@ -118,16 +115,17 @@ impl TryFrom<u32> for SchemaVersion {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SignatureCatalogue {
-    /// Which [shape](SchemaVersion) this catalogue is written in. Required: a catalogue that does
-    /// not say what it is written in is one gg would have to guess at, and a guess about the shape
-    /// of a document is how a model is shown a surface nobody has.
+    /// Which [shape](CATALOGUE_SCHEMA) this catalogue is written in. Required: a catalogue that
+    /// does not say what it is written in is one gg would have to guess at, and a guess about the
+    /// shape of a document is how a model is shown a surface nobody has.
     #[allow(
         dead_code,
         reason = "the field does its work at parse time — deserializing it is what refuses a \
                   catalogue from a gg whose shape this one cannot render — so nothing downstream \
                   has to branch on it, and nothing does"
     )]
-    pub schema: SchemaVersion,
+    #[serde(deserialize_with = "deserialize_schema")]
+    pub schema: u32,
     /// The [program language](GgProgramLanguage) whose spellings this catalogue carries.
     ///
     /// Every language's guest emits one of these, in this shape, under its own stem in the
@@ -1009,8 +1007,8 @@ mod tests;
 #[path = "signatures.fqn.rs"]
 pub(crate) mod fqn;
 
-/// The fixture catalogue — one small surface in the [schema](SchemaVersion) every arm emits — that
-/// every test of the projection reads.
+/// The fixture catalogue — one small surface in the [schema](CATALOGUE_SCHEMA) every arm emits —
+/// that every test of the projection reads.
 #[cfg(test)]
 #[path = "signatures.fixture.rs"]
 pub(crate) mod fixture;
