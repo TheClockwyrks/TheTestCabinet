@@ -108,6 +108,28 @@ pub struct Config {
     /// `TCAB_CHROMIUM_EXECUTABLE`; unset, the driver uses the Chromium baked into
     /// the backend image.
     pub reference_browser: Option<String>,
+    /// The directory holding gg's projected reference documents (`TCAB_GG_REFERENCE`) —
+    /// `index.json` plus one `<language>.json` per program language, exactly as
+    /// `gg reference --out` writes them. Served by
+    /// [`GET /gg/reference`](crate::api) and its per-arm child.
+    ///
+    /// A **path**, not an embedded artifact, and that is the whole design of this
+    /// surface: the documents are what gg itself renders for a model, so they are
+    /// produced by the gg binary and shipped beside the backend binary rather than
+    /// committed into this crate and compiled in. The backend must never depend on
+    /// `test-cabinet-gg` (`oxc`, `tiktoken-rs`, and a build that reflects eleven
+    /// language SDKs' catalogues from eleven installed toolchains — `api/gg_reference.rs`
+    /// spells out what is *not* the reason, wasmtime being already in this binary),
+    /// so a file read at run time is how the projection crosses that boundary — the
+    /// same shape `TCAB_BROWSER_DRIVER` already uses for the bundled Playwright
+    /// driver, which the backend also ships beside itself and never links.
+    ///
+    /// The backend image bakes them in and points this at `/opt/gg-reference`. A
+    /// developer running the binary from a checkout gets the default below and fills
+    /// it with `scripts/gg-reference.sh`; until they do, the reference endpoints
+    /// answer `503` naming that script, and nothing else about the backend is
+    /// affected.
+    pub gg_reference: PathBuf,
     /// The public base URL of the **artifact service** (`TCAB_ARTIFACTS_PUBLIC_URL`),
     /// reported to the console via `GET /config` so it can resolve a pre-publish
     /// run's `links.playable_build` (and its proof/asset media) against the data
@@ -210,6 +232,8 @@ impl Config {
             .ok()
             .filter(|v| !v.is_empty());
 
+        let gg_reference = gg_reference_dir(nonempty("TCAB_GG_REFERENCE"), &checkout);
+
         let allow_experimental = truthy("TCAB_BACKEND_ALLOW_EXPERIMENTAL");
 
         let artifacts_url =
@@ -238,6 +262,7 @@ impl Config {
             coalesce: Duration::from_millis(coalesce_ms),
             snapshot_retention: Duration::from_secs(snapshot_retention_hours * 3600),
             reference_browser,
+            gg_reference,
             artifacts_url,
             arena_url,
             grafana_url,
@@ -266,6 +291,28 @@ fn env_or(key: &str, default: &str) -> String {
         .ok()
         .filter(|v| !v.is_empty())
         .unwrap_or_else(|| default.to_string())
+}
+
+/// Resolve where gg's projected reference documents live: `explicit`
+/// (`TCAB_GG_REFERENCE`) when an operator named a directory, and otherwise a path
+/// derived from the checkout.
+///
+/// The default has to be *defined everywhere*, because this variable is unset in every
+/// deployment shape but one — the backend image bakes it, and nothing else sets it. So it
+/// is derived from `TCAB_BACKEND_CHECKOUT`, which is the one unconditionally required
+/// variable ([`Config::from_env`]), rather than from the working directory: a backend
+/// started by systemd or a container has a working directory nobody chose, whereas the
+/// checkout is by definition the tree this backend was pointed at. `target/` under it is
+/// where `scripts/gg-reference.sh` writes, and where every other build output in this
+/// repository already goes.
+///
+/// A pure function taking the resolved value rather than reading the environment itself,
+/// so the derivation is testable without mutating process-global state (see
+/// `config.test.rs`) — the same reason the caller passes `checkout` in.
+fn gg_reference_dir(explicit: Option<String>, checkout: &std::path::Path) -> PathBuf {
+    explicit
+        .map(PathBuf::from)
+        .unwrap_or_else(|| checkout.join("target").join("gg-reference"))
 }
 
 /// Read a required environment variable, erroring with its name when unset.

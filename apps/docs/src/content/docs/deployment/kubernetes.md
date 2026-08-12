@@ -351,6 +351,16 @@ three things are non-negotiable and follow directly from that:
    that baked Chromium with an explicit binary (the backend forwards it to the
    driver).
 
+   The same image also bakes **gg's reference documents** at `/opt/gg-reference` and
+   sets `TCAB_GG_REFERENCE` to point at them — the files the backend serves at
+   `GET /gg/reference`, projected by the very `gg` binary the `tcab-driver` image
+   ships (the two images share that build stage). They are read from disk because the
+   backend must not link the crate that produces them. Nothing to configure if you run
+   the published image; a backend deployed from the release **tarballs** needs
+   `gg-reference-<version>.tar.gz` unpacked and this variable pointed at it, or the
+   console's gg Reference section answers `503` while the rest of the backend works
+   normally.
+
 The backend also carries two values that wire it into the new run path:
 
 - **`TCAB_BACKEND_SERVICE_TOKEN`** — the shared service token it verifies the

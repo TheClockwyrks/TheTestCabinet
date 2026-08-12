@@ -216,6 +216,13 @@ The blocked-by DAG and `wait_for_issue` are **core** to the capability — they 
 what makes a board a board rather than a list, so they are always on wherever the
 capability is.
 
+`wait_for_issue` is declared like the delegation calls and **intercepted by the loop**,
+which suspends the agent on the orchestrator's issue-wait registry. That is why the tool
+itself holds no handle on the board store the way the other six do: a self-contained tool
+cannot reach the scheduler, and suspending is the whole of what this one does. It is
+offered on exactly the same terms as they are — a bound board and the capability — it
+simply does not read one.
+
 ## Features
 
 Two things about the board *are* per-agent, and each is a slider in the capability's
@@ -232,6 +239,12 @@ Two things about the board *are* per-agent, and each is a slider in the capabili
 Board tools: `create_epic`, `create_issue`, `update_issue`, `set_issue_blocked_by`,
 `remove_epic`, `remove_issue`, plus `wait_for_issue`. There is deliberately no
 completion tool — see [auto-dispatch](#auto-dispatch).
+
+**Who is normally given this capability.** An agent gg dispatched to *implement* an
+issue needs no board tool of its own to hand its work back: the issue is finished
+exactly when that agent makes its own [ending call](/gg/ending-a-session/). Authoring
+the board and working an issue on it are separate jobs, so an implementer profile is
+normally configured **without** this capability.
 
 `create_epic` takes a **`prefix`** (3–6 letters) rather than an id, and `create_issue`
 takes **no id at all**: both ids are gg's to assign, and both calls report back the id

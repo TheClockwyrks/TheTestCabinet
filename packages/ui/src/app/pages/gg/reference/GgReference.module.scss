@@ -28,9 +28,9 @@
   @include h.halo;
 }
 
-// The gg version the committed reference was projected from. A reference with no
-// version on it is a reference you cannot check, so the stamp is part of the intro
-// line rather than tucked in a corner.
+// A figure in the intro line — the gg version the documents were projected from, and the
+// counts that size the surface. A reference with no version on it is a reference you
+// cannot check, so the stamp is part of the sentence rather than tucked in a corner.
 .version {
   color: t.$color-accent;
   text-shadow: var(--ttc-glow);
@@ -91,6 +91,103 @@
   margin: 0;
   color: t.$color-text-muted;
   @include h.halo;
+}
+
+// --- The SDK arm picker -------------------------------------------------------
+
+// The API tab's own column: the arm picker, then whichever of the arm's states applies.
+// A column that fills its host, so the explorer below the picker still reaches the bottom
+// of the page — the picker is a fixed strip and everything left over is the document.
+.arm {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  min-height: 0;
+}
+
+// All eleven arms at once, wrapping rather than scrolling. A dropdown would hide the one
+// fact this row exists to state — that gg's surface is offered in eleven idiomatic SDKs —
+// behind a click, and a reader who does not know there is a Swift arm does not go looking
+// in a menu for one.
+.arms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+}
+
+.armButton {
+  display: inline-flex;
+  align-items: baseline;
+  gap: t.$space-xs;
+  padding: t.$space-2xs t.$space-sm;
+  font-family: inherit;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  background: none;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-lg;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-text;
+    border-color: color-mix(in srgb, t.$color-accent 45%, transparent);
+  }
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 2px;
+  }
+}
+
+// The arm being read, in the accent the rest of the page reserves for "this is the thing
+// that decides what you are looking at".
+.armButtonActive {
+  color: t.$color-accent;
+  border-color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+}
+
+// How many functions the arm carries, from the index — so an arm nobody has opened yet
+// and an arm whose document failed to project do not look alike before either is fetched.
+.armCount {
+  font-size: 0.72rem;
+  color: t.$color-text-muted;
+}
+
+// --- The tree filter ----------------------------------------------------------
+
+// The filter box at the top of the API sidebar, and the line under it saying what it is
+// not. Sticky: the sidebar is the scroll container and a filter that scrolled away from
+// its own results would be a control you have to go back up to change.
+.filter {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: t.$space-2xs t.$space-2xs t.$space-xs;
+  background: s.$panel-bg;
+}
+
+.filterInput {
+  width: 100%;
+  padding: t.$space-2xs t.$space-xs;
+  background: t.$color-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  color: t.$color-text;
+  font-family: inherit;
+  font-size: t.$font-sm;
+}
+
+// Why this box is not gg's search. The two answer different questions — this hides rows
+// of the maximal pool, gg's ranks hits and returns only what a run granted — and a reader
+// who conflated them would draw conclusions about a run from a page that knows nothing
+// about any run.
+.filterNote {
+  margin: t.$space-2xs 0 0;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: t.$color-text-muted;
 }
 
 // --- The sidebar's object captions --------------------------------------------
@@ -243,13 +340,22 @@
   background: s.$panel-bg;
 }
 
-// A block whose long lines fold instead of scrolling — a function signature, which is one
-// logical line with no indentation to destroy. Written after `.code` and not before it:
-// the two rules set the same property at the same specificity, so source order is what
-// decides, and a modifier that loses to the class it modifies is a rule that does nothing.
-.codeWrap {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+// A **run-data stand-in** inside verbatim text: `<agent>`, `<skill>`, `<state>`.
+//
+// A handful of tool descriptions enumerate a run's own roster, library or machine state
+// rather than a policy, so the reference is projected from a run with obvious stand-ins
+// where that data goes. Marked rather than substituted or stripped: the block still has to
+// be the exact bytes the model was given, and the mark is a highlight over text that is
+// already there. Which substrings are stand-ins comes from the document — see
+// `markTokens` — never from looking for angle brackets, which ordinary prose also has.
+//
+// A `<mark>` defaults to a black-on-yellow the rest of this page has nothing to do with,
+// so both colours are set.
+.standIn {
+  padding: 0 0.15em;
+  border-radius: t.$radius-sm;
+  background: color-mix(in srgb, t.$color-accent-2 22%, transparent);
+  color: t.$color-text;
 }
 
 // --- The derived parameter list -----------------------------------------------
@@ -318,14 +424,65 @@
   color: t.$color-text-muted;
 }
 
-// The type declarations under an API function's signature: one code block each, stacked.
-// Separate blocks rather than one concatenated listing, because they are separate
-// declarations and a reader is usually looking for exactly one of them.
-.typeList {
+// --- The declarations a signature reaches -------------------------------------
+
+// One row per declaration the selected function's signature reaches: its name, and
+// whether opening the function opens that declaration too.
+//
+// Names rather than declarations, which is the change that let eleven arms cost less than
+// one used to. Each declaration has its own entry in the same document, so the row links
+// to it; writing the declaration out under every function that mentions it was eighty-odd
+// per cent of the old single-arm artifact.
+.typeRefs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: t.$space-sm;
+  gap: t.$space-xs;
+}
+
+.typeRef {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: t.$space-xs;
   min-width: 0;
+}
+
+// The link to a declaration's own entry. A button, not an anchor: it moves the selection
+// within this page — the same motion clicking the row in the tree makes — and an `<a>`
+// would promise a navigation that is not one.
+.typeRefLink {
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: monospace;
+  font-size: t.$font-sm;
+  color: t.$color-accent;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+
+  &:hover {
+    color: t.$color-text;
+  }
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 2px;
+  }
+}
+
+// A name the document does not carry an entry for. Rendered as plain text rather than as
+// a link to nothing: every arm resolves every one of these today, and a page that
+// fabricated a link would be lying about a document it can see it does not have.
+.typeRefName {
+  font-family: monospace;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  overflow-wrap: anywhere;
 }
 
 // --- Variants -----------------------------------------------------------------

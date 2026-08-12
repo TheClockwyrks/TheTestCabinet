@@ -53,10 +53,15 @@ pub const PARAM_BUILT_INS: &str = "builtIns";
 /// whether this agent has any of it.
 ///
 /// Crate-visible rather than private because the families are also gg's own **grouping of its
-/// model-facing surface** — the order the system prompt's API table uses, the objects a program
-/// reaches each family through — and the [reference](crate::reference) projects that grouping as
-/// the categories the console's Reference section is organized by. There is one list of families,
-/// and it is this one.
+/// model-facing surface** — the order the system prompt's API table uses — and the
+/// [reference](crate::reference) projects that grouping as the categories the console's Reference
+/// section is organized by. There is one list of families, and it is this one.
+///
+/// It used to carry the **API objects** each family's functions were grouped under, too. That list
+/// went with its last reader: a family's grouping is resolved through the
+/// [operation](crate::sandbox::operation_of) each call binds, which every arm answers, where gg's
+/// own word for the object answers nothing on an arm whose surface is capability modules — and
+/// every registered arm's now is.
 pub(crate) struct Family {
     /// The skill's name — the handle `read_skill` takes, and the id the `builtIns` param uses.
     pub(crate) id: &'static str,
@@ -68,19 +73,6 @@ pub(crate) struct Family {
     pub(crate) title: &'static str,
     /// The one-line description the skills index carries.
     pub(crate) description: &'static str,
-    /// The **API objects** its functions are grouped under, in gg's own vocabulary — what the
-    /// [reference](crate::reference) page groups its API tab by.
-    ///
-    /// A list rather than one name because of the ending family: `harness`, `review` and `judge` are
-    /// one family grouped by **role**, and exactly one of them is bound.
-    ///
-    /// It is **not** how the responses-as-code arm asks the catalogue for this family's functions,
-    /// and that is worth stating because it was: an arm whose surface is capability modules files
-    /// the same functions under `gg::files` or `Gg.Files`, so a lookup by gg's word for the object
-    /// answers nothing there. [`DocsRuntime::family`](crate::docs::DocsRuntime::family) resolves
-    /// through the [operation](crate::sandbox::operation_of) instead, which both shapes of catalogue
-    /// answer.
-    pub(crate) objects: &'static [&'static str],
     /// The gg tool names in it. Empty for the four families that are responses-as-code carve-outs
     /// and have no native tools at all — they are offered only in code mode.
     pub(crate) tools: &'static [&'static str],
@@ -97,21 +89,18 @@ pub(crate) const FAMILIES: &[Family] = &[
         id: "gg-filesystem",
         title: "Filesystem",
         description: "Reading, writing and editing files in the workspace.",
-        objects: &["fs"],
         tools: &["read_file", "write_file", "edit_file", "list_dir"],
     },
     Family {
         id: "gg-shell",
         title: "Shell",
         description: "Running shell commands in the workspace.",
-        objects: &["system"],
         tools: &["shell"],
     },
     Family {
         id: "gg-project",
         title: "Project management",
         description: "The epic/issue board — decomposing work into issues other agents implement.",
-        objects: &["project"],
         tools: &[
             "create_epic",
             "create_issue",
@@ -126,7 +115,6 @@ pub(crate) const FAMILIES: &[Family] = &[
         id: "gg-tasks",
         title: "Tasks",
         description: "Your task list: a blocked-by DAG of the work you are steering by.",
-        objects: &["tasks"],
         tools: &[
             "add_task",
             "update_task",
@@ -139,7 +127,6 @@ pub(crate) const FAMILIES: &[Family] = &[
         id: "gg-memory",
         title: "Memories",
         description: "Durable memories that outlive the conversation you wrote them in.",
-        objects: &["memory"],
         tools: &[
             "write_memory",
             "update_memory",
@@ -154,14 +141,12 @@ pub(crate) const FAMILIES: &[Family] = &[
         id: "gg-skills",
         title: "Skills",
         description: "Reading skills — including this one.",
-        objects: &["skills"],
         tools: &["read_skill"],
     },
     Family {
         id: "gg-context",
         title: "Context",
         description: "Managing your own context window: evicting, archiving, searching, compacting.",
-        objects: &["context"],
         tools: &[
             "evict_file_view",
             "archive_thread",
@@ -173,7 +158,6 @@ pub(crate) const FAMILIES: &[Family] = &[
         id: "gg-delegation",
         title: "Delegation",
         description: "Delegating work to child agents, and handing your session on.",
-        objects: &["agents"],
         tools: &[
             "spawn_subagent",
             "wait_for_subagents",
@@ -187,28 +171,24 @@ pub(crate) const FAMILIES: &[Family] = &[
         id: "gg-docs",
         title: "Documentation",
         description: "Finding a function by keyword, and reclaiming the documentation you have read.",
-        objects: &["docs"],
         tools: &[],
     },
     Family {
         id: "gg-views",
         title: "Views",
         description: "Showing yourself a file, a value, or a function's documentation.",
-        objects: &["view"],
         tools: &[],
     },
     Family {
         id: "gg-programs",
         title: "Program library",
         description: "Fetching a program you already ran, and handing a patched copy back.",
-        objects: &["programs"],
         tools: &[],
     },
     Family {
         id: "gg-session",
         title: "Ending the session",
         description: "Ending your session — the one call that does.",
-        objects: &["harness", "review", "judge"],
         tools: &[],
     },
 ];

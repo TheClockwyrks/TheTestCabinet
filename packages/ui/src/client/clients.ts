@@ -45,8 +45,12 @@ import type {
 import type {
   GgConfig,
   GgConfigInput,
+  GgProgramLanguage,
 } from "@test-cabinet/run-record/gg";
-import type { GgReference } from "@test-cabinet/run-record/gg-reference";
+import type {
+  GgReference,
+  GgReferenceApi,
+} from "@test-cabinet/run-record/gg-reference";
 import type { CodeAnalysisDocument } from "@test-cabinet/run-record/code-analysis";
 import type {
   GgDashboard,
@@ -419,10 +423,14 @@ export interface BackendClient {
   deleteGgDashboard?(id: string, token: string): Promise<void>;
 
   /**
-   * gg's model-facing **reference** (`GET /gg/reference`): every tool's description
-   * and parameter schema exactly as they go on the wire, and every
-   * responses-as-code function's signature, documentation and referenced types,
-   * grouped into gg's own families.
+   * The **index** of gg's model-facing reference (`GET /gg/reference`): every tool's
+   * description and parameter schema exactly as they go on the wire, gg's own
+   * families, and a line per program language whose responses-as-code surface can be
+   * fetched with {@link ggReferenceApi}.
+   *
+   * Everything here is language-independent. The signatures are not — the eleven SDK
+   * arms are deliberately idiomatic rather than transliterations of one another — so
+   * they are a document per arm rather than eleven copies of the tools.
    *
    * The one `/gg` read that takes **no token** — the document is static, identical
    * for every caller and carries no account or run data, so it is documentation of
@@ -431,6 +439,21 @@ export interface BackendClient {
    * it at all; where a backend exists this always resolves.
    */
   ggReference?(): Promise<GgReference>;
+
+  /**
+   * One program language's whole responses-as-code surface
+   * (`GET /gg/reference/{language}`): the modules it is divided into, and every
+   * function and type in it carrying the bytes gg's own documentation view renders.
+   *
+   * Fetched when a reader picks an arm, not with the index: an arm's document is
+   * ~90 KB and a reader reads one of them. Ungated for the same reason
+   * {@link ggReference} is, and optional for the same one.
+   *
+   * A language the deployment's gg does not register answers `404`; a deployment
+   * with no reference documents at all answers `503` with a message written to be
+   * shown to whoever is looking at it.
+   */
+  ggReferenceApi?(language: GgProgramLanguage): Promise<GgReferenceApi>;
 
   // The operator's saved harness/gg-config/model comparisons (console-only,
   // Bearer) — the A/B-testing capability that fixes every controlled variable and

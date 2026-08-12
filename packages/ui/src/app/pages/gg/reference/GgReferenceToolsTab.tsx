@@ -25,6 +25,11 @@ import styles from "./GgReference.module.scss";
 // the selected one's wire definition — the description and the JSON Schema, exactly as
 // they are sent.
 //
+// No arm picker here, and that is not an oversight: a tool's name, description and JSON
+// schema are the *wire's*, identical whatever program language a run's agents write in.
+// They live in the reference index for the same reason, while the eleven idiomatic
+// spellings of the same capabilities live one document per arm — see `GgReferenceApiTab`.
+//
 // It is laid out as one of gg's filesystem explorers, and imported straight across from
 // `pages/runs/gg` rather than moved to a shared home. The trio (`FsExplorer` /
 // `FsFolder` / `FsFileRow`) is already the shared component its own docs say it is — the
@@ -85,7 +90,7 @@ export function GgReferenceToolsTab({ reference }: { reference: GgReference }) {
       ? (groups[0]?.tools[0] ?? null)
       : (reference.tools.find((tool) => tool.name === requested) ?? null);
 
-  // Thirty-seven tools scroll past the fold, so a link to one in a late family would
+  // Thirty-five tools scroll past the fold, so a link to one in a late family would
   // otherwise open beside a tree still showing the first.
   useRevealSelection(requested != null, selected != null);
 
@@ -97,9 +102,10 @@ export function GgReferenceToolsTab({ reference }: { reference: GgReference }) {
           key={group.category.id}
           depth={0}
           // Open by default, every one of them. A run explorer closes the folders a live
-          // stream can flood; this document is fixed at 37 entries and is *read by
-          // scanning*, so hiding four fifths of it behind carets would cost the page the
-          // one thing an index is for.
+          // stream can flood; this document is fixed at 35 entries — `ALL_TOOL_NAMES`, gg's
+          // whole tool vocabulary, which the projection walks — and is *read by scanning*,
+          // so hiding four fifths of it behind carets would cost the page the one thing an
+          // index is for.
           open={folders.isOpen(group.category.id, true)}
           onToggle={() => folders.toggle(group.category.id, true)}
           ariaLabel={`${group.category.title} tools`}
@@ -157,6 +163,15 @@ function ToolDetail({
   /** The tool's family, or `null` if the payload somehow names one it does not carry. */
   category: GgReferenceCategory | null;
 }) {
+  // The stand-ins gg substituted where a run's own data would be. Passed to every block
+  // that carries the tool's text — the description, the argument descriptions read out of
+  // the schema, and the raw schema itself — because a placeholder lands in all three and a
+  // reader who saw it marked in one and bare in another would learn the wrong lesson from
+  // the second. Measured: `read_skill` and `create_issue` carry theirs in the schema too.
+  const marks = tool.runData ?? [];
+  const capabilities = tool.capabilities ?? [];
+  const requires = tool.requires ?? [];
+
   return (
     <div className={panels.panelBody}>
       <div className={styles.detail}>
@@ -166,12 +181,26 @@ function ToolDetail({
             <span className={styles.chip}>
               {category?.title ?? tool.category}
             </span>
-            {/* The capability is the fact a reader is usually here for: it is what they
-                would switch on in a gg configuration to get this tool. */}
-            {tool.capability && (
-              <span className={`${styles.chip} ${styles.chipKey}`}>
-                {tool.capability}
+            {/* The capabilities are the fact a reader is usually here for: they are what
+                they would switch on in a gg configuration to get this tool. A list, not a
+                single id — `fork` needs the capability of its own name *and* the
+                `subagents` capability that buys the calls collecting the copy, and a
+                single-valued field would answer for one of them and quietly acquit the
+                other. */}
+            {capabilities.map((capability) => (
+              <span
+                key={capability}
+                className={`${styles.chip} ${styles.chipKey}`}
+              >
+                {capability}
               </span>
+            ))}
+            {/* An empty capability list is a real state rather than a gap:
+                `transition_state` is offered from where an agent *stands*, a state of a
+                machine another profile declares, and naming a capability for it would
+                name something that does not decide it. Its condition is below. */}
+            {capabilities.length === 0 && (
+              <span className={styles.chip}>no capability decides it</span>
             )}
             {tool.variants && tool.variants.length > 0 && (
               <span className={styles.chip}>
@@ -180,19 +209,50 @@ function ToolDetail({
               </span>
             )}
           </div>
-          {/* Everything the capability alone does not decide — a bound store, a memory
-              strategy, a position in a machine — and the warning, where it applies, that
-              the description below enumerates one run's roster rather than the tool's own
-              vocabulary. */}
-          {tool.note && <p className={styles.note}>{tool.note}</p>}
+
+          {/* Everything the capabilities alone do not decide — a bound store, a writable
+              handle, a memory strategy, a non-empty roster, a position in a machine.
+              These sentences are gg's, composed from the ablation it ran against its own
+              registry: it withholds one thing at a time from a maximal run and records
+              what disappears. The console renders a string it never wrote, which is why
+              a condition here cannot be wrong about the code it describes — the
+              hand-written notes it replaced could be, and nothing checked them. */}
+          {requires.map((condition) => (
+            <p key={condition.sentence} className={styles.note}>
+              {condition.sentence}
+            </p>
+          ))}
+
+          {/* And, for the five tools whose prose enumerates a run's own data rather than
+              a policy, what the stand-ins below stand for. Said once here and marked in
+              place in the text, so a reader meeting `<agent>` in the description does not
+              read it as a literal and conclude gg ships a broken tool. */}
+          {marks.length > 0 && (
+            <p className={styles.note}>
+              This tool&apos;s text is projected from a run that has no data of
+              its own, so it carries stand-ins where a real run&apos;s would be:{" "}
+              {marks.map((mark, index) => (
+                <span key={mark.token}>
+                  {index > 0 && (index === marks.length - 1 ? ", and " : ", ")}
+                  <code className={styles.standIn}>{mark.token}</code> for{" "}
+                  {mark.standsFor}
+                </span>
+              ))}
+              .
+            </p>
+          )}
         </header>
 
-        <Verbatim label="Description" text={tool.description} />
-        <ParameterList schema={tool.parameters} />
+        <Verbatim label="Description" text={tool.description} marks={marks} />
+        <ParameterList schema={tool.parameters} marks={marks} />
         {/* The schema stays on the page under the list derived from it: the list is a
             reading of this, and a reader checking an edge case should not have to take
             our word for the reading. */}
-        <CodeBlock label="JSON Schema" text={printJson(tool.parameters)} />
+        <CodeBlock
+          label="JSON Schema"
+          text={printJson(tool.parameters)}
+          marks={marks}
+        />
 
         {tool.variants && tool.variants.length > 0 && (
           <Section label="Other configurations">
@@ -203,11 +263,16 @@ function ToolDetail({
                     <span className={styles.variantLabel}>{variant.label}</span>
                   </summary>
                   <div className={styles.variantBody}>
-                    <Verbatim label="Description" text={variant.description} />
-                    <ParameterList schema={variant.parameters} />
+                    <Verbatim
+                      label="Description"
+                      text={variant.description}
+                      marks={marks}
+                    />
+                    <ParameterList schema={variant.parameters} marks={marks} />
                     <CodeBlock
                       label="JSON Schema"
                       text={printJson(variant.parameters)}
+                      marks={marks}
                     />
                   </div>
                 </details>

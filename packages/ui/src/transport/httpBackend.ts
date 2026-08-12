@@ -65,8 +65,12 @@ import type {
 import type {
   GgConfig,
   GgConfigInput,
+  GgProgramLanguage,
 } from "@test-cabinet/run-record/gg";
-import type { GgReference } from "@test-cabinet/run-record/gg-reference";
+import type {
+  GgReference,
+  GgReferenceApi,
+} from "@test-cabinet/run-record/gg-reference";
 import type { CodeAnalysisDocument } from "@test-cabinet/run-record/code-analysis";
 import type {
   GgDashboard,
@@ -763,13 +767,26 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       await delVoid(baseUrl, `/gg/dashboards/${encodeURIComponent(id)}`, token);
     },
 
-    // gg's tool + responses-as-code reference. No token: the document is static and
-    // caller-independent, so the backend serves it to anyone who can reach it. Also
-    // the reason it is fetched rather than bundled — it is generated from gg's own
-    // definitions and committed into the backend, so the deployment's copy is the
-    // authority on what its gg actually tells models.
+    // gg's reference, in two calls because it is two documents: the language-independent
+    // index (families, tools, the arm list), and one arm's responses-as-code surface.
+    //
+    // No token on either: the documents are static and caller-independent, so the backend
+    // serves them to anyone who can reach it. That is also why they are fetched rather
+    // than bundled — the deployment projects them from the gg *it* ships, so the answer to
+    // "what does this deployment's gg tell models" comes from that deployment and not from
+    // whatever gg this console was built beside.
     async ggReference(): Promise<GgReference> {
       return getJson<GgReference>(baseUrl, "/gg/reference");
+    },
+
+    // The language id is a `GgProgramLanguage`, so it is already one of the eleven the
+    // wire knows — but it is still encoded, because a path segment built by concatenation
+    // is a habit worth not having, and the backend's own `404` is the check that decides.
+    async ggReferenceApi(language: GgProgramLanguage): Promise<GgReferenceApi> {
+      return getJson<GgReferenceApi>(
+        baseUrl,
+        `/gg/reference/${encodeURIComponent(language)}`,
+      );
     },
 
     async listComparisons(token: string): Promise<Comparison[]> {

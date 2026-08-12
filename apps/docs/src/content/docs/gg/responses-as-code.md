@@ -274,7 +274,7 @@ an SDK has to keep. The spellings below are TypeScript's:
 | `fs.listDir(path?: string)` | `DirEntry[]` |
 | `agents.spawnSubagent(request: { agent: string; } & ({ prompt: string; } \| { issueId: string; }))` | `SubagentHandle` |
 
-**Every** one of gg's thirty-seven tools is bound this way — there is no withheld class
+**Every** one of gg's thirty-five tools (`ALL_TOOL_NAMES`) is bound this way — there is no withheld class
 (see [below](#every-tool-is-bound)) — plus one
 convenience helper, `fs.readTextFile(path, options?)`, for the overwhelmingly common case
 of wanting a file's text rather than its metadata, and the
@@ -1794,7 +1794,7 @@ The capability is `responses-as-code`, under **Models & tools** in the
 
 | Param | Default | Notes |
 | --- | --- | --- |
-| `language` | `typescript` | The [program language](#the-program-language) this agent writes in — `typescript`, `javascript`, `python`, `ruby`, `purescript`, `java`, `kotlin` or `rust`. A value gg cannot read as a registered language changes nothing and is reported at launch, on the same terms every unreadable param is. |
+| `language` | `typescript` | The [program language](#the-program-language) this agent writes in — `typescript`, `javascript`, `python`, `ruby`, `purescript`, `java`, `kotlin`, `rust`, `swift`, `cpp` or `csharp`. A value gg cannot read as a registered language changes nothing and is reported at launch, on the same terms every unreadable param is. |
 | `timeoutSecs` | `30` | The per-program guest-execution timeout, in seconds. |
 | `maxMemoryBytes` | `268435456` | The per-program linear-memory cap. |
 | `docViewTypes` | `return` | Which SDK types opening a function's documentation opens beside it: `return` (the return position), `return-and-parameters` (everything the signature names), or `off` (nothing). Labelled **Documentation types** in the editor. |

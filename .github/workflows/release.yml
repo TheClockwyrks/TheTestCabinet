@@ -246,6 +246,39 @@ jobs:
           name: dist-gg-${{ matrix.target }}
           path: dist/gg-${{ matrix.target }}
           if-no-files-found: error
+      # gg's REFERENCE DOCUMENTS — the twelve JSON files `tcab-backend` serves at
+      # /gg/reference, which it reads from disk because it cannot link the crate that
+      # projects them. A backend run from the tarballs above therefore needs this asset
+      # unpacked and TCAB_GG_REFERENCE pointed at it, or its reference endpoints answer
+      # 503 (the container images bake the same files instead — see
+      # deployments/images/services.Dockerfile). `development/releasing.md` says so where
+      # an operator will read it.
+      #
+      # ONE ASSET, FROM ONE LEG, AND NOT BUNDLED INTO THE FIVE BACKEND ARCHIVES. The
+      # output is JSON projected from data compiled into gg — no host paths, no
+      # timestamps, no map iteration order in it — so there is nothing arch-dependent to
+      # ship five times over. Two projections from one binary were measured byte-identical;
+      # the two matrix legs were not compared, which is precisely why only one of them
+      # publishes rather than both publishing an asset under the same name. Bundling it
+      # instead would mean making `build` (musl, Windows, macOS — none of which has a
+      # single gg toolchain) wait on this Linux-only job for a file identical in all five,
+      # which is a serialization bought with nothing. The x86_64 leg is the arbitrary but
+      # stated choice of the two.
+      - name: Package gg's reference documents
+        if: matrix.arch == 'x86_64'
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          "dist/gg-${{ matrix.target }}" reference --out dist/gg-reference
+          tar -czf "dist/gg-reference-${VERSION}.tar.gz" -C dist gg-reference
+      - uses: actions/upload-artifact@v6
+        if: matrix.arch == 'x86_64'
+        with:
+          name: dist-gg-reference
+          path: dist/gg-reference-*.tar.gz
+          if-no-files-found: error
 
   desktop:
     name: Desktop app (${{ matrix.name }})
@@ -393,7 +426,7 @@ jobs:
           # reports the freshly downloaded app as "damaged". Tell downloaders how
           # to clear the quarantine attribute until signing is in place.
           macos_note=$'\n\n### macOS: "“The Test Cabinet” is damaged and can’t be opened"\n\nThe macOS app is not yet signed or notarized, so after downloading it macOS quarantines it and shows this (misleading) message — the app is fine, just unsigned. After dragging it to Applications, clear the quarantine attribute once:\n\n```sh\nxattr -dr com.apple.quarantine \"/Applications/The Test Cabinet.app\"\n```\n\nThen open it normally.'
-          notes="Candidate build of ${VERSION}: the tcab CLI, the backend server, the dispatcher/driver/artifacts services, the gg coding harness (static musl, x86_64 and aarch64), and the desktop app, for every platform. Download and test these artifacts, then finalize with the \"Release (promote)\" workflow. Each platform's tcab was smoke-tested during build, and each gg binary was checked to report ${VERSION}.${macos_note}"
+          notes="Candidate build of ${VERSION}: the tcab CLI, the backend server, the dispatcher/driver/artifacts services, the gg coding harness (static musl, x86_64 and aarch64), gg's reference documents (\`gg-reference-${VERSION}.tar.gz\`, arch-independent — unpack it and point the backend's TCAB_GG_REFERENCE at it so \`GET /gg/reference\` serves), and the desktop app, for every platform. Download and test these artifacts, then finalize with the \"Release (promote)\" workflow. Each platform's tcab was smoke-tested during build, and each gg binary was checked to report ${VERSION}.${macos_note}"
           if gh release view "$VERSION" --repo "$REPO" >/dev/null 2>&1; then
             gh release upload "$VERSION" --repo "$REPO" --clobber dist/*
           else

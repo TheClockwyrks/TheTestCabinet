@@ -43,9 +43,9 @@ export type GgReferenceCategory = {
  * One **capability module** of the responses-as-code surface — the grouping a program writes in
  * front of a call, and the folder the reference's API tab files that call under.
  *
- * It carries gg's own [id](Self::id) for the module and the projected language's
- * [spelling](Self::path) of it, because the two answer to different authorities: the id is what a
- * [function](GgApiFunction::module) names and what the same module is called on every other arm,
+ * It carries gg's own [id](Self::id) for the module and this arm's [spelling](Self::path) of it,
+ * because the two answer to different authorities: the id is what an
+ * [entry](GgReferenceEntry::module) names and what the same module is called on every other arm,
  * and the path is what a model actually writes in *this* one.
  */
 export type GgReferenceModule = {
@@ -54,7 +54,7 @@ export type GgReferenceModule = {
    */
   id: string;
   /**
-   * The projected language's own spelling of it — `gg.files` in TypeScript, `gg::files` in Rust.
+   * This arm's own spelling of it — `gg.files` in TypeScript, `gg::files` in Rust.
    */
   path: string;
   /**
@@ -95,12 +95,64 @@ export type GgToolVariant = {
 };
 
 /**
+ * One condition a run must satisfy for a [tool](GgToolReference) to be offered, beyond holding the
+ * capabilities.
+ *
+ * It may be a **disjunction**: `wait_for_subagents` is offered to an agent that can have children
+ * at all, which is a non-empty roster *or* the `fork` capability, and either satisfies it. That is
+ * why [`axes`](Self::axes) is a list — one entry per alternative — and why the
+ * [sentence](Self::sentence) is composed by gg rather than assembled from the parts by a page that
+ * would have to know how to join them.
+ */
+export type GgToolCondition = {
+  /**
+   * The condition as a sentence, written in the second person about the *run* rather than about
+   * the model's options — "Only when the agent holds a task-list module."
+   *
+   * Composed by gg from one authored template per kind of alternative, which is what keeps the
+   * authorship at "one sentence per kind of condition" instead of one per tool. A template
+   * cannot be wrong about *which* condition applies to a tool, and the sentences it replaced
+   * could be, because nothing checked them against the code they described.
+   */
+  sentence: string;
+  /**
+   * The configuration axes this condition constrains — one id per alternative, so a page can
+   * group or filter by them: `capability`, `module`, `memory-access`, `memory-strategy`,
+   * `compaction-strategy`, `roster`, `machine`.
+   *
+   * One entry for an ordinary condition and several for a disjunction, in the order the
+   * [sentence](Self::sentence) names them.
+   */
+  axes: Array<string>;
+};
+
+/**
+ * One placeholder token standing where a **run's own data** would appear in a
+ * [tool](GgToolReference)'s prose or parameter schema.
+ */
+export type GgRunDataStandIn = {
+  /**
+   * The literal token as it appears in the description and schema — `<agent>`, `<skill>`,
+   * `<state>`. A page marks these in place; it does not go looking for angle brackets, because
+   * the tool descriptions contain those in ordinary prose too.
+   */
+  token: string;
+  /**
+   * What a real run would have there instead, as a phrase that completes "this stands for …" —
+   * "the agents on this run's own roster".
+   */
+  standsFor: string;
+};
+
+/**
  * One tool, exactly as it is sent to the provider.
  *
  * The [`description`](Self::description) and [`parameters`](Self::parameters) are the live
  * [tool definition](https://docs.testcabinet.ai/gg/toolset-ablation/) a maximal registry
  * produced — not a re-description of it — so a renamed argument or a reworded sentence shows
- * up here the moment the tool changes, with no second copy to update.
+ * up here the moment the tool changes, with no second copy to update. What buys the tool
+ * ([`capabilities`](Self::capabilities), [`requires`](Self::requires)) is projected the same way:
+ * gg withholds one thing at a time from that maximal registry and records what disappears.
  */
 export type GgToolReference = {
   /**
@@ -121,24 +173,46 @@ export type GgToolReference = {
    */
   parameters: Record<string, unknown>;
   /**
-   * The capability id that contributes this tool, or `None` for one no capability decides.
+   * Every capability id a run must hold **on its own** for this tool to be offered, in gg's
+   * order.
    *
-   * Every tool has one today; the field is optional because the gate is a *fact about the
-   * implementation*, and a tool offered from somewhere else entirely (the way
-   * `transition_state` is offered from a machine position rather than from a capability on
-   * the agent's own profile) must be able to say so rather than name a capability that does
-   * not really decide it.
+   * One for almost every tool. Two for `fork`, which needs the capability of its own name *and*
+   * the `subagents` capability that buys the calls collecting the copy — and that is exactly why
+   * this is a list rather than the single optional id it used to be: a field that can only name
+   * one capability answers for one of them and silently acquits the other.
+   *
+   * **Empty means no capability decides**, which is a real state rather than a gap:
+   * `transition_state` is offered from where an agent *stands* — a state of a machine another
+   * profile declares — and naming a capability for it would be naming something that does not
+   * decide it. Its condition is in [`requires`](Self::requires) instead.
+   *
+   * A capability that is required only *in the alternative* — as one of the ways a condition can
+   * be met — is not here; it is a clause of that [condition](Self::requires), because it is not
+   * something a run must hold.
    */
-  capability?: string;
+  capabilities?: Array<string>;
   /**
-   * A sentence naming any condition **beyond** the capability that decides whether this tool
-   * is offered — a bound store, a memory strategy, a non-empty roster, a position in a
-   * machine. `None` when the capability alone decides, which is the common case.
+   * Every condition **beyond** the capabilities that decides whether this tool is offered — a
+   * bound store, a writable handle, a memory strategy, a non-empty roster, a position in a
+   * machine. Empty when the capabilities alone decide.
    *
-   * Also where a description built from *run data* says so: `spawn_subagent` enumerates the
-   * agents this run's roster lists, so the text below it is one run's, not the tool's.
+   * Each entry is one thing that must be true, and each carries the sentence gg composed for it,
+   * so the console renders a string it never wrote. See [`GgToolCondition`].
    */
-  note?: string;
+  requires?: Array<GgToolCondition>;
+  /**
+   * The placeholder tokens standing in this entry's prose and schema where a **run's own data**
+   * would be, each with what it stands for.
+   *
+   * Some descriptions enumerate run data rather than a policy: `spawn_subagent` lists the roster,
+   * `read_skill` lists the library, `transition_state` names the state the agent is in. There is
+   * no configuration-independent rendering of those, so the reference is projected from a run
+   * with obvious placeholders in it — and this is where the page learns which strings are
+   * placeholders instead of inferring it from angle brackets, which ordinary prose also contains.
+   *
+   * Empty for every tool whose description is the same in every run, which is most of them.
+   */
+  runData?: Array<GgRunDataStandIn>;
   /**
    * Alternate renderings of the **same tool** under a different configuration — a policy
    * that rewrites the description or the parameter schema.
@@ -152,214 +226,39 @@ export type GgToolReference = {
 };
 
 /**
- * One member of an [API type](GgApiType).
- */
-export type GgApiTypeMember = {
-  /**
-   * The member's name as a program reads it (`totalLines`), or the literal itself (`"pending"`)
-   * for the arm of a union.
-   */
-  name: string;
-  /**
-   * The member's type; absent for a union arm, which is a value rather than a field and so has
-   * no type beside itself.
-   */
-  type?: string;
-  /**
-   * The SDK's own documentation for the member.
-   */
-  doc: string;
-};
-
-/**
- * One type declaration an [API function](GgApiFunction)'s signature refers to.
- */
-export type GgApiType = {
-  /**
-   * The type's name, as it appears in the signature.
-   */
-  name: string;
-  /**
-   * The declaration, as the SDK wrote it.
-   */
-  declaration: string;
-  /**
-   * The SDK's own documentation for the type: what it is, and why it has the shape it has.
-   */
-  doc: string;
-  /**
-   * One line per member — a record's properties, or the arms of a union — each with the
-   * documentation written on it. A declaration says what fields a value has and nothing about
-   * what any of them means, which is the half that decides whether a model uses it correctly.
-   */
-  members: Array<GgApiTypeMember>;
-};
-
-/**
- * How an [argument](GgApiParameter) is passed — the one axis of calling convention that changes
- * what a model has to *write* at the call site.
+ * One registered [program language](GgProgramLanguage), as the arm picker lists it.
  *
- * An enum rather than a string because a consumer switches on it: a page that marks a keyword
- * argument has to be sure it is reading `keyword` and not `named`, and the schema is what makes a
- * future language's projection say so or fail to deserialize.
+ * It carries no prose of its own — the description of what an arm *is* belongs to the language
+ * enum and to the docs site — only the id a reader picks by and the size of what picking it fetches.
  */
-export type GgApiParameterPassing = "positional" | "keyword" | "block";
-
-/**
- * One argument an [API signature](GgApiSignature) takes, or one field of a structured argument.
- */
-export type GgApiParameter = {
+export type GgReferenceLanguage = {
   /**
-   * The name the signature declares it under.
+   * The language's id — the path segment its [document](GgReferenceApi) is fetched under, and
+   * the same string a run's `language` capability param is configured with.
    */
-  name: string;
+  id: GgProgramLanguage;
   /**
-   * Its type, as the SDK writes it.
+   * How many [capability modules](GgReferenceModule) this arm's surface is divided into.
    */
-  type: string;
+  moduleCount: number;
   /**
-   * Whether the call is legal without it.
+   * How many callable functions this arm's document carries.
    */
-  optional: boolean;
+  functionCount: number;
   /**
-   * How it is passed. See [`GgApiParameterPassing`].
+   * How many SDK type declarations this arm's document carries.
    */
-  passing: GgApiParameterPassing;
-  /**
-   * The value it takes when it is left out, for a language that says so in the signature.
-   */
-  default?: string;
-  /**
-   * The SDK's own documentation for it — what to put here, and what happens if you do not.
-   */
-  doc: string;
-  /**
-   * The fields of a structured argument written inline at the call site, each documented in its
-   * own right. Empty for an argument typed by name, whose documentation is on that
-   * [type](GgApiType)'s members instead.
-   */
-  fields: Array<GgApiParameter>;
+  typeCount: number;
 };
 
 /**
- * One way an [API function](GgApiFunction) may be called.
- */
-export type GgApiSignature = {
-  /**
-   * The signature as the SDK declares it, beginning with the name a program calls.
-   */
-  signature: string;
-  /**
-   * Every argument this shape takes, in the order it takes them.
-   */
-  parameters: Array<GgApiParameter>;
-};
-
-/**
- * One [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) API function, as
- * the sandbox SDK declares it.
+ * The reference's **index**: the families the surface is grouped by, every tool, and a line per
+ * registered [program language](GgReferenceLanguage).
  *
- * Everything here is reflected out of the guest SDK's emitted `.d.ts` and its JSDoc, which is
- * the same material a model gets back from `view.openDocsView(...)` — so this page and the
- * documentation lookup a program can perform mid-run cannot disagree.
- */
-export type GgApiFunction = {
-  /**
-   * The [module](GgReferenceModule::id) the function lives in, by gg's id for it (`files`).
-   */
-  module: string;
-  /**
-   * The name a program calls it by (`readFile`).
-   */
-  name: string;
-  /**
-   * The **fully-qualified name** this arm advertises it under (`gg.files.readFile`) — the key an
-   * `openDocsView` takes and the key a documentation search files its hit under.
-   *
-   * Empty only where the arm's catalogue emits no qualified name, where the module's
-   * [path](GgReferenceModule::path) and this function's [name](Self::name) are all there is.
-   */
-  fqn?: string;
-  /**
-   * gg's own [operation](https://docs.testcabinet.ai/gg/responses-as-code/) id for what this
-   * call does (`files.read_file`) — the identity that is the same in all eleven arms, and the
-   * string a run's calls are recorded under.
-   *
-   * Empty where the arm named an operation gg does not have, which is a defect its own gate
-   * reports by name rather than something this page should paper over.
-   */
-  operation?: string;
-  /**
-   * The [category](GgReferenceCategory::id) the function's module belongs to.
-   */
-  category: string;
-  /**
-   * The one-line summary a search result carries — the first sentence of
-   * [`doc`](Self::doc).
-   */
-  summary: string;
-  /**
-   * Every shape the SDK offers this function in, each with the arguments it takes.
-   *
-   * An array rather than one string because how a language expresses an optional argument is
-   * that language's own business: an overload pair and a default argument are two spellings of
-   * one capability, and the first arrives here as two entries where the second arrives as one.
-   */
-  signatures: Array<GgApiSignature>;
-  /**
-   * The SDK's own paragraph of documentation, verbatim. Rendered with its whitespace
-   * preserved, for the same reason a tool's description is.
-   */
-  doc: string;
-  /**
-   * The gg tool whose being enabled binds this function, or `None` for one nothing gates —
-   * an ending call (decided by the agent's [role](Self::ending)), a view function bound to
-   * every program whatever a run enables, or a program-library call (see
-   * [`library`](Self::library)).
-   */
-  gate?: string;
-  /**
-   * For an ending call, the ending role whose programs bind it (`standard`, `review`,
-   * `judge`); `None` for everything else, which every role reaches the same way.
-   */
-  ending?: string;
-  /**
-   * Whether this function belongs to the
-   * [program library](https://docs.testcabinet.ai/gg/program-library/) — the one family a
-   * *capability* binds as a whole rather than a tool or a role, and therefore the one
-   * neither [`gate`](Self::gate) nor [`ending`](Self::ending) can express.
-   *
-   * Kept as a boolean because it is a published field, and now a projection of
-   * [`capability`](Self::capability) rather than a second fact: it is that field compared
-   * against the program library's id.
-   */
-  library: boolean;
-  /**
-   * The **capability** that buys this function, by gg's own id for it (`program-library`,
-   * `docview-close`), or `None` for a function no capability gates.
-   *
-   * [`gate`](Self::gate) names a *tool*, [`ending`](Self::ending) names a *role*, and this names
-   * the third and last thing that can withhold a call — so a reader that finds all three empty
-   * may say the function is always available, and one that does not must not. It exists because
-   * [`library`](Self::library) could only ever answer for one capability, and the moment a second
-   * bought part of the surface every call it withheld read as ungated.
-   */
-  capability?: string;
-  /**
-   * The declarations of every type this function's signature refers to, transitively closed
-   * — exactly what a `view.openDocsView` lookup appends for the types the session has not
-   * already been shown.
-   */
-  types: Array<GgApiType>;
-};
-
-/**
- * The whole reference: the families the surface is grouped by, every tool, and every
- * responses-as-code function.
- *
- * One document rather than three endpoints because it is small, wholly static, and read as a
- * unit — a reader who opens the Tools tab is one click from the API tab, and a category is
- * meaningless without the entries that hang off it.
+ * Everything here is language-independent, and that is the whole reason it is its own document. A
+ * tool's name and JSON schema are the *wire's*, not any language's, so carrying them beside one
+ * arm's signatures would either privilege that arm or repeat the tools eleven times. The
+ * signatures live in [`GgReferenceApi`], one document per arm, fetched when a reader picks one.
  */
 export type GgReference = {
   /**
@@ -368,25 +267,10 @@ export type GgReference = {
    * lockstep.
    *
    * Stamped on the page so a reader can tell *which* gg the prose in front of them belongs
-   * to. It is the committed artifact's version, not the running deployment's: they are the
-   * same whenever the artifact was regenerated, and CI's drift gate is what keeps that true.
+   * to. It is the version of the binary that wrote the documents, which for a deployment is the
+   * gg its image was built from.
    */
   ggVersion: string;
-  /**
-   * The [program language](GgProgramLanguage) the [functions](Self::functions) below are
-   * spelled in.
-   *
-   * gg's responses-as-code surface is one set of capabilities that every registered language
-   * offers under its own spellings — identical objects, identical gates, different function
-   * names and signatures. So a page showing signatures has to say whose, and a reader comparing
-   * two arms of a cross-language study has to be able to tell which one they are reading. The
-   * [tools](Self::tools) are unaffected: a tool's name and JSON schema are the wire's, not any
-   * language's.
-   *
-   * `#[serde(default)]` so an artifact generated before this field existed still decodes as the
-   * default language, which is the one it was in fact projected from.
-   */
-  language: GgProgramLanguage;
   /**
    * The families the surface is grouped by, in gg's own order — the order the system
    * prompt's API table and the built-in skills index list them in, which is roughly "the
@@ -394,26 +278,199 @@ export type GgReference = {
    */
   categories: Array<GgReferenceCategory>;
   /**
-   * The [capability modules](GgReferenceModule) the responses-as-code surface is divided into,
-   * in the order a model is presented with them.
-   *
-   * The **module** is the unit of that surface: it is what the system prompt names, what a
-   * documentation search filters by, and what a program writes in front of every call it makes.
-   * So the page is grouped by module and each [function](GgApiFunction::module) names the one it
-   * belongs to.
-   *
-   * `#[serde(default)]` so an artifact generated before the surface was modules still decodes —
-   * as an empty list, which is honest: that artifact grouped its functions by the API object
-   * they hung off, and there were no modules to describe.
-   */
-  modules: Array<GgReferenceModule>;
-  /**
    * Every tool gg can offer, in the canonical tool-vocabulary order.
    */
   tools: Array<GgToolReference>;
   /**
-   * Every function a [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/)
-   * program can call, in catalogue order.
+   * Every [program language](GgProgramLanguage) the **server** can serve an arm document for,
+   * each with the size of that document — what a picker needs to render an arm before it has
+   * fetched it.
+   *
+   * Read that first clause exactly: this is not "every arm gg registers". gg writes a line per
+   * registered arm, but the arms are eleven separate files a deployment reads at run time, so
+   * what the file says and what the reader can actually serve are two facts and only one of them
+   * is worth advertising. The server therefore rebuilds this list from the documents it loaded —
+   * dropping an arm whose document is not beside the index, and taking each arm's counts from the
+   * document it read rather than from the line that describes it. An index served with a count in
+   * it is a count the reader has seen.
    */
-  functions: Array<GgApiFunction>;
+  languages: Array<GgReferenceLanguage>;
+};
+
+/**
+ * Which kind of thing one [entry](GgReferenceEntry) documents.
+ *
+ * The two are the two kinds of documentation view gg opens, and they are separate kinds rather
+ * than one because a model reads them separately: a function view says how to call something, and
+ * a type view says what a value it hands back is made of. Modelling them as one list with a
+ * discriminant — rather than as two lists — is what lets the page order them the way a model meets
+ * them, module by module.
+ */
+export type GgReferenceEntryKind = "function" | "type";
+
+/**
+ * One entry of an arm's surface — a function or a type — carrying **the bytes its documentation
+ * view renders** plus what a page needs to file, link and filter it.
+ *
+ * # Why the documentation is one block and not a structure
+ *
+ * [`body`](Self::body) is not a rendering of this entry assembled for the console. It is the
+ * string gg's own documentation runtime produces for that name, from the same call a program makes
+ * with `view.openDocsView(...)` mid-run — so what a reader of this page sees and what a model sees
+ * are the same bytes by construction rather than by two renderers agreeing. The owner's rule for
+ * this page is that it show *exactly* what an agent would; a second renderer over structured
+ * fields is precisely the second source of truth that rule forbids, however faithful it is on the
+ * day it is written.
+ *
+ * What that costs is real and worth stating: the page cannot filter by parameter, cannot fold a
+ * long argument list, and cannot linkify a type named *inside* the block without parsing it — which
+ * would be the second renderer again. The links come from the FQN lists beside the body
+ * ([`types`](Self::types), [`returns`](Self::returns)), which are names rather than prose.
+ */
+export type GgReferenceEntry = {
+  /**
+   * Whether this entry documents a function or a type. See [`GgReferenceEntryKind`].
+   */
+  kind: GgReferenceEntryKind;
+  /**
+   * **The key this entry is opened by** — the fully-qualified name a `view.openDocsView` takes
+   * and a documentation search files its hit under (`gg.files.readFile`, `gg.files.FileRead`).
+   *
+   * Unique within the document, which is what makes it the page's own route parameter. The bare
+   * [`name`](Self::name) is not: a convenience method on a value and the free function it aliases
+   * may share one.
+   */
+  fqn: string;
+  /**
+   * The name a program writes at the call site (`readFile`), or the type's own name.
+   */
+  name: string;
+  /**
+   * The [module](GgReferenceModule::id) this entry belongs to, by gg's id for it (`files`).
+   */
+  module: string;
+  /**
+   * The [category](GgReferenceCategory::id) this entry belongs to, or `None` for one that
+   * belongs to no family — a type declared in the types-only module every arm has for the shapes
+   * no capability owns.
+   */
+  category?: string;
+  /**
+   * The one line a search result carries — the entry's authored brief. It is the first thing of
+   * the [body](Self::body), not a second wording of it.
+   */
+  brief: string;
+  /**
+   * **The documentation view's whole body**, verbatim: for a function, every shape it may be
+   * called in with a line per argument and then its description; for a type, its declaration, its
+   * paragraph, a line per member and a line per member function a value of it offers.
+   *
+   * Rendered with its whitespace preserved. See this type's own note on why it is a block.
+   */
+  body: string;
+  /**
+   * gg's own [operation](https://docs.testcabinet.ai/gg/responses-as-code/) id for what this
+   * call does (`files.read_file`) — the identity that is the same in all eleven arms, and the
+   * string a run's calls are recorded under. `None` for a type, which is not a call.
+   */
+  operation?: string;
+  /**
+   * Set when this entry is a **second** way to reach an [operation](Self::operation) the arm
+   * already binds elsewhere — the method some arm hangs off the type it operates on, beside the
+   * free function every arm has — naming that operation.
+   *
+   * It is a fact about the arm rather than about gg: an arm may ship a convenience its neighbours
+   * do not, which is the whole point of eleven idiomatic SDKs rather than eleven transliterations.
+   */
+  aliasOf?: string;
+  /**
+   * The declared type this entry is a **member of**, for a function called on a value rather than
+   * on a module; `None` for a free function and for a type.
+   */
+  receiver?: string;
+  /**
+   * The gg tool whose being enabled binds this function, or `None` for one nothing gates —
+   * an ending call (decided by the agent's [role](Self::ending)), a view function bound to
+   * every program whatever a run enables, or one a [capability](Self::capability) buys.
+   */
+  gate?: string;
+  /**
+   * For an ending call, the ending role whose programs bind it (`standard`, `review`);
+   * `None` for everything else, which every role reaches the same way.
+   */
+  ending?: string;
+  /**
+   * The **capability** that buys this function, by gg's own id for it (`program-library`,
+   * `docview-close`), or `None` for a function no capability gates.
+   *
+   * [`gate`](Self::gate) names a *tool*, [`ending`](Self::ending) names a *role*, and this names
+   * the third and last thing that can withhold a call — so a reader that finds all three empty
+   * may say the function is always available, and one that does not must not.
+   */
+  capability?: string;
+  /**
+   * The [fully-qualified names](Self::fqn) of every SDK type this function's signature reaches,
+   * **transitively closed** — every declaration a program holding this call's arguments and its
+   * result can end up looking at.
+   *
+   * Names, never declarations. The type's own entry is in this same document, so a page links to
+   * it; expanding each declaration into every function that mentions it is what made the old
+   * single-arm artifact four times the size of this whole one, with eighty-eight per cent of it
+   * the same type declarations written out again.
+   */
+  types?: Array<string>;
+  /**
+   * The [fully-qualified names](Self::fqn) of the SDK types in this function's **return**
+   * position. Empty for a call that hands nothing back, and for a type.
+   */
+  returns?: Array<string>;
+  /**
+   * The type views gg opens **beside** this function's own when a model opens it, under the
+   * `return` documentation-view mode — the default.
+   *
+   * This is the real answer, computed by the same function the run uses, rather than the
+   * transitive [`types`](Self::types) list a reader would otherwise mistake for it: the two
+   * differ, because opening is exactly one level deep and the closure is not.
+   */
+  opensUnderReturn?: Array<string>;
+  /**
+   * The type views gg opens beside this function's own under the `return-and-parameters` mode —
+   * every catalogued type the signature itself names, still one level deep.
+   */
+  opensUnderReturnAndParameters?: Array<string>;
+};
+
+/**
+ * One **program language's** whole responses-as-code surface: the modules it is divided into, and
+ * every function and type in it.
+ *
+ * Fetched when a reader picks an arm. The [index](GgReference)'s tools and families are not
+ * repeated here, because they are the same on every arm and a reader who has the index already has
+ * them.
+ */
+export type GgReferenceApi = {
+  /**
+   * The gg version this arm was projected from — [the index's](GgReference::gg_version), stamped
+   * here too so a document read on its own says which gg it describes.
+   */
+  ggVersion: string;
+  /**
+   * The [program language](GgProgramLanguage) every entry below is spelled in.
+   */
+  language: GgProgramLanguage;
+  /**
+   * The [capability modules](GgReferenceModule) this arm's surface is divided into, in the order
+   * a model is presented with them.
+   *
+   * The **module** is the unit of that surface: it is what the system prompt names, what a
+   * documentation search filters by, and what a program writes in front of every call it makes.
+   * So the page is grouped by module and each [entry](GgReferenceEntry::module) names the one it
+   * belongs to.
+   */
+  modules: Array<GgReferenceModule>;
+  /**
+   * Every function and every type on this arm, in the order a model meets them: module by
+   * module, each module's callable functions and then the types declared in it.
+   */
+  entries: Array<GgReferenceEntry>;
 };

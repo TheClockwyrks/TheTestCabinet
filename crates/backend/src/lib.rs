@@ -83,6 +83,21 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         }
     }
 
+    // gg's reference documents are read from disk on first request, not compiled in, so a
+    // deployment that never points TCAB_GG_REFERENCE anywhere real would otherwise learn
+    // about it from a `503` the first time somebody opened the console's gg Reference
+    // section. Say it at boot instead, where an operator is already reading. A WARNING and
+    // not an error: the reference is a documentation page, and a backend with no reference
+    // still serves runs, reviews and the catalog perfectly.
+    if !config.gg_reference.join("index.json").exists() {
+        tracing::warn!(
+            directory = %config.gg_reference.display(),
+            "no gg reference documents (index.json) — GET /gg/reference will answer 503; \
+             write them with `scripts/gg-reference.sh` or point TCAB_GG_REFERENCE at a \
+             directory `gg reference --out` produced"
+        );
+    }
+
     let store = DefinitionStore::open(&config.store)?;
     let db = if config.db_azure_ad {
         Db::connect_azure_ad(&config.database_url).await?

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Single source of truth for the gg CI toolchain image's PACKAGE NAME. Prints one line.
 #
-# WHY A SCRIPT FOR ONE STRING. This name has four call sites in two workflows — the build
-# job and the manifest job of `.github/workflows/build-gg-ci-image.yml`, which publish it,
-# and the two `hydrate-gg-toolchains.sh` steps in `.github/workflows/ci.yml`, which pull it
-# — and the two halves are edited by different changes at different times. That would be
+# WHY A SCRIPT FOR ONE STRING. This name has call sites in two workflows — the build job
+# and the manifest job of `.github/workflows/build-gg-ci-image.yml`, which publish it, and
+# the `hydrate-gg-toolchains.sh` step in `.github/workflows/ci.yml`'s `rust` job, which
+# pulls it — and the two halves are edited by different changes at different times. That would be
 # ordinary duplication if getting it wrong were loud. It is the opposite: the consumer is
 # `scripts/ci/hydrate-gg-toolchains.sh`, which is deliberately best-effort and exits 0 when
 # a pull fails, so renaming the published package or moving its tag does not turn anything

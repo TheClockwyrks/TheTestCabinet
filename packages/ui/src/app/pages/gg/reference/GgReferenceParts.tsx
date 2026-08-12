@@ -1,22 +1,30 @@
 import type { ReactNode } from "react";
-import type { GgApiParameter } from "@test-cabinet/run-record/gg-reference";
+import type { GgRunDataStandIn } from "@test-cabinet/run-record/gg-reference";
 import { toolParameters } from "./toolParameters";
 import styles from "./GgReference.module.scss";
 
-// The three blocks both Reference tabs' detail panes are built out of, and the one rule
-// that makes the page worth having: **the register a piece of text is rendered in tells
-// you where it came from.**
+// The blocks both Reference tabs' detail panes are built out of, and the one rule that
+// makes the page worth having: **the register a piece of text is rendered in tells you
+// where it came from.**
 //
-// - `<Verbatim>` is prose a model is given, exactly as it is given — never Markdown,
-//   never reflowed.
-// - `<CodeBlock>` is machine-readable text (a JSON Schema, a signature, a type
-//   declaration), where indentation is structure and lines therefore scroll.
-// - `<ParameterList>` and `<ApiParameterList>` are *ours* — derived from the schema or
-//   the signature catalogue beside them, and the only thing on either page that we wrote.
-//   The prose inside their rows is still the model's, reflected from the same place.
+// - `<Verbatim>` is text gg produced for a model, exactly as gg produced it — a tool's
+//   description, a documentation view's body. Never Markdown, never reflowed.
+// - `<CodeBlock>` is machine-readable text (a JSON Schema), where indentation is
+//   structure and lines therefore scroll.
+// - `<ParameterList>` is *ours* — derived from the JSON Schema beside it, and one of the
+//   few things on either page that we wrote. The prose inside its rows is still the
+//   model's, read out of that same schema.
 //
 // A reader must never have to wonder which of those three they are looking at, which is
 // why they are three components with three looks rather than one `<pre>` used everywhere.
+//
+// There used to be a fourth, `<ApiParameterList>`, which rendered an API function's
+// arguments out of a structured signature record. It is gone with the record: an entry
+// now carries the documentation view's whole body, and re-rendering the arguments beside
+// it in our own layout would be a second rendering of text gg has already rendered —
+// exactly the second source of truth this surface exists to not have. What it cost is
+// real and is written down on `GgReferenceEntry` in the contract: no per-argument filter,
+// no folding a long argument list. That is the price of showing what an agent sees.
 
 /** A labelled block in a detail pane. */
 export function Section({
@@ -35,47 +43,104 @@ export function Section({
 }
 
 /**
- * Model-facing prose, verbatim.
+ * Model-facing text, verbatim.
  *
  * The whole reason the reference is fetched from the backend instead of being written by
  * hand is that it shows what the model is really shown; rendering the text as Markdown,
  * collapsing its blank lines or re-wrapping its hand-laid columns would quietly undo
  * that. So: a `<pre>` that wraps, and nothing else.
+ *
+ * `marks` is the one exception, and it is not a rendering of the text — it is a
+ * highlight *over* it. See {@link markTokens}.
  */
-export function Verbatim({ label, text }: { label: string; text: string }) {
+export function Verbatim({
+  label,
+  text,
+  marks,
+}: {
+  label: string;
+  text: string;
+  /** Placeholder tokens to mark in place; see {@link markTokens}. */
+  marks?: GgRunDataStandIn[];
+}) {
   return (
     <Section label={label}>
-      <pre className={styles.verbatim}>{text}</pre>
+      <pre className={styles.verbatim}>{markTokens(text, marks)}</pre>
     </Section>
   );
 }
 
-/** Machine-readable text — pretty-printed JSON, a TypeScript signature, a declaration. */
+/** Machine-readable text — a pretty-printed JSON Schema. */
 export function CodeBlock({
   label,
   text,
-  wrap = false,
+  marks,
 }: {
   label: string;
   text: string;
-  /**
-   * Let long lines fold instead of scrolling sideways.
-   *
-   * Off by default, because in a pretty-printed schema or a type declaration the
-   * indentation *is* the structure and folding a line moves it under the wrong key. A
-   * function signature is the exception the flag exists for: it is one logical line with
-   * no indentation to destroy, so scrolling it sideways would cost a reader the return
-   * type — the half they came for — for nothing.
-   */
-  wrap?: boolean;
+  /** Placeholder tokens to mark in place; see {@link markTokens}. */
+  marks?: GgRunDataStandIn[];
 }) {
   return (
     <Section label={label}>
-      <pre className={wrap ? `${styles.code} ${styles.codeWrap}` : styles.code}>
-        {text}
-      </pre>
+      <pre className={styles.code}>{markTokens(text, marks)}</pre>
     </Section>
   );
+}
+
+/**
+ * Highlight the **run-data placeholders** gg substituted into a tool's prose, in place.
+ *
+ * A handful of tool descriptions enumerate a run's own data rather than a policy —
+ * `spawn_subagent` lists the roster, `read_skill` lists the library, `transition_state`
+ * names the state the agent stands in — so there is no configuration-independent
+ * rendering of them, and the reference is projected from a run with obvious stand-ins
+ * where that data goes. A reader who does not know that reads `<agent>` as a literal and
+ * concludes gg ships a tool with a broken description.
+ *
+ * The tokens come from the entry's own [`runData`](GgToolReference), which gg fills by
+ * testing its emitted definition against the constants it substituted. This function
+ * never goes looking for angle brackets: the descriptions contain those in ordinary prose
+ * and in schema text, and a highlight that guessed would mark the wrong things and miss a
+ * future stand-in that is not bracketed.
+ *
+ * The text itself is untouched — the marks are `<mark>` elements around substrings that
+ * are already there — so the block still reads as exactly what the model was given, which
+ * is the property the whole page rests on.
+ */
+export function markTokens(
+  text: string,
+  marks: GgRunDataStandIn[] | undefined,
+): ReactNode {
+  const tokens = (marks ?? []).map((mark) => mark.token).filter(Boolean);
+  if (tokens.length === 0) return text;
+  // One split over an alternation of the literal tokens, longest first: a token that is a
+  // prefix of another (`<state>` and `<state-machine>`, say) must not win the match and
+  // leave the rest of the longer one as bare text beside a highlight.
+  const pattern = new RegExp(
+    `(${[...tokens]
+      .sort((a, b) => b.length - a.length)
+      .map(escapeRegExp)
+      .join("|")})`,
+  );
+  const pieces = text.split(pattern);
+  // `split` with one capture group alternates plain text and captured token, so a piece is
+  // a token exactly when it is one of them — no index arithmetic to get wrong when a token
+  // happens to sit at the very start or end of the text.
+  return pieces.map((piece, index) =>
+    tokens.includes(piece) ? (
+      <mark key={index} className={styles.standIn}>
+        {piece}
+      </mark>
+    ) : (
+      piece
+    ),
+  );
+}
+
+/** Escape a literal string for use inside a `RegExp`. */
+function escapeRegExp(literal: string): string {
+  return literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
@@ -85,8 +150,20 @@ export function CodeBlock({
  * and stays on the page as the source of truth — but "which of these must I pass" is a
  * cross-reference between two of its keys, and the answer to the question a reader
  * actually has should not be the thing they have to assemble.
+ *
+ * A tool's schema is ours to read in a way an API function's documentation is not: the
+ * schema is data the provider is sent, not prose gg wrote for a model, so listing its
+ * keys is a reading of a machine-readable structure rather than a second rendering of
+ * text somebody already rendered.
  */
-export function ParameterList({ schema }: { schema: Record<string, unknown> }) {
+export function ParameterList({
+  schema,
+  marks,
+}: {
+  schema: Record<string, unknown>;
+  /** Placeholder tokens to mark in the argument descriptions; see {@link markTokens}. */
+  marks?: GgRunDataStandIn[];
+}) {
   const parameters = toolParameters(schema);
   if (parameters.length === 0) {
     // A real answer, not a gap: several of gg's tools genuinely take nothing.
@@ -111,7 +188,9 @@ export function ParameterList({ schema }: { schema: Record<string, unknown> }) {
               )}
             </span>
             {parameter.description && (
-              <p className={styles.paramDesc}>{parameter.description}</p>
+              <p className={styles.paramDesc}>
+                {markTokens(parameter.description, marks)}
+              </p>
             )}
           </li>
         ))}
@@ -121,71 +200,10 @@ export function ParameterList({ schema }: { schema: Record<string, unknown> }) {
 }
 
 /**
- * An API function's arguments, read out of the signature catalogue rather than a JSON
- * Schema.
- *
- * The sibling of {@link ParameterList}, which does the same job for a *tool*. They are
- * two functions rather than one because the two surfaces carry their arguments in
- * genuinely different shapes — a tool's are a JSON Schema the provider is sent, an API
- * function's are reflected out of the SDK's own `@param` blocks — and flattening them
- * into a shared row type would mean neither could ever say anything the other cannot.
- * A structured argument's fields nest under it, because that is where a model writes
- * them.
- */
-export function ApiParameterList({
-  parameters,
-}: {
-  parameters: GgApiParameter[];
-}) {
-  if (parameters.length === 0) {
-    // A real answer, not a gap: `view.current()` and `programs.history()` take nothing.
-    return <p className={styles.paramDesc}>No arguments.</p>;
-  }
-  return (
-    <ul className={styles.params}>
-      {parameters.map((parameter) => (
-        <li key={parameter.name} className={styles.param}>
-          <span className={styles.paramHead}>
-            <span className={styles.paramName}>{parameter.name}</span>
-            <span className={styles.paramType}>{parameter.type}</span>
-            {/* Only "required" is marked, the same rule the tool rows follow. */}
-            {!parameter.optional && (
-              <span className={styles.paramRequired}>required</span>
-            )}
-            {/* A default is worth a row of its own only where the language states one;
-                TypeScript never does, so this is silent today and will not be for a
-                language that spells options as defaults. */}
-            {parameter.default !== undefined && (
-              <span className={styles.paramType}>= {parameter.default}</span>
-            )}
-            {/* How the argument is passed is marked only when it changes what a model
-                types. Positional is every argument in every language that passes by
-                position, so labelling those would say nothing; `by name` is Python's
-                keyword arguments and Kotlin's named ones, where the call site writes the
-                name too, and `as a block` is Ruby's `fs.write_file(path) { … }`, where
-                the argument is not written in the parentheses at all. */}
-            {parameter.passing === "keyword" && (
-              <span className={styles.paramType}>by name</span>
-            )}
-            {parameter.passing === "block" && (
-              <span className={styles.paramType}>as a block</span>
-            )}
-          </span>
-          <p className={styles.paramDesc}>{parameter.doc}</p>
-          {parameter.fields.length > 0 && (
-            <ApiParameterList parameters={parameter.fields} />
-          )}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/**
- * A JSON value as the page prints it: two-space indented, keys in the order the artifact
+ * A JSON value as the page prints it: two-space indented, keys in the order the document
  * carries them.
  *
- * `JSON.stringify` preserves insertion order, and the committed artifact was produced by
+ * `JSON.stringify` preserves insertion order, and the reference documents are written by
  * `serde_json` — whose maps are sorted — so the schema a reader sees here is byte-stable
  * across reloads and diffable against the wire form.
  */

@@ -220,8 +220,19 @@ export const routes = {
     tool
       ? `/gg/reference/tools?tool=${encodeURIComponent(tool)}`
       : "/gg/reference/tools",
-  ggReferenceApi: (fn?: string): string =>
-    fn ? `/gg/reference/api?fn=${encodeURIComponent(fn)}` : "/gg/reference/api",
+  // The API tab carries a second parameter, because its document is per **SDK arm**:
+  // gg offers one set of capabilities under eleven idiomatic spellings, so "which
+  // function" and "spelled in which language" are two independent halves of one
+  // address and a link that pinned only the first would land a reader on whichever
+  // arm the page happened to open on. `lang` is a `GgProgramLanguage` id, the same
+  // string a run's language capability is configured with.
+  ggReferenceApi: (opts?: { fn?: string; lang?: string }): string => {
+    const params = new URLSearchParams();
+    if (opts?.lang) params.set("lang", opts.lang);
+    if (opts?.fn) params.set("fn", opts.fn);
+    const query = params.toString();
+    return query ? `/gg/reference/api?${query}` : "/gg/reference/api";
+  },
   // The run's default (Verdict) tab. `edit` opens the review editor in revise
   // mode — used by the single-review page's Edit control to return here with the
   // owner's review form reopened.

@@ -24,7 +24,9 @@
 # One shared build stage compiles all seven binaries in a single cargo pass, so the
 # mtime refresh happens ONCE and each workspace crate is compiled once. `--target`
 # then picks a runtime stage, and BuildKit builds only the stages that target
-# actually depends on — asking for `arena` never runs the driver's gg or npm stages.
+# actually depends on — asking for `arena` never runs the gg or npm stages. Two
+# targets depend on the gg stage: `driver` bakes the gg binary, and `backend` bakes
+# the reference documents that binary projects.
 #
 # The check=skip above silences a false positive: BuildKit's SecretsUsedInArgOrEnv
 # lint flags any ENV whose *name* contains "AUTH" (also TOKEN/KEY/SECRET/PASSWORD).
@@ -94,7 +96,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
         target/release/tcab-publisher \
         /out/
 
-# ── gg static-musl stage (driver only) ───────────────────────────────────────
+# ── gg static-musl stage (driver AND backend) ────────────────────────────────
 # The first-party `gg` harness, built static against musl. gg is copied into every
 # sandbox run container, whose images span glibc Debian bookworm AND the Ubuntu
 # blender image — a static binary is the one gg that runs across all of them. Built
@@ -203,7 +205,23 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     # comparison come out right, so this is what stops the image baking a gg whose
     # description of a language came off another branch's SDK.
     && find /src -path /src/target -prune -o -type f -exec touch {} + \
-    && TCAB_BUILD_COMMIT="${TCAB_BUILD_COMMIT}" scripts/build-gg-static.sh /gg
+    && TCAB_BUILD_COMMIT="${TCAB_BUILD_COMMIT}" scripts/build-gg-static.sh /gg \
+    # AND THE REFERENCE DOCUMENTS THE BACKEND SERVES, projected by the binary one line
+    # above. This is the second consumer of this stage, and the reason the header now says
+    # "driver AND backend": `tcab-backend` serves gg's model-facing surface at
+    # /gg/reference, cannot depend on test-cabinet-gg (oxc + tiktoken-rs, and the eleven
+    # language toolchains this stage installs to build it), and reads twelve JSON documents
+    # at run time instead. Producing
+    # them HERE, from the gg this same build linked, is what makes the console's reference
+    # and the harness a run actually executes one vintage of one checkout — the property a
+    # committed artifact plus a drift gate only approximated.
+    #
+    # It runs the static-musl binary under this glibc base, which is exactly what static
+    # means, and it needs nothing else: every arm's signature catalogue is compiled into
+    # that binary by crates/gg/build.rs, so `reference --out` opens no file, resolves no
+    # toolchain and reaches no network. Same RUN as the build so the documents land in this
+    # stage's layer beside /gg rather than costing another one.
+    && /gg reference --out /gg-reference
 
 # ── Package store stage (driver only) ────────────────────────────────────────
 # The driver seeds each run's repository, and a `packages`-declaring case has its
@@ -325,13 +343,32 @@ RUN apt-get update \
 
 COPY --from=build /out/tcab-backend /usr/local/bin/tcab-backend
 
+# gg's reference documents — `index.json` plus one per program language — projected by the
+# gg binary the stage above linked, and served verbatim at GET /gg/reference[/{language}]
+# for the console's gg Reference section. They ship as FILES beside the binary rather than
+# compiled into it for the same reason the Playwright driver above does: the backend must
+# not link the crate that produces them (test-cabinet-gg pulls oxc and tiktoken-rs, and
+# building it needs the eleven language toolchains the gg-build stage installs), and a file
+# the same build produced cannot disagree with it the way a committed artifact could.
+#
+# NOTE WHAT THIS COSTS: it makes the backend image depend on the gg-build stage, so building
+# `--target backend` now builds gg — eleven program-language toolchains, every arm's
+# catalogue reflected and every arm's artifacts compiled. Previously only the driver leg
+# paid that. It is the price of the console showing exactly what a model is shown, on all
+# eleven arms, with no second copy anywhere; and the two legs run concurrently in CI, so it
+# costs the backend leg's wall clock rather than the workflow's.
+COPY --from=gg-build /gg-reference /opt/gg-reference/
+
 # State paths are mounted at runtime (a PersistentVolumeClaim in the cluster, a
 # named volume locally). The compose file and deployments/k8s/base/backend.yaml set
 # the matching TCAB_BACKEND_DATABASE_URL / _STORE / _CHECKOUT values.
 # TCAB_BROWSER_DRIVER points the render path at the baked driver regardless of the
-# process's working directory.
+# process's working directory, and TCAB_GG_REFERENCE the reference endpoints at the
+# documents COPYed above — without it the backend would look under the checkout it
+# ingests from, which in this image is a mounted volume that has no build output in it.
 ENV TCAB_BACKEND_BIND=0.0.0.0:8787 \
-    TCAB_BROWSER_DRIVER=/opt/browser-driver/driver.mjs
+    TCAB_BROWSER_DRIVER=/opt/browser-driver/driver.mjs \
+    TCAB_GG_REFERENCE=/opt/gg-reference
 
 EXPOSE 8787
 ENTRYPOINT ["tcab-backend"]

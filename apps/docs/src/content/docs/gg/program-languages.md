@@ -4181,14 +4181,21 @@ model reaches by accident rather than by writing a sleep.
    `crates/gg-sandbox-artifacts/` — by `cargo build` itself. Nothing goes in
    `scripts/ci/contract-drift.sh`: it does not re-cut anything of gg's any more, because an
    artifact a build regenerates has no committed copy to diff.
-10. **Add the console's row**: a label in `PROGRAM_LANGUAGE_LABELS`
-   (`packages/ui/src/app/pages/runs/gg/ggCatalog.ts`), which is what the capability editor's
-   picker is built from, and a name in `PROGRAM_LANGUAGE_NAMES` on the Reference page. Both are
-   `Record`s over the `GgProgramLanguage` union — **not** arrays of options, which is the
-   distinction that makes the guarantee real: a `Record` missing a key is a TypeScript error,
+10. **Add the console's row**: one name, in `PROGRAM_LANGUAGE_NAMES`
+   (`packages/ui/src/app/pages/gg/programLanguages.ts`). It spells the new arm's button on the
+   [Reference](/gg/reference/) page, and the capability editor's picker
+   (`PROGRAM_LANGUAGE_LABELS` in `packages/ui/src/app/pages/runs/gg/ggCatalog.ts`) is a spread
+   of that same table, so the row appears there too without a second edit — add an entry there
+   only if the new arm needs an annotation a reader *choosing* it must have and a reader
+   *browsing* it must not, the way JavaScript's "(no type check)" does. It is a `Record` over
+   the `GgProgramLanguage` union — **not** an array of options, which is the distinction that
+   makes the guarantee real: a `Record` missing a key is a TypeScript error,
    where an array missing a row type-checks perfectly and silently offers an operator one
    language fewer than gg has. The prompt editor needs nothing: `npm run gen:contract`
-   discovers `system-code.*.hbs` from the directory and mirrors every one.
+   discovers `system-code.*.hbs` from the directory and mirrors every one — and the arm's own
+   reference **document** needs nothing either, because `gg reference --out` walks
+   `GgProgramLanguage::ALL` and the backend advertises whatever arm documents it managed to
+   load.
 11. **Run the gates.** The [isolation gate](#per-agent-compiler-isolation) drives the new
     language's program and module steps sixteen ways and requires every artifact to belong to
     its own program — and if the new arm's artifact rides over the wire in a transport encoding, as

@@ -1,200 +1,5 @@
 {
   "$defs": {
-    "GgApiFunction": {
-      "description": "One [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) API function, as\nthe sandbox SDK declares it.\n\nEverything here is reflected out of the guest SDK's emitted `.d.ts` and its JSDoc, which is\nthe same material a model gets back from `view.openDocsView(...)` — so this page and the\ndocumentation lookup a program can perform mid-run cannot disagree.",
-      "properties": {
-        "capability": {
-          "description": "The **capability** that buys this function, by gg's own id for it (`program-library`,\n`docview-close`), or `None` for a function no capability gates.\n\n[`gate`](Self::gate) names a *tool*, [`ending`](Self::ending) names a *role*, and this names\nthe third and last thing that can withhold a call — so a reader that finds all three empty\nmay say the function is always available, and one that does not must not. It exists because\n[`library`](Self::library) could only ever answer for one capability, and the moment a second\nbought part of the surface every call it withheld read as ungated.",
-          "type": ["string", "null"]
-        },
-        "category": {
-          "description": "The [category](GgReferenceCategory::id) the function's module belongs to.",
-          "type": "string"
-        },
-        "doc": {
-          "description": "The SDK's own paragraph of documentation, verbatim. Rendered with its whitespace\npreserved, for the same reason a tool's description is.",
-          "type": "string"
-        },
-        "ending": {
-          "description": "For an ending call, the ending role whose programs bind it (`standard`, `review`,\n`judge`); `None` for everything else, which every role reaches the same way.",
-          "type": ["string", "null"]
-        },
-        "fqn": {
-          "description": "The **fully-qualified name** this arm advertises it under (`gg.files.readFile`) — the key an\n`openDocsView` takes and the key a documentation search files its hit under.\n\nEmpty only where the arm's catalogue emits no qualified name, where the module's\n[path](GgReferenceModule::path) and this function's [name](Self::name) are all there is.",
-          "type": "string"
-        },
-        "gate": {
-          "description": "The gg tool whose being enabled binds this function, or `None` for one nothing gates —\nan ending call (decided by the agent's [role](Self::ending)), a view function bound to\nevery program whatever a run enables, or a program-library call (see\n[`library`](Self::library)).",
-          "type": ["string", "null"]
-        },
-        "library": {
-          "description": "Whether this function belongs to the\n[program library](https://docs.testcabinet.ai/gg/program-library/) — the one family a\n*capability* binds as a whole rather than a tool or a role, and therefore the one\nneither [`gate`](Self::gate) nor [`ending`](Self::ending) can express.\n\nKept as a boolean because it is a published field, and now a projection of\n[`capability`](Self::capability) rather than a second fact: it is that field compared\nagainst the program library's id.",
-          "type": "boolean"
-        },
-        "module": {
-          "description": "The [module](GgReferenceModule::id) the function lives in, by gg's id for it (`files`).",
-          "type": "string"
-        },
-        "name": {
-          "description": "The name a program calls it by (`readFile`).",
-          "type": "string"
-        },
-        "operation": {
-          "description": "gg's own [operation](https://docs.testcabinet.ai/gg/responses-as-code/) id for what this\ncall does (`files.read_file`) — the identity that is the same in all eleven arms, and the\nstring a run's calls are recorded under.\n\nEmpty where the arm named an operation gg does not have, which is a defect its own gate\nreports by name rather than something this page should paper over.",
-          "type": "string"
-        },
-        "signatures": {
-          "description": "Every shape the SDK offers this function in, each with the arguments it takes.\n\nAn array rather than one string because how a language expresses an optional argument is\nthat language's own business: an overload pair and a default argument are two spellings of\none capability, and the first arrives here as two entries where the second arrives as one.",
-          "items": {
-            "$ref": "#/$defs/GgApiSignature"
-          },
-          "type": "array"
-        },
-        "summary": {
-          "description": "The one-line summary a search result carries — the first sentence of\n[`doc`](Self::doc).",
-          "type": "string"
-        },
-        "types": {
-          "description": "The declarations of every type this function's signature refers to, transitively closed\n— exactly what a `view.openDocsView` lookup appends for the types the session has not\nalready been shown.",
-          "items": {
-            "$ref": "#/$defs/GgApiType"
-          },
-          "type": "array"
-        }
-      },
-      "required": [
-        "module",
-        "name",
-        "category",
-        "summary",
-        "signatures",
-        "doc",
-        "library",
-        "types"
-      ],
-      "type": "object"
-    },
-    "GgApiParameter": {
-      "description": "One argument an [API signature](GgApiSignature) takes, or one field of a structured argument.",
-      "properties": {
-        "default": {
-          "description": "The value it takes when it is left out, for a language that says so in the signature.",
-          "type": ["string", "null"]
-        },
-        "doc": {
-          "description": "The SDK's own documentation for it — what to put here, and what happens if you do not.",
-          "type": "string"
-        },
-        "fields": {
-          "description": "The fields of a structured argument written inline at the call site, each documented in its\nown right. Empty for an argument typed by name, whose documentation is on that\n[type](GgApiType)'s members instead.",
-          "items": {
-            "$ref": "#/$defs/GgApiParameter"
-          },
-          "type": "array"
-        },
-        "name": {
-          "description": "The name the signature declares it under.",
-          "type": "string"
-        },
-        "optional": {
-          "description": "Whether the call is legal without it.",
-          "type": "boolean"
-        },
-        "passing": {
-          "$ref": "#/$defs/GgApiParameterPassing",
-          "description": "How it is passed. See [`GgApiParameterPassing`]."
-        },
-        "type": {
-          "description": "Its type, as the SDK writes it.",
-          "type": "string"
-        }
-      },
-      "required": ["name", "type", "optional", "passing", "doc", "fields"],
-      "type": "object"
-    },
-    "GgApiParameterPassing": {
-      "description": "How an [argument](GgApiParameter) is passed — the one axis of calling convention that changes\nwhat a model has to *write* at the call site.\n\nAn enum rather than a string because a consumer switches on it: a page that marks a keyword\nargument has to be sure it is reading `keyword` and not `named`, and the schema is what makes a\nfuture language's projection say so or fail to deserialize.",
-      "oneOf": [
-        {
-          "const": "positional",
-          "description": "By position, as TypeScript, Java, Rust and Swift pass every argument.",
-          "type": "string"
-        },
-        {
-          "const": "keyword",
-          "description": "By name — Python's keyword arguments, Kotlin's named ones — so the call site writes the\nargument's name as well as its value.",
-          "type": "string"
-        },
-        {
-          "const": "block",
-          "description": "As a **block** — Ruby's `fs.write_file(path) { … }` — which is not an argument position at\nall but a second channel into the call, written at the call site as a body rather than as a\nvalue. Its type is the block's *return*, because what a block is for is the value it hands\nback.",
-          "type": "string"
-        }
-      ]
-    },
-    "GgApiSignature": {
-      "description": "One way an [API function](GgApiFunction) may be called.",
-      "properties": {
-        "parameters": {
-          "description": "Every argument this shape takes, in the order it takes them.",
-          "items": {
-            "$ref": "#/$defs/GgApiParameter"
-          },
-          "type": "array"
-        },
-        "signature": {
-          "description": "The signature as the SDK declares it, beginning with the name a program calls.",
-          "type": "string"
-        }
-      },
-      "required": ["signature", "parameters"],
-      "type": "object"
-    },
-    "GgApiType": {
-      "description": "One type declaration an [API function](GgApiFunction)'s signature refers to.",
-      "properties": {
-        "declaration": {
-          "description": "The declaration, as the SDK wrote it.",
-          "type": "string"
-        },
-        "doc": {
-          "description": "The SDK's own documentation for the type: what it is, and why it has the shape it has.",
-          "type": "string"
-        },
-        "members": {
-          "description": "One line per member — a record's properties, or the arms of a union — each with the\ndocumentation written on it. A declaration says what fields a value has and nothing about\nwhat any of them means, which is the half that decides whether a model uses it correctly.",
-          "items": {
-            "$ref": "#/$defs/GgApiTypeMember"
-          },
-          "type": "array"
-        },
-        "name": {
-          "description": "The type's name, as it appears in the signature.",
-          "type": "string"
-        }
-      },
-      "required": ["name", "declaration", "doc", "members"],
-      "type": "object"
-    },
-    "GgApiTypeMember": {
-      "description": "One member of an [API type](GgApiType).",
-      "properties": {
-        "doc": {
-          "description": "The SDK's own documentation for the member.",
-          "type": "string"
-        },
-        "name": {
-          "description": "The member's name as a program reads it (`totalLines`), or the literal itself (`\"pending\"`)\nfor the arm of a union.",
-          "type": "string"
-        },
-        "type": {
-          "description": "The member's type; absent for a union arm, which is a value rather than a field and so has\nno type beside itself.",
-          "type": ["string", "null"]
-        }
-      },
-      "required": ["name", "doc"],
-      "type": "object"
-    },
     "GgReferenceCategory": {
       "description": "One family of gg's surface: a group of tools and the [module](GgReferenceModule) their\nresponses-as-code counterparts live in.\n\nA category is not a capability. Several capabilities land in one family (the four\nfilesystem tools are four capabilities and one family), and the three code-only families\n(`views`, `programs`, and the ending call) have no tools at all — they exist only under\nresponses as code, which is exactly why the grouping is by *family* rather than by the\ncapability that switches something on.",
       "properties": {
@@ -214,39 +19,77 @@
       "required": ["id", "title", "description"],
       "type": "object"
     },
-    "GgReferenceModule": {
-      "description": "One **capability module** of the responses-as-code surface — the grouping a program writes in\nfront of a call, and the folder the reference's API tab files that call under.\n\nIt carries gg's own [id](Self::id) for the module and the projected language's\n[spelling](Self::path) of it, because the two answer to different authorities: the id is what a\n[function](GgApiFunction::module) names and what the same module is called on every other arm,\nand the path is what a model actually writes in *this* one.",
+    "GgReferenceLanguage": {
+      "description": "One registered [program language](GgProgramLanguage), as the arm picker lists it.\n\nIt carries no prose of its own — the description of what an arm *is* belongs to the language\nenum and to the docs site — only the id a reader picks by and the size of what picking it fetches.",
       "properties": {
-        "category": {
-          "description": "The [category](GgReferenceCategory::id) this module's calls belong to, or `None` for a\nmodule that carries no callable operation at all — the types-only module every arm has for\nthe declarations that belong to no capability.",
-          "type": ["string", "null"]
+        "functionCount": {
+          "description": "How many callable functions this arm's document carries.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
         },
         "id": {
-          "description": "gg's cross-arm id for the module — `files`, `views`, `session`.",
+          "$ref": "https://docs.testcabinet.ai/schema/gg/telemetry-event.schema.json#/$defs/GgProgramLanguage",
+          "description": "The language's id — the path segment its [document](GgReferenceApi) is fetched under, and\nthe same string a run's `language` capability param is configured with."
+        },
+        "moduleCount": {
+          "description": "How many [capability modules](GgReferenceModule) this arm's surface is divided into.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "typeCount": {
+          "description": "How many SDK type declarations this arm's document carries.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["id", "moduleCount", "functionCount", "typeCount"],
+      "type": "object"
+    },
+    "GgRunDataStandIn": {
+      "description": "One placeholder token standing where a **run's own data** would appear in a\n[tool](GgToolReference)'s prose or parameter schema.",
+      "properties": {
+        "standsFor": {
+          "description": "What a real run would have there instead, as a phrase that completes \"this stands for …\" —\n\"the agents on this run's own roster\".",
           "type": "string"
         },
-        "import": {
-          "description": "The literal line a program writes to bring the module into scope, where the arm needs one.\n`None` where the SDK is in scope already, which is every registered arm but PureScript.",
-          "type": ["string", "null"]
-        },
-        "path": {
-          "description": "The projected language's own spelling of it — `gg.files` in TypeScript, `gg::files` in Rust.",
-          "type": "string"
-        },
-        "summary": {
-          "description": "The line the module's own declaration introduces it by, verbatim from the SDK — the same\nsentence the system prompt names it by. Never a second wording written for this page.",
+        "token": {
+          "description": "The literal token as it appears in the description and schema — `<agent>`, `<skill>`,\n`<state>`. A page marks these in place; it does not go looking for angle brackets, because\nthe tool descriptions contain those in ordinary prose too.",
           "type": "string"
         }
       },
-      "required": ["id", "path", "summary"],
+      "required": ["token", "standsFor"],
+      "type": "object"
+    },
+    "GgToolCondition": {
+      "description": "One condition a run must satisfy for a [tool](GgToolReference) to be offered, beyond holding the\ncapabilities.\n\nIt may be a **disjunction**: `wait_for_subagents` is offered to an agent that can have children\nat all, which is a non-empty roster *or* the `fork` capability, and either satisfies it. That is\nwhy [`axes`](Self::axes) is a list — one entry per alternative — and why the\n[sentence](Self::sentence) is composed by gg rather than assembled from the parts by a page that\nwould have to know how to join them.",
+      "properties": {
+        "axes": {
+          "description": "The configuration axes this condition constrains — one id per alternative, so a page can\ngroup or filter by them: `capability`, `module`, `memory-access`, `memory-strategy`,\n`compaction-strategy`, `roster`, `machine`.\n\nOne entry for an ordinary condition and several for a disjunction, in the order the\n[sentence](Self::sentence) names them.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "sentence": {
+          "description": "The condition as a sentence, written in the second person about the *run* rather than about\nthe model's options — \"Only when the agent holds a task-list module.\"\n\nComposed by gg from one authored template per kind of alternative, which is what keeps the\nauthorship at \"one sentence per kind of condition\" instead of one per tool. A template\ncannot be wrong about *which* condition applies to a tool, and the sentences it replaced\ncould be, because nothing checked them against the code they described.",
+          "type": "string"
+        }
+      },
+      "required": ["sentence", "axes"],
       "type": "object"
     },
     "GgToolReference": {
-      "description": "One tool, exactly as it is sent to the provider.\n\nThe [`description`](Self::description) and [`parameters`](Self::parameters) are the live\n[tool definition](https://docs.testcabinet.ai/gg/toolset-ablation/) a maximal registry\nproduced — not a re-description of it — so a renamed argument or a reworded sentence shows\nup here the moment the tool changes, with no second copy to update.",
+      "description": "One tool, exactly as it is sent to the provider.\n\nThe [`description`](Self::description) and [`parameters`](Self::parameters) are the live\n[tool definition](https://docs.testcabinet.ai/gg/toolset-ablation/) a maximal registry\nproduced — not a re-description of it — so a renamed argument or a reworded sentence shows\nup here the moment the tool changes, with no second copy to update. What buys the tool\n([`capabilities`](Self::capabilities), [`requires`](Self::requires)) is projected the same way:\ngg withholds one thing at a time from that maximal registry and records what disappears.",
       "properties": {
-        "capability": {
-          "description": "The capability id that contributes this tool, or `None` for one no capability decides.\n\nEvery tool has one today; the field is optional because the gate is a *fact about the\nimplementation*, and a tool offered from somewhere else entirely (the way\n`transition_state` is offered from a machine position rather than from a capability on\nthe agent's own profile) must be able to say so rather than name a capability that does\nnot really decide it.",
-          "type": ["string", "null"]
+        "capabilities": {
+          "description": "Every capability id a run must hold **on its own** for this tool to be offered, in gg's\norder.\n\nOne for almost every tool. Two for `fork`, which needs the capability of its own name *and*\nthe `subagents` capability that buys the calls collecting the copy — and that is exactly why\nthis is a list rather than the single optional id it used to be: a field that can only name\none capability answers for one of them and silently acquits the other.\n\n**Empty means no capability decides**, which is a real state rather than a gap:\n`transition_state` is offered from where an agent *stands* — a state of a machine another\nprofile declares — and naming a capability for it would be naming something that does not\ndecide it. Its condition is in [`requires`](Self::requires) instead.\n\nA capability that is required only *in the alternative* — as one of the ways a condition can\nbe met — is not here; it is a clause of that [condition](Self::requires), because it is not\nsomething a run must hold.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "category": {
           "description": "The [category](GgReferenceCategory::id) this tool belongs to.",
@@ -260,12 +103,22 @@
           "description": "The tool name the model calls (`read_file`).",
           "type": "string"
         },
-        "note": {
-          "description": "A sentence naming any condition **beyond** the capability that decides whether this tool\nis offered — a bound store, a memory strategy, a non-empty roster, a position in a\nmachine. `None` when the capability alone decides, which is the common case.\n\nAlso where a description built from *run data* says so: `spawn_subagent` enumerates the\nagents this run's roster lists, so the text below it is one run's, not the tool's.",
-          "type": ["string", "null"]
-        },
         "parameters": {
           "description": "The tool's JSON-Schema parameters, verbatim."
+        },
+        "requires": {
+          "description": "Every condition **beyond** the capabilities that decides whether this tool is offered — a\nbound store, a writable handle, a memory strategy, a non-empty roster, a position in a\nmachine. Empty when the capabilities alone decide.\n\nEach entry is one thing that must be true, and each carries the sentence gg composed for it,\nso the console renders a string it never wrote. See [`GgToolCondition`].",
+          "items": {
+            "$ref": "#/$defs/GgToolCondition"
+          },
+          "type": "array"
+        },
+        "runData": {
+          "description": "The placeholder tokens standing in this entry's prose and schema where a **run's own data**\nwould be, each with what it stands for.\n\nSome descriptions enumerate run data rather than a policy: `spawn_subagent` lists the roster,\n`read_skill` lists the library, `transition_state` names the state the agent is in. There is\nno configuration-independent rendering of those, so the reference is projected from a run\nwith obvious placeholders in it — and this is where the page learns which strings are\nplaceholders instead of inferring it from angle brackets, which ordinary prose also contains.\n\nEmpty for every tool whose description is the same in every run, which is most of them.",
+          "items": {
+            "$ref": "#/$defs/GgRunDataStandIn"
+          },
+          "type": "array"
         },
         "variants": {
           "description": "Alternate renderings of the **same tool** under a different configuration — a policy\nthat rewrites the description or the parameter schema.\n\nEmpty for most tools. A handful genuinely change shape with their capability's\nimplementation (`read_file` offers no paging arguments at all under the unlimited read\nmode), and showing only one of those would misrepresent every run configured the other\nway. The top-level description and parameters are the **default** configuration's.",
@@ -299,7 +152,7 @@
   },
   "$id": "https://docs.testcabinet.ai/schema/gg/reference.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "The whole reference: the families the surface is grouped by, every tool, and every\nresponses-as-code function.\n\nOne document rather than three endpoints because it is small, wholly static, and read as a\nunit — a reader who opens the Tools tab is one click from the API tab, and a category is\nmeaningless without the entries that hang off it.",
+  "description": "The reference's **index**: the families the surface is grouped by, every tool, and a line per\nregistered [program language](GgReferenceLanguage).\n\nEverything here is language-independent, and that is the whole reason it is its own document. A\ntool's name and JSON schema are the *wire's*, not any language's, so carrying them beside one\narm's signatures would either privilege that arm or repeat the tools eleven times. The\nsignatures live in [`GgReferenceApi`], one document per arm, fetched when a reader picks one.",
   "properties": {
     "categories": {
       "description": "The families the surface is grouped by, in gg's own order — the order the system\nprompt's API table and the built-in skills index list them in, which is roughly \"the\nworkspace, then the work, then yourself\".",
@@ -308,27 +161,14 @@
       },
       "type": "array"
     },
-    "functions": {
-      "description": "Every function a [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/)\nprogram can call, in catalogue order.",
-      "items": {
-        "$ref": "#/$defs/GgApiFunction"
-      },
-      "type": "array"
-    },
     "ggVersion": {
-      "description": "The version of the `test-cabinet-gg` crate this reference was projected from — its\n`CARGO_PKG_VERSION`, which is `core`'s own, since the two crates are versioned in\nlockstep.\n\nStamped on the page so a reader can tell *which* gg the prose in front of them belongs\nto. It is the committed artifact's version, not the running deployment's: they are the\nsame whenever the artifact was regenerated, and CI's drift gate is what keeps that true.",
+      "description": "The version of the `test-cabinet-gg` crate this reference was projected from — its\n`CARGO_PKG_VERSION`, which is `core`'s own, since the two crates are versioned in\nlockstep.\n\nStamped on the page so a reader can tell *which* gg the prose in front of them belongs\nto. It is the version of the binary that wrote the documents, which for a deployment is the\ngg its image was built from.",
       "type": "string"
     },
-    "language": {
-      "$ref": "https://docs.testcabinet.ai/schema/gg/telemetry-event.schema.json#/$defs/GgProgramLanguage",
-      "default": "typescript",
-      "description": "The [program language](GgProgramLanguage) the [functions](Self::functions) below are\nspelled in.\n\ngg's responses-as-code surface is one set of capabilities that every registered language\noffers under its own spellings — identical objects, identical gates, different function\nnames and signatures. So a page showing signatures has to say whose, and a reader comparing\ntwo arms of a cross-language study has to be able to tell which one they are reading. The\n[tools](Self::tools) are unaffected: a tool's name and JSON schema are the wire's, not any\nlanguage's.\n\n`#[serde(default)]` so an artifact generated before this field existed still decodes as the\ndefault language, which is the one it was in fact projected from."
-    },
-    "modules": {
-      "default": [],
-      "description": "The [capability modules](GgReferenceModule) the responses-as-code surface is divided into,\nin the order a model is presented with them.\n\nThe **module** is the unit of that surface: it is what the system prompt names, what a\ndocumentation search filters by, and what a program writes in front of every call it makes.\nSo the page is grouped by module and each [function](GgApiFunction::module) names the one it\nbelongs to.\n\n`#[serde(default)]` so an artifact generated before the surface was modules still decodes —\nas an empty list, which is honest: that artifact grouped its functions by the API object\nthey hung off, and there were no modules to describe.",
+    "languages": {
+      "description": "Every [program language](GgProgramLanguage) the **server** can serve an arm document for,\neach with the size of that document — what a picker needs to render an arm before it has\nfetched it.\n\nRead that first clause exactly: this is not \"every arm gg registers\". gg writes a line per\nregistered arm, but the arms are eleven separate files a deployment reads at run time, so\nwhat the file says and what the reader can actually serve are two facts and only one of them\nis worth advertising. The server therefore rebuilds this list from the documents it loaded —\ndropping an arm whose document is not beside the index, and taking each arm's counts from the\ndocument it read rather than from the line that describes it. An index served with a count in\nit is a count the reader has seen.",
       "items": {
-        "$ref": "#/$defs/GgReferenceModule"
+        "$ref": "#/$defs/GgReferenceLanguage"
       },
       "type": "array"
     },
@@ -340,7 +180,7 @@
       "type": "array"
     }
   },
-  "required": ["ggVersion", "categories", "tools", "functions"],
+  "required": ["ggVersion", "categories", "tools", "languages"],
   "title": "GgReference",
   "type": "object"
 }

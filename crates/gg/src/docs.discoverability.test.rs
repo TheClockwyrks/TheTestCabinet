@@ -48,7 +48,7 @@ use test_cabinet_core::gg_query::GG_CAPABILITY_CATALOG;
 
 use super::*;
 use crate::ending::EndingRole;
-use crate::reference::TOOL_GATES;
+use crate::reference::conditions::derive;
 use crate::sandbox::{Binding, OPERATIONS, all_languages, catalogue_functions};
 
 /// **The natural words a model reaches for when it wants a capability.**
@@ -79,16 +79,34 @@ const CAPABILITY_KEYWORDS: &[(&str, &[&str])] = &[
     (CAPABILITY_FSM, &["state", "transition"]),
 ];
 
-/// Which gg tools a capability contributes, from the [reference table](TOOL_GATES) that is already
-/// the one place a tool's gate is written down.
+/// Which gg tools a capability contributes, from the
+/// [derivation](crate::reference::conditions) that measures it against `ToolRegistry::from_run`
+/// itself.
 ///
 /// Read from there rather than restated here, because a second copy of "what buys this tool" is
-/// exactly the drift this whole stage has been removing.
+/// exactly the drift the reference stopped authoring.
+///
+/// One capability cannot be answered that way, and it is worth saying which and why.
+/// [`fsm`](CAPABILITY_FSM) is declared on the **shell profile driving a machine**, never on the
+/// profile of the agent standing in one — so no ablation of *this* agent's capabilities can find
+/// `transition_state`, and the derivation records it against the machine axis instead. The join
+/// from that axis back to the capability that declares a machine is stated here, once, because it
+/// is a fact about how a run is assembled rather than about what a registry offers.
 fn tools_of(capability: &str) -> Vec<String> {
-    TOOL_GATES
+    derive()
         .iter()
-        .filter(|gate| gate.capability == capability)
-        .map(|gate| gate.tool.to_string())
+        .filter(|conditions| {
+            conditions
+                .capabilities()
+                .iter()
+                .any(|held| held == capability)
+                || (capability == CAPABILITY_FSM
+                    && conditions
+                        .requires()
+                        .iter()
+                        .any(|condition| condition.axes.iter().any(|axis| axis == "machine")))
+        })
+        .map(|conditions| conditions.tool.to_string())
         .collect()
 }
 

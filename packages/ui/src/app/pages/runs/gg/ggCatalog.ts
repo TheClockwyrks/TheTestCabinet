@@ -22,6 +22,8 @@ import type {
   GgSubagentScope,
 } from "@test-cabinet/run-record/gg";
 import type { GgHookKind } from "./ggConfigDraft";
+// The arms' names, from the one module that holds them — see PROGRAM_LANGUAGE_LABELS below.
+import { PROGRAM_LANGUAGE_NAMES } from "../../gg/programLanguages";
 
 // Whether a run's capability set has the named capability on. Capabilities are
 // per-agent now, so a run-level "is X on?" question is answered by the **Root** agent
@@ -647,27 +649,26 @@ export const HEALING_STRATEGY_OPTIONS: ReadonlyArray<{
 // study varies — and gg records it on the run and on each agent's surface so the arms can
 // be told apart afterwards. Empty is gg's default.
 //
-// How each registered language is labelled in the picker.
+// How each registered language is labelled in the picker: the arms' names, with the one
+// annotation this picker needs and a reader of documentation does not.
 //
-// A `Record` over the union rather than a hand-written array of options, and that is the
-// whole reason it exists: an array can be short a row and still type-check, so the comment
-// this replaces claimed a protection the code did not have — gg could register a language
-// and the picker would simply not offer it, silently, which is exactly the failure the
-// note promised was impossible. A `Record` is exhaustive: a language added to
-// `GgProgramLanguage` and not named here is a TypeScript error in this file. The Reference
-// page's `PROGRAM_LANGUAGE_NAMES` is the same shape for the same reason.
+// The names themselves are NOT written here. They are `PROGRAM_LANGUAGE_NAMES`, and this
+// is a spread of it with a single key overridden, because a second table of the same
+// eleven strings is a second source of truth however exhaustive its type is: `Record` over
+// the union catches a *missing* arm and cannot catch two spellings of a present one. What
+// is genuinely local to this file is the `javascript` annotation — a study configuring a
+// run needs to know that arm skips the type check, which is a property of choosing it and
+// nothing a reader browsing its SDK is looking for — so it is stated as an override, which
+// is what it is.
+//
+// The exhaustiveness argument survives the change and is the reason both are `Record`s: an
+// array of options can be short a row and still type-check, so gg could register a language
+// and this picker would silently not offer it. A language added to `GgProgramLanguage` and
+// not named in `PROGRAM_LANGUAGE_NAMES` is a TypeScript error there, and this spread
+// inherits it.
 const PROGRAM_LANGUAGE_LABELS: Record<GgProgramLanguage, string> = {
-  typescript: "TypeScript",
+  ...PROGRAM_LANGUAGE_NAMES,
   javascript: "JavaScript (no type check)",
-  python: "Python",
-  ruby: "Ruby",
-  purescript: "PureScript",
-  java: "Java",
-  kotlin: "Kotlin",
-  rust: "Rust",
-  swift: "Swift",
-  cpp: "C++",
-  csharp: "C#",
 };
 
 // gg's own default, which is what the empty value resolves to (`GgProgramLanguage::default`).

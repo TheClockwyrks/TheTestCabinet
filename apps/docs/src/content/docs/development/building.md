@@ -121,7 +121,8 @@ generated can be committed back into it.
 
 The cost is that **anything which compiles `crates/gg` wants those toolchains present** — which
 is `cargo build --workspace`, `cargo clippy --workspace`, `cargo doc --workspace`, the two
-pre-commit hooks that run those, `npm run gen:contract`, and `scripts/build-gg-static.sh`.
+pre-commit hooks that run those, `scripts/build-gg-static.sh`, and `scripts/gg-reference.sh`
+(which builds gg in order to run it).
 Nothing else in the workspace depends on `test-cabinet-gg`, so a package-scoped build
 (`-p test-cabinet-cli`, the release binaries, the desktop app) needs none of this.
 
@@ -337,13 +338,42 @@ with Prettier. CI (`scripts/ci/contract-drift.sh`) regenerates and fails on any
 diff, so a contract change that is not regenerated and committed turns the build
 red — the Rust, TypeScript, and JSON Schema representations can never drift apart.
 
-The same command also refreshes `crates/backend/src/gg_reference.json`, the
-projection of gg's model-facing surface the console's Reference page is served
-from, by running `gg reference`. That step **builds `test-cabinet-gg`**, so it
-wants the toolchains described under
-[`gg` and its eleven toolchains](#gg-and-its-eleven-toolchains) above; on a
-machine without them this command fails in the build rather than in the
-generator.
+It compiles `test-cabinet-core` and `test-cabinet-backend` and nothing else — in
+particular **not** `test-cabinet-gg`, so it needs none of the eleven
+program-language toolchains. It used to: an earlier step projected gg's
+model-facing surface into a committed `crates/backend/src/gg_reference.json` that
+the backend embedded. That artifact is gone. gg writes its reference documents
+itself (`gg reference --out`, wrapped by
+[`scripts/gg-reference.sh`](#projecting-ggs-reference)) and the backend reads them
+at run time, so there is nothing to regenerate and nothing to keep in step.
+
+## Projecting gg's reference
+
+The console's **gg Reference** section is served by the backend from files gg
+projects — the whole tool vocabulary, and every responses-as-code function and type
+on each of the eleven arms, carrying the very bytes a model's own documentation
+lookup renders. The backend cannot link `test-cabinet-gg` — `oxc` and `tiktoken-rs`
+are nowhere in the server's dependency tree, and building gg reflects eleven SDKs'
+catalogues with eleven language toolchains, which would become a prerequisite for
+compiling the backend — so the projection crosses that boundary as files rather than
+as a dependency or a committed artifact:
+
+```sh
+scripts/gg-reference.sh            # -> target/gg-reference/
+```
+
+That writes `index.json` plus one `<language>.json` per program language. The
+backend finds them there by default (`TCAB_GG_REFERENCE`, which resolves under
+`TCAB_BACKEND_CHECKOUT` when unset); the service images bake the same files at
+`/opt/gg-reference` out of the same build stage that produces the `gg` binary the
+driver image ships, so a deployed console and the harness its runs execute are one
+build of one checkout. A backend with no documents serves everything else normally
+and answers `503` on the two reference endpoints.
+
+The script **builds gg**, so it wants the toolchains described under
+[`gg` and its eleven toolchains](#gg-and-its-eleven-toolchains) above; running the
+projection itself needs none of them, because every arm's catalogue is compiled into
+the binary.
 
 ## Desktop app (Tauri)
 

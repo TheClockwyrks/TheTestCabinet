@@ -423,7 +423,7 @@ fn no_object_name_is_a_constant_waiting_to_be_joined() {
 
 use clap::{CommandFactory, Parser};
 
-use super::{Cli, Command};
+use super::{Cli, Command, write_reference};
 
 /// Catches structural mistakes in the derive (duplicate args, bad groups) — including the
 /// `args_conflicts_with_subcommands`/`subcommand_negates_reqs` pair that lets a required top-level
@@ -490,5 +490,100 @@ fn a_subcommand_and_a_bare_config_conflict() {
         err.kind(),
         clap::error::ErrorKind::ArgumentConflict,
         "{err}"
+    );
+}
+
+/// `gg reference --out <DIR>` parses to the directory it was given.
+///
+/// The flag is the whole interface between this binary and every consumer of the reference — two
+/// image builds and the release workflow spell it on a `RUN` line, where a rename would surface as
+/// a clap error inside a container build and nowhere else. It is asserted here for the same reason
+/// the bare `--config` form above is: a shell is not a type system.
+#[test]
+fn the_reference_subcommand_takes_an_output_directory() {
+    let cli = Cli::try_parse_from(["gg", "reference", "--out", "/tmp/gg-reference"])
+        .expect("`gg reference --out` parses");
+    match cli.command {
+        Some(Command::Reference(args)) => assert_eq!(
+            args.out,
+            Some(std::path::PathBuf::from("/tmp/gg-reference"))
+        ),
+        other => panic!("expected the reference subcommand, got {other:?}"),
+    }
+    let bare = Cli::try_parse_from(["gg", "reference"]).expect("`gg reference` parses");
+    match bare.command {
+        Some(Command::Reference(args)) => assert!(
+            args.out.is_none(),
+            "no --out is the stdout form, not a default directory"
+        ),
+        other => panic!("expected the reference subcommand, got {other:?}"),
+    }
+}
+
+/// **The writer produces the files the reader looks for.**
+///
+/// This is the one assertion nothing else in the workspace can make. The projection is written by
+/// this crate and read by `test-cabinet-backend`, which does not depend on it (and must not — see
+/// [`Command::Reference`]); no test can therefore run the real writer into the real reader. What
+/// closes the gap is that both sides take the filenames from
+/// [`test_cabinet_core::gg_reference`](test_cabinet_core::gg_reference::index_file) rather than
+/// spelling them, and this test runs the real writer and checks the directory it leaves behind
+/// against those same functions — with the backend's own loader checked against them from its side.
+///
+/// It decodes every document rather than merely stat-ing it, because a file that is present and not
+/// a `GgReferenceApi` costs the reader that arm, silently, in a built image.
+#[test]
+fn writing_the_reference_leaves_the_documents_the_backend_reads() {
+    use test_cabinet_core::gg::GgProgramLanguage;
+    use test_cabinet_core::gg_reference::{GgReference, GgReferenceApi, document_file, index_file};
+
+    let dir = tempfile::tempdir().expect("a scratch directory");
+    let out = dir.path().join("gg-reference");
+    write_reference(&out).expect("the reference is written");
+
+    let index: GgReference =
+        serde_json::from_slice(&std::fs::read(out.join(index_file())).expect("the index is there"))
+            .expect("the index decodes as the contract type");
+    assert_eq!(
+        index.languages.len(),
+        GgProgramLanguage::ALL.len(),
+        "the index lists every registered arm"
+    );
+
+    for language in GgProgramLanguage::ALL {
+        let path = out.join(document_file(*language));
+        let document: GgReferenceApi = serde_json::from_slice(
+            &std::fs::read(&path).unwrap_or_else(|err| panic!("{}: {err}", path.display())),
+        )
+        .unwrap_or_else(|err| panic!("{} decodes as the contract type: {err}", path.display()));
+        assert_eq!(
+            document.language,
+            *language,
+            "{} carries the arm it is named after",
+            path.display()
+        );
+        assert!(
+            !document.entries.is_empty(),
+            "{} carries an arm's surface rather than an empty document",
+            path.display()
+        );
+    }
+}
+
+/// A write that fails says **which path** failed.
+///
+/// The failure lands in a `RUN` line of two image builds and of the release workflow, where an
+/// operator sees the message and nothing else. `std::io::Error` carries no path, so this asserts the
+/// wrapper that adds one has not been quietly unwrapped back to a bare errno.
+#[test]
+fn a_failed_reference_write_names_the_path() {
+    let dir = tempfile::tempdir().expect("a scratch directory");
+    let occupied = dir.path().join("not-a-directory");
+    std::fs::write(&occupied, "").expect("the blocking file is written");
+
+    let err = write_reference(&occupied).expect_err("a directory cannot be created over a file");
+    assert!(
+        err.to_string().contains("not-a-directory"),
+        "the failure names the path it was attempting: {err}"
     );
 }

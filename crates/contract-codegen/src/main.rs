@@ -443,17 +443,17 @@ fn main() -> Result<()> {
         // Its own module because it is a self-contained document fetched on one console
         // section (`GET /gg/reference`), and because it describes what gg *offers* rather
         // than what a run *did*: nothing that renders a run record, a replay or a query
-        // result touches these types. The payload behind them is a generated-and-committed
-        // artifact (`crates/backend/src/gg_reference.json`) for the reason the module's
-        // rustdoc gives — the backend cannot depend on the crate that projects it.
+        // result touches these types. There are two documents rather than one — the
+        // language-independent index, and one per program language — for the reason the
+        // module's rustdoc gives, and both are declared here because a console that fetches
+        // the second by picking an arm off the first needs both shapes.
         TsModule {
             file: "gg-reference.ts",
             decls: ts_decls![&cfg;
                 ggref::GgReferenceCategory, ggref::GgReferenceModule, ggref::GgToolVariant,
-                ggref::GgToolReference,
-                ggref::GgApiTypeMember, ggref::GgApiType, ggref::GgApiParameterPassing,
-                ggref::GgApiParameter, ggref::GgApiSignature, ggref::GgApiFunction,
-                ggref::GgReference,
+                ggref::GgToolCondition, ggref::GgRunDataStandIn, ggref::GgToolReference,
+                ggref::GgReferenceLanguage, ggref::GgReference,
+                ggref::GgReferenceEntryKind, ggref::GgReferenceEntry, ggref::GgReferenceApi,
             ],
         },
         // The code-analysis contract: the deterministic, execute-nothing static read of
@@ -849,26 +849,34 @@ fn main() -> Result<()> {
             owns: &["GgDashboardPanel"],
             schema: root_schema::<bapi::GgDashboard>(),
         },
-        // gg's model-facing reference (`GET /gg/reference`): the families, the tools and
-        // the responses-as-code functions. Wholly self-contained — it shares no type with
-        // any other document, because it describes gg's *surface* rather than any run —
-        // so every one of its subtypes is owned here and nothing is cross-referenced.
+        // gg's model-facing reference, in the two documents it is served as: the index
+        // (`GET /gg/reference`) carrying the families, the tools and the arm list, and one
+        // arm's whole surface (`GET /gg/reference/{language}`). Wholly self-contained — they
+        // share no type with any other document, because they describe gg's *surface* rather
+        // than any run — so every one of their subtypes is owned by one of the two and
+        // nothing is cross-referenced outward.
         SchemaDoc {
             rel_path: "gg/reference.schema.json",
             root: Some("GgReference"),
             owns: &[
                 "GgReferenceCategory",
-                "GgReferenceModule",
+                "GgReferenceLanguage",
                 "GgToolReference",
                 "GgToolVariant",
-                "GgApiFunction",
-                "GgApiSignature",
-                "GgApiParameter",
-                "GgApiParameterPassing",
-                "GgApiType",
-                "GgApiTypeMember",
+                "GgToolCondition",
+                "GgRunDataStandIn",
             ],
             schema: root_schema::<ggref::GgReference>(),
+        },
+        SchemaDoc {
+            rel_path: "gg/reference-api.schema.json",
+            root: Some("GgReferenceApi"),
+            owns: &[
+                "GgReferenceModule",
+                "GgReferenceEntry",
+                "GgReferenceEntryKind",
+            ],
+            schema: root_schema::<ggref::GgReferenceApi>(),
         },
         // The backend's run-queue (`/jobs`) control plane. These reference the core
         // run-record document by URL (the launch request, the claimed job, and the

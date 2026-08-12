@@ -34,7 +34,8 @@ so artifacts are tested before they reach users:
      `tcab-dispatcher`/`tcab-driver`/`tcab-artifacts` services — as archives,
      smoke-testing each platform's `tcab` with `scripts/ci/smoke-binary.sh`;
    - [`gg`](/gg/overview/), the in-container coding harness, as a **bare static-musl
-     executable** for `x86_64` **and** `aarch64` (see
+     executable** for `x86_64` **and** `aarch64`, plus **gg's reference documents**
+     as one arch-independent `gg-reference-<version>.tar.gz` (see
      [Releasing `gg`](#releasing-gg) below);
    - the [Tauri desktop app](/components/tauri/overview/) as the platform's
      installer (a `.deb` on Linux, a `.dmg` on macOS, an `.msi` and an NSIS
@@ -76,6 +77,34 @@ deployment** into a run container. Three consequences, all of which the workflow
 A **prerelease** tag (`v0.7.0-rc1`) does not equal any crate version, so nothing
 resolves it by default; point a deployment at one explicitly with
 `TCAB_GG_RELEASE_VERSION=0.7.0-rc1`.
+
+#### `gg-reference-<version>.tar.gz`
+
+The same job publishes one more asset that is not a binary: the **reference
+documents** `tcab-backend` serves at `GET /gg/reference` and
+`GET /gg/reference/{language}` — `index.json` plus one document per program
+language, projected by the freshly built `gg` itself (`gg reference --out`). The
+backend reads them from disk because it must not link `test-cabinet-gg`.
+
+**If you deploy the backend from these tarballs rather than from the container
+image, you have to unpack this one too:**
+
+```sh
+tar -xzf gg-reference-v0.7.0.tar.gz -C /srv/test-cabinet
+# then, in the backend's environment:
+TCAB_GG_REFERENCE=/srv/test-cabinet/gg-reference
+```
+
+Without it the backend starts, serves everything else, logs one warning at boot and
+answers `503` on the two reference endpoints — so the console's gg Reference section
+is the only thing that degrades. The **container images need none of this**: the
+backend image bakes the identical files at `/opt/gg-reference` and sets the variable
+itself.
+
+It is a single asset built on the `x86_64` leg alone, with no triple in its name,
+because the content is JSON projected from data compiled into gg and is therefore
+identical on every platform — there is nothing arch-dependent in it to ship five
+times over.
 
 ### macOS: the desktop app is unsigned
 

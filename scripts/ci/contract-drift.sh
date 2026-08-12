@@ -2,33 +2,21 @@
 # Regenerates every generated-and-committed contract artifact from its source of
 # truth and fails if a committed copy is stale.
 #
-# Two artifacts are checked here, because each is generated from source that a
-# change can edit without remembering to regenerate:
+# ONE artifact is checked here: the data contract. The TS bindings
+# (packages/run-record/src/) and the JSON Schemas (apps/docs/public/schema/) are
+# generated from the Rust types that derive `ts_rs::TS` + `schemars::JsonSchema` (see
+# crates/contract-codegen and scripts/gen-contract.mjs). Any change to one of those
+# types — including the rustdoc, which is emitted into the schemas as descriptions —
+# that is not regenerated and committed turns this check red, so the three
+# representations can never silently drift apart.
 #
-#  1. The data contract. The TS bindings (packages/run-record/src/) and the JSON
-#     Schemas (apps/docs/public/schema/) are generated from the Rust types that
-#     derive `ts_rs::TS` + `schemars::JsonSchema` (see crates/contract-codegen and
-#     scripts/gen-contract.mjs). Any change to one of those types — including the
-#     rustdoc, which is emitted into the schemas as descriptions — that is not
-#     regenerated and committed turns this check red, so the three representations
-#     can never silently drift apart.
+# It is committed, and stays committed, for the one reason that survives everything the
+# rest of this header describes being deleted: its READERS cannot run the generator.
+# They are TypeScript builds (`tsc -b packages/run-record`, Vite, the site build) and a
+# static docs site serving the schemas as files, none of which can invoke a Rust binary.
+# Committing is what you do when the reader cannot run the generator.
 #
-#  2. gg's model-facing reference. crates/backend/src/gg_reference.json is projected
-#     from gg's own tool definitions and sandbox signature catalogue by `gg reference`
-#     (the same `npm run gen:contract` run emits it) and embedded in the backend, which
-#     serves it at GET /gg/reference for the console's gg Reference section. The backend
-#     cannot depend on test-cabinet-gg — wasmtime, oxc and tiktoken-rs against a static
-#     musl build — so this committed artifact stands in for that dependency, and this
-#     check is what makes it as trustworthy as one: reword a tool's description without
-#     regenerating and the console would keep showing prose no model was ever sent.
-#
-#     Projecting it means BUILDING gg, and that is no longer cheap: gg's build script
-#     reflects all eleven of its program languages' signature catalogues out of their
-#     guest SDKs, each with that language's own documentation tool. So this script
-#     installs gg's toolchains before it regenerates anything — to build gg, not to
-#     reflect a catalogue of its own. See the install step below.
-#
-# WHAT IS NOT CHECKED HERE, AND USED TO BE — READ THIS BEFORE ADDING A THIRD ITEM. This script was
+# WHAT IS NOT CHECKED HERE, AND USED TO BE — READ THIS BEFORE ADDING A SECOND ITEM. This script was
 # once also the drift gate for everything gg embeds about its eleven program languages: the eleven
 # SIGNATURE CATALOGUES (what a model is *told* each language offers, reflected out of that language's
 # guest SDK), and the four CHECKERS this script could re-cut cheaply (TypeScript's `tsc`, Ruby's Opal,
@@ -53,13 +41,36 @@
 # apart. It recomputed the source digests a build.sh had written into a manifest beside its output,
 # so it could attest what a build had been TOLD and never what it produced.
 #
-# So: this script gates GENERATED-AND-COMMITTED files, and there are exactly two kinds left, both
-# above. If a change makes you want to add a third, the question to ask first is whether the artifact
-# needs to be committed at all. What proves gg's own artifacts WORK is the per-arm substrate, surface
-# and compile tests, which are untouched and were always the load-bearing half; nothing here ever
-# tested behaviour. To READ a catalogue — worth doing, since reflectors are programs and their bugs
-# have been of the shape "the `@return` prose was dropped" — run `scripts/gg-signatures.sh` and open
-# `target/gg-signatures/`.
+# AND THE MOST RECENT THING IT STOPPED GATING, retired on exactly that reasoning:
+# crates/backend/src/gg_reference.json, the projection of gg's model-facing surface the console's
+# Reference page is served from. It was committed because the backend serves it and cannot depend on
+# test-cabinet-gg — oxc and tiktoken-rs, and eleven language toolchains to build it — so a committed
+# artifact stood in for the dependency and this check made it "as trustworthy as one". It was neither
+# of those things in the end. It carried ONE of gg's eleven program languages, because the projection
+# picked the default arm; it was a second renderer of prose whose first renderer is gg's own
+# documentation runtime; and a gate that finds staleness after the fact only when somebody runs it is
+# strictly weaker than an artifact that cannot be stale. gg writes the twelve documents itself now
+# (`gg reference --out`, see scripts/gg-reference.sh), the backend image bakes them beside the binary,
+# and tcab-backend reads them at run time from TCAB_GG_REFERENCE.
+#
+# THE CONSEQUENCE FOR THIS SCRIPT IS LARGER THAN A DELETED PATH: it does not build gg any more, so
+# it does not need gg's toolchains any more. `npm run gen:contract`'s first step used to be
+# `cargo run -p test-cabinet-gg -- reference`, and building gg reaches every arm twice over — eleven
+# documentation tools to reflect the catalogues, and every arm's artifact crate to compile what a
+# program is judged against. Two installer calls and ~3.3 GB stood here for exactly that one step.
+# What is left links test-cabinet-core and test-cabinet-backend, and the backend links neither gg nor
+# anything gg pulls. If you find yourself adding an installer back, check first whether something
+# taught this script to build gg again — that is the regression, not the missing toolchain.
+#
+# So: this script gates GENERATED-AND-COMMITTED files, and there is exactly one kind left, at the top.
+# If a change makes you want to add a second, the question to ask first is whether the artifact needs
+# to be committed at all — and the test that decides it is whether its READERS can run the generator.
+# What proves gg's own artifacts WORK is the per-arm substrate, surface and compile tests, which are
+# untouched and were always the load-bearing half; nothing here ever tested behaviour. To READ a
+# catalogue — worth doing, since reflectors are programs and their bugs have been of the shape "the
+# `@return` prose was dropped" — run `scripts/gg-signatures.sh` and open `target/gg-signatures/`; to
+# read the reference the console renders, run `scripts/gg-reference.sh` and open
+# `target/gg-reference/`.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
@@ -67,48 +78,17 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 log "npm ci"
 npm ci
 
-# THESE ARE INSTALLED TO BUILD gg, NOT TO REGENERATE ANYTHING. Nothing in this script re-cuts a
-# signature catalogue or a checker any more. But `npm run gen:contract` below projects
-# crates/backend/src/gg_reference.json by RUNNING gg — `cargo run -p test-cabinet-gg -- reference` is
-# its first step — and building gg now reaches every arm twice over. Its own build script reflects
-# all eleven arms' catalogues out of their guest SDKs, each with its own documentation tool: `tsc`,
-# griffe, YARD, `purs`, javadoc, the Kotlin front end, rustdoc, `swiftc -emit-symbol-graph`,
-# `clang++ -ast-dump=json`, Roslyn. And the artifact crates it depends on compile those arms'
-# COMPILE INPUTS — javac and `jar` for the JVM arms' SDK jars, Node and the pinned `opal-compiler`
-# and `componentize-js` for the Ruby and TypeScript arms, `cargo` against the wasm target for the
-# Rust arm's rlibs, `purs` and Spago for the PureScript arm's library tree, and the wasi-sdk and the
-# Swift SDK for WebAssembly for the C++ and Swift arms' guest archives. Without them the very first
-# cargo invocation below dies inside a build script, several layers away from anything that looks
-# like a contract. One call, one pinned list: the same script the devcontainer, the Rust lint/test
-# scripts and the driver image's gg stage all run, and it installs both halves — plus a second call
-# for the one arm neither half covers, immediately below it.
-log "install gg's program-language toolchains (gg is BUILT below; its build reflects and compiles them)"
-./scripts/ci/install-gg-toolchains.sh
-# And the second list, which is not part of the eleven and must not become part of them: the whole
-# .NET SDK and unpruned wasi-sdk that RELINK the C# guest. That guest is not committed any more
-# either, so `cargo build -p test-cabinet-gg` below produces it — and without this line
-# `packages/gg-sandbox-csharp/build.sh` quietly fetches ~1.4 GB into its own `.build/` instead of
-# using the prefix an agent was hydrated with. Idempotent; see its header for why it is separate.
-log "install the csharp arm's build toolchains (~1.4 GB no gg RUN needs)"
-./scripts/ci/install-gg-build-toolchains.sh
-# Several of them land in ~/.local/bin — uv, `purs` — and the reflectors resolve them off PATH. An
-# installer cannot export into the shell that ran it, so this shell does it.
-export PATH="$HOME/.local/bin:$PATH"
-
 log "regenerate the contract (cargo run -p contract-codegen + prettier)"
 npm run gen:contract
 
 log "check for drift"
-if ! git diff --exit-code -- packages/run-record/src apps/docs/public/schema \
-	crates/backend/src/gg_reference.json; then
+if ! git diff --exit-code -- packages/run-record/src apps/docs/public/schema; then
 	cat >&2 <<'EOF'
 
 error: the generated contract artifacts are out of date.
-The TypeScript bindings and/or JSON Schemas no longer match the Rust source, or
-gg's committed reference (crates/backend/src/gg_reference.json) no longer matches
-the tools and responses-as-code functions gg actually offers models — in which
-case the backend would serve, and the console would render, a description no
-model was ever sent.
+The TypeScript bindings and/or JSON Schemas no longer match the Rust types they
+are generated from, so the Rust, TypeScript and JSON Schema representations of
+the contract disagree.
 Run `npm run gen:contract` and commit the result.
 EOF
 	exit 1

@@ -79,11 +79,22 @@ export function useFsFolders(): FsFolders {
  */
 export function FsExplorer({
   sidebarLabel,
+  sidebarHead,
   tree,
   children,
 }: {
   /** Names the sidebar's landmark — "Agents", "Project board", "Modules". */
   sidebarLabel: string;
+  /**
+   * A block above the tree, inside the sidebar — a filter box, a count, a legend.
+   *
+   * Optional, and every run explorer omits it: a run's tree is what the run did and is
+   * short enough to read. The gg **reference** passes one, because its tree is the whole
+   * of one SDK arm and a reader arrives at it looking for one name out of ninety-odd.
+   * Whatever is passed scrolls with the tree unless it says otherwise — the sidebar is
+   * the scroll container — so a control that must stay put should stick itself.
+   */
+  sidebarHead?: ReactNode;
   /** The tree's top-level nodes ({@link FsFolder} / {@link FsFileRow} elements). */
   tree: ReactNode;
   /** The detail pane: whatever the current selection resolves to. */
@@ -92,6 +103,7 @@ export function FsExplorer({
   return (
     <div className={panels.explorer}>
       <nav className={panels.explorerSidebar} aria-label={sidebarLabel}>
+        {sidebarHead}
         <ul className={panels.fsTree}>{tree}</ul>
       </nav>
       <div className={panels.explorerContent}>{children}</div>

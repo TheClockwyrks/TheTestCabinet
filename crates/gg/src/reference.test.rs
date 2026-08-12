@@ -1,26 +1,13 @@
 use std::collections::BTreeSet;
 
+use serde_json::json;
+
+use super::tools::{Configuration, MAXIMAL_CONFIGURATION, registry_definitions};
 use super::*;
-
-/// The language whose spellings [`reference`] projects, read from the module's own answer rather
-/// than restated — so a test cannot go on passing against a language the page stopped being built
-/// from.
-fn projected_language() -> &'static dyn crate::sandbox::ProgramLanguage {
-    crate::sandbox::language(super::reference_language())
-}
-
-/// **The page says which language's spellings it is showing, and it is the one the functions came
-/// from.**
-///
-/// The signatures below are one language's rendering of a surface every language offers, so a reader
-/// comparing two arms of a cross-language study has to be able to tell which they are looking at —
-/// and a stamp that disagreed with the entries under it would be worse than no stamp at all.
-#[test]
-fn the_reference_is_stamped_with_the_language_it_projects() {
-    let reference = reference();
-    assert_eq!(reference.language, super::reference_language());
-    assert_eq!(projected_language().id(), reference.language);
-}
+use crate::memories::MemoryStrategy;
+use crate::tasks::TaskMode;
+use crate::tools::{ALL_TOOL_NAMES, READ_MODE_DEFAULT_CAP, READ_MODE_UNLIMITED};
+use test_cabinet_core::gg::{SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_INLINE, SHELL_OUTPUT_OFFLOAD};
 
 /// Every tool gg can offer appears **exactly once**, with the prose and schema a model would
 /// really be sent.
@@ -60,11 +47,11 @@ fn every_tool_appears_once_with_a_real_definition() {
     }
 }
 
-/// Every tool and every API function names a category the payload actually declares — so no entry
-/// can land in a group the console does not render, which is how an entry disappears from a
-/// sidebar without disappearing from the data.
+/// Every tool names a category the index actually declares — so no entry can land in a group the
+/// console does not render, which is how an entry disappears from a sidebar without disappearing
+/// from the data.
 #[test]
-fn every_entry_maps_to_a_declared_category() {
+fn every_tool_maps_to_a_declared_category() {
     let reference = reference();
     let declared: BTreeSet<&str> = reference.categories.iter().map(|c| c.id.as_str()).collect();
 
@@ -74,15 +61,6 @@ fn every_entry_maps_to_a_declared_category() {
             "`{}` is in category `{}`, which no family declares",
             tool.name,
             tool.category
-        );
-    }
-    for function in &reference.functions {
-        assert!(
-            declared.contains(function.category.as_str()),
-            "`{}.{}` is in category `{}`, which no family declares",
-            function.module,
-            function.name,
-            function.category
         );
     }
 }
@@ -135,138 +113,51 @@ fn the_families_partition_the_tool_vocabulary() {
     );
 }
 
-/// The gate table covers **exactly** the tool vocabulary: no tool without a documented gate, and no
-/// gate for a tool that no longer exists.
+/// **Every arm gg registers is on the picker, and the size beside it is its own document's.**
 ///
-/// This is the gate that makes the authored half of the reference maintainable. A new tool arrives
-/// with a capability and a set of conditions that live only in `ToolRegistry::from_run`'s `if`s;
-/// without this test it would arrive on the page with no explanation of what buys it, and nobody
-/// would notice.
+/// The counts are what a reader sees before they fetch an arm, so a count that does not match the
+/// document behind it is the one error the page cannot show: the arm looks complete and opens
+/// short. Recomputed here from the document rather than from the catalogue, which is the same
+/// direction the projection computes them in and therefore the check that a *dropped* entry — a
+/// type nothing reaches, a function no maximal grant binds — is visible in the index too.
 #[test]
-fn the_gate_table_covers_exactly_the_tool_vocabulary() {
-    let gated: Vec<&str> = TOOL_GATES.iter().map(|gate| gate.tool).collect();
+fn every_registered_language_is_listed_with_the_size_of_its_own_document() {
+    let reference = reference();
+    let listed: Vec<GgProgramLanguage> = reference.languages.iter().map(|arm| arm.id).collect();
     assert_eq!(
-        gated,
-        ALL_TOOL_NAMES.to_vec(),
-        "TOOL_GATES must name exactly the tools gg can offer, in the same order"
+        listed,
+        GgProgramLanguage::ALL.to_vec(),
+        "the picker must list every registered arm, in registration order"
     );
 
-    for gate in TOOL_GATES {
-        assert!(
-            !gate.capability.trim().is_empty(),
-            "`{}` has no capability",
-            gate.tool
-        );
-        if let Some(note) = gate.note {
-            assert!(
-                !note.trim().is_empty(),
-                "`{}` carries an empty note, which renders as a blank caveat",
-                gate.tool
-            );
-        }
-    }
-}
-
-/// Every function the generated signature catalogue documents reaches the reference, with its
-/// signature and documentation intact.
-///
-/// The count is the catalogued functions' exactly. Nothing is folded in per grouping: a directory
-/// function used to be, because it was bound onto every object the guest created and no catalogue
-/// entry named it, and with it deleted the page and the catalogue are the same set — the same
-/// completeness the run's own agent-surface readout has.
-///
-/// The set is keyed by the **fully-qualified name**, which is the catalogue's own key and the one
-/// thing on an entry that is unique. A `(module, name)` pair is not: a convenience helper is a
-/// method on a value, documented under the module its receiver belongs to and free to be spelled
-/// the way the operation it aliases is — `gg.views.OpenView.close` beside `gg.views.close` — so a
-/// pair-keyed set silently folds the two into one and turns a missing entry into a passing count.
-#[test]
-fn every_catalogued_function_appears() {
-    let reference = reference();
-    let emitted: BTreeSet<&str> = reference
-        .functions
-        .iter()
-        .map(|function| function.fqn.as_str())
-        .collect();
-
-    let catalogued = crate::sandbox::catalogue_functions(projected_language());
-    assert_eq!(
-        emitted.len(),
-        catalogued.len(),
-        "the reference must carry one entry per catalogued function, and nothing else"
-    );
-    for function in &catalogued {
-        assert!(
-            emitted.contains(function.fqn.unwrap_or_default()),
-            "`{}.{}` is documented by the catalogue but missing from the reference",
-            function.object,
-            function.name
-        );
-    }
-
-    for function in &reference.functions {
-        assert!(
-            !function.signatures.is_empty()
-                && function
-                    .signatures
-                    .iter()
-                    .all(|entry| !entry.signature.trim().is_empty()),
-            "`{}.{}` came out with no signature",
-            function.module,
-            function.name
-        );
-        assert!(
-            !function.doc.trim().is_empty(),
-            "`{}.{}` came out with no documentation",
-            function.module,
-            function.name
-        );
-        assert!(
-            !function.summary.trim().is_empty(),
-            "`{}.{}` came out with no summary",
-            function.module,
-            function.name
-        );
-    }
-}
-
-/// Every type a signature refers to resolves to a declaration.
-///
-/// The reference drops a name the catalogue does not declare rather than rendering an empty block,
-/// which is the right behaviour for a corrupt artifact and the wrong thing to discover in
-/// production — so the count is asserted here, where a regenerated catalogue that lost a
-/// declaration fails the build instead.
-#[test]
-fn every_referenced_type_resolves_to_a_declaration() {
-    let reference = reference();
-    let by_name: std::collections::BTreeMap<(String, String), usize> = reference
-        .functions
-        .iter()
-        .map(|f| ((f.module.clone(), f.name.clone()), f.types.len()))
-        .collect();
-
-    for function in crate::sandbox::catalogue_functions(projected_language()) {
-        let key = (
-            function.module.unwrap_or(function.object).to_string(),
-            function.name.to_string(),
+    for arm in &reference.languages {
+        let document = reference_api(arm.id);
+        assert_eq!(document.modules.len(), arm.module_count, "{}", arm.id.id());
+        assert_eq!(
+            document
+                .entries
+                .iter()
+                .filter(|entry| entry.kind == GgReferenceEntryKind::Function)
+                .count(),
+            arm.function_count,
+            "{}",
+            arm.id.id()
         );
         assert_eq!(
-            by_name.get(&key).copied(),
-            Some(function.types.len()),
-            "`{}.{}` refers to a type the catalogue does not declare",
-            function.object,
-            function.name
+            document
+                .entries
+                .iter()
+                .filter(|entry| entry.kind == GgReferenceEntryKind::Type)
+                .count(),
+            arm.type_count,
+            "{}",
+            arm.id.id()
         );
-    }
-
-    for function in &reference.functions {
-        for declared in &function.types {
-            assert!(
-                !declared.declaration.trim().is_empty(),
-                "`{}` resolved to an empty declaration",
-                declared.name
-            );
-        }
+        assert!(
+            arm.function_count > 0 && arm.type_count > 0 && arm.module_count > 0,
+            "`{}` is advertised with an empty document",
+            arm.id.id()
+        );
     }
 }
 
@@ -352,19 +243,19 @@ fn the_policy_driven_tools_carry_distinct_variants() {
 /// variants.
 ///
 /// This is the general form of the property the test above spot-checks, and it is the one that
-/// makes the [union](maximal_definitions)'s name-keyed dedup safe. That dedup keeps the *first*
-/// definition it sees for a name; if two reachable configurations word or shape a tool differently
-/// and only one of them is emitted, the page documents a gg some runs are not. Nothing about a
-/// `ToolDefinition` announces that it varies, so the only way to know is to build every
-/// configuration and look — which is cheap, and is what this does.
+/// makes the union's name-keyed dedup safe. That dedup keeps the *first* definition it sees for a
+/// name; if two reachable configurations word or shape a tool differently and only one of them is
+/// emitted, the page documents a gg some runs are not. Nothing about a `ToolDefinition` announces
+/// that it varies, so the only way to know is to build every configuration and look — which is
+/// cheap, and is what this does.
 ///
-/// A failure here is fixed by adding the missing rendering to [`variants`], not by widening the
+/// A failure here is fixed by adding the missing rendering to `variants`, not by widening the
 /// comparison.
 #[test]
 fn every_reachable_rendering_is_on_the_page() {
     let reference = reference();
 
-    for configuration in every_configuration() {
+    for configuration in every_policy() {
         for definition in registry_definitions(&configuration) {
             let entry = reference
                 .tools
@@ -393,13 +284,16 @@ fn every_reachable_rendering_is_on_the_page() {
     }
 }
 
-/// Every configuration a run can put a tool in: the cross product of the policies
-/// [`variants`] knows about and the two axes the [union](maximal_definitions) runs over.
+/// Every configuration a run can put a tool's **rendering** in: the cross product of the policies
+/// `variants` knows about and the two axes the maximal union runs over, with everything a run can
+/// *withhold* left maximal.
 ///
 /// A cross product rather than one-axis-at-a-time because the interesting failure is a *pair* — a
-/// policy whose rendering only differs under some other setting — and 144 registries of a few
-/// dozen tools apiece is a fraction of a second.
-fn every_configuration() -> Vec<Configuration> {
+/// policy whose rendering only differs under some other setting — and 144 registries of a few dozen
+/// tools apiece is a fraction of a second. What a run withholds is the
+/// [conditions](super::conditions)' subject and is covered exhaustively there, over a space this
+/// one deliberately does not enter: a withheld tool has no rendering to compare.
+pub(super) fn every_policy() -> Vec<Configuration> {
     let mut configurations = Vec::new();
     for read in [READ_MODE_UNLIMITED, READ_MODE_DEFAULT_CAP] {
         for shell in [
@@ -422,6 +316,7 @@ fn every_configuration() -> Vec<Configuration> {
                                 memories,
                                 tasks,
                                 fsm,
+                                ..MAXIMAL_CONFIGURATION
                             });
                         }
                     }
@@ -432,42 +327,87 @@ fn every_configuration() -> Vec<Configuration> {
     configurations
 }
 
-/// Every tool whose description enumerates run data — the skills, the roster, a machine's edges —
-/// is shown built from the placeholders, and says so in its note.
+/// Every tool whose description or schema is built from run data is shown built from the
+/// placeholders, **and says which ones it carries**.
 ///
-/// The assertion is on the *description*, not on the note, because the failure this guards against
-/// is the reference silently rendering an empty list (an unbound library, an empty roster) and
-/// reading as though gg offers a tool with nothing to point at.
+/// Two halves, and both are needed. The description assertion guards against the reference silently
+/// rendering an empty list (an unbound library, an empty roster) and reading as though gg offers a
+/// tool with nothing to point at. The `runData` assertion guards the page's other half: a token in
+/// the prose that the entry does not declare is a token a reader has no way to know is a
+/// placeholder, and marking it by looking for angle brackets is what this field exists to avoid.
 #[test]
 fn run_data_descriptions_are_built_from_placeholders() {
     let reference = reference();
-    let described = |name: &str| {
+    let entry = |name: &str| {
         reference
             .tools
             .iter()
             .find(|tool| tool.name == name)
-            .map(|tool| tool.description.clone())
             .unwrap_or_else(|| panic!("`{name}` is missing"))
     };
+    let declares = |name: &str, token: &str| {
+        entry(name)
+            .run_data
+            .iter()
+            .any(|stand_in| stand_in.token == token)
+    };
 
-    assert!(described("read_skill").contains(PLACEHOLDER_SKILL));
+    assert!(entry("read_skill").description.contains(PLACEHOLDER_SKILL));
+    assert!(declares("read_skill", PLACEHOLDER_SKILL));
     for name in ["spawn_subagent", "exec"] {
         assert!(
-            described(name).contains(PLACEHOLDER_AGENT),
+            entry(name).description.contains(PLACEHOLDER_AGENT),
             "`{name}` does not name the placeholder roster"
         );
+        assert!(declares(name, PLACEHOLDER_AGENT));
     }
     let (_, state, next) = PLACEHOLDER_PROCESS;
-    let transition = described("transition_state");
+    let transition = &entry("transition_state").description;
     assert!(transition.contains(state) && transition.contains(next));
+    assert!(declares("transition_state", state) && declares("transition_state", next));
+
+    // `create_issue` carries its roster in the **parameter schema** rather than in its prose, and
+    // in a variant's as well as the entry's — the two reasons the scan reads more than the
+    // description of the default rendering.
+    assert!(declares("create_issue", PLACEHOLDER_AGENT));
+
+    // And nothing else claims a stand-in. A token declared by a tool whose text does not contain it
+    // would be a marker the page could never place.
+    for tool in &reference.tools {
+        for stand_in in &tool.run_data {
+            let mut text = format!("{}{}", tool.description, tool.parameters);
+            for variant in &tool.variants {
+                text.push_str(&variant.description);
+                text.push_str(&variant.parameters.to_string());
+            }
+            assert!(
+                text.contains(&stand_in.token),
+                "`{}` declares the stand-in `{}`, which appears nowhere in what it sends",
+                tool.name,
+                stand_in.token
+            );
+            assert!(
+                !stand_in.stands_for.trim().is_empty(),
+                "`{}`'s `{}` stands for nothing a reader can read",
+                tool.name,
+                stand_in.token
+            );
+        }
+    }
 }
 
 /// The reference is stamped with the build it came out of, and is pure: two calls in one process
-/// produce the same document.
+/// produce the same document, index and arms alike.
 #[test]
 fn the_reference_is_stamped_and_deterministic() {
     let first = reference();
     assert_eq!(first.gg_version, env!("CARGO_PKG_VERSION"));
     assert!(!first.gg_version.is_empty());
     assert_eq!(first, reference());
+
+    for language in GgProgramLanguage::ALL {
+        let document = reference_api(*language);
+        assert_eq!(document.gg_version, first.gg_version);
+        assert_eq!(document, reference_api(*language));
+    }
 }

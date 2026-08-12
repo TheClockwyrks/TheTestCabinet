@@ -227,7 +227,27 @@ TCAB_BACKEND_CHECKOUT=/absolute/path/to/the-test-cabinet
 # verifies bearer tokens against the local auth service.
 # R2 + deploy-hook variables can stay blank: with them unset the backend still
 # records to its database and regenerates the snapshot on disk (a dev-only mode).
+# Leave TCAB_GG_REFERENCE unset and run scripts/gg-reference.sh (below) — its
+# default output directory is exactly where the unset variable resolves to.
 ```
+
+If you want the console's **gg Reference** section to work, project gg's reference
+documents once:
+
+```sh
+scripts/gg-reference.sh
+```
+
+That writes `target/gg-reference/` — `index.json` plus one document per gg program
+language — which is where an unset `TCAB_GG_REFERENCE` resolves relative to
+`TCAB_BACKEND_CHECKOUT`. The backend reads them at run time rather than embedding
+them, because it must not depend on the crate that projects them; the container
+images bake the same files instead. Skipping this step costs only that section:
+`GET /gg/reference` answers `503` with a message naming this script, the backend logs
+one warning at boot, and everything else — runs, reviews, the catalog — is
+unaffected. Note that the script **builds gg**, so it wants gg's program-language
+toolchains (the devcontainer has them; see
+[building](/development/building/#gg-and-its-eleven-toolchains)).
 
 The dispatcher and artifact service take their own env — see
 [`.env.dispatcher.example`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/.env.dispatcher.example)

@@ -365,19 +365,31 @@ pub fn router(state: AppState) -> Router {
                 .put(gg_view::update_dashboard)
                 .delete(gg_view::delete_dashboard),
         )
-        // gg's model-facing reference: every tool's real description and parameter
-        // schema and every responses-as-code function's signature, which the console's
-        // gg Reference section renders. The **one open read under `/gg`**, and
-        // deliberately so — the document is static, identical for every caller, and
-        // carries no account, run or deployment data, so it is documentation of the
-        // harness in the same class as `/test-cases` and `/config`; a token would buy
-        // nothing and would stop a signed-out console or the docs site from linking to
-        // it. Served from a committed artifact rather than by asking a live gg
-        // registry, because the backend must not depend on `test-cabinet-gg` (wasmtime
-        // + oxc + tiktoken-rs against a static musl build) — see the module docs for
-        // the regenerate-commit-gate that keeps the two honest. `/gg/reference` is
-        // static, so it collides with nothing else mounted under `/gg`.
+        // gg's model-facing reference, in two documents: the index — every tool's real
+        // description and parameter schema, grouped into gg's families, plus the arms
+        // — and one responses-as-code surface per program language, fetched when a
+        // reader picks that arm. Eleven idiomatic SDKs do not fit in one document
+        // without either privileging one arm or repeating the tools eleven times, and
+        // the console's gg Reference section renders them as a picker over the index.
+        //
+        // The **one open read under `/gg`**, and deliberately so — the documents are
+        // static, identical for every caller, and carry no account, run or deployment
+        // data, so they are documentation of the harness in the same class as
+        // `/test-cases` and `/config`; a token would buy nothing and would stop a
+        // signed-out console or the docs site from linking to them.
+        //
+        // Read at run time from the directory `TCAB_GG_REFERENCE` names (the image
+        // bakes it), because the backend must not depend on `test-cabinet-gg` (`oxc`,
+        // `tiktoken-rs`, and eleven language toolchains to build it) and gg is what
+        // renders these bytes for a model in the first place — see the module docs for
+        // why that beats the committed artifact it replaced. `/gg/reference` is static
+        // and `/gg/reference/{language}` its only child, so neither collides with
+        // anything else mounted under `/gg`.
         .route("/gg/reference", get(gg_reference::gg_reference))
+        .route(
+            "/gg/reference/{language}",
+            get(gg_reference::gg_reference_api),
+        )
         // The operator's saved harness comparisons (auth-gated; keyed to the token's
         // account): named A/B experiments whose per-arm distributions are computed on
         // read from the arms' runs. `/comparisons` is static and `/comparisons/{id}`
