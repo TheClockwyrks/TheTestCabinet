@@ -1,5 +1,4 @@
-// Discover, end to end: the URL, the range, the request that goes out, and the legacy
-// redirect that lands here.
+// Discover, end to end: the URL, the range, and the request that goes out.
 //
 // The state model is the thing worth pinning. The **URL carries the query as text**, never
 // its compiled form — that is what keeps `now-30d` relative, so a link shared on Monday
@@ -16,7 +15,6 @@ import {
   type GalleryDataInput,
 } from "../../data/galleryContext";
 import { GgDiscoverPage } from "./GgDiscoverPage";
-import { GgLegacyRedirect } from "./discover/GgLegacyRedirect";
 
 // The app chrome reads contexts irrelevant to the surface under test.
 vi.mock("../../components/PageLayout", () => ({
@@ -72,8 +70,6 @@ function renderAt(path: string) {
           <Where />
           <Routes>
             <Route path="/gg/query" element={<GgDiscoverPage />} />
-            <Route path="/gg/aggregate" element={<GgLegacyRedirect />} />
-            <Route path="/gg/aggregate/results" element={<GgLegacyRedirect />} />
           </Routes>
         </BackendProvider>
       </GalleryDataProvider>
@@ -186,42 +182,6 @@ describe("GgDiscoverPage", () => {
           (element.textContent ?? "").startsWith("3 runs matched"),
       ),
     ).toBeInTheDocument();
-  });
-});
-
-describe("the legacy redirect", () => {
-  beforeEach(() => {
-    runGgQuery.mockReset().mockResolvedValue({ totalRuns: 0, buckets: [], columns: [], truncated: false });
-    getGgFields.mockReset().mockResolvedValue({ documents: 0, fields: [] });
-  });
-
-  it("forwards an old results link to the equivalent TCQ query", async () => {
-    // The best property of the surface this replaces was that the URL *was* the query, and
-    // those URLs were pasted into issues. They redirect rather than 404.
-    renderAt("/gg/aggregate/results?group=capabilityEnabled:compaction&metric=avg|score&chart=0");
-    await waitFor(() => expect(where()).toContain("/gg/query"));
-    // A space rides as `+` and the pipe is percent-encoded; what matters is that the
-    // *text* crossed intact.
-    expect(decodeURIComponent(where().replace(/\+/g, " "))).toContain(
-      "q=| stats avg(score) by cap.compaction",
-    );
-  });
-
-  it("forwards the builder's own address too", async () => {
-    renderAt("/gg/aggregate?ff=terminalStatus|eq|hung");
-    await waitFor(() => expect(where()).toContain("/gg/query"));
-    expect(decodeURIComponent(where())).toContain("q=state:hung");
-  });
-
-  it("runs the transcoded query rather than only showing it", async () => {
-    renderAt("/gg/aggregate/results?ff=terminalStatus|eq|hung");
-    await waitFor(() => expect(runGgQuery).toHaveBeenCalled());
-    expect(lastQuery().filter).toEqual({
-      kind: "compare",
-      field: "state",
-      op: "eq",
-      value: "hung",
-    });
   });
 });
 

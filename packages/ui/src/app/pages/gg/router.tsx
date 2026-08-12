@@ -6,7 +6,6 @@ import { GgDiscoverPage } from "./GgDiscoverPage";
 import { GgSavedQueriesPage } from "./GgSavedQueriesPage";
 import { GgSessionsPage } from "./GgSessionsPage";
 import { GgReferencePage } from "./reference/GgReferencePage";
-import { GgLegacyRedirect } from "./discover/GgLegacyRedirect";
 
 // The gg **analysis** section's routes: its own top-level `/gg` space, entered from
 // the topbar's analyze control. Returned as a fragment so the app's single <Routes>
@@ -34,31 +33,14 @@ import { GgLegacyRedirect } from "./discover/GgLegacyRedirect";
 // catalog's bare path redirects to its default tab — and, like that catalog, both tab
 // URLs mount the *same* component with a different `tab`, which is what keeps one fetch
 // across a tab switch.
-//
-// The two `/gg/aggregate*` routes are the **legacy** aggregate surface's addresses. The
-// widget builder behind them is gone, but the best property of that implementation was
-// that the URL *was* the query, and those URLs were pasted into issues and notes — so
-// they transcode to equivalent TCQ text and redirect into Discover rather than 404.
 export function ggAnalysisRoutes(canExecute: boolean, hasGgData = false) {
   if (!canExecute) {
     if (!hasGgData) return null;
-    // Discover, plus the legacy aggregate addresses — those transcode into Discover, so
-    // they resolve here for the same reason they do on a console.
     return (
-      <>
-        <Route
-          path={routePatterns.ggAnalysisDiscover}
-          element={<GgDiscoverPage />}
-        />
-        <Route
-          path={routePatterns.ggAnalysisAggregateLegacy}
-          element={<GgLegacyRedirect />}
-        />
-        <Route
-          path={routePatterns.ggAnalysisAggregateResultsLegacy}
-          element={<GgLegacyRedirect />}
-        />
-      </>
+      <Route
+        path={routePatterns.ggAnalysisDiscover}
+        element={<GgDiscoverPage />}
+      />
     );
   }
   return (
@@ -94,14 +76,6 @@ export function ggAnalysisRoutes(canExecute: boolean, hasGgData = false) {
       <Route
         path={routePatterns.ggReferenceApi}
         element={<GgReferencePage tab="api" />}
-      />
-      <Route
-        path={routePatterns.ggAnalysisAggregateLegacy}
-        element={<GgLegacyRedirect />}
-      />
-      <Route
-        path={routePatterns.ggAnalysisAggregateResultsLegacy}
-        element={<GgLegacyRedirect />}
       />
     </>
   );

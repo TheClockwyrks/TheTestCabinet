@@ -227,11 +227,6 @@ the same picture for its recipient:
 An absent value is dropped rather than charted as zero, and every row a chart
 drops is counted and reported. The table view is always reachable.
 
-`/gg/aggregate` and `/gg/aggregate/results` transcode their query string into
-query text and redirect into Discover, so an address someone pasted still lands
-on a runnable question. Decoding is total: an unrecognised parameter is skipped
-rather than throwing.
-
 ## Persistence and publishing
 
 Saved queries and dashboards are per-account objects, served under

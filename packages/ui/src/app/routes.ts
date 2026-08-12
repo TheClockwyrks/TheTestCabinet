@@ -379,25 +379,17 @@ export const routePatterns = {
   ggAnalysis: "/gg",
   ggAnalysisDiscover: "/gg/query",
   // Dashboards and Saved. `/gg/dashboards` is static and `/gg/dashboards/:id` its
-  // child, so neither collides with `/gg/query` or the legacy `/gg/aggregate*`.
+  // child, so neither collides with `/gg/query`.
   ggAnalysisDashboards: "/gg/dashboards",
   ggAnalysisDashboard: "/gg/dashboards/:dashboardId",
   ggAnalysisSaved: "/gg/saved",
   // Reference. `/gg/reference` is static — it redirects to the Tools tab — and its
-  // two tabs are static children of it, so nothing here collides with `/gg/query`,
-  // `/gg/dashboards` or the legacy `/gg/aggregate*`. The selected tool/function
+  // two tabs are static children of it, so nothing here collides with `/gg/query`
+  // or `/gg/dashboards`. The selected tool/function
   // rides in the query string, so no dynamic segment is needed under either tab.
   ggReference: "/gg/reference",
   ggReferenceTools: "/gg/reference/tools",
   ggReferenceApi: "/gg/reference/api",
-  // The **legacy** aggregate-surface routes. The widget builder and its results
-  // page are gone, but the best property of that implementation was that the URL
-  // *was* the query — so an old link is transcoded into equivalent TCQ text and
-  // redirected to Discover rather than 404ing. Both spellings are kept because both
-  // were linkable: the builder reopened a composed query and the results page held
-  // a ran one, and a pasted link is as likely to be one as the other.
-  ggAnalysisAggregateLegacy: "/gg/aggregate",
-  ggAnalysisAggregateResultsLegacy: "/gg/aggregate/results",
   runMonitor: "/runs/:runId/live",
   runDetail: "/runs/:runId",
   runReview: "/runs/:runId/reviews/:reviewerId",

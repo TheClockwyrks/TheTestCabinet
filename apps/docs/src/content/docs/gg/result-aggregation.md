@@ -35,15 +35,3 @@ its default records no value and buckets as absent.
 A query reaches only fields a run durably records, so aggregation and the
 [telemetry](/gg/telemetry/overview/) schema are designed together. A figure
 worth grouping by has to reach the run's summary first.
-
-## Aggregate addresses
-
-The console serves `/gg/aggregate` and `/gg/aggregate/results` as redirects into
-Discover. Each reads its query parameters, transcodes them into equivalent query
-text, and lands on Discover with that text in the editor, so what a link became
-is visible and editable. The parameters carry a case narrowing, facet and metric
-filters, group-by keys and requested aggregations.
-
-Decoding is total. A parameter with no equivalent document field is dropped, and
-an address carrying no recognizable parameter transcodes to a runnable default
-query.
