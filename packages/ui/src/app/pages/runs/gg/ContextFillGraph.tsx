@@ -272,9 +272,9 @@ export function visibleSources(
   });
 }
 
-// Tokens held by one source in a snapshot (0 when the band is absent, though gg
-// always emits every band it knows about — a record written before a band existed
-// simply omits it, which is the case this fallback covers).
+// Tokens held by one source in a snapshot. gg emits every band it knows about
+// on every snapshot, so the zero is for a band this console knows and that
+// snapshot did not name — never a reading of the band's own material.
 function sourceTokens(
   snapshot: ContextSnapshot,
   source: GgContextSource,

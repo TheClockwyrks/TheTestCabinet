@@ -874,10 +874,10 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
         "the modules, their order, or their Swift paths are not the surface's"
     );
 
-    // Every gg operation is bound exactly once, and nothing that is not one is claimed. This is the
-    // v2 shape of the tool bijection: an arm asserts which operation each function binds, and gg's
-    // own table is what says whether that operation exists — see `language/register.rs`, which fails
-    // an id gg has no row for.
+    // Every gg operation is bound exactly once, and nothing that is not one is claimed. That is the
+    // tool bijection: an arm asserts which operation each function binds, and gg's own table says
+    // whether that operation exists — see `language/register.rs`, which fails an id gg has no row
+    // for.
     let mut canonical: Vec<String> = section(&catalogue, "functions")
         .iter()
         .filter(|entry| entry["aliasOf"].is_null())

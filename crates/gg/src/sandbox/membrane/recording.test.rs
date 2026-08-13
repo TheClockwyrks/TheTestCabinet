@@ -442,8 +442,7 @@ fn a_call_whose_result_could_not_be_converted_fails_the_api_record() {
 }
 
 /// **Every failed API call says why**, in the class the program itself branches on — and a
-/// successful one says nothing, so a reader can tell a record written before the class existed from
-/// a surface whose calls all worked.
+/// successful one says nothing, so a class is present on exactly the calls that failed.
 ///
 /// This is the seam the complaint was about: the bracket knew the `ToolError` it was closing over
 /// and recorded only that there *was* one, so an API call that failed forty times over a missing

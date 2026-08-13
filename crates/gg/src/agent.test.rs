@@ -8766,7 +8766,7 @@ async fn a_handoff_compactions_summarizer_call_reaches_the_record() {
 
 /// The vision-recovery sequence, in the record: `model_error → model_io → prompt_frame`.
 ///
-/// All three parts are load-bearing and none of them existed in v1. The **error** is what the loop
+/// All three parts are load-bearing. The **error** is what the loop
 /// branched on, so a reconstruction that could not see it would send the images again and diverge
 /// for a reason that has nothing to do with any real change. The **call that followed** is what was
 /// actually sent. And the **frame** lands after that call rather than after the refused one — which

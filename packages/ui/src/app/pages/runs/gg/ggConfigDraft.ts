@@ -382,12 +382,11 @@ function defaultCapabilityDraft(cap: CapSpec): GgCapabilityDraft {
 
 /**
  * The [type](GgAgentMode) a stored agent config records, read off the two mode-marker
- * capabilities. A config that names neither is a tool-calling agent, which is what every
- * configuration written before either existed was.
+ * capabilities. A config that names neither is a tool-calling agent.
  *
- * A machine wins over responses-as-code when a (hand-written, or pre-type-selector)
- * config claims both: an FSM shell has no turns, so there is no reply for a program to
- * be, and the machine is unambiguously the thing that would run.
+ * A machine wins over responses-as-code when a hand-written config claims both: an FSM
+ * shell has no turns, so there is no reply for a program to be, and the machine is
+ * unambiguously the thing that would run.
  */
 function agentModeOf(
   capabilities: ReadonlyArray<GgCapabilityConfig>,

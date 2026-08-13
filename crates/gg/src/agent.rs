@@ -3152,11 +3152,10 @@ async fn run_agent(
             {
                 Ok(client) => {
                     // Wrapped in the recorder like the agent's own client, but under the
-                    // **compaction** client role. gg's second model client went unwrapped for the
-                    // whole of format v1, so every handoff-compaction call in every record
-                    // captured before this is simply missing — and a handoff is the one event that
-                    // rewrites an agent's entire window, so a record missing it describes a
-                    // conversation whose next turn appears to come from nowhere.
+                    // **compaction** client role. gg's second model client has to be wrapped too:
+                    // a handoff is the one event that rewrites an agent's entire window, so a
+                    // record missing its calls would describe a conversation whose next turn
+                    // appears to come from nowhere.
                     compaction.handoff_client = Some(match &orch.replay {
                         Some(recorder) => Box::new(RecordingClient::for_compaction(
                             client,
