@@ -435,11 +435,7 @@ export type GgShellCwd =
  * runs *without the model asking* — an [agent-stop hook](https://docs.testcabinet.ai/gg/hooks/)'s
  * ending gate, say — distinguishable from the ones it ran because the model asked.
  */
-export type GgShellOrigin =
-  | "tool"
-  | "program"
-  | "completion_validation"
-  | "hook";
+export type GgShellOrigin = "tool" | "program" | "hook";
 
 /**
  * One subprocess gg ran, with its bulky streams pooled.

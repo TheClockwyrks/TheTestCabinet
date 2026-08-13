@@ -493,13 +493,9 @@ async fn a_code_run_heads_the_task_and_gg_s_reply() {
         "the task is headed:\n{contents:#?}"
     );
     // A program that ran and put nothing in the window earns the one notice a *successful* program
-    // can — and it is headed `Notice`, not the retired `Output`.
+    // can, headed `Notice`.
     assert!(
         contents.iter().any(|c| c.starts_with("Notice\n----\n")),
         "gg's message back is headed:\n{contents:#?}"
-    );
-    assert!(
-        !contents.iter().any(|c| c.starts_with("Output\n----\n")),
-        "the `Output` band is retired:\n{contents:#?}"
     );
 }

@@ -10,8 +10,8 @@ use std::sync::Arc;
 use serde_json::json;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
-    CAPABILITY_SKILLS, CAPABILITY_TASKS, GgAgentConfig, GgCapabilityConfig, GgContextSource,
-    GgModuleDisposition, GgTelemetryKind, MEMORY_PARAM_SCOPE,
+    CAPABILITY_TASKS, GgAgentConfig, GgCapabilityConfig, GgContextSource, GgModuleDisposition,
+    GgTelemetryKind, MEMORY_PARAM_SCOPE,
 };
 
 use super::*;
@@ -176,9 +176,8 @@ fn an_unowned_module_contributes_no_pinned_block() {
 /// **The task list has no ownership to configure.** It is what an agent steers its work by from
 /// turn to turn, so it is always carried in its holder's prompt as its own message.
 ///
-/// A configuration that names `ownership` on `tasks` — a set written before the param was taken
-/// off the capability — resolves an owned list all the same, and earns no warning: the key is one
-/// gg does not know, exactly like any other.
+/// A configuration that names `ownership` on `tasks` resolves an owned list all the same, and earns
+/// no warning: the key is one gg does not know, exactly like any other.
 #[test]
 fn a_task_list_is_owned_whatever_the_profile_declares() {
     let skills = SkillsRuntime::disabled();
@@ -260,15 +259,6 @@ fn the_ownership_param_resolves_and_warns() {
     let warnings = ownership_warnings(&profile);
     assert_eq!(warnings.len(), 1, "one per unreadable value: {warnings:?}");
     assert!(warnings.iter().all(|w| w.starts_with("agent `Root`:")));
-
-    // Memories and skills no longer read the param at all, so a value on either is read by nothing
-    // — neither resolved into behaviour nor warned about, exactly like any other key gg does not
-    // know.
-    let ignored = profile_with(vec![
-        (CAPABILITY_MEMORIES, json!({ "ownership": "nonsense" })),
-        (CAPABILITY_SKILLS, json!({ "ownership": "nonsense" })),
-    ]);
-    assert!(ownership_warnings(&ignored).is_empty());
 }
 
 // ---------------------------------------------------------------------------

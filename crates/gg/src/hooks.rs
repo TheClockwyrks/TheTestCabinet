@@ -36,12 +36,10 @@
 //! A hook declared in the other list's place [fails the launch](HookRuntime::resolve) rather than
 //! being hoisted or pushed down: both guesses silently change which agents a gate holds.
 //!
-//! This module is also where the old `completion` capability went. Its validation commands were a
-//! gate on one event (an agent ending) expressed as a capability, which meant they could express
-//! nothing but "run this, non-zero is a failure". As an
-//! [agent-stop](GgHookEvent::AgentStop) [command hook](GgHookAction::Command) they are the same
-//! gate, on whichever profiles should be held to it — and a run that wants more than an exit code
-//! can now reach for a script instead.
+//! An ending gate is one of these. The validation an agent must pass before it may stop is an
+//! [agent-stop](GgHookEvent::AgentStop) [command hook](GgHookAction::Command) — declared on
+//! whichever profiles should be held to it, and free to be a script when a run wants more than an
+//! exit code to decide with.
 //!
 //! # The two shapes of hook
 //!

@@ -978,28 +978,6 @@ fn assert_no_blank_run(rendered: &str) {
     );
 }
 
-/// **A program that ran is not reported on, so there is no template to report it with.**
-///
-/// The four templates that used to answer a code turn — the result report, the transpile error, the
-/// sandbox error, the timeout — are gone, and this is what stands in their place. A compiler or
-/// runtime error *is* its error: gg renders no prose around it, so there is nothing to template and
-/// nothing that can drift between what gg says and what the model was told to expect.
-#[test]
-fn the_code_turn_has_no_result_template_to_render() {
-    let registered: Vec<&str> = TEMPLATES.iter().map(|(name, _)| *name).collect();
-    for retired in [
-        "code-result",
-        "code-transpile-error",
-        "code-sandbox-error",
-        "code-timeout",
-    ] {
-        assert!(
-            !registered.contains(&retired),
-            "`{retired}` is retired and must not be registered: {registered:?}"
-        );
-    }
-}
-
 /// The one notice a **successful** program can earn: it ran, and it put nothing in the window.
 ///
 /// It exists for a protocol reason rather than an informational one — a request whose last message

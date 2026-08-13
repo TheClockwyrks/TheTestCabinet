@@ -96,11 +96,6 @@ fn trigger_fullness_is_derived_from_the_headroom() {
         CompactionPolicy::resolve(&json!({ "summaryHeadroom": 0.35 })).trigger_fullness(),
         1.0 - 0.35
     );
-    // A `triggerFullness` param is no longer honored — it is not a configurable parameter, so
-    // it leaves both the headroom and the derived trigger at their defaults.
-    let ignored = CompactionPolicy::resolve(&json!({ "triggerFullness": 0.6 }));
-    assert_eq!(ignored.summary_headroom, DEFAULT_SUMMARY_HEADROOM);
-    assert_eq!(ignored.trigger_fullness(), 1.0 - DEFAULT_SUMMARY_HEADROOM);
 }
 
 #[test]

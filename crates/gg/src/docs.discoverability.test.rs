@@ -3,19 +3,14 @@
 //!
 //! # Why this is a first-class gate rather than a nicety
 //!
-//! It is the replacement for `REQUIRED_CALLS` in `prompts.test.rs`, which asserted that a run's
-//! system prompt *names the call* for every capability the run granted. That assertion is retired
-//! once the prompt names no functions at all — and what it was protecting is not: a capability whose
-//! calls a model cannot find is, from outside, indistinguishable from a capability the run withheld.
-//! Under the old design a section of the prompt guaranteed it could be found. Under this one nothing
-//! does except **search**, which makes search quality load-bearing for whether a capability is usable
-//! at all.
+//! A capability whose calls a model cannot find is, from outside, indistinguishable from a
+//! capability the run withheld. gg's prompt names no functions, so nothing guarantees a granted
+//! call can be found except **search** — which makes search quality load-bearing for whether a
+//! capability is usable at all.
 //!
-//! So this is where that guarantee moved to, and it is strictly the better test: it verifies the
-//! discovery end to end — through each arm's real catalogue, the real ranking and the real
-//! permission filter — instead of asserting that a string appears in a template. It needs no
-//! per-language call spellings, so it runs identically on all eleven arms and needs no maintenance
-//! when an SDK is reshaped.
+//! This gate verifies that discovery end to end: through each arm's real catalogue, the real
+//! ranking and the real permission filter. It needs no per-language call spellings, so it runs
+//! identically on all eleven arms and needs no maintenance when an SDK is reshaped.
 //!
 //! **When it goes red, the answer is to fix the wording of an SDK's brief, or the ranking. It is
 //! never to weaken the assertion or to soften a keyword into one that happens to hit.** The keywords

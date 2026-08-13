@@ -300,7 +300,7 @@ fn every_entry_kind_round_trips_with_its_discriminator_inline() {
         ),
         (
             GgSessionEntryKind::Shell {
-                origin: GgShellOrigin::CompletionValidation,
+                origin: GgShellOrigin::Hook,
                 command: GgSessionCommand {
                     command: "npm run build".into(),
                     cwd: GgShellCwd::Relative { path: "web".into() },

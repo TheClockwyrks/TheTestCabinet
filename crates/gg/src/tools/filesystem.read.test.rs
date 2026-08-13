@@ -74,10 +74,9 @@ fn resolve_falls_back_to_the_default_cap_when_the_param_is_missing_or_absurd() {
 
 #[test]
 fn resolve_treats_an_unknown_mode_as_unlimited() {
-    // A typo'd arm must not silently enforce a cap nobody configured — and neither must a
-    // *retired* one. `hard-cap` was a real mode once; a config still naming it is now as
-    // unrecognized as a typo, and reads whole files rather than resurrecting a ceiling.
-    for implementation in ["hardcap", "default_cap", "hard-cap"] {
+    // A typo'd arm must not silently enforce a cap nobody configured: an unrecognized mode
+    // reads whole files rather than inventing a ceiling.
+    for implementation in ["hardcap", "default_cap"] {
         assert_eq!(
             ReadPolicy::resolve(Some(implementation), &json!({ "lineCap": 10 })),
             ReadPolicy::Unlimited,

@@ -1019,7 +1019,7 @@ fn a_clipped_journal_assembles_into_a_record_that_says_which_texts_are_clips() {
     lines.push(entry(
         0,
         GgSessionEntryKind::Shell {
-            origin: GgShellOrigin::CompletionValidation,
+            origin: GgShellOrigin::Hook,
             command: GgSessionCommand {
                 command: "npm test".to_string(),
                 cwd: GgShellCwd::Workspace,

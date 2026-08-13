@@ -383,9 +383,7 @@ fn parse_timeout(args: &Value) -> Result<Duration, ArgumentError> {
 /// [recording](crate::capture::RecordingShellRunner) runner files a hook's command under its own
 /// origin rather than on the agent's ordinary one, so a session record does not attribute an
 /// agent-stop hook's build to a `shell` tool call — the command gg runs *without
-/// the model asking*. (A record written before that gate became a hook stamps the same command
-/// [`CompletionValidation`](GgShellOrigin::CompletionValidation), which is why the origin outlives
-/// the capability that produced it; nothing live stamps it.)
+/// the model asking*.
 pub(crate) async fn run_command(
     command: &str,
     timeout: Duration,

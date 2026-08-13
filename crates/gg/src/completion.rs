@@ -8,10 +8,9 @@
 //! — see [`crate::ending`], which owns the shapes; this module owns how they reach a **tool-calling**
 //! model, as the [synthetic tool definitions](role_tool_definitions) the loop appends and intercepts.
 //!
-//! What *gates* an ending is no longer here at all. The `completion` capability's validation
-//! commands became an [agent-stop hook](crate::hooks), which does the same job for every agent
-//! rather than for the profiles that remembered to enable it — see [`crate::hooks`]. This module is
-//! left with the one thing that was never configurable: the calls themselves.
+//! What *gates* an ending lives elsewhere: an [agent-stop hook](crate::hooks) holds a profile to
+//! whatever validation must pass before its agent may stop. This module owns only the calls
+//! themselves.
 
 use serde_json::json;
 

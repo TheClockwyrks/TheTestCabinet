@@ -1314,14 +1314,13 @@ async fn the_compaction_summarizers_calls_are_recorded_on_their_own_queue() {
 
 /// A hook's command runs `sh -c` but never reaches tool dispatch, so before this seam it was
 /// recorded nowhere at all — and an agent-stop hook's decides whether the session may end. The
-/// origin asserted here is the retired `completion_validation` one, which only a stored record
-/// carries now: a live run stamps `Hook`, and both must still round-trip.
+/// origin travels with the command so a record reads back which of gg's paths asked for it.
 #[test]
 fn a_recorded_command_carries_its_origin_streams_and_working_directory() {
     let (dir, recorder) = recorder_in(None);
     recorder.record_shell(
         "root",
-        GgShellOrigin::CompletionValidation,
+        GgShellOrigin::Hook,
         RecordedCommand {
             command: "npm test",
             cwd: GgShellCwd::Relative {
@@ -1338,7 +1337,7 @@ fn a_recorded_command_carries_its_origin_streams_and_working_directory() {
     let GgSessionEntryKind::Shell { origin, command } = &entries(&lines)[0].kind else {
         panic!("expected a shell entry");
     };
-    assert_eq!(*origin, GgShellOrigin::CompletionValidation);
+    assert_eq!(*origin, GgShellOrigin::Hook);
     assert_eq!(command.command, "npm test");
     assert_eq!(command.exit_code, 1);
     assert_eq!(
@@ -1730,19 +1729,12 @@ fn the_deadline_clock_is_recorded() {
 // The shell decorator
 // ---------------------------------------------------------------------------
 
-/// Every one of gg's command paths reaches the record, under the origin the caller stamped — the
-/// three a live run stamps, and the retired one a record written before the ending gate became a
-/// hook still carries.
+/// Every one of gg's three command paths reaches the record, under the origin the caller stamped.
 ///
 /// The decorator is what makes that possible: only one of the three paths — a
 /// [hook's](crate::hooks) command, the one gg runs *without the model asking* — runs at a call
 /// site that holds a recorder, so capturing anywhere but the shared seam would leave a session
 /// that used the `shell` tool with no answer for a single one of its commands.
-///
-/// [`CompletionValidation`](GgShellOrigin::CompletionValidation) is exercised alongside the three
-/// live origins rather than dropped with the capability: records written before it was retired are
-/// still read, and an origin this build no longer recognised would read back as an agent's own
-/// command — the exact confusion the stamp exists to prevent.
 #[tokio::test]
 async fn the_shell_decorator_records_every_command_path_under_its_own_origin() {
     let (dir, recorder) = recorder_in(None);
@@ -1757,7 +1749,6 @@ async fn the_shell_decorator_records_every_command_path_under_its_own_origin() {
         (GgShellOrigin::Tool, "printf tool"),
         (GgShellOrigin::Program, "printf program"),
         (GgShellOrigin::Hook, "printf hook"),
-        (GgShellOrigin::CompletionValidation, "printf gate"),
     ] {
         runner
             .run(ShellRequest {
@@ -1787,7 +1778,6 @@ async fn the_shell_decorator_records_every_command_path_under_its_own_origin() {
             (&GgShellOrigin::Tool, "printf tool"),
             (&GgShellOrigin::Program, "printf program"),
             (&GgShellOrigin::Hook, "printf hook"),
-            (&GgShellOrigin::CompletionValidation, "printf gate"),
         ],
     );
 }

@@ -1123,29 +1123,6 @@ fn attaching_data_leaves_the_model_facing_text_alone() {
 // The serde contract the session recorder depends on
 // ---------------------------------------------------------------------------
 
-/// An outcome recorded **before** the sidecar existed still deserializes.
-///
-/// The session recorder captures a dispatch's outcome verbatim and a replay driver feeds it back,
-/// so a record written by an older gg has to keep loading. Both new fields are `#[serde(default)]`
-/// for exactly this reason, and this is the test that would fail if one stopped being.
-#[test]
-fn an_outcome_recorded_before_the_sidecar_still_deserializes() {
-    let recorded = json!({
-        "ok": true,
-        "output": "a\nb/\nc",
-        "summary": "3 entries"
-    });
-
-    let outcome: ToolOutcome = serde_json::from_value(recorded).expect("an older record loads");
-
-    assert!(outcome.ok);
-    assert_eq!(outcome.output, "a\nb/\nc");
-    assert_eq!(outcome.summary.as_deref(), Some("3 entries"));
-    assert!(outcome.images.is_empty());
-    assert_eq!(outcome.data, None, "an older record simply has no sidecar");
-    assert_eq!(outcome.failure, None);
-}
-
 /// An outcome with nothing structured to say serializes to exactly what it always did, so a
 /// recorded session does not grow a field per call for tools that gained nothing.
 #[test]

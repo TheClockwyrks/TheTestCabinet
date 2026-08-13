@@ -399,9 +399,9 @@ impl ToolContext {
 ///
 /// It derives `Serialize`/`Deserialize` (camelCase) so the [session capture](crate::capture) can
 /// record the exact outcome a tool dispatch returned, and so that outcome round-trips out of the
-/// record unchanged. Every field added since is therefore `#[serde(default)]` and omitted when empty:
-/// a record captured by an older gg still deserializes, and one captured by this gg is no larger
-/// for the tools that have nothing extra to say.
+/// record unchanged. The fields most outcomes have nothing to put in are therefore
+/// `#[serde(default)]` and omitted when empty, so a record does not grow a field per call for the
+/// tools that have nothing extra to say.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolOutcome {

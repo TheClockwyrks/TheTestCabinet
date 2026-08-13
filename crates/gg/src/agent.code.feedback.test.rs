@@ -197,14 +197,6 @@ fn each_kind_of_message_goes_in_its_own_band() {
         GgContextSource::RuntimeError
     );
     assert_eq!(CodeFeedback::notice("x").source, GgContextSource::System);
-    // And none of them is the retired `Output` band.
-    for feedback in [
-        CodeFeedback::compiler("x"),
-        CodeFeedback::runtime("x"),
-        CodeFeedback::notice("x"),
-    ] {
-        assert_ne!(feedback.source, GgContextSource::ToolOutput);
-    }
 }
 
 /// A turn that made no hand-over says nothing about one — the ordinary turn, and the one this must
