@@ -157,9 +157,9 @@ configuration: what that instance was
 [offered to call](/gg/telemetry/agent-surface/). It is named `tools` for an agent
 that answers in tool calls and `apis` for a
 [code-shaped](/gg/responses-as-code/overview/) one, and it is offered exactly
-when that instance reported a surface. A stream recorded before gg reported one
-carries none at all, and a file showing an empty toolset for those runs would
-assert the very thing it exists to distinguish.
+when that instance reported a surface. An instance read before its surface event
+arrives has no such file, since a file showing an empty toolset would assert the
+very thing it exists to distinguish.
 
 Every row reads count first (`12× read_file`), so the figures line up in a fixed
 leading column that can be read straight down the list. A tool the instance never

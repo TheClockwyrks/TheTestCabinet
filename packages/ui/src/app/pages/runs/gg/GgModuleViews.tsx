@@ -646,8 +646,7 @@ function ArchiveContents({
   }
   return (
     <div className={panels.moduleStack}>
-      {/* What left the window, and what leaving bought — the same figures the caption
-          used to run together in a sentence, read as a row of numbers instead. */}
+      {/* What left the window, and what leaving bought, read as a row of numbers. */}
       <ModuleStats label="Archive">
         <ModuleStat value={String(entries.length)} label="entries" />
         <ModuleStat

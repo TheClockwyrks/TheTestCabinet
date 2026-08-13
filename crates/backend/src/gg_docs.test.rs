@@ -595,7 +595,7 @@ async fn a_run_whose_record_no_longer_parses_is_tombstoned_not_retried_forever()
         .await
         .unwrap();
     db.push(
-        &gg_record("legacy", "mock/echo"),
+        &gg_record("corrupt", "mock/echo"),
         &RunLinks::default(),
         None,
     )
@@ -604,9 +604,9 @@ async fn a_run_whose_record_no_longer_parses_is_tombstoned_not_retried_forever()
     run::Entity::update_many()
         .col_expr(
             run::Column::RecordJson,
-            Expr::value(r#"{"id":"legacy","schema":"from-before-a-contract-change"}"#),
+            Expr::value(r#"{"id":"corrupt","schema":"not-a-run-record"}"#),
         )
-        .filter(run::Column::Id.eq("legacy"))
+        .filter(run::Column::Id.eq("corrupt"))
         .exec(&db.connection())
         .await
         .unwrap();
@@ -638,7 +638,7 @@ async fn a_run_whose_record_no_longer_parses_is_tombstoned_not_retried_forever()
 
     // Re-pushing a parseable record stamps the row, which is what lifts the tombstone.
     db.push(
-        &gg_record("legacy", "mock/echo"),
+        &gg_record("corrupt", "mock/echo"),
         &RunLinks::default(),
         None,
     )

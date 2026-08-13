@@ -1,7 +1,7 @@
 // Line-art icons for the Instances explorer's filesystem tree, in the same
 // Lucide-style, 24×24, `currentColor` convention as the app's other marks
 // (BellIcon, TrashIcon, DownloadIcon, …) so size and color come from CSS. They
-// replace the ad-hoc Unicode glyphs the tree used to scan by: a disclosure caret, a
+// give the tree its marks: a disclosure caret, a
 // folder per agent (open when expanded), and a distinct mark per monitor-view "file"
 // so overview / activity / context / requests / metrics read at a glance — plus one
 // per module kind (history / memories / tasks / board / skills / archive), since an
@@ -221,9 +221,8 @@ export function TasksIcon({ className }: IconProps) {
 }
 
 // Knowledge — an open book. It marks the **skills** module: the catalog an agent reads
-// from. (Memories, which used to share this mark inside a joint Knowledge file, have
-// their own — see MemoriesIcon — now that the two are separate modules with entirely
-// different sharing semantics.)
+// from. Memories have their own — see MemoriesIcon — since the two are separate modules
+// with entirely different sharing semantics.
 export function KnowledgeIcon({ className }: IconProps) {
   return (
     <Icon className={className}>

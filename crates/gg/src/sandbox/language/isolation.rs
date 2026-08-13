@@ -35,13 +35,12 @@
 //! Plus one thing observed rather than derived: no two of the sixteen were handed the same
 //! [workspace](super::Workspace).
 //!
-//! # The fourth check this used to have, and why it is gone
+//! # Why there is no byte-for-byte comparison
 //!
-//! There was a fourth: that each concurrent artifact **matched byte-for-byte** what the same input
-//! produced alone. The argument for it was that it would catch a corruption too partial to move a
+//! A fourth check is available in principle: that each concurrent artifact **matches byte-for-byte**
+//! what the same input produces alone, which would catch a corruption too partial to move a
 //! marker — a fragment of somebody else's program, a truncated tail, a stale artifact left by a
-//! previous compile. It is recorded here rather than simply deleted, so the next author weighing the
-//! same idea starts from the three things that decided against it:
+//! previous compile. Three things decide against it:
 //!
 //! * **The seam already isolates structurally, per preparation.** A [workspace](super::Workspace) is
 //!   a private tree keyed on the process id and a monotonic counter, created with `create_dir` and
@@ -50,24 +49,22 @@
 //!   removed on drop. What is genuinely shared between preparations is content-keyed, installed by
 //!   rename and sealed read-only (0444/0555). The paths a partial corruption would have to arrive
 //!   through are closed by construction, which is a stronger statement than one run of a comparison.
-//! * **It never caught anything on its own.** Every deliberately broken preparation in
+//! * **It catches nothing on its own.** Every deliberately broken preparation in
 //!   [`tests`] — the shared output tree, the shared build strategy, the memoised compile, the
 //!   miskeyed cache — is caught by the marker checks above, and two of the four *are* the bugs that
-//!   were measured on real toolchains. Not one of them needed the comparison to be reported.
-//! * **It could not be paid for once.** Byte equality only means anything over the part of an
+//!   were measured on real toolchains. Not one of them needs the comparison to be reported.
+//! * **It cannot be paid for once.** Byte equality only means anything over the part of an
 //!   artifact that is a function of the program, and a compiler is entitled to write things into an
-//!   artifact that are a function of the environment or of nothing at all. Holding [Swift](super::swift)
-//!   to it cost a per-language projection of ~290 lines: a section-framing walk dropping ~1.5 MB of
-//!   `.debug_*`, plus a mask for the random 16-byte module hash `swiftc` stamps into every object,
-//!   located by compiling one program twice and diffing it. That derivation asserted that two random
-//!   16-byte values differ in **all sixteen** positions — which is a property of two random numbers
-//!   rather than of the compiler, and holds only `(255/256)^16` ≈ 93.9% of the time. So it failed
-//!   about **6%** of runs by arithmetic, and was observed failing 2 times in 60 when the derivation
-//!   was driven in a loop, in the one gate whose whole value is being believed when it goes red.
-//!   Every compiled arm after Swift would have owed a tax of the same shape, paid in machinery the
-//!   checks that catch the real bugs never read.
+//!   artifact that are a function of the environment or of nothing at all. Holding
+//!   [Swift](super::swift) to it costs a per-language projection of ~290 lines: a section-framing
+//!   walk dropping ~1.5 MB of `.debug_*`, plus a mask for the random 16-byte module hash `swiftc`
+//!   stamps into every object. Such a mask asserts that two random 16-byte values differ in **all
+//!   sixteen** positions, which is a property of two random numbers rather than of the compiler and
+//!   holds only `(255/256)^16` ≈ 93.9% of the time, so the gate whose whole value is being believed
+//!   when it goes red fails about **6%** of runs by arithmetic. Every compiled arm would owe a tax
+//!   of the same shape, paid in machinery the checks that catch the real bugs never read.
 //!
-//! **None of that projection survived.** What did is one narrower hook, and the distinction matters
+//! What an arm gets instead is one narrower hook, and the distinction matters
 //! because the wider one is what this section exists to stop being reinvented: an arm may make its
 //! artifact **readable** for the marker search — see
 //! [`isolation_readable`](ProgramLanguage::isolation_readable) — and may never hide, mask or

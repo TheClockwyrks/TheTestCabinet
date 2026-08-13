@@ -43,8 +43,8 @@
 //! measured, rewriting twenty 64 KiB files, spends about 1.8 s of guest CPU, so a 30 s ceiling is
 //! reached only by a runaway (`while (true) {}` burns the guest's clock at wall-clock speed). Time a
 //! program spends parked in a bridged tool call — a `shell` build that takes minutes — is **excluded**
-//! from the measurement, so waiting on a build is never mistaken for a loop. Why a timeout replaced
-//! the fuel the sandbox used to meter, and how the exclusion is enforced, is in [`limits`].
+//! from the measurement, so waiting on a build is never mistaken for a loop. Why the ceiling is a
+//! timeout, and how the exclusion is enforced, is in [`limits`].
 //!
 //! ## What a program can say, and what it cannot
 //!

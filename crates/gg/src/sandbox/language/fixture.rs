@@ -339,7 +339,7 @@ impl FixtureLanguage {
     /// A round trip through a file is a strange thing for a comment-stripper to do, and it is here
     /// on purpose: the [isolation gate](super::isolation) can only prove the seam's private ground
     /// works if something under test actually stands on it, and TypeScript's `tsc` is a subprocess
-    /// whose isolation predates this module. The fixed file name is the *point* — a language is
+    /// with its own isolation. The fixed file name is the *point* — a language is
     /// meant to name its files whatever it likes and rely on the directory being its own, and a
     /// fixture that invented a unique name per preparation would be proving nothing.
     ///

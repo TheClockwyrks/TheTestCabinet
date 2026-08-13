@@ -257,12 +257,9 @@ pub enum ViewKind {
     /// A [documentation view](GgContextSource::DocsView), keyed by the name of the thing it
     /// documents — what `view.openDocsView` opens.
     ///
-    /// It has a band of its own. It used to share the `Skill` band with a read skill and be told
-    /// apart from one by retention alone — a docs view is [`Ephemeral`](Retention::Ephemeral), a
-    /// read skill is [`Pinned`](Retention::Pinned) — which worked, and made two unrelated things
-    /// true at once: what documentation costs a window could not be read apart from what skills
-    /// cost it, and a call that closed documentation was a removal over the *skill* band that
-    /// happened to spare read skills because they were pinned. Both are fixed by the band.
+    /// It has a band of its own, so what documentation costs a window is readable apart from what
+    /// skills cost it, and the call that closes documentation is a removal over this band rather
+    /// than over the skill band.
     Docs,
     /// The [search-results view](GgContextSource::SearchResults): the briefs the agent's last
     /// documentation search returned, keyed by one constant selector.
@@ -1427,18 +1424,15 @@ impl ContextModel {
     /// # It lives in a slot, not in the thread
     ///
     /// The signal is held in a **single slot** appended after every conversation item rather than
-    /// pushed into them, and that is what makes it correct on both counts it used to get wrong:
+    /// pushed into them, which is what keeps two things true at once:
     ///
-    /// - **There can only ever be one.** As a thread item it had to be retired in place each turn
-    ///   (deleting from the middle of a prompt invalidates everything after it), so every refresh
-    ///   left the previous line behind as history — and being *pinned*, the live one also crossed
-    ///   every [compaction](Self::clear_ephemeral) boundary, so a compacted window opened with a
-    ///   stale reading and then gained a second one. A slot cannot accumulate: assigning it
-    ///   overwrites, and [`clear_ephemeral`](Self::clear_ephemeral) empties it.
-    /// - **The prompt stays append-only anyway.** Everything a provider's prompt cache reads — the
-    ///   whole conversation — sits *before* the signal, so rewriting the signal every turn only ever
-    ///   changes the last message. The old design had to round its figures to hold its position;
-    ///   this one can report them exactly.
+    /// - **There can only ever be one.** A slot cannot accumulate: assigning it overwrites, and
+    ///   [`clear_ephemeral`](Self::clear_ephemeral) empties it, so no refresh and no
+    ///   [compaction](Self::clear_ephemeral) boundary can leave a stale reading behind.
+    /// - **The prompt stays append-only.** Everything a provider's prompt cache reads — the whole
+    ///   conversation — sits *before* the signal, so rewriting the signal every turn only ever
+    ///   changes the last message, and its figures can be reported exactly rather than rounded to
+    ///   hold a position.
     pub fn refresh_context_usage_signal(&mut self, options: UsageSignalOptions) {
         let Some(text) = self.context_usage_text(options) else {
             return;
@@ -1761,10 +1755,8 @@ impl ContextModel {
     /// gone opens them again, because the only question ever asked is whether the key is open now.
     ///
     /// Its band is its own, so — unlike the shared removal beside it — it needs no carve-out to
-    /// avoid eating a **read skill**. It used to need one: docs views and read skills shared the
-    /// [`Skill`](GgContextSource::Skill) band and were told apart by retention, so the rule sparing
-    /// pinned items was the only thing keeping this call off a skill. That is now a property of what
-    /// it selects rather than of what it happens to skip.
+    /// avoid eating a **read skill**: sparing a skill is a property of what this call selects
+    /// rather than of what it happens to skip.
     pub fn close_docviews(&mut self, key: Option<&str>) -> ViewsClosed {
         let mut closed = ViewsClosed::default();
         let mut index = 0;

@@ -211,8 +211,7 @@ fn finishing_is_neither_a_tool_call_nor_a_refusal() {
 /// **Work after a completion is ordinary work.** The call is dispatched, serviced and recorded like
 /// any other.
 ///
-/// It used to be refused, on the reasoning that gg should do nothing more once the model has
-/// declared the run over. That reasoning belonged to a `finish` that stopped the program: with one
+/// Refusing it would belong to a `finish` that stopped the program. With one
 /// that returns, the statements after it are statements the model wrote knowing they would run — a
 /// last write, a tidying pass, a check it wanted logged — and refusing them would turn a shape the
 /// prompt calls harmless into a failed turn.

@@ -741,8 +741,7 @@ $stats-gutters: t.$space-lg * 3;
 // The instance-scoped usage line: the figures that say whether the capability is being used
 // at all — how many of the N stores were ever written to, and what one costs a window per
 // turn. One line of text and nothing beside it, so it is a plain flex child of the row rather
-// than a footer row of its own: comparing the N is what clicking the row does, and the button
-// that used to sit beside these figures duplicated that.
+// than a footer row of its own: comparing the N is what clicking the row does.
 .moduleRowMeta {
   font-size: t.$font-sm;
   color: t.$color-text-muted;

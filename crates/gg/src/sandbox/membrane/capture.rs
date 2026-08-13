@@ -189,13 +189,12 @@ impl<A: ToolApi> MembraneState<A> {
 /// the agent's window, and a picture is not an exception: an image is a **file view of an image
 /// file**, opened with `view.openFile`. A bare `fs.readFile` therefore reads and *describes* a
 /// picture without showing it — the same separation the model is taught for text (`fs.readFile`
-/// gets bytes for your program; `view.openFile` shows a file to you), applied to the one kind of
-/// content that used to be carved out of it.
+/// gets bytes for your program; `view.openFile` shows a file to you), applied to pictures too.
 ///
-/// The alternative — keeping the old arrangement, where a bare read's picture rode out on the
-/// turn's feedback — is two independent budgets for one context window: a program could put four
-/// pictures in through a view and four more through a read, and neither counter could see the
-/// other. Collapsing them by construction is what this deletion buys.
+/// The alternative — a bare read's picture riding out on the turn's feedback — is two independent
+/// budgets for one context window: a program could put four pictures in through a view and four
+/// more through a read, and neither counter could see the other. Collapsing them by construction is
+/// what this buys.
 ///
 /// # Why the sidecar is corrected here and not in `read_image`
 ///

@@ -57,11 +57,9 @@ pub const PARAM_BUILT_INS: &str = "builtIns";
 /// [reference](crate::reference) projects that grouping as the categories the console's Reference
 /// section is organized by. There is one list of families, and it is this one.
 ///
-/// It used to carry the **API objects** each family's functions were grouped under, too. That list
-/// went with its last reader: a family's grouping is resolved through the
-/// [operation](crate::sandbox::operation_of) each call binds, which every arm answers, where gg's
-/// own word for the object answers nothing on an arm whose surface is capability modules — and
-/// every registered arm's now is.
+/// A family's grouping is resolved through the [operation](crate::sandbox::operation_of) each call
+/// binds, which every arm answers, rather than through gg's own word for an API object, which
+/// answers nothing on an arm whose surface is capability modules.
 pub(crate) struct Family {
     /// The skill's name — the handle `read_skill` takes, and the id the `builtIns` param uses.
     pub(crate) id: &'static str,

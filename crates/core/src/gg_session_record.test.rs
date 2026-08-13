@@ -484,8 +484,7 @@ fn a_record_reports_which_of_its_texts_are_clips() {
     );
 }
 
-/// The clip table survives a round trip, and is **absent-tolerant**: a record written before the
-/// table existed reads as one that clipped nothing rather than failing to parse.
+/// The clip table survives a round trip, and an absent table reads as one that clipped nothing.
 #[test]
 fn the_clip_table_round_trips_and_defaults_to_empty() {
     let mut record = GgSessionRecord::new("run_1", capability_set());

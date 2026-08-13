@@ -2209,7 +2209,7 @@ $context-palette: (
 // grow to the bottom of the page. Owning the layout here (rather than leaning on the
 // host container's flex gap) is what makes the space below the selector identical on
 // the live monitor (a gapless `PageLayout fill` column) and a finished run's gg tab
-// (a `gap`ped section) — the two used to differ by exactly this gap.
+// (a `gap`ped section), which differ by exactly this gap.
 .panelsRoot {
   flex: 1 1 auto;
   min-height: 0;
@@ -2848,9 +2848,9 @@ details[open] > summary .reqCaret {
   font-style: italic;
 }
 
-// The expanded body sits at the entry's full width, symmetrically padded. It used to
-// be indented by the width of the caret and tag columns so that it began under the
-// collapsed row's preview — a tidy alignment that cost it the better part of 7.5rem
+// The expanded body sits at the entry's full width, symmetrically padded rather than
+// indented by the width of the caret and tag columns to begin under the
+// collapsed row's preview — a tidy alignment that would cost the better part of 7.5rem
 // on every line of what is the longest text on the view (a whole file view, a tool
 // result, a system prompt). The expansion is what a reader opened the row *for*, so
 // it gets the width; the row above it keeps the columns.
@@ -2862,10 +2862,10 @@ details[open] > summary .reqCaret {
 }
 
 // The expanded body's one meta line — the call this message answers. The role and the
-// token cost used to share it, dot-separated, until they were dropped as restatements
+// token cost are left off as restatements
 // of the band tag and token column in the row directly above; only a tool result has
 // anything to say here at all, so the line is absent from most messages. It carries no
-// `tabular-nums` for the same reason: that was there to column-align the token figure,
+// `tabular-nums` for the same reason: that would be there to column-align the token figure,
 // and what is left is an opaque tool-call id, not a number to align down a column.
 .reqMeta {
   margin: 0;

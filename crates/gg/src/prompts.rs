@@ -313,13 +313,12 @@ fn engine() -> &'static Handlebars<'static> {
 
 /// The facts about one arm's artifact that a template interpolates rather than restates.
 ///
-/// This used to be the whole model-facing surface, keyed by gg's own identity for each call, so that
-/// a template could quote `{{api.view.open_text.signature}}` and get whatever that language's SDK
-/// declared. That namespace is **gone**, with the design it served: the prompt names no function at
-/// all, so there is nothing left for a call-spelling map to be quoted into, and keeping one would be
-/// keeping the loaded gun of a template that *could* name a call.
+/// There is no per-call spelling map: the prompt names no function at all, so a template has
+/// nothing to quote one into, and carrying one would be carrying the loaded gun of a template that
+/// *could* name a call.
 ///
-/// What survives is the one thing that is a fact about the arm rather than about a function.
+/// What a template reads is the one thing that is a fact about the arm rather than about a
+/// function.
 #[derive(Debug, Serialize)]
 struct Spellings {
     /// The [libraries](crate::sandbox::LibraryGroup) this language's programs may import, in the

@@ -339,9 +339,8 @@ fn every_referenced_type_resolves_to_a_declaration() {
 /// What a lookup **opens** is one level deep, and the transitive list beside it is not — which is
 /// the whole reason both are carried.
 ///
-/// If the two were ever the same the page could carry one, and the paragraph the console used to
-/// write by hand explaining the difference would have been describing nothing. On at least one arm
-/// they differ, and the difference is a function's own signature against the closure under it.
+/// If the two were ever the same the page could carry one. On at least one arm they differ, and
+/// the difference is a function's own signature against the closure under it.
 #[test]
 fn what_a_lookup_opens_is_narrower_than_the_closure_beside_it() {
     let mut narrower = 0;

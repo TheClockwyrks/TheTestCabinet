@@ -715,10 +715,7 @@ async fn code_execution_tool_calls_equals_the_telemetry_pair_count() {
 #[tokio::test]
 async fn the_synthetic_call_ids_are_unique_within_a_turn() {
     let dir = TempDir::new().unwrap();
-    let mut set = code_set("mock/primary", json!({}));
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_REPLAY));
+    let set = code_set("mock/primary", json!({}));
     let (outcome, _events) = drive_code_run(&dir, set, |b| {
         one_program(
             &b.model_id,
@@ -1850,8 +1847,8 @@ async fn a_code_mode_reviewer_declares_its_verdict() {
     );
     // The brief teaches **no** ending. The reviewer's verdict calls are its role's, named once in
     // its system prompt and bound into its programs' scope; a brief that restated them would be a
-    // second authority on the contract — and the mode-dependent version of that restatement is what
-    // used to send a code-mode reviewer looking for a final message its protocol does not have.
+    // second authority on the contract, and a mode-dependent restatement would send a code-mode
+    // reviewer looking for a final message its protocol does not have.
     let review_brief = agent_spawns(&events)
         .into_iter()
         .find(|(_, _, slot, _, _)| slot == "reviewer")
@@ -2053,9 +2050,9 @@ async fn a_program_with_nothing_after_its_return_is_not_told_about_unreachable_s
 /// **A program that calls `finish` and then keeps going does the rest of the work**, and nothing is
 /// reported about it.
 ///
-/// This is the shape that used to lose a run its deliverable: `finish` unwound the program, so the
-/// `writeFile` below it never ran, and the run ended "completed" over a workspace with no artifact
-/// in it. gg could only warn about it on the operator's stream, after the fact. Now the statement
+/// This is the shape that would lose a run its deliverable if `finish` unwound the program: the
+/// `writeFile` below it would never run, and the run would end "completed" over a workspace with no
+/// artifact in it. The statement
 /// runs, the file exists, and there is nothing to warn about — which is why the warning is asserted
 /// **absent** here rather than reworded.
 #[tokio::test]

@@ -99,16 +99,6 @@ describe("turn timing reduction", () => {
     expect(state.turnTimings.map((t) => t.turn)).toEqual([0]);
   });
 
-  it("leaves the timings empty for a stream recorded before gg timed turns", () => {
-    const state = reduceGgEvents([
-      gg("root", { type: "session_started" } as GgTelemetryKind),
-      turnStarted("root"),
-      turnStarted("root"),
-    ]);
-    expect(state.turnTimings).toEqual([]);
-    expect(state.turnCount).toBe(2);
-  });
-
   it("renders no activity-feed row — the graph is where a timing belongs", () => {
     const state = reduceGgEvents([...turn("root")]);
     expect(state.feed.map((row) => row.label)).toEqual(["turn"]);

@@ -57,9 +57,8 @@ pub(super) fn setup(
 }
 
 /// The whole out-of-band boundary in one call — the trigger, the condensation and the rewrite —
-/// which is what `compact_if_needed` used to be before the in-loop strategies split it into the
-/// three steps the loop drives separately. Returns the event, or `None` when the trigger did not
-/// fire.
+/// which the loop itself drives as three separate steps. Returns the event, or `None` when the
+/// trigger did not fire.
 async fn compact_if_needed(
     context: &mut ContextModel,
     client: &dyn ModelClient,

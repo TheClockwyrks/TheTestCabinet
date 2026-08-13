@@ -191,8 +191,8 @@ const WORKER_MODES: ReadonlyArray<GgAgentMode> = ["tools", "rac"];
 //
 // Every param gg actually reads has a control here — there is deliberately no raw
 // JSON escape hatch in the editor, since the console knows gg's whole param schema.
-// A param a *stored* configuration carries that no control here covers (a key from a
-// newer client, or a legacy one) is preserved verbatim through a round-trip rather
+// A param a *stored* configuration carries that no control here covers — a key from a
+// newer client — is preserved verbatim through a round-trip rather
 // than shown, so reopening and saving never drops it.
 export interface ParamSpec {
   key: string;
@@ -927,21 +927,18 @@ export const MODULE_OWNERSHIP_OPTIONS = [
 //
 // The other three module-backed capabilities have no unowned arm at all, and which one
 // is missing for which reason is worth knowing before wondering where the picker went.
-// The task list is what an agent steers its work by from turn to turn, so it has always
-// been owned. Skills and memories offered the knob and no longer do (`MODULE_CAPABILITIES`
-// in `crates/gg/src/modules.rs` is two entries now), because on both of them it was a way
+// The task list is what an agent steers its work by from turn to turn, so it is always
+// owned. Skills and memories offer no such knob (`MODULE_CAPABILITIES` in
+// `crates/gg/src/modules.rs` is two entries), because on both of them it would be a way
 // of switching the capability off while pretending it was on: what a memory strategy puts
 // in the window IS what having memories means under it, and the strategy is already that
 // knob — `keyword-search` is the arm that pins nothing — while a skills catalogue the
 // agent is never shown leaves it able to read a skill only by being handed its name,
 // which is the capability disabled with extra steps rather than an arm of a study.
 //
-// Two behaviours follow from the removal and are worth stating, because they used to be
-// configurable and are now unconditional: the pinned memory index can no longer be
+// Two behaviours follow and are worth stating: the pinned memory index cannot be
 // withheld, and a linked holder is always told when another holder adds, revises or
-// removes a memory. An `ownership` a stored configuration still carries on either is
-// preserved through a round-trip like any other param no control covers, and read by
-// nothing.
+// removes a memory.
 function ownershipParam(what: string): ParamSpec {
   return {
     key: "ownership",
@@ -1041,9 +1038,8 @@ export const DEFAULT_MAX_RETRIES = 1;
 // for a scratchpad of a handful of short notes and are now sized for a store an agent
 // really curates: 64 notes of 4 096 characters, with no aggregate ceiling on the
 // scratchpad at all — which is why there is no `DEFAULT_MEMORY_MAX_TOTAL_LEN` here to
-// seed that field with. The description ceiling is the one that went the other way: it
-// used to be unlimited and is now 256 characters under every strategy, because a
-// description is an index line the window pays for on every turn.
+// seed that field with. The description ceiling is 256 characters under every strategy,
+// because a description is an index line the window pays for on every turn.
 export const DEFAULT_MEMORY_MAX_COUNT = 64;
 export const DEFAULT_MEMORY_MAX_LEN_PER = 4096;
 export const DEFAULT_MEMORY_MAX_LEN_DESCRIPTION = 256;
@@ -1261,9 +1257,8 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     // the type selector is its switch, so it is never listed as a capability row. See
     // `group`.
     //
-    // `purpose` is required of every spec and this one is now read nowhere: the APIs
-    // tab used to head its settings panel with it, and the panel is the tab — the tab
-    // strip already says what it is.
+    // `purpose` is required of every spec and this one is read nowhere: the APIs panel
+    // is the tab, and the tab strip already says what it is.
     purpose:
       "The agent's whole reply is a program over the tools, run in a wasm sandbox.",
     params: [

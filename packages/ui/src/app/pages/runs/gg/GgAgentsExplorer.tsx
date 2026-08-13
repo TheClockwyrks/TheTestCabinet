@@ -98,9 +98,9 @@ import { LinkIcon, ModulesIcon } from "./ggIcons";
 // read through, now scoped to one agent rather than blurred across all of them.
 //
 // Beside those files each agent carries a `modules` folder: one entry per module
-// instance it holds (see gg/modules). That folder exists because the state gg used to
-// think of as an agent's — its memories, its task list, its handle on the board — is no
-// longer the agent's at all. A module instance can be held by several agents at once,
+// instance it holds (see gg/modules). That folder exists because a run's state — its
+// memories, its task list, its handle on the board — is not any one agent's. A module
+// instance can be held by several agents at once,
 // carried whole to a successor across an `exec`, or copied when its holder forks, so
 // "root's tasks" was a name for something that might be shared with four other
 // instances and could not say so. A module file therefore leads with the store's
@@ -1332,9 +1332,9 @@ function WithheldTools({ tools }: { tools: readonly string[] }) {
 // be hunted along each row.
 //
 // Two states, and keeping them visually distinct is the feature: used (its count), and
-// offered and not used — a real `0×`, dimmed. It used to name the second state in words,
-// on the argument that a bare zero reads as a measurement rather than as a finding. It IS
-// a measurement, and now an exact one: gg records every model-facing call under its own
+// offered and not used — a real `0×`, dimmed. The second state is a bare zero rather than
+// words, because it IS
+// a measurement, and an exact one: gg records every model-facing call under its own
 // identity, so a zero here is the same kind of fact as a three, taken the same way, and
 // spelling one of them out in prose made the two rows impossible to compare down a column
 // they now share. The dimming carries the finding, and the tooltip carries the sentence.

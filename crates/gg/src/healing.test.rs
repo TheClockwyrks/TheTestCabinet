@@ -688,8 +688,8 @@ fn a_reply_that_is_prose_from_end_to_end_is_left_alone() {
 /// six that carry a program, and the two of those that carry one candidate block are unwrapped to
 /// it.
 ///
-/// The table is measured rather than estimated: the other four carry several candidates each — the
-/// shape gg used to refuse — and are handed on whole. The remaining four replies of the ten are
+/// The table is measured rather than estimated: the other four carry several candidates each and
+/// are handed on whole. The remaining four replies of the ten are
 /// terminal prose, and the case above is where they are pinned.
 #[test]
 fn the_committed_round_one_replies_all_reach_the_type_strip() {

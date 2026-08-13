@@ -429,10 +429,8 @@
 // One row per declaration the selected function's signature reaches: its name, and
 // whether opening the function opens that declaration too.
 //
-// Names rather than declarations, which is the change that let eleven arms cost less than
-// one used to. Each declaration has its own entry in the same document, so the row links
-// to it; writing the declaration out under every function that mentions it was eighty-odd
-// per cent of the old single-arm artifact.
+// Names rather than declarations, which is what keeps eleven arms affordable. Each
+// declaration has its own entry in the same document, so the row links to it.
 .typeRefs {
   list-style: none;
   margin: 0;

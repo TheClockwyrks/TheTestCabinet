@@ -255,8 +255,8 @@ describe("gg agents", () => {
     });
     const draft = draftFromCapabilitySet(configured);
     expect(draft.agents[0]!.promptCacheTtl).toBe("extended");
-    // An agent that names no lifetime — every configuration stored before the knob
-    // existed — loads as the provider default rather than as the priced-up one.
+    // An agent that names no lifetime loads as the provider default rather than as the
+    // priced-up one.
     expect(draft.agents[1]!.promptCacheTtl).toBe("standard");
 
     const back = capabilitySetFromDraft(draft, null);
@@ -287,8 +287,8 @@ describe("gg agents", () => {
     // gg's default" — seeding it with the default figure would freeze today's number into
     // every stored configuration.
     expect(draft.agents[0]!.loopDetection.knobs.repeatThreshold).toBe("");
-    // An agent that names no declaration — every configuration stored before the lever
-    // existed — loads disarmed, which is gg's own reading of the absent key.
+    // An agent that names no declaration loads disarmed, which is gg's own reading of
+    // the absent key.
     expect(draft.agents[1]!.loopDetection.enabled).toBe(false);
 
     const back = capabilitySetFromDraft(draft, null);

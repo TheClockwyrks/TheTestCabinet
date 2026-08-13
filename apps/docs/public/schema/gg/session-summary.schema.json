@@ -1,7 +1,7 @@
 {
   "$defs": {
     "GgErrorSummary": {
-      "description": "The run's **error rollup**: how many of its turns failed, how badly they clustered, and how.\n\nFolded from the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events the run emitted — one per\nturn, on every agent — so [`turns`](Self::turns) is both this rollup's denominator and a count\nof the model calls the run actually made. Numerator and denominator come from the same event and\ntherefore cannot drift.\n\nThis exists because gg already *judges* every turn — the same judgement the\n[error ceilings](GgRunLimits) are enforced on — and used to throw that judgement away when the\nagent's loop ended. A run that failed a third of its turns and finished anyway was, in the\ndurable record, indistinguishable from one that never failed a turn.\n\n# No percentage is stored\n\n[`errors`](Self::errors) over [`turns`](Self::turns) is the error rate; it is deliberately not\nrecorded as a third field. A stored percentage is a figure that can disagree with its own\ndenominator — after a rounding change, a partially-recorded run, or a reader that sums two runs'\nrates — and the one thing a reader must be able to trust here is that the numbers add up.\n\n# What this rollup deliberately does not count\n\n- **Fatal turns.** A failure of gg's own machinery ends the session on the first occurrence and\n  is never charged to the model's error budget, exactly as the ceilings never observe one.\n  `turns` still counts it, so the accounting stays whole.\n- **A tool call that failed inside an otherwise successful program**, in [`errors`](Self::errors)\n  or in any per-kind or per-type counter. The program handled it, which is the entire point of\n  the typed tool surface, and charging it to the model's error budget would make the one\n  capability that *expects* failures the one that cannot survive them. It is counted — see\n  [`tool_failures`](Self::tool_failures), which is a rollup of calls, not of turns — because a\n  model fighting the same `not-found` forty times is among the most actionable facts a run has.\n- **Per-agent attribution.** These are run-wide totals; the per-agent breakdown lives on the\n  stream, where each `TurnOutcome` rides on its own agent's id.",
+      "description": "The run's **error rollup**: how many of its turns failed, how badly they clustered, and how.\n\nFolded from the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events the run emitted — one per\nturn, on every agent — so [`turns`](Self::turns) is both this rollup's denominator and a count\nof the model calls the run actually made. Numerator and denominator come from the same event and\ntherefore cannot drift.\n\nThis exists because gg already *judges* every turn, the same judgement the\n[error ceilings](GgRunLimits) are enforced on. Without the rollup a run that failed a third of\nits turns and finished anyway would be, in the durable record, indistinguishable from one that\nnever failed a turn.\n\n# No percentage is stored\n\n[`errors`](Self::errors) over [`turns`](Self::turns) is the error rate; it is deliberately not\nrecorded as a third field. A stored percentage is a figure that can disagree with its own\ndenominator — after a rounding change, a partially-recorded run, or a reader that sums two runs'\nrates — and the one thing a reader must be able to trust here is that the numbers add up.\n\n# What this rollup deliberately does not count\n\n- **Fatal turns.** A failure of gg's own machinery ends the session on the first occurrence and\n  is never charged to the model's error budget, exactly as the ceilings never observe one.\n  `turns` still counts it, so the accounting stays whole.\n- **A tool call that failed inside an otherwise successful program**, in [`errors`](Self::errors)\n  or in any per-kind or per-type counter. The program handled it, which is the entire point of\n  the typed tool surface, and charging it to the model's error budget would make the one\n  capability that *expects* failures the one that cannot survive them. It is counted — see\n  [`tool_failures`](Self::tool_failures), which is a rollup of calls, not of turns — because a\n  model fighting the same `not-found` forty times is among the most actionable facts a run has.\n- **Per-agent attribution.** These are run-wide totals; the per-agent breakdown lives on the\n  stream, where each `TurnOutcome` rides on its own agent's id.",
       "properties": {
         "byType": {
           "additionalProperties": {
@@ -113,8 +113,7 @@
           "type": "integer"
         },
         "enabled": {
-          "default": [],
-          "description": "The [strategies](GgHealingStrategy) that were **armed** for this run, in the order gg\napplies them — the resolved configuration, recorded rather than left to be re-derived from\nthe capability set.\n\nThis is what makes an ablation legible from the telemetry alone. Every counter above is a\nmeasurement of what fired, and a run in which nothing fired is byte-identical whether its\nstrategies were all armed or all disabled — so without this field the healing-off arm of a\nstudy and its healing-on arm are indistinguishable in the data, and a study slicing on the\narm has to go back to the invocation files that produced it.\n\nEmpty means every strategy was disabled **for a responses-as-code run**, and means nothing\nat all for a tool-calling one, where healing never runs;\n[`execution_mode`](GgSessionSummary::execution_mode) is what tells those two apart.\n\nSerialized **always, empty list and all** — deliberately no `skip_serializing_if`. The empty\nlist is the one value this field exists to publish, so a key that vanished exactly when it\nmeant \"every strategy was off\" would leave the healing-off arm byte-identical on the wire to\na build with no such field, reopening one level down the very hole described above. Only\n[`Deserialize`] treats it as optional, so a summary recorded before the field existed still\nreads — as an empty armed set, which for those runs is the truth rather than a guess.",
+          "description": "The [strategies](GgHealingStrategy) that were **armed** for this run, in the order gg\napplies them — the resolved configuration, recorded rather than left to be re-derived from\nthe capability set.\n\nThis is what makes an ablation legible from the telemetry alone. Every counter above is a\nmeasurement of what fired, and a run in which nothing fired is byte-identical whether its\nstrategies were all armed or all disabled — so without this field the healing-off arm of a\nstudy and its healing-on arm are indistinguishable in the data, and a study slicing on the\narm has to go back to the invocation files that produced it.\n\nEmpty means every strategy was disabled **for a responses-as-code run**, and means nothing\nat all for a tool-calling one, where healing never runs;\n[`execution_mode`](GgSessionSummary::execution_mode) is what tells those two apart.\n\nSerialized **always, empty list and all** — deliberately no `skip_serializing_if`. The empty\nlist is the one value this field exists to publish, so a key that vanished exactly when it\nmeant \"every strategy was off\" would leave the healing-off arm byte-identical on the wire to\na build with no such field, reopening one level down the very hole described above.",
           "items": {
             "$ref": "https://docs.testcabinet.ai/schema/gg/telemetry-event.schema.json#/$defs/GgHealingStrategy"
           },
@@ -139,7 +138,13 @@
           "type": "integer"
         }
       },
-      "required": ["healed", "applications", "stripFences", "stripProse"],
+      "required": [
+        "healed",
+        "applications",
+        "stripFences",
+        "stripProse",
+        "enabled"
+      ],
       "type": "object"
     },
     "GgLimitBreach": {
@@ -184,12 +189,12 @@
       "oneOf": [
         {
           "const": "turns",
-          "description": "[`max_turns`](GgRunLimits::max_turns) — the agent took every turn it was allowed. Its\nterminal status is `exhausted`, not `limit_exceeded`, because that status predates this\nvocabulary and changing it would rewrite the meaning of every historical run.",
+          "description": "[`max_turns`](GgRunLimits::max_turns) — the agent took every turn it was allowed. Its\nterminal status is the host's own `exhausted`, not `limit_exceeded`.",
           "type": "string"
         },
         {
           "const": "runtime",
-          "description": "[`max_runtime_secs`](GgRunLimits::max_runtime_secs) — the run spent its wall-clock budget.\nIts terminal status is `timed_out`, for the same reason.",
+          "description": "[`max_runtime_secs`](GgRunLimits::max_runtime_secs) — the run spent its wall-clock budget.\nIts terminal status is the host's own `timed_out`, for the same reason.",
           "type": "string"
         },
         {
@@ -285,22 +290,9 @@
     },
     "errors": {
       "$ref": "#/$defs/GgErrorSummary",
-      "default": {
-        "errors": 0,
-        "loopAborts": 0,
-        "maxConsecutive": 0,
-        "missingCompletion": 0,
-        "modelApi": 0,
-        "programFault": 0,
-        "sandboxLimit": 0,
-        "toolchain": 0,
-        "transpile": 0,
-        "turns": 0
-      },
-      "description": "How many of the run's turns failed, how badly they clustered, and how — the run's\n[error rollup](GgErrorSummary), folded from the\n[`TurnOutcome`](GgTelemetryKind::TurnOutcome) events every agent emitted.\n\nUnlike [`healing`](Self::healing) this is meaningful in **both** execution modes: a\ntool-calling turn fails too, just in fewer ways. All zeroes for a run recorded before turn\noutcomes were on the wire, which is what the serde default preserves — those runs report no\nturns rather than failing to load."
+      "description": "How many of the run's turns failed, how badly they clustered, and how — the run's\n[error rollup](GgErrorSummary), folded from the\n[`TurnOutcome`](GgTelemetryKind::TurnOutcome) events every agent emitted.\n\nUnlike [`healing`](Self::healing) this is meaningful in **both** execution modes: a\ntool-calling turn fails too, just in fewer ways."
     },
     "executionMode": {
-      "default": "tool_calling",
       "description": "Which **execution mode** the run's agents used — the durable record of whether the run was\ndriven with [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) (`\"responses_as_code\"`, the\nmodel emitted programs gg ran in the wasmtime sandbox) or traditional tool calling\n(`\"tool_calling\"`, the default). This is the effective-behavior companion to the\n[`cap.responses-as-code`](crate::gg_query) document field: that field slices by the\n*configured* capability, and this one records the mode the\nrun actually ran in, so \"does a code-shaped response help?\" is a durable, sliceable outcome\ndimension. Recorded once off the run's configuration (like [`effective_tools`](Self::effective_tools)),\nnot derived from the telemetry stream.",
       "type": "string"
     },
@@ -418,7 +410,9 @@
     "issueReviews",
     "reviewCycles",
     "issuesReopened",
+    "executionMode",
     "codeExecutions",
+    "errors",
     "issuesCreated",
     "issuesCompleted"
   ],

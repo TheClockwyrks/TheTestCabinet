@@ -33,13 +33,12 @@ use crate::tools::{ToolContext, ToolRegistry, VisionContext};
 use test_cabinet_core::gg::{
     ALL_SUBAGENT_SCOPES, CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION,
     CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_FSM, CAPABILITY_MEMORIES,
-    CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE, CAPABILITY_REPLAY,
-    CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS,
-    CAPABILITY_TASKS, FSM_PARAM_STATES, GgAgentConfig, GgAgentStatus, GgCapabilityConfig,
-    GgCapabilitySet, GgContextAction, GgContextSource, GgHook, GgHookAction, GgHookEvent,
-    GgIssueReviewPhase, GgIssueStatus, GgProgramLanguage, GgPromptCacheTtl, GgSessionSummary,
-    GgSlotBinding, GgSubagentRef, GgSubagentScope, GgTelemetryEvent, GgTelemetryKind,
-    GgTurnErrorType, ROOT_AGENT,
+    CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE, CAPABILITY_RESPONSES_AS_CODE,
+    CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, FSM_PARAM_STATES,
+    GgAgentConfig, GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgContextAction,
+    GgContextSource, GgHook, GgHookAction, GgHookEvent, GgIssueReviewPhase, GgIssueStatus,
+    GgProgramLanguage, GgPromptCacheTtl, GgSessionSummary, GgSlotBinding, GgSubagentRef,
+    GgSubagentScope, GgTelemetryEvent, GgTelemetryKind, GgTurnErrorType, ROOT_AGENT,
 };
 use test_cabinet_core::gg_session_journal::{GG_SESSION_JOURNAL_PATH, GgJournalLine};
 use test_cabinet_core::gg_session_record::{
@@ -710,8 +709,8 @@ async fn run_drives_the_mock_end_to_end_and_writes_the_file() {
     assert!(matches!(
         &events.first().unwrap().kind,
         GgTelemetryKind::SessionStarted {
-            capability_set: Some(set),
-        } if *set == inv.capability_set
+            capability_set: set,
+        } if **set == inv.capability_set
     ));
     assert!(matches!(
         &events.last().unwrap().kind,
@@ -943,8 +942,8 @@ async fn run_reports_launch_failure_when_no_slot_is_bound() {
     assert!(matches!(
         &events.first().unwrap().kind,
         GgTelemetryKind::SessionStarted {
-            capability_set: Some(set),
-        } if *set == inv.capability_set
+            capability_set: set,
+        } if **set == inv.capability_set
     ));
     assert!(
         events
@@ -1636,11 +1635,10 @@ fn system_prompt_names_the_modules_in_code_mode() {
 ///
 /// Every module-backed capability an agent holds explains itself in its prompt.
 ///
-/// This used to be the ownership test: memories could be held `unowned` and described nowhere. That
-/// knob is gone from both memories and skills — for memories because what a
+/// Neither memories nor skills carries an ownership knob: what a
 /// [strategy](crate::memories::MemoryStrategy) puts in the window *is* what having memories means
-/// under it, and `keyword-search` is already the arm that pins nothing. What remains is the
-/// property the knob was hiding: a capability an agent has is a capability it is told it has.
+/// under it, and `keyword-search` is the arm that pins nothing. The property this asserts is that
+/// a capability an agent has is a capability it is told it has.
 #[test]
 fn every_held_module_contributes_its_prompt_section() {
     let registry = ToolRegistry::from_capabilities(&GgAgentConfig::root());
@@ -4532,8 +4530,8 @@ async fn run_tags_events_as_root_and_emits_agent_spawned_and_slot_usage() {
     // …and the spawn says *where* that tree is: the root's working directory is the workspace, which
     // is what its tools (and any command it runs without a path) are rooted at.
     assert_eq!(
-        cwd.as_deref(),
-        Some(dir.path().to_string_lossy().as_ref()),
+        cwd.as_str(),
+        dir.path().to_string_lossy().as_ref(),
         "the root's announced working directory is the workspace"
     );
 
@@ -7458,9 +7456,6 @@ fn usage_by_slot_model(events: &[GgTelemetryEvent]) -> HashMap<(String, String),
         else {
             continue;
         };
-        let (Some(slot), Some(model_id)) = (slot, model_id) else {
-            panic!("a usage delta named no (slot, model): {event:?}");
-        };
         *totals.entry((slot.clone(), model_id.clone())).or_default() += tokens.total().unwrap_or(0);
     }
     totals
@@ -8138,11 +8133,8 @@ async fn replay_capture_interleaves_a_multi_agent_run() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-replay-sub".to_string()), Box::new(sink.clone()));
-    // Subagents + multi-model + replay on top of the minimal defaults, with a subagent slot bound.
-    let mut set = subagent_set(1, 3, &["subagent"]);
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_REPLAY));
+    // Subagents + multi-model on top of the minimal defaults, with a subagent slot bound.
+    let set = subagent_set(1, 3, &["subagent"]);
     let inv = invocation(dir.path(), set);
     let factory = ScriptedFactory::new()
         .slot(ROOT_AGENT, |b| {
@@ -8563,9 +8555,9 @@ impl ModelClient for SharedClient {
 /// all can still produce a `View` message — and a model that met one it had never been told about
 /// would be reading an unexplained block in its own window.
 ///
-/// It used to assert the row **named** the call that produces the message, spelled per arm. That is
-/// now the opposite of what is required: the description reached every rendered prompt on every arm,
-/// so the one row nothing gates was also the one place a catalogued function was guaranteed to leak
+/// The row must **not** name the call that produces the message: the description reaches every
+/// rendered prompt on every arm, so the one row nothing gates would also be the one place a
+/// catalogued function is guaranteed to leak
 /// into a document that promises it names none. The label half is what the reader actually needs —
 /// it is how a block in the window is matched to the value that produced it — and it is what
 /// survives.

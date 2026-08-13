@@ -13,11 +13,11 @@
 //! meaningless without the list of changes. Those are different shapes, so they are different
 //! calls, and each call's signature carries exactly what that result is made of.
 //!
-//! That is the whole point of this module. gg used to hand every role the same `finish(summary)` and
-//! then read the verdict back out of the summary text — a marker line to match, a bulleted list to
-//! scrape. Every such parse has a failure mode that produces a *plausible* answer rather than an
-//! error: a reviewer that requested changes and listed none. That cannot happen to a typed call,
-//! because the shape is refused at the membrane before it is ever a verdict.
+//! That is the whole point of this module. Handing every role one `finish(summary)` and reading the
+//! verdict back out of the summary text means a parse, and every such parse has a failure mode that
+//! produces a *plausible* answer rather than an error: a reviewer that requested changes and listed
+//! none. That cannot happen to a typed call, because the shape is refused at the membrane before it
+//! is ever a verdict.
 //!
 //! # One rule, enforced once
 //!

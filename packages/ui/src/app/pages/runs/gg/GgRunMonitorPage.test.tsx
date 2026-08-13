@@ -727,6 +727,8 @@ describe("GgRunMonitorPage", () => {
       sessionStarted(),
       gg({
         type: "usage",
+        slot: "Root",
+        modelId: "mock/scripted-builder",
         tokens: {
           uncachedInput: 800,
           cachedInput: 1200,
@@ -805,12 +807,14 @@ describe("GgRunMonitorPage", () => {
       sessionStarted(),
       gg({
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Root",
         modelId: "mock/scripted-builder",
         depth: 0,
       }),
       ggFrom("agent-0", "root", {
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Reviewer",
         modelId: "mock/scripted-builder",
         depth: 1,
@@ -936,12 +940,14 @@ describe("GgRunMonitorPage", () => {
       sessionStarted(),
       gg({
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Root",
         modelId: "mock/scripted-builder",
         depth: 0,
       }),
       ggFrom("agent-0", "root", {
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Coder",
         modelId: "mock/scripted-builder",
         depth: 1,
@@ -1245,6 +1251,7 @@ describe("GgRunMonitorPage", () => {
       sessionStartedAblating("Root", ["shell", "filesystem"], ["run_shell"]),
       gg({
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Root",
         modelId: "mock/scripted-builder",
         depth: 0,
@@ -1299,6 +1306,7 @@ describe("GgRunMonitorPage", () => {
       sessionStartedAblating("Root", ["filesystem"], ["read_files"]),
       gg({
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Root",
         modelId: "mock/scripted-builder",
         depth: 0,
@@ -1328,6 +1336,7 @@ describe("GgRunMonitorPage", () => {
       sessionStarted(["shell", "filesystem"]),
       gg({
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Root",
         modelId: "mock/scripted-builder",
         depth: 0,
@@ -1419,6 +1428,7 @@ describe("GgRunMonitorPage", () => {
       sessionStarted(["filesystem"]),
       gg({
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Root",
         modelId: "mock/scripted-builder",
         depth: 0,
@@ -1476,6 +1486,7 @@ describe("GgRunMonitorPage", () => {
       sessionStarted(["filesystem"]),
       gg({
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Root",
         modelId: "mock/scripted-builder",
         depth: 0,
@@ -1516,6 +1527,7 @@ describe("GgRunMonitorPage", () => {
       sessionStarted(["filesystem"]),
       gg({
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Root",
         modelId: "mock/scripted-builder",
         depth: 0,
@@ -1549,6 +1561,7 @@ describe("GgRunMonitorPage", () => {
       sessionStarted(["filesystem"]),
       gg({
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Root",
         modelId: "mock/scripted-builder",
         depth: 0,
@@ -1597,6 +1610,7 @@ describe("GgRunMonitorPage", () => {
       sessionStarted(["shell", "filesystem"]),
       gg({
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Root",
         modelId: "mock/scripted-builder",
         depth: 0,
@@ -1604,6 +1618,7 @@ describe("GgRunMonitorPage", () => {
       surface("root", ["read_file"]),
       ggFrom("agent-0", "root", {
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Root",
         modelId: "mock/scripted-builder",
         depth: 1,
@@ -1635,6 +1650,7 @@ describe("GgRunMonitorPage", () => {
       roster("root", [held("history", "history-0"), held("board", "board-0")]),
       ggFrom("agent-0", undefined, {
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Coder",
         modelId: "mock/scripted-builder",
         depth: 0,
@@ -1697,6 +1713,7 @@ describe("GgRunMonitorPage", () => {
       ]),
       ggFrom("agent-0", "root", {
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Reviewer",
         modelId: "mock/scripted-builder",
         depth: 1,
@@ -1714,6 +1731,7 @@ describe("GgRunMonitorPage", () => {
       ),
       ggFrom("agent-1", "root", {
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Reviewer",
         modelId: "mock/scripted-builder",
         depth: 1,
@@ -1860,6 +1878,7 @@ describe("GgRunMonitorPage", () => {
       ]),
       ggFrom("agent-0", "root", {
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Reviewer",
         modelId: "mock/scripted-builder",
         depth: 1,
@@ -1877,6 +1896,7 @@ describe("GgRunMonitorPage", () => {
       ),
       ggFrom("agent-1", "root", {
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Reviewer",
         modelId: "mock/scripted-builder",
         depth: 1,
@@ -1950,6 +1970,7 @@ describe("GgRunMonitorPage", () => {
       }),
       ggFrom("agent-2", "root", {
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Root",
         modelId: "mock/scripted-builder",
         depth: 0,
@@ -2143,6 +2164,7 @@ describe("GgRunMonitorPage", () => {
       ]),
       ggFrom("WIDGET-1.0i", undefined, {
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Coder",
         modelId: "mock/scripted-builder",
         depth: 0,
@@ -2216,6 +2238,7 @@ describe("GgRunMonitorPage", () => {
       gg({ type: "turn_started" }),
       ggFrom("agent-0", "root", {
         type: "agent_spawned",
+        cwd: "/work",
         slot: "builder",
         modelId: "mock/scripted-builder",
         depth: 1,
@@ -2294,6 +2317,7 @@ describe("GgRunMonitorPage", () => {
       sessionStarted(),
       ggFrom("agent-0", "root", {
         type: "agent_spawned",
+        cwd: "/work",
         slot: "reviewer",
         modelId: "claude-haiku-4-8",
         depth: 1,
@@ -2313,6 +2337,7 @@ describe("GgRunMonitorPage", () => {
       }),
       ggFrom("agent-1", "root", {
         type: "agent_spawned",
+        cwd: "/work",
         slot: "builder",
         modelId: "claude-sonnet-4-8",
         depth: 1,
@@ -2464,6 +2489,7 @@ describe("GgRunMonitorPage", () => {
       gg({ type: "tool_call", name: "read_file", args: {} }),
       ggFrom("agent-0", "root", {
         type: "agent_spawned",
+        cwd: "/work",
         slot: "reviewer",
         modelId: "claude-haiku-4-8",
         depth: 1,
@@ -2568,10 +2594,12 @@ describe("GgRunMonitorPage", () => {
         { name: "Root", capabilities: ["subagents"] },
         { name: "reviewer", capabilities: ["filesystem"] },
       ]),
-      gg({ type: "agent_spawned", slot: "Root", modelId: "mock/x", depth: 0 }),
+      gg({ type: "agent_spawned",
+ cwd: "/work", slot: "Root", modelId: "mock/x", depth: 0 }),
       ...["agent-0", "agent-1"].flatMap((id, index) => [
         ggFrom(id, "root", {
           type: "agent_spawned",
+          cwd: "/work",
           slot: "reviewer",
           modelId: "mock/x",
           depth: 1,
@@ -2712,6 +2740,7 @@ describe("GgRunMonitorPage", () => {
       ...["agent-0", "agent-1"].map((id, index) =>
         ggFrom(id, "root", {
           type: "agent_spawned",
+          cwd: "/work",
           slot: "Reviewer",
           modelId: "mock/scripted-builder",
           depth: 1,
@@ -2909,6 +2938,7 @@ describe("GgRunMonitorPage", () => {
     const instance = (id: string, requestMs: number) => [
       ggFrom(id, "root", {
         type: "agent_spawned",
+        cwd: "/work",
         slot: "reviewer",
         modelId: "mock/x",
         depth: 1,
@@ -2937,7 +2967,8 @@ describe("GgRunMonitorPage", () => {
         { name: "Root", capabilities: ["subagents"] },
         { name: "reviewer", capabilities: ["filesystem"] },
       ]),
-      gg({ type: "agent_spawned", slot: "Root", modelId: "mock/x", depth: 0 }),
+      gg({ type: "agent_spawned",
+ cwd: "/work", slot: "Root", modelId: "mock/x", depth: 0 }),
       ...instance("agent-0", 2000),
       ...instance("agent-1", 8000),
     ]);
@@ -2962,7 +2993,8 @@ describe("GgRunMonitorPage", () => {
   it("folds an opened agent row back away when it is clicked again", () => {
     renderMonitor([
       sessionStarted(),
-      gg({ type: "agent_spawned", slot: "Root", modelId: "mock/x", depth: 0 }),
+      gg({ type: "agent_spawned",
+ cwd: "/work", slot: "Root", modelId: "mock/x", depth: 0 }),
       gg({ type: "turn_started" }),
     ]);
     openTab("Agents");
@@ -3145,6 +3177,7 @@ describe("GgRunMonitorPage", () => {
       }),
       ggFrom("agent-1", "root", {
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Builder",
         modelId: "claude-sonnet-4-8",
         depth: 0,
@@ -3171,6 +3204,7 @@ describe("GgRunMonitorPage", () => {
       }),
       ggFrom("agent-2", "agent-1", {
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Builder",
         modelId: "claude-sonnet-4-8",
         depth: 1,
@@ -3190,6 +3224,7 @@ describe("GgRunMonitorPage", () => {
       }),
       ggFrom("agent-3", "agent-2", {
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Verifier",
         modelId: "claude-haiku-4-8",
         depth: 1,
@@ -3276,6 +3311,7 @@ describe("GgRunMonitorPage", () => {
       sessionStarted(["filesystem"]),
       gg({
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Root",
         modelId: "mock/scripted-builder",
         depth: 0,
@@ -3358,6 +3394,7 @@ describe("GgRunMonitorPage", () => {
       sessionStarted(["filesystem"]),
       gg({
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Root",
         modelId: "mock/scripted-builder",
         depth: 0,
@@ -3386,6 +3423,7 @@ describe("GgRunMonitorPage", () => {
       sessionStarted(["filesystem", "subagents"]),
       gg({
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Root",
         modelId: "mock/scripted-builder",
         depth: 0,
@@ -3404,6 +3442,7 @@ describe("GgRunMonitorPage", () => {
       ),
       ggFrom("agent-0", "root", {
         type: "agent_spawned",
+        cwd: "/work",
         slot: "worker",
         modelId: "mock/scripted-builder",
         depth: 1,
@@ -3445,6 +3484,7 @@ describe("GgRunMonitorPage", () => {
       sessionStarted(["filesystem"]),
       gg({
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Root",
         modelId: "mock/scripted-builder",
         depth: 0,
@@ -3488,6 +3528,7 @@ describe("GgRunMonitorPage", () => {
       ]),
       gg({
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Root",
         modelId: "mock/scripted-builder",
         depth: 0,
@@ -3511,6 +3552,7 @@ describe("GgRunMonitorPage", () => {
       // A tool-calling sibling on the same run, to prove the choice is per instance.
       ggFrom("agent-0", "root", {
         type: "agent_spawned",
+        cwd: "/work",
         slot: "worker",
         modelId: "mock/scripted-builder",
         depth: 1,
@@ -3542,6 +3584,7 @@ describe("GgRunMonitorPage", () => {
       sessionStarted(["filesystem"]),
       gg({
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Root",
         modelId: "mock/scripted-builder",
         depth: 0,
@@ -3574,6 +3617,7 @@ describe("GgRunMonitorPage", () => {
       sessionStarted(["filesystem"]),
       gg({
         type: "agent_spawned",
+        cwd: "/work",
         slot: "Root",
         modelId: "mock/scripted-builder",
         depth: 0,

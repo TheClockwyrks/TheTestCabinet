@@ -20,6 +20,12 @@ fn root_set(capabilities: Vec<GgCapabilityConfig>) -> GgCapabilitySet {
     }
 }
 
+/// The zeroed [error rollup](GgErrorSummary) every session summary carries, for a fixture whose
+/// subject is something else.
+fn no_errors() -> serde_json::Value {
+    serde_json::to_value(GgErrorSummary::default()).expect("serialize")
+}
+
 #[test]
 fn minimal_capability_set_binds_the_root_model_and_phase0_capabilities() {
     let set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
@@ -69,29 +75,29 @@ fn default_capability_set_needs_no_model_and_binds_no_agent_model() {
 
 /// [`any_agent_enabled`](GgCapabilitySet::any_agent_enabled) answers about the whole set,
 /// where [`is_enabled`](GgCapabilitySet::is_enabled) answers only about the root. The two are
-/// not interchangeable, and reaching for the root-only one to decide a **run-wide** fact is
-/// exactly the defect the replay gate shipped with.
+/// not interchangeable: a run-wide fact must be read with
+/// [`any_agent_enabled`](GgCapabilitySet::any_agent_enabled).
 #[test]
 fn a_run_wide_read_asks_every_agent_where_the_root_read_asks_one() {
     let mut set = root_set(vec![]);
     set.agents.push(GgAgentConfig {
         name: "Reviewer".to_string(),
-        capabilities: vec![GgCapabilityConfig::enabled(CAPABILITY_REPLAY)],
+        capabilities: vec![GgCapabilityConfig::enabled(CAPABILITY_FSM)],
         ..GgAgentConfig::root()
     });
 
     assert!(
-        !set.is_enabled(CAPABILITY_REPLAY),
+        !set.is_enabled(CAPABILITY_FSM),
         "the root itself does not declare it"
     );
     assert!(
-        set.any_agent_enabled(CAPABILITY_REPLAY),
+        set.any_agent_enabled(CAPABILITY_FSM),
         "but an agent in the set does, and that is what a run-wide read must see"
     );
 
     // Present-but-disabled is not enabled, here as everywhere else.
-    set.agents[1].capabilities = vec![GgCapabilityConfig::disabled(CAPABILITY_REPLAY)];
-    assert!(!set.any_agent_enabled(CAPABILITY_REPLAY));
+    set.agents[1].capabilities = vec![GgCapabilityConfig::disabled(CAPABILITY_FSM)];
+    assert!(!set.any_agent_enabled(CAPABILITY_FSM));
 }
 
 /// A capability set that names no profiles at all reads as a single [Root](ROOT_AGENT) agent with
@@ -153,9 +159,8 @@ fn capability_set_round_trips_through_json() {
 /// billed a higher write premium, so a run pays it only for the agents whose turns are slow or far
 /// enough apart to outlive five minutes.
 ///
-/// A profile that never touched the knob writes **no key at all**, so every configuration stored
-/// before the knob existed round-trips byte for byte — and none of them silently starts paying the
-/// premium.
+/// A profile that never touched the knob writes **no key at all**, so a configuration round-trips
+/// byte for byte and never silently starts paying the premium.
 #[test]
 fn the_prompt_cache_lifetime_is_per_agent_and_omitted_at_its_default() {
     let set = GgCapabilitySet {
@@ -294,8 +299,8 @@ fn loop_detection_round_trips_camel_case_and_omits_every_unset_knob() {
 }
 
 /// The per-agent lever, on the wire: an agent that arms it says so, an agent that did not writes
-/// **no key at all**, and a configuration stored before loop detection existed round-trips byte for
-/// byte — so upgrading gg can never silently move a profile onto the streaming transport.
+/// **no key at all**, so a configuration that never touched it round-trips byte for byte and is
+/// never silently moved onto the streaming transport.
 #[test]
 fn loop_detection_is_per_agent_and_omitted_when_nothing_was_declared() {
     let set = GgCapabilitySet {
@@ -743,8 +748,8 @@ fn usage_telemetry_reuses_the_shared_token_and_cost_types() {
         parent_agent_id: None,
         issue_id: None,
         kind: GgTelemetryKind::Usage {
-            slot: Some("primary".to_string()),
-            model_id: Some("anthropic/claude-opus-5".to_string()),
+            slot: "primary".to_string(),
+            model_id: "anthropic/claude-opus-5".to_string(),
             tokens: TokenCounts {
                 uncached_input: Some(1200),
                 cached_input: Some(300),
@@ -762,26 +767,6 @@ fn usage_telemetry_reuses_the_shared_token_and_cost_types() {
     assert_eq!(value["modelId"], json!("anthropic/claude-opus-5"));
     let back: GgTelemetryEvent = serde_json::from_value(value).expect("deserialize");
     assert_eq!(event, back);
-}
-
-/// A usage delta recorded before gg attributed its deltas — no `slot`/`modelId` on the wire —
-/// still reads, as an unattributed accounting rather than a parse failure.
-#[test]
-fn unattributed_usage_telemetry_still_reads() {
-    let event: GgTelemetryEvent = serde_json::from_value(json!({
-        "timestamp": "2026-07-23T00:00:00Z",
-        "type": "usage",
-        "tokens": { "uncachedInput": 1200, "output": 450 },
-    }))
-    .expect("deserialize");
-    assert!(matches!(
-        event.kind,
-        GgTelemetryKind::Usage {
-            slot: None,
-            model_id: None,
-            ..
-        }
-    ));
 }
 
 #[test]
@@ -996,46 +981,6 @@ fn memory_state_serializes_entries_caps_and_totals() {
 }
 
 #[test]
-fn memory_state_reads_a_record_written_before_lines_and_peaks() {
-    // The three fields added after the event shipped are all `#[serde(default)]`, so an
-    // older record still loads — reporting no line counts and no peaks rather than
-    // failing to parse, which is what keeps an archived run readable.
-    let value = json!({
-        "type": "memory_state",
-        "strategy": "scratchpad",
-        "memories": [{ "name": "controls", "description": "the scheme", "len": 42 }],
-        "count": 1,
-        "totalLen": 42,
-        "caps": {
-            "maxCount": 8,
-            "maxLenPerMemory": 2_000,
-            "maxTotalLen": 8_000,
-        },
-    });
-    let kind: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
-    let GgTelemetryKind::MemoryState {
-        memories,
-        total_lines,
-        peak,
-        caps,
-        scope,
-        writable,
-        ..
-    } = kind
-    else {
-        panic!("expected a MemoryState");
-    };
-    assert_eq!(memories[0].lines, 0);
-    assert_eq!(total_lines, 0);
-    // Scoping arrived later still: a record written before it reports no scope, and a holder that
-    // could write — which every holder could, before a read-only one existed.
-    assert_eq!(scope, "");
-    assert!(writable);
-    assert_eq!(peak, GgMemoryPeak::default());
-    assert_eq!(caps.max_len_description, None);
-}
-
-#[test]
 fn memory_revision_serializes_one_entry_of_the_record() {
     let kind = GgTelemetryKind::MemoryRevision {
         name: "game-plan".to_string(),
@@ -1176,11 +1121,8 @@ fn context_managed_serializes_the_action_and_reclaim() {
 #[test]
 fn empty_telemetry_variants_serialize_as_just_a_type() {
     assert_eq!(
-        serde_json::to_value(GgTelemetryKind::SessionStarted {
-            capability_set: None
-        })
-        .unwrap(),
-        json!({ "type": "session_started" })
+        serde_json::to_value(GgTelemetryKind::TurnStarted {}).unwrap(),
+        json!({ "type": "turn_started" })
     );
     assert_eq!(
         serde_json::to_value(GgTelemetryKind::SessionEnded {
@@ -1383,61 +1325,6 @@ fn every_program_language_round_trips_through_its_id() {
     );
 }
 
-/// The coarse whole-reply repair is a **new** wire value on a type stored runs already carry, so
-/// both directions have to hold at once: a run recorded before it existed must still read (its
-/// healing rollup simply reports zero applications of it), and a run that arms it must round-trip
-/// the counter rather than dropping it as an unknown key.
-///
-/// The stored record proves the other edge of that property at the same time: it carries the
-/// counters of the three strategies since deleted — keys every run recorded before the deletion
-/// carries, and the whole historical record now does — and reading it must skip them rather than
-/// refuse the record. The rollup is additive in both directions at once: a newer field the record
-/// never had defaults, and an older field the type no longer has is ignored.
-#[test]
-fn the_doubled_response_strategy_is_readable_beside_the_runs_that_predate_it() {
-    let stored = json!({
-        "healed": 2,
-        "applications": 2,
-        "stripFences": 2,
-        "stripProse": 0,
-        "dropDuplicateProgram": 0,
-        "dropImports": 0,
-        "unwrapAsync": 0,
-        "enabled": ["strip-fences", "strip-prose"],
-    });
-    let summary: GgHealingSummary = serde_json::from_value(stored).expect("deserialize");
-    assert_eq!(
-        summary.drop_doubled_response, 0,
-        "a rollup recorded before the strategy existed reports none of it rather than failing"
-    );
-    assert_eq!(
-        summary.strip_fences, 2,
-        "the deleted strategies' counters are stale keys the reader steps over, not a parse error"
-    );
-
-    let armed = GgHealingSummary {
-        healed: 1,
-        applications: 1,
-        drop_doubled_response: 1,
-        enabled: vec![
-            GgHealingStrategy::StripFences,
-            GgHealingStrategy::DropDoubledResponse,
-        ],
-        ..GgHealingSummary::default()
-    };
-    let value = serde_json::to_value(&armed).expect("serialize");
-    assert_eq!(value["dropDoubledResponse"], json!(1));
-    assert_eq!(
-        value["enabled"],
-        json!(["strip-fences", "drop-doubled-response"]),
-        "the armed set is what tells a zero counter apart from a disarmed strategy"
-    );
-    assert_eq!(
-        serde_json::from_value::<GgHealingSummary>(value).expect("deserialize"),
-        armed
-    );
-}
-
 /// The ordinary turn: the event is emitted for **every** turn, not only failing ones, because it is
 /// the denominator as much as the numerator — so a clean turn writes the outcome, a zeroed
 /// consecutive-error run and the agent's turn number, and nothing else.
@@ -1604,64 +1491,6 @@ fn the_limit_exceeded_event_tags_as_limit_exceeded() {
     assert_eq!(kind, back);
 }
 
-/// **The backward-compatibility proof.** A session summary recorded before healing and execution
-/// ceilings existed — the exact JSON gg wrote onto a run record — must still deserialize, with the
-/// three new members at their defaults. Every gg run ever recorded is one of these, and a query
-/// that could not read them would take the historical record with it.
-#[test]
-fn a_session_summary_recorded_before_healing_and_limits_still_deserializes() {
-    let recorded = json!({
-        "terminalStatus": "completed",
-        "agentsSpawned": 3,
-        "subagentCount": 2,
-        "maxSubagentDepth": 1,
-        "compactions": 1,
-        "ranOutOfContext": false,
-        "contextOverflowCount": 0,
-        "finalFullness": 0.61,
-        "issueReviews": 1,
-        "reviewCycles": 2,
-        "issuesReopened": 1,
-        "speculations": 0,
-        "executionMode": "responses_as_code",
-        "codeExecutions": 7,
-        "issuesCreated": 2,
-        "issuesCompleted": 2,
-        "slotCosts": [{
-            "slot": "primary",
-            "modelId": "mock/echo",
-            "tokens": { "uncachedInput": 2600, "output": 240 },
-            "cost": { "comparable": 0.0063, "actual": 0.0063 },
-        }],
-        "effectiveTools": ["shell", "read_file", "write_file"],
-    });
-    let summary: GgSessionSummary = serde_json::from_value(recorded).expect("deserialize");
-
-    // The pre-change fields still read exactly as they did.
-    assert_eq!(summary.terminal_status, "completed");
-    assert_eq!(summary.code_executions, 7);
-    assert_eq!(summary.effective_tools.len(), 3);
-    assert_eq!(summary.issue_reviews, 1);
-    // The three new members default rather than failing the parse: a run recorded before healing
-    // existed healed nothing, was bounded by no *recorded* ceiling, and breached none.
-    assert_eq!(summary.healing, GgHealingSummary::default());
-    assert_eq!(summary.limits, GgRunLimits::default());
-    assert_eq!(summary.limit_hit, None);
-    // A run recorded before the program language was on the wire was a TypeScript run — but gg
-    // reads it as *unknown* rather than assuming so, because the whole point of the field is to
-    // slice a study by it, and a value nobody recorded must not arrive looking like one somebody
-    // did.
-    assert_eq!(summary.program_language, None);
-
-    // Re-serializing keeps `limitHit` off the wire, while the two rollups are always present so a
-    // query never has to distinguish "zero" from "absent".
-    let value = serde_json::to_value(&summary).expect("serialize");
-    assert!(value.get("limitHit").is_none());
-    assert!(value.get("programLanguage").is_none());
-    assert_eq!(value["healing"]["healed"], json!(0));
-    assert_eq!(value["limits"], json!({}));
-}
-
 /// The rollups a study slices on, on the wire: every healing counter and the resolved ceilings the
 /// run was actually bounded by, beside the breach that stopped it.
 #[test]
@@ -1682,6 +1511,7 @@ fn a_session_summary_carries_the_healing_rollup_and_the_ceiling_that_stopped_the
         "codeExecutions": 4,
         "issuesCreated": 0,
         "issuesCompleted": 0,
+        "errors": no_errors(),
     }))
     .expect("deserialize");
     summary.healing = GgHealingSummary {
@@ -1729,61 +1559,6 @@ fn a_session_summary_carries_the_healing_rollup_and_the_ceiling_that_stopped_the
 
     let back: GgSessionSummary = serde_json::from_value(value).expect("deserialize");
     assert_eq!(back, summary);
-}
-
-/// **The backward-compatibility proof for the error rollup.** Every gg run recorded before turn
-/// outcomes reached the wire wrote a summary with no `errors` key at all; those runs must still
-/// load, reporting **no turns** rather than failing the parse — and the rollup must then be present
-/// (all zeroes) when re-serialized, so a query never has to tell "zero" from "absent".
-#[test]
-fn a_session_summary_recorded_before_turn_outcomes_reads_with_an_empty_error_rollup() {
-    let recorded = json!({
-        "terminalStatus": "completed",
-        "agentsSpawned": 1,
-        "subagentCount": 0,
-        "maxSubagentDepth": 0,
-        "compactions": 0,
-        "ranOutOfContext": false,
-        "contextOverflowCount": 0,
-        "issueReviews": 0,
-        "reviewCycles": 0,
-        "issuesReopened": 0,
-        "speculations": 0,
-        "executionMode": "responses_as_code",
-        "codeExecutions": 5,
-        "issuesCreated": 0,
-        "issuesCompleted": 0,
-        "healing": {
-            "healed": 0,
-            "applications": 0,
-            "stripFences": 0,
-            "stripProse": 0,
-            "enabled": [],
-        },
-    });
-    let summary: GgSessionSummary = serde_json::from_value(recorded).expect("deserialize");
-    assert_eq!(summary.errors, GgErrorSummary::default());
-    assert_eq!(
-        summary.errors.turns, 0,
-        "a run that predates the rollup reports no turns rather than a fabricated denominator"
-    );
-
-    let value = serde_json::to_value(&summary).expect("serialize");
-    assert_eq!(
-        value["errors"],
-        json!({
-            "turns": 0,
-            "errors": 0,
-            "maxConsecutive": 0,
-            "modelApi": 0,
-            "transpile": 0,
-            "programFault": 0,
-            "sandboxLimit": 0,
-            "toolchain": 0,
-            "missingCompletion": 0,
-            "loopAborts": 0,
-        })
-    );
 }
 
 /// The rollup a study slices on: the denominator, the numerator, the worst streak any one agent
@@ -2012,8 +1787,7 @@ fn every_tool_failure_class_keeps_its_kebab_case_spelling() {
 }
 
 /// A failed call says **why** on both of its records — the tool's and the model's — and a successful
-/// one says nothing, so a reader can tell a run recorded before the class existed from one whose
-/// calls all succeeded.
+/// one says nothing.
 #[test]
 fn a_failed_call_carries_its_class_on_both_of_its_records() {
     let failed = GgTelemetryKind::ToolResult {
@@ -2130,6 +1904,7 @@ fn the_disabled_healing_arm_serializes_as_a_present_empty_armed_set() {
         "codeExecutions": 3,
         "issuesCreated": 0,
         "issuesCompleted": 0,
+        "errors": no_errors(),
     }))
     .expect("deserialize");
 
@@ -2149,44 +1924,6 @@ fn the_disabled_healing_arm_serializes_as_a_present_empty_armed_set() {
         serde_json::to_value(&armed).expect("serialize")["healing"]["enabled"],
         json!(["strip-fences"])
     );
-}
-
-/// **The additive proof.** A healing rollup written before the armed set existed still
-/// deserializes, with the new member at its default rather than at a guess.
-#[test]
-fn a_healing_rollup_written_before_the_armed_set_still_deserializes() {
-    let summary: GgSessionSummary = serde_json::from_value(json!({
-        "terminalStatus": "completed",
-        "agentsSpawned": 1,
-        "subagentCount": 0,
-        "maxSubagentDepth": 0,
-        "compactions": 0,
-        "ranOutOfContext": false,
-        "contextOverflowCount": 0,
-        "issueReviews": 0,
-        "reviewCycles": 0,
-        "issuesReopened": 0,
-        "speculations": 0,
-        "executionMode": "responses_as_code",
-        "codeExecutions": 4,
-        "issuesCreated": 0,
-        "issuesCompleted": 0,
-        "healing": {
-            "healed": 1,
-            "applications": 2,
-            "stripFences": 1,
-            "stripProse": 1,
-        },
-    }))
-    .expect("deserialize");
-    assert_eq!(summary.healing.healed, 1);
-    assert_eq!(summary.healing.strip_prose, 1);
-    assert!(summary.healing.enabled.is_empty());
-
-    // Re-serializing writes the new member out rather than dropping it again, so a record read and
-    // re-written by this build is one this build could have produced.
-    let value = serde_json::to_value(&summary).expect("serialize");
-    assert_eq!(value["healing"]["enabled"], json!([]));
 }
 
 /// The message-log events (`context_message` / `prompt`) round-trip through the wire in
@@ -2219,8 +1956,7 @@ fn message_log_events_round_trip() {
     let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
     assert_eq!(back, message);
 
-    // An untagged message omits the label from the wire rather than serializing a null,
-    // and a stream recorded before gg carried one reads back with none.
+    // An untagged message omits the label from the wire rather than serializing a null.
     let untagged = GgTelemetryKind::ContextMessage {
         id: "mcafe".to_string(),
         role: "user".to_string(),
@@ -2521,46 +2257,6 @@ fn module_dispositions_and_origins_serialize_kebab_case() {
     ] {
         assert_eq!(serde_json::to_value(origin).unwrap(), json!(wire));
         assert_eq!(origin.as_str(), wire);
-    }
-}
-
-/// A record written before module identity existed still parses: `moduleId` is defaulted on every
-/// state event that gained one, so a stored run stays readable rather than failing to deserialize
-/// at the one field a console would happily render as "unknown".
-#[test]
-fn state_events_without_a_module_id_still_deserialize() {
-    let memory: GgTelemetryKind = serde_json::from_value(json!({
-        "type": "memory_state",
-        "strategy": "markdown",
-        "memories": [],
-        "count": 0,
-        "totalLen": 0,
-        "caps": { "maxCount": null, "maxLenPerMemory": null, "maxTotalLen": null,
-                  "maxLenIndex": null, "maxLenDescription": null, "maxResults": null },
-    }))
-    .expect("a pre-identity memory snapshot still parses");
-    let GgTelemetryKind::MemoryState { module_id, .. } = memory else {
-        panic!("expected a memory snapshot");
-    };
-    assert_eq!(module_id, "", "an unidentified store reads as unidentified");
-
-    for (type_name, payload) in [
-        ("tasks_state", json!({ "type": "tasks_state", "tasks": [] })),
-        (
-            "board_state",
-            json!({ "type": "board_state", "epics": [], "issues": [] }),
-        ),
-        (
-            "skills_state",
-            json!({ "type": "skills_state", "skills": [] }),
-        ),
-    ] {
-        let parsed: GgTelemetryKind = serde_json::from_value(payload)
-            .unwrap_or_else(|err| panic!("a pre-identity {type_name} still parses: {err}"));
-        assert_eq!(
-            serde_json::to_value(&parsed).unwrap()["moduleId"],
-            json!("")
-        );
     }
 }
 

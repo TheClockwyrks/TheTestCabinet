@@ -6,10 +6,8 @@
 //! so a model copying it copies something that works; and that running it twice adds nothing, which
 //! is what makes it safe beside a persistent agent's restore.
 //!
-//! A fourth used to sit here — `the_search_call_is_still_uncatalogued`, a forcing function holding
-//! the documentation search to being absent from [`BOOTSTRAP_CALLS`] while no arm's SDK published
-//! it. It is gone because it has done its job: the search has an operation, it is in the list, and
-//! the first test above is now what fails on an arm that does not catalogue it.
+//! The documentation search has an operation and is in [`BOOTSTRAP_CALLS`], so the first test above
+//! is what fails on an arm that does not catalogue it.
 
 use std::sync::Arc;
 

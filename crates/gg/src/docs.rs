@@ -634,8 +634,8 @@ impl DocsRuntime {
     /// unreachable for every registered language.
     ///
     /// Public because the [agent surface](test_cabinet_core::gg::GgTelemetryKind::AgentSurface)
-    /// reports the very same set and used to answer it with a verbatim copy of this predicate. Two
-    /// copies of "may this agent call X" is one copy too many the moment either grows a gate.
+    /// reports the very same set and answers it through this predicate. Two copies of "may this
+    /// agent call X" is one copy too many the moment either grows a gate.
     pub fn bound(&self, function: &CatalogueFunction) -> bool {
         operation_of(function).is_some_and(|operation| self.grants.permits(operation.binding))
     }

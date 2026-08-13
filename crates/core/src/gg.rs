@@ -259,11 +259,10 @@ pub const MEMORY_PARAM_SCOPE: &str = "scope";
 /// Which [memory](CAPABILITY_MEMORIES) instance an agent instance binds to — the
 /// [`scope`](MEMORY_PARAM_SCOPE) param, resolved.
 ///
-/// Memory used to be strictly per agent instance: a subagent started with an empty notebook and
-/// nothing it wrote was ever seen by anyone else. That is still the default, and it is still the
-/// right answer for an ablation that wants each agent measured on its own curation. The other
-/// three bind the *same* store to several holders, which is what makes a study of shared,
-/// accumulated knowledge possible at all.
+/// [`Isolated`](Self::Isolated) is the default: a subagent starts with an empty notebook and
+/// nothing it writes is seen by anyone else, which is the right answer for an ablation that wants
+/// each agent measured on its own curation. The other three bind the *same* store to several
+/// holders, which is what makes a study of shared, accumulated knowledge possible at all.
 ///
 /// Two rules make the four coherent, and they are the ones a configuration's reader has to know:
 ///
@@ -662,11 +661,6 @@ impl std::fmt::Display for GgModuleDisposition {
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgAgentApi {
     /// gg's cross-arm id for the module — `files`, `views`, `session`.
-    ///
-    /// Empty only on a record written before gg reported one, where the surface was grouped by the
-    /// API object a function hung off and [`path`](Self::path) is all the identity there is.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    #[cfg_attr(feature = "contract", ts(optional = nullable))]
     pub module: String,
     /// This arm's own spelling of the module, and what the model reads — `gg.files`, `gg::files`.
     pub path: String,
@@ -1196,24 +1190,6 @@ pub const CAPABILITY_DOCVIEW_CLOSE: &str = "docview-close";
 /// seed time because no publish-time filter can undo a commit the model already made.
 pub const GG_WORKSPACE_DIR: &str = ".gg";
 
-/// The stable id the **replay** capability used to be configured under.
-///
-/// Retained only so a stored capability set that still mentions it round-trips and so the
-/// [query catalog](crate::gg_query::GG_CAPABILITY_CATALOG) stays total over the runs that recorded
-/// it. Nothing offers or reads it any more. It once escalated a run's capture to a fuller fidelity
-/// so a reconstruction could be exact; there is no reconstruction, and a run captures the same
-/// [session record](crate::gg_session_record) whatever a set says.
-pub const CAPABILITY_REPLAY: &str = "replay";
-
-/// The stable id the **completion** capability used to be configured under.
-///
-/// Retained only so a stored capability set that still mentions it round-trips and so the
-/// [query catalog](crate::gg_query::GG_CAPABILITY_CATALOG) stays total over the runs that recorded
-/// it. Nothing offers or reads it any more: the validation commands it gated an ending with are now
-/// an [agent-stop hook](GgHookEvent::AgentStop), which does the same job for every agent, alongside
-/// the nine other points a run can be scripted at — see [`GgHook`].
-pub const CAPABILITY_COMPLETION: &str = "completion";
-
 /// The name a fresh capability set's **root agent** is seeded with.
 ///
 /// It is a starting value, not an invariant: the root is the **first**
@@ -1290,8 +1266,7 @@ pub struct GgCapabilitySet {
     /// [ceilings](Self::limits) are not: a capability is a feature the *model* is given and a study
     /// ablates, while a hook is the operator reaching into the run from outside it.
     ///
-    /// A set that declares none omits the key entirely, so every configuration stored before hooks
-    /// existed round-trips unchanged.
+    /// A set that declares none omits the key entirely.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hooks: Vec<GgHook>,
 }
@@ -1374,9 +1349,9 @@ impl GgCapabilitySet {
 
     // --- Root-agent conveniences ------------------------------------------------
     //
-    // These forward to the [Root agent](Self::root) for the run-level reads that
-    // predate per-agent capabilities — launch validation and the session summary, both
-    // of which describe a run by its Root. Code that *executes* a specific agent must
+    // These forward to the [Root agent](Self::root) for the run-level reads that describe a run
+    // by its Root — launch validation and the session summary. Code that *executes* a specific
+    // agent must
     // read that agent's own [`GgAgentConfig`], never these; code asking whether a run
     // used a feature at all wants [`Self::any_agent_enabled`].
 
@@ -1712,8 +1687,8 @@ pub struct GgSubagentRef {
     /// **What** this agent may use `agent` for. An entry may carry several scopes — the same
     /// profile is often both a reasonable implementer and a reasonable reviewer — and one that
     /// carries none can be used for nothing, which is how a reference is disabled without deleting
-    /// it. An entry stored before scopes existed deserializes as
-    /// [`Subagent`](GgSubagentScope::Subagent) alone, which is exactly what it meant.
+    /// it. An entry that names no scope takes the default,
+    /// [`Subagent`](GgSubagentScope::Subagent) alone.
     #[serde(default = "default_subagent_scopes")]
     pub scopes: Vec<GgSubagentScope>,
 }
@@ -1749,8 +1724,7 @@ pub const ALL_SUBAGENT_SCOPES: [GgSubagentScope; 3] = [
 ];
 
 /// The default [scopes](GgSubagentRef::scopes) of a reference that names none: general
-/// [spawning](GgSubagentScope::Subagent), which is all a roster entry meant before scopes were
-/// introduced.
+/// [spawning](GgSubagentScope::Subagent).
 fn default_subagent_scopes() -> Vec<GgSubagentScope> {
     vec![GgSubagentScope::Subagent]
 }
@@ -1922,8 +1896,7 @@ pub struct GgLoopDetection {
 impl GgLoopDetection {
     /// Whether this agent declares nothing about loop detection — the `skip_serializing_if`
     /// predicate on [`GgAgentConfig::loop_detection`] and [`GgSlotBinding::loop_detection`], so a
-    /// configuration that never touched the knob omits the key entirely and every configuration
-    /// stored before loop detection existed round-trips byte for byte.
+    /// configuration that never touched the knob omits the key entirely.
     ///
     /// Written against [`Default`] rather than field by field so a knob added later cannot be
     /// forgotten here and silently start writing a `loopDetection` key onto every stored profile.
@@ -2042,15 +2015,6 @@ fn empty_params() -> Value {
     Value::Object(serde_json::Map::new())
 }
 
-/// `true`, for a boolean field whose back-compatible reading of an older record is "yes".
-///
-/// Used by [`MemoryState::writable`](GgTelemetryKind::MemoryState): every memory holder could
-/// write before read-only handles existed, so a record that does not carry the field describes a
-/// writable one.
-fn default_true() -> bool {
-    true
-}
-
 /// Whether a count is zero, for a counter that is omitted from the wire in the ordinary case.
 ///
 /// Used by [`CodeExecution::logs_suppressed`](GgTelemetryKind::CodeExecution): almost every program
@@ -2058,13 +2022,6 @@ fn default_true() -> bool {
 /// every run for the rare turn that has something to say.
 fn is_zero_u64(count: &u64) -> bool {
     *count == 0
-}
-
-/// The default [execution mode](GgSessionSummary::execution_mode): traditional tool calling. Used
-/// as the serde default so a summary recorded before responses-as-code existed deserializes as
-/// tool-calling rather than failing.
-fn tool_calling_mode() -> String {
-    "tool_calling".to_string()
 }
 
 /// A binding of a model to a named slot in a [`GgCapabilitySet`].
@@ -2286,10 +2243,9 @@ pub enum GgHookEvent {
     /// opening context.
     AgentStart,
     /// When any agent attempts to end its session, with the [kind](GgHookAgentKind) of agent it is.
-    /// **Can block**, in which case the agent is told why and its session continues. This is the
-    /// event the old `completion` capability's validation commands became: a command hook here that
-    /// exits non-zero is exactly the ending gate it used to be, and it now applies to a reviewer
-    /// and a subagent as readily as to the root.
+    /// **Can block**, in which case the agent is told why and its session continues. A command
+    /// hook here is the run's ending gate, and it applies to a reviewer and a subagent as readily
+    /// as to the root.
     AgentStop,
     /// Before the root agent takes its first turn — once per run, ahead of everything. Cannot
     /// block, but **may insert** into the root's opening prompt, which is how a run is seeded with
@@ -2572,9 +2528,9 @@ pub enum GgHookOutcomeKind {
 /// while making *what the ceiling was* unrecoverable.
 ///
 /// **The defaults catch a stuck run without capping a productive one.** gg's host (The Test
-/// Cabinet) already enforces a wall-clock cap on every run, so a turn ceiling is redundant as the
-/// backstop it used to be and mostly just cuts a run short before it is done — which is why the
-/// turn ceiling is now **unbounded** when unset. What is armed by default instead are the two error
+/// Cabinet) already enforces a wall-clock cap on every run, so a turn ceiling would mostly just cut
+/// a run short before it is done, and the turn ceiling is therefore **unbounded** when unset. What
+/// is armed by default instead are the two error
 /// ceilings that end a run which is *failing* rather than merely *long*: **5 consecutive errors**,
 /// and an **error rate above 0.4 over the last 50 turns**. Runtime and cost stay off when unset —
 /// the host owns the clock, and gg will not invent a spend ceiling nobody asked for. A field set to
@@ -2694,8 +2650,7 @@ pub struct GgRunLimits {
 
 impl GgRunLimits {
     /// Whether this declares no ceiling at all — the `skip_serializing_if` predicate on
-    /// [`GgCapabilitySet::limits`], so a set that declares nothing omits the key entirely and
-    /// every configuration stored before ceilings existed round-trips byte for byte.
+    /// [`GgCapabilitySet::limits`], so a set that declares nothing omits the key entirely.
     ///
     /// Written against [`Default`] rather than field by field so a ceiling added later cannot be
     /// forgotten here and silently start writing a `limits` key onto every stored set.
@@ -2714,11 +2669,10 @@ impl GgRunLimits {
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum GgLimitKind {
     /// [`max_turns`](GgRunLimits::max_turns) — the agent took every turn it was allowed. Its
-    /// terminal status is `exhausted`, not `limit_exceeded`, because that status predates this
-    /// vocabulary and changing it would rewrite the meaning of every historical run.
+    /// terminal status is the host's own `exhausted`, not `limit_exceeded`.
     Turns,
     /// [`max_runtime_secs`](GgRunLimits::max_runtime_secs) — the run spent its wall-clock budget.
-    /// Its terminal status is `timed_out`, for the same reason.
+    /// Its terminal status is the host's own `timed_out`, for the same reason.
     Runtime,
     /// [`max_consecutive_errors`](GgRunLimits::max_consecutive_errors) — the agent failed that
     /// many turns in a row.
@@ -2964,10 +2918,10 @@ impl GgTurnErrorKind {
 /// # Every variant names a real producer
 ///
 /// A bucket that is permanently zero in every console is a defect, so each variant below documents
-/// the exact site that raises it. The set is exactly the distinctions gg *already makes internally*
-/// and used to discard at the recording seam: six shapes of `ModelError`, five of `PrepareError`,
-/// three of the sandbox's own ceilings, the three classes the guest already types an uncaught throw
-/// with over WIT, and the two structurally different ways a turn can end without declaring work.
+/// the exact site that raises it. The set is exactly the distinctions gg makes internally: six
+/// shapes of `ModelError`, five of `PrepareError`, three of the sandbox's own ceilings, the three
+/// classes the guest types an uncaught throw with over WIT, and the two structurally different ways
+/// a turn can end without declaring work.
 ///
 /// # Names carry their base
 ///
@@ -2996,8 +2950,8 @@ pub enum GgTurnErrorType {
     ModelRetryExhausted,
     /// The provider served the request and every answer was a
     /// [generation loop](GgLoopDetection), so the client discarded all of them and gave up. The
-    /// request was fine and the provider was up — which is precisely why this must not read as
-    /// [`ModelRetryExhausted`](Self::ModelRetryExhausted), and precisely why it used to.
+    /// request was fine and the provider was up, which is precisely why this must not read as
+    /// [`ModelRetryExhausted`](Self::ModelRetryExhausted).
     ModelResponseLoop,
     /// The request carried an image the model cannot accept, and gg had nothing left to strip —
     /// either the pictures were not gg's to remove, or the retry against the stripped conversation
@@ -3467,8 +3421,8 @@ pub enum GgContextSource {
     /// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/views/) agent opened: the
     /// documentation for one thing gg's SDK offers, keyed by the name it is addressed under.
     ///
-    /// Its own band rather than a share of [`Skill`](Self::Skill), which it used to be told apart
-    /// from by retention alone. Two things follow from separating them, and both are the point.
+    /// Its own band rather than a share of [`Skill`](Self::Skill). Two things follow from
+    /// separating them, and both are the point.
     /// Documentation is the one band whose size is a direct consequence of how a model *discovers*
     /// its surface, so what it costs has to be readable on its own rather than added to whatever
     /// skills the run happened to pin. And a call that closes documentation can then be a removal
@@ -3868,10 +3822,7 @@ pub struct GgBoardIssue {
     /// The [agent profile](GgAgentConfig) the issue was **assigned to** when it was created —
     /// the profile gg dispatches it under, and re-dispatches for every retry and review round. It
     /// is named on `create_issue` (not configured on the capability), and must be one the creating
-    /// agent lists with the [`implementer`](GgSubagentScope::Implementer) scope. Empty only on a
-    /// board recorded before issues carried an assignee, which dispatches under the
-    /// run's [root](GgCapabilitySet::root).
-    #[serde(default)]
+    /// agent lists with the [`implementer`](GgSubagentScope::Implementer) scope.
     pub agent: String,
     /// The [agent profiles](GgAgentConfig) named as this issue's **reviewers** when it was
     /// created, drawn from the creating agent's roster entries carrying the
@@ -3921,9 +3872,7 @@ pub struct GgMemoryEntry {
     /// The memory body's length in characters (what the caps bound).
     pub len: u64,
     /// The memory body's length in **lines** — the second size the console reports, because
-    /// characters alone do not distinguish a dense paragraph from a long checklist. `0` on
-    /// records written before line counts were reported.
-    #[serde(default)]
+    /// characters alone do not distinguish a dense paragraph from a long checklist.
     pub lines: u64,
 }
 
@@ -4660,10 +4609,7 @@ pub struct GgHealingSummary {
     /// Serialized **always, empty list and all** — deliberately no `skip_serializing_if`. The empty
     /// list is the one value this field exists to publish, so a key that vanished exactly when it
     /// meant "every strategy was off" would leave the healing-off arm byte-identical on the wire to
-    /// a build with no such field, reopening one level down the very hole described above. Only
-    /// [`Deserialize`] treats it as optional, so a summary recorded before the field existed still
-    /// reads — as an empty armed set, which for those runs is the truth rather than a guess.
-    #[serde(default)]
+    /// a build with no such field, reopening one level down the very hole described above.
     pub enabled: Vec<GgHealingStrategy>,
 }
 
@@ -4674,10 +4620,10 @@ pub struct GgHealingSummary {
 /// of the model calls the run actually made. Numerator and denominator come from the same event and
 /// therefore cannot drift.
 ///
-/// This exists because gg already *judges* every turn — the same judgement the
-/// [error ceilings](GgRunLimits) are enforced on — and used to throw that judgement away when the
-/// agent's loop ended. A run that failed a third of its turns and finished anyway was, in the
-/// durable record, indistinguishable from one that never failed a turn.
+/// This exists because gg already *judges* every turn, the same judgement the
+/// [error ceilings](GgRunLimits) are enforced on. Without the rollup a run that failed a third of
+/// its turns and finished anyway would be, in the durable record, indistinguishable from one that
+/// never failed a turn.
 ///
 /// # No percentage is stored
 ///
@@ -4900,7 +4846,6 @@ pub struct GgSessionSummary {
     /// run actually ran in, so "does a code-shaped response help?" is a durable, sliceable outcome
     /// dimension. Recorded once off the run's configuration (like [`effective_tools`](Self::effective_tools)),
     /// not derived from the telemetry stream.
-    #[serde(default = "tool_calling_mode")]
     pub execution_mode: String,
     /// The [language](GgProgramLanguage) the run's root agent wrote its programs in — the slice-by
     /// dimension a cross-language study compares its arms on, and the companion to
@@ -4951,10 +4896,7 @@ pub struct GgSessionSummary {
     /// [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events every agent emitted.
     ///
     /// Unlike [`healing`](Self::healing) this is meaningful in **both** execution modes: a
-    /// tool-calling turn fails too, just in fewer ways. All zeroes for a run recorded before turn
-    /// outcomes were on the wire, which is what the serde default preserves — those runs report no
-    /// turns rather than failing to load.
-    #[serde(default)]
+    /// tool-calling turn fails too, just in fewer ways.
     pub errors: GgErrorSummary,
     /// How many distinct [issues](GgBoardIssue) the run ever created on its
     /// [board](GgTelemetryKind::BoardState) — the count of distinct issue ids observed across the
@@ -5099,10 +5041,7 @@ pub enum GgTelemetryKind {
         /// knows which capabilities are live before any of them has produced an event.
         /// Without it a live view can only guess what a run is capable of and must
         /// offer every surface, including the ones this run's configuration disabled.
-        ///
-        /// Unset only on a stream recorded before gg announced it.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        capability_set: Option<GgCapabilitySet>,
+        capability_set: Box<GgCapabilitySet>,
     },
     /// An agent turn began (one model request/response cycle).
     TurnStarted {},
@@ -5148,7 +5087,7 @@ pub enum GgTelemetryKind {
     /// wrote* (`views.open_file`) and there under what *ran* (`read_file`), and neither figure is
     /// derived from the other. That independence is the whole reason this event exists: a call no
     /// tool backs — `views.openText`, `session.finish`, `programs.get` — has no `ToolCall` to be
-    /// counted through, and used to be counted nowhere at all.
+    /// counted through.
     ///
     /// It carries **no arguments**. A bridged call's `ToolCall` already carries them, and a
     /// carve-out's are either trivial (`session.finish()`) or enormous
@@ -5247,15 +5186,11 @@ pub enum GgTelemetryKind {
     Usage {
         /// The [agent profile](GgAgentConfig) that spent this — the same name
         /// [`AgentSpawned::slot`](Self::AgentSpawned::slot) and
-        /// [`SlotUsage::slot`](Self::SlotUsage::slot) key on. Unset only on a stream recorded
-        /// before gg attributed its deltas.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        slot: Option<String>,
+        /// [`SlotUsage::slot`](Self::SlotUsage::slot) key on.
+        slot: String,
         /// The concrete model id that spent this — the model the
-        /// [profile](Self::Usage::slot) resolved to for the agent that took the turn. Unset on
-        /// the same streams `slot` is.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        model_id: Option<String>,
+        /// [profile](Self::Usage::slot) resolved to for the agent that took the turn.
+        model_id: String,
         /// The normalized token counts for this accounting.
         tokens: TokenCounts,
         /// The cost of this accounting, when it could be determined.
@@ -5429,8 +5364,7 @@ pub enum GgTelemetryKind {
     /// with no skills to offer, emits none.
     SkillsState {
         /// The [module instance](GgTelemetryKind::AgentModules) this snapshot is of — the backing
-        /// read set, not the holder. Empty on records written before module identity existed.
-        #[serde(default)]
+        /// read set, not the holder.
         module_id: String,
         /// One entry per available skill, in the order the catalog lists them.
         skills: Vec<GgSkillState>,
@@ -5451,14 +5385,10 @@ pub enum GgTelemetryKind {
         /// The [module instance](GgTelemetryKind::AgentModules) this snapshot is of — the backing
         /// store, not the holder. It is what lets a reader attribute two agents' identical panels
         /// to one store rather than to a coincidence, and what lets a shared store's contents be
-        /// shown once, under the module, rather than N times under N agents. Empty on records
-        /// written before module identity existed.
-        #[serde(default)]
+        /// shown once, under the module, rather than N times under N agents.
         module_id: String,
         /// The [strategy](CAPABILITY_MEMORIES) this run's memories are organized by — which
-        /// tools the model was offered, and which of the [caps](GgMemoryCaps) apply. Empty
-        /// on records written before memories had more than one strategy.
-        #[serde(default)]
+        /// tools the model was offered, and which of the [caps](GgMemoryCaps) apply.
         strategy: String,
         /// One entry per memory currently held, in name order.
         memories: Vec<GgMemoryEntry>,
@@ -5466,9 +5396,7 @@ pub enum GgTelemetryKind {
         count: u64,
         /// The total length, in characters, summed across every memory's body.
         total_len: u64,
-        /// The total length, in lines, summed across every memory's body. `0` on records
-        /// written before line counts were reported.
-        #[serde(default)]
+        /// The total length, in lines, summed across every memory's body.
         total_lines: u64,
         /// The high-water marks this run's memories reached, so a set that was curated back
         /// down still reports how much it once held.
@@ -5479,15 +5407,11 @@ pub enum GgTelemetryKind {
         /// The [scope](GgMemoryScope) the emitting agent binds this instance under — `isolated`,
         /// `shared`, `inherited` or `read-only`. It is what tells the console that two agents'
         /// memory panels are showing **one** store rather than two that happen to agree, which is
-        /// otherwise indistinguishable from a snapshot. Empty on records written before scoping
-        /// existed, which the console reads as the `isolated` every run then was.
-        #[serde(default)]
+        /// otherwise indistinguishable from a snapshot.
         scope: String,
         /// Whether the emitting agent may **write** this instance. `false` marks a
         /// [read-only](GgMemoryScope::ReadOnly) inherited handle: the agent is shown the set and
-        /// offered the read calls, and every write call is withheld. Defaults to `true`, which is
-        /// what every holder was before read-only handles existed.
-        #[serde(default = "default_true")]
+        /// offered the read calls, and every write call is withheld.
         writable: bool,
     },
     /// One revision of one [memory](https://docs.testcabinet.ai/gg/memories/) — the
@@ -5533,8 +5457,7 @@ pub enum GgTelemetryKind {
     /// [compaction]: https://docs.testcabinet.ai/gg/compaction/
     TasksState {
         /// The [module instance](GgTelemetryKind::AgentModules) this snapshot is of — the backing
-        /// list, not the holder. Empty on records written before module identity existed.
-        #[serde(default)]
+        /// list, not the holder.
         module_id: String,
         /// The tasks, in the order the model added them (a stable order for the DAG's
         /// nodes). Each carries its status and the ids it is blocked by.
@@ -5558,8 +5481,7 @@ pub enum GgTelemetryKind {
         /// The [module instance](GgTelemetryKind::AgentModules) this snapshot is of. The board is
         /// run-global by construction, so every holder in a run reports the *same* id here —
         /// which is exactly what makes the whole run's board legible as one shared module rather
-        /// than as one board per agent. Empty on records written before module identity existed.
-        #[serde(default)]
+        /// than as one board per agent.
         module_id: String,
         /// The epics, in the order the model created them.
         epics: Vec<GgBoardEpic>,
@@ -5670,8 +5592,7 @@ pub enum GgTelemetryKind {
     /// record does not carry the archived text a second time.
     ArchiveState {
         /// The [module instance](Self::AgentModules) this snapshot is of — the backing archive, not
-        /// the holder. Empty on records written before module identity existed.
-        #[serde(default)]
+        /// the holder.
         module_id: String,
         /// The archived entries, in archival order.
         entries: Vec<GgArchiveEntry>,
@@ -5729,10 +5650,8 @@ pub enum GgTelemetryKind {
         /// directory a command it runs without an explicit path executes in. It is the checkout of
         /// the agent's isolated [worktree](Self::AgentSpawned::worktree) when it was dispatched into
         /// one, and the shared workspace otherwise, so the two together say both *which branch* an
-        /// agent works on and *where on disk* that is. Unset only on a stream recorded before gg
-        /// reported it.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        cwd: Option<String>,
+        /// agent works on and *where on disk* that is.
+        cwd: String,
     },
     /// The [modules](GgModuleKind) one agent instance holds, as it opens: what each is, which
     /// backing store it is a holder of, whose it is, and whether the agent's prompt carries it.
@@ -5817,7 +5736,7 @@ pub enum GgTelemetryKind {
         /// Which SDK types an `openDocsView` of a function opens **beside** it for this instance —
         /// `off` (none), `return` (the return position, the default), or `return-and-parameters`
         /// (everything the signature names). `None` for a tool-calling instance, which opens no
-        /// documentation views, and on a stream recorded before gg reported the mode.
+        /// documentation views.
         ///
         /// The value is the mode gg **resolved**, never the string the profile wrote: an unreadable
         /// one falls back to the default and is warned about at launch, and reporting the raw text
@@ -5922,8 +5841,7 @@ pub enum GgTelemetryKind {
         /// example `issue AUTH-1.0` for a [`wait_for_issue`](CAPABILITY_PROJECT_MANAGEMENT), or the
         /// subagents a [`wait_for_subagents`](CAPABILITY_SUBAGENTS) is collecting. A blocked agent
         /// is otherwise indistinguishable from a stuck one, so the console shows this beside the
-        /// status. Absent on every non-blocking transition (and on a blocked one recorded before gg
-        /// reported the condition).
+        /// status. Absent on every non-blocking transition.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         waiting_on: Option<String>,
     },
@@ -6059,8 +5977,7 @@ pub enum GgTelemetryKind {
         items: Option<Vec<String>>,
         /// **Who** returned the [`items`](Self::IssueReview::items), on the
         /// [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) phase — the one reviewer that
-        /// ended the round. Absent on the other two phases, and on a stream recorded before reviewer
-        /// identity was reported.
+        /// ended the round. Absent on the other two phases.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reviewer: Option<GgReviewer>,
         /// The reviewers that **approved** the work in this round, in the order they ran: every
@@ -6094,9 +6011,8 @@ pub enum GgTelemetryKind {
     /// The individual tool calls the program made still stream as ordinary
     /// [`ToolCall`](Self::ToolCall)/[`ToolResult`](Self::ToolResult) events in the order the
     /// program composed them — this event carries the *turn* itself: whether the program returned
-    /// normally, how many tool calls it composed, how long its own execution took (the efficiency
-    /// signal that replaced the wasmtime fuel the sandbox used to meter), and — when it did not
-    /// return normally — the fault. A run with the capability off emits none.
+    /// normally, how many tool calls it composed, how long its own execution took, and, when it did
+    /// not return normally, the fault. A run with the capability off emits none.
     CodeExecution {
         /// Whether the program returned normally (`true`) or faulted, was stopped, or never
         /// existed (`false`). A failed code turn is a *turn* outcome fed back to the model, never
@@ -6121,14 +6037,13 @@ pub enum GgTelemetryKind {
         /// them even though nothing ran. The two figures answer different questions and are not
         /// meant to agree.
         ///
-        /// Omitted when zero — a program that made no calls at all, and every record written
-        /// before gg counted them, which are indistinguishable and equally uninteresting.
+        /// Omitted when zero: a program that made no calls at all.
         #[serde(default, skip_serializing_if = "is_zero_u64")]
         #[cfg_attr(feature = "contract", ts(optional = nullable))]
         api_calls: u64,
         /// How long the program's **own execution** took, in milliseconds — the wall-clock time it
         /// spent running, excluding time parked in a bridged tool call, which is the per-program
-        /// efficiency signal that replaced the wasmtime fuel figure the sandbox used to meter.
+        /// efficiency signal.
         /// Reported on every path that reached the engine, including a fault, a trap, or an
         /// [execution-timeout](https://docs.testcabinet.ai/gg/responses-as-code/sandbox/) stop (where it is
         /// the time burned up to the stop, not the ceiling); `Some(0)` when the program never
@@ -6235,8 +6150,8 @@ pub enum GgTelemetryKind {
     ///
     /// Emitted exactly once per turn, on the agent that took it, from the one seam where gg records
     /// an outcome against that agent's [error ceilings](GgRunLimits) — so this event and the
-    /// ceilings can never disagree about what an error is, and every outcome is reported, including
-    /// the ones that used to be recorded silently. A run emits one of these per model call it made,
+    /// ceilings can never disagree about what an error is, and every outcome is reported. A run
+    /// emits one of these per model call it made,
     /// which makes [`turns`](Self::TurnOutcome::turns) the exact denominator for the run's
     /// [error rollup](GgErrorSummary).
     ///

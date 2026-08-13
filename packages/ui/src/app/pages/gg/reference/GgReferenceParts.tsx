@@ -18,9 +18,8 @@ import styles from "./GgReference.module.scss";
 // A reader must never have to wonder which of those three they are looking at, which is
 // why they are three components with three looks rather than one `<pre>` used everywhere.
 //
-// There used to be a fourth, `<ApiParameterList>`, which rendered an API function's
-// arguments out of a structured signature record. It is gone with the record: an entry
-// now carries the documentation view's whole body, and re-rendering the arguments beside
+// There is no argument list part. An entry
+// carries the documentation view's whole body, and re-rendering the arguments beside
 // it in our own layout would be a second rendering of text gg has already rendered —
 // exactly the second source of truth this surface exists to not have. What it cost is
 // real and is written down on `GgReferenceEntry` in the contract: no per-argument filter,

@@ -350,9 +350,9 @@ pub async fn put_run_controller(
     Ok((StatusCode::NO_CONTENT, ()).into_response())
 }
 
-/// `GET /runs/{id}/replay` — a gg run's stored [replay](test_cabinet_core::gg::CAPABILITY_REPLAY)
-/// record (the capture of its non-deterministic inputs), served as JSON so a replay driver can
-/// re-run the session.
+/// `GET /runs/{id}/replay` — a gg run's stored
+/// [session record](test_cabinet_core::gg_session_record), the capture of its non-deterministic
+/// inputs, served as JSON so a replay driver can re-run the session.
 ///
 /// The stored bytes are gzipped, so this is served through [`run_artifact_response`]: a browser
 /// gets them moved verbatim, and a gzip-unaware client (the CLI, the replay driver — anything on
@@ -371,8 +371,7 @@ pub async fn run_replay(
 ///
 /// **Store-only**, by the run-tree artifact convention: the driver uploads *before* the terminal
 /// status post that creates the run row, so there is nothing here to patch, and the store keeps the
-/// body opaque (it is never parsed, and it may be gzipped or — for a record captured before the
-/// convention — plain JSON).
+/// body opaque: it is never parsed.
 pub async fn put_run_replay(
     State(state): State<AppState>,
     Path(id): Path<String>,

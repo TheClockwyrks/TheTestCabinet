@@ -122,10 +122,10 @@ fn no_unordered_map_or_set_survives_in_ggs_own_code() {
 /// Short on purpose — one entry. Every entry is a place where the string is *not* a description of
 /// the SDK being read by a model, and each one is a claim a reader can check.
 ///
-/// `sandbox/language/` used to be here, on the reason that a language's own module is where its
-/// syntax belongs. It was the wrong exemption for the right observation: what those modules really
+/// `sandbox/language/` is not exempt, even though a language's own module is where its syntax
+/// belongs: what those modules really
 /// hold is Handlebars *references* (`{{api.view.open_text.call}}`), which resolve through the
-/// catalogue and are the exact shape this gate wants — they only looked like spellings to a
+/// catalogue and are the exact shape this gate wants — they only look like spellings to a
 /// substring search. [`without_template_references`] answers that directly, so the directory that
 /// holds every language's implementation, and with it the likeliest home for a hand-written
 /// spelling, is now covered like the rest of the crate.
@@ -168,9 +168,9 @@ const SPELLING_EXEMPT: &[(&str, &str)] = &[
 /// # Why it reads string literals rather than whole lines
 ///
 /// Because a spelling only reaches a model through one, and because a rule that judged whole lines
-/// judged something else as well. The registered languages used to spell every function in
-/// `lowerCamelCase`, which no Rust identifier is, so "somewhere on this line" and "inside a string"
-/// were the same set by accident. [Python](crate::sandbox::language) spells them the way Rust spells
+/// judged something else as well. Were every registered language to spell its functions in
+/// `lowerCamelCase`, which no Rust identifier is, "somewhere on this line" and "inside a string"
+/// would be the same set by accident. [Python](crate::sandbox::language) spells them the way Rust spells
 /// its own methods, and the accident ended: `context.archive_thread(&ranges)` — gg calling its own
 /// `ContextModel` through a binding named for the window it manages — reads as an SDK spelling to a
 /// substring search and is not one.
@@ -260,9 +260,8 @@ fn no_sdk_spelling_is_written_by_hand_in_ggs_own_code() {
 /// render replaces with that language's own spelling, which is the mechanism this whole gate exists
 /// to enforce. It is only a substring search that cannot tell the two apart, because
 /// `api.view.open_text.call` contains `view.open_text`. Removing the references before the search is
-/// what lets the gate cover the one directory it used to exempt wholesale — the directory that now
-/// holds every language's implementation, and therefore the likeliest place for a hand-written
-/// spelling to be introduced.
+/// what lets the gate cover the directory holding every language's implementation, which is the
+/// likeliest place for a hand-written spelling to be introduced.
 fn without_template_references(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;

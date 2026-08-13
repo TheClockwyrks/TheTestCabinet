@@ -1,8 +1,7 @@
 // What one agent instance's folder holds in the Instances explorer, and how one of
 // those things is named, gated and selected.
 //
-// An agent folder used to hold a flat list of "files" — one per thing a run lets you
-// monitor about that instance. That list quietly mixed two different kinds of thing:
+// An agent folder holds two different kinds of thing, and keeps them apart:
 // facts about the *agent* (what it was told, what it did, how full its window got, what
 // it spent) and views onto the *state it holds* (its task list, its memories). The two
 // were indistinguishable while a module belonged to exactly one agent — but a module
@@ -49,8 +48,7 @@ import {
 // what it is (overview), what it was told (prompt), what it was *offered* to call
 // (surface), what it did (activity), how its window filled and what filled it (context,
 // requests, metrics) and what happened when that window was summarized (compaction). The
-// views that used to sit beside these — `tasks` and a joint `knowledge` file — were views
-// onto module state, so they live in the `modules` folder now, one entry per module
+// views onto module state live in the `modules` folder, one entry per module
 // instance (see {@link AgentEntry}).
 //
 // `compaction` deliberately stays here despite looking module-shaped: it is gated on the

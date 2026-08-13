@@ -1,7 +1,7 @@
 // A gg run's error record, folded from the `turn_outcome` events gg emits once per turn.
 //
 // gg already judges every turn — that judgement is what its error ceilings are enforced
-// on — and used to throw it away when the agent's loop ended. These pin the fold that
+// on. These pin the fold that
 // keeps it: that the denominator and the numerator come from the same event and cannot
 // drift, that the consecutive-error peak is a maximum over AGENTS rather than a streak
 // counted off a parallel run's interleaved stream, and that discarded looping replies are
@@ -66,8 +66,8 @@ function progressed(agentId: string, turns: number): HarnessEvent {
 /**
  * A turn that failed, carrying the streak it is part of — as gg publishes it.
  *
- * `errorType` is optional so a fixture can also stand in for a stream recorded before gg
- * published types, which is the one shape a reader has to tolerate.
+ * `errorType` is optional on this fixture so a case that is about the counts rather than
+ * the breakdown does not have to name one.
  */
 function errored(
   agentId: string,
@@ -142,9 +142,8 @@ describe("the error fold", () => {
   });
 
   it("takes its denominator from the outcomes, not from the turns that started", () => {
-    // A turn in flight has started and has not ended, and a stream recorded before gg
-    // published outcomes has turns and no outcomes at all. Reading the error rate against
-    // `turnCount` would claim a clean record for both.
+    // A turn in flight has started and has not ended. Reading the error rate against
+    // `turnCount` would claim a clean record for it.
     const state = reduceGgEvents([
       gg("root", { type: "turn_started" } as GgTelemetryKind),
       progressed("root", 1),
@@ -372,17 +371,6 @@ describe("the specific error type", () => {
     expect(regrouped).toEqual({ transpile: 2, sandbox_limit: 1 });
   });
 
-  it("leaves the breakdown empty for a stream recorded before gg published types", () => {
-    // The trap this guards: an empty breakdown beside a non-zero error count means "not
-    // recorded", never "nothing went wrong".
-    const state = reduceGgEvents([errored("root", 1, "transpile", 1)]);
-
-    expect(state.errors.errors).toBe(1);
-    expect(state.errors.byKind.transpile).toBe(1);
-    expect(state.errors.byType).toEqual({});
-    expect(topErrorTypes(state.errors, 3)).toEqual([]);
-  });
-
   it("ranks the three most common types, counts and all", () => {
     const state = reduceGgEvents([
       errored("root", 1, "program_fault", 1, "program_tool_error"),
@@ -546,8 +534,8 @@ describe("the call-failure fold", () => {
     });
 
     it("falls back to the evidence when no surface was reported", () => {
-      // Every stream recorded before gg emitted `agent_surface`, and any mode from a newer
-      // gg than this console. Only a responses-as-code agent can have recorded an API
+      // Any mode from a newer gg than this console. Only a responses-as-code agent can
+      // have recorded an API
       // failure, so one that did is read as the model-facing surface it must have had.
       const code = reduceGgEvents([apiResult("root", "not-found")]);
       expect(callFailureSurface(code.errors)).toBe("api");

@@ -33,15 +33,14 @@
 //! one resolver for everything an operator can declare under `capabilitySet.limits`, not because
 //! it is an execution ceiling.
 //!
-//! Three of them are new; the turn ceiling and the wall-clock budget predate them and are folded in
-//! **unchanged in behaviour**, so there is one home, one [resolver](resolve_run_limits), one
-//! [breach record](test_cabinet_core::gg::GgLimitBreach) and one aggregation facet for every
-//! ceiling gg has, rather than two vocabularies that drift.
+//! Every ceiling, the turn ceiling and the wall-clock budget included, has one home, one
+//! [resolver](resolve_run_limits), one [breach record](test_cabinet_core::gg::GgLimitBreach) and
+//! one aggregation facet, rather than two vocabularies that drift.
 //!
 //! The defaults catch a run that is *failing* without capping one that is merely *long*. gg's host
-//! (The Test Cabinet) already enforces a wall-clock cap on every run, so the turn ceiling is no
-//! longer needed as the backstop it used to be — armed as one, it mostly cut productive runs short
-//! — and is therefore **unbounded when unset** ([`RunLimits::max_turns`] is `None`). What is armed
+//! (The Test Cabinet) already enforces a wall-clock cap on every run, so the turn ceiling would
+//! mostly just cut productive runs short and is **unbounded when unset**
+//! ([`RunLimits::max_turns`] is `None`). What is armed
 //! by default instead are the two error ceilings that end a run whose model has stopped making
 //! progress: [`DEFAULT_MAX_CONSECUTIVE_ERRORS`] in a row, and an error rate above
 //! [`DEFAULT_MAX_ERROR_RATE`] over the last [`DEFAULT_ERROR_RATE_WINDOW`] turns. Runtime and cost
@@ -308,11 +307,10 @@ impl TurnErrorKind {
 /// Why a turn was an error, **specifically** — the leaf of gg's two-level error taxonomy, and the
 /// value every error site in the loop actually records.
 ///
-/// Each variant is the distinction gg already had in hand at the moment it recorded the turn and
-/// used to discard: which `ModelError` the client returned, which `PrepareError` the language
-/// raised, which ceiling the sandbox enforced, which class the guest typed an uncaught throw with,
-/// and which of the two "no work declared" shapes the turn was. Nothing here needs new information
-/// to be computed — it needed only to stop being thrown away.
+/// Each variant is a distinction gg already has in hand at the moment it records the turn: which
+/// `ModelError` the client returned, which `PrepareError` the language raised, which ceiling the
+/// sandbox enforced, which class the guest typed an uncaught throw with, and which of the two "no
+/// work declared" shapes the turn was. Nothing here needs new information to be computed.
 ///
 /// One-to-one with the contract's [`GgTurnErrorType`], and converted by hand
 /// ([`wire`](Self::wire)) for the reason [`TurnOutcome::wire`] gives: gg's vocabulary and the

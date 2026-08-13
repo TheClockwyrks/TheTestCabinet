@@ -286,12 +286,11 @@ fn write_reference(directory: &std::path::Path) -> Result<(), ReferenceWriteErro
 
 /// A filesystem failure while writing the reference, **carrying the path it was attempting**.
 ///
-/// `std::io::Error` does not: a bare `Permission denied (os error 13)` is what this command used to
-/// print, and the places it prints are a `RUN` line in two image builds and the release workflow —
-/// an operator reading a build log with no way to tell which of thirteen paths was refused. The
-/// endpoint that serves these documents goes to some trouble to name the directory it searched when
-/// they are missing; the command that writes them should not be less specific about not writing
-/// them.
+/// `std::io::Error` does not, and a bare `Permission denied (os error 13)` in the `RUN` line of an
+/// image build or the release workflow leaves an operator with no way to tell which of thirteen
+/// paths was refused. The endpoint that serves these documents goes to some trouble to name the
+/// directory it searched when they are missing; the command that writes them should not be less
+/// specific about not writing them.
 #[derive(Debug, thiserror::Error)]
 #[error("{path}: {source}")]
 struct ReferenceWriteError {

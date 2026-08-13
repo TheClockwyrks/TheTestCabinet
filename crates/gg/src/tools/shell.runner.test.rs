@@ -76,7 +76,7 @@ async fn the_real_runner_reports_a_timeout_as_its_own_status() {
     // Nothing is asserted about the streams: after the kill the runner waits only a short grace for
     // the reader tasks (a forked grandchild can hold the write end open indefinitely), so whatever
     // the process had printed is recovered on a best-effort basis and a test that demanded it would
-    // be asserting a race. That predates the seam and is unchanged by it.
+    // be asserting a race. That is a property of the runner rather than of the seam.
     assert_eq!(execution.status, ShellStatus::TimedOut);
 }
 

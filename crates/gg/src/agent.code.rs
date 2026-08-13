@@ -153,10 +153,10 @@ pub(super) enum CodeTurnOutcome {
 ///
 /// # There is no `Output`
 ///
-/// There used to be. It is gone, and its absence is the point: `console.log` does not reach the
-/// model (it reaches the run's operator), and a [view](crate::context::ViewKind) is the only channel
-/// material has into the window. A band called `Output` on a protocol where a program produces no
-/// output the model can read was a heading over an empty idea.
+/// `console.log` does not reach the model (it reaches the run's operator), and a
+/// [view](crate::context::ViewKind) is the only channel material has into the window. A band called
+/// `Output` on a protocol where a program produces no output the model can read would be a heading
+/// over an empty idea.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct CodeFeedback {
     /// Which of the three bands this message belongs to.
@@ -693,15 +693,15 @@ pub(super) fn wire_strategy(strategy: HealingStrategy) -> GgHealingStrategy {
 
 /// Everything one program did that the **model** is not told, said on the operator's stream.
 ///
-/// gg used to hand the model a per-turn report: the roster of calls, the views opened and closed, a
-/// refusal, a discarded return value, work deferred past the program's end. That report is gone —
-/// see [`CodeFeedback`] — because every item in it is either something the program already learned
-/// by running (a call returns; a refusal throws) or a standing rule the system prompt states once.
+/// The model gets no per-turn report of the calls it made, the views it opened and closed, a
+/// refusal, a discarded return value or work deferred past the program's end — see
+/// [`CodeFeedback`] — because every one of those is either something the program already learned by
+/// running (a call returns; a refusal throws) or a standing rule the system prompt states once.
 ///
-/// None of it stops being worth *recording*, though, and losing the model's copy makes this one the
-/// only copy. A study reading a finished run has to be able to see that a view was refused or that a
-/// program returned a value into the void, and the operator's stream is where a run says what it did.
-/// So the same facts go out here, worded for a reader outside the agent rather than for the agent.
+/// None of it stops being worth *recording*, and this is the only copy. A study reading a finished
+/// run has to be able to see that a view was refused or that a program returned a value into the
+/// void, and the operator's stream is where a run says what it did. So the facts go out here,
+/// worded for a reader outside the agent rather than for the agent.
 ///
 /// Deliberately quiet on the ordinary path: a program that called some tools and opened some views
 /// did what programs do, and a line per turn saying so would bury the turns worth reading.

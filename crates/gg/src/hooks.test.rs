@@ -156,9 +156,9 @@ fn the_run_declares_the_session_events() {
 
 /// An agent event declared on the **run** is refused rather than quietly applied to every agent.
 ///
-/// Applying it is exactly what gg used to do, and it is the behavior this split exists to end: a
-/// gate written for one profile silently held every profile, and the only way to tell was to read
-/// the agent identity out of the payload inside the script. Refusing names the fix instead.
+/// Applying it is the behavior this split exists to prevent: a gate written for one profile would
+/// silently hold every profile, and the only way to tell would be to read the agent identity out of
+/// the payload inside the script. Refusing names the fix instead.
 #[test]
 fn refuses_an_agent_event_declared_on_the_run() {
     let set = set_with(vec![script_hook(GgHookEvent::PreWrite, "#!/bin/sh\ntrue")]);

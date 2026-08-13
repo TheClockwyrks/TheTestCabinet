@@ -806,8 +806,8 @@ pub(crate) fn functions_of(catalogue: &'static SignatureCatalogue) -> Vec<Catalo
                 Some(Binding::Always) | None => (None, None, None),
             };
             CatalogueFunction {
-                // The module *path* stands where an object used to, because that is what this
-                // schema's model-facing grouping is: it is what a directory of one module lists
+                // The module *path* is this schema's model-facing grouping: it is what a
+                // directory of one module lists
                 // under, what the console groups by, and what a model reads. The cross-arm join is
                 // the operation id beside it, never this.
                 object: module_path(catalogue, &function.module),

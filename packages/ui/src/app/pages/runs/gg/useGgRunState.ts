@@ -2058,7 +2058,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         // only once an agent ends and streams its `slot_usage`.
         deltaUsage.count += 1;
         addTokens(deltaUsage, gg.tokens, gg.cost);
-        if (gg.slot != null && gg.modelId != null) {
+        {
           const key = slotUsageKey(gg.slot, gg.modelId);
           let entry = deltaSlotUsage.get(key);
           if (!entry) {

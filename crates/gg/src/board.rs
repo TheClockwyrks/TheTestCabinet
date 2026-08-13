@@ -1596,7 +1596,7 @@ impl BoardRuntime {
 
     /// The [agent profile](Issue::agent) the issue with id `id` is assigned to — the profile the
     /// [dispatcher](crate::agent) spawns it under — or `None` when the capability is off, no such
-    /// issue exists, or it carries no assignee (a board recorded before issues named one).
+    /// issue exists, or it was filed without an assignee.
     pub fn issue_agent(&self, id: &str) -> Option<String> {
         if !self.enabled {
             return None;

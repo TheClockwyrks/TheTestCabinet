@@ -9,7 +9,7 @@ use super::*;
 // `GgTurnOutcome` is the one contract type these tests construct that the module under test never
 // names: the fold keys on the error *kind*, which is what keeps `errors` the sum of its parts.
 use test_cabinet_core::gg::{
-    GgBoardIssue, GgContextSourceUsage, GgLimitKind, GgToolFailure, GgTurnErrorKind,
+    GgBoardIssue, GgCapabilitySet, GgContextSourceUsage, GgLimitKind, GgToolFailure,
     GgTurnErrorType, GgTurnOutcome,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
@@ -193,7 +193,7 @@ fn records_the_effective_toolset_verbatim() {
         depth: 0,
         brief: None,
         worktree: None,
-        cwd: None,
+        cwd: String::new(),
     });
     tracker.record_effective_tools(vec![
         "shell".to_string(),
@@ -226,7 +226,7 @@ fn counts_agents_and_max_depth() {
             depth,
             brief: None,
             worktree: None,
-            cwd: None,
+            cwd: String::new(),
         });
     }
     let summary = tracker.finalize("completed");
@@ -407,7 +407,7 @@ fn captures_per_slot_cost_rollups() {
 fn observing_the_terminal_events_is_a_no_op() {
     let tracker = SessionSummaryTracker::new();
     tracker.observe(&GgTelemetryKind::SessionStarted {
-        capability_set: None,
+        capability_set: Box::new(GgCapabilitySet::minimal("mock/echo")),
     });
     tracker.observe(&GgTelemetryKind::SessionSummary {
         summary: Box::new(SessionSummaryTracker::new().finalize("completed")),
@@ -482,7 +482,7 @@ fn a_tool_calling_run_reports_a_zeroed_healing_rollup() {
         depth: 0,
         brief: None,
         worktree: None,
-        cwd: None,
+        cwd: String::new(),
     });
     tracker.observe(&GgTelemetryKind::AssistantMessage {
         text: "calling a tool".to_string(),
@@ -701,9 +701,9 @@ fn the_error_rollup_counts_every_turn_and_splits_the_errors_by_kind() {
 /// The per-**type** breakdown rides alongside the per-kind counters and sums to the same total —
 /// the invariant a *"top error types"* ranking is read against.
 ///
-/// The stream is the shape that used to be unreadable: five failures that the old record showed as
-/// `model_api: 2, program_fault: 3`, which said nothing about a run whose model was rejected once,
-/// looped once, and spent three turns fighting a call it could not make.
+/// Per-kind counters alone would show five failures as `model_api: 2, program_fault: 3`, which says
+/// nothing about a run whose model was rejected once, looped once, and spent three turns fighting a
+/// call it could not make.
 #[test]
 fn the_error_rollup_breaks_the_same_errors_down_by_specific_type() {
     let tracker = SessionSummaryTracker::new();
@@ -737,27 +737,6 @@ fn the_error_rollup_breaks_the_same_errors_down_by_specific_type() {
         errors.transpile + errors.sandbox_limit + errors.missing_completion,
         0
     );
-}
-
-/// A stream recorded before gg published types still lands in the named counters, and contributes
-/// nothing to the breakdown — which is exactly why an empty `byType` must never be read as "no
-/// errors of any type".
-#[test]
-fn an_untyped_error_turn_still_counts_towards_its_kind() {
-    let tracker = SessionSummaryTracker::new();
-    tracker.observe(&GgTelemetryKind::TurnOutcome {
-        outcome: GgTurnOutcome::Error,
-        error: Some(GgTurnErrorKind::Transpile),
-        error_type: None,
-        consecutive_errors: 1,
-        turns: 999,
-        loop_aborts: 0,
-    });
-
-    let errors = tracker.finalize("completed").errors;
-    assert_eq!(errors.errors, 1);
-    assert_eq!(errors.transpile, 1);
-    assert!(errors.by_type.is_empty());
 }
 
 /// A **call** that failed is counted by class, and is deliberately kept out of the turn figures: a

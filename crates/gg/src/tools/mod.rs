@@ -335,10 +335,8 @@ impl ToolContext {
     /// since nothing has declared or denied them — no agent behind it, and the
     /// [real shell](crate::tools::shell::runner::RealShellRunner).
     ///
-    /// The defaults are what keep the seam free: every one of this constructor's call sites (the
-    /// loop's, the [hooks'](crate::hooks), and every test's) predates it and is
-    /// unaffected, and a context that was never told otherwise runs real commands, which is the
-    /// only safe direction for that default to fall.
+    /// A context that was never told otherwise runs real commands, which is the only safe
+    /// direction for that default to fall.
     pub fn new(workspace_dir: impl Into<PathBuf>) -> Self {
         Self {
             workspace_dir: workspace_dir.into(),
@@ -495,8 +493,7 @@ impl ToolOutcome {
     /// `error_code` already makes for the program-facing `ToolError`: the two records of one failed
     /// call say the same thing about it. It also keeps the wire invariant simple and checkable —
     /// the class is present on exactly the results whose `ok` is `false` — where a `None` shared
-    /// between "succeeded" and "failed, unclassified" would leave a reader unable to tell a run
-    /// recorded before this field existed from a run full of unclassified failures.
+    /// between "succeeded" and "failed, unclassified" would say nothing about either.
     pub fn wire_failure(&self) -> Option<GgToolFailure> {
         if self.ok {
             return None;

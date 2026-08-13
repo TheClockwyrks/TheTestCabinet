@@ -50,10 +50,9 @@ fn docview_keys(ctx: &ContextModel) -> Vec<String> {
 
 /// **A documentation view is an ephemeral, keyed, closable item in its own band.**
 ///
-/// The band is the change. It used to share `Skill` with a read skill and be told apart from one by
-/// retention alone, which made two things true at once that should not have been: what documentation
-/// costs could not be reported apart from what skills cost, and a close of documentation was a
-/// removal over the *skill* band that happened to spare skills because they were pinned.
+/// The band is what makes two things separable: what documentation costs is reported apart from
+/// what skills cost, and a close of documentation is a removal over its own band rather than over
+/// the skill band.
 #[test]
 fn a_docview_is_ephemeral_keyed_and_in_its_own_band() {
     let mut ctx = code_model();

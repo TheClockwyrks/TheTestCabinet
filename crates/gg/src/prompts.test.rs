@@ -248,8 +248,7 @@ fn code_mode_names_objects_and_teaches_discovery() {
     // *name* is allowed — the type-check section names `ToolError`, because narrowing a caught error
     // is the one thing a model has to spell to read a failure at all, and a prompt that withheld it
     // would buy a strict-mode diagnostic every time a program caught something. What is banned is
-    // the block of declarations the prompt used to carry, which is what the on-demand documentation
-    // lookup replaced.
+    // a block of declarations in the prompt, which the on-demand documentation lookup replaces.
     //
     // So the ban is on the declaration *shape* rather than on a list of spellings: any line that
     // opens a declaration fails, whatever it goes on to declare. Naming three types would leave a

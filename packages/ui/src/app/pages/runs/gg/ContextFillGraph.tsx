@@ -421,7 +421,7 @@ export function ContextFillGraph({
 
   return (
     <div className={styles.stack}>
-      {/* The fullness read-out that used to head this panel now lives on the agent's
+      {/* The fullness read-out lives on the agent's
           Overview as a ring in the identity header (see `ContextUsageRing`) — the
           signal compaction acts on belongs beside the agent's other whole-agent
           figures. This panel keeps the richer story: how the window's composition

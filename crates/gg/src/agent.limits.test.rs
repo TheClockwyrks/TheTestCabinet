@@ -1188,8 +1188,7 @@ async fn an_error_turn_publishes_its_kind_and_the_streak_it_is_part_of() {
     );
 
     // ...and each of those three carries the **specific** reason under that base kind. Prose is not
-    // valid source, so it is a syntax error rather than one of the other three prepare failures —
-    // which used to be one indistinguishable `transpile` bucket.
+    // valid source, so it is a syntax error rather than one of the other three prepare failures.
     assert_eq!(
         turn_error_types(&sink.events()),
         vec![
@@ -1202,9 +1201,8 @@ async fn an_error_turn_publishes_its_kind_and_the_streak_it_is_part_of() {
 
 /// **A turn that ended with no tool call now says so.**
 ///
-/// The two `MissingCompletion` sites used to record an outcome and emit nothing at all, so a model
-/// that replied in prose turn after turn under an explicit-call completion signal produced a stream
-/// in which nothing had gone wrong. It is the regression this event exists for, so it is pinned
+/// Without this event a model that replied in prose turn after turn under an explicit-call
+/// completion signal would produce a stream in which nothing had gone wrong, so it is pinned
 /// directly: a text-only reply publishes an `error` turn of kind `missing_completion`.
 #[tokio::test]
 async fn a_turn_that_made_no_tool_call_publishes_a_missing_completion_error() {
@@ -1317,7 +1315,7 @@ async fn a_reply_that_looped_on_every_attempt_ends_the_run_on_its_own_message() 
     assert_eq!(
         turn_error_types(&events),
         vec![GgTurnErrorType::ModelResponseLoop],
-        "the distinction the log line used to be the only home of is now recorded"
+        "the distinction the log line names is recorded too"
     );
 
     let errors: Vec<String> = events

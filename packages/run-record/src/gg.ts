@@ -142,8 +142,8 @@ export type GgSubagentRef = {
    * **What** this agent may use `agent` for. An entry may carry several scopes — the same
    * profile is often both a reasonable implementer and a reasonable reviewer — and one that
    * carries none can be used for nothing, which is how a reference is disabled without deleting
-   * it. An entry stored before scopes existed deserializes as
-   * [`Subagent`](GgSubagentScope::Subagent) alone, which is exactly what it meant.
+   * it. An entry that names no scope takes the default,
+   * [`Subagent`](GgSubagentScope::Subagent) alone.
    */
   scopes: Array<GgSubagentScope>;
 };
@@ -408,8 +408,7 @@ export type GgCapabilitySet = {
    * [ceilings](Self::limits) are not: a capability is a feature the *model* is given and a study
    * ablates, while a hook is the operator reaching into the run from outside it.
    *
-   * A set that declares none omits the key entirely, so every configuration stored before hooks
-   * existed round-trips unchanged.
+   * A set that declares none omits the key entirely.
    */
   hooks?: Array<GgHook>;
 };
@@ -594,11 +593,8 @@ export type GgTransitionModule = {
 export type GgAgentApi = {
   /**
    * gg's cross-arm id for the module — `files`, `views`, `session`.
-   *
-   * Empty only on a record written before gg reported one, where the surface was grouped by the
-   * API object a function hung off and [`path`](Self::path) is all the identity there is.
    */
-  module?: string;
+  module: string;
   /**
    * This arm's own spelling of the module, and what the model reads — `gg.files`, `gg::files`.
    */
@@ -1002,8 +998,7 @@ export type GgMemoryEntry = {
   len: number;
   /**
    * The memory body's length in **lines** — the second size the console reports, because
-   * characters alone do not distinguish a dense paragraph from a long checklist. `0` on
-   * records written before line counts were reported.
+   * characters alone do not distinguish a dense paragraph from a long checklist.
    */
   lines: number;
 };
@@ -1042,11 +1037,10 @@ export type GgMemoryPeak = {
  * Which [memory](CAPABILITY_MEMORIES) instance an agent instance binds to — the
  * [`scope`](MEMORY_PARAM_SCOPE) param, resolved.
  *
- * Memory used to be strictly per agent instance: a subagent started with an empty notebook and
- * nothing it wrote was ever seen by anyone else. That is still the default, and it is still the
- * right answer for an ablation that wants each agent measured on its own curation. The other
- * three bind the *same* store to several holders, which is what makes a study of shared,
- * accumulated knowledge possible at all.
+ * [`Isolated`](Self::Isolated) is the default: a subagent starts with an empty notebook and
+ * nothing it writes is seen by anyone else, which is the right answer for an ablation that wants
+ * each agent measured on its own curation. The other three bind the *same* store to several
+ * holders, which is what makes a study of shared, accumulated knowledge possible at all.
  *
  * Two rules make the four coherent, and they are the ones a configuration's reader has to know:
  *
@@ -1244,9 +1238,7 @@ export type GgBoardIssue = {
    * The [agent profile](GgAgentConfig) the issue was **assigned to** when it was created —
    * the profile gg dispatches it under, and re-dispatches for every retry and review round. It
    * is named on `create_issue` (not configured on the capability), and must be one the creating
-   * agent lists with the [`implementer`](GgSubagentScope::Implementer) scope. Empty only on a
-   * board recorded before issues carried an assignee, which dispatches under the
-   * run's [root](GgCapabilitySet::root).
+   * agent lists with the [`implementer`](GgSubagentScope::Implementer) scope.
    */
   agent: string;
   /**
@@ -1420,9 +1412,9 @@ export type GgReviewer = {
  * while making *what the ceiling was* unrecoverable.
  *
  * **The defaults catch a stuck run without capping a productive one.** gg's host (The Test
- * Cabinet) already enforces a wall-clock cap on every run, so a turn ceiling is redundant as the
- * backstop it used to be and mostly just cuts a run short before it is done — which is why the
- * turn ceiling is now **unbounded** when unset. What is armed by default instead are the two error
+ * Cabinet) already enforces a wall-clock cap on every run, so a turn ceiling would mostly just cut
+ * a run short before it is done, and the turn ceiling is therefore **unbounded** when unset. What
+ * is armed by default instead are the two error
  * ceilings that end a run which is *failing* rather than merely *long*: **5 consecutive errors**,
  * and an **error rate above 0.4 over the last 50 turns**. Runtime and cost stay off when unset —
  * the host owns the clock, and gg will not invent a spend ceiling nobody asked for. A field set to
@@ -1843,10 +1835,10 @@ export type GgTurnErrorKind =
  * # Every variant names a real producer
  *
  * A bucket that is permanently zero in every console is a defect, so each variant below documents
- * the exact site that raises it. The set is exactly the distinctions gg *already makes internally*
- * and used to discard at the recording seam: six shapes of `ModelError`, five of `PrepareError`,
- * three of the sandbox's own ceilings, the three classes the guest already types an uncaught throw
- * with over WIT, and the two structurally different ways a turn can end without declaring work.
+ * the exact site that raises it. The set is exactly the distinctions gg makes internally: six
+ * shapes of `ModelError`, five of `PrepareError`, three of the sandbox's own ceilings, the three
+ * classes the guest types an uncaught throw with over WIT, and the two structurally different ways
+ * a turn can end without declaring work.
  *
  * # Names carry their base
  *
@@ -2070,9 +2062,7 @@ export type GgHealingSummary = {
    * Serialized **always, empty list and all** — deliberately no `skip_serializing_if`. The empty
    * list is the one value this field exists to publish, so a key that vanished exactly when it
    * meant "every strategy was off" would leave the healing-off arm byte-identical on the wire to
-   * a build with no such field, reopening one level down the very hole described above. Only
-   * [`Deserialize`] treats it as optional, so a summary recorded before the field existed still
-   * reads — as an empty armed set, which for those runs is the truth rather than a guess.
+   * a build with no such field, reopening one level down the very hole described above.
    */
   enabled: Array<GgHealingStrategy>;
 };
@@ -2085,10 +2075,10 @@ export type GgHealingSummary = {
  * of the model calls the run actually made. Numerator and denominator come from the same event and
  * therefore cannot drift.
  *
- * This exists because gg already *judges* every turn — the same judgement the
- * [error ceilings](GgRunLimits) are enforced on — and used to throw that judgement away when the
- * agent's loop ended. A run that failed a third of its turns and finished anyway was, in the
- * durable record, indistinguishable from one that never failed a turn.
+ * This exists because gg already *judges* every turn, the same judgement the
+ * [error ceilings](GgRunLimits) are enforced on. Without the rollup a run that failed a third of
+ * its turns and finished anyway would be, in the durable record, indistinguishable from one that
+ * never failed a turn.
  *
  * # No percentage is stored
  *
@@ -2410,9 +2400,7 @@ export type GgSessionSummary = {
    * [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events every agent emitted.
    *
    * Unlike [`healing`](Self::healing) this is meaningful in **both** execution modes: a
-   * tool-calling turn fails too, just in fewer ways. All zeroes for a run recorded before turn
-   * outcomes were on the wire, which is what the serde default preserves — those runs report no
-   * turns rather than failing to load.
+   * tool-calling turn fails too, just in fewer ways.
    */
   errors: GgErrorSummary;
   /**
@@ -2491,10 +2479,8 @@ export type GgTelemetryKind =
        * knows which capabilities are live before any of them has produced an event.
        * Without it a live view can only guess what a run is capable of and must
        * offer every surface, including the ones this run's configuration disabled.
-       *
-       * Unset only on a stream recorded before gg announced it.
        */
-      capabilitySet?: GgCapabilitySet;
+      capabilitySet: GgCapabilitySet;
     }
   | { type: "turn_started" }
   | {
@@ -2625,16 +2611,14 @@ export type GgTelemetryKind =
       /**
        * The [agent profile](GgAgentConfig) that spent this — the same name
        * [`AgentSpawned::slot`](Self::AgentSpawned::slot) and
-       * [`SlotUsage::slot`](Self::SlotUsage::slot) key on. Unset only on a stream recorded
-       * before gg attributed its deltas.
+       * [`SlotUsage::slot`](Self::SlotUsage::slot) key on.
        */
-      slot?: string;
+      slot: string;
       /**
        * The concrete model id that spent this — the model the
-       * [profile](Self::Usage::slot) resolved to for the agent that took the turn. Unset on
-       * the same streams `slot` is.
+       * [profile](Self::Usage::slot) resolved to for the agent that took the turn.
        */
-      modelId?: string;
+      modelId: string;
       /**
        * The normalized token counts for this accounting.
        */
@@ -2786,7 +2770,7 @@ export type GgTelemetryKind =
       type: "skills_state";
       /**
        * The [module instance](GgTelemetryKind::AgentModules) this snapshot is of — the backing
-       * read set, not the holder. Empty on records written before module identity existed.
+       * read set, not the holder.
        */
       moduleId: string;
       /**
@@ -2800,14 +2784,12 @@ export type GgTelemetryKind =
        * The [module instance](GgTelemetryKind::AgentModules) this snapshot is of — the backing
        * store, not the holder. It is what lets a reader attribute two agents' identical panels
        * to one store rather than to a coincidence, and what lets a shared store's contents be
-       * shown once, under the module, rather than N times under N agents. Empty on records
-       * written before module identity existed.
+       * shown once, under the module, rather than N times under N agents.
        */
       moduleId: string;
       /**
        * The [strategy](CAPABILITY_MEMORIES) this run's memories are organized by — which
-       * tools the model was offered, and which of the [caps](GgMemoryCaps) apply. Empty
-       * on records written before memories had more than one strategy.
+       * tools the model was offered, and which of the [caps](GgMemoryCaps) apply.
        */
       strategy: string;
       /**
@@ -2823,8 +2805,7 @@ export type GgTelemetryKind =
        */
       totalLen: number;
       /**
-       * The total length, in lines, summed across every memory's body. `0` on records
-       * written before line counts were reported.
+       * The total length, in lines, summed across every memory's body.
        */
       totalLines: number;
       /**
@@ -2840,15 +2821,13 @@ export type GgTelemetryKind =
        * The [scope](GgMemoryScope) the emitting agent binds this instance under — `isolated`,
        * `shared`, `inherited` or `read-only`. It is what tells the console that two agents'
        * memory panels are showing **one** store rather than two that happen to agree, which is
-       * otherwise indistinguishable from a snapshot. Empty on records written before scoping
-       * existed, which the console reads as the `isolated` every run then was.
+       * otherwise indistinguishable from a snapshot.
        */
       scope: string;
       /**
        * Whether the emitting agent may **write** this instance. `false` marks a
        * [read-only](GgMemoryScope::ReadOnly) inherited handle: the agent is shown the set and
-       * offered the read calls, and every write call is withheld. Defaults to `true`, which is
-       * what every holder was before read-only handles existed.
+       * offered the read calls, and every write call is withheld.
        */
       writable: boolean;
     }
@@ -2892,7 +2871,7 @@ export type GgTelemetryKind =
       type: "tasks_state";
       /**
        * The [module instance](GgTelemetryKind::AgentModules) this snapshot is of — the backing
-       * list, not the holder. Empty on records written before module identity existed.
+       * list, not the holder.
        */
       moduleId: string;
       /**
@@ -2907,7 +2886,7 @@ export type GgTelemetryKind =
        * The [module instance](GgTelemetryKind::AgentModules) this snapshot is of. The board is
        * run-global by construction, so every holder in a run reports the *same* id here —
        * which is exactly what makes the whole run's board legible as one shared module rather
-       * than as one board per agent. Empty on records written before module identity existed.
+       * than as one board per agent.
        */
       moduleId: string;
       /**
@@ -3019,7 +2998,7 @@ export type GgTelemetryKind =
       type: "archive_state";
       /**
        * The [module instance](Self::AgentModules) this snapshot is of — the backing archive, not
-       * the holder. Empty on records written before module identity existed.
+       * the holder.
        */
       moduleId: string;
       /**
@@ -3080,10 +3059,9 @@ export type GgTelemetryKind =
        * directory a command it runs without an explicit path executes in. It is the checkout of
        * the agent's isolated [worktree](Self::AgentSpawned::worktree) when it was dispatched into
        * one, and the shared workspace otherwise, so the two together say both *which branch* an
-       * agent works on and *where on disk* that is. Unset only on a stream recorded before gg
-       * reported it.
+       * agent works on and *where on disk* that is.
        */
-      cwd?: string;
+      cwd: string;
     }
   | {
       type: "agent_modules";
@@ -3116,7 +3094,7 @@ export type GgTelemetryKind =
        * Which SDK types an `openDocsView` of a function opens **beside** it for this instance —
        * `off` (none), `return` (the return position, the default), or `return-and-parameters`
        * (everything the signature names). `None` for a tool-calling instance, which opens no
-       * documentation views, and on a stream recorded before gg reported the mode.
+       * documentation views.
        *
        * The value is the mode gg **resolved**, never the string the profile wrote: an unreadable
        * one falls back to the default and is warned about at launch, and reporting the raw text
@@ -3206,8 +3184,7 @@ export type GgTelemetryKind =
        * example `issue AUTH-1.0` for a [`wait_for_issue`](CAPABILITY_PROJECT_MANAGEMENT), or the
        * subagents a [`wait_for_subagents`](CAPABILITY_SUBAGENTS) is collecting. A blocked agent
        * is otherwise indistinguishable from a stuck one, so the console shows this beside the
-       * status. Absent on every non-blocking transition (and on a blocked one recorded before gg
-       * reported the condition).
+       * status. Absent on every non-blocking transition.
        */
       waitingOn?: string;
     }
@@ -3319,8 +3296,7 @@ export type GgTelemetryKind =
       /**
        * **Who** returned the [`items`](Self::IssueReview::items), on the
        * [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) phase — the one reviewer that
-       * ended the round. Absent on the other two phases, and on a stream recorded before reviewer
-       * identity was reported.
+       * ended the round. Absent on the other two phases.
        */
       reviewer?: GgReviewer;
       /**
@@ -3368,14 +3344,13 @@ export type GgTelemetryKind =
        * them even though nothing ran. The two figures answer different questions and are not
        * meant to agree.
        *
-       * Omitted when zero — a program that made no calls at all, and every record written
-       * before gg counted them, which are indistinguishable and equally uninteresting.
+       * Omitted when zero: a program that made no calls at all.
        */
       apiCalls?: number;
       /**
        * How long the program's **own execution** took, in milliseconds — the wall-clock time it
        * spent running, excluding time parked in a bridged tool call, which is the per-program
-       * efficiency signal that replaced the wasmtime fuel figure the sandbox used to meter.
+       * efficiency signal.
        * Reported on every path that reached the engine, including a fault, a trap, or an
        * [execution-timeout](https://docs.testcabinet.ai/gg/responses-as-code/sandbox/) stop (where it is
        * the time burned up to the stop, not the ceiling); `Some(0)` when the program never
@@ -3626,10 +3601,8 @@ export type GgTelemetryEvent = {
        * knows which capabilities are live before any of them has produced an event.
        * Without it a live view can only guess what a run is capable of and must
        * offer every surface, including the ones this run's configuration disabled.
-       *
-       * Unset only on a stream recorded before gg announced it.
        */
-      capabilitySet?: GgCapabilitySet;
+      capabilitySet: GgCapabilitySet;
     }
   | { type: "turn_started" }
   | {
@@ -3760,16 +3733,14 @@ export type GgTelemetryEvent = {
       /**
        * The [agent profile](GgAgentConfig) that spent this — the same name
        * [`AgentSpawned::slot`](Self::AgentSpawned::slot) and
-       * [`SlotUsage::slot`](Self::SlotUsage::slot) key on. Unset only on a stream recorded
-       * before gg attributed its deltas.
+       * [`SlotUsage::slot`](Self::SlotUsage::slot) key on.
        */
-      slot?: string;
+      slot: string;
       /**
        * The concrete model id that spent this — the model the
-       * [profile](Self::Usage::slot) resolved to for the agent that took the turn. Unset on
-       * the same streams `slot` is.
+       * [profile](Self::Usage::slot) resolved to for the agent that took the turn.
        */
-      modelId?: string;
+      modelId: string;
       /**
        * The normalized token counts for this accounting.
        */
@@ -3921,7 +3892,7 @@ export type GgTelemetryEvent = {
       type: "skills_state";
       /**
        * The [module instance](GgTelemetryKind::AgentModules) this snapshot is of — the backing
-       * read set, not the holder. Empty on records written before module identity existed.
+       * read set, not the holder.
        */
       moduleId: string;
       /**
@@ -3935,14 +3906,12 @@ export type GgTelemetryEvent = {
        * The [module instance](GgTelemetryKind::AgentModules) this snapshot is of — the backing
        * store, not the holder. It is what lets a reader attribute two agents' identical panels
        * to one store rather than to a coincidence, and what lets a shared store's contents be
-       * shown once, under the module, rather than N times under N agents. Empty on records
-       * written before module identity existed.
+       * shown once, under the module, rather than N times under N agents.
        */
       moduleId: string;
       /**
        * The [strategy](CAPABILITY_MEMORIES) this run's memories are organized by — which
-       * tools the model was offered, and which of the [caps](GgMemoryCaps) apply. Empty
-       * on records written before memories had more than one strategy.
+       * tools the model was offered, and which of the [caps](GgMemoryCaps) apply.
        */
       strategy: string;
       /**
@@ -3958,8 +3927,7 @@ export type GgTelemetryEvent = {
        */
       totalLen: number;
       /**
-       * The total length, in lines, summed across every memory's body. `0` on records
-       * written before line counts were reported.
+       * The total length, in lines, summed across every memory's body.
        */
       totalLines: number;
       /**
@@ -3975,15 +3943,13 @@ export type GgTelemetryEvent = {
        * The [scope](GgMemoryScope) the emitting agent binds this instance under — `isolated`,
        * `shared`, `inherited` or `read-only`. It is what tells the console that two agents'
        * memory panels are showing **one** store rather than two that happen to agree, which is
-       * otherwise indistinguishable from a snapshot. Empty on records written before scoping
-       * existed, which the console reads as the `isolated` every run then was.
+       * otherwise indistinguishable from a snapshot.
        */
       scope: string;
       /**
        * Whether the emitting agent may **write** this instance. `false` marks a
        * [read-only](GgMemoryScope::ReadOnly) inherited handle: the agent is shown the set and
-       * offered the read calls, and every write call is withheld. Defaults to `true`, which is
-       * what every holder was before read-only handles existed.
+       * offered the read calls, and every write call is withheld.
        */
       writable: boolean;
     }
@@ -4027,7 +3993,7 @@ export type GgTelemetryEvent = {
       type: "tasks_state";
       /**
        * The [module instance](GgTelemetryKind::AgentModules) this snapshot is of — the backing
-       * list, not the holder. Empty on records written before module identity existed.
+       * list, not the holder.
        */
       moduleId: string;
       /**
@@ -4042,7 +4008,7 @@ export type GgTelemetryEvent = {
        * The [module instance](GgTelemetryKind::AgentModules) this snapshot is of. The board is
        * run-global by construction, so every holder in a run reports the *same* id here —
        * which is exactly what makes the whole run's board legible as one shared module rather
-       * than as one board per agent. Empty on records written before module identity existed.
+       * than as one board per agent.
        */
       moduleId: string;
       /**
@@ -4154,7 +4120,7 @@ export type GgTelemetryEvent = {
       type: "archive_state";
       /**
        * The [module instance](Self::AgentModules) this snapshot is of — the backing archive, not
-       * the holder. Empty on records written before module identity existed.
+       * the holder.
        */
       moduleId: string;
       /**
@@ -4215,10 +4181,9 @@ export type GgTelemetryEvent = {
        * directory a command it runs without an explicit path executes in. It is the checkout of
        * the agent's isolated [worktree](Self::AgentSpawned::worktree) when it was dispatched into
        * one, and the shared workspace otherwise, so the two together say both *which branch* an
-       * agent works on and *where on disk* that is. Unset only on a stream recorded before gg
-       * reported it.
+       * agent works on and *where on disk* that is.
        */
-      cwd?: string;
+      cwd: string;
     }
   | {
       type: "agent_modules";
@@ -4251,7 +4216,7 @@ export type GgTelemetryEvent = {
        * Which SDK types an `openDocsView` of a function opens **beside** it for this instance —
        * `off` (none), `return` (the return position, the default), or `return-and-parameters`
        * (everything the signature names). `None` for a tool-calling instance, which opens no
-       * documentation views, and on a stream recorded before gg reported the mode.
+       * documentation views.
        *
        * The value is the mode gg **resolved**, never the string the profile wrote: an unreadable
        * one falls back to the default and is warned about at launch, and reporting the raw text
@@ -4341,8 +4306,7 @@ export type GgTelemetryEvent = {
        * example `issue AUTH-1.0` for a [`wait_for_issue`](CAPABILITY_PROJECT_MANAGEMENT), or the
        * subagents a [`wait_for_subagents`](CAPABILITY_SUBAGENTS) is collecting. A blocked agent
        * is otherwise indistinguishable from a stuck one, so the console shows this beside the
-       * status. Absent on every non-blocking transition (and on a blocked one recorded before gg
-       * reported the condition).
+       * status. Absent on every non-blocking transition.
        */
       waitingOn?: string;
     }
@@ -4454,8 +4418,7 @@ export type GgTelemetryEvent = {
       /**
        * **Who** returned the [`items`](Self::IssueReview::items), on the
        * [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) phase — the one reviewer that
-       * ended the round. Absent on the other two phases, and on a stream recorded before reviewer
-       * identity was reported.
+       * ended the round. Absent on the other two phases.
        */
       reviewer?: GgReviewer;
       /**
@@ -4503,14 +4466,13 @@ export type GgTelemetryEvent = {
        * them even though nothing ran. The two figures answer different questions and are not
        * meant to agree.
        *
-       * Omitted when zero — a program that made no calls at all, and every record written
-       * before gg counted them, which are indistinguishable and equally uninteresting.
+       * Omitted when zero: a program that made no calls at all.
        */
       apiCalls?: number;
       /**
        * How long the program's **own execution** took, in milliseconds — the wall-clock time it
        * spent running, excluding time parked in a bridged tool call, which is the per-program
-       * efficiency signal that replaced the wasmtime fuel figure the sandbox used to meter.
+       * efficiency signal.
        * Reported on every path that reached the engine, including a fault, a trap, or an
        * [execution-timeout](https://docs.testcabinet.ai/gg/responses-as-code/sandbox/) stop (where it is
        * the time burned up to the stop, not the ceiling); `Some(0)` when the program never

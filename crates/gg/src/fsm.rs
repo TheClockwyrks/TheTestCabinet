@@ -494,7 +494,7 @@ pub fn launch_warnings(set: &GgCapabilitySet) -> Vec<String> {
 }
 
 /// What an [FSM shell](is_shell) profile declares that gg will never read, named as a reader would
-/// name it — the body of the warning above, in the order the editor used to show these fields.
+/// name it — the body of the warning above.
 ///
 /// Everything a *worker* profile is configured with is on this list, because a machine is not a
 /// worker: it never takes a turn, so there is no model to call, no prompt to render, no roster to

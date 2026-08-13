@@ -148,11 +148,9 @@ impl<A: ToolApi> MembraneState<A> {
     /// `ok`. Spelling that out here is what keeps its host function from having to invent a
     /// `Result` it would then unwrap.
     ///
-    /// `programs.history` used to be a second, and stopped being one when the host started checking
-    /// the [program-library](super::programs) capability: an agent with no library and an agent that
-    /// has run nothing are different facts, and one empty list could only have told the model one of
-    /// them. `object.list()` used to be a third, and its object was the reason this ever took one at
-    /// run time rather than from the call — it was the one carve-out whose object was an argument.
+    /// `programs.history` is not one: the host checks the [program-library](super::programs)
+    /// capability, because an agent with no library and an agent that has run nothing are different
+    /// facts and one empty list could only tell the model one of them.
     /// With the directory gone every recorded call names a fixed pair again.
     ///
     /// It carries **no capability gate**, and it is the only bracket that does not. Its one caller

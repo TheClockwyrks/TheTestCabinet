@@ -71,10 +71,10 @@
 //! the two compilers are why a diagnostic here can be javac's *or* TeaVM's, which are different
 //! bands of the same recoverable, model-facing error. The third is [`source`]'s: the wrapper's
 //! header carries `gg.*` plus one type-import-on-demand per capability module, so `Files.readFile`
-//! is a static method on an imported class and **no gg function is a bare identifier**. It used to
-//! be `import static gg.Gg.*`, which put twelve *values* into scope; that is exactly the shape the
-//! static-SDK design forbids — a call the agent may not make must never look like an ordinary local
-//! one — and it was removed for that reason. See [`source`] for the whole argument.
+//! is a static method on an imported class and **no gg function is a bare identifier**. An
+//! `import static gg.Gg.*` would put twelve *values* into scope, which is exactly the shape the
+//! static-SDK design forbids: a call the agent may not make must never look like an ordinary local
+//! one. See [`source`] for the whole argument.
 
 use std::sync::OnceLock;
 

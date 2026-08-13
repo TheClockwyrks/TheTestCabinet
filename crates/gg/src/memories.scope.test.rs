@@ -1,8 +1,8 @@
 //! **Memory scoping and linked instances**: which store an agent binds, who may write it, and what
 //! each holder is told about what the others did.
 //!
-//! Everything here is about a fact that used to be impossible: one [`MemoryStore`] with more than
-//! one [`MemoriesRuntime`] over it. That single change is what the whole file tests the
+//! Everything here is about one [`MemoryStore`] with more than
+//! one [`MemoriesRuntime`] over it. That is what the whole file tests the
 //! consequences of — telemetry that must be attributed rather than drained, a notice that must
 //! reach every holder *but* the author exactly once, a write permission that belongs to a holder
 //! rather than to a store, and the four [scopes](MemoryScope) that decide which of those situations

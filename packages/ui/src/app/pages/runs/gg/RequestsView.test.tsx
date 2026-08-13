@@ -348,7 +348,7 @@ describe("RequestsView", () => {
   it("falls back to the raw tag for a band this build cannot name", () => {
     // The console reads records written by any gg, including one newer than itself. The
     // lookup used to be unguarded, so an unrecognised source rendered a nameless row with
-    // no swatch — which reads as a rendering bug rather than as a band this build predates.
+    // no swatch — which reads as a rendering bug rather than as a band this build cannot name.
     const state = reduceGgEvents(bandedStream("band_from_the_future"));
     render(
       <RequestsView

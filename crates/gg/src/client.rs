@@ -3267,10 +3267,9 @@ impl ModelClient for MockClient {
 /// A model turn that ends the agent's session by calling one of its
 /// [ending tools](crate::completion), with `arguments`.
 ///
-/// Every offline script that used to end a run by replying with prose goes through one of these
-/// three. Prose no longer ends anything — a reply with no tool call is an error turn — so a mock that
-/// still answered that way would loop to its ceiling instead of demonstrating the capability it was
-/// written for.
+/// Every offline script ends its run through one of these three. Prose ends nothing — a reply with
+/// no tool call is an error turn — so a mock that answered that way would loop to its ceiling
+/// instead of demonstrating the capability it was written for.
 fn ending_turn(name: &str, text: &str, arguments: Value) -> ModelResponse {
     ModelResponse {
         text: Some(text.to_string()),

@@ -178,8 +178,8 @@ export type GgToolReference = {
    *
    * One for almost every tool. Two for `fork`, which needs the capability of its own name *and*
    * the `subagents` capability that buys the calls collecting the copy — and that is exactly why
-   * this is a list rather than the single optional id it used to be: a field that can only name
-   * one capability answers for one of them and silently acquits the other.
+   * this is a list rather than a single optional id: a field that can only name one capability
+   * answers for one of them and silently acquits the other.
    *
    * **Empty means no capability decides**, which is a real state rather than a gap:
    * `transition_state` is offered from where an agent *stands* — a state of a machine another

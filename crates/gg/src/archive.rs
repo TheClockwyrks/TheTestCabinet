@@ -192,7 +192,7 @@ impl ArchiveStore {
 /// agent, and the shared [`ArchiveStore`] behind `archive_thread` / `search_archive`.
 ///
 /// It exists so the archive is a [module](crate::modules::Module) like every other piece of
-/// per-agent state rather than the bare `Arc<Mutex<…>>` the loop used to carry: an archive is
+/// per-agent state: an archive is
 /// exactly the sort of thing a successor agent should be able to inherit (the thread it can no
 /// longer see is still the thread it worked) or deliberately not (a fresh state that starts clean),
 /// and that decision has to be expressible.

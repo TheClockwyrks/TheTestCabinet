@@ -2,9 +2,9 @@
 //! [skill](crate::skills) or a code [memory](crate::memories), and the on-use scripts waiting to run
 //! for the ones it just read.
 //!
-//! A [skill](https://docs.testcabinet.ai/gg/skills/) or a memory used to be prose and nothing else.
-//! Under [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/tools/) it may instead — or
-//! as well — be **code**, in two independent halves:
+//! A [skill](https://docs.testcabinet.ai/gg/skills/) or a memory is prose. Under
+//! [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/tools/) it may instead, or as
+//! well, be **code**, in two independent halves:
 //!
 //! - a **module**, whose exports are bound at `lib.<key>` in every program the agent writes from
 //!   then on, so a helper an author got right once, or a model got right twenty turns ago, is

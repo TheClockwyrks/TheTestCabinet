@@ -29,8 +29,8 @@ import { ExpandablePre } from "./MessageOverlay";
  * The two non-band members are spelled out rather than left as `null` because they mean
  * different things and read differently. `"reply"` is the model's answer — an assistant
  * message not yet placed in a band this turn. `{ unattributed: role }` is a message whose
- * band the *source* does not record — a turn recorded before the prompt frame existed —
- * so there is no band to colour it by. It falls back to the message's own **role**, which
+ * band the *source* does not record, so there is no band to colour it by. It falls back to
+ * the message's own **role**, which
  * is a different fact and is labelled as one: inferring a band from a role would put a
  * colour on the row that the source never claimed.
  */
@@ -296,7 +296,7 @@ export function RequestsView({
   // the `prompt` event carried, and `open` below compares against that. An agent whose
   // recorded turns don't happen to be a contiguous 0-based run — a resumed agent, or a
   // stream a filter has thinned — would then match no turn at all, and with the turn
-  // cards gone a wholly collapsed list is flatter than it used to be.
+  // cards gone a wholly collapsed list has nothing left to show.
   const openTurn =
     prompts.length > 0 ? prompts[prompts.length - 1]!.turn : null;
 

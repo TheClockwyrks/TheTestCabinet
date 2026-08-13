@@ -192,9 +192,8 @@ module `files`, `view` against `views`, `harness` and `review` both against
 `session`, `memory` against `memories`, `agents` against `delegation`, `project`
 against `board`, and `system` against `shell`. Grouping `api_call` by `object`
 and looking those groups up among an agent's `apis` therefore finds nothing, and
-reads as though every function was offered and none was called. It is retained
-because older records carry it and because it is the whole identity of a
-carve-out. It is not a key.
+reads as though every function was offered and none was called. It is carried
+because it is the whole identity of a carve-out. It is not a key.
 
 The opening half is emitted before the call runs, so a bridged
 `tool_call`/`tool_result` pair and a delegation's whole subtree of child events

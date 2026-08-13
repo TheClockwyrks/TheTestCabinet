@@ -209,14 +209,12 @@ const STATUS_EXHAUSTED: &str = "exhausted";
 /// budget ([`RunLimits::max_runtime`]).
 const STATUS_TIMED_OUT: &str = "timed_out";
 
-/// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for an agent stopped by one of the
-/// three [execution ceilings](RunLimits) that do not predate this vocabulary — consecutive errors,
-/// the recent error rate, or accumulated cost.
+/// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for an agent stopped by one of three
+/// [execution ceilings](RunLimits) — consecutive errors, the recent error rate, or accumulated cost.
 ///
-/// The turn and runtime ceilings keep their own long-standing statuses ([`STATUS_EXHAUSTED`],
-/// [`STATUS_TIMED_OUT`]) even though they now record the same [breach](GgLimitBreach), because
-/// re-labelling them would rewrite the meaning of every historical run. Which ceiling stopped a run
-/// is answered by the breach, not by the status.
+/// The turn and runtime ceilings keep the host's own statuses ([`STATUS_EXHAUSTED`],
+/// [`STATUS_TIMED_OUT`]) even though they record the same [breach](GgLimitBreach). Which ceiling
+/// stopped a run is answered by the breach, not by the status.
 ///
 /// It is **not** a failure status ([`is_failure_status`]): a spent ceiling is the operator's bound,
 /// not the agent failing at its work, which is exactly why `exhausted` and `timed_out` are excluded
@@ -736,7 +734,7 @@ pub(crate) async fn run_with_seams(
     // then knows which capabilities are live from the start, and can shape itself to
     // this run rather than offering every surface gg has.
     root_emitter.emit(GgTelemetryKind::SessionStarted {
-        capability_set: Some(set.clone()),
+        capability_set: Box::new(set.clone()),
     });
 
     // Launch check 1: the agent profiles must be well-formed, and there must be a root to run.
@@ -1478,10 +1476,9 @@ struct Orchestrator {
     /// counter would say nothing about where the agent came from.
     ordinals: Mutex<BTreeMap<String, u32>>,
     /// The shared [session recorder](GgRecorder) every agent's model I/O, tool results and prompt
-    /// frames are pinned into. Present on **every** run — capture is not a capability any more, and
-    /// no setting turns it up or down ([`CAPABILITY_REPLAY`](test_cabinet_core::gg::CAPABILITY_REPLAY)
-    /// is retained only so an old set round-trips) — so `None` means the journal could not be
-    /// opened, which the launch warnings say out loud.
+    /// frames are pinned into. Present on **every** run — capture is not a capability and no
+    /// setting turns it up or down — so `None` means the journal could not be opened, which the
+    /// launch warnings say out loud.
     ///
     /// Shared (`Arc`) so the root and every subagent stream into one globally-ordered
     /// [journal](test_cabinet_core::gg_session_journal), which the host folds into the run tree's
@@ -1920,9 +1917,8 @@ impl Orchestrator {
 
     /// The [agent profile](GgAgentConfig) an auto-dispatched [issue](crate::board)'s agent runs
     /// under — the [assignee](crate::board::Issue::agent) named when the issue was filed. A
-    /// profile this run does not declare (or an issue from a board recorded before issues carried
-    /// an assignee) falls back to the [root](GgCapabilitySet::root), so a stale reference still
-    /// dispatches rather than stalling the board.
+    /// profile this run does not declare falls back to the [root](GgCapabilitySet::root), so a
+    /// stale reference still dispatches rather than stalling the board.
     fn issue_profile(&self, issue_id: &str) -> String {
         self.board
             .issue_agent(issue_id)
@@ -2859,7 +2855,7 @@ async fn run_agent(
             depth: agent.depth as u64,
             brief: brief.clone(),
             worktree: worktree_branch.clone(),
-            cwd: Some(workspace_dir.display().to_string()),
+            cwd: workspace_dir.display().to_string(),
         });
         // The state this incarnation stands in, when a machine is driving it — emitted right after
         // the spawn, so a reader of one agent's stream learns which state it is before it sees a
@@ -4987,9 +4983,9 @@ struct ReviewChanges<'a> {
 /// text it did not ask for and burying the change that mattered.
 ///
 /// It teaches **no ending**. The reviewer's verdict calls are its role's, named once in its system
-/// prompt; a brief that restated them would be a second authority on the contract, and the
-/// mode-dependent version of that restatement is what used to send a code-mode reviewer looking for
-/// a final message its protocol does not have.
+/// prompt; a brief that restated them would be a second authority on the contract, and a
+/// mode-dependent restatement would send a code-mode reviewer looking for a final message its
+/// protocol does not have.
 fn build_review_brief(
     issue_brief: &str,
     changes: ReviewChanges<'_>,
@@ -5852,10 +5848,8 @@ impl Agent {
                     // throwing it away.
                     //
                     // The classification is made ONCE, as the value that is recorded, and the log
-                    // line's phrase is read back off it. It used to be the other way round — a
-                    // four-way `match` that built a string, next to a `record_turn` that wrote an
-                    // undifferentiated `model_api` — so the distinction existed only in prose and
-                    // no aggregate could see it.
+                    // line's phrase is read back off it, so no aggregate can disagree with what the
+                    // line says.
                     let error_type = err.turn_error_type();
                     emitter.emit(log(
                         "error",
@@ -7070,10 +7064,9 @@ impl Agent {
     ///    consecutive count and the rate window statements about a complete turn sequence;
     /// 2. **publishes it** as a [`TurnOutcome`](GgTelemetryKind::TurnOutcome) event, so the judgement
     ///    the ceilings act on is the judgement a reader sees. That is the whole reason this helper
-    ///    exists: the outcome used to be folded in from eight scattered call sites and emitted from
-    ///    none of them, so a run that failed a third of its turns and finished anyway was
-    ///    indistinguishable, from the outside, from one that never failed a turn — and the two
-    ///    `MissingCompletion` sites reported nothing at all;
+    ///    exists: folding the outcome in at scattered call sites without emitting it would leave a
+    ///    run that failed a third of its turns and finished anyway indistinguishable, from the
+    ///    outside, from one that never failed a turn;
     /// 3. **returns the breach** the fold produced, so every caller keeps its existing
     ///    "record, then stop if that was the one" shape and nothing had to move.
     ///
@@ -8509,7 +8502,7 @@ struct PromptInputs<'a> {
 /// [signature catalogue](crate::sandbox::catalogue_functions), the same grouping the guest binds a
 /// program's scope under, and decided by
 /// [`DocsRuntime::bound`](crate::docs::DocsRuntime::bound), which is the *one* implementation of
-/// "may this agent call X" and used to have a verbatim copy here. So a withheld capability drops its
+/// "may this agent call X". So a withheld capability drops its
 /// whole module rather than leaving a named-but-empty one, a reviewer is shown the ending module's
 /// verdict calls where an implementer is not, and this readout cannot report a call the model's own
 /// documentation would refuse to describe.
@@ -9489,8 +9482,8 @@ fn record_usage(response: &ModelResponse, emitter: &Emitter, slot: &str, model_i
         return;
     }
     emitter.emit(GgTelemetryKind::Usage {
-        slot: Some(slot.to_string()),
-        model_id: Some(model_id.to_string()),
+        slot: slot.to_string(),
+        model_id: model_id.to_string(),
         tokens: response.usage,
         cost: response.cost,
     });

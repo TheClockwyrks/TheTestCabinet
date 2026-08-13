@@ -3,20 +3,14 @@
 
 use super::*;
 
-// WHAT USED TO BE HERE: `the_committed_library_set_was_built_by_this_checkouts_compiler`, which
-// read the `rustc` recorded in `rust.toolchain.json` and compared it with `rustc --version` on this
-// machine. The coupling it named is real and unchanged — an `.rlib` is a compiler-version-private
-// format, `rustc` refuses one built by any other release with `E0514`, and a mismatched set grounds
-// EVERY Rust program in a run over gg's own library files — but the interval it watched is gone.
-//
-// The set was committed then, so `rust-toolchain.toml` could be bumped in one commit and the archive
-// re-cut in another, and the test was what stopped that pair from being separated. The set is cut by
-// `crates/gg-sandbox-artifacts/rust` now, from the same `cargo build` that compiles this crate, with
-// `rust-toolchain.toml` in that arm's rerun set — so a bump re-cuts the rlibs before anything can
-// link against them, and there is no window in which the recorded compiler and the running one
-// differ. The assertion moved to where it can still fail: `packages/gg-sandbox-rust/build.sh` refuses
-// to build at all when the `rustc` on PATH is not what `rust-toolchain.toml` pins, which is the
-// stronger form because it asks the machine before producing anything rather than after.
+// The compiler coupling is not asserted here. An `.rlib` is a compiler-version-private format,
+// `rustc` refuses one built by any other release with `E0514`, and a mismatched set grounds EVERY
+// Rust program in a run over gg's own library files — but the set is cut by
+// `crates/gg-sandbox-artifacts/rust`, from the same `cargo build` that compiles this crate, with
+// `rust-toolchain.toml` in that arm's rerun set, so a bump re-cuts the rlibs before anything can
+// link against them. `packages/gg-sandbox-rust/build.sh` refuses to build at all when the `rustc` on
+// PATH is not what `rust-toolchain.toml` pins, which asks the machine before producing anything
+// rather than after.
 
 /// **The manifest and the tarball describe the same set.**
 ///

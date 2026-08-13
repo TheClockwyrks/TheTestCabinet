@@ -403,10 +403,10 @@ fn the_api_surface_carries_each_modules_functions_and_their_own_operations() {
 /// # The prose is where the two deliberately part company
 ///
 /// The surface carries a module's **whole** documentation and the prompt carries only its
-/// [brief](crate::sandbox::signatures::Prose::brief). They used to be the same string, and that was
-/// the defect: a module's detail is written for a reader who has already chosen the family, so it
+/// [brief](crate::sandbox::signatures::Prose::brief). They must not be the same string: a module's
+/// detail is written for a reader who has already chosen the family, so it
 /// says what the family is for — and on most arms it does that by naming calls, sometimes in a
-/// fenced worked example. Rendering it into the prompt put those names into the one document that
+/// fenced worked example. Rendering it into the prompt would put those names into the one document that
 /// tells the model in as many words that it names none, and handed it for free the round trip the
 /// whole discovery design exists to require.
 ///
@@ -533,10 +533,8 @@ async fn a_disabled_capability_contributes_nothing_to_the_surface() {
 
 /// **The surface reports exactly the catalogue's own bound entries, and nothing beside them.**
 ///
-/// It used to end every object with a directory function that no catalogue entry named — bound on
-/// every object the guest created, catalogued on none, and therefore appended here by hand. That
-/// hand-append was the one place this readout could say something the catalogue did not, and with
-/// the directory deleted it is gone: what the console shows and what a program's scope binds are one
+/// No object ends with a directory function no catalogue entry names, so this readout can say
+/// nothing the catalogue does not: what the console shows and what a program's scope binds are one
 /// projection of one array.
 ///
 /// So the assertion is an equality against [`DocsRuntime`](crate::docs::DocsRuntime)'s own predicate

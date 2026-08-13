@@ -545,8 +545,8 @@ function TurnsCard({
 //
 // gg already *judges* every turn, since that judgement is what its error ceilings are
 // enforced on; this row is that judgement kept rather than thrown away the moment an agent's
-// loop ended, which is what used to make a run that failed a third of its turns and finished
-// anyway indistinguishable from one that never failed a turn.
+// loop ends, so a run that failed a third of its turns and finished anyway is distinguishable
+// from one that never failed a turn.
 function ErrorsRow({ errors }: { errors: GgErrorTally }) {
   const { turns, errors: failed, maxConsecutive, loopAborts } = errors;
   return (

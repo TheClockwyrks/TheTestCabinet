@@ -14,20 +14,17 @@
 //! alone reveals that). What comes out is a small conjunctive normal form per tool, over axes gg can
 //! really move, computed from `from_run` itself.
 //!
-//! # Why this replaced 32 authored sentences
+//! # Why the conditions are computed rather than authored
 //!
-//! It used to be a table: one hand-written note per tool, kept honest by a test that asserted the
-//! table *covered* the tool vocabulary. Coverage is not truth. Nothing compared a note against the
-//! `if` it described, so all 32 could have been wrong at once and every gate would have stayed
-//! green — and a note is exactly the kind of prose that goes stale silently, because the code it
-//! describes moves in a file the note is not in.
+//! A hand-written note per tool is prose nothing compares against the `if` it describes, so every
+//! note could be wrong at once and every gate would stay green. A note also goes stale silently,
+//! because the code it describes moves in a file the note is not in.
 //!
 //! The honest cost, recorded rather than glossed: a sentence generated from an enum reads more
 //! mechanically than one a person wrote, and the templates below are still authored prose one level
 //! down. The trade is that a template cannot be wrong about *which* condition applies to a tool,
-//! and a note can. Three sentences the old table carried were not gates at all — configuration
-//! advice, a remark about *when within a run* a tool is offered, and an implementation note about
-//! interception — and those moved to the documentation site rather than being deleted.
+//! and a note can. Configuration advice, remarks about *when within a run* a tool is offered, and
+//! implementation notes about interception are not gates and live on the documentation site.
 //!
 //! # What ablation cannot see
 //!

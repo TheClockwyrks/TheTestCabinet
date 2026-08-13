@@ -47,12 +47,11 @@ every request it makes. One case applies it without configuration: an agent
 whose profile has no project-management capability holds the run's board
 unowned, so it is not shown a decomposition it has no tool to act on.
 
-The other four kinds read no ownership param, and a param set on their
-capabilities is ignored. A window is its holder's prompt. A task list is what an
-agent steers by from turn to turn, so it is always carried as its own message.
-For memories the [strategy](/gg/memories/) already decides what the store puts
-in the window, and for skills the catalogue is the only route an agent has to
-knowing which skills exist.
+The other four kinds read no ownership param. A window is its holder's prompt. A
+task list is what an agent steers by from turn to turn, so it is always carried
+as its own message. For memories the [strategy](/gg/memories/) already decides
+what the store puts in the window, and for skills the catalogue is the only
+route an agent has to knowing which skills exist.
 
 ## Copying
 

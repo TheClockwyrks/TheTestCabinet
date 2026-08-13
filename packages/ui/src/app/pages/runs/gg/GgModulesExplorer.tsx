@@ -436,9 +436,8 @@ function KindOverview({
     <div className={panels.panelBody}>
       <div className={panels.moduleFile}>
         <section className={panels.moduleHead} aria-label="Module kind">
-          {/* The kind, and nothing else. The instance and holder totals that used to
-              trail it are the first two figures of the stat row immediately below —
-              the same two numbers, stated twice, one line apart. */}
+          {/* The kind, and nothing else. The instance and holder totals are the first
+              two figures of the stat row immediately below. */}
           <div className={panels.moduleIdentity}>
             <span className={panels.moduleId}>{moduleKindLabel(kind)}</span>
           </div>

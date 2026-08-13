@@ -1,7 +1,7 @@
 use super::*;
 // `GgRunLimits` and `GgLimitBreach` already ride in on the glob; only the ceiling taxonomy the
 // emitter itself never names has to be named here.
-use test_cabinet_core::gg::{GgContextSource, GgLimitKind};
+use test_cabinet_core::gg::{GgCapabilitySet, GgContextSource, GgLimitKind};
 
 use crate::context::{PromptSlot, Retention};
 
@@ -49,7 +49,7 @@ fn emits_ndjson_lines_to_the_injected_sink() {
     let emitter = Emitter::with_sink(Some("run-42".to_string()), Box::new(sink.clone()));
 
     emitter.emit(GgTelemetryKind::SessionStarted {
-        capability_set: None,
+        capability_set: Box::new(GgCapabilitySet::minimal("mock/echo")),
     });
     emitter.emit(GgTelemetryKind::AssistantMessage {
         text: "hello".to_string(),
@@ -68,9 +68,7 @@ fn emits_ndjson_lines_to_the_injected_sink() {
     let events = sink.events();
     assert!(matches!(
         events[0].kind,
-        GgTelemetryKind::SessionStarted {
-            capability_set: None
-        }
+        GgTelemetryKind::SessionStarted { .. }
     ));
     assert!(matches!(
         events[1].kind,
@@ -94,7 +92,7 @@ fn for_agent_stamps_the_agent_and_parent_ids() {
 
     // The base (unscoped) emitter carries no agent id.
     base.emit(GgTelemetryKind::SessionStarted {
-        capability_set: None,
+        capability_set: Box::new(GgCapabilitySet::minimal("mock/echo")),
     });
 
     // A root-scoped emitter: its own id, no parent.

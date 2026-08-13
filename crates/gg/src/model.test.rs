@@ -83,8 +83,7 @@ fn model_response_deserializes_minimal_form() {
     assert!(decoded.tool_calls.is_empty());
     assert_eq!(decoded.usage, TokenCounts::default());
     assert!(decoded.cost.is_none());
-    // A response recorded before loop detection existed reads as one that discarded nothing,
-    // rather than failing to read at all.
+    // A response that names no discarded replies reads as one that discarded nothing.
     assert_eq!(decoded.loop_aborts, 0);
 }
 
@@ -157,7 +156,7 @@ fn every_model_error_is_recorded_as_its_own_type_under_one_base_kind() {
         );
     }
 
-    // A `ResponseLoop` and a `RetryExhausted` used to be one recorded value and two words in a log
+    // A `ResponseLoop` and a `RetryExhausted` are two recorded values rather than one value and two words in a log
     // line. They are now two recorded values, which is the fix.
     assert_ne!(
         ModelError::ResponseLoop {

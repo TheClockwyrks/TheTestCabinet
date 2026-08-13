@@ -6,11 +6,10 @@
 //!
 //! Every rule about *gating* — the ending operations and their roles, a view being gated exactly
 //! where it reads the workspace, a capability buying the program library and nothing else, an id
-//! namespaced on exactly one real family, no operation written down twice — used to be asserted
-//! here, directly, against [`OPERATIONS`]. It is now stated in `language/agreement.rs`
-//! and returned as a complaint rather than asserted.
+//! namespaced on exactly one real family, no operation written down twice — is stated in
+//! `language/agreement.rs` and returned as a complaint rather than asserted here.
 //!
-//! The move is not tidying. `OPERATIONS` is a `const`, so a rule asserted against it could only ever
+//! That is not tidying. `OPERATIONS` is a `const`, so a rule asserted against it could only ever
 //! be **watched passing**: no test could hand it a wrong table, and a rule whose failing path has
 //! never run is a rule nobody has evidence about. The gate takes the table as a parameter for
 //! exactly that reason, and its tests hand it a table with one row damaged — a view bound to every
@@ -18,9 +17,9 @@
 //! reason — and assert on the sentence that comes back. Each of those has now been observed failing;
 //! none of them ever had been.
 //!
-//! The per-arm rules that used to live here moved for the same reason, and gained the same thing:
-//! capability coverage, the propagation rule, and whether an operation takes input at all are all
-//! asserted there, against fixtures built to fail them.
+//! The per-arm rules live there for the same reason: capability coverage, the propagation rule,
+//! and whether an operation takes input at all are all asserted there, against fixtures built to
+//! fail them.
 //!
 //! The tool bijection is deliberately **still** a `const` assertion in the module itself, and is
 //! *also* a gating rule next door. There it fails a `cargo build` — which is the right failure for a

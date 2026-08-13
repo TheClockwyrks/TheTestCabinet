@@ -7,8 +7,8 @@
 //! In particular no brief teaches an ending. It cannot usefully: an agent's ending calls are decided
 //! by the [role](crate::ending::EndingRole) it was dispatched in, they are the only ones in its
 //! scope, and the system prompt has already named them. A brief that restated one would be a second
-//! authority on the contract — and the mode-dependent version of that restatement is what used to
-//! send a code-mode reviewer looking for a final message to end.
+//! authority on the contract, and a mode-dependent restatement would send a code-mode reviewer
+//! looking for a final message to end.
 
 use super::*;
 

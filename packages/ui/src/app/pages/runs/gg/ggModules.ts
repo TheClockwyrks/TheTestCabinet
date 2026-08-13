@@ -1,7 +1,6 @@
 // A gg run read by **module instance** rather than by agent instance.
 //
-// gg's state used to belong to an agent: one agent, one memory store, one task list, one
-// window. It does not any more. A module instance can be held by several agent instances at
+// gg's state does not belong to an agent. A module instance can be held by several agent instances at
 // once (a profile-scoped memory store, a spawner's notebook a subagent inherits, the run's
 // one board), carried whole from one instance to the next across an `exec` or an FSM
 // transition, or copied when its holder forks. So a module is no longer a *property of* an

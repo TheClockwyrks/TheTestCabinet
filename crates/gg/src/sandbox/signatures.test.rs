@@ -119,9 +119,8 @@ fn the_generated_catalogue_parses() {
 /// window is bought by a capability and taking any other view out is not, so they are two
 /// operations, and a rule reading half of an identity would have called them one.
 ///
-/// Asked of every projected function rather than of the sections a carve-out used to arrive in: this
-/// arm files every call in one array now, and the identity rule was never about which section an
-/// entry sat in.
+/// Asked of every projected function rather than of a section: this arm files every call in one
+/// array, and the identity rule is not about which section an entry sits in.
 #[test]
 fn every_carve_out_entry_carries_an_identity() {
     let mut seen: Vec<(&str, &str)> = Vec::new();
@@ -392,9 +391,9 @@ fn type_declaration_returns_the_sdks_own_declaration() {
 /// **The picture channel the catalogue describes is the one gg implements.**
 ///
 /// These two docs are the only place a code-mode model can learn how looking at an image works
-/// before it tries, and they used to contradict both gg and each other: `fs.readFile` promised that
+/// before it tries, so they must not contradict gg or each other. A `fs.readFile` promising that
 /// "an image's pixels are shown to you" one sentence before saying `view.openFile` is the call that
-/// shows a file. A model that reads the first half calls `readFile` on a reference mockup and then
+/// shows a file leaves a model that reads the first half calling `readFile` on a reference mockup and then
 /// reasons about a picture it was never shown — the exact misconception the one-channel rule exists
 /// to prevent, delivered by gg's own documentation.
 ///

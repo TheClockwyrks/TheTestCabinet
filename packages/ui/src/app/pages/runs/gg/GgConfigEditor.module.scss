@@ -317,8 +317,8 @@
 //
 // A real grid, and a track floor wide enough for a *label*. These fields are labelled in
 // phrases ("Saturated words before abandoning", "Execution timeout (seconds)"), not in
-// words, and the wrapping flex row this used to be packed four and five of them onto a
-// line by their inputs' width: every label then wrapped to two rows, which unlevels the
+// words, and a wrapping flex row would pack four and five of them onto a
+// line by their inputs' width: every label would then wrap to two rows, which unlevels the
 // inputs beside it and makes the row unreadable. `auto-fit` takes as many equal columns
 // as the form is actually wide enough for — three in the editor, one on a phone — so the
 // count follows the width instead of being fixed at a number that is wrong somewhere.

@@ -8,9 +8,9 @@
 //! [`Agent::drive`], so they are only testable here.
 //!
 //! Most tests drive the tool-calling path, where a `read_file` is what puts a file view in the
-//! window. The last one drives [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), which used to put
-//! nothing in the window at all and therefore persisted nothing: a program's `view.openFile` and
-//! `view.openText` now push real context items, so the same desk is recorded and restored.
+//! window. The last one drives [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), where a program's
+//! `view.openFile` and `view.openText` push real context items, so the same desk is recorded and
+//! restored.
 
 use super::*;
 use crate::context::{FileRegion, OpenFileView, OpenTextView};

@@ -141,8 +141,8 @@ pub struct AgentReturn {
     ///
     /// A dispatcher that asked for a *verdict* rather than for work reads this rather than
     /// [`summary`](Self::summary): a reviewer's approval and a judge's pick are structured facts,
-    /// and turning one into prose so it can be parsed back is exactly the round trip that used to
-    /// let a reviewer reject work while naming nothing to fix.
+    /// and turning one into prose so it can be parsed back is the round trip that lets a reviewer
+    /// reject work while naming nothing to fix.
     pub ending: Option<Ending>,
 }
 

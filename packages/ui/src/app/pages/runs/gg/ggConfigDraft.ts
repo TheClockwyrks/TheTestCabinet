@@ -1175,8 +1175,8 @@ function agentDraftFromConfig(
     disabledTools: [...(agent.disabledTools ?? [])],
     customInstructions: agent.customInstructions ?? "",
     systemPromptTemplate: agent.systemPromptTemplate ?? "",
-    // A configuration stored before the lifetime was configurable names none, and reads
-    // as the standard one — the same reading gg gives it.
+    // A configuration that names no lifetime reads as the standard one, which is the
+    // same reading gg gives it.
     promptCacheTtl: agent.promptCacheTtl ?? "standard",
     loopDetection: loopDetectionDraft(agent.loopDetection),
     hooks: (agent.hooks ?? []).map((hook, index) =>
@@ -1239,7 +1239,7 @@ function resolveAgentReferences(
         {
           agentId,
           description: s.description ?? "",
-          // A stored entry with no `scopes` predates them, and meant plain spawning.
+          // An entry that names no `scopes` takes gg's default, plain spawning.
           scopes: s.scopes?.length
             ? [...s.scopes]
             : (["subagent"] as GgSubagentScope[]),
@@ -1628,9 +1628,8 @@ export function runLimitsFromDraft(
 
 /**
  * A stored declaration as the editor holds it — every knob it named as text, every knob
- * it did not as an empty field. `undefined` (a configuration that predates the lever, or
- * one whose agent left it alone) is the disarmed default, which is exactly gg's own
- * reading of an absent key.
+ * it did not as an empty field. `undefined`, an agent that left the lever alone, is the
+ * disarmed default, which is exactly gg's own reading of an absent key.
  */
 export function loopDetectionDraft(
   stored: GgLoopDetection | undefined,
@@ -1650,8 +1649,8 @@ export function loopDetectionDraft(
 
 /**
  * The `loopDetection` key an agent writes, spread into its wire config — or nothing at
- * all when the agent is disarmed and named no knob, so a configuration that predates the
- * lever round-trips byte for byte.
+ * all when the agent is disarmed and named no knob, so a configuration that never touched
+ * the lever round-trips byte for byte.
  *
  * A knob is written only when its field holds a number: an empty field means "take gg's
  * default", which is the absent key, and half-typed text is not a value to record. A
@@ -1999,7 +1998,8 @@ function agentConfigFromDraft(
     ...(custom ? { customInstructions: custom } : {}),
     ...(template.trim() ? { systemPromptTemplate: template } : {}),
     // The standard lifetime is the default, so an agent left on it writes no key — which is
-    // what keeps a configuration that predates the knob byte-identical after a round-trip.
+    // what keeps a configuration that never touched the knob byte-identical after a
+    // round-trip.
     ...(agent.promptCacheTtl !== "standard"
       ? { promptCacheTtl: agent.promptCacheTtl }
       : {}),

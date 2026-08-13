@@ -15,7 +15,7 @@
 //!
 //! An ending is a **result**, and a role's result has a shape: an agent doing work reports what it
 //! did, a reviewer returns a verdict, a judge names a winner. Handing every role one
-//! `finish(summary)` and reading the verdict back out of the summary text is what gg used to do, and
+//! `finish(summary)` and reading the verdict back out of the summary text means a parse, and
 //! every such parse fails by producing a *plausible* answer rather than an error — a reviewer that
 //! rejected the work and listed nothing to fix, a judge whose marker line never appeared. A typed
 //! call cannot fail that way, because the shape is refused here before it is ever a verdict.

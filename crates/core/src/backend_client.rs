@@ -297,7 +297,7 @@ pub trait BackendClient: Send + Sync {
         Ok(())
     }
 
-    /// Upload a gg run's [replay](crate::gg::CAPABILITY_REPLAY) record for a published run, served
+    /// Upload a gg run's [session record](crate::gg_session_record) for a published run, served
     /// back so a replay driver can re-run the session. (`POST /runs/{id}/replay`) Idempotent:
     /// identical bytes overwrite.
     ///

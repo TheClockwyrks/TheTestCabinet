@@ -159,9 +159,7 @@ fn ingest_bridges_every_event_natively_and_maps_salient_ones() {
         .unwrap();
     assert!(matches!(
         first_native.kind,
-        crate::gg::GgTelemetryKind::SessionStarted {
-            capability_set: None
-        }
+        crate::gg::GgTelemetryKind::SessionStarted { .. }
     ));
 }
 

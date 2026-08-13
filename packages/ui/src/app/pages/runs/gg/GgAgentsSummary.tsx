@@ -843,9 +843,8 @@ function endsATextSelection(): boolean {
 //
 // The whole row is the way through to the Modules tab's read-out of this kind — a profile's
 // row can say "twelve stores, four of them never written to" but it can never compare them,
-// and comparing them is the next question every one of these rows raises. That used to be a
-// "Compare in Modules" button on the one branch that had room for it; it is now the row
-// itself, so the affordance is the same on every distribution rather than on one of five.
+// and comparing them is the next question every one of these rows raises. The row itself is the
+// affordance, so it is the same on every distribution.
 //
 // It cannot be a `<button>` wrapping the row: two of the three branches below render buttons
 // of their own (a store's holder chips, its id, the agent-scoped store's header links) and
@@ -1298,8 +1297,7 @@ function ContextBreakdown({ agent }: { agent: GgAgentSummary }) {
       {view === "views" && context.unattributedViewTokens > 0 && (
         <p className={styles.sectionNote}>
           {shortTokens(Math.round(context.unattributedViewTokens))} of views
-          could not be traced to a selector — a file view carried across a
-          compaction on a stream recorded before gg tagged it.
+          could not be traced to a selector.
         </p>
       )}
     </section>

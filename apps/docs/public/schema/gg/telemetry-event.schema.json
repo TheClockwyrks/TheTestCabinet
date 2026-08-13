@@ -15,7 +15,7 @@
           "type": "array"
         },
         "module": {
-          "description": "gg's cross-arm id for the module — `files`, `views`, `session`.\n\nEmpty only on a record written before gg reported one, where the surface was grouped by the\nAPI object a function hung off and [`path`](Self::path) is all the identity there is.",
+          "description": "gg's cross-arm id for the module — `files`, `views`, `session`.",
           "type": "string"
         },
         "path": {
@@ -23,7 +23,7 @@
           "type": "string"
         }
       },
-      "required": ["path", "description", "functions"],
+      "required": ["module", "path", "description", "functions"],
       "type": "object"
     },
     "GgAgentApiFunction": {
@@ -189,8 +189,7 @@
       "description": "One [issue](https://docs.testcabinet.ai/gg/project-management/) on the board — a node of the\nblocked-by DAG reported in a [`BoardState`](GgTelemetryKind::BoardState) event.\n\nAn issue is the **heavyweight** counterpart to a [task](GgTaskEntry): rather than just a\ntitle and description it carries structured sections — [`in_scope`](Self::in_scope),\n[`out_of_scope`](Self::out_of_scope), and [`completion_criteria`](Self::completion_criteria)\n— whose explicit scope boundaries and completion criteria are what make an issue **safe to\ndispatch to a subagent** (Phase 4): they tell the subagent exactly what it is and is not\nresponsible for and how it will be judged done. Issues share the [tasks](GgTaskEntry)\nblocked-by relation — a **DAG**, so gg rejects any edge that would introduce a cycle — and\nan issue may be grouped under an [epic](GgBoardEpic) through its\n[`epic_id`](Self::epic_id). The whole board is retained across a [compaction] boundary\nverbatim, like the task list.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
       "properties": {
         "agent": {
-          "default": "",
-          "description": "The [agent profile](GgAgentConfig) the issue was **assigned to** when it was created —\nthe profile gg dispatches it under, and re-dispatches for every retry and review round. It\nis named on `create_issue` (not configured on the capability), and must be one the creating\nagent lists with the [`implementer`](GgSubagentScope::Implementer) scope. Empty only on a\nboard recorded before issues carried an assignee, which dispatches under the\nrun's [root](GgCapabilitySet::root).",
+          "description": "The [agent profile](GgAgentConfig) the issue was **assigned to** when it was created —\nthe profile gg dispatches it under, and re-dispatches for every retry and review round. It\nis named on `create_issue` (not configured on the capability), and must be one the creating\nagent lists with the [`implementer`](GgSubagentScope::Implementer) scope.",
           "type": "string"
         },
         "assignedAgentId": {
@@ -258,7 +257,8 @@
         "outOfScope",
         "completionCriteria",
         "status",
-        "blockedBy"
+        "blockedBy",
+        "agent"
       ],
       "type": "object"
     },
@@ -337,7 +337,7 @@
         },
         {
           "const": "docs_view",
-          "description": "One **documentation view** a\n[responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/views/) agent opened: the\ndocumentation for one thing gg's SDK offers, keyed by the name it is addressed under.\n\nIts own band rather than a share of [`Skill`](Self::Skill), which it used to be told apart\nfrom by retention alone. Two things follow from separating them, and both are the point.\nDocumentation is the one band whose size is a direct consequence of how a model *discovers*\nits surface, so what it costs has to be readable on its own rather than added to whatever\nskills the run happened to pin. And a call that closes documentation can then be a removal\nover one band, instead of a removal over the skill band that has to spare pinned items to\navoid eating a read skill — a carve-out that was load-bearing by accident.",
+          "description": "One **documentation view** a\n[responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/views/) agent opened: the\ndocumentation for one thing gg's SDK offers, keyed by the name it is addressed under.\n\nIts own band rather than a share of [`Skill`](Self::Skill). Two things follow from\nseparating them, and both are the point.\nDocumentation is the one band whose size is a direct consequence of how a model *discovers*\nits surface, so what it costs has to be readable on its own rather than added to whatever\nskills the run happened to pin. And a call that closes documentation can then be a removal\nover one band, instead of a removal over the skill band that has to spare pinned items to\navoid eating a read skill — a carve-out that was load-bearing by accident.",
           "type": "string"
         },
         {
@@ -390,7 +390,7 @@
       "type": "object"
     },
     "GgErrorSummary": {
-      "description": "The run's **error rollup**: how many of its turns failed, how badly they clustered, and how.\n\nFolded from the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events the run emitted — one per\nturn, on every agent — so [`turns`](Self::turns) is both this rollup's denominator and a count\nof the model calls the run actually made. Numerator and denominator come from the same event and\ntherefore cannot drift.\n\nThis exists because gg already *judges* every turn — the same judgement the\n[error ceilings](GgRunLimits) are enforced on — and used to throw that judgement away when the\nagent's loop ended. A run that failed a third of its turns and finished anyway was, in the\ndurable record, indistinguishable from one that never failed a turn.\n\n# No percentage is stored\n\n[`errors`](Self::errors) over [`turns`](Self::turns) is the error rate; it is deliberately not\nrecorded as a third field. A stored percentage is a figure that can disagree with its own\ndenominator — after a rounding change, a partially-recorded run, or a reader that sums two runs'\nrates — and the one thing a reader must be able to trust here is that the numbers add up.\n\n# What this rollup deliberately does not count\n\n- **Fatal turns.** A failure of gg's own machinery ends the session on the first occurrence and\n  is never charged to the model's error budget, exactly as the ceilings never observe one.\n  `turns` still counts it, so the accounting stays whole.\n- **A tool call that failed inside an otherwise successful program**, in [`errors`](Self::errors)\n  or in any per-kind or per-type counter. The program handled it, which is the entire point of\n  the typed tool surface, and charging it to the model's error budget would make the one\n  capability that *expects* failures the one that cannot survive them. It is counted — see\n  [`tool_failures`](Self::tool_failures), which is a rollup of calls, not of turns — because a\n  model fighting the same `not-found` forty times is among the most actionable facts a run has.\n- **Per-agent attribution.** These are run-wide totals; the per-agent breakdown lives on the\n  stream, where each `TurnOutcome` rides on its own agent's id.",
+      "description": "The run's **error rollup**: how many of its turns failed, how badly they clustered, and how.\n\nFolded from the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events the run emitted — one per\nturn, on every agent — so [`turns`](Self::turns) is both this rollup's denominator and a count\nof the model calls the run actually made. Numerator and denominator come from the same event and\ntherefore cannot drift.\n\nThis exists because gg already *judges* every turn, the same judgement the\n[error ceilings](GgRunLimits) are enforced on. Without the rollup a run that failed a third of\nits turns and finished anyway would be, in the durable record, indistinguishable from one that\nnever failed a turn.\n\n# No percentage is stored\n\n[`errors`](Self::errors) over [`turns`](Self::turns) is the error rate; it is deliberately not\nrecorded as a third field. A stored percentage is a figure that can disagree with its own\ndenominator — after a rounding change, a partially-recorded run, or a reader that sums two runs'\nrates — and the one thing a reader must be able to trust here is that the numbers add up.\n\n# What this rollup deliberately does not count\n\n- **Fatal turns.** A failure of gg's own machinery ends the session on the first occurrence and\n  is never charged to the model's error budget, exactly as the ceilings never observe one.\n  `turns` still counts it, so the accounting stays whole.\n- **A tool call that failed inside an otherwise successful program**, in [`errors`](Self::errors)\n  or in any per-kind or per-type counter. The program handled it, which is the entire point of\n  the typed tool surface, and charging it to the model's error budget would make the one\n  capability that *expects* failures the one that cannot survive them. It is counted — see\n  [`tool_failures`](Self::tool_failures), which is a rollup of calls, not of turns — because a\n  model fighting the same `not-found` forty times is among the most actionable facts a run has.\n- **Per-agent attribution.** These are run-wide totals; the per-agent breakdown lives on the\n  stream, where each `TurnOutcome` rides on its own agent's id.",
       "properties": {
         "byType": {
           "additionalProperties": {
@@ -710,8 +710,7 @@
           "type": "integer"
         },
         "lines": {
-          "default": 0,
-          "description": "The memory body's length in **lines** — the second size the console reports, because\ncharacters alone do not distinguish a dense paragraph from a long checklist. `0` on\nrecords written before line counts were reported.",
+          "description": "The memory body's length in **lines** — the second size the console reports, because\ncharacters alone do not distinguish a dense paragraph from a long checklist.",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -721,7 +720,7 @@
           "type": "string"
         }
       },
-      "required": ["name", "description", "len"],
+      "required": ["name", "description", "len", "lines"],
       "type": "object"
     },
     "GgMemoryPeak": {
@@ -750,7 +749,7 @@
       "type": "object"
     },
     "GgMemoryScope": {
-      "description": "Which [memory](CAPABILITY_MEMORIES) instance an agent instance binds to — the\n[`scope`](MEMORY_PARAM_SCOPE) param, resolved.\n\nMemory used to be strictly per agent instance: a subagent started with an empty notebook and\nnothing it wrote was ever seen by anyone else. That is still the default, and it is still the\nright answer for an ablation that wants each agent measured on its own curation. The other\nthree bind the *same* store to several holders, which is what makes a study of shared,\naccumulated knowledge possible at all.\n\nTwo rules make the four coherent, and they are the ones a configuration's reader has to know:\n\n1. **[`ReadOnly`](Self::ReadOnly) only ever restricts an inherited handle.** An agent that ends\n   up with a fresh instance under `read-only` may write it — a private notebook nobody may\n   write is not a feature.\n2. **Write access is a property of the holder, not of the store.** So a read-only agent's\n   [`Inherited`](Self::Inherited) subagent gets a read/**write** handle onto the same store.",
+      "description": "Which [memory](CAPABILITY_MEMORIES) instance an agent instance binds to — the\n[`scope`](MEMORY_PARAM_SCOPE) param, resolved.\n\n[`Isolated`](Self::Isolated) is the default: a subagent starts with an empty notebook and\nnothing it writes is seen by anyone else, which is the right answer for an ablation that wants\neach agent measured on its own curation. The other three bind the *same* store to several\nholders, which is what makes a study of shared, accumulated knowledge possible at all.\n\nTwo rules make the four coherent, and they are the ones a configuration's reader has to know:\n\n1. **[`ReadOnly`](Self::ReadOnly) only ever restricts an inherited handle.** An agent that ends\n   up with a fresh instance under `read-only` may write it — a private notebook nobody may\n   write is not a feature.\n2. **Write access is a property of the holder, not of the store.** So a read-only agent's\n   [`Inherited`](Self::Inherited) subagent gets a read/**write** handle onto the same store.",
       "oneOf": [
         {
           "const": "isolated",
@@ -1217,7 +1216,7 @@
       ]
     },
     "GgTurnErrorType": {
-      "description": "Why a turn was an [error](GgTurnOutcome::Error), **specifically** — the leaf level of the\ntwo-level error taxonomy, under the base [kind](GgTurnErrorKind) each variant reports through\n[`kind`](Self::kind).\n\n# Why two levels rather than one wider enum\n\nThe base kind answers \"which layer failed?\", which is what an error ceiling acts on and what a\ncross-run comparison groups by; it is a small closed set that persisted run data, saved\nqueries and stored dashboards already key on. This answers \"what actually went wrong?\", which is\nwhat a person reading one run needs and what a *\"top error types\"* ranking has to be able to\ndistinguish — a run that failed twelve turns on a rejected credential and a run that failed\ntwelve turns on a syntax error are the same `model_api`/`transpile` story only at the coarse\nlevel. Adding these as more variants of the base would have widened a wire value every stored\nrecord and every ceiling reads; adding them beneath it costs the base nothing.\n\n# Every variant names a real producer\n\nA bucket that is permanently zero in every console is a defect, so each variant below documents\nthe exact site that raises it. The set is exactly the distinctions gg *already makes internally*\nand used to discard at the recording seam: six shapes of `ModelError`, five of `PrepareError`,\nthree of the sandbox's own ceilings, the three classes the guest already types an uncaught throw\nwith over WIT, and the two structurally different ways a turn can end without declaring work.\n\n# Names carry their base\n\nEvery variant is prefixed with its base's noun (`model_`, `transpile_`, `program_`, `sandbox_`,\n`toolchain_`, `missing_completion_`) because these are ranked in one flat list, one row per type,\nwhere a bare `syntax` or `timeout` would not say which layer it came from.\n\n[`ModelRejected`](Self::ModelRejected) is deliberately *not* named `fatal`, even though gg's\n`ModelError::Fatal` is what raises it: `fatal` already means [gg's own machinery\nbroke](GgTurnOutcome::Fatal) on the field immediately beside this one, and two meanings of one\nword on adjacent fields of one event is a misreading waiting to happen.",
+      "description": "Why a turn was an [error](GgTurnOutcome::Error), **specifically** — the leaf level of the\ntwo-level error taxonomy, under the base [kind](GgTurnErrorKind) each variant reports through\n[`kind`](Self::kind).\n\n# Why two levels rather than one wider enum\n\nThe base kind answers \"which layer failed?\", which is what an error ceiling acts on and what a\ncross-run comparison groups by; it is a small closed set that persisted run data, saved\nqueries and stored dashboards already key on. This answers \"what actually went wrong?\", which is\nwhat a person reading one run needs and what a *\"top error types\"* ranking has to be able to\ndistinguish — a run that failed twelve turns on a rejected credential and a run that failed\ntwelve turns on a syntax error are the same `model_api`/`transpile` story only at the coarse\nlevel. Adding these as more variants of the base would have widened a wire value every stored\nrecord and every ceiling reads; adding them beneath it costs the base nothing.\n\n# Every variant names a real producer\n\nA bucket that is permanently zero in every console is a defect, so each variant below documents\nthe exact site that raises it. The set is exactly the distinctions gg makes internally: six\nshapes of `ModelError`, five of `PrepareError`, three of the sandbox's own ceilings, the three\nclasses the guest types an uncaught throw with over WIT, and the two structurally different ways\na turn can end without declaring work.\n\n# Names carry their base\n\nEvery variant is prefixed with its base's noun (`model_`, `transpile_`, `program_`, `sandbox_`,\n`toolchain_`, `missing_completion_`) because these are ranked in one flat list, one row per type,\nwhere a bare `syntax` or `timeout` would not say which layer it came from.\n\n[`ModelRejected`](Self::ModelRejected) is deliberately *not* named `fatal`, even though gg's\n`ModelError::Fatal` is what raises it: `fatal` already means [gg's own machinery\nbroke](GgTurnOutcome::Fatal) on the field immediately beside this one, and two meanings of one\nword on adjacent fields of one event is a misreading waiting to happen.",
       "oneOf": [
         {
           "const": "model_auth",
@@ -1236,7 +1235,7 @@
         },
         {
           "const": "model_response_loop",
-          "description": "The provider served the request and every answer was a\n[generation loop](GgLoopDetection), so the client discarded all of them and gave up. The\nrequest was fine and the provider was up — which is precisely why this must not read as\n[`ModelRetryExhausted`](Self::ModelRetryExhausted), and precisely why it used to.",
+          "description": "The provider served the request and every answer was a\n[generation loop](GgLoopDetection), so the client discarded all of them and gave up. The\nrequest was fine and the provider was up, which is precisely why this must not read as\n[`ModelRetryExhausted`](Self::ModelRetryExhausted).",
           "type": "string"
         },
         {
@@ -1355,22 +1354,15 @@
       "description": "A gg session began.",
       "properties": {
         "capabilitySet": {
-          "anyOf": [
-            {
-              "$ref": "https://docs.testcabinet.ai/schema/gg/capability-set.schema.json"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "The [capability set](GgCapabilitySet) the session is running — its exact,\nresolved configuration, announced up front so a console watching the stream\nknows which capabilities are live before any of them has produced an event.\nWithout it a live view can only guess what a run is capable of and must\noffer every surface, including the ones this run's configuration disabled.\n\nUnset only on a stream recorded before gg announced it."
+          "$ref": "https://docs.testcabinet.ai/schema/gg/capability-set.schema.json",
+          "description": "The [capability set](GgCapabilitySet) the session is running — its exact,\nresolved configuration, announced up front so a console watching the stream\nknows which capabilities are live before any of them has produced an event.\nWithout it a live view can only guess what a run is capable of and must\noffer every surface, including the ones this run's configuration disabled."
         },
         "type": {
           "const": "session_started",
           "type": "string"
         }
       },
-      "required": ["type"],
+      "required": ["type", "capabilitySet"],
       "type": "object"
     },
     {
@@ -1452,7 +1444,7 @@
       "type": "object"
     },
     {
-      "description": "A [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program called one of the functions its\nmodules offer it — the **model-facing** record, emitted once per call the program makes.\n\nIt is deliberately independent of [`ToolCall`](Self::ToolCall). The API surface and gg's tool\nvocabulary are two surfaces over one core, so a call is recorded here under what the *model\nwrote* (`views.open_file`) and there under what *ran* (`read_file`), and neither figure is\nderived from the other. That independence is the whole reason this event exists: a call no\ntool backs — `views.openText`, `session.finish`, `programs.get` — has no `ToolCall` to be\ncounted through, and used to be counted nowhere at all.\n\nIt carries **no arguments**. A bridged call's `ToolCall` already carries them, and a\ncarve-out's are either trivial (`session.finish()`) or enormous\n(`views.openText(label, body)`) — so a second copy would double the stream's largest payloads\nto say nothing new.\n\nEmitted **before** the call runs, so anything the call produces — a delegation's child\nevents, the `ToolCall`/`ToolResult` pair of the tool it bridges to — lands between it and its\n[`ApiResult`](Self::ApiResult), exactly as `ToolCall` brackets a native tool call. An agent\nanswering with tool calls rather than programs emits none of these.",
+      "description": "A [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program called one of the functions its\nmodules offer it — the **model-facing** record, emitted once per call the program makes.\n\nIt is deliberately independent of [`ToolCall`](Self::ToolCall). The API surface and gg's tool\nvocabulary are two surfaces over one core, so a call is recorded here under what the *model\nwrote* (`views.open_file`) and there under what *ran* (`read_file`), and neither figure is\nderived from the other. That independence is the whole reason this event exists: a call no\ntool backs — `views.openText`, `session.finish`, `programs.get` — has no `ToolCall` to be\ncounted through.\n\nIt carries **no arguments**. A bridged call's `ToolCall` already carries them, and a\ncarve-out's are either trivial (`session.finish()`) or enormous\n(`views.openText(label, body)`) — so a second copy would double the stream's largest payloads\nto say nothing new.\n\nEmitted **before** the call runs, so anything the call produces — a delegation's child\nevents, the `ToolCall`/`ToolResult` pair of the tool it bridges to — lands between it and its\n[`ApiResult`](Self::ApiResult), exactly as `ToolCall` brackets a native tool call. An agent\nanswering with tool calls rather than programs emits none of these.",
       "properties": {
         "function": {
           "description": "gg's own key for the function within that grouping — `read_file`, `open_file`, `finish`.\nThe other half of the legacy pair, and it carries the same caveat\n[`object`](Self::ApiCall::object) does.",
@@ -1527,12 +1519,12 @@
           "description": "The cost of this accounting, when it could be determined."
         },
         "modelId": {
-          "description": "The concrete model id that spent this — the model the\n[profile](Self::Usage::slot) resolved to for the agent that took the turn. Unset on\nthe same streams `slot` is.",
-          "type": ["string", "null"]
+          "description": "The concrete model id that spent this — the model the\n[profile](Self::Usage::slot) resolved to for the agent that took the turn.",
+          "type": "string"
         },
         "slot": {
-          "description": "The [agent profile](GgAgentConfig) that spent this — the same name\n[`AgentSpawned::slot`](Self::AgentSpawned::slot) and\n[`SlotUsage::slot`](Self::SlotUsage::slot) key on. Unset only on a stream recorded\nbefore gg attributed its deltas.",
-          "type": ["string", "null"]
+          "description": "The [agent profile](GgAgentConfig) that spent this — the same name\n[`AgentSpawned::slot`](Self::AgentSpawned::slot) and\n[`SlotUsage::slot`](Self::SlotUsage::slot) key on.",
+          "type": "string"
         },
         "tokens": {
           "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TokenMetrics",
@@ -1543,7 +1535,7 @@
           "type": "string"
         }
       },
-      "required": ["type", "tokens"],
+      "required": ["type", "slot", "modelId", "tokens"],
       "type": "object"
     },
     {
@@ -1720,8 +1712,7 @@
       "description": "The [skills](https://docs.testcabinet.ai/gg/skills/) available to the model and\nwhich of them have been read.\n\nEmitted once at session start (with the full catalog, all unread) when the\n[skills](CAPABILITY_SKILLS) capability offers any skills, and again each time the\nmodel reads one (that skill flips to `read: true` and its body enters the context\nwindow as a [`Skill`](GgContextSource::Skill)-sourced, compaction-retained item).\nThe console renders it as the run's skill panel. A run with the capability off, or\nwith no skills to offer, emits none.",
       "properties": {
         "moduleId": {
-          "default": "",
-          "description": "The [module instance](GgTelemetryKind::AgentModules) this snapshot is of — the backing\nread set, not the holder. Empty on records written before module identity existed.",
+          "description": "The [module instance](GgTelemetryKind::AgentModules) this snapshot is of — the backing\nread set, not the holder.",
           "type": "string"
         },
         "skills": {
@@ -1736,7 +1727,7 @@
           "type": "string"
         }
       },
-      "required": ["type", "skills"],
+      "required": ["type", "moduleId", "skills"],
       "type": "object"
     },
     {
@@ -1760,8 +1751,7 @@
           "type": "array"
         },
         "moduleId": {
-          "default": "",
-          "description": "The [module instance](GgTelemetryKind::AgentModules) this snapshot is of — the backing\nstore, not the holder. It is what lets a reader attribute two agents' identical panels\nto one store rather than to a coincidence, and what lets a shared store's contents be\nshown once, under the module, rather than N times under N agents. Empty on records\nwritten before module identity existed.",
+          "description": "The [module instance](GgTelemetryKind::AgentModules) this snapshot is of — the backing\nstore, not the holder. It is what lets a reader attribute two agents' identical panels\nto one store rather than to a coincidence, and what lets a shared store's contents be\nshown once, under the module, rather than N times under N agents.",
           "type": "string"
         },
         "peak": {
@@ -1774,13 +1764,11 @@
           "description": "The high-water marks this run's memories reached, so a set that was curated back\ndown still reports how much it once held."
         },
         "scope": {
-          "default": "",
-          "description": "The [scope](GgMemoryScope) the emitting agent binds this instance under — `isolated`,\n`shared`, `inherited` or `read-only`. It is what tells the console that two agents'\nmemory panels are showing **one** store rather than two that happen to agree, which is\notherwise indistinguishable from a snapshot. Empty on records written before scoping\nexisted, which the console reads as the `isolated` every run then was.",
+          "description": "The [scope](GgMemoryScope) the emitting agent binds this instance under — `isolated`,\n`shared`, `inherited` or `read-only`. It is what tells the console that two agents'\nmemory panels are showing **one** store rather than two that happen to agree, which is\notherwise indistinguishable from a snapshot.",
           "type": "string"
         },
         "strategy": {
-          "default": "",
-          "description": "The [strategy](CAPABILITY_MEMORIES) this run's memories are organized by — which\ntools the model was offered, and which of the [caps](GgMemoryCaps) apply. Empty\non records written before memories had more than one strategy.",
+          "description": "The [strategy](CAPABILITY_MEMORIES) this run's memories are organized by — which\ntools the model was offered, and which of the [caps](GgMemoryCaps) apply.",
           "type": "string"
         },
         "totalLen": {
@@ -1790,8 +1778,7 @@
           "type": "integer"
         },
         "totalLines": {
-          "default": 0,
-          "description": "The total length, in lines, summed across every memory's body. `0` on records\nwritten before line counts were reported.",
+          "description": "The total length, in lines, summed across every memory's body.",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -1801,12 +1788,22 @@
           "type": "string"
         },
         "writable": {
-          "default": true,
-          "description": "Whether the emitting agent may **write** this instance. `false` marks a\n[read-only](GgMemoryScope::ReadOnly) inherited handle: the agent is shown the set and\noffered the read calls, and every write call is withheld. Defaults to `true`, which is\nwhat every holder was before read-only handles existed.",
+          "description": "Whether the emitting agent may **write** this instance. `false` marks a\n[read-only](GgMemoryScope::ReadOnly) inherited handle: the agent is shown the set and\noffered the read calls, and every write call is withheld.",
           "type": "boolean"
         }
       },
-      "required": ["type", "memories", "count", "totalLen", "caps"],
+      "required": [
+        "type",
+        "moduleId",
+        "strategy",
+        "memories",
+        "count",
+        "totalLen",
+        "totalLines",
+        "caps",
+        "scope",
+        "writable"
+      ],
       "type": "object"
     },
     {
@@ -1867,8 +1864,7 @@
       "description": "The model's [task](https://docs.testcabinet.ai/gg/tasks/) list — a blocked-by DAG\nthat is retained across a [compaction] boundary verbatim.\n\nEmitted once at session start (an empty list) when the [tasks](CAPABILITY_TASKS)\ncapability is enabled, and again after every successful mutation\n(`add_task`/`update_task`/`set_blocked_by`/`complete_task`/`remove_task`) so the\nconsole can render the live DAG. The full list is also a pinned\n[`TaskList`](GgContextSource::TaskList)-sourced context item, so the model sees its\nplan each turn. A run with the capability off emits none.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
       "properties": {
         "moduleId": {
-          "default": "",
-          "description": "The [module instance](GgTelemetryKind::AgentModules) this snapshot is of — the backing\nlist, not the holder. Empty on records written before module identity existed.",
+          "description": "The [module instance](GgTelemetryKind::AgentModules) this snapshot is of — the backing\nlist, not the holder.",
           "type": "string"
         },
         "tasks": {
@@ -1883,7 +1879,7 @@
           "type": "string"
         }
       },
-      "required": ["type", "tasks"],
+      "required": ["type", "moduleId", "tasks"],
       "type": "object"
     },
     {
@@ -1904,8 +1900,7 @@
           "type": "array"
         },
         "moduleId": {
-          "default": "",
-          "description": "The [module instance](GgTelemetryKind::AgentModules) this snapshot is of. The board is\nrun-global by construction, so every holder in a run reports the *same* id here —\nwhich is exactly what makes the whole run's board legible as one shared module rather\nthan as one board per agent. Empty on records written before module identity existed.",
+          "description": "The [module instance](GgTelemetryKind::AgentModules) this snapshot is of. The board is\nrun-global by construction, so every holder in a run reports the *same* id here —\nwhich is exactly what makes the whole run's board legible as one shared module rather\nthan as one board per agent.",
           "type": "string"
         },
         "type": {
@@ -1913,7 +1908,7 @@
           "type": "string"
         }
       },
-      "required": ["type", "epics", "issues"],
+      "required": ["type", "moduleId", "epics", "issues"],
       "type": "object"
     },
     {
@@ -2046,8 +2041,7 @@
           "type": "array"
         },
         "moduleId": {
-          "default": "",
-          "description": "The [module instance](Self::AgentModules) this snapshot is of — the backing archive, not\nthe holder. Empty on records written before module identity existed.",
+          "description": "The [module instance](Self::AgentModules) this snapshot is of — the backing archive, not\nthe holder.",
           "type": "string"
         },
         "totalLen": {
@@ -2061,7 +2055,7 @@
           "type": "string"
         }
       },
-      "required": ["type", "entries", "count", "totalLen"],
+      "required": ["type", "moduleId", "entries", "count", "totalLen"],
       "type": "object"
     },
     {
@@ -2072,8 +2066,8 @@
           "type": ["string", "null"]
         },
         "cwd": {
-          "description": "The **working directory** this agent's file and shell tools are rooted at — the\ndirectory a command it runs without an explicit path executes in. It is the checkout of\nthe agent's isolated [worktree](Self::AgentSpawned::worktree) when it was dispatched into\none, and the shared workspace otherwise, so the two together say both *which branch* an\nagent works on and *where on disk* that is. Unset only on a stream recorded before gg\nreported it.",
-          "type": ["string", "null"]
+          "description": "The **working directory** this agent's file and shell tools are rooted at — the\ndirectory a command it runs without an explicit path executes in. It is the checkout of\nthe agent's isolated [worktree](Self::AgentSpawned::worktree) when it was dispatched into\none, and the shared workspace otherwise, so the two together say both *which branch* an\nagent works on and *where on disk* that is.",
+          "type": "string"
         },
         "depth": {
           "description": "The agent's depth in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/):\n`0` for the root, `parent.depth + 1` for a spawned child. A spawn that would exceed\nthe configured maximum depth fails as a\n[limit](GgToolFailure::LimitExceeded) rather than being queued — a *ceiling*, not a\n[refusal](GgToolFailure::Refused): the request was well-formed, the run simply has no\nroom left below the spawner.",
@@ -2098,7 +2092,7 @@
           "type": ["string", "null"]
         }
       },
-      "required": ["type", "slot", "modelId", "depth"],
+      "required": ["type", "slot", "modelId", "depth", "cwd"],
       "type": "object"
     },
     {
@@ -2130,7 +2124,7 @@
           "type": "array"
         },
         "docViewTypes": {
-          "description": "Which SDK types an `openDocsView` of a function opens **beside** it for this instance —\n`off` (none), `return` (the return position, the default), or `return-and-parameters`\n(everything the signature names). `None` for a tool-calling instance, which opens no\ndocumentation views, and on a stream recorded before gg reported the mode.\n\nThe value is the mode gg **resolved**, never the string the profile wrote: an unreadable\none falls back to the default and is warned about at launch, and reporting the raw text\nhere would file that run under an arm it was never on.\n\nIt is reported for one reason, and the reason decides the field rather than decorating\nit. The three modes are meant to be compared against each other — opening the return\ntype is not obviously cheaper than opening nothing, since a returned record's own fields\nmay send the agent back for two more lookups — and the comparison is only worth anything\nif a reader of the events can tell which arm an agent was on. Joined by\n[`agent_id`](GgTelemetryEvent::agent_id) to that agent's per-band\n[context breakdown](Self::ContextBreakdown) — the\n[documentation band](GgContextSource::DocsView) and the\n[search band](GgContextSource::SearchResults) beside it — and to its\n`views.open_docs_view` [calls](Self::ApiCall), it is what makes *\"which mode was this\nagent on, and what did it cost\"* answerable from the stream alone.",
+          "description": "Which SDK types an `openDocsView` of a function opens **beside** it for this instance —\n`off` (none), `return` (the return position, the default), or `return-and-parameters`\n(everything the signature names). `None` for a tool-calling instance, which opens no\ndocumentation views.\n\nThe value is the mode gg **resolved**, never the string the profile wrote: an unreadable\none falls back to the default and is warned about at launch, and reporting the raw text\nhere would file that run under an arm it was never on.\n\nIt is reported for one reason, and the reason decides the field rather than decorating\nit. The three modes are meant to be compared against each other — opening the return\ntype is not obviously cheaper than opening nothing, since a returned record's own fields\nmay send the agent back for two more lookups — and the comparison is only worth anything\nif a reader of the events can tell which arm an agent was on. Joined by\n[`agent_id`](GgTelemetryEvent::agent_id) to that agent's per-band\n[context breakdown](Self::ContextBreakdown) — the\n[documentation band](GgContextSource::DocsView) and the\n[search band](GgContextSource::SearchResults) beside it — and to its\n`views.open_docs_view` [calls](Self::ApiCall), it is what makes *\"which mode was this\nagent on, and what did it cost\"* answerable from the stream alone.",
           "type": ["string", "null"]
         },
         "executionMode": {
@@ -2216,7 +2210,7 @@
           "type": "string"
         },
         "waitingOn": {
-          "description": "What the agent is **waiting on**, on a [`Blocked`](GgAgentStatus::Blocked) transition:\nthe condition that has to be met before the scheduler grants it a slot again — for\nexample `issue AUTH-1.0` for a [`wait_for_issue`](CAPABILITY_PROJECT_MANAGEMENT), or the\nsubagents a [`wait_for_subagents`](CAPABILITY_SUBAGENTS) is collecting. A blocked agent\nis otherwise indistinguishable from a stuck one, so the console shows this beside the\nstatus. Absent on every non-blocking transition (and on a blocked one recorded before gg\nreported the condition).",
+          "description": "What the agent is **waiting on**, on a [`Blocked`](GgAgentStatus::Blocked) transition:\nthe condition that has to be met before the scheduler grants it a slot again — for\nexample `issue AUTH-1.0` for a [`wait_for_issue`](CAPABILITY_PROJECT_MANAGEMENT), or the\nsubagents a [`wait_for_subagents`](CAPABILITY_SUBAGENTS) is collecting. A blocked agent\nis otherwise indistinguishable from a stuck one, so the console shows this beside the\nstatus. Absent on every non-blocking transition.",
           "type": ["string", "null"]
         }
       },
@@ -2358,7 +2352,7 @@
               "type": "null"
             }
           ],
-          "description": "**Who** returned the [`items`](Self::IssueReview::items), on the\n[`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) phase — the one reviewer that\nended the round. Absent on the other two phases, and on a stream recorded before reviewer\nidentity was reported."
+          "description": "**Who** returned the [`items`](Self::IssueReview::items), on the\n[`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) phase — the one reviewer that\nended the round. Absent on the other two phases."
         },
         "type": {
           "const": "issue_review",
@@ -2369,10 +2363,10 @@
       "type": "object"
     },
     {
-      "description": "A [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/programs/) **turn** — the\nevent that makes a code-shaped turn observable: what gg had to do to the model's reply\nbefore it could run it, what the program then did, and whether it ended the run.\n\nEmitted (when the [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability is enabled)\nonce per code-shaped turn, on the agent that emitted the reply, so it rides on that agent's\nown [`agent_id`](GgTelemetryEvent::agent_id). That includes a turn whose reply was **not a\nprogram at all** — prose, or an empty reply — which is prepared for the guest like anything\nelse and is reported the same way a program that did not compile is: `ok: false` and an\n[`error`](Self::CodeExecution::error) carrying the compiler's diagnostic. One event per\ncode-shaped turn is the invariant, and it is what makes\n[`code_executions`](GgSessionSummary::code_executions) the exact denominator for the run's\n[healing rollup](GgHealingSummary).\n\nThe individual tool calls the program made still stream as ordinary\n[`ToolCall`](Self::ToolCall)/[`ToolResult`](Self::ToolResult) events in the order the\nprogram composed them — this event carries the *turn* itself: whether the program returned\nnormally, how many tool calls it composed, how long its own execution took (the efficiency\nsignal that replaced the wasmtime fuel the sandbox used to meter), and — when it did not\nreturn normally — the fault. A run with the capability off emits none.",
+      "description": "A [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/programs/) **turn** — the\nevent that makes a code-shaped turn observable: what gg had to do to the model's reply\nbefore it could run it, what the program then did, and whether it ended the run.\n\nEmitted (when the [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability is enabled)\nonce per code-shaped turn, on the agent that emitted the reply, so it rides on that agent's\nown [`agent_id`](GgTelemetryEvent::agent_id). That includes a turn whose reply was **not a\nprogram at all** — prose, or an empty reply — which is prepared for the guest like anything\nelse and is reported the same way a program that did not compile is: `ok: false` and an\n[`error`](Self::CodeExecution::error) carrying the compiler's diagnostic. One event per\ncode-shaped turn is the invariant, and it is what makes\n[`code_executions`](GgSessionSummary::code_executions) the exact denominator for the run's\n[healing rollup](GgHealingSummary).\n\nThe individual tool calls the program made still stream as ordinary\n[`ToolCall`](Self::ToolCall)/[`ToolResult`](Self::ToolResult) events in the order the\nprogram composed them — this event carries the *turn* itself: whether the program returned\nnormally, how many tool calls it composed, how long its own execution took, and, when it did\nnot return normally, the fault. A run with the capability off emits none.",
       "properties": {
         "apiCalls": {
-          "description": "How many **model-facing API calls** the program made — one per\n[`ApiCall`](Self::ApiCall)/[`ApiResult`](Self::ApiResult) pair the turn produced, whether\nor not a gg tool backs the function.\n\nIt legitimately **exceeds** [`tool_calls`](Self::CodeExecution::tool_calls), and by two\nthings: the calls no tool backs (a view, an ending, a program-library call), and the\ncalls the sandbox refused before dispatch (a spent wall-clock\nbudget, a tool this run does not offer) — the model made those, so the API layer counts\nthem even though nothing ran. The two figures answer different questions and are not\nmeant to agree.\n\nOmitted when zero — a program that made no calls at all, and every record written\nbefore gg counted them, which are indistinguishable and equally uninteresting.",
+          "description": "How many **model-facing API calls** the program made — one per\n[`ApiCall`](Self::ApiCall)/[`ApiResult`](Self::ApiResult) pair the turn produced, whether\nor not a gg tool backs the function.\n\nIt legitimately **exceeds** [`tool_calls`](Self::CodeExecution::tool_calls), and by two\nthings: the calls no tool backs (a view, an ending, a program-library call), and the\ncalls the sandbox refused before dispatch (a spent wall-clock\nbudget, a tool this run does not offer) — the model made those, so the API layer counts\nthem even though nothing ran. The two figures answer different questions and are not\nmeant to agree.\n\nOmitted when zero: a program that made no calls at all.",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -2390,7 +2384,7 @@
           "type": ["integer", "null"]
         },
         "durationMs": {
-          "description": "How long the program's **own execution** took, in milliseconds — the wall-clock time it\nspent running, excluding time parked in a bridged tool call, which is the per-program\nefficiency signal that replaced the wasmtime fuel figure the sandbox used to meter.\nReported on every path that reached the engine, including a fault, a trap, or an\n[execution-timeout](https://docs.testcabinet.ai/gg/responses-as-code/sandbox/) stop (where it is\nthe time burned up to the stop, not the ceiling); `Some(0)` when the program never\nreached the engine (a program that would not prepare, or a sandbox that could not be\nbuilt).",
+          "description": "How long the program's **own execution** took, in milliseconds — the wall-clock time it\nspent running, excluding time parked in a bridged tool call, which is the per-program\nefficiency signal.\nReported on every path that reached the engine, including a fault, a trap, or an\n[execution-timeout](https://docs.testcabinet.ai/gg/responses-as-code/sandbox/) stop (where it is\nthe time burned up to the stop, not the ceiling); `Some(0)` when the program never\nreached the engine (a program that would not prepare, or a sandbox that could not be\nbuilt).",
           "format": "uint64",
           "minimum": 0,
           "type": ["integer", "null"]
@@ -2439,7 +2433,7 @@
       "type": "object"
     },
     {
-      "description": "How one agent turn ended, as gg judged it — the event that makes a run's **error rate**\nobservable.\n\nEmitted exactly once per turn, on the agent that took it, from the one seam where gg records\nan outcome against that agent's [error ceilings](GgRunLimits) — so this event and the\nceilings can never disagree about what an error is, and every outcome is reported, including\nthe ones that used to be recorded silently. A run emits one of these per model call it made,\nwhich makes [`turns`](Self::TurnOutcome::turns) the exact denominator for the run's\n[error rollup](GgErrorSummary).\n\nDistinct from [`CodeExecution`](Self::CodeExecution), which reports what one *program* did\nand only exists under [responses-as-code](CAPABILITY_RESPONSES_AS_CODE): this is the\nmode-agnostic judgement of the **turn**, and a tool-calling run emits it too.",
+      "description": "How one agent turn ended, as gg judged it — the event that makes a run's **error rate**\nobservable.\n\nEmitted exactly once per turn, on the agent that took it, from the one seam where gg records\nan outcome against that agent's [error ceilings](GgRunLimits) — so this event and the\nceilings can never disagree about what an error is, and every outcome is reported. A run\nemits one of these per model call it made,\nwhich makes [`turns`](Self::TurnOutcome::turns) the exact denominator for the run's\n[error rollup](GgErrorSummary).\n\nDistinct from [`CodeExecution`](Self::CodeExecution), which reports what one *program* did\nand only exists under [responses-as-code](CAPABILITY_RESPONSES_AS_CODE): this is the\nmode-agnostic judgement of the **turn**, and a tool-calling run emits it too.",
       "properties": {
         "consecutiveErrors": {
           "description": "This agent's consecutive-error run **after** this turn — `0` on any non-error turn, since\nonly a turn that carried out its declared work clears the count.\n\nCarried per turn rather than re-derived by a reader because the count is **per agent**\nand a stream is run-wide: turns from concurrently running agents interleave arbitrarily,\nso a reader folding the stream could only reconstruct a run-wide streak, which is an\nartefact of scheduling rather than a fact about any agent. Taking the maximum of this\nfield is what makes [`GgErrorSummary::max_consecutive`] correct.",

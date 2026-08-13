@@ -1,9 +1,8 @@
 //! What an [`Ending`] will and will not represent.
 //!
-//! These are the checks that used to be impossible: under the old contract a reviewer's verdict was
-//! prose the loop scraped a list out of, so "changes requested, nothing listed" was a *value* the
-//! system could hold and a template had to apologise for. Here it is a constructor error, and that
-//! is the whole point — so the tests below are mostly about what cannot be built.
+//! A reviewer's verdict is a typed value rather than prose a loop scrapes a list out of, so
+//! "changes requested, nothing listed" is a constructor error rather than a value the system can
+//! hold. The tests below are therefore mostly about what cannot be built.
 
 use super::*;
 

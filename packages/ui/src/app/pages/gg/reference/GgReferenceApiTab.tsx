@@ -607,8 +607,7 @@ function EntryDetail({
  * rather than the guess a reader would otherwise make from the list: opening a function
  * appends type views exactly **one** level deep and only for the mode the agent's
  * documentation view is configured in, while this list is the transitive closure. The
- * page used to explain that discrepancy in a paragraph somebody wrote; now it shows the
- * two sets and there is no discrepancy to explain.
+ * page shows both sets, so there is no discrepancy to explain in prose.
  */
 function TypeReferences({
   entry,
