@@ -493,9 +493,14 @@ async fn a_code_run_heads_the_task_and_gg_s_reply() {
         "the task is headed:\n{contents:#?}"
     );
     // A program that ran and put nothing in the window earns the one notice a *successful* program
-    // can, headed `Notice`.
+    // can, headed `Notice` — and not `Output`, which heads the tool-calling path's tool results and
+    // so is a heading no code run's reply may wear.
     assert!(
         contents.iter().any(|c| c.starts_with("Notice\n----\n")),
         "gg's message back is headed:\n{contents:#?}"
+    );
+    assert!(
+        !contents.iter().any(|c| c.starts_with("Output\n----\n")),
+        "a code run's reply is never headed `Output`:\n{contents:#?}"
     );
 }

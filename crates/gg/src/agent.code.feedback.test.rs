@@ -197,6 +197,16 @@ fn each_kind_of_message_goes_in_its_own_band() {
         GgContextSource::RuntimeError
     );
     assert_eq!(CodeFeedback::notice("x").source, GgContextSource::System);
+    // And none of them is `ToolOutput`: that band is the tool-calling path's, and a program has no
+    // tool results — what gg says back to a code-mode agent is a compiler error, a runtime error or
+    // a notice, never output from a call the model never made.
+    for feedback in [
+        CodeFeedback::compiler("x"),
+        CodeFeedback::runtime("x"),
+        CodeFeedback::notice("x"),
+    ] {
+        assert_ne!(feedback.source, GgContextSource::ToolOutput);
+    }
 }
 
 /// A turn that made no hand-over says nothing about one — the ordinary turn, and the one this must
