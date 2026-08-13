@@ -390,8 +390,7 @@ export type GgCapabilitySet = {
    * capability — a capability is a feature under ablation, a ceiling is an operator's
    * guardrail over every capability at once — so they never appear in the
    * [`cap.*`](crate::gg_query) document namespace.
-   * A set that declares none omits the key entirely, so every configuration stored
-   * before ceilings existed round-trips unchanged.
+   * A set that declares none omits the key entirely.
    */
   limits?: GgRunLimits;
   /**

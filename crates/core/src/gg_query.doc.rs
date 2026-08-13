@@ -299,6 +299,17 @@ pub fn build_run_doc(record: &RunRecord, lifecycle: &GgDocLifecycle) -> GgRunDoc
 /// catalog once per profile would multiply a five-agent document's capability fields by
 /// five to say `false` a hundred times, and the question it answers ("which profile had
 /// it") only ever needs the ones that did.
+///
+/// # A set with no agents
+///
+/// Such a set is **malformed** — it declares no [root](GgCapabilitySet::root), and both
+/// launch paths (gg's own agent validation and the backend's launch body) refuse one by
+/// name — so no run can have recorded it. It reaches here only on a hand-written or
+/// corrupted stored record. This builder nevertheless has to be **total**: it runs inside
+/// the backend's document indexer, where a panic over one bad row would take down the index
+/// for every other run. So nothing below reads [`GgCapabilitySet::root`], which asserts a
+/// root exists; an agent-less set states what it is — no agents, and an honest `false` for
+/// every capability — and the record stays queryable enough to find and fix.
 fn insert_capability_set(doc: &mut GgRunDoc, set: &GgCapabilitySet) {
     if let Some(preset) = &set.preset {
         doc.insert("preset", preset.clone());
@@ -328,17 +339,14 @@ fn insert_capability_set(doc: &mut GgRunDoc, set: &GgCapabilitySet) {
         // A capability that is merely absent has neither, so those two stay absent
         // rather than being invented — only the enabled flag is made total.
         //
-        // Read from the root when the root declares it, and otherwise from the first
-        // agent that does. A set that configures a capability on one subagent has
-        // exactly one configuration for it, and reporting `cap.memories = true` beside no
-        // `cap.memories.implementation` would make the params look absent from the run
-        // rather than absent from the root. Declaration order is stable, so the choice
-        // is deterministic.
-        let Some(cfg) = set
-            .root()
-            .capability(id)
-            .or_else(|| set.agents.iter().find_map(|agent| agent.capability(id)))
-        else {
+        // The first agent that declares it, in declaration order — which is the root
+        // whenever the root declares it, because the root *is* the first profile. A set
+        // that configures a capability on one subagent has exactly one configuration for
+        // it, and reporting `cap.memories = true` beside no `cap.memories.implementation`
+        // would make the params look absent from the run rather than absent from the
+        // root. Declaration order is stable, so the choice is deterministic — and asking
+        // the agents rather than the root keeps this total for a set that declares none.
+        let Some(cfg) = set.agents.iter().find_map(|agent| agent.capability(id)) else {
             continue;
         };
 

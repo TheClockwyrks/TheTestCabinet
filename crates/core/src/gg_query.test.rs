@@ -554,6 +554,43 @@ fn the_capability_namespace_reads_every_agent() {
     );
 }
 
+/// **An agent-less set is malformed, and indexing one is still total.**
+///
+/// A set that declares no agents has no root, so no run can have produced it: both launch
+/// paths refuse it by name before a container exists. It is what a hand-written, truncated
+/// or otherwise corrupt record carries — and a stored record reaches the backend's document
+/// indexer, where a panic would take a service down over one bad row. The builder therefore
+/// writes what such a set states (no agents, and every catalog capability honestly `false`)
+/// instead of unwrapping a root that is not there.
+#[test]
+fn an_agent_less_capability_set_still_builds_a_document() {
+    // Deserialized rather than constructed: an explicit empty `agents` list is precisely
+    // the shape that survives `serde` and arrives at the indexer.
+    let set: GgCapabilitySet =
+        serde_json::from_str(r#"{"agents": []}"#).expect("an empty agent list deserializes");
+    assert!(
+        set.agents.is_empty(),
+        "the fixture must have no root at all"
+    );
+    let mut record = gg_record();
+    record.subject.gg_capability_set = Some(set);
+
+    let doc = build_run_doc(&record, &GgDocLifecycle::default());
+    assert_eq!(doc.get("agents"), Some(&GgValue::Number(0.0)));
+    assert_eq!(doc.get("has.capabilitySet"), Some(&GgValue::Bool(true)));
+    for id in GG_CAPABILITY_CATALOG {
+        assert_eq!(
+            doc.get(&format!("cap.{id}")),
+            Some(&GgValue::Bool(false)),
+            "cap.{id} must be a total, honest false"
+        );
+        assert!(
+            doc.get(&format!("cap.{id}.impl")).is_none(),
+            "no agent carries cap.{id}, so there is no implementation to report"
+        );
+    }
+}
+
 #[test]
 fn a_capability_outside_the_catalog_is_still_queryable() {
     // The catalog is the floor, not the ceiling: an externally supplied capability

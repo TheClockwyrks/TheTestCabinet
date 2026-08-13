@@ -1249,8 +1249,7 @@ pub struct GgCapabilitySet {
     /// capability — a capability is a feature under ablation, a ceiling is an operator's
     /// guardrail over every capability at once — so they never appear in the
     /// [`cap.*`](crate::gg_query) document namespace.
-    /// A set that declares none omits the key entirely, so every configuration stored
-    /// before ceilings existed round-trips unchanged.
+    /// A set that declares none omits the key entirely.
     #[serde(default, skip_serializing_if = "GgRunLimits::is_empty")]
     pub limits: GgRunLimits,
     /// The **session hooks** this run is scripted with — the operator-authored commands and
@@ -1313,6 +1312,17 @@ impl GgCapabilitySet {
     /// The root is identified by **position, never by name**: it is seeded as
     /// [`ROOT_AGENT`] but an operator may rename it, so looking one up by that name would
     /// silently fail on a renamed configuration.
+    ///
+    /// # Panics
+    ///
+    /// On a set that declares no agents — which is a **malformed** configuration, not an
+    /// unusual one: it has no root, so gg's own launch validation and the backend's launch
+    /// body each reject it by name, and nothing that runs can be holding one. That makes
+    /// this contract safe for the run path and unsafe everywhere else: code that reads a
+    /// **stored** set — a record it did not launch, and so a record that may be
+    /// hand-written or corrupt — must ask [`Self::agents`] directly rather than assert a
+    /// root through this. The [document builder](crate::gg_query::build_run_doc) is the
+    /// standing example.
     pub fn root(&self) -> &GgAgentConfig {
         self.agents
             .first()
