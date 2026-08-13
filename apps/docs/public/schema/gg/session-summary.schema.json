@@ -106,7 +106,6 @@
           "type": "integer"
         },
         "dropDoubledResponse": {
-          "default": 0,
           "description": "Applications of [`drop-doubled-response`](GgHealingStrategy::DropDoubledResponse) — how often\na reply arrived as a byte-exact doubling of itself.\n\nZero for every run that did not **arm** the strategy, which is the default; read it together\nwith [`enabled`](Self::enabled) rather than as \"this model never doubled a reply\".",
           "format": "uint64",
           "minimum": 0,
@@ -143,6 +142,7 @@
         "applications",
         "stripFences",
         "stripProse",
+        "dropDoubledResponse",
         "enabled"
       ],
       "type": "object"
@@ -268,7 +268,6 @@
       "type": "integer"
     },
     "compileMs": {
-      "default": 0,
       "description": "How many milliseconds the run spent **compiling**, in total — its programs, the code halves\nof the skills and memories they brought into use, and the on-use scripts those queued.\nFolded from the same [`CodeExecution`](GgTelemetryKind::CodeExecution) events\n[`code_executions`](Self::code_executions) counts, so the sum and the turn count it is read\nagainst cannot come from different mechanisms and drift.\n\n`0` for a language whose prepare step invokes no compiler, and for a tool-calling run — the\nhonest answer rather than an absence, because \"this arm compiled nothing\" is a measurement\nand a missing field is not. It counts the rejected programs too: what a compiled arm pays\nfor a program the compiler refused is part of what that arm costs.\n\nThis is the run-level figure a cross-language study divides by\n[`code_executions`](Self::code_executions) to ask what a turn of arm A costs in compile time\nagainst a turn of arm B, and it is the only place that question is answerable — the per-turn\ntime is on the events, but a query works on the run document.",
       "format": "uint64",
       "minimum": 0,
@@ -281,7 +280,6 @@
       "type": "integer"
     },
     "effectiveTools": {
-      "default": [],
       "description": "The **effective toolset**: the exact set of tool names offered to the run's agent,\nin the order they were presented to the model. This is what the run's\n[capability set](GgCapabilitySet) *actually resolved to* — a capability contributes\nits tools only when enabled (and, for the stateful ones, only when its store is\nnon-empty), minus any individually [withheld](GgAgentConfig::disabled_tools) tool —\nso recording it durably makes the toolset a first-class experimental variable a query\ncan slice by (\"group by whether `edit_file` was offered\", \"runs with only\n`write_file`\"). Because switching a capability on/off *is* offering/withholding its\ntools, this is the ground truth an ablation study reads rather than re-deriving the\ntoolset from the capability set. Empty only for a run whose agent was offered no tools\nat all. Recorded off the root agent's toolset (recorded from the root agent, whose\nprofile is the run's headline configuration).",
       "items": {
         "type": "string"
@@ -303,14 +301,6 @@
     },
     "healing": {
       "$ref": "#/$defs/GgHealingSummary",
-      "default": {
-        "applications": 0,
-        "dropDoubledResponse": 0,
-        "enabled": [],
-        "healed": 0,
-        "stripFences": 0,
-        "stripProse": 0
-      },
       "description": "What gg had to do to the models' responses before it could run them — the run's\n[response-healing](GgHealingSummary) rollup, folded from the same\n[`CodeExecution`](GgTelemetryKind::CodeExecution) events\n[`code_executions`](Self::code_executions) counts. All zeroes for a tool-calling run."
     },
     "issueReviews": {
@@ -350,8 +340,7 @@
     },
     "limits": {
       "$ref": "https://docs.testcabinet.ai/schema/gg/capability-set.schema.json#/$defs/GgRunLimits",
-      "default": {},
-      "description": "The [execution ceilings](GgRunLimits) that were actually **in force** for this run — the\nconfigured set with gg's own defaults filled in (the error ceilings a run left unset, and an\nabsent `maxTurns` recorded as unbounded).\n\nRecorded rather than left to be re-derived from the [capability set](GgCapabilitySet)\nbecause a default is otherwise invisible: \"what ceiling was this run bounded by?\" must be\nanswerable for every run, including one that declared none. All-absent for a run recorded\nbefore ceilings existed."
+      "description": "The [execution ceilings](GgRunLimits) that were actually **in force** for this run — the\nconfigured set with gg's own defaults filled in (the error ceilings a run left unset, and an\nabsent `maxTurns` recorded as unbounded).\n\nRecorded rather than left to be re-derived from the [capability set](GgCapabilitySet)\nbecause a default is otherwise invisible: \"what ceiling was this run bounded by?\" must be\nanswerable for every run, including one that declared none."
     },
     "maxSubagentDepth": {
       "description": "The deepest [subagent depth](GgTelemetryKind::AgentSpawned) reached this run: `0` for a\nsingle-agent run (only the root, at depth 0), `1` for a run that spawned children but no\ngrandchildren, and so on — the correlate for \"how does delegation depth relate to score?\".",
@@ -381,7 +370,6 @@
       "type": "integer"
     },
     "slotCosts": {
-      "default": [],
       "description": "The per-`(slot, model)` token+cost rollup for the run — the durable tail of the\n[`SlotUsage`](GgTelemetryKind::SlotUsage) rollups, one entry per slot/model the run touched,\nin first-seen order. Empty only for a run that recorded no usage (a launch that never ran a\nturn).",
       "items": {
         "$ref": "#/$defs/GgSlotCost"
@@ -412,9 +400,14 @@
     "issuesReopened",
     "executionMode",
     "codeExecutions",
+    "compileMs",
+    "healing",
     "errors",
     "issuesCreated",
-    "issuesCompleted"
+    "issuesCompleted",
+    "slotCosts",
+    "effectiveTools",
+    "limits"
   ],
   "title": "GgSessionSummary",
   "type": "object"

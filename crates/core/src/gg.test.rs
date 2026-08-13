@@ -26,6 +26,12 @@ fn no_errors() -> serde_json::Value {
     serde_json::to_value(GgErrorSummary::default()).expect("serialize")
 }
 
+/// The zeroed [healing rollup](GgHealingSummary) every session summary carries, for a fixture
+/// whose subject is something else.
+fn no_healing() -> serde_json::Value {
+    serde_json::to_value(GgHealingSummary::default()).expect("serialize")
+}
+
 #[test]
 fn minimal_capability_set_binds_the_root_model_and_phase0_capabilities() {
     let set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
@@ -1506,12 +1512,16 @@ fn a_session_summary_carries_the_healing_rollup_and_the_ceiling_that_stopped_the
         "issueReviews": 0,
         "reviewCycles": 0,
         "issuesReopened": 0,
-        "speculations": 0,
         "executionMode": "responses_as_code",
         "codeExecutions": 4,
+        "compileMs": 0,
+        "healing": no_healing(),
+        "errors": no_errors(),
         "issuesCreated": 0,
         "issuesCompleted": 0,
-        "errors": no_errors(),
+        "slotCosts": [],
+        "effectiveTools": [],
+        "limits": {},
     }))
     .expect("deserialize");
     summary.healing = GgHealingSummary {
@@ -1899,12 +1909,16 @@ fn the_disabled_healing_arm_serializes_as_a_present_empty_armed_set() {
         "issueReviews": 0,
         "reviewCycles": 0,
         "issuesReopened": 0,
-        "speculations": 0,
         "executionMode": "responses_as_code",
         "codeExecutions": 3,
+        "compileMs": 0,
+        "healing": no_healing(),
+        "errors": no_errors(),
         "issuesCreated": 0,
         "issuesCompleted": 0,
-        "errors": no_errors(),
+        "slotCosts": [],
+        "effectiveTools": [],
+        "limits": {},
     }))
     .expect("deserialize");
 

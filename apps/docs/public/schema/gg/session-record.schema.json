@@ -26,7 +26,7 @@
       ]
     },
     "GgClientRole": {
-      "description": "Which of gg's two model clients issued a request.\n\nThe discriminator is what makes a **second queue** representable. Without it a\n[handoff-compaction](https://docs.testcabinet.ai/gg/compaction/) summarizer call and\nthe agent's own next turn interleave into one indistinguishable queue, and a reader would\nattribute the compaction's turn to the agent. `#[serde(default)]` to\n[`Agent`](Self::Agent), which is what every request in a record captured before the\ndiscriminator existed was.",
+      "description": "Which of gg's two model clients issued a request.\n\nThe discriminator is what makes a **second queue** representable. Without it a\n[handoff-compaction](https://docs.testcabinet.ai/gg/compaction/) summarizer call and\nthe agent's own next turn interleave into one indistinguishable queue, and a reader would\nattribute the compaction's turn to the agent.",
       "oneOf": [
         {
           "const": "agent",
@@ -481,7 +481,6 @@
       "description": "One image a recorded call produced, as a **descriptor**: what it was and how big it was,\nnever its bytes.\n\nThe same shape the [telemetry stream](crate::gg::GgLoggedImage) carries, deliberately — the\ntwo are the same fact about the same turn, and a record that carried more would be a record\nnobody could afford to keep on every run.",
       "properties": {
         "bytes": {
-          "default": 0,
           "description": "The decoded size in bytes.",
           "format": "uint64",
           "minimum": 0,
@@ -492,7 +491,7 @@
           "type": "string"
         }
       },
-      "required": ["mediaType"],
+      "required": ["mediaType", "bytes"],
       "type": "object"
     },
     "GgSessionMessage": {
@@ -513,11 +512,11 @@
       "description": "Which input modalities a bound model slot was resolved to accept.",
       "properties": {
         "vision": {
-          "default": false,
           "description": "Whether the slot's model accepts image input. `false` once a provider has\nrefused an image for this model and the loop has stripped images from the\ncontext.",
           "type": "boolean"
         }
       },
+      "required": ["vision"],
       "type": "object"
     },
     "GgSessionModelError": {
@@ -534,7 +533,6 @@
           "description": "The error's class — what the loop branched on."
         },
         "message": {
-          "default": "",
           "description": "The message the loop saw, which for a provider error is a truncated copy of its\nbody.",
           "type": "string"
         },
@@ -550,7 +548,7 @@
           "type": ["integer", "null"]
         }
       },
-      "required": ["kind"],
+      "required": ["kind", "message"],
       "type": "object"
     },
     "GgSessionModelErrorKind": {
@@ -655,7 +653,7 @@
       ]
     },
     "GgSessionRecorder": {
-      "description": "Which build of gg wrote a record — the *explanatory* half of the record's\n[three-part identity](self#identity-and-what-a-reader-may-branch-on).\n\nCarried once on the record rather than per turn: it is a property of the capture, not\nof any individual input. Both members are optional because a\nrecord captured before they existed carries neither, and reports \"unknown\" rather than\ninventing a version.",
+      "description": "Which build of gg wrote a record — the *explanatory* half of the record's\n[three-part identity](self#identity-and-what-a-reader-may-branch-on).\n\nCarried once on the record rather than per turn: it is a property of the capture, not\nof any individual input. Both members are optional because a build that cannot state\nits own version or commit reports \"unknown\" rather than inventing one.",
       "properties": {
         "commit": {
           "description": "The exact commit the capturing build was made from, when it is known. The only\nthing that can tell an uncommitted prompt edit *within* one version from the\nreleased build of that version, so it is the only thing that identifies exactly which gg\nwrote a record.",
@@ -672,7 +670,6 @@
       "description": "One model request, as pool references: the conversation that was sent and the toolset\nthat was offered.",
       "properties": {
         "messages": {
-          "default": [],
           "description": "The conversation sent this turn, as ordered indices into\n[`messages`](GgSessionRecord::messages).",
           "items": {
             "format": "uint32",
@@ -683,12 +680,10 @@
         },
         "role": {
           "$ref": "#/$defs/GgClientRole",
-          "default": "agent",
-          "description": "Which client issued it. Absent in a record captured before the discriminator existed,\nwhere it reads as [`Agent`](GgClientRole::Agent)."
+          "description": "Which client issued it."
         },
         "shape": {
           "$ref": "#/$defs/GgSessionRequestShape",
-          "default": "complete",
           "description": "Whether the offered tool was required."
         },
         "toolset": {
@@ -698,6 +693,7 @@
           "type": ["integer", "null"]
         }
       },
+      "required": ["role", "shape", "messages"],
       "type": "object"
     },
     "GgSessionRequestShape": {
@@ -754,11 +750,11 @@
           "type": "object"
         },
         "prompt": {
-          "default": "",
           "description": "The build prompt the session was invoked with — the rendered test-case\ninstruction the root agent was given.",
           "type": "string"
         }
       },
+      "required": ["prompt"],
       "type": "object"
     },
     "GgSessionTextClip": {
@@ -989,7 +985,6 @@
   "description": "A gg run's **session record**: the fixed seed, four content-addressed pools, the agent\nprovenance table, and the ordered log of every non-deterministic input the session\nconsumed.\n\nSee the [module documentation](self) for the shape and for how a\nrecord from a newer gg is refused rather than read on a partial understanding of it.",
   "properties": {
     "agents": {
-      "default": [],
       "description": "Every agent the session created, and how. One row per agent.",
       "items": {
         "$ref": "#/$defs/GgSessionAgent"
@@ -1001,7 +996,6 @@
       "description": "The [capability set](GgCapabilitySet) the run was configured with, so a\nreader has the configuration the run was launched with rather than one assembled to\nsuit the record."
     },
     "clips": {
-      "default": [],
       "description": "Which [texts](Self::texts) are [clips](GgSessionTextClip) rather than whole payloads, in\nascending pool order. Empty for a record whose payloads all fit.\n\nA sparse side table rather than a field on each pooled text: the overwhelming majority of\npayloads are not clipped, and widening every entry of the pool to say so would cost more\nthan the clipping saves. Always serialized, like the pools it annotates rather than like\n[`truncation`](Self::truncation) — an empty table is the positive statement \"nothing was\nclipped\", which is exactly what a reader of a standard record needs to hear.",
       "items": {
         "$ref": "#/$defs/GgSessionTextClip"
@@ -1009,7 +1003,6 @@
       "type": "array"
     },
     "entries": {
-      "default": [],
       "description": "Every pinned non-deterministic input, in globally monotonic\n[`seq`](GgSessionEntry::seq) order.",
       "items": {
         "$ref": "#/$defs/GgSessionEntry"
@@ -1023,7 +1016,6 @@
       "type": "integer"
     },
     "messages": {
-      "default": [],
       "description": "The message pool. [Entries](GgSessionEntry) reference it by index.",
       "items": {
         "$ref": "#/$defs/GgSessionMessage"
@@ -1032,14 +1024,10 @@
     },
     "recorder": {
       "$ref": "#/$defs/GgSessionRecorder",
-      "default": {},
       "description": "Which build captured it. Explanatory; never a gate."
     },
     "seed": {
       "$ref": "#/$defs/GgSessionSeed",
-      "default": {
-        "prompt": ""
-      },
       "description": "The fixed identity the session started from."
     },
     "sessionId": {
@@ -1047,7 +1035,6 @@
       "type": "string"
     },
     "texts": {
-      "default": [],
       "description": "The text pool: every large string payload — a tool outcome's output, a `git`\ninvocation's stdout, a probe body.",
       "items": {
         "type": "string"
@@ -1055,7 +1042,6 @@
       "type": "array"
     },
     "toolsets": {
-      "default": [],
       "description": "The offered-toolset pool.",
       "items": {
         "$ref": "#/$defs/GgSessionToolset"
@@ -1074,7 +1060,19 @@
       "description": "What the record is missing, when it is missing something. Absent on a complete\ncapture."
     }
   },
-  "required": ["formatVersion", "sessionId", "capabilitySet"],
+  "required": [
+    "formatVersion",
+    "recorder",
+    "sessionId",
+    "capabilitySet",
+    "seed",
+    "agents",
+    "messages",
+    "toolsets",
+    "texts",
+    "clips",
+    "entries"
+  ],
   "title": "GgSessionRecord",
   "type": "object"
 }

@@ -3624,20 +3624,17 @@ pub struct GgMemoryCaps {
     /// [`markdown`](MEMORY_STRATEGY_MARKDOWN) strategy keeps — the one limit that bounds how
     /// many memories that strategy can hold, since every one of them must be listed there.
     /// `null` for every other strategy, and when the index is unlimited.
-    #[serde(default)]
     pub max_len_index: Option<u64>,
     /// The maximum length, in characters, of a memory's one-line **description** — the part
     /// of a memory a strategy shows up front (every line of a
     /// [`markdown`](MEMORY_STRATEGY_MARKDOWN) index is one), which is why a run that wants a
     /// tight index bounds it here rather than trusting the model to be terse. Off by default
     /// (`null` is unlimited) and applies under every strategy.
-    #[serde(default)]
     pub max_len_description: Option<u64>,
     /// The most memories one `search_memories` call reports under the
     /// [`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) strategy. `null` for every other
     /// strategy — it is a page size rather than a bound on what may be stored, and is
     /// reported alongside the limits because it is resolved from the same params.
-    #[serde(default)]
     pub max_results: Option<u64>,
 }
 
@@ -3848,7 +3845,6 @@ pub struct GgBoardIssue {
     /// How many times gg has **re-dispatched** this issue after an assigned agent finished
     /// without completing it. Bounded by the capability's `maxRetries`; once exhausted the
     /// issue is marked [`Failed`](GgIssueStatus::Failed). `0` until the first retry.
-    #[serde(default)]
     pub retries: u32,
 }
 
@@ -4590,7 +4586,6 @@ pub struct GgHealingSummary {
     ///
     /// Zero for every run that did not **arm** the strategy, which is the default; read it together
     /// with [`enabled`](Self::enabled) rather than as "this model never doubled a reply".
-    #[serde(default)]
     pub drop_doubled_response: u64,
     /// The [strategies](GgHealingStrategy) that were **armed** for this run, in the order gg
     /// applies them — the resolved configuration, recorded rather than left to be re-derived from
@@ -4883,13 +4878,11 @@ pub struct GgSessionSummary {
     /// [`code_executions`](Self::code_executions) to ask what a turn of arm A costs in compile time
     /// against a turn of arm B, and it is the only place that question is answerable — the per-turn
     /// time is on the events, but a query works on the run document.
-    #[serde(default)]
     pub compile_ms: u64,
     /// What gg had to do to the models' responses before it could run them — the run's
     /// [response-healing](GgHealingSummary) rollup, folded from the same
     /// [`CodeExecution`](GgTelemetryKind::CodeExecution) events
     /// [`code_executions`](Self::code_executions) counts. All zeroes for a tool-calling run.
-    #[serde(default)]
     pub healing: GgHealingSummary,
     /// How many of the run's turns failed, how badly they clustered, and how — the run's
     /// [error rollup](GgErrorSummary), folded from the
@@ -4910,7 +4903,6 @@ pub struct GgSessionSummary {
     /// [`SlotUsage`](GgTelemetryKind::SlotUsage) rollups, one entry per slot/model the run touched,
     /// in first-seen order. Empty only for a run that recorded no usage (a launch that never ran a
     /// turn).
-    #[serde(default)]
     pub slot_costs: Vec<GgSlotCost>,
     /// The **effective toolset**: the exact set of tool names offered to the run's agent,
     /// in the order they were presented to the model. This is what the run's
@@ -4924,7 +4916,6 @@ pub struct GgSessionSummary {
     /// toolset from the capability set. Empty only for a run whose agent was offered no tools
     /// at all. Recorded off the root agent's toolset (recorded from the root agent, whose
     /// profile is the run's headline configuration).
-    #[serde(default)]
     pub effective_tools: Vec<String>,
     /// The [execution ceilings](GgRunLimits) that were actually **in force** for this run — the
     /// configured set with gg's own defaults filled in (the error ceilings a run left unset, and an
@@ -4932,9 +4923,7 @@ pub struct GgSessionSummary {
     ///
     /// Recorded rather than left to be re-derived from the [capability set](GgCapabilitySet)
     /// because a default is otherwise invisible: "what ceiling was this run bounded by?" must be
-    /// answerable for every run, including one that declared none. All-absent for a run recorded
-    /// before ceilings existed.
-    #[serde(default)]
+    /// answerable for every run, including one that declared none.
     pub limits: GgRunLimits,
     /// The ceiling that stopped the run, when one did — which [ceiling](Self::limits), what it was
     /// set to, and what was observed. Absent for a run that ended on its own terms.
@@ -5252,14 +5241,12 @@ pub enum GgTelemetryKind {
         content: Option<String>,
         /// The tool calls an assistant message requested, in order (empty for every other
         /// role).
-        #[serde(default)]
         tool_calls: Vec<GgLoggedToolCall>,
         /// For a `tool` message, the id of the assistant tool call it answers.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         tool_call_id: Option<String>,
         /// Descriptors of any images attached to the message — the media type and size of
         /// each, never its bytes (see [`GgLoggedImage`]). Empty for a text-only message.
-        #[serde(default)]
         images: Vec<GgLoggedImage>,
         /// The estimated tokens this message occupies — the same per-item estimate the
         /// [`ContextBreakdown`](Self::ContextBreakdown) bands sum, so a message's own share
@@ -5400,7 +5387,6 @@ pub enum GgTelemetryKind {
         total_lines: u64,
         /// The high-water marks this run's memories reached, so a set that was curated back
         /// down still reports how much it once held.
-        #[serde(default)]
         peak: GgMemoryPeak,
         /// The bounds these memories are kept within.
         caps: GgMemoryCaps,
@@ -5904,7 +5890,6 @@ pub enum GgTelemetryKind {
         /// agent in the [per-slot rollup](Self::SlotUsage).
         agent: String,
         /// The state the machine came from, or `None` for the entry state.
-        #[serde(default)]
         from: Option<String>,
     },
     /// One agent instance was **replaced by** (or cloned into) another: an FSM
@@ -5933,7 +5918,6 @@ pub enum GgTelemetryKind {
         /// profile and for a [`fork`](GgAgentTransitionKind::Fork), neither of which moves the
         /// agent within a machine — a fork of an agent standing in a state is a second worker, not
         /// a second position, and carries no state of its own.
-        #[serde(default)]
         state: Option<String>,
         /// What happened to each [module](GgModuleKind) the two instances between them held, in
         /// [kind](GgModuleKind::ALL) order — the whole of what a successor did and did not

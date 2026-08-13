@@ -2444,8 +2444,7 @@ export type GgSessionSummary = {
    *
    * Recorded rather than left to be re-derived from the [capability set](GgCapabilitySet)
    * because a default is otherwise invisible: "what ceiling was this run bounded by?" must be
-   * answerable for every run, including one that declared none. All-absent for a run recorded
-   * before ceilings existed.
+   * answerable for every run, including one that declared none.
    */
   limits: GgRunLimits;
   /**

@@ -154,9 +154,8 @@ pub fn fingerprint_json(value: &Value) -> String {
 /// [three-part identity](self#identity-and-what-a-reader-may-branch-on).
 ///
 /// Carried once on the record rather than per turn: it is a property of the capture, not
-/// of any individual input. Both members are optional because a
-/// record captured before they existed carries neither, and reports "unknown" rather than
-/// inventing a version.
+/// of any individual input. Both members are optional because a build that cannot state
+/// its own version or commit reports "unknown" rather than inventing one.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -196,7 +195,6 @@ pub struct GgSessionSeed {
     pub baseline_commit: Option<String>,
     /// The build prompt the session was invoked with — the rendered test-case
     /// instruction the root agent was given.
-    #[serde(default)]
     pub prompt: String,
     /// The context window, in tokens, resolved for each bound model slot. Recorded
     /// because the window is what the fullness signal and compaction thresholds are
@@ -223,7 +221,6 @@ pub struct GgSessionModalities {
     /// Whether the slot's model accepts image input. `false` once a provider has
     /// refused an image for this model and the loop has stripped images from the
     /// context.
-    #[serde(default)]
     pub vision: bool,
 }
 
@@ -452,9 +449,7 @@ pub enum GgSessionAgentOrigin {
 /// The discriminator is what makes a **second queue** representable. Without it a
 /// [handoff-compaction](https://docs.testcabinet.ai/gg/compaction/) summarizer call and
 /// the agent's own next turn interleave into one indistinguishable queue, and a reader would
-/// attribute the compaction's turn to the agent. `#[serde(default)]` to
-/// [`Agent`](Self::Agent), which is what every request in a record captured before the
-/// discriminator existed was.
+/// attribute the compaction's turn to the agent.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -490,16 +485,12 @@ pub enum GgSessionRequestShape {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgSessionRequest {
-    /// Which client issued it. Absent in a record captured before the discriminator existed,
-    /// where it reads as [`Agent`](GgClientRole::Agent).
-    #[serde(default)]
+    /// Which client issued it.
     pub role: GgClientRole,
     /// Whether the offered tool was required.
-    #[serde(default)]
     pub shape: GgSessionRequestShape,
     /// The conversation sent this turn, as ordered indices into
     /// [`messages`](GgSessionRecord::messages).
-    #[serde(default)]
     pub messages: Vec<u32>,
     /// The offered tool definitions, as an index into
     /// [`toolsets`](GgSessionRecord::toolsets). `None` for a call that offered no tools
@@ -527,7 +518,6 @@ pub struct GgSessionModelError {
     pub kind: GgSessionModelErrorKind,
     /// The message the loop saw, which for a provider error is a truncated copy of its
     /// body.
-    #[serde(default)]
     pub message: String,
     /// The HTTP status, for an error that carried one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -616,7 +606,6 @@ pub struct GgSessionImage {
     /// The IANA media type (`image/png`, `image/jpeg`, …).
     pub media_type: String,
     /// The decoded size in bytes.
-    #[serde(default)]
     pub bytes: u64,
 }
 
@@ -1027,7 +1016,6 @@ pub struct GgSessionRecord {
     /// Required: a record that states no format is malformed, not a record to be guessed at.
     pub format_version: u32,
     /// Which build captured it. Explanatory; never a gate.
-    #[serde(default)]
     pub recorder: GgSessionRecorder,
     /// The gg session this record is of — the run id, matching the
     /// [telemetry](crate::gg::GgTelemetryEvent::session_id) stream's.
@@ -1037,20 +1025,15 @@ pub struct GgSessionRecord {
     /// suit the record.
     pub capability_set: GgCapabilitySet,
     /// The fixed identity the session started from.
-    #[serde(default)]
     pub seed: GgSessionSeed,
     /// Every agent the session created, and how. One row per agent.
-    #[serde(default)]
     pub agents: Vec<GgSessionAgent>,
     /// The message pool. [Entries](GgSessionEntry) reference it by index.
-    #[serde(default)]
     pub messages: Vec<GgSessionMessage>,
     /// The offered-toolset pool.
-    #[serde(default)]
     pub toolsets: Vec<GgSessionToolset>,
     /// The text pool: every large string payload — a tool outcome's output, a `git`
     /// invocation's stdout, a probe body.
-    #[serde(default)]
     pub texts: Vec<String>,
     /// Which [texts](Self::texts) are [clips](GgSessionTextClip) rather than whole payloads, in
     /// ascending pool order. Empty for a record whose payloads all fit.
@@ -1060,11 +1043,9 @@ pub struct GgSessionRecord {
     /// than the clipping saves. Always serialized, like the pools it annotates rather than like
     /// [`truncation`](Self::truncation) — an empty table is the positive statement "nothing was
     /// clipped", which is exactly what a reader of a standard record needs to hear.
-    #[serde(default)]
     pub clips: Vec<GgSessionTextClip>,
     /// Every pinned non-deterministic input, in globally monotonic
     /// [`seq`](GgSessionEntry::seq) order.
-    #[serde(default)]
     pub entries: Vec<GgSessionEntry>,
     /// What the record is missing, when it is missing something. Absent on a complete
     /// capture.
@@ -1353,24 +1334,15 @@ impl GgSessionInterner for GgSessionPools {
 #[serde(rename_all = "camelCase")]
 struct GgSessionRecordRaw {
     format_version: u32,
-    #[serde(default)]
     recorder: GgSessionRecorder,
-    #[serde(default)]
     session_id: String,
     capability_set: GgCapabilitySet,
-    #[serde(default)]
     seed: GgSessionSeed,
-    #[serde(default)]
     agents: Vec<GgSessionAgent>,
-    #[serde(default)]
     messages: Vec<GgSessionMessage>,
-    #[serde(default)]
     toolsets: Vec<GgSessionToolset>,
-    #[serde(default)]
     texts: Vec<String>,
-    #[serde(default)]
     clips: Vec<GgSessionTextClip>,
-    #[serde(default)]
     entries: Vec<GgSessionEntry>,
     #[serde(default)]
     truncation: Option<GgSessionTruncation>,

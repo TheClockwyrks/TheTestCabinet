@@ -19,9 +19,8 @@ import type {
  * [three-part identity](self#identity-and-what-a-reader-may-branch-on).
  *
  * Carried once on the record rather than per turn: it is a property of the capture, not
- * of any individual input. Both members are optional because a
- * record captured before they existed carries neither, and reports "unknown" rather than
- * inventing a version.
+ * of any individual input. Both members are optional because a build that cannot state
+ * its own version or commit reports "unknown" rather than inventing one.
  */
 export type GgSessionRecorder = {
   /**
@@ -311,9 +310,7 @@ export type GgSessionAgent = {
  * The discriminator is what makes a **second queue** representable. Without it a
  * [handoff-compaction](https://docs.testcabinet.ai/gg/compaction/) summarizer call and
  * the agent's own next turn interleave into one indistinguishable queue, and a reader would
- * attribute the compaction's turn to the agent. `#[serde(default)]` to
- * [`Agent`](Self::Agent), which is what every request in a record captured before the
- * discriminator existed was.
+ * attribute the compaction's turn to the agent.
  */
 export type GgClientRole = "agent" | "compaction";
 
@@ -333,8 +330,7 @@ export type GgSessionRequestShape = "complete" | "complete_requiring";
  */
 export type GgSessionRequest = {
   /**
-   * Which client issued it. Absent in a record captured before the discriminator existed,
-   * where it reads as [`Agent`](GgClientRole::Agent).
+   * Which client issued it.
    */
   role: GgClientRole;
   /**

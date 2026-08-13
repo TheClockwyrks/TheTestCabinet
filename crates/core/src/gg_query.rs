@@ -273,7 +273,6 @@ fn format_number(n: f64) -> String {
 pub struct GgRunDoc {
     /// The run's fields, keyed by dotted name. A `BTreeMap` so serialization is
     /// key-ordered and two builds of the same run are byte-identical.
-    #[serde(default)]
     pub fields: BTreeMap<String, GgValue>,
 }
 
@@ -760,12 +759,10 @@ pub struct GgBucketKeyPart {
 pub struct GgBucket {
     /// The composite key, one part per group-by key in stage order. Empty for the
     /// grand-total bucket of an ungrouped `stats`.
-    #[serde(default)]
     pub key: Vec<GgBucketKeyPart>,
     /// How many documents fell into this bucket.
     pub n: u64,
     /// The aggregated columns, in stage order.
-    #[serde(default)]
     pub values: Vec<GgAggValue>,
 }
 
@@ -808,7 +805,6 @@ pub struct GgQueryResponse {
     pub columns: Vec<GgAggColumn>,
     /// Whether a `limit` stage cut rows off the result, so a view can say "showing the
     /// first N" rather than implying it showed everything.
-    #[serde(default)]
     pub truncated: bool,
 }
 
@@ -883,7 +879,6 @@ pub struct GgFieldCatalog {
     /// field's [`documents`](GgFieldInfo::documents).
     pub documents: u64,
     /// The fields, by name ascending (Unicode code point).
-    #[serde(default)]
     pub fields: Vec<GgFieldInfo>,
 }
 

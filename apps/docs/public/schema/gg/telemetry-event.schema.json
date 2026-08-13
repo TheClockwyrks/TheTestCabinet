@@ -228,7 +228,6 @@
           "type": "string"
         },
         "retries": {
-          "default": 0,
           "description": "How many times gg has **re-dispatched** this issue after an assigned agent finished\nwithout completing it. Bounded by the capability's `maxRetries`; once exhausted the\nissue is marked [`Failed`](GgIssueStatus::Failed). `0` until the first retry.",
           "format": "uint32",
           "minimum": 0,
@@ -258,7 +257,8 @@
         "completionCriteria",
         "status",
         "blockedBy",
-        "agent"
+        "agent",
+        "retries"
       ],
       "type": "object"
     },
@@ -641,14 +641,12 @@
           "type": ["integer", "null"]
         },
         "maxLenDescription": {
-          "default": null,
           "description": "The maximum length, in characters, of a memory's one-line **description** — the part\nof a memory a strategy shows up front (every line of a\n[`markdown`](MEMORY_STRATEGY_MARKDOWN) index is one), which is why a run that wants a\ntight index bounds it here rather than trusting the model to be terse. Off by default\n(`null` is unlimited) and applies under every strategy.",
           "format": "uint64",
           "minimum": 0,
           "type": ["integer", "null"]
         },
         "maxLenIndex": {
-          "default": null,
           "description": "The maximum length, in characters, of the pinned **index** the\n[`markdown`](MEMORY_STRATEGY_MARKDOWN) strategy keeps — the one limit that bounds how\nmany memories that strategy can hold, since every one of them must be listed there.\n`null` for every other strategy, and when the index is unlimited.",
           "format": "uint64",
           "minimum": 0,
@@ -661,7 +659,6 @@
           "type": ["integer", "null"]
         },
         "maxResults": {
-          "default": null,
           "description": "The most memories one `search_memories` call reports under the\n[`keyword-search`](MEMORY_STRATEGY_KEYWORD_SEARCH) strategy. `null` for every other\nstrategy — it is a page size rather than a bound on what may be stored, and is\nreported alongside the limits because it is resolved from the same params.",
           "format": "uint64",
           "minimum": 0,
@@ -1585,7 +1582,6 @@
           "type": "string"
         },
         "images": {
-          "default": [],
           "description": "Descriptors of any images attached to the message — the media type and size of\neach, never its bytes (see [`GgLoggedImage`]). Empty for a text-only message.",
           "items": {
             "$ref": "#/$defs/GgLoggedImage"
@@ -1611,7 +1607,6 @@
           "type": ["string", "null"]
         },
         "toolCalls": {
-          "default": [],
           "description": "The tool calls an assistant message requested, in order (empty for every other\nrole).",
           "items": {
             "$ref": "#/$defs/GgLoggedToolCall"
@@ -1623,7 +1618,7 @@
           "type": "string"
         }
       },
-      "required": ["type", "id", "role", "tokens"],
+      "required": ["type", "id", "role", "toolCalls", "images", "tokens"],
       "type": "object"
     },
     {
@@ -1756,11 +1751,6 @@
         },
         "peak": {
           "$ref": "#/$defs/GgMemoryPeak",
-          "default": {
-            "count": 0,
-            "totalLen": 0,
-            "totalLines": 0
-          },
           "description": "The high-water marks this run's memories reached, so a set that was curated back\ndown still reports how much it once held."
         },
         "scope": {
@@ -1800,6 +1790,7 @@
         "count",
         "totalLen",
         "totalLines",
+        "peak",
         "caps",
         "scope",
         "writable"
@@ -2263,7 +2254,6 @@
           "type": "string"
         },
         "from": {
-          "default": null,
           "description": "The state the machine came from, or `None` for the entry state.",
           "type": ["string", "null"]
         },
@@ -2302,7 +2292,6 @@
           "type": "array"
         },
         "state": {
-          "default": null,
           "description": "The [FSM state](GgFsmState::name) the successor stands in once the succession has been\napplied, when it stands in one at all.\n\nSet for every [`fsm`](GgAgentTransitionKind::Fsm) transition, and also for an\n[`exec`](GgAgentTransitionKind::Exec) whose target is an **FSM shell**: gg resolves such\na handoff to the machine's entry state, so the successor genuinely enters a process and\nthe record has to say which state it entered. `None` for an `exec` into an ordinary\nprofile and for a [`fork`](GgAgentTransitionKind::Fork), neither of which moves the\nagent within a machine — a fork of an agent standing in a state is a second worker, not\na second position, and carries no state of its own.",
           "type": ["string", "null"]
         },

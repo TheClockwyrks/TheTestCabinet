@@ -87,7 +87,6 @@
       "type": "integer"
     },
     "fields": {
-      "default": [],
       "description": "The fields, by name ascending (Unicode code point).",
       "items": {
         "$ref": "#/$defs/GgFieldInfo"
@@ -95,7 +94,7 @@
       "type": "array"
     }
   },
-  "required": ["documents"],
+  "required": ["documents", "fields"],
   "title": "GgFieldCatalog",
   "type": "object"
 }

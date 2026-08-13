@@ -56,7 +56,6 @@
       "description": "One bucket of an aggregated result.",
       "properties": {
         "key": {
-          "default": [],
           "description": "The composite key, one part per group-by key in stage order. Empty for the\ngrand-total bucket of an ungrouped `stats`.",
           "items": {
             "$ref": "#/$defs/GgBucketKeyPart"
@@ -70,7 +69,6 @@
           "type": "integer"
         },
         "values": {
-          "default": [],
           "description": "The aggregated columns, in stage order.",
           "items": {
             "$ref": "#/$defs/GgAggValue"
@@ -78,7 +76,7 @@
           "type": "array"
         }
       },
-      "required": ["n"],
+      "required": ["key", "n", "values"],
       "type": "object"
     },
     "GgBucketKeyPart": {
@@ -179,12 +177,11 @@
       "type": "integer"
     },
     "truncated": {
-      "default": false,
       "description": "Whether a `limit` stage cut rows off the result, so a view can say \"showing the\nfirst N\" rather than implying it showed everything.",
       "type": "boolean"
     }
   },
-  "required": ["totalRuns"],
+  "required": ["totalRuns", "truncated"],
   "title": "GgQueryResponse",
   "type": "object"
 }

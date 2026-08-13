@@ -650,8 +650,8 @@ fn write_record(
     // The provenance the walk folded out of the journal's `Seed`/`Agent` lines. Both are
     // written as values rather than as segments because both are bounded by the run's shape
     // rather than its length, and both are supersedable (see `Provenance`). A journal that
-    // carried neither — every journal a pre-M7.5 gg wrote — yields an empty envelope and an
-    // empty table, which is what `#[serde(default)]` means on the record: a reader asks the
+    // carried neither — a session that died before it stated its seed or spawned its root —
+    // yields an empty envelope and an empty table, both of them written: a reader asks the
     // table whether an agent row exists, never the format version.
     out.write_all(b",")?;
     write_field(&mut out, "seed", &provenance.seed)?;

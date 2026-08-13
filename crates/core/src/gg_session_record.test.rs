@@ -185,14 +185,6 @@ fn the_request_shape_distinguishes_a_required_tool_call() {
     );
 }
 
-#[test]
-fn an_absent_role_reads_as_the_agents_own_client() {
-    let request: GgSessionRequest = serde_json::from_value(json!({ "messages": [0] }))
-        .expect("a request without a role deserializes");
-    assert_eq!(request.role, GgClientRole::Agent);
-    assert_eq!(request.shape, GgSessionRequestShape::Complete);
-}
-
 // --- provenance, seed, truncation -------------------------------------------
 
 #[test]
@@ -484,9 +476,9 @@ fn a_record_reports_which_of_its_texts_are_clips() {
     );
 }
 
-/// The clip table survives a round trip, and an absent table reads as one that clipped nothing.
+/// The clip table survives a round trip.
 #[test]
-fn the_clip_table_round_trips_and_defaults_to_empty() {
+fn the_clip_table_round_trips() {
     let mut record = GgSessionRecord::new("run_1", capability_set());
     record.texts = vec!["tail".to_string()];
     record.clips = vec![GgSessionTextClip {
@@ -495,12 +487,6 @@ fn the_clip_table_round_trips_and_defaults_to_empty() {
         original_id: fingerprint_exact(b"a megabyte of build log"),
     }];
     let json = serde_json::to_value(&record).expect("serializes");
-    let back: GgSessionRecord = serde_json::from_value(json.clone()).expect("round trips");
+    let back: GgSessionRecord = serde_json::from_value(json).expect("round trips");
     assert_eq!(back.clips, record.clips);
-
-    let mut without = json;
-    without.as_object_mut().unwrap().remove("clips");
-    let back: GgSessionRecord =
-        serde_json::from_value(without).expect("an older record still reads");
-    assert!(back.clips.is_empty());
 }

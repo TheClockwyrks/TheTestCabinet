@@ -7,11 +7,11 @@
       "additionalProperties": {
         "$ref": "https://docs.testcabinet.ai/schema/gg/query.schema.json#/$defs/GgValue"
       },
-      "default": {},
       "description": "The run's fields, keyed by dotted name. A `BTreeMap` so serialization is\nkey-ordered and two builds of the same run are byte-identical.",
       "type": "object"
     }
   },
+  "required": ["fields"],
   "title": "GgRunDoc",
   "type": "object"
 }
