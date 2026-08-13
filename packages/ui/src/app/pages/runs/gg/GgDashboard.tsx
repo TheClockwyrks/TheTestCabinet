@@ -19,12 +19,7 @@ import {
   shortTokens,
   type GgErrorTally,
 } from "./useGgRunState";
-import {
-  pricedSlots,
-  runSlotUsage,
-  useGgCostBreakdown,
-  useGgSpend,
-} from "./ggCost";
+import { pricedSlots, useGgCostBreakdown, useGgSpend } from "./ggCost";
 import {
   formatThroughput,
   formatThroughputValue,
@@ -154,23 +149,17 @@ export function GgDashboard({
   timeoutSeconds,
   children,
 }: GgDashboardProps) {
-  // The run's spend, per (slot, model): the split gg's attributed `usage` deltas carry
-  // from the first turn, or — on a stream whose deltas carry no attribution — the same
-  // rollup reconstructed from each agent's own tally at the model it was bound to. Either
-  // way it is available *while the run runs*, rather than waiting on the end-of-agent
-  // `slot_usage` rollups.
-  const runSlots = useMemo(
-    () => runSlotUsage(slotUsage, perAgent, agentForest),
-    [slotUsage, perAgent, agentForest],
-  );
+  // The run's spend, per (slot, model) — the split gg's attributed `usage` deltas carry
+  // from the first turn, so it is available *while the run runs* rather than waiting on
+  // the end-of-agent `slot_usage` rollups.
   // Priced per (profile, model) and summed — never at one blanket rate — so a run that
   // spans several models gets the same per-class split a single-model run does.
   const costBreakdown = useGgCostBreakdown(
-    useMemo(() => pricedSlots(runSlots), [runSlots]),
+    useMemo(() => pricedSlots(slotUsage), [slotUsage]),
   );
   // And where that money went: per slot (which role spent it, and on which model) and
   // per model (the same spend folded across the slots one model is bound to).
-  const spend = useGgSpend(runSlots);
+  const spend = useGgSpend(slotUsage);
 
   // How fast the run generates: each agent's tokens over the time it spent inside its
   // model calls, folded onto the models that did the generating.

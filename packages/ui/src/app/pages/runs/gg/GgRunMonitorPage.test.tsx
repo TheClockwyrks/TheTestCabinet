@@ -2290,7 +2290,7 @@ describe("GgRunMonitorPage", () => {
   it("nests subagents as folders under their spawner, each read on its own file", () => {
     // The root spawns a reviewer (isolated worktree; runs, returns, merges → done)
     // and a builder (main tree; still running); the root is blocked waiting on them.
-    // A per-slot usage rollup lands and a one-stage workflow ran.
+    // The reviewer's attributed spend lands (and the rollup beside it).
     const events: HarnessEvent[] = [
       sessionStarted(),
       ggFrom("agent-0", "root", {
@@ -2321,6 +2321,21 @@ describe("GgRunMonitorPage", () => {
       }),
       ggFrom("agent-1", "root", { type: "agent_status", status: "running" }),
       ggFrom("root", undefined, { type: "agent_status", status: "blocked" }),
+      // The reviewer's spend, attributed to the profile and model that took the turn —
+      // which is what the run's per-slot split is summed from, live.
+      ggFrom("agent-0", "root", {
+        type: "usage",
+        slot: "reviewer",
+        modelId: "claude-haiku-4-8",
+        tokens: {
+          uncachedInput: 1200,
+          cachedInput: 0,
+          output: 300,
+          reasoning: null,
+        },
+        cost: { comparable: 0.0021, actual: 0.0021 },
+      }),
+      // And the end-of-agent rollup gg streams beside it, restating the same tokens.
       gg({
         type: "slot_usage",
         slot: "reviewer",

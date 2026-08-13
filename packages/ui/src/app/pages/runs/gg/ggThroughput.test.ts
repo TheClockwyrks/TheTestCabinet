@@ -3,9 +3,8 @@
 // The rate is a pairing of two separately-recorded facts: the tokens an agent generated
 // (its `usage` deltas) and the time it spent inside its model calls (`turn_timing`'s
 // `requestMs`). These pin that pairing — that it folds onto the models agents were bound
-// to, that the run's overall figure is its whole generation over its whole model time
-// rather than the mean of the per-model rates, and that a stream recorded before gg timed
-// its turns still gets a rate from the latencies its prompts carry.
+// to, and that the run's overall figure is its whole generation over its whole model time
+// rather than the mean of the per-model rates.
 
 import { describe, expect, it } from "vitest";
 import type {
@@ -85,24 +84,6 @@ function timing(agentId: string, requestMs: number): HarnessEvent {
   } as GgTelemetryKind);
 }
 
-// A turn's prompt record, carrying the same model-call latency on a stream recorded
-// before gg timed its turns.
-function prompt(agentId: string, durationMs: number): HarnessEvent {
-  return gg(agentId, {
-    type: "prompt",
-    request: [],
-    totalTokens: 0,
-    finishReason: "stop",
-    tokens: {
-      uncachedInput: null,
-      cachedInput: null,
-      output: null,
-      reasoning: null,
-    },
-    durationMs,
-  } as GgTelemetryKind);
-}
-
 const NAMES: Record<string, string> = {
   "vendor/big": "Big 1",
   "vendor/small": "Small 1",
@@ -177,20 +158,6 @@ describe("a gg run's generation rate", () => {
       ["vendor/small", 600, 3000, 200],
       ["vendor/big", 100, 2000, 50],
     ]);
-  });
-
-  it("falls back to the latencies a run's prompts carry when it timed no turns", () => {
-    // A stream recorded before gg emitted `turn_timing`: the model-call latency is still on
-    // each turn's prompt, so the rate reads rather than reporting nothing.
-    const throughput = throughputOf([
-      spawn("root", "root", "vendor/big"),
-      generated("root", 250),
-      prompt("root", 1000),
-      prompt("root", 1500),
-    ]);
-
-    expect(throughput.modelMs).toBe(2500);
-    expect(throughput.overall).toBe(100);
   });
 
   it("counts generation it cannot attribute to a model toward the rate anyway", () => {

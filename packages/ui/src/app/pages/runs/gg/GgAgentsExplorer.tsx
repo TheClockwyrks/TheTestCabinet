@@ -62,7 +62,7 @@ import {
 } from "./ggAgentEntries";
 import { GgModuleHeader, ModuleContents } from "./GgModuleViews";
 import { useGgExplorerNav } from "./GgExplorerNav";
-import { agentPricedSlots, useGgCostBreakdown } from "./ggCost";
+import { pricedSlots, useGgCostBreakdown } from "./ggCost";
 import { agentThroughput } from "./ggThroughput";
 import {
   ContextUsageRing,
@@ -898,13 +898,9 @@ function OverviewFile({
   transitions: AgentTransition[];
 }) {
   // Price this agent's own usage: its own per-(profile, model) tallies, summed from the
-  // attributed `usage` deltas on its own stream, falling back to its aggregate tally at
-  // the model its spawn bound it to when a stream carried no attribution.
-  const pricedSlots = useMemo(
-    () => agentPricedSlots(state.slotUsage, state.usage, node.modelId),
-    [state.slotUsage, state.usage, node.modelId],
-  );
-  const costBreakdown = useGgCostBreakdown(pricedSlots);
+  // attributed `usage` deltas on its own stream.
+  const priced = useMemo(() => pricedSlots(state.slotUsage), [state.slotUsage]);
+  const costBreakdown = useGgCostBreakdown(priced);
   // How fast this one instance generated, across every call it made — the run-wide rate on
   // the Dashboard narrowed to the instance whose tokens these are.
   const throughput = useMemo(() => agentThroughput(state), [state]);

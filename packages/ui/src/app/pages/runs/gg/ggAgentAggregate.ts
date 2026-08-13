@@ -17,9 +17,9 @@
 // ablation can tell you and an absent row says it silently.
 //
 // Instances are grouped by the profile name their `agent_spawned` named (the wire's `slot`,
-// which is the agent profile — see the telemetry contract). The main agent on a stream
-// recorded before gg named it falls back to the configuration's first profile, which is the
-// root by definition.
+// which is the agent profile — see the telemetry contract). The main agent read before its
+// own spawn has arrived falls back to the configuration's first profile, which is the root by
+// definition.
 
 import { useMemo } from "react";
 import type {
@@ -30,8 +30,8 @@ import type {
 import { useFindModelOptional } from "../../../data/useModels";
 import type { ModelNameLookup, ModelPriceLookup, PricedSlot } from "./ggCost";
 import {
-  agentPricedSlots,
   deriveGgCostBreakdown,
+  pricedSlots,
   type GgCostBreakdown,
 } from "./ggCost";
 import {
@@ -150,8 +150,8 @@ export interface GgAgentSurfaceSummary {
   /**
    * Which SDK types an `openDocsView` opened beside a function for this profile's instances —
    * `off`, `return` or `return-and-parameters`, as gg resolved it. Null for a tool-calling
-   * profile, for a record written before gg reported the mode, and — like
-   * {@link executionMode} — where instances somehow disagree.
+   * profile, which opens no documentation, and — like {@link executionMode} — where instances
+   * somehow disagree.
    *
    * It is here because the mode is an arm of a comparison a single run can hold both sides
    * of: what it cost is read off the documentation band of the very agents this summary is
@@ -162,8 +162,8 @@ export interface GgAgentSurfaceSummary {
   /**
    * How many instances this union was taken over — the denominator every `offeredBy` reads
    * against. It counts the instances that REPORTED a surface, not every instance of the
-   * profile, so a run that mixes reporting and pre-`agent_surface` instances still reads
-   * "offered by all of them" for a tool they all held.
+   * profile, so an instance read before its own `agent_surface` arrived does not drag the
+   * figure down for a tool every reporting instance held.
    */
   reportingInstances: number;
   /** Every gg tool any instance was offered, in the order the model was shown them. */
@@ -303,9 +303,9 @@ export interface GgAgentSummary {
    * present here and absent there was offered and ignored, and a tool absent from both was
    * never on the table at all.
    *
-   * Null when no instance reported a surface — a profile the run never instantiated, and
-   * every profile of a run recorded before gg emitted `agent_surface`. A consumer must then
-   * show nothing rather than an empty toolset, which would read as "offered none".
+   * Null when no instance reported a surface — a profile the run never instantiated, and one
+   * whose instances have not opened yet. A consumer must then show nothing rather than an
+   * empty toolset, which would read as "offered none".
    */
   surface: GgAgentSurfaceSummary | null;
 }
@@ -397,8 +397,7 @@ export function mergeCallBreakdowns(
 /**
  * Union several instances' offered surfaces into their profile's — see
  * {@link GgAgentSurfaceSummary}. Null for no surfaces at all, which is what keeps a profile
- * the run never ran (and every profile of a pre-`agent_surface` record) rendering nothing
- * instead of an empty one.
+ * the run never ran rendering nothing instead of an empty one.
  *
  * Order is the order the model was shown things — the first instance's registry order, with
  * anything a later instance adds appended — never a frequency sort, because the offered set
@@ -487,10 +486,10 @@ export function mergeAgentSurfaces(
 }
 
 /**
- * The profile an instance ran under: the name its spawn carried, or — for the main agent on
- * a stream recorded before gg named it — the configuration's first profile, which is the
- * root by definition. An instance the stream never named at all (a placeholder built from an
- * out-of-order status event) is grouped under {@link UNNAMED_AGENT} rather than dropped.
+ * The profile an instance ran under: the name its spawn carried, or — for the main agent read
+ * before its own `agent_spawned` has arrived — the configuration's first profile, which is
+ * the root by definition. An instance the stream never named at all (a placeholder built from
+ * an out-of-order status event) is grouped under {@link UNNAMED_AGENT} rather than dropped.
  */
 export function agentProfileName(
   node: AgentTreeNode,
@@ -553,7 +552,7 @@ export function deriveGgAgentSummaries(
     const mine = instances.filter((entry) => entry.profile === name);
 
     const usage = emptyTally();
-    const pricedSlots: PricedSlot[] = [];
+    const priced: PricedSlot[] = [];
     // Each instance's call breakdown, on that instance's own surface — the mode is a fact
     // about the incarnation, and only the instance can answer which record its calls are on.
     const callParts: GgCallBreakdown[] = [];
@@ -612,9 +611,7 @@ export function deriveGgAgentSummaries(
       compactions += state.compactions.length;
       generated += generatedTokens(state.usage);
       modelMs += agentModelMs(state);
-      pricedSlots.push(
-        ...agentPricedSlots(state.slotUsage, state.usage, node.modelId),
-      );
+      priced.push(...pricedSlots(state.slotUsage));
       callParts.push(
         ggCallBreakdown(
           state,
@@ -669,8 +666,8 @@ export function deriveGgAgentSummaries(
       turns,
       errors,
       usage,
-      pricedSlots,
-      cost: deriveGgCostBreakdown(pricedSlots, priceOf),
+      pricedSlots: priced,
+      cost: deriveGgCostBreakdown(priced, priceOf),
       peakFullness,
       peakTokens,
       meanPeakFullness: fullnessCount > 0 ? fullnessSum / fullnessCount : null,

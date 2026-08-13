@@ -10,8 +10,7 @@
 // (profile, model) and summed, never one blanket rate over the run's tokens. gg stamps
 // every `usage` delta with the profile and model that spent it, so that split is exact
 // and available from the run's first turn; the priced units below are those per-(slot,
-// model) tallies. Only a stream recorded before gg attributed its deltas needs the
-// fallback — the scope's aggregate tally priced at the model its agent is bound to.
+// model) tallies.
 //
 // The same per-(slot, model) tallies also carry *where* the money went, which this
 // module derives as the two readings of one accounting: per slot (which role spent it)
@@ -24,18 +23,10 @@
 // distinct cached price, rather than dropping those tokens from the split.
 
 import { useMemo } from "react";
-import type { CostMetrics, TokenMetrics } from "@test-cabinet/run-record";
+import type { TokenMetrics } from "@test-cabinet/run-record";
 import { useFindModelOptional } from "../../../data/useModels";
 import type { ModelPrices } from "../../../data/models";
-import {
-  ROOT_ID,
-  accumulateSlotUsage,
-  slotUsageKey,
-  type AgentTreeNode,
-  type DerivedGgState,
-  type SlotUsage,
-  type UsageTally,
-} from "./useGgRunState";
+import { slotUsageKey, type SlotUsage } from "./useGgRunState";
 
 // A run's cost broken into the four token classes, in USD. The `total` is their
 // sum — the derived total, which may differ slightly from the run's recorded
@@ -113,115 +104,14 @@ export function deriveGgCostBreakdown(
   return { ...acc, total };
 }
 
-// A tally's token classes as a `TokenMetrics`, for pricing a scope whose usage is only
-// an aggregate — a stream recorded before gg attributed its deltas.
-function tokensFromTally(usage: UsageTally): TokenMetrics {
-  return {
-    uncachedInput: usage.uncachedInput,
-    cachedInput: usage.cachedInput,
-    output: usage.output,
-    reasoning: usage.reasoning,
-  };
-}
-
-/**
- * The priceable units of **one agent's** spend: its per-(slot, model) tallies, or — on a
- * stream whose deltas carry no attribution — its whole tally priced at the model its
- * agent is bound to, which for a single agent is exact.
- */
-export function agentPricedSlots(
-  slotUsage: readonly SlotUsage[],
-  usage: UsageTally,
-  modelId: string | null,
-): PricedSlot[] {
-  if (slotUsage.length > 0) return pricedSlots(slotUsage);
-  if (!modelId || !usage.anyTokens) return [];
-  return [{ tokens: tokensFromTally(usage), modelId }];
-}
-
 /**
  * The priceable units of a resolved per-`(slot, model)` rollup — every entry's tokens
  * paired with the model that produced them, so each is priced at its own model's rate.
- * Pair with {@link runSlotUsage} for a whole run.
+ *
+ * Works at either grain: one agent's own tallies, or a whole run's.
  */
 export function pricedSlots(slots: readonly SlotUsage[]): PricedSlot[] {
   return slots.map((s) => ({ tokens: s.tokens, modelId: s.modelId }));
-}
-
-/**
- * A **whole run's** per-`(slot, model)` usage, for the read-out of *where* its money
- * went.
- *
- * Prefers the run's own split, which gg's attributed `usage` deltas make available from
- * the first turn. A stream whose deltas carry no attribution is instead rolled up agent
- * by agent — each agent's own tally under the slot and model its `agent_spawned` bound
- * it to, with agents sharing a `(slot, model)` summed into one entry — so the split
- * still reads *while the run happens* rather than only once agents end and stream the
- * `slot_usage` rollups. That per-agent pass is the partition of the run, so it neither
- * double-counts nor drops anyone's spend.
- */
-export function runSlotUsage(
-  slotUsage: readonly SlotUsage[],
-  perAgent: Map<string, DerivedGgState>,
-  agentForest: readonly AgentTreeNode[],
-): SlotUsage[] {
-  if (slotUsage.length > 0) return [...slotUsage];
-  // First-seen `(slot, model)` order, so the fallback lists the run's slots in the order
-  // the run introduced them.
-  const byKey = new Map<string, SlotUsage>();
-  const add = (
-    slot: string,
-    modelId: string,
-    tokens: TokenMetrics,
-    cost: CostMetrics | null,
-  ) => {
-    const key = slotUsageKey(slot, modelId);
-    let entry = byKey.get(key);
-    if (!entry) {
-      entry = {
-        slot,
-        modelId,
-        tokens: {
-          uncachedInput: null,
-          cachedInput: null,
-          output: null,
-          reasoning: null,
-        },
-        cost: null,
-      };
-      byKey.set(key, entry);
-    }
-    accumulateSlotUsage(entry, tokens, cost);
-  };
-  const walk = (node: AgentTreeNode) => {
-    const state = perAgent.get(node.id);
-    if (state) {
-      if (state.slotUsage.length > 0) {
-        // This agent's deltas *were* attributed; take them as they are.
-        for (const s of state.slotUsage)
-          add(s.slot, s.modelId, s.tokens, s.cost);
-      } else if (node.modelId && state.usage.anyTokens) {
-        // They were not: the agent's own tally belongs wholly to the slot and model its
-        // spawn bound it to. An agent whose spawn named no slot (the main agent, which
-        // is never spawned) reads under its own id, the same name it carries everywhere
-        // else.
-        add(
-          node.slot ?? (node.id === ROOT_ID ? "root" : node.id),
-          node.modelId,
-          tokensFromTally(state.usage),
-          state.usage.comparable == null && state.usage.actual == null
-            ? null
-            : {
-                comparable: state.usage.comparable,
-                actual: state.usage.actual,
-              },
-        );
-      }
-    }
-    node.children.forEach(walk);
-  };
-  agentForest.forEach(walk);
-  return [...byKey.values()];
 }
 
 /**

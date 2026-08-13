@@ -7,11 +7,10 @@
 // turn above a 400-token specification carried for fifty — and get the tuning advice exactly
 // backwards.
 //
-// So these assert the residency arithmetic, the two attribution paths for a file view (the
-// selector tag gg records, and the `read_file` fallback for streams recorded before it), the
-// honest reporting of what neither path resolves, that an agent-composed text view is
-// attributed by its label on the same footing, and that a profile's several instances sum
-// into one accounting.
+// So these assert the residency arithmetic, the attribution of a file view to the selector
+// tag gg records on it, the honest reporting of a view that carries none, that an
+// agent-composed text view is attributed by its label on the same footing, and that a
+// profile's several instances sum into one accounting.
 //
 // They also pin the one band that is not a single thing: `skill` carries both pinned read skills
 // and the documentation views `view.openDocsView` opens, and only the latter are views.
@@ -201,36 +200,9 @@ describe("attributeGgContext", () => {
     );
   });
 
-  it("falls back to the read_file call when a stream carried no selector tag", () => {
-    // The pre-label stream: the view carries only the `toolCallId` of the read that produced
-    // it, so the path is recovered from the assistant call's arguments.
-    const state = reduceGgEvents([
-      message("m-call", 20, {
-        role: "assistant",
-        toolCalls: [
-          { id: "c9", name: "read_file", args: { path: "levels/1.json" } },
-        ],
-      }),
-      message("m-view", 480, { toolCallId: "c9" }),
-      prompt(
-        [
-          ["m-call", "assistant"],
-          ["m-view", "file_view"],
-        ],
-        { uncached: 500 },
-      ),
-    ]);
-
-    const attribution = attributeGgContext(state, "vendor/m", priceOf);
-    expect(attribution.byView.map((r) => r.key)).toEqual([
-      "file:levels/1.json",
-    ]);
-    expect(attribution.unattributedViewTokens).toBe(0);
-  });
-
   it("reports a file view it cannot place rather than dropping it from the band", () => {
-    // A pinned specification re-framed by a compaction: it is still a file view, but it has
-    // neither a tag (an older stream) nor the tool-call pairing a read would have left.
+    // A file view carrying no selector tag: it is still a file view, and dropping it would
+    // let the view list understate the band it decomposes.
     const state = reduceGgEvents([
       message("m-orphan", 400, { role: "user" }),
       prompt([["m-orphan", "file_view"]], { uncached: 400 }),

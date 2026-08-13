@@ -3,10 +3,8 @@
 // A gg run binds one model per agent profile, so the money it spends is only legible
 // when each token class is priced at the rate of the model that produced it. gg stamps
 // every `usage` delta with the profile and model that spent it; these pin that the fold
-// keeps that attribution, that a run spanning several models therefore gets the same
-// per-class split a single-model run does — from its first turn, not once its agents
-// end — and that the pre-attribution streams still recorded fall back to something real
-// rather than to "no breakdown".
+// keeps that attribution, and that a run spanning several models therefore gets the same
+// per-class split a single-model run does — from its first turn, not once its agents end.
 //
 // The same attribution answers *where* the money went, two ways: per slot (which role
 // spent it, on which model) and per model (folded across the slots one model is bound
@@ -20,11 +18,9 @@ import type {
 import type { HarnessEvent } from "../../../../client/types";
 import type { ModelPrices } from "../../../data/models";
 import {
-  agentPricedSlots,
   deriveGgCostBreakdown,
   deriveGgSpend,
   pricedSlots,
-  runSlotUsage,
   type ModelNameLookup,
   type ModelPriceLookup,
 } from "./ggCost";
@@ -67,24 +63,6 @@ function usage(
       cachedInput: tokens.cached ?? null,
       output: tokens.output ?? null,
       reasoning: tokens.reason ?? null,
-    },
-    cost: { comparable: cost, actual: cost },
-  } as GgTelemetryKind);
-}
-
-// The same delta as a stream recorded before gg attributed its deltas carried it.
-function bareUsage(
-  agentId: string,
-  tokens: { input?: number; output?: number },
-  cost: number,
-): HarnessEvent {
-  return gg(agentId, {
-    type: "usage",
-    tokens: {
-      uncachedInput: tokens.input ?? null,
-      cachedInput: null,
-      output: tokens.output ?? null,
-      reasoning: null,
     },
     cost: { comparable: cost, actual: cost },
   } as GgTelemetryKind);
@@ -193,9 +171,7 @@ describe("gg per-model cost", () => {
 
     // …and prices per class, each at its own model's rate.
     const breakdown = deriveGgCostBreakdown(
-      pricedSlots(
-        runSlotUsage(state.slotUsage, reduceGgEventsPerAgent(events), []),
-      ),
+      pricedSlots(state.slotUsage),
       priceOf,
     );
     expect(breakdown).toEqual({
@@ -244,58 +220,6 @@ describe("gg per-model cost", () => {
     expect(reduceGgEvents(events).usage.comparable).toBe(3);
   });
 
-  it("prices a pre-attribution multi-model stream agent by agent", () => {
-    // A stream recorded before gg attributed its deltas: the models are known only
-    // from each agent's spawn, and no rollup has arrived. Attributing each agent's own
-    // tally to its own model still yields a real split.
-    const events = [
-      spawn("root", "root", "vendor/expensive"),
-      spawn("agent-0", "reviewer", "vendor/cheap", "root"),
-      bareUsage("root", { input: 1000, output: 200 }, 1),
-      bareUsage("agent-0", { input: 5000 }, 2),
-    ];
-    const state = reduceGgEvents(events);
-    expect(state.slotUsage).toEqual([]);
-
-    const breakdown = deriveGgCostBreakdown(
-      pricedSlots(
-        runSlotUsage(
-          state.slotUsage,
-          reduceGgEventsPerAgent(events),
-          state.agentForest,
-        ),
-      ),
-      priceOf,
-    );
-    expect(breakdown).toEqual({
-      input: 1000 * 1e-5 + 5000 * 1e-7,
-      cachedInput: 0,
-      reasoning: 0,
-      output: 200 * 1e-4,
-      total: 1000 * 1e-5 + 5000 * 1e-7 + 200 * 1e-4,
-    });
-  });
-
-  it("prices one agent from its own model when its deltas carry no attribution", () => {
-    const events = [
-      spawn("agent-0", "reviewer", "vendor/cheap", "root"),
-      bareUsage("agent-0", { input: 5000, output: 100 }, 2),
-    ];
-    const state = reduceGgEventsPerAgent(events).get("agent-0")!;
-    const slots = agentPricedSlots(
-      state.slotUsage,
-      state.usage,
-      "vendor/cheap",
-    );
-    expect(deriveGgCostBreakdown(slots, priceOf)).toEqual({
-      input: 5000 * 1e-7,
-      cachedInput: 0,
-      reasoning: 0,
-      output: 100 * 1e-6,
-      total: 5000 * 1e-7 + 100 * 1e-6,
-    });
-  });
-
   it("splits where the money went per slot, naming each slot's model", () => {
     // Three slots on two models: the same cheap model is bound to both the reviewer and
     // the summarizer, which is exactly why a per-slot read alone cannot say what that
@@ -342,71 +266,6 @@ describe("gg per-model cost", () => {
     ).toEqual([
       [null, "vendor/cheap", 7500, 5],
       [null, "vendor/expensive", 1000, 1],
-    ]);
-  });
-
-  it("rolls a stream with no attribution up agent by agent, mid-run", () => {
-    // The same pre-attribution stream, still mid-run: no `slot_usage` rollup exists, so
-    // the per-slot read has to come from each agent's own tally under the slot and model
-    // its spawn bound it to — otherwise "where the money went" stays blank until the run
-    // ends. Two agents share the cheap model's slot, and their spend sums into one entry.
-    const events = [
-      spawn("root", "root", "vendor/expensive"),
-      spawn("agent-0", "reviewer", "vendor/cheap", "root"),
-      spawn("agent-1", "reviewer", "vendor/cheap", "root"),
-      bareUsage("root", { input: 1000, output: 200 }, 1),
-      bareUsage("agent-0", { input: 5000 }, 2),
-      bareUsage("agent-1", { input: 2000 }, 3),
-    ];
-    const state = reduceGgEvents(events);
-    // Nothing attributed: the reduction itself has no split to offer.
-    expect(state.slotUsage).toEqual([]);
-
-    const rolled = runSlotUsage(
-      state.slotUsage,
-      reduceGgEventsPerAgent(events),
-      state.agentForest,
-    );
-    // An agent's aggregate tally cannot say "unreported" — it sums into a number — so a
-    // class no delta reported reads as 0 here where an attributed rollup would keep null.
-    // Nothing downstream distinguishes the two (both cost nothing and add nothing).
-    expect(
-      rolled.map((s) => [s.slot, s.modelId, s.tokens, s.cost?.comparable]),
-    ).toEqual([
-      [
-        "root",
-        "vendor/expensive",
-        {
-          uncachedInput: 1000,
-          cachedInput: 0,
-          output: 200,
-          reasoning: 0,
-        },
-        1,
-      ],
-      [
-        "reviewer",
-        "vendor/cheap",
-        // The two reviewer agents summed — one slot, one model, one row.
-        {
-          uncachedInput: 7000,
-          cachedInput: 0,
-          output: 0,
-          reasoning: 0,
-        },
-        5,
-      ],
-    ]);
-    // Which is what the spend read-out is derived from.
-    expect(
-      deriveGgSpend(rolled, priceOf, nameOf).perSlot.map((row) => [
-        row.slot,
-        row.modelName,
-        row.cost,
-      ]),
-    ).toEqual([
-      ["reviewer", "Cheap 1", 5],
-      ["root", "Expensive 1", 1],
     ]);
   });
 

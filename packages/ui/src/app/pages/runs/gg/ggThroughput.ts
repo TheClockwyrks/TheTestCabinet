@@ -79,14 +79,10 @@ export function generatedTokens(usage: UsageTally): number {
 
 // The milliseconds one agent spent waiting on its model. Summed from `turn_timing`, which
 // gg emits once per turn whatever the run's capabilities — so the rate is available on
-// every run, not only one that logged its prompts. A stream recorded before gg timed its
-// turns falls back to the per-request latencies on the prompts themselves, which exist
-// only where context visibility was on; hence the fallback rather than the source.
+// every run, not only one that logged its prompts.
 export function agentModelMs(state: DerivedGgState): number {
   let ms = 0;
   for (const timing of state.turnTimings) ms += timing.requestMs;
-  if (ms > 0) return ms;
-  for (const prompt of state.prompts) ms += prompt.durationMs ?? 0;
   return ms;
 }
 

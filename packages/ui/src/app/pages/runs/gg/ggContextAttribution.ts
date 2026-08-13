@@ -38,12 +38,12 @@
 // A **view** — a file the agent opened, a value it composed and showed itself, or a page of
 // tool documentation it opened — is attributed to its *selector* by the
 // [tag](PooledMessage.label) gg records on the pooled message: a path for a file view, the
-// agent's own label for a text view, the function's name for a docs view. A view gg could not
-// determine a selector for falls back to the `read_file` call the view answers (matching its
-// `toolCallId` to the arguments of the assistant call that made it), which covers an ordinary
-// read but not a pinned, autoloaded specification whose `tool` message was re-framed by a
-// compaction. What neither resolves is reported as unattributed rather than dropped, so the
-// view list never silently understates the bands it decomposes.
+// agent's own label for a text view, the function's name for a docs view. The tag survives
+// what the message envelope does not, which is why it is the attribution rather than the
+// call the view answers: a pinned, autoloaded specification re-framed by a compaction keeps
+// its path and loses its `toolCallId` pairing. A view carrying no tag at all is reported as
+// unattributed rather than dropped, so the view list never silently understates the bands it
+// decomposes.
 //
 // The view bands share one grain deliberately. They answer the same question — *which material
 // sat in this window, and what did keeping it cost* — and an operator tuning a configuration
@@ -321,39 +321,15 @@ function viewKindOf(
 }
 
 /**
- * The selector a pooled view message shows: the tag gg records on it — a path for a file view,
- * the agent's label for a text view — or, for a view gg could not determine one for, the
- * `path` argument of the `read_file` call the view answers, resolved through `callPaths`. Null
- * when neither is available.
- */
-function viewSelectorOf(
-  message: PooledMessage,
-  callPaths: Map<string, string>,
-): string | null {
-  if (message.label) return message.label;
-  if (message.toolCallId) return callPaths.get(message.toolCallId) ?? null;
-  return null;
-}
-
-/**
  * Index every tool call the message log recorded, so a tool result can be traced back to the
- * call it answers: its tool name (for the per-tool breakdown) and, for a `read_file`, the
- * path it read (the fallback attribution for an untagged file view).
+ * call it answers by the tool's name — the join the per-tool breakdown is built on.
  */
-function indexToolCalls(pool: Map<string, PooledMessage>): {
-  names: Map<string, string>;
-  paths: Map<string, string>;
-} {
+function indexToolCalls(pool: Map<string, PooledMessage>): Map<string, string> {
   const names = new Map<string, string>();
-  const paths = new Map<string, string>();
   for (const message of pool.values()) {
-    for (const call of message.toolCalls) {
-      names.set(call.id, call.name);
-      const path = call.args?.["path"];
-      if (typeof path === "string" && path.length > 0) paths.set(call.id, path);
-    }
+    for (const call of message.toolCalls) names.set(call.id, call.name);
   }
-  return { names, paths };
+  return names;
 }
 
 /**
@@ -372,7 +348,7 @@ export function attributeGgContext(
   const pool = state.messagePool;
   if (pool.size === 0 || state.prompts.length === 0) return EMPTY_ATTRIBUTION;
 
-  const { names, paths } = indexToolCalls(pool);
+  const names = indexToolCalls(pool);
   const prices = modelId ? priceOf(modelId) : null;
   const uncachedRate = prices?.uncachedInput ?? null;
   // Cached input falls back to the uncached rate where the catalog lists no distinct one,
@@ -432,7 +408,7 @@ export function attributeGgContext(
 
       const kind = viewKindOf(ref.source, message);
       if (kind) {
-        const selector = viewSelectorOf(message, paths);
+        const selector = message.label ?? null;
         if (selector == null) unattributedViewTokens += shareBilled;
         else
           credit(

@@ -133,8 +133,7 @@ export interface GgAgentSurface {
   executionMode: string;
   // Which SDK types an `openDocsView` of a function opened beside it for this instance —
   // "off", "return" or "return-and-parameters" — as gg RESOLVED it, not as the profile
-  // wrote it. Null for a tool-calling instance, which opens no documentation, and for a
-  // stream recorded before gg reported the mode.
+  // wrote it. Null for a tool-calling instance, which opens no documentation.
   //
   // It is the arm of a per-agent A/B, which is why it rides on the instance rather than on
   // the run: one run may hold two agents in two modes, and a reader attributing the
@@ -170,7 +169,7 @@ export interface GgAgentSurface {
 // tracks the latest `agent_status` transition (defaulting to "running" on spawn);
 // `returnSummary` is set from `agent_returned` (which also implies "done");
 // `worktreeOutcome` is derived from `worktree_merged`; `surface` is set from
-// `agent_surface` and is absent on a stream recorded before gg reported it.
+// `agent_surface` and is absent until that event arrives.
 export interface AgentNode {
   // The agent's id: "root" for the root agent, "agent-N" for a subagent.
   id: string;
@@ -189,8 +188,8 @@ export interface AgentNode {
   // one; absent for an agent running in the shared main tree.
   worktree?: string;
   // The directory the agent's file and shell tools are rooted at — its worktree
-  // checkout when it has one, else the shared workspace. Absent on a stream recorded
-  // before gg reported it.
+  // checkout when it has one, else the shared workspace. Absent until the agent's spawn
+  // has arrived.
   cwd?: string;
   // The agent's latest lifecycle status.
   status: GgAgentStatus;
@@ -218,7 +217,7 @@ export interface AgentNode {
   // discarded, or left unmerged by a conflict.
   worktreeOutcome?: "merged" | "discarded" | "conflict";
   // What this instance was offered to call. ABSENT MEANS UNREPORTED, not "nothing
-  // offered": every stream recorded before gg emitted `agent_surface` has none, so a
+  // offered": an instance read before its `agent_surface` arrived has none, so a
   // read-out must render nothing at all rather than an empty toolset.
   surface?: GgAgentSurface;
   // When the agent's clock started — the envelope timestamp of the first event it
@@ -299,9 +298,7 @@ export interface AgentTransition {
 
 // One `context_breakdown` snapshot — a point on the stacked context-window graph.
 // `bySource` is always every `GgContextSource` band in fixed order (zeros
-// included), so the graph's bands stay stable across turns. A record written by an
-// older gg simply carries fewer of them, which the graph reads as zero rather than
-// as a gap.
+// included), so the graph's bands stay stable across turns.
 export interface ContextSnapshot {
   // The wall-clock time of the snapshot, for the graph's x-axis.
   timestamp: string;
@@ -500,8 +497,7 @@ export function toolFailureLabel(id: string): string {
 export interface GgErrorTally {
   // Turns that reported an outcome, whatever it was — the denominator. Deliberately NOT
   // `DerivedGgState.turnCount`, which counts `turn_started`: a turn that is still in
-  // flight has started and has no outcome yet, and a stream recorded before gg published
-  // outcomes has turns and no outcomes at all. Zero here means "nothing to report",
+  // flight has started and has no outcome yet. Zero here means "nothing to report",
   // never "nothing went wrong".
   turns: number;
   // Turns whose outcome was an error — the sum of `byKind`.
@@ -731,10 +727,7 @@ export interface GgMemoryHistory {
 
 // The latest `memory_state` — the model's self-curated memories, the strategy they
 // are organized by (see gg/memories), and the limits gg keeps them within — plus the
-// `memory_revision` stream folded into a per-memory history. `strategy` is empty on
-// records written before memories had more than one, which the panel reads as the
-// scratchpad they all were; `totalLines`, `peak` and `history` are likewise absent
-// (zero / empty) on records written before gg reported them.
+// `memory_revision` stream folded into a per-memory history.
 export interface GgMemoryState {
   strategy: string;
   memories: GgMemoryEntry[];
@@ -744,13 +737,11 @@ export interface GgMemoryState {
   peak: GgMemoryPeak;
   caps: GgMemoryCaps;
   // How the emitting agent binds this instance — "isolated" (its own), "shared",
-  // "inherited" or "read-only". Empty on records written before memory scoping
-  // existed, which were all isolated. Without it two agents holding ONE store are
+  // "inherited" or "read-only". Without it two agents holding ONE store are
   // indistinguishable from two agents that happen to hold the same notes.
   scope: string;
   // Whether the emitting agent may write this instance. False marks a read-only
-  // inherited handle onto another agent's memories. True on older records, which
-  // is what every holder was before read-only handles existed.
+  // inherited handle onto another agent's memories.
   writable: boolean;
   // Every memory the agent ever held, in first-written order, live or deleted.
   history: GgMemoryHistory[];
@@ -882,9 +873,9 @@ export interface GgRunState {
   // The scope's spend split per (slot, model) — the breakdown behind `usage`, and the
   // only way a run spanning several models can be priced per token class. Summed live
   // from the per-turn `usage` deltas, each of which names the profile and model that
-  // spent it; a stream recorded before gg attributed its deltas falls back to the
-  // end-of-agent `slot_usage` rollups, which say the same thing but only once an agent
-  // has finished. Empty only before the scope has spent anything.
+  // spent it, so it reads from the run's first turn rather than only once an agent has
+  // finished and streamed its `slot_usage` rollup. Empty only before the scope has spent
+  // anything.
   slotUsage: SlotUsage[];
 
   // --- Subagent forest (Phase 4) -------------------------------------------
@@ -928,8 +919,7 @@ export interface GgRunState {
   // The latest contents of every module instance the run mentioned, keyed by module
   // id (see `ModuleSnapshot`). This is the one cross-agent fold: a store two agents
   // share has ONE content, and the module-inspection surfaces render it once, under
-  // the module, rather than once per holder. Empty on a record written before module
-  // identity existed, which `ggModules` degrades gracefully for.
+  // the module, rather than once per holder.
   moduleSnapshots: Map<string, ModuleSnapshot>;
 
   // --- Issue reviews -------------------------------------------------------
@@ -941,9 +931,7 @@ export interface GgRunState {
   // The capability set the run is (or was) configured with: gg announces it on the
   // `session_started` event, so it is known from the run's first event rather than
   // only once the record lands — which is what lets a live view shape itself to the
-  // capabilities this run actually has. Falls back to the completed record's recorded
-  // set, and is null only before the session starts (or on a stream recorded before gg
-  // announced it, where the completed record still supplies it).
+  // capabilities this run actually has. Null only before the session starts.
   capabilitySet: GgCapabilitySet | null;
 }
 
@@ -1314,8 +1302,7 @@ export interface DerivedGgState {
   // Kept apart from the tool breakdown beside it because they are two layers over one core:
   // this is what the model WROTE, that is what RAN. A `view.openFile` appears here once and
   // there as a `read_file`; a `context.list` appears only here, because nothing dispatched.
-  // Empty for a tool-calling agent, which emits no `api_call` at all, and for a record written
-  // before gg counted per function.
+  // Empty for a tool-calling agent, which emits no `api_call` at all.
   apiCalls: Map<string, number>;
   // How many times each gg TOOL this partition dispatched was called, keyed by tool name —
   // one per `tool_call`, the other layer of the pair `apiCalls` describes. This is what RAN:
@@ -1347,7 +1334,7 @@ export interface DerivedGgState {
   prompts: PromptTurn[];
   // Per-turn phase timings, in turn order. Unlike `prompts` these are unconditional —
   // gg reports one per turn whatever the run's capabilities, and reports one even for a
-  // turn that ended abnormally. Empty only for a stream recorded before gg timed turns.
+  // turn that ended abnormally.
   turnTimings: TurnTiming[];
   skills: GgSkillState[];
   memory: GgMemoryState | null;
@@ -1361,9 +1348,6 @@ export interface DerivedGgState {
   // partition this is that instance's roster; over the whole stream it is every
   // instance's, concatenated, which nothing reads — `ggModules` folds the per-agent
   // slices instead, because a roster is a fact about one instance.
-  //
-  // Empty on a record written before module identity existed, which `ggModules`
-  // degrades to today's per-agent behaviour for.
   modules: GgAgentModule[];
   // The latest contents of every module instance the stream mentioned, keyed by module
   // id. This is the one genuinely CROSS-AGENT fold in this reducer, and it belongs
@@ -1714,8 +1698,8 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   // *while it runs*: the `slot_usage` rollups below carry the same figures but are only
   // streamed once an agent has ended.
   const deltaSlotUsage = new Map<string, SlotUsage>();
-  // The latest `slot_usage` rollup per (slot, model), in first-seen order — the fallback
-  // for a stream recorded before gg attributed its deltas.
+  // The latest `slot_usage` rollup per (slot, model), in first-seen order — the run-level
+  // totals gg streams as each agent ends.
   const slotUsageByKey = new Map<string, SlotUsage>();
   // The agent tree, seeded with the root so a single-agent run is a one-node tree.
   const agents = new Map<string, AgentNode>([
@@ -1926,8 +1910,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         case "api_call": {
           // Opening the bracket also closes any bracket this agent left open: a program is
           // never inside two calls at once, so a second opening half means the first one's
-          // result never arrived (a truncated stream, or a record from before gg emitted
-          // results). Overwriting is that close.
+          // result never arrived (a truncated stream). Overwriting is that close.
           const name = apiCallName(
             emitter,
             gg.object,
@@ -2343,7 +2326,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
       case "archive_state": {
         // Latest snapshot wins: gg re-emits the whole archive after each archival.
         archive = {
-          moduleId: gg.moduleId ?? "",
+          moduleId: gg.moduleId,
           entries: gg.entries,
           count: gg.count,
           totalLen: gg.totalLen,
@@ -2373,8 +2356,8 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
           totalLines: gg.totalLines,
           peak: gg.peak,
           caps: gg.caps,
-          scope: gg.scope ?? "",
-          writable: gg.writable ?? true,
+          scope: gg.scope,
+          writable: gg.writable,
           history: [],
         };
         memoryRef.latest = snapshot;
@@ -2540,16 +2523,11 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     if (ended != null) node.endedAt = ended;
   }
 
-  // The per-model split, preferring the one summed from the attributed deltas: it
-  // covers the whole run from its first turn, where the `slot_usage` rollups only
-  // appear as each agent ends — and, being emitted on the root's stream, describe the
-  // *run* rather than whichever agent's partition they happen to land in. The rollups
-  // stand in only for a stream recorded before gg attributed its deltas, where they are
-  // the sole per-model figures that exist.
-  const slotUsage =
-    deltaSlotUsage.size > 0
-      ? [...deltaSlotUsage.values()]
-      : [...slotUsageByKey.values()];
+  // The per-model split, summed from the attributed deltas: it covers the whole run from
+  // its first turn, where the `slot_usage` rollups only appear as each agent ends — and,
+  // being emitted on the root's stream, describe the *run* rather than whichever agent's
+  // partition they happen to land in.
+  const slotUsage = [...deltaSlotUsage.values()];
 
   // The header total. The deltas are the ground truth — every turn on every agent emits
   // one — so their tally is the total whenever any arrived. A stream that somehow
@@ -2706,15 +2684,9 @@ export function useGgRunState(jobId: string | undefined): GgRunState {
   const derived = useMemo(() => reduceGgEvents(events), [events]);
   const perAgent = useMemo(() => reduceGgEventsPerAgent(events), [events]);
 
-  // Prefer what gg announced on the stream — it is known from the run's first event,
-  // where the record's copy only lands at the end — and fall back to the completed
-  // record for a stream recorded before gg announced it.
-  const capabilitySet = useMemo(() => {
-    if (derived.announcedCapabilitySet) return derived.announcedCapabilitySet;
-    if (status.kind !== "done" || status.outcome.kind !== "completed")
-      return null;
-    return status.outcome.record.subject.ggCapabilitySet ?? null;
-  }, [status, derived.announcedCapabilitySet]);
+  // What gg announced on the stream: it is known from the run's first event, where the
+  // record's copy only lands at the end.
+  const capabilitySet = derived.announcedCapabilitySet;
 
   return useMemo(
     () => ({
