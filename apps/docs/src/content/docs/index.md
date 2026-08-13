@@ -30,15 +30,13 @@ section. Users should start with [First Time
 Setup](/guides/setup/first-time-setup/) and then work through the
 [Quickstarts](/quickstarts/overview/) and [User Guides](/guides/overview/).
 
-## AI-generated documentation
+## AI Documentation Policy
 
-Documentation is drafted by AI to establish intent and lock in design decisions
-before the code is written, and the implementation is then built from that
-documentation. A manual pass follows the implementation, so authored and
-generated text sit side by side.
-
-The documentation is written to be read as a website rather than as raw Markdown
-files.
+The Test Cabinet's documentation is primarily written by AI after a human
+developer describes the intended implementation/design. In this sense, AI acts
+exclusively as a printer rather than an author, albeit a printer that's capable
+of filling in more mundane but still important details. High level design and
+the overall direction is entirely human driven and never originates from AI.
 
 ## Status
 
