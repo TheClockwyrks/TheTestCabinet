@@ -391,7 +391,7 @@ fn refused_load(source: &str) -> KnowledgeError {
 fn a_rejected_module_hands_the_model_the_diagnostic() {
     let error = refused_load(&format!("def parse(text)\n  x = {}\n", fixture::MISTYPED));
 
-    assert!(!error.is_toolchain_failure());
+    assert!(error.is_authors_source());
     let told = error.to_string();
     assert!(told.contains("did not compile"), "{told}");
     assert!(
@@ -417,7 +417,7 @@ fn a_rejected_module_hands_the_model_the_diagnostic() {
 fn a_crashed_compiler_is_the_operators_problem_not_the_authors() {
     let error = refused_load(&format!("def parse(text)\n  {}\n", fixture::NO_COMPILER));
 
-    assert!(error.is_toolchain_failure());
+    assert!(!error.is_authors_source());
     let told = error.to_string();
     assert!(
         told.contains("was not compiled") && told.contains("Nothing about it was rejected"),
@@ -453,7 +453,7 @@ fn an_on_use_script_whose_compiler_crashed_is_reported_the_same_way() {
         )
         .expect_err("the on-use half does not prepare");
 
-    assert!(error.is_toolchain_failure());
+    assert!(!error.is_authors_source());
     assert_eq!(error.half, "onUse");
     let operator = error.operator_detail().expect("the operator is told");
     assert!(

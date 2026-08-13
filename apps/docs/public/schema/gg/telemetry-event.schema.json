@@ -1261,11 +1261,6 @@
           "type": "string"
         },
         {
-          "const": "transpile_lowering",
-          "description": "The program parsed cleanly and could not be lowered into what the guest evaluates — the\ntransform over the tree failed, not the model's text. Kept apart from\n[`TranspileSyntax`](Self::TranspileSyntax) exactly so that \"one of these started happening\nand the other did not\" is a readable fact.",
-          "type": "string"
-        },
-        {
           "const": "transpile_unsupported",
           "description": "The program asks for something the sandbox will not run it with — a module import where\nthere is no loader, an `await` where there is no event loop, a nesting depth past the\nparser's guard.",
           "type": "string"

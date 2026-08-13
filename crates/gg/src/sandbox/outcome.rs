@@ -333,14 +333,15 @@ impl ProgramErrorKind {
 /// Why the sandbox could not run a program to a result. An ordinary program fault — a throw — is
 /// **not** here: it is carried in [`ProgramResult::error`].
 ///
-/// The loop reads this taxonomy through the two predicates below rather than by matching variant by
-/// variant, because the question it has to answer is not "which failure was it?" but "**whose**
-/// failure was it?": gg's own machinery ([`is_host_fault`](Self::is_host_fault)), the committed
+/// The loop reads this taxonomy through the three predicates below rather than by matching variant
+/// by variant, because the question it has to answer is not "which failure was it?" but "**whose**
+/// failure was it?": gg's own machinery ([`is_host_fault`](Self::is_host_fault)), gg's own
+/// preparation of the program ([`is_lowering_defect`](Self::is_lowering_defect)), the committed
 /// artifact ([`is_artifact_defect`](Self::is_artifact_defect)), or the run's own turn (everything
-/// else). The first two end the session — every further turn would fail identically — and neither is
-/// ever charged to the model's error budget. The rest are turn errors the run carries on from, and
-/// all but one of them are the model's to write its way out of; [`Toolchain`](Self::Toolchain) is
-/// the exception, and says so.
+/// else). The first three end the run — every further turn would fail identically — and none of them
+/// is ever charged to the model's error budget. The rest are turn errors the run carries on from,
+/// and all but one of them are the model's to write its way out of; [`Toolchain`](Self::Toolchain)
+/// is the exception, and says so.
 #[derive(Debug, thiserror::Error)]
 pub enum SandboxError {
     /// The program is not valid source in the run's [program language](super::ProgramLanguage), was
@@ -371,6 +372,22 @@ pub enum SandboxError {
     /// missing a compiler".
     #[error("the program's compiler could not finish: {0}")]
     Toolchain(String),
+    /// **gg could not prepare a source it had already accepted**: the transform over a parsed and
+    /// checked program failed, or the surface gg generated for the model to write against was
+    /// rejected by the language's own checker.
+    ///
+    /// gg's defect, on the one path where it wears a compiler's clothes — which is why it is a
+    /// variant of its own rather than a [`Prepare`](Self::Prepare) failure. The model's text was
+    /// read and accepted; what failed after that is on gg's side of the seam, and reporting it as a
+    /// compile error would tell a model to rewrite a program nothing was wrong with, charge gg's
+    /// bug to the model's [error ceilings](crate::limits::RunLimits), and record it in the
+    /// `transpile` bucket a study reads as "this model kept writing programs that did not compile".
+    ///
+    /// It ends the **run**, unlike [`Toolchain`](Self::Toolchain) beside it: a compiler that fell
+    /// over once may compile the next program, while gg's preparation of a program is the same
+    /// preparation next turn. See [`PrepareFailure::Lowering`] and [gg's fault latch](crate::fault).
+    #[error("the program was accepted and then could not be prepared: {0}")]
+    Lowering(String),
     /// The wasm engine could not be configured or linked.
     ///
     /// Its one producer is unreachable in this build and is kept because the failure it reports is a
@@ -434,27 +451,40 @@ impl SandboxError {
     /// ends the session as a host fault instead of feeding the model advice about a program it
     /// wrote correctly.
     ///
-    /// Disjoint from [`is_artifact_defect`](Self::is_artifact_defect) by construction: the two
-    /// answer "whose failure was it?" for different owners, and a variant that answered both would
-    /// leave the loop's classification ambiguous.
+    /// Disjoint from [`is_artifact_defect`](Self::is_artifact_defect) and
+    /// [`is_lowering_defect`](Self::is_lowering_defect) by construction: the three answer "whose
+    /// failure was it?" for different owners, and a variant that answered two of them would leave
+    /// the loop's classification ambiguous.
     /// `every_sandbox_failure_maps_to_exactly_one_turn_disposition` is what keeps that true as
     /// variants are added.
     pub fn is_host_fault(&self) -> bool {
         matches!(self, Self::Engine(_) | Self::Host(_))
     }
 
+    /// Whether this failure is gg's own **preparation** of the model's program —
+    /// [`Lowering`](Self::Lowering), and nothing else.
+    ///
+    /// Held apart from [`is_host_fault`](Self::is_host_fault) although both are gg's and both end
+    /// the run, because they are found in different places and read differently in a bug report: a
+    /// host fault is the machinery *around* the guest (the engine, the blocking task), while this is
+    /// the pipeline that turns a model's reply into something to run. Pooling them would say "gg
+    /// broke" where the two halves of gg that can break are debugged by different people.
+    pub fn is_lowering_defect(&self) -> bool {
+        matches!(self, Self::Lowering(_))
+    }
+
     /// The [turn error type](TurnErrorType) this failure is recorded as, for the variants the run
-    /// carries on from — everything the two predicates above do not claim.
+    /// carries on from — everything the three predicates above do not claim.
     ///
-    /// `None` for [`Engine`](Self::Engine)/[`Host`](Self::Host) and
-    /// [`Compile`](Self::Compile)/[`Instantiate`](Self::Instantiate), which end the session as
-    /// fatal and are never charged to the model's error budget, so they have no turn error type at
-    /// all. `Some` for the other five, and exhaustive rather than a catch-all: the turn loop used
-    /// to reach the sandbox ceilings through an `Err(_)` arm that never looked at the variant, so
-    /// a timeout, an out-of-memory and a trap were one indistinguishable bucket. Adding a variant
-    /// now has to say which it is.
+    /// `None` for [`Engine`](Self::Engine)/[`Host`](Self::Host),
+    /// [`Compile`](Self::Compile)/[`Instantiate`](Self::Instantiate) and
+    /// [`Lowering`](Self::Lowering), which end the run as fatal and are never charged to the model's
+    /// error budget, so they have no turn error type at all. `Some` for the other five, and
+    /// exhaustive rather than a catch-all: the turn loop used to reach the sandbox ceilings through
+    /// an `Err(_)` arm that never looked at the variant, so a timeout, an out-of-memory and a trap
+    /// were one indistinguishable bucket. Adding a variant now has to say which it is.
     ///
-    /// `every_sandbox_failure_maps_to_exactly_one_turn_disposition` is what keeps this and the two
+    /// `every_sandbox_failure_maps_to_exactly_one_turn_disposition` is what keeps this and the three
     /// predicates a partition.
     pub fn turn_error_type(&self) -> Option<TurnErrorType> {
         match self {
@@ -463,23 +493,28 @@ impl SandboxError {
             Self::Timeout { .. } => Some(TurnErrorType::SandboxTimeout),
             Self::OutOfMemory { .. } => Some(TurnErrorType::SandboxOutOfMemory),
             Self::Trap(_) => Some(TurnErrorType::SandboxTrap),
-            Self::Engine(_) | Self::Host(_) | Self::Compile(_) | Self::Instantiate(_) => None,
+            Self::Lowering(_)
+            | Self::Engine(_)
+            | Self::Host(_)
+            | Self::Compile(_)
+            | Self::Instantiate(_) => None,
         }
     }
 }
 
 impl From<PrepareFailure> for SandboxError {
-    /// Split a [prepare failure](PrepareFailure) into the two sandbox failures it is: the model's
-    /// program, or the compiler that was supposed to read it.
+    /// Split a [prepare failure](PrepareFailure) into the three sandbox failures it is: the model's
+    /// program, the compiler that was supposed to read it, or gg's own preparation of it.
     ///
     /// The one conversion between the two taxonomies, so the split cannot be made differently at two
-    /// call sites — and so the seam's own vocabulary (`Program`/`Toolchain`, which is what a language
-    /// implementer thinks in) stays separate from the loop's (`Prepare`/`Toolchain`, which is what a
-    /// turn is judged by).
+    /// call sites — and so the seam's own vocabulary (`Program`/`Toolchain`/`Lowering`, which is what
+    /// a language implementer thinks in) stays separate from the loop's, which is what a turn is
+    /// judged by.
     fn from(failure: PrepareFailure) -> Self {
         match failure {
             PrepareFailure::Program(error) => Self::Prepare(error),
             PrepareFailure::Toolchain(detail) => Self::Toolchain(detail),
+            PrepareFailure::Lowering(detail) => Self::Lowering(detail),
         }
     }
 }

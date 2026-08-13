@@ -396,13 +396,17 @@ pub struct KnowledgeError {
 }
 
 impl KnowledgeError {
-    /// Whether the **compiler** is what failed, rather than the source it was handed.
+    /// Whether the **author's source** is what failed, rather than something on gg's side of the
+    /// seam that never judged it.
     ///
-    /// The bit both readers of this error branch on: a compiler that fell over judged nothing, so
-    /// there is no diagnostic to show the model, nothing about the author's source was rejected,
-    /// and whatever the failure is charged to must not be charged to whoever made the call.
-    pub fn is_toolchain_failure(&self) -> bool {
-        matches!(self.error, PrepareFailure::Toolchain(_))
+    /// The bit every reader of this error branches on, and it is asked this way round on purpose:
+    /// only a source that was read and rejected has a diagnostic the caller can act on. A compiler
+    /// that fell over and a [lowering](PrepareFailure::Lowering) that could not carry an accepted
+    /// source any further both judged nothing — so there is nothing to show, nothing about the
+    /// author's source was rejected, and whatever the failure is charged to must not be charged to
+    /// whoever made the call.
+    pub fn is_authors_source(&self) -> bool {
+        matches!(self.error, PrepareFailure::Program(_))
     }
 
     /// What the run's **operator** is told about this failure, or `None` when there is nothing to
@@ -411,13 +415,22 @@ impl KnowledgeError {
     /// A [toolchain failure](PrepareFailure::Toolchain) carries the exit status, the signal, the
     /// tail of the compiler's stderr — real diagnostic value for the person who can fix the image,
     /// and nothing the model can act on, which is why [`Display`](std::fmt::Display) does not carry
-    /// it. Without this the detail would have no reader at all: the model must not see it, so if the
-    /// operator does not either, a compiler crashing in an agent's skill load is silent everywhere.
+    /// it. A [lowering failure](PrepareFailure::Lowering) carries gg's own diagnostic, which has the
+    /// same single reader for a stronger reason: it is a bug report about gg. Without this, either
+    /// detail would have no reader at all — the model must not see it, so if the operator does not
+    /// either, a compiler crashing in an agent's skill load is silent everywhere.
     pub fn operator_detail(&self) -> Option<String> {
         match &self.error {
             PrepareFailure::Program(_) => None,
             PrepareFailure::Toolchain(detail) => Some(format!(
                 "the `{}` of {} `{}` was not compiled: {detail}",
+                self.half,
+                self.origin.noun(),
+                self.name,
+            )),
+            PrepareFailure::Lowering(detail) => Some(format!(
+                "the `{}` of {} `{}` was accepted and then could not be prepared, which is a gg \
+                 defect: {detail}",
                 self.half,
                 self.origin.noun(),
                 self.name,
@@ -443,6 +456,15 @@ impl std::fmt::Display for KnowledgeError {
                 "was not compiled",
                 "this language's compiler could not finish, which is a fault in the run's \
                  environment rather than in the source. Nothing about it was rejected."
+                    .to_string(),
+            ),
+            // Said the same way and for the same reason: the source was read and accepted, and what
+            // failed afterwards is gg's. Handing the model gg's own diagnostic here would be the
+            // misattribution the `Compiler error` band was cured of one seam over.
+            PrepareFailure::Lowering(_) => (
+                "was not compiled",
+                "the harness accepted it and could not prepare it, which is a defect in the \
+                 harness rather than in the source. Nothing about it was rejected."
                     .to_string(),
             ),
         };

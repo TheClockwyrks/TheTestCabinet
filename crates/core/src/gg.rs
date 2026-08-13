@@ -3197,11 +3197,6 @@ pub enum GgTurnErrorType {
     /// Only a language whose preparation type-checks can produce it, so it is absent from every run
     /// of a language that does not — which is a fact about the arm, not a gap.
     TranspileCompile,
-    /// The program parsed cleanly and could not be lowered into what the guest evaluates — the
-    /// transform over the tree failed, not the model's text. Kept apart from
-    /// [`TranspileSyntax`](Self::TranspileSyntax) exactly so that "one of these started happening
-    /// and the other did not" is a readable fact.
-    TranspileLowering,
     /// The program asks for something the sandbox will not run it with — a module import where
     /// there is no loader, an `await` where there is no event loop, a nesting depth past the
     /// parser's guard.
@@ -3261,7 +3256,7 @@ impl GgTurnErrorType {
     ///
     /// The grouping is the reading order a console ranks and labels from, and it is what makes
     /// "every type has a base, and every base has at least one type" checkable rather than asserted.
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 19] = [
         Self::ModelAuth,
         Self::ModelRejected,
         Self::ModelRetryExhausted,
@@ -3271,7 +3266,6 @@ impl GgTurnErrorType {
         Self::TranspileSyntax,
         Self::TranspileSemantic,
         Self::TranspileCompile,
-        Self::TranspileLowering,
         Self::TranspileUnsupported,
         Self::ProgramToolError,
         Self::ProgramUnknownName,
@@ -3300,7 +3294,6 @@ impl GgTurnErrorType {
             | Self::ModelParse => GgTurnErrorKind::ModelApi,
             Self::TranspileSyntax
             | Self::TranspileSemantic
-            | Self::TranspileLowering
             | Self::TranspileCompile
             | Self::TranspileUnsupported => GgTurnErrorKind::Transpile,
             Self::ProgramToolError | Self::ProgramUnknownName | Self::ProgramThrow => {
@@ -3333,7 +3326,6 @@ impl GgTurnErrorType {
             Self::TranspileSyntax => "transpile_syntax",
             Self::TranspileSemantic => "transpile_semantic",
             Self::TranspileCompile => "transpile_compile",
-            Self::TranspileLowering => "transpile_lowering",
             Self::TranspileUnsupported => "transpile_unsupported",
             Self::ProgramToolError => "program_tool_error",
             Self::ProgramUnknownName => "program_unknown_name",
@@ -3363,7 +3355,6 @@ impl GgTurnErrorType {
             Self::TranspileSyntax => "syntax error",
             Self::TranspileSemantic => "semantic error",
             Self::TranspileCompile => "compiler rejected the program",
-            Self::TranspileLowering => "lowering failed",
             Self::TranspileUnsupported => "unsupported program feature",
             Self::ProgramToolError => "uncaught call failure",
             Self::ProgramUnknownName => "unknown name",

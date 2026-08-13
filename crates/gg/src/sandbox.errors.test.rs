@@ -331,6 +331,9 @@ fn typescript_reports_what_checking_a_program_cost() {
 enum Disposition {
     /// gg's own machinery failed. The session ends; the model's error budget is untouched.
     GgsFault,
+    /// gg accepted the program and could not prepare it. The session ends; the model's error budget
+    /// is untouched, and the model is never told its program was rejected.
+    GgsLowering,
     /// The embedded artifact is broken. The session ends; the model's error budget is untouched.
     ArtifactDefect,
     /// The reply was not runnable source in the run's program language. An error turn; nothing ran.
@@ -342,7 +345,7 @@ enum Disposition {
     ModelsSandboxLimit,
 }
 
-/// The disposition the loop derives, from nothing but the two public predicates plus the one
+/// The disposition the loop derives, from nothing but the three public predicates plus the one
 /// remaining distinction between an error turn that ran and one that did not.
 ///
 /// This is deliberately the *consumer's* algorithm rather than a second copy of the taxonomy: what
@@ -353,6 +356,8 @@ fn derived_disposition(error: &SandboxError) -> Disposition {
         Disposition::ArtifactDefect
     } else if error.is_host_fault() {
         Disposition::GgsFault
+    } else if error.is_lowering_defect() {
+        Disposition::GgsLowering
     } else if matches!(error, SandboxError::Prepare(_)) {
         Disposition::ModelsPrepareError
     } else if matches!(error, SandboxError::Toolchain(_)) {
@@ -372,6 +377,7 @@ fn declared_disposition(error: &SandboxError) -> Disposition {
     match error {
         SandboxError::Prepare(_) => Disposition::ModelsPrepareError,
         SandboxError::Toolchain(_) => Disposition::ToolchainFailure,
+        SandboxError::Lowering(_) => Disposition::GgsLowering,
         SandboxError::Engine(_) => Disposition::GgsFault,
         SandboxError::Host(_) => Disposition::GgsFault,
         SandboxError::Compile(_) => Disposition::ArtifactDefect,
@@ -386,13 +392,14 @@ fn declared_disposition(error: &SandboxError) -> Disposition {
 ///
 /// Kept beside [`declared_disposition`], whose exhaustive `match` is what makes a new variant
 /// impossible to add without coming here.
-const SANDBOX_ERROR_VARIANTS: usize = 9;
+const SANDBOX_ERROR_VARIANTS: usize = 10;
 
 /// One of every [`SandboxError`], for the totality assertions below.
 fn every_sandbox_error() -> Vec<SandboxError> {
     vec![
         SandboxError::Prepare(PrepareError::Syntax("bad".into())),
         SandboxError::Toolchain("`fixturec` exited with signal 11".into()),
+        SandboxError::Lowering("the generated declarations were rejected".into()),
         SandboxError::Engine("no fuel metering".into()),
         SandboxError::Host("the blocking task panicked".into()),
         SandboxError::Compile("not a component".into()),
@@ -423,8 +430,13 @@ fn every_sandbox_failure_maps_to_exactly_one_turn_disposition() {
     );
 
     for error in &sample {
+        let owners = [
+            error.is_artifact_defect(),
+            error.is_host_fault(),
+            error.is_lowering_defect(),
+        ];
         assert!(
-            !(error.is_artifact_defect() && error.is_host_fault()),
+            owners.iter().filter(|claimed| **claimed).count() <= 1,
             "{error:?} claims two owners; the loop would have to guess which one to report"
         );
         assert_eq!(
@@ -448,7 +460,8 @@ fn exactly_the_failures_the_model_owns_carry_a_recorded_type() {
     let mut recorded = Vec::new();
     for error in every_sandbox_error() {
         let error_type = error.turn_error_type();
-        let owned_by_the_model = !error.is_artifact_defect() && !error.is_host_fault();
+        let owned_by_the_model =
+            !error.is_artifact_defect() && !error.is_host_fault() && !error.is_lowering_defect();
         assert_eq!(
             error_type.is_some(),
             owned_by_the_model,
@@ -492,13 +505,17 @@ fn exactly_the_failures_the_model_owns_carry_a_recorded_type() {
     );
 }
 
-/// The five prepare failures are five recorded types, because they have five different causes: a
+/// The four prepare failures are four recorded types, because they have four different causes: a
 /// syntax error is a typo, a semantic error is almost always two programs in one reply, a compile
-/// error is a whole coherent program written against the wrong surface, a lowering failure is a
-/// defect in gg's own pipeline, and a refusal is gg declining a feature.
+/// error is a whole coherent program written against the wrong surface, and a refusal is gg
+/// declining a feature.
 ///
 /// The enum's own rustdoc has always claimed that "telling them apart in the telemetry is how each
 /// shows up as a rate rather than as anecdote". Until now the telemetry did not tell them apart.
+///
+/// A lowering failure is **not** among them, and its absence is the point: it is gg's defect, so it
+/// is a [`PrepareFailure::Lowering`] with no turn error type at all rather than a fifth row in the
+/// model's `transpile` bucket. `ggs_own_lowering_defect_is_never_charged_to_the_model` holds that.
 #[test]
 fn every_prepare_failure_is_recorded_as_its_own_type() {
     let cases = [
@@ -515,10 +532,6 @@ fn every_prepare_failure_is_recorded_as_its_own_type() {
             TurnErrorType::TranspileCompile,
         ),
         (
-            PrepareError::Lowering("could not lower".into()),
-            TurnErrorType::TranspileLowering,
-        ),
-        (
             PrepareError::Unsupported("no module loader".into()),
             TurnErrorType::TranspileUnsupported,
         ),
@@ -532,6 +545,47 @@ fn every_prepare_failure_is_recorded_as_its_own_type() {
             Some(expected)
         );
     }
+}
+
+/// **gg's own lowering defect is charged to nobody**: not to the model's error record, not to the
+/// model's ceilings, and not to the `Compiler error` band the model writes its next program against.
+///
+/// The whole of the misattribution this asserts against is reachable from the seam alone, which is
+/// why it is asserted here rather than only at the turn loop. A `PrepareFailure` that is gg's must
+/// not convert into a `SandboxError` the model owns; a `SandboxError` that is gg's must not carry a
+/// turn error type, because a type is what the ceilings count and what the published record files
+/// under `transpile`; and the predicate the loop reads must claim it, because a failure no predicate
+/// claims is fed back to the model as its own.
+///
+/// It was all three, once: a lowering defect was a `PrepareError`, so it arrived as
+/// `SandboxError::Prepare`, recorded `transpile_lowering` against the model, counted against the
+/// error ceilings that can end a session `limit_exceeded`, and was handed to the model verbatim
+/// under `Compiler error` on the next request and every request after.
+#[test]
+fn ggs_own_lowering_defect_is_never_charged_to_the_model() {
+    let error = SandboxError::from(PrepareFailure::Lowering(
+        "the generated declarations gg checks a program against were rejected".into(),
+    ));
+
+    assert!(
+        matches!(error, SandboxError::Lowering(_)),
+        "gg's own lowering failure must not convert into the model's prepare failure: {error:?}"
+    );
+    assert!(
+        error.is_lowering_defect(),
+        "no predicate claiming it is what feeds it back to the model as a compiler error: {error:?}"
+    );
+    assert_eq!(
+        error.turn_error_type(),
+        None,
+        "a turn error type is what the ceilings count and what the record files under `transpile`"
+    );
+    assert_eq!(
+        declared_disposition(&error),
+        Disposition::GgsLowering,
+        "it is gg's, and the loop's own algorithm must say so too"
+    );
+    assert_eq!(derived_disposition(&error), Disposition::GgsLowering);
 }
 
 /// The three classes the guest already types an uncaught throw with are three recorded types.
@@ -644,5 +698,12 @@ fn every_sandbox_error_renders_something_actionable() {
     assert_eq!(
         SandboxError::Host("task panicked at 'index out of bounds'".into()).to_string(),
         "the code sandbox did not complete: task panicked at 'index out of bounds'"
+    );
+    // And the lowering defect says the program was *accepted* before anything went wrong, which is
+    // the one fact that separates it from every diagnostic above that is about the program itself.
+    assert_eq!(
+        SandboxError::Lowering("the generated declarations were rejected".into()).to_string(),
+        "the program was accepted and then could not be prepared: the generated declarations were \
+         rejected"
     );
 }

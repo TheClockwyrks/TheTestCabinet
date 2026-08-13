@@ -104,22 +104,27 @@ outcome against the run's ceilings.
 - `Continue` carries the messages gg pushes back, the specific turn error when
   the turn was an error, and one line describing what the turn produced for
   whoever spawned the agent.
-- `Fatal` carries gg's own failure. The loop ends the session.
+- `Fatal` carries gg's own failure. The loop ends the session and the run ends
+  with it.
 
-When the sandbox could not run the program to a result, the failure is split
-four ways by owner:
+When the sandbox could not run the program to a result, the failure is split by
+owner:
 
 | Failure | What the model reads | Session |
 | --- | --- | --- |
-| The prebuilt artifact could not be run, or gg's own plumbing failed | nothing | ends |
+| The prebuilt artifact could not be run, or gg's own plumbing failed | nothing | the run ends |
+| gg accepted the program and could not prepare it | nothing | the run ends |
 | The language read the program and rejected it | the language's diagnostic verbatim, under `Compiler error` | continues |
 | The language's compiler could not finish | a `Notice` saying the program was not run, that this is the run's environment, and that nothing about the program was rejected | continues |
 | A sandbox ceiling stopped the program | the ceiling's own words, under `Runtime error` | continues |
 
-The two fatal failures are fed back to nobody and charged to no ceiling, because
-every further turn would fail identically. A compiler that could not finish is
-recorded under its own `toolchain` base kind, and still counts against the run's
-error ceilings.
+The fatal failures are fed back to nobody and charged to no ceiling, because
+every further turn would fail identically. The model answered and gg could not
+run the answer, so the failure is gg's and is recorded as gg's: the run ends
+under `internal_error` whichever agent was taking the turn, on the terms in
+[gg's own defects](/gg/execution-limits/#ggs-own-defects). A compiler that could
+not finish is recorded under its own `toolchain` base kind, and still counts
+against the run's error ceilings.
 
 A turn is an error when the work it declared could not be carried out as
 declared: a program that did not compile, one that threw uncaught, one a sandbox

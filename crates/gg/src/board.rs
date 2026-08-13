@@ -354,8 +354,9 @@ pub enum IssueStatus {
     InReview,
     /// Accepted complete, and its worktree merged back.
     Done,
-    /// The assigned agent could not complete it within its retries. Terminal, but not
-    /// [`Done`](Self::Done).
+    /// Not completed, and nothing further will be attempted for it: the assigned agent spent its
+    /// retries, its review could not be conducted, or the run [faulted](crate::fault) before it was
+    /// finished. Terminal, but not [`Done`](Self::Done).
     Failed,
 }
 

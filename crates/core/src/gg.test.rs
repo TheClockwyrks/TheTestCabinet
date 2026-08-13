@@ -1691,7 +1691,7 @@ fn the_error_rollup_carries_its_own_denominator_and_no_percentage() {
 }
 
 /// The two levels agree by arithmetic, not by assertion: regrouping the per-**type** breakdown by
-/// each type's base reproduces the five named per-**kind** counters exactly, and both readings sum
+/// each type's base reproduces the six named per-**kind** counters exactly, and both readings sum
 /// to `errors`.
 ///
 /// This is the property a *"top error types"* widget rests on. Without it a console could rank types
@@ -1710,7 +1710,7 @@ fn regrouping_the_per_type_breakdown_by_base_reproduces_the_per_kind_counters() 
         errors: GgTurnErrorType::ALL.len() as u64,
         max_consecutive: 3,
         model_api: 6,
-        transpile: 5,
+        transpile: 4,
         program_fault: 3,
         sandbox_limit: 3,
         toolchain: 1,

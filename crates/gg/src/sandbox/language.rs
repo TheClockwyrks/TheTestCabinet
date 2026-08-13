@@ -755,18 +755,22 @@ pub struct UnreachableTail {
 /// [times the step](super::SandboxOutcome::compile) on the failing path as well as the succeeding
 /// one; "no engine work" is not "free".
 ///
-/// The five kinds are the ones every language's prepare step distinguishes, whatever its toolchain
+/// The four kinds are the ones every language's prepare step distinguishes, whatever its toolchain
 /// calls them, and they are kept apart because they have *different causes*: a syntax error is a
 /// typo, a semantic error is almost always two programs in one reply, a compile error is a program
-/// the language's checker read whole and rejected, a lowering failure is a defect in the pipeline
-/// rather than in the reply, and a refusal is gg declining something the sandbox has no
-/// implementation of. Telling them apart in the telemetry is how each shows up as a rate rather
-/// than as anecdote.
+/// the language's checker read whole and rejected, and a refusal is gg declining something the
+/// sandbox has no implementation of. Telling them apart in the telemetry is how each shows up as a
+/// rate rather than as anecdote.
 ///
-/// What is **not** here is a compiler that could not finish — a `swiftc` that crashed, a toolchain
-/// binary that is not installed, a compile that outran its own timeout. That is not the model's
-/// program and there is no diagnostic to show it, so it is [`PrepareFailure::Toolchain`] rather
-/// than a variant of this enum.
+/// Two failures are **not** here, and both are absent for the same reason — neither is the model's,
+/// so neither may be recorded as the model's:
+///
+/// * a compiler that could not finish — a `swiftc` that crashed, a toolchain binary that is not
+///   installed, a compile that outran its own timeout. There is no diagnostic to show, so it is
+///   [`PrepareFailure::Toolchain`] and the run carries on;
+/// * a **lowering** failure, where the transform over a source the language already accepted fell
+///   over, or the surface gg generated for the model to write against was itself rejected. That is
+///   gg's own defect, so it is [`PrepareFailure::Lowering`] and the run ends on it.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PrepareError {
     /// The source is not valid in this language — the parser's own diagnostics, located in the
@@ -811,19 +815,6 @@ pub enum PrepareError {
     /// module beside them for the measurement the number came out of.
     #[error("{0}")]
     Compile(String),
-    /// It could not be lowered into what the guest evaluates. Distinct from
-    /// [`Syntax`](Self::Syntax) because it is not the model's text that failed but the transform
-    /// over it — a distinction worth keeping when one of the two starts happening and the other does
-    /// not.
-    ///
-    /// It is **bounded** like [`Compile`](Self::Compile), and it is the one that most looks as
-    /// though it should not be. What it carries is gg's own defect, so it reads as the bug report an
-    /// operator wants whole — but it is a `Program` failure rather than a
-    /// [`Toolchain`](PrepareFailure::Toolchain) one, which means a *model* is handed it verbatim on
-    /// the next request and on every request after. Whatever is here is read twice over, by two
-    /// readers, and only one of them can act on it.
-    #[error("{0}")]
-    Lowering(String),
     /// It asks for something the sandbox will not run it with, and is refused with an explanation of
     /// what to write instead — a module import where there is no loader, an `await` where there is
     /// no event loop, a nesting depth the host's parser is not given room for.
@@ -834,17 +825,22 @@ pub enum PrepareError {
 impl PrepareError {
     /// The [turn error type](TurnErrorType) this failure is recorded as.
     ///
-    /// It lives here, beside the enum, rather than in the turn loop's `match`: the five causes this
+    /// It lives here, beside the enum, rather than in the turn loop's `match`: the four causes this
     /// type exists to keep apart are this module's knowledge, and a caller re-deriving them would be
     /// a second place for them to be got wrong. Every one lands under
     /// [`Transpile`](crate::limits::TurnErrorKind::Transpile) at the base level, so the wire value
     /// persisted run data reads is untouched.
+    ///
+    /// It is total, and it can be: every variant of this enum is the model's, so every variant has
+    /// an error type. The failures that have none are the ones that are not the model's, and they
+    /// are not in this enum — [`Toolchain`](PrepareFailure::Toolchain) is charged to the run rather
+    /// than to the model, and [`Lowering`](PrepareFailure::Lowering) is charged to nothing because
+    /// it ends the run.
     pub fn turn_error_type(&self) -> TurnErrorType {
         match self {
             Self::Syntax(_) => TurnErrorType::TranspileSyntax,
             Self::Semantic(_) => TurnErrorType::TranspileSemantic,
             Self::Compile(_) => TurnErrorType::TranspileCompile,
-            Self::Lowering(_) => TurnErrorType::TranspileLowering,
             Self::Unsupported(_) => TurnErrorType::TranspileUnsupported,
         }
     }
@@ -853,12 +849,14 @@ impl PrepareError {
 /// Why one of a language's [prepare steps](ProgramLanguage::prepare_program) did not hand back a
 /// prepared source — split by **whose failure it was**.
 ///
-/// The two halves are not two flavours of one thing, and the split is the whole reason this type
+/// The three arms are not three flavours of one thing, and the split is the whole reason this type
 /// exists. A [`Program`](Self::Program) failure is the model's: its text was read and found wanting,
 /// there is a diagnostic to hand back, and the next turn's program may well be fine because the
 /// model changed it. A [`Toolchain`](Self::Toolchain) failure is the *compiler's*: nothing was
 /// decided about the program at all, there is no diagnostic, and the next turn's program may well be
-/// fine because nothing was ever wrong with this one.
+/// fine because nothing was ever wrong with this one. A [`Lowering`](Self::Lowering) failure is
+/// **gg's**: gg had already accepted the source and then could not turn it into something the guest
+/// runs, so there is nobody to hand it back to and no next turn worth taking.
 ///
 /// Before a language compiled, the distinction had no producer and the seam carried
 /// [`PrepareError`] directly. It does now: a compiler is a process, and a process that segfaults, is
@@ -868,10 +866,36 @@ impl PrepareError {
 /// effort not making.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PrepareFailure {
-    /// The **program** is what failed, in one of the [five ways](PrepareError) a language tells
+    /// The **program** is what failed, in one of the [four ways](PrepareError) a language tells
     /// apart. Recoverable and model-facing.
     #[error("{0}")]
     Program(#[from] PrepareError),
+    /// **gg** is what failed: the transform over a source this language had already parsed and
+    /// checked fell over, or the surface gg generated for the model to write against was itself
+    /// rejected by the checker. The model's text was accepted and something on gg's side of the
+    /// seam then could not carry it any further.
+    ///
+    /// It is neither of the other two, and lived as one of them until the run's
+    /// [attribution](crate::fault) was taken seriously. It is not a [`Program`](Self::Program)
+    /// failure: handing this diagnostic back under the `Compiler error` heading tells a model its
+    /// program was rejected when the program was fine, files gg's bug in the model's `transpile`
+    /// bucket, counts it against the model's error ceilings, and can end the session
+    /// `limit_exceeded` with gg's defect recorded as the model's failure to write a compiling
+    /// program. It is not a [`Toolchain`](Self::Toolchain) failure either: a compiler that fell over
+    /// may well compile the next program, while gg's pipeline is the same pipeline next turn — the
+    /// generated surface is generated once per session, and a transform that cannot lower a legal
+    /// source is a bug that does not heal.
+    ///
+    /// So it ends the run, at [`SandboxError::Lowering`](super::SandboxError::Lowering) and the
+    /// [fault latch](crate::fault) behind it. The alternative is a turn the model paid for, told
+    /// nothing about, and repeats — and a tree with a hole in it that is scored as though the model
+    /// had produced the hole.
+    ///
+    /// Carries what gg can say about the failure for the run's **operator** and for nobody else —
+    /// the one string in this enum with a single reader, and therefore the one bounded by what an
+    /// operator can read rather than by what a model would be charged to read again every turn.
+    #[error("{0}")]
+    Lowering(String),
     /// The **compiler could not finish**: it crashed, was killed by its own timeout, or is not
     /// installed in this image. Recoverable — the next turn may compile — but not the model's fault
     /// and not answered with a diagnostic, because there is none.

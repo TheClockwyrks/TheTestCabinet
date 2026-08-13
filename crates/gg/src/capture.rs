@@ -113,6 +113,7 @@ use test_cabinet_core::gg_session_record::{
 };
 
 use crate::context::{PromptItem, PromptSlot, Retention};
+use crate::fault::panic_message;
 use crate::model::{Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition};
 use crate::tools::{
     READ_FILE_CAP, ShellExecution, ShellRequest, ShellRunner, ShellStatus, ToolData, ToolOutcome,
@@ -976,9 +977,18 @@ impl GgRecorder {
         drop(capture);
 
         let handle = self.writer.lock().expect("session writer lock").take();
-        let write_error = handle
-            .and_then(|handle| handle.join().ok())
-            .and_then(|report| report.error);
+        // A writer that **panicked** reports as a write error rather than as no error at all. It
+        // never got to say what it had written, so the journal is short by an unknown amount — the
+        // one state a report of `None` would describe as a clean recording, which is the single
+        // most misleading thing this module could do (see the module docs).
+        let write_error = handle.and_then(|handle| match handle.join() {
+            Ok(report) => report.error,
+            Err(payload) => Some(format!(
+                "the journal writer thread panicked ({}); whatever it had not yet written is \
+                 missing from the record",
+                panic_message(&*payload)
+            )),
+        });
         GgCaptureReport {
             entries,
             bytes,

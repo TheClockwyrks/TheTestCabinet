@@ -93,6 +93,11 @@ the issue up to `maxRetries` times and then marks it failed. A failed issue is
 terminal without being done, so its dependents stay blocked and the board
 surfaces the stall.
 
+A [gg defect](/gg/execution-limits/#ggs-own-defects) anywhere in the run ends
+the retries. The issue being reconciled when the fault was raised is marked
+failed, keeping its worktree, and every issue still waiting for an agent stays
+open.
+
 An issue gg cannot dispatch at all is marked failed immediately, without
 spending a retry. That covers an assignee whose model cannot be resolved and an
 assignee the run does not declare as an agent profile. gg dispatches an issue

@@ -52,12 +52,12 @@ stored run keys on, so they are stable. `transpile` in particular keeps a name
 wider than its meaning, because the value is what persisted records carry.
 
 Underneath each base kind sits an `errorType`, and that is where the failure is
-named. There are twenty types, one per distinction gg makes.
+named. There are nineteen types, one per distinction gg makes.
 
 | Base kind | Types under it |
 | --- | --- |
 | `model_api` | `model_auth` (the credential was refused), `model_rejected` (another non-retryable `4xx`), `model_retry_exhausted` (the provider never served the request), `model_response_loop` (it served it and [loop detection](/gg/loop-detection/) discarded every answer), `model_vision_unsupported`, `model_parse` |
-| `transpile` | `transpile_syntax`, `transpile_semantic`, `transpile_compile` (the language's compiler read the whole program and rejected it), `transpile_lowering`, `transpile_unsupported` |
+| `transpile` | `transpile_syntax`, `transpile_semantic`, `transpile_compile` (the language's compiler read the whole program and rejected it), `transpile_unsupported` |
 | `program_fault` | `program_tool_error` (an uncaught failed call: the model is fighting the API rather than mis-writing it), `program_unknown_name` (it reached for something this run does not offer it, either a name that is not in scope or a call the host refused as `unavailable`), `program_throw` |
 | `sandbox_limit` | `sandbox_timeout`, `sandbox_out_of_memory`, `sandbox_trap` |
 | `toolchain` | `toolchain_failed` (the language's compiler crashed, was killed by its timeout, or is not installed, so nothing was decided about the program; see [execution limits](/gg/execution-limits/#toolchain-failures)) |

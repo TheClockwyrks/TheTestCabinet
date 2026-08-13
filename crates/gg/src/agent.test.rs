@@ -152,6 +152,7 @@ fn no_limits(max_turns: usize) -> LimitsSetup {
         },
         deadline: None,
         cancel: CancelWatch::disabled(),
+        fault: FaultLatch::default(),
         spend: Arc::new(RunSpend::default()),
     }
 }
@@ -8749,12 +8750,22 @@ mod module_tests;
 #[path = "agent.surface.test.rs"]
 mod surface_tests;
 
-/// **An agent profile the run does not declare**, at each of the four sites that resolve one.
+/// **gg's own faults, in the status they end an agent on**: that a broken guest artifact and a
+/// broken wasm host both end the agent under `internal_error` rather than under the model's status.
 ///
-/// Separate because every test in it has to *skip the launch checks* to reach what it guards —
-/// these are gg's own defects, unreachable from any configuration a launch would accept — so they
+/// Separate because what these guard is attribution rather than loop behaviour — the same rule
+/// `agent.profiles.test.rs` holds for the profile family of gg defects, on the sandbox family.
+#[path = "agent.faults.test.rs"]
+mod fault_tests;
+
+/// **An agent profile the run does not declare**, at each of the sites that resolve one, plus the
+/// two other ways a succession's resolution can fail.
+///
+/// Separate because almost every test in it has to *skip the launch checks* to reach what it guards
+/// — these are gg's own defects, unreachable from any configuration a launch would accept — so they
 /// build the [`Orchestrator`] by hand rather than driving a session through the real entry point,
-/// which is the one thing the files above all do.
+/// which is the one thing the files above all do. The exception is the failure in the family that
+/// needs no defect, a provider that will not build, which is driven end to end like everything else.
 #[path = "agent.profiles.test.rs"]
 mod profile_tests;
 

@@ -427,7 +427,9 @@ impl AgentStatusData {
     /// killed the run). The vocabulary exists for a spawner to branch on, and none of the three
     /// leaves it a branch to write: a parent agent cannot work around a bug in the harness running
     /// it, cannot repair a script it never asked for, and — once the run is winding down at every
-    /// agent's next turn boundary — has no turn left to act in. Offering it a word for any of them
+    /// agent's next turn boundary — has no turn left to act in. The first and the last are both
+    /// true of `internal_error`: the defect is gg's to fix, and the run it broke is already ending
+    /// at every agent's next boundary, this parent's included. Offering it a word for any of them
     /// would invite it to try. `None` sends it to the summary, which names the ending in words; the
     /// diagnostics naming the profile, the hook and the site are on the operator's stream, where the
     /// person who can act on them is reading.

@@ -521,14 +521,19 @@ pub(crate) async fn run_gg(
     //          validated — SessionEnded{status:"error"};
     //        * a credential the provider *rejected* mid-flight, so nothing about the model
     //          was exercised either — SessionEnded{status:"auth_error"};
-    //        * a defect in gg itself — SessionEnded{status:"internal_error"}. Unlike the
-    //          two above, this session *did* run against a working model: the key was
-    //          accepted and turns were taken. What disqualifies it is that gg stopped it on
-    //          its own mistake, so whatever tree it left describes a run the model never
-    //          got to finish, and scoring it would blame the model for our bug.
-    //      The status is the *root's*: a subagent that ended `internal_error` is a failed
-    //      agent inside a session that still ends `completed` and exits 0, and such a run is
-    //      collected and scored like any other (see gg's `STATUS_INTERNAL_ERROR`).
+    //        * a defect in gg itself — SessionEnded{status:"internal_error"}: a state gg's
+    //          own launch validation proves unreachable, gg's sandbox machinery failing
+    //          under a turn the model answered, or an agent task that panicked. Unlike the
+    //          two above, this session *did*
+    //          run against a working model: the key was accepted and turns were taken. What
+    //          disqualifies it is that gg stopped it on its own mistake, so whatever tree it
+    //          left describes a run the model never got to finish, and scoring it would
+    //          blame the model for our bug.
+    //      The first two are read off the *root's* ending; the third is read off the whole
+    //      tree. A gg defect met by any agent — an issue agent, a reviewer, a spawned child —
+    //      winds the entire run down under `internal_error`, because the tree a broken run
+    //      leaves behind is not the tree that configuration produces and nothing here could
+    //      tell the difference (see gg's `STATUS_INTERNAL_ERROR`).
     //    - Exit 0 means a session ran, *including* a mid-session `model_error` (carried
     //      in the stream, exit 0). Such a run is **not** a clean success — the failure is
     //      surfaced as an Error event and the produced (likely empty) tree fails

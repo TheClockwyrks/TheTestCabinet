@@ -39,9 +39,9 @@
 //! reply whose second half never executed. [`PreparedProgram::unreachable`] is what makes that
 //! visible, and disclosure is the whole of the fix: the program still runs exactly as written.
 //!
-//! # How TypeScript's failures map onto [`PrepareError`]
+//! # How TypeScript's failures map onto [`PrepareFailure`]
 //!
-//! The seam's four kinds are not four names for "it did not compile" — they are four *causes*, and
+//! The seam's kinds are not several names for "it did not compile" — they are distinct *causes*, and
 //! every one of them is produced here by a different pass:
 //!
 //! * [`Syntax`](PrepareError::Syntax) — the parser's own diagnostics, [located in the program's own
@@ -52,9 +52,11 @@
 //!   mistake*: a syntax error is a typo, an early error is almost always two programs in one reply,
 //!   and telling the two apart in the telemetry is how the second shows up as a rate rather than as
 //!   anecdote.
-//! * [`Lowering`](PrepareError::Lowering) — the transform over a tree that parsed cleanly. Rare to
-//!   the point of never, and worth its own kind precisely so that "the model's syntax failed" and
-//!   "gg's pipeline failed" cannot be read as one number.
+//! * [`Lowering`](PrepareFailure::Lowering) — the transform over a tree that parsed cleanly, and the
+//!   only one of these that is **not** the model's. Rare to the point of never, and worth its own
+//!   arm precisely so that "the model's syntax failed" and "gg's pipeline failed" cannot be read as
+//!   one number — nor, now, as one *outcome*: it ends the run instead of costing the model a turn it
+//!   is told to fix.
 //! * [`Unsupported`](PrepareError::Unsupported) — two families that share one shape. A **feature
 //!   with no implementation** (`import`, `export`, a dynamic `import()`, a top-level `await`), and a
 //!   program nested deeper than [`MAX_NESTING_DEPTH`], where refusing is what keeps an unguarded
@@ -115,7 +117,7 @@ use oxc::semantic::SemanticBuilder;
 use oxc::span::{GetSpan, SourceType};
 use oxc::transformer::{TransformOptions, Transformer};
 
-use crate::sandbox::language::{PrepareError, PreparedProgram, UnreachableTail};
+use crate::sandbox::language::{PrepareError, PrepareFailure, PreparedProgram, UnreachableTail};
 
 /// The virtual path diagnostics are labelled with. Never read from disk — a program has no file.
 const VIRTUAL_SOURCE_PATH: &str = "program.ts";
@@ -203,10 +205,12 @@ fn parser_stack_bytes(src_len: usize) -> usize {
 /// after it, which is what makes the two arms differ in one variable.
 pub(in crate::sandbox::language) fn prepare_program(
     src: &str,
-) -> Result<PreparedProgram, PrepareError> {
+) -> Result<PreparedProgram, PrepareFailure> {
     let deepest = nesting_depth(src);
     if deepest > MAX_NESTING_DEPTH {
-        return Err(PrepareError::Unsupported(over_nested_message(deepest)));
+        return Err(PrepareFailure::Program(PrepareError::Unsupported(
+            over_nested_message(deepest),
+        )));
     }
     strip_types_on_a_deep_stack(src)
 }
@@ -244,7 +248,7 @@ fn on_a_deep_stack<T: Send>(src: &str, work: impl FnOnce() -> T + Send) -> T {
 }
 
 /// [`strip_types`] on the deep stack — the program path's whole pipeline.
-fn strip_types_on_a_deep_stack(src: &str) -> Result<PreparedProgram, PrepareError> {
+fn strip_types_on_a_deep_stack(src: &str) -> Result<PreparedProgram, PrepareFailure> {
     on_a_deep_stack(src, || strip_types(src))
 }
 
@@ -252,7 +256,7 @@ fn strip_types_on_a_deep_stack(src: &str) -> Result<PreparedProgram, PrepareErro
 ///
 /// Always called on the deep stack [`strip_types_on_a_deep_stack`] provides; it is a separate
 /// function only so the thread mechanics and the compiler pipeline are each readable on their own.
-pub(super) fn strip_types(src: &str) -> Result<PreparedProgram, PrepareError> {
+pub(super) fn strip_types(src: &str) -> Result<PreparedProgram, PrepareFailure> {
     let allocator = Allocator::default();
     let parsed = Parser::new(&allocator, src, SourceType::ts())
         .with_options(ParseOptions {
@@ -262,10 +266,15 @@ pub(super) fn strip_types(src: &str) -> Result<PreparedProgram, PrepareError> {
         .parse();
 
     if !parsed.diagnostics.is_empty() {
-        return Err(PrepareError::Syntax(located(src, &parsed.diagnostics)));
+        return Err(PrepareFailure::Program(PrepareError::Syntax(located(
+            src,
+            &parsed.diagnostics,
+        ))));
     }
     if let Some(unsupported) = unsupported_feature(&parsed) {
-        return Err(PrepareError::Unsupported(unsupported.to_string()));
+        return Err(PrepareFailure::Program(PrepareError::Unsupported(
+            unsupported.to_string(),
+        )));
     }
 
     let mut program = parsed.program;
@@ -280,7 +289,10 @@ pub(super) fn strip_types(src: &str) -> Result<PreparedProgram, PrepareError> {
         .with_check_syntax_error(true)
         .build(&program);
     if !analysed.diagnostics.is_empty() {
-        return Err(PrepareError::Semantic(located(src, &analysed.diagnostics)));
+        return Err(PrepareFailure::Program(PrepareError::Semantic(located(
+            src,
+            &analysed.diagnostics,
+        ))));
     }
     let scoping = analysed.semantic.into_scoping();
     let transformed = Transformer::new(
@@ -290,7 +302,11 @@ pub(super) fn strip_types(src: &str) -> Result<PreparedProgram, PrepareError> {
     )
     .build_with_scoping(scoping, &mut program);
     if !transformed.diagnostics.is_empty() {
-        return Err(PrepareError::Lowering(located(
+        // gg's, not the model's: this tree parsed, and its early errors were checked and passed, so
+        // what failed here is the transform gg runs over a source it has already accepted. It is
+        // therefore a `PrepareFailure::Lowering` — which ends the run — rather than a fifth
+        // `PrepareError` handed back to the model under a compiler's heading.
+        return Err(PrepareFailure::Lowering(located(
             src,
             &transformed.diagnostics,
         )));
@@ -495,7 +511,8 @@ const SHOWN: usize = 8;
 ///
 /// Every band this arm can reach comes through here — the parser's
 /// [`Syntax`](PrepareError::Syntax), the semantic pass's [`Semantic`](PrepareError::Semantic), the
-/// transformer's [`Lowering`](PrepareError::Lowering) — so it is one bound for all three. It is also
+/// transformer's [`Lowering`](PrepareFailure::Lowering) — so it is one bound for all three, and it
+/// bounds the last of them for the operator who is the only reader of it. It is also
 /// the [JavaScript arm's](super::super::javascript) only bound: that arm's whole preparation is this
 /// module's [`prepare_program`] and [`prepare_module`], so what is decided here is what a JavaScript
 /// program is told too.

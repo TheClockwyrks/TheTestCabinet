@@ -79,7 +79,9 @@ Does not count:
 - A tool-calling turn whose dispatched calls all failed. Every requested call
   was dispatched and answered, so nothing was cut short.
 - gg's own machinery failing. Recorded so the accounting stays exact, excluded
-  from every ceiling, and fatal on its first occurrence.
+  from every ceiling, and fatal on its first occurrence. The run ends under
+  `internal_error`, the status that says the fault was gg's. See
+  [gg's own defects](#ggs-own-defects).
 
 ### Toolchain failures
 
@@ -288,6 +290,69 @@ canceled run is collected but not validated, since validating it would mean
 building and driving an implementation the run was told to stop writing. See the
 [driver's cancellation](/components/driver/overview/#cancellation) for that half.
 
+## gg's own defects
+
+A failure of gg's own machinery stops the whole run, whichever agent met it.
+Three failures are of that kind: a state gg's launch validation proves
+unreachable, such as an agent whose profile the run does not declare; a
+[fatal sandbox fault](/gg/responses-as-code/programs/) under a turn the model
+answered; and an agent task that panics.
+
+The run's output is attribution data: the tree it leaves is scored against the
+model that produced it and compared against the tree another configuration
+produced. A run gg broke in did not produce its tree. Some part of it is work an
+agent was stopped in the middle of, or work the rest of the run built around
+that hole, and a reader of the record sees a result rather than a defect. So the
+run is disqualified instead: the terminal status is `internal_error`, the
+process exits non-zero, and the host records a harness error rather than
+collecting the tree.
+
+The wind-down is the [cancellation](#cancellation) wind-down. The agent that met
+the defect records it on a run-wide latch and ends; every other agent reads the
+latch at its own turn boundary and stops there, so the bound is again one turn
+per agent and the epilogue is emitted in full. What the run leaves behind is
+what a killed run leaves behind, which is the evidence an operator debugs the
+defect from.
+
+A faulted run starts no new work. The board stops dispatching, so an issue it
+never reached stays open, and an issue whose attempt the fault stopped is
+recorded failed with its worktree left in place for the operator. Re-dispatching
+it would spend an attempt on an agent that stops at its first turn boundary and
+leave the board claiming work was tried.
+
+The diagnostic names the agent, its profile and what broke. It is reported on
+the stream of the agent that met the defect, repeated by each agent that winds
+down, and stated once more on the root's stream in the epilogue, so a reader
+starting from "why did this run fail?" gets the cause rather than the status
+alone.
+
+A panicking agent is the one defect that reaches the latch from outside the
+agent, since the frame that reads the latch at a turn boundary is the frame the
+panic unwinds. gg catches it one frame above the agent's loop and finishes what
+the agent owed there: the fault is raised with the panic's message and the
+agent's name, its running slot returns to the scheduler, a spawner blocked on it
+is woken at once, and an issue it was implementing is marked failed so agents
+suspended on that issue resume. The panicked instance is recorded as a failed
+agent that ended under `internal_error`, and its spawner collects no return
+value from it.
+
+A dispatch gg could not carry out is the same defect one step earlier, before
+there is an agent to stop. A [board issue](/gg/project-management/) that names
+no assignee, an assignee, reviewer or merge profile that cannot be resolved to a
+model, and a subagent a spawning agent named from its own roster that gg then
+could not stand up are all this case. The issue is marked failed so the board
+says what is true, the spawning call fails, and the run ends, because the tree
+is missing whatever that agent was for. The diagnostic names the issue rather
+than an agent when the dispatch was for one, since no agent ran.
+
+A refused credential is a separate case, and it is the operator's rather than
+gg's. It ends the run when it is the root's ending; a subagent whose credential
+was refused took no turns, and an issue whose assignee's client was refused
+fails alone, so the run around either is still a run the model produced. Its
+terminal status is `auth_error`. Every place gg resolves a model client draws
+this split, so a missing key never disqualifies a run and a defect never hides
+behind one.
+
 ## What a stopped run leaves behind
 
 1. Nothing is aborted mid-turn. A cost or deadline breach is detected before a
@@ -308,8 +373,9 @@ building and driving an implementation the run was told to stop writing. See the
    [session record](/gg/session-record/), the session summary, the session-ended
    event.
 6. The process exits 0. Of the sessions that ran, only two exit non-zero: one
-   whose credential was refused (`auth_error`) and one stopped by a gg defect
-   (`internal_error`). Both are reported as harness errors rather than scored,
+   whose root's credential was refused (`auth_error`) and one
+   [a gg defect stopped](#ggs-own-defects) (`internal_error`, wherever in the
+   tree it was raised). Both are reported as harness errors rather than scored,
    so a limit-stopped run is collected, validated and scored on whatever
    artifact it produced.
 7. The workspace is exactly as the last completed turn left it, and gg rolls

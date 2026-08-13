@@ -465,8 +465,8 @@ pub(super) async fn run_code_turn(
 ///
 /// A thin wrapper over [`SandboxError::turn_error_type`] for the three non-fatal arms of
 /// [`sandbox_failure_decision`], which reach it only after the fatal ones have already been claimed
-/// by `is_artifact_defect`/`is_host_fault` — so the `None` those four return is unreachable here. It
-/// is answered rather than `expect`ed because a
+/// by `is_artifact_defect`/`is_host_fault`/`is_lowering_defect` — so the `None` those five return is
+/// unreachable here. It is answered rather than `expect`ed because a
 /// panic inside the turn loop would cost a run that is otherwise fine, and because
 /// [`ProgramThrow`](TurnErrorType::ProgramThrow) is the honest reading of "the program ran and
 /// something gg cannot classify ended it": the base kind it derives is `program_fault`, which is the
@@ -486,8 +486,9 @@ fn sandbox_error_type(error: &SandboxError) -> TurnErrorType {
 /// are the ones the sandbox's own taxonomy names — see [`SandboxError`] — and each answers a
 /// different owner:
 ///
-/// * the committed **artifact** or gg's own **plumbing**: fatal, fed back to nobody, charged to
-///   nothing, because every further turn would fail identically;
+/// * the committed **artifact**, gg's own **plumbing**, or gg's own **preparation** of a source it
+///   had already accepted: fatal, fed back to nobody, charged to nothing, because every further turn
+///   would fail identically;
 /// * the **model's program**: the language's diagnostic, verbatim, under `Compiler error`;
 /// * the **compiler**, which could not finish: a `System` notice, because there is no diagnostic and
 ///   the model's program was never judged;
@@ -521,17 +522,32 @@ fn sandbox_failure_decision(
                  identically."
             ),
         },
+        // gg's own preparation of a source it had already accepted. Fatal for the reason the two
+        // above are, and stated separately because this is the one that reads like a compiler
+        // error: it carries a diagnostic, it happens where a compile error happens, and it was fed
+        // back under the `Compiler error` heading until the run's attribution was taken seriously.
+        // What that cost is worth naming here, at the site that used to do it — a model rewriting a
+        // program nothing was wrong with, gg's bug counted against the model's ceilings, and a
+        // `transpile` row in the published record saying the model could not write compiling code.
+        error if error.is_lowering_defect() => CodeTurnOutcome::Fatal {
+            fault: FatalFault::Lowering,
+            message: format!(
+                "the code sandbox could not run the model's program ({error}); this is a defect in \
+                 gg's own pipeline, not a fault in the model's program, and it is not fed back to \
+                 the model as one."
+            ),
+        },
         // The language's own diagnostic, with nothing wrapped around it. `SandboxError::Prepare`'s
         // `Display` prefixes it ("the program did not compile: …"), which the `Compiler error`
         // heading already says, so the inner error is what goes out.
         error @ SandboxError::Prepare(prepare) => CodeTurnOutcome::Continue {
             feedback: vec![CodeFeedback::compiler(prepare.to_string())],
-            // Which of the five prepare failures it was, from the error itself rather than from a
+            // Which of the four prepare failures it was, from the error itself rather than from a
             // blanket "did not compile": a syntax error is a typo, a semantic error is almost
             // always two programs in one reply, a compile error is a whole coherent program written
-            // against the wrong surface, and a lowering failure is a defect in gg's own pipeline.
-            // They have different causes and want different responses, so the record says which one
-            // happened.
+            // against the wrong surface, and a refusal is a feature the sandbox has no
+            // implementation of. They have different causes and want different responses, so the
+            // record says which one happened.
             error: Some(sandbox_error_type(error)),
             report: "its last program did not compile".to_string(),
         },
@@ -590,15 +606,16 @@ const TOOLCHAIN_NOTICE: &str = "Your program was not run: this language's compil
 ///
 /// A source the language read and rejected is the model's, and on a write the model wrote it on this
 /// very call: [`InvalidArgument`](ToolFailure::InvalidArgument), because the argument really was bad.
-/// A compiler that could not finish is a process gg ran falling over:
-/// [`IoError`](ToolFailure::IoError), the class that exists for exactly that, because nothing about
-/// the model's argument was judged. A function rather than an inline `if` so the two consumers of
-/// this seam cannot drift, and so the split is a thing a test can hold.
+/// Anything else is gg's side of the seam falling over — a compiler that could not finish, or a
+/// source gg accepted and then could not prepare: [`IoError`](ToolFailure::IoError), the class that
+/// exists for exactly that, because nothing about the model's argument was judged. A function rather
+/// than an inline `if` so the two consumers of this seam cannot drift, and so the split is a thing a
+/// test can hold.
 fn knowledge_refusal_class(error: &KnowledgeError) -> ToolFailure {
-    if error.is_toolchain_failure() {
-        ToolFailure::IoError
-    } else {
+    if error.is_authors_source() {
         ToolFailure::InvalidArgument
+    } else {
+        ToolFailure::IoError
     }
 }
 

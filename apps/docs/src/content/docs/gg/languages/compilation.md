@@ -109,14 +109,22 @@ split exists to prevent. The model would read that its program did not compile
 over a program nothing read, and spend its next turn rewriting something that
 was never wrong.
 
-A rejected program arrives as one of five bands, each with its own error type:
-`transpile_syntax`, `transpile_semantic`, `transpile_compile`,
-`transpile_lowering` and `transpile_unsupported`. Both failures are recoverable,
-and the next turn's program may compile. Both are error turns and count against
-the run's [error ceilings](/gg/execution-limits/), so a run whose compiler is
-broken stops rather than burning to its deadline. The separate base kind keeps
-the attribution through that counting. Neither is the prebuilt interpreter
-component failing to compile, which is an artifact defect that ends the session.
+A rejected program arrives as one of four bands, each with its own error type:
+`transpile_syntax`, `transpile_semantic`, `transpile_compile` and
+`transpile_unsupported`. Both failures are recoverable, and the next turn's
+program may compile. Both are error turns and count against the run's
+[error ceilings](/gg/execution-limits/), so a run whose compiler is broken stops
+rather than burning to its deadline. The separate base kind keeps the
+attribution through that counting. Neither is the prebuilt interpreter component
+failing to compile, which is an artifact defect that ends the session.
+
+A third failure is gg's own. A source a language parsed and accepted, and then
+could not lower into what the guest runs, is a lowering failure: the transform
+over the accepted tree failed, or the surface gg generated for the model to write
+against was itself rejected. It is not fed back to the model in any band, is
+charged to no ceiling, and ends the run under `internal_error`, on the terms in
+[gg's own defects](/gg/execution-limits/#ggs-own-defects). A model is never asked
+to rewrite a program gg accepted.
 
 The same split holds on the other thing gg compiles. A code skill or code memory
 goes through the same prepare step: a rejection hands the author's diagnostic
@@ -225,13 +233,18 @@ Three arms need no bound. Ruby's Opal driver reports a single thrown
 `SyntaxError`, Python runs no checker on the prepare path, and JavaScript
 delegates its whole prepare step to TypeScript's parse path.
 
-Two rules govern what the bound may touch.
+Two rules govern what the bound may touch. Both failures gg reports to the
+operator alone, and they are bounded differently because their content is
+different.
 
-- `PrepareError::Lowering` is bounded. What it carries is a defect in gg's own
-  pipeline, which reads as operator-facing, but it is a program failure and the
-  model is handed it verbatim on the next request and every request after.
-- A toolchain failure is not bounded. The model reads only the fixed notice, so
-  the crash detail has exactly one reader, the operator who can fix the image.
+- A lowering failure is bounded. It carries a whole compiler's opinion of gg's
+  generated surface, which a broken codegen repeats once per declaration, and the
+  run's `error` stream and the fault diagnostic beside it carry that sentence
+  whole. The first few diagnostics say which codegen wrote them, and the closing
+  count keeps the total honest.
+- A toolchain failure is not bounded. What it carries is the exit status, the
+  signal and the tail of the compiler's stderr, which the arm has already
+  trimmed to the size a crash report needs.
 
 Bounding never moves a failure between the two bands. An arm decides the band on
 the whole rendering before the cap runs, so a diagnostic the cap dropped cannot

@@ -1892,7 +1892,6 @@ export type GgTurnErrorType =
   | "transpile_syntax"
   | "transpile_semantic"
   | "transpile_compile"
-  | "transpile_lowering"
   | "transpile_unsupported"
   | "program_tool_error"
   | "program_unknown_name"
@@ -4730,7 +4729,6 @@ export const GG_TURN_ERROR_TYPE_LABELS: Readonly<
   transpile_syntax: "syntax error",
   transpile_semantic: "semantic error",
   transpile_compile: "compiler rejected the program",
-  transpile_lowering: "lowering failed",
   transpile_unsupported: "unsupported program feature",
   program_tool_error: "uncaught call failure",
   program_unknown_name: "unknown name",
@@ -4759,7 +4757,6 @@ export const GG_TURN_ERROR_TYPE_BASE: Readonly<
   transpile_syntax: "transpile",
   transpile_semantic: "transpile",
   transpile_compile: "transpile",
-  transpile_lowering: "transpile",
   transpile_unsupported: "transpile",
   program_tool_error: "program_fault",
   program_unknown_name: "program_fault",
@@ -4787,7 +4784,6 @@ export const GG_TURN_ERROR_TYPES: readonly GgTurnErrorType[] = [
   "transpile_syntax",
   "transpile_semantic",
   "transpile_compile",
-  "transpile_lowering",
   "transpile_unsupported",
   "program_tool_error",
   "program_unknown_name",

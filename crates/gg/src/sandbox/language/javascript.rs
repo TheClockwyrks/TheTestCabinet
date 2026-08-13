@@ -116,7 +116,7 @@ impl ProgramLanguage for JavaScript {
         _modules: &[CodeModule],
         _context: &PrepareContext,
     ) -> Result<PreparedProgram, PrepareFailure> {
-        Ok(typescript::prepare::prepare_program(source)?)
+        typescript::prepare::prepare_program(source)
     }
 
     /// **None.** Nothing judges a program on this arm, which is what it is for.
@@ -137,7 +137,7 @@ impl ProgramLanguage for JavaScript {
         source: &str,
         _context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {
-        Ok(typescript::prepare::prepare_module(source)?)
+        typescript::prepare::prepare_module(source)
     }
 
     /// `.js` first, `.ts` accepted — [TypeScript's list](super::typescript), with the preference

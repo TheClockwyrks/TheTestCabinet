@@ -452,8 +452,9 @@ fn the_lines_are_renumbered_before_the_bound_and_not_after_it() {
 /// Which band a refusal is gets decided on the **whole** of what `tsc` said and before a byte is
 /// bounded: a diagnostic located in the checked file makes it the model's
 /// [`Compile`](PrepareError::Compile), and none at all makes it
-/// [`Lowering`](PrepareError::Lowering) — gg's own generated declarations failing, which is not the
-/// model's to fix. Both bands are bounded; which one it is, is decided before either is.
+/// [`Lowering`](PrepareFailure::Lowering) — gg's own generated declarations failing, which is not the
+/// model's to fix and ends the run rather than being fed back. Both bands are bounded; which one it
+/// is, is decided before either is.
 #[test]
 fn the_bound_does_not_decide_whose_failure_it_is() {
     // The only diagnostic in the model's own file is the fiftieth, far past what it will be shown.
@@ -473,15 +474,13 @@ fn the_bound_does_not_decide_whose_failure_it_is() {
     );
 
     // And a refusal with nothing in the model's file is gg's own, however much of it there is.
-    let Err(PrepareFailure::Program(PrepareError::Lowering(_))) =
-        classify(PROGRAM_FILE, 1, refused(&ours(50)))
-    else {
+    let Err(PrepareFailure::Lowering(_)) = classify(PROGRAM_FILE, 1, refused(&ours(50))) else {
         panic!("gg's own declarations failing is not the model's compile error");
     };
 }
 
 /// `count` diagnostics located in gg's **own** generated declarations, which is the only thing a
-/// [`Lowering`](PrepareError::Lowering) refusal is ever made of.
+/// [`Lowering`](PrepareFailure::Lowering) refusal is ever made of.
 fn ours(count: usize) -> String {
     (1..=count)
         .map(|line| format!("gg.d.ts({line},1): error TS1005: ';' expected."))
@@ -489,25 +488,22 @@ fn ours(count: usize) -> String {
         .join("\n")
 }
 
-/// **gg's own failure is bounded too, because a model reads it.**
+/// **gg's own failure is bounded too, though only an operator reads it.**
 ///
-/// The tempting reading of [`Lowering`](PrepareError::Lowering) is that it is an operator's bug
-/// report and should therefore be kept whole. It is one — and it is also a
-/// [`PrepareFailure::Program`], which [`SandboxError::Prepare`](crate::sandbox::SandboxError)
-/// carries into `CodeFeedback::compiler` and into the very next request to the model, and every
-/// request after it.
+/// [`Lowering`](PrepareFailure::Lowering) is a bug report about gg, and no model is ever shown one:
+/// it ends the run rather than being carried into `CodeFeedback::compiler` and into every later
+/// request. What it is still bounded *for* is the reader it has — the run's `error` stream and the
+/// fault diagnostic beside it, both of which carry this sentence whole.
 ///
-/// That makes it the **largest** model-facing string this arm can produce rather than an exception
-/// to the bound: [`tsconfig`](super::tsconfig) sets `skipLibCheck`, so a declaration file earns a
-/// diagnostic only by failing to *parse*, and `tsc` withholds every semantic diagnostic while a
-/// syntactic one stands — so this branch is reached with the whole of a broken generated surface and
-/// nothing of the program. Two hundred generated declarations with one codegen defect apiece
-/// measured 29682 bytes across 600 lines on this checkout, against the 11614 of the worst row in
-/// the [table](super::super::diagnostics) the bound was written for.
+/// The size is why that matters: [`tsconfig`](super::tsconfig) sets `skipLibCheck`, so a declaration
+/// file earns a diagnostic only by failing to *parse*, and `tsc` withholds every semantic diagnostic
+/// while a syntactic one stands — so this branch is reached with the whole of a broken generated
+/// surface and nothing of the program. Two hundred generated declarations with one codegen defect
+/// apiece measured 29682 bytes across 600 lines on this checkout, against the 11614 of the worst row
+/// in the [table](super::super::diagnostics) the bound was written for.
 #[test]
-fn ggs_own_declarations_failing_is_bounded_like_everything_else_a_model_reads() {
-    let Err(PrepareFailure::Program(PrepareError::Lowering(rendered))) =
-        classify(PROGRAM_FILE, 1, refused(&ours(50)))
+fn ggs_own_declarations_failing_is_bounded_like_everything_else_gg_reports() {
+    let Err(PrepareFailure::Lowering(rendered)) = classify(PROGRAM_FILE, 1, refused(&ours(50)))
     else {
         panic!("gg's own declarations failing is not the model's compile error");
     };
@@ -530,8 +526,7 @@ fn ggs_own_declarations_failing_is_bounded_like_everything_else_a_model_reads() 
 
     // A refusal small enough to read whole is still whole, so the bound is a ceiling here and not a
     // filter — the same claim the `Compile` band above it makes.
-    let Err(PrepareFailure::Program(PrepareError::Lowering(short))) =
-        classify(PROGRAM_FILE, 1, refused(&ours(SHOWN)))
+    let Err(PrepareFailure::Lowering(short)) = classify(PROGRAM_FILE, 1, refused(&ours(SHOWN)))
     else {
         panic!("gg's own declarations failing is not the model's compile error");
     };

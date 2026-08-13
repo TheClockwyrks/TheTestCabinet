@@ -11,7 +11,7 @@ use super::*;
 /// [`prepare_program`] returns the JavaScript **and** what it observed about the program on the way
 /// past; the observation has its own tests below, and a helper keeps every other case reading as
 /// what it is about.
-fn js_of(src: &str) -> Result<String, PrepareError> {
+fn js_of(src: &str) -> Result<String, PrepareFailure> {
     prepare_program(src).map(|prepared| prepared.source)
 }
 
@@ -51,7 +51,7 @@ fn a_bare_top_level_return_is_allowed() {
 fn a_syntax_error_is_a_parse_error_with_a_message() {
     let error = prepare_program("const x: = ;").expect_err("invalid TypeScript is refused");
     assert!(
-        matches!(error, PrepareError::Syntax(_)),
+        matches!(error, PrepareFailure::Program(PrepareError::Syntax(_))),
         "expected a parse error, got {error:?}"
     );
     assert!(
@@ -66,7 +66,10 @@ fn a_syntax_error_is_a_parse_error_with_a_message() {
 fn an_unterminated_construct_is_a_parse_error_not_a_panic() {
     let error = prepare_program("const entries = listDir(\"src\";")
         .expect_err("an unterminated call fails");
-    assert!(matches!(error, PrepareError::Syntax(_)), "{error:?}");
+    assert!(
+        matches!(error, PrepareFailure::Program(PrepareError::Syntax(_))),
+        "{error:?}"
+    );
 }
 
 /// Every diagnostic reaches the message, not just the first: a model that fixes one error and is
@@ -160,7 +163,10 @@ fn an_import_statement_is_refused_with_guidance() {
     let error =
         prepare_program("import fs from 'node:fs';\nreturn 1;").expect_err("an import is refused");
     let message = error.to_string();
-    assert!(matches!(error, PrepareError::Unsupported(_)), "{error:?}");
+    assert!(
+        matches!(error, PrepareFailure::Program(PrepareError::Unsupported(_))),
+        "{error:?}"
+    );
     assert!(message.contains("`import`"), "{message}");
     assert!(message.contains("already in scope"), "{message}");
 }
@@ -195,7 +201,10 @@ fn a_dynamic_import_is_refused_with_guidance() {
     let error =
         prepare_program("return import('node:fs');").expect_err("a dynamic import is refused");
     let message = error.to_string();
-    assert!(matches!(error, PrepareError::Unsupported(_)), "{error:?}");
+    assert!(
+        matches!(error, PrepareFailure::Program(PrepareError::Unsupported(_))),
+        "{error:?}"
+    );
     assert!(message.contains("dynamic `import()`"), "{message}");
 }
 
@@ -206,7 +215,10 @@ fn a_top_level_await_is_refused_with_guidance() {
     let error =
         prepare_program("const p = await shell('ls');\nreturn p;").expect_err("await is refused");
     let message = error.to_string();
-    assert!(matches!(error, PrepareError::Unsupported(_)), "{error:?}");
+    assert!(
+        matches!(error, PrepareFailure::Program(PrepareError::Unsupported(_))),
+        "{error:?}"
+    );
     assert!(message.contains("top-level `await`"), "{message}");
     assert!(message.contains("synchronous"), "{message}");
 }
@@ -226,7 +238,10 @@ fn a_deeply_nested_program_is_refused_rather_than_crashing_the_process() {
         let error =
             prepare_program(&program).expect_err("a program past the nesting cap is refused");
         let message = error.to_string();
-        assert!(matches!(error, PrepareError::Unsupported(_)), "{error:?}");
+        assert!(
+            matches!(error, PrepareFailure::Program(PrepareError::Unsupported(_))),
+            "{error:?}"
+        );
         assert!(
             message.contains(&format!("{depth} levels deep")),
             "the message must name the depth the program reached: {message}"
@@ -242,7 +257,7 @@ fn a_deeply_nested_program_is_refused_rather_than_crashing_the_process() {
     let runaway = format!("return {}1{};", "(".repeat(20_000), ")".repeat(20_000));
     assert!(matches!(
         prepare_program(&runaway),
-        Err(PrepareError::Unsupported(_))
+        Err(PrepareFailure::Program(PrepareError::Unsupported(_)))
     ));
 }
 
@@ -269,7 +284,7 @@ fn unbalanced_closers_do_not_mask_later_nesting() {
     );
     assert!(matches!(
         prepare_program(&program),
-        Err(PrepareError::Unsupported(_))
+        Err(PrepareFailure::Program(PrepareError::Unsupported(_)))
     ));
 }
 
@@ -348,7 +363,7 @@ fn a_redeclared_const_is_a_located_early_error() {
                    return root.length;";
     let error = prepare_program(program).expect_err("a redeclared const is refused");
     assert!(
-        matches!(error, PrepareError::Semantic(_)),
+        matches!(error, PrepareFailure::Program(PrepareError::Semantic(_))),
         "expected an early error, got {error:?}"
     );
     let message = error.to_string();
@@ -371,7 +386,10 @@ fn a_redeclared_const_is_a_located_early_error() {
 fn a_binding_redeclared_by_another_keyword_is_an_early_error() {
     let error = prepare_program("let files = 1;\nconst files = 2;\nreturn files;")
         .expect_err("a redeclaration across keywords is refused");
-    assert!(matches!(error, PrepareError::Semantic(_)), "{error:?}");
+    assert!(
+        matches!(error, PrepareFailure::Program(PrepareError::Semantic(_))),
+        "{error:?}"
+    );
 }
 
 /// The early-error check must not refuse the programs the sandbox actually runs. Every shape here
@@ -639,7 +657,7 @@ fn a_refusal_past_the_bound_keeps_the_first_few_and_counts_the_rest() {
 fn the_bound_does_not_decide_whose_failure_it_is() {
     let syntax = prepare_program(&fifty_recovered(50)).expect_err("refused");
     assert!(
-        matches!(syntax, PrepareError::Syntax(_)),
+        matches!(syntax, PrepareFailure::Program(PrepareError::Syntax(_))),
         "a bounded parse failure is still a parse failure: {syntax:?}"
     );
 
@@ -649,7 +667,7 @@ fn the_bound_does_not_decide_whose_failure_it_is() {
         .map(|index| format!("const a{index} = 1;\nconst a{index} = 2;\n"))
         .collect();
     let semantic = prepare_program(&redeclared).expect_err("a redeclaration is refused");
-    let PrepareError::Semantic(message) = &semantic else {
+    let PrepareFailure::Program(PrepareError::Semantic(message)) = &semantic else {
         panic!("an early error is not a parse failure: {semantic:?}");
     };
     assert!(

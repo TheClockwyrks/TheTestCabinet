@@ -75,11 +75,12 @@
 //!   sentinel](crate::cancel) and every agent wound down at its next turn boundary. Like the
 //!   ceilings above it this is not a failure, and unlike anything else on this list it says nothing
 //!   whatsoever about the model, because its cause is entirely outside the run;
-//! - `"model_error"` — a model turn failed (retryable-exhausted **or** fatal), or gg's own
-//!   sandbox machinery did. gg ends the session **loudly** — a `Log(error)` plus this status —
-//!   never silently:
+//! - `"model_error"` — a model turn failed, retryable-exhausted or fatal: the provider was reached
+//!   and did not deliver a usable turn. gg ends the session **loudly** — a `Log(error)` plus this
+//!   status — never silently:
 //!   a known failure mode of another harness is discarding a whole run on one API
-//!   error, and gg's whole point is that the failure is visible in the stream;
+//!   error, and gg's whole point is that the failure is visible in the stream. Nothing gg's own
+//!   machinery does ends a session here, whatever the model was in the middle of when it broke;
 //! - `"auth_error"` — the run's credential was refused (absent, or a `401`/`403` from
 //!   the provider). Called out separately from `"model_error"` because nothing about
 //!   the model was exercised: the key The Test Cabinet supplied was rejected, so the
@@ -88,30 +89,48 @@
 //!   non-zero, or that printed a decision gg could not read. The only tool-layer condition that
 //!   stops a run outright, and it has to be: a gate that did not judge cannot be treated as having
 //!   passed or failed, and the model never asked for the hook and cannot fix it;
-//! - `"internal_error"` — gg reached a state its own launch validation proves is unreachable,
-//!   the standing case being an agent whose profile the run does not declare. Separate from
-//!   every status above it because the fault is *ours*: the agent's loop ends loudly, naming the
-//!   profile and the site, rather than substituting a profile that does exist and letting the
-//!   record attribute one agent's turns to another;
+//! - `"internal_error"` — gg itself broke, in any of the three ways it can: it reached a state its
+//!   own launch validation proves is unreachable (an agent whose profile the run does not declare),
+//!   its sandbox machinery failed under a turn (a guest artifact that will not run, a fault in
+//!   the wasm host, a program gg accepted and then could not prepare), or an agent's task
+//!   [panicked](teardown). Separate from every status
+//!   above it because the fault is *ours*: the agent's loop ends loudly, naming the fault and the
+//!   site, rather than substituting a profile that does exist or charging a broken sandbox to the
+//!   model that wrote the program it would not run. It is also the one ending that belongs to the
+//!   **run** rather than to the agent that met it — see below;
 //! - `"error"` — a launch failure (no bound slot, or the client could not resolve).
 //!
-//! A launch failure (`"error"`) exits the process non-zero, and so — **read off the root agent, and
-//! only the root** — does an auth failure (`"auth_error"`) or a gg defect (`"internal_error"`): the
-//! session's status is the root's [`LoopEnd`], so `core` records those three as harness errors. Every
-//! other root ending, and *every* ending of a non-root agent, is a run outcome recorded in the
-//! telemetry rather than a process failure, and exits `0` — a subagent that ends `"auth_error"` or
-//! `"internal_error"` is a [failed](GgAgentStatus::Failed) node in the agent tree inside a session
-//! that can still complete and be scored. Whether a gg defect below the root *ought* to escalate to
-//! the whole run is [an open question](STATUS_INTERNAL_ERROR), not a settled design.
+//! A launch failure (`"error"`) exits the process non-zero, and so do two of the endings above, so
+//! that `core` records a harness error rather than a tree to score. They are read off different
+//! things:
+//!
+//! - a gg defect (`"internal_error"`) is read off the **whole tree**. The first agent to meet one
+//!   raises it on the run's [fault latch](crate::fault); every other agent — the root included —
+//!   stops itself at its next turn boundary exactly as it would for an operator's kill, and the
+//!   session ends `"internal_error"` whatever the root's own loop was doing. A run gg broke in did
+//!   not produce the tree it leaves behind, so there is nothing in it to score and nothing to
+//!   compare a clean run against. A panicked agent reaches no boundary of its own, so the
+//!   [teardown] raises the latch on its behalf and wakes whoever was waiting on it;
+//! - an auth failure (`"auth_error"`) is read off the **root**, and only the root: the session's
+//!   status is the root's [`LoopEnd`]. A subagent whose credential was refused is a
+//!   [failed](GgAgentStatus::Failed) node in a session that can still complete and be scored.
+//!
+//! Every other ending, of any agent, is a run outcome recorded in the telemetry rather than a
+//! process failure, and exits `0`.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
+use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+// `catch_unwind` over a *future* — the async equivalent of the `std` one, and the only way to be
+// standing between a panicking agent task and the run it would otherwise take down silently. See
+// [`teardown`].
+use futures_util::FutureExt;
 use serde_json::{Value, json};
 use test_cabinet_core::gg::{
     ALL_HOOK_EVENTS, AUTOLOAD_LOCKED_IMPL, CAPABILITY_AGENT_MANAGED_CONTEXT,
@@ -148,6 +167,7 @@ use crate::context::{
 };
 use crate::docs::{DocViewTypes, DocsRuntime};
 use crate::ending::{Ending, EndingRole};
+use crate::fault::{FaultLatch, panic_message};
 use crate::fsm::{FsmPosition, FsmSpec};
 use crate::git;
 use crate::healing::{self, AssistantMessageMode, Healed, HealingConfig, HealingStrategy, plural};
@@ -254,13 +274,25 @@ const STATUS_CANCELED: &str = "canceled";
 
 /// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for a session a model
 /// turn failed in — the model was reached and did not deliver a usable turn.
+///
+/// The far side of the request is the whole of it: a provider that refused, that rejected the
+/// request, that answered with a body gg could not parse, or that served replies gg's [loop
+/// detection](crate::loopguard) threw away until the client's retries ran out. gg's own machinery
+/// failing is never any of those, and ends the agent on [`STATUS_INTERNAL_ERROR`] instead — a
+/// run's output is attribution data, and our defect filed in the model's column is not a degraded
+/// measurement but a wrong one that reads like a real one.
 const STATUS_MODEL_ERROR: &str = "model_error";
 
 /// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for a session whose
 /// **credential** was refused. Distinct from [`STATUS_MODEL_ERROR`] because it is an
 /// operator fault: with [`STATUS_INTERNAL_ERROR`] it is one of the two non-launch statuses that
-/// exit the process non-zero — and, like it, only when it is the *root's* ending (see
-/// [`SessionOutcome`]).
+/// exit the process non-zero (see [`SessionOutcome`]).
+///
+/// It exits non-zero on the *root's* ending alone, where a gg defect exits non-zero from anywhere
+/// in the tree. The asymmetry is deliberate and is the difference between a fault of the
+/// operator's and a fault of ours: a subagent whose credential was refused took no turns, so it
+/// contributed nothing to the tree the run leaves behind, and the run around it is still a run the
+/// model produced.
 const STATUS_AUTH_ERROR: &str = "auth_error";
 
 /// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for a session one of the run's
@@ -273,45 +305,56 @@ const STATUS_AUTH_ERROR: &str = "auth_error";
 /// never asked for the hook and cannot fix it.
 const STATUS_HOOK_ERROR: &str = "hook_error";
 
-/// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for a session **gg itself** broke
-/// in — today, an agent whose [profile](GgAgentConfig) this run does not declare, reached at a
-/// site every caller of which [launch validation](validate_agents) promises cannot get there.
+/// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for a session **gg itself** broke in,
+/// in either of the two ways it can: gg reached a state [launch validation](validate_agents) proves
+/// is unreachable — an agent whose [profile](GgAgentConfig) this run does not declare — or gg's own
+/// machinery failed under a turn, which is a [fatal sandbox fault](FatalFault): a guest artifact
+/// that will not compile or instantiate, the wasm host itself falling over, or a program gg read,
+/// accepted, and then could not prepare for its guest.
 ///
-/// Held apart from the three faults above it by *where* gg was when it failed, not by whose fault
-/// it is. [`STATUS_AUTH_ERROR`] and [`STATUS_HOOK_ERROR`] are a refused credential and an
-/// operator's script; [`STATUS_MODEL_ERROR`] is a turn that did not deliver. This one is the only
-/// status with no turn in it at all: the harness arrived in a state it proves at launch is
-/// unreachable, so nothing was asked of the model and what the run produced is evidence about gg
-/// rather than about the model.
+/// Held apart from the three faults above it by **whose** failure it is, which is the only division
+/// a run's readers can act on. [`STATUS_AUTH_ERROR`] and [`STATUS_HOOK_ERROR`] are a refused
+/// credential and an operator's script; [`STATUS_MODEL_ERROR`] is a turn the provider did not
+/// deliver. This one is ours, and it is ours whether or not a model was in the middle of something:
+/// an undeclared profile is reached before anything is asked of a model, while a sandbox fault
+/// lands on a program a model wrote and gg then could not run.
 ///
-/// It is **not** the case that everything gg's own machinery breaks in reports here — an **open
-/// question**, recorded so the paragraph above is not read as a ruling that it is. A
-/// [`FatalFault`] — artifact drift in the sandbox component, or gg's own host plumbing — is
-/// documented at its definition as a failure of gg's machinery and is deliberately never charged
-/// to an [error ceiling](RunLimits) for that reason, yet the status it ends the agent on is
-/// [`STATUS_MODEL_ERROR`]. That predates this status; whether a sandbox fault should report as a
-/// gg defect instead is the repo owner's call, and moving it would change which runs `core` scores.
+/// **Everything gg's own machinery breaks in reports here**, and nothing gg breaks in is reported
+/// as anybody else's. A [fatal fault](FatalFault) is not a model turn that failed — the model
+/// answered, and the answer was never run — so ending it on [`STATUS_MODEL_ERROR`] would file our
+/// defect in the model's column of the attribution data the run exists to produce. A run scored
+/// against a model has to be a run that model produced, and a fault of ours recorded under its name
+/// is not a degraded result but a wrong one that reads like a real one.
 ///
-/// It **ends** the agent's loop instead of carrying on because there is nothing to carry on as. The
-/// only substitution available is some *other* profile, and running an agent under capabilities,
-/// a model and an execution mode nobody asked for — while the record attributes every turn of it
-/// to the profile that *was* asked for — corrupts the attribution data the run exists to produce.
-/// A wrong answer that reads as a real one is worse than no answer, so gg refuses to produce one.
+/// It **ends** the agent's loop instead of carrying on because in neither family is there anything
+/// to carry on as. The only substitute for a profile is some *other* profile, and running an agent
+/// under capabilities, a model and an execution mode nobody asked for — while the record attributes
+/// every turn of it to the profile that *was* asked for — corrupts that same attribution data. A
+/// fatal fault is a property of the build rather than of the turn, so there is nothing to retry
+/// into either: every further turn would fail identically, and the run would burn to its deadline
+/// proving it. A wrong answer that reads as a real one is worse than no answer, so gg refuses to
+/// produce one.
 ///
-/// **Which agent ended this way decides what it costs the run.** The exit code is read off the
-/// root's ending and only the root's ([`SessionOutcome`]), because that is the session's status: a
-/// **root** that ends here exits the process non-zero alongside [`STATUS_AUTH_ERROR`], so `core`
-/// records a harness error rather than being handed a tree to score. Both sites that raise it fire
-/// for any agent, though, so a **subagent** — an issue agent, a reviewer, the merge agent, a
-/// spawned child — that ends here becomes a [failed](GgAgentStatus::Failed) node in the agent tree
-/// and a child with no status word to its spawner ([`AgentStatusData::parse`]), while the session
-/// carries on around it: if the root then finishes, the session ends [`STATUS_COMPLETED`], exits
-/// `0`, and the tree is collected and scored.
+/// **Whichever agent ends this way, the run ends with it.** Every site that raises it fires for any
+/// agent — an issue agent, a reviewer, the merge agent, a spawned child — and a defect that struck
+/// one of those is no more the model's doing than one that struck the root. So the agent that meets
+/// it raises the run's [fault latch](crate::fault), every other agent stops itself at its next turn
+/// boundary ([`Agent::stop_on_fault`]), and the session ends here and exits non-zero
+/// ([`SessionOutcome`]) however the root's own loop happened to end.
 ///
-/// Whether a gg defect *anywhere* in the tree ought to escalate to the whole run is an **open
-/// question**, deliberately left open rather than answered here. The asymmetry is inherited from
-/// [`STATUS_AUTH_ERROR`], which has always worked this way, and closing it would change when a
-/// whole run fails — a call for the repo owner, not a gap to quietly fill.
+/// The alternative — a failed node in a session that carries on and is scored — is the same wrong
+/// answer this status exists to prevent, one level down. A subagent stopped mid-task is work the
+/// run was supposed to contain and does not, or work the rest of the tree then built around a hole;
+/// a reviewer that never rendered a verdict is an issue merged without the gate its filer asked
+/// for. The tree that comes back is not the tree that configuration produces, and nothing
+/// downstream — not `core`, not a reviewer, not a comparison against another arm — can tell it from
+/// one that is. That is worse than losing the run: a missing run is visible, and a plausible wrong
+/// one is not.
+///
+/// This is why it is not recorded as [`STATUS_CANCELED`] despite winding the run down through the
+/// same machinery. A canceled run is a human's decision and says nothing about anybody's
+/// correctness; filing our own defect there would hide it in the one field a study reads to find
+/// out why runs stop.
 const STATUS_INTERNAL_ERROR: &str = "internal_error";
 
 /// Whether a terminal loop status means the agent failed (as opposed to finishing,
@@ -329,11 +372,11 @@ pub(crate) fn is_failure_status(status: &str) -> bool {
 /// process level, whatever it ended as, with the real outcome carried in the telemetry stream. That
 /// is **every** terminal status — [`STATUS_COMPLETED`], the three ceiling endings
 /// ([`STATUS_EXHAUSTED`], [`STATUS_TIMED_OUT`], [`STATUS_LIMIT_EXCEEDED`]), an operator's
-/// [`STATUS_CANCELED`], a [`STATUS_MODEL_ERROR`], a broken script's [`STATUS_HOOK_ERROR`] — bar two,
-/// and those two only when they are the **root's**: [`STATUS_AUTH_ERROR`] and
-/// [`STATUS_INTERNAL_ERROR`]. Written out rather than illustrated with a few, because a partial list
-/// here reads as the whole rule, and a reader who found their status missing from it would have to
-/// guess which side of the exit code it falls on. Only a
+/// [`STATUS_CANCELED`], a [`STATUS_MODEL_ERROR`], a broken script's [`STATUS_HOOK_ERROR`] — bar
+/// two: [`STATUS_AUTH_ERROR`] when it is the **root's** ending, and [`STATUS_INTERNAL_ERROR`]
+/// wherever in the tree the defect behind it was raised. Written out rather than illustrated with a
+/// few, because a partial list here reads as the whole rule, and a reader who found their status
+/// missing from it would have to guess which side of the exit code it falls on. Only a
 /// [`HarnessError`](Self::HarnessError) — nothing for the model to be judged on — exits
 /// non-zero.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -344,15 +387,16 @@ pub enum SessionOutcome {
     /// Whatever happened, it was **ours**, so there is no run to score: the invocation could not
     /// launch a session at all (no root profile, no model bound to it, or a client that could not
     /// be resolved), the **root's** model calls were refused because the run's credential was
-    /// rejected ([`STATUS_AUTH_ERROR`]), or the **root** walked into a gg defect mid-session
-    /// ([`STATUS_INTERNAL_ERROR`]). The process exits non-zero, so `core` records a harness error
-    /// rather than a scoreable run — none of the three is the model's doing, and scoring any of
-    /// them would blame a model for our mistake.
+    /// rejected ([`STATUS_AUTH_ERROR`]), or **any agent of the run** walked into a gg defect
+    /// mid-session ([`STATUS_INTERNAL_ERROR`]). The process exits non-zero, so `core` records a
+    /// harness error rather than a scoreable run — none of the three is the model's doing, and
+    /// scoring any of them would blame a model for our mistake.
     ///
-    /// The last two are read off the root because the session's status is the root's ending. A
-    /// *subagent* that ends either way is a failed agent inside a session that still exits `0`;
-    /// whether a gg defect down there should escalate this far is [an open
-    /// question](STATUS_INTERNAL_ERROR).
+    /// The credential is read off the root because the session's status is the root's ending, and a
+    /// subagent that never got a client contributed nothing to the tree. A gg defect is read off
+    /// the run's [fault latch](crate::fault) instead, because it is the *tree* that is spoiled by
+    /// one: an agent our own machinery stopped leaves work missing from a run whose record does not
+    /// say so, and comparing that against a clean run is comparing a measurement with a mistake.
     HarnessError,
 }
 
@@ -557,6 +601,102 @@ fn profile_binding(set: &GgCapabilitySet, profile: &str) -> Result<GgSlotBinding
     Ok(GgSlotBinding::new(profile, model_id)
         .with_prompt_cache_ttl(agent.prompt_cache_ttl)
         .with_loop_detection(agent.loop_detection))
+}
+
+/// Whose failure stopped a board [issue](crate::board) from being dispatched, and therefore what it
+/// costs beyond the issue.
+///
+/// The same division [`resolve_agent_client`] draws one step later, drawn here because a dispatch
+/// fails before any agent exists to end: gg's defect disqualifies the run, an operator's missing
+/// credential fails the issue and leaves the run to carry on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DispatchFault {
+    /// gg's own: an issue with no assignee, or an assignee profile this run does not declare or
+    /// binds no model to. Every one of them is refused by the board's own tools and by
+    /// [launch validation](validate_agents), so reaching one means gg read its configuration two
+    /// different ways.
+    Gg,
+    /// The run's credential was refused for the assignee's model. Nothing is broken: a key is
+    /// supplied rather than fixed.
+    Credential,
+}
+
+/// A profile that could not be resolved to a [client](ModelClient) **mid-session**, and the status
+/// the agent's loop therefore ends on.
+///
+/// The status travels with the diagnostic because the two are one decision: a caller that reported
+/// the failure and then chose a status separately is a caller that can report one fault and record
+/// another.
+struct UnresolvedProfile {
+    /// The terminal status this failure ends the agent on — whose failure it was.
+    status: &'static str,
+    /// The resolution's own words, for the `error` line the caller writes around them.
+    detail: String,
+}
+
+impl UnresolvedProfile {
+    /// How the `error` line ends: what this failure costs beyond the agent that met it.
+    ///
+    /// The two halves of the split cost different amounts, so a single sentence for both would be
+    /// wrong for one of them. gg's defect takes the whole run down; a refused credential ends this
+    /// agent and leaves the run to carry on, which is a thing an operator reading the stream mid-run
+    /// needs to be told rather than left to infer from the status word.
+    fn consequence(&self) -> &'static str {
+        if self.status == STATUS_INTERNAL_ERROR {
+            "this agent's loop ends here rather than continuing as its predecessor, and the run \
+             ends with it: gg's own defect had a hand in whatever tree this run would leave behind, \
+             and a tree like that cannot be scored against the model"
+        } else {
+            "this agent's loop ends here rather than continuing as its predecessor. The run's other \
+             agents carry on: a credential is the operator's to supply, and a run that lost one \
+             agent to a refused key is still a run the model produced"
+        }
+    }
+}
+
+/// The [client](ModelClient) an agent standing up under `profile` will take its turns on, and —
+/// when there is none — [whose failure that is](UnresolvedProfile).
+///
+/// Its caller is the [succession](Handoff), standing a successor up on a profile a launch check has
+/// already passed, and it cannot carry on without a client, so it ends the agent's loop. Which
+/// status it ends it on is the whole reason this is a function rather than an inline resolution,
+/// because the two failures behind it belong to different people:
+///
+/// * the run's **credential** was refused ([`STATUS_AUTH_ERROR`]) — the operator's, and reachable
+///   in a healthy build: a run whose root binds a mock model launches with no credential at all,
+///   and the first agent to bind a live one then finds there is none;
+/// * anything else ([`STATUS_INTERNAL_ERROR`]) — a profile the set does not declare, a machine with
+///   no readable entry state, a profile with no model bound. [`validate_agents`] rejects every one
+///   of those before a session starts, so meeting one here means gg's own validation was wrong
+///   about the configuration it accepted.
+///
+/// The split decides more than a word in the record. The first ends this agent and leaves the run
+/// to carry on; the second ends the **run**, because it is gg's defect and a tree gg broke while
+/// producing cannot be scored (see [`crate::fault`]). Getting the two the wrong way round would
+/// either discard a run over a missing key or score one gg had a hand in — which is why the status
+/// and the diagnostic are decided together here rather than at the call sites.
+///
+/// Neither is [`STATUS_MODEL_ERROR`]: no request was made, so nothing the model did is in evidence,
+/// and recording it against the model would put somebody else's fault in the model's column.
+fn resolve_agent_client(
+    orch: &Orchestrator,
+    profile: &str,
+    origin: &GgSessionAgentOrigin,
+) -> Result<Box<dyn ModelClient>, UnresolvedProfile> {
+    let binding = profile_binding(&orch.caps, profile).map_err(|detail| UnresolvedProfile {
+        status: STATUS_INTERNAL_ERROR,
+        detail,
+    })?;
+    orch.factory
+        .client_for_agent(&binding, &AgentIdentity::agent(origin.clone()))
+        .map_err(|err| UnresolvedProfile {
+            status: if err.is_auth_failure() {
+                STATUS_AUTH_ERROR
+            } else {
+                STATUS_INTERNAL_ERROR
+            },
+            detail: err.to_string(),
+        })
 }
 
 /// Validate a run's [agent profiles](GgAgentConfig) before launch: the set must declare at least
@@ -1054,9 +1194,19 @@ pub(crate) async fn run_with_seams(
                      of the first turn: {err}"
                 ),
             )),
-            // The blocking task itself failed to join, which only happens if the host panicked.
-            // There is nothing to say about a compile that never reported either way.
-            Err(_) => {}
+            // The blocking task itself panicked. Reported and no more: the warm-up is off every
+            // turn's critical path, so nothing has been broken *by* it — the same defect meets the
+            // first code turn that compiles this language, where it is fatal (a
+            // [host fault](FatalFault::HostFault) that ends the run), and a run whose agents never
+            // write a program was never going to touch it at all.
+            Err(join) => root_emitter.emit(log(
+                "warn",
+                format!(
+                    "warming up the code sandbox's {name} interpreter component panicked ({join}); \
+                     the first turn that writes a {name} program will meet the same defect and end \
+                     the run as gg's."
+                ),
+            )),
         }
     }
 
@@ -1064,19 +1214,68 @@ pub(crate) async fn run_with_seams(
     // `run_agent`, so cap-limited children that were waiting can now finish; a completed task has
     // already registered any children it spawned, so draining to empty joins the whole tree.
     loop {
-        let handle = orch.tasks.lock().expect("subagent tasks lock").pop();
-        match handle {
-            Some(handle) => {
-                let _ = handle.await;
+        let task = orch.tasks.lock().expect("subagent tasks lock").pop();
+        match task {
+            Some(task) => {
+                // A task that did not complete panicked somewhere [`run_agent`]'s own
+                // [teardown](AgentTeardown) does not cover — outside the driving frame entirely —
+                // so nothing has latched it and nothing has said which agent it was. Latching it
+                // here is the backstop: it cannot wake anybody (the join is the last thing the
+                // session does), but it is what stops a run gg's machinery broke in from being
+                // reported as one the model produced. A run that already faulted keeps its first
+                // diagnostic, which is the cause rather than this consequence.
+                if let Err(join) = task.handle.await {
+                    let detail = match join.try_into_panic() {
+                        Ok(payload) => format!(
+                            "its task panicked outside its turn loop: {}",
+                            panic_message(&*payload)
+                        ),
+                        Err(join) => format!("its task never ran the agent to an ending: {join}"),
+                    };
+                    orch.fault.in_agent(&task.id, &task.slot, detail);
+                }
             }
             None => break,
         }
     }
 
+    // The session's terminal status. It is the **root's** ending — the root is the session, and
+    // every other agent was working for it — unless gg broke somewhere in the tree, which
+    // supersedes whatever the root went on to do.
+    //
+    // Read from the [latch](crate::fault) rather than from the root's own status, even though the
+    // root ends [`STATUS_INTERNAL_ERROR`] itself in every case where it was still taking turns.
+    // The case that is not covered by the root's status is precisely the one the ruling is about: a
+    // subagent that broke *after* the root had already finished — a detached child, an issue agent
+    // still working through the board — leaves the root's ending saying `completed`, and a session
+    // that reported it would hand `core` a tree to score that a gg defect had a hand in producing.
+    // Reading the latch here also makes the decision independent of when the fault landed, so the
+    // race between a fault and the root's last turn cannot decide whether a run is scored.
+    let fault = orch.fault.raised();
+    let status = match fault {
+        Some(_) => STATUS_INTERNAL_ERROR,
+        None => end.status,
+    };
+    // Say what broke on the **root's** stream, wherever in the tree it happened. The agent that met
+    // the defect already reported it on its own, and every agent that wound down repeated it on
+    // theirs; this is the run-level statement, and the run's own stream is where a reader who
+    // starts from "why did this run fail?" is standing. Without it the answer would be a status
+    // with no attribution — barely better than a run that lied.
+    if let Some(fault) = fault {
+        root_emitter.emit(log(
+            "error",
+            format!(
+                "{fault}. The run ends `{STATUS_INTERNAL_ERROR}` and exits non-zero: a run gg's \
+                 own machinery broke is not a run the model produced, so there is nothing here to \
+                 score or to compare against a clean run."
+            ),
+        ));
+    }
+
     // Stream the per-slot rollups the whole run accumulated (the root plus every subagent, keyed by
     // `(slot, model)`), so the console shows cost per slot even though the run spanned several
-    // models, then close the session. The root's `end` names the session's terminal status.
-    root_emitter.emit(log("info", end.summary()));
+    // models, then close the session.
+    root_emitter.emit(log("info", end.summary(status)));
     {
         let accounting = orch.accounting.lock().expect("slot accounting lock");
         for usage in accounting.slot_usage_events() {
@@ -1133,7 +1332,7 @@ pub(crate) async fn run_with_seams(
             .fire(
                 GgHookEvent::SessionEnd,
                 &HookAgent::new(ROOT_AGENT_ID, set.root_name()).of_kind(GgHookAgentKind::Root),
-                json!({ "status": end.status }),
+                json!({ "status": status }),
                 &session_ctx,
                 &OffloadPolicy::default(),
                 &root_emitter,
@@ -1147,12 +1346,12 @@ pub(crate) async fn run_with_seams(
     // Compute and emit the run's aggregatable session summary from the telemetry the run emitted
     // (the per-slot rollups above are now folded in), right before the terminal `SessionEnded`, so
     // `core` can lift it onto the run record and result aggregation need not re-parse the stream.
-    let summary = root_emitter.finalize_summary(end.status);
+    let summary = root_emitter.finalize_summary(status);
     root_emitter.emit(GgTelemetryKind::SessionSummary {
         summary: Box::new(summary),
     });
 
-    root_emitter.emit(session_ended(end.status));
+    root_emitter.emit(session_ended(status));
     // A session whose credential was refused reached no model, so it is not a run
     // outcome to be scored — it is the same operator fault as a missing key, which
     // fails at launch check 2 above. A session gg's own defect ended is not one either, for the
@@ -1161,12 +1360,13 @@ pub(crate) async fn run_with_seams(
     // for both so `core` records a harness error instead of collecting a tree and scoring it
     // against the model.
     //
-    // `end` is the **root's** ending, so this is the root's fault and nobody else's: a subagent
-    // that ended either way already reported itself failed in the tree, and a root that went on to
-    // finish still exits `0` here. Whether it should is an open question — see
-    // [`STATUS_INTERNAL_ERROR`] — and not one to settle by widening this condition, which would
-    // change when a whole run fails.
-    if end.status == STATUS_AUTH_ERROR || end.status == STATUS_INTERNAL_ERROR {
+    // The two are read off different things, and deliberately so. `auth_error` is the **root's**
+    // ending: a subagent whose credential was refused is a failed agent in a session that still
+    // exits `0`. `internal_error` is the whole tree's, because `status` is (see the latch read
+    // above): gg breaking anywhere disqualifies the run, and there is no version of the ruling
+    // where a defect that happened to strike a subagent produces a scoreable run and the same
+    // defect in the root does not.
+    if end.status == STATUS_AUTH_ERROR || status == STATUS_INTERNAL_ERROR {
         return SessionOutcome::HarnessError;
     }
     SessionOutcome::Ran
@@ -1571,9 +1771,16 @@ struct Orchestrator {
     /// Disabled when the invocation named no [sentinel](GgInvocation::cancel_file), which is the
     /// shape of a run whose host cannot cancel it.
     cancel: CancelWatch,
-    /// The join handles of every spawned subagent task, drained and awaited before the session
-    /// ends. Guarded so concurrently-spawning agents can register their children.
-    tasks: Mutex<Vec<JoinHandle<()>>>,
+    /// The run's [internal-fault latch](crate::fault): the first gg defect any agent met, and the
+    /// reason every other agent is winding down.
+    ///
+    /// Shared and read at the same turn boundary as the watch above it, because a defect of ours
+    /// ends the *run* rather than the agent that met it: the tree a broken run leaves cannot be
+    /// scored against the model, wherever in the tree the break happened.
+    fault: FaultLatch,
+    /// Every spawned agent task, drained and awaited before the session ends. Guarded so
+    /// concurrently-spawning agents can register their children.
+    tasks: Mutex<Vec<AgentTask>>,
     /// A monotonic counter minting unique subagent ids.
     next_seq: AtomicU64,
     /// The run's own [session hooks](crate::hooks), resolved once at launch. Fired by the root
@@ -1935,6 +2142,7 @@ impl Orchestrator {
                 Some(path) => CancelWatch::new(path),
                 None => CancelWatch::disabled(),
             },
+            fault: FaultLatch::default(),
             tasks: Mutex::new(Vec::new()),
             next_seq: AtomicU64::new(0),
             session_hooks,
@@ -2322,7 +2530,17 @@ impl Orchestrator {
     /// the loser's claim simply returns `None`, and because the id is minted *by* the claim it never
     /// burns an attempt number either. The agents are top-level (no parent, depth 0), so they surface
     /// as their own roots in the Agents tree.
+    ///
+    /// A run that has [faulted](crate::fault) dispatches nothing. The claim is what would make the
+    /// issue `in_progress` and mint an agent for it, and the agent it minted would read the latch at
+    /// its first turn boundary and stop there — leaving the board saying an issue was attempted when
+    /// the truth is that the run ended before it was reached. Left unclaimed, it stays open, which is
+    /// what happened. Waking ([`pump_and_wake`](Self::pump_and_wake) does that first) is unaffected:
+    /// an agent suspended on an issue has to be released whatever ends the run.
     fn pump_dispatch(self: &Arc<Self>, emitter: &Emitter) {
+        if self.fault.raised().is_some() {
+            return;
+        }
         for issue_id in self.board.dispatchable_ids() {
             if let Some(agent_id) = self.board.assign_issue(&issue_id) {
                 let brief = self.issue_brief_or_fallback(&issue_id);
@@ -2393,7 +2611,8 @@ impl Orchestrator {
     /// [`Issue`](AgentRole::Issue) role, registering its handle so the session joins it. If the
     /// issue names no assignee, or the assignee's client cannot resolve (an undeclared profile, a
     /// missing credential), the issue is [failed](BoardRuntime::fail_issue) and its waiters woken
-    /// rather than left stuck [`InProgress`](crate::board::IssueStatus::InProgress).
+    /// rather than left stuck [`InProgress`](crate::board::IssueStatus::InProgress) — and, when the
+    /// failure was gg's, the run ends with it ([`abort_issue_dispatch`](Self::abort_issue_dispatch)).
     fn spawn_issue_agent(
         self: &Arc<Self>,
         agent_id: String,
@@ -2407,19 +2626,28 @@ impl Orchestrator {
         // (the board holds a filer to its own implementers) and cannot be configured (launch
         // validation rejects it), so one arriving here is a gg defect; it fails the issue below
         // rather than dispatching under the root, because an issue visibly failed is something an
-        // operator can act on and an issue quietly implemented by the wrong agent is not.
+        // operator can act on and an issue quietly implemented by the wrong agent is not — and it
+        // ends the run, because an issue nobody ever worked leaves a tree that cannot be scored as
+        // though the model had produced it.
         let Some(slot) = self.issue_profile(&issue_id) else {
             return self.abort_issue_dispatch(
                 &issue_id,
                 None,
                 "it names no assignee to dispatch it to",
+                DispatchFault::Gg,
                 emitter,
             );
         };
         let binding = match profile_binding(&self.caps, &slot) {
             Ok(binding) => binding,
             Err(err) => {
-                return self.abort_issue_dispatch(&issue_id, Some(&slot), &err, emitter);
+                return self.abort_issue_dispatch(
+                    &issue_id,
+                    Some(&slot),
+                    &err,
+                    DispatchFault::Gg,
+                    emitter,
+                );
             }
         };
         // Bound by what it was dispatched *for*, never by its id: this agent has no parent, and
@@ -2444,10 +2672,20 @@ impl Orchestrator {
         {
             Ok(client) => client,
             Err(err) => {
+                // The same split the [agent-side resolution](resolve_agent_client) makes, for the
+                // same reason: a refused credential is the operator's to supply and fails this
+                // issue alone, while anything else is a configuration gg's own launch validation
+                // promised could not exist.
+                let whose = if err.is_auth_failure() {
+                    DispatchFault::Credential
+                } else {
+                    DispatchFault::Gg
+                };
                 return self.abort_issue_dispatch(
                     &issue_id,
                     Some(&slot),
                     &err.to_string(),
+                    whose,
                     emitter,
                 );
             }
@@ -2467,7 +2705,10 @@ impl Orchestrator {
         let (_inbox_tx, inbox_rx) = mpsc::unbounded_channel();
         let orch = Arc::clone(self);
         let spawn_emitter = emitter.clone();
-        let handle = tokio::spawn(async move {
+        // The task's own copies of the agent's identity: the `agent` value itself is moved into it.
+        let (task_id, task_slot) = (agent.id.clone(), agent.slot.clone());
+        let dispatched_slot = task_slot.clone();
+        let task = AgentTask::spawned(&task_id, &task_slot, async move {
             // Every issue works in its own worktree, created on its first dispatch and reused by
             // every later agent that touches it (a retry, a review round, its reviewers). Isolation
             // that is unavailable is logged there and degrades to the shared workspace rather than
@@ -2479,10 +2720,30 @@ impl Orchestrator {
             // Doing it here charges the wait to the agent that is about to use the worktree, and
             // leaves the dispatching agent's turn alone. The agent's own workspace is resolved from
             // the map after this, so it still starts in the worktree it was given.
-            orch.ensure_issue_worktree(&issue_id, &spawn_emitter).await;
+            //
+            // It is also the one piece of an agent's task that runs *before* [`run_agent`]'s own
+            // [teardown](AgentTeardown) exists, so its unwind is caught here: an issue whose
+            // checkout panicked would otherwise stay `InProgress` for ever, and every agent
+            // suspended in a `wait_for_issue` on it would wait out the run's deadline.
+            let prepared = AssertUnwindSafe(orch.ensure_issue_worktree(&issue_id, &spawn_emitter))
+                .catch_unwind()
+                .await;
+            if let Err(payload) = prepared {
+                orch.abort_issue_dispatch(
+                    &issue_id,
+                    Some(&dispatched_slot),
+                    &format!(
+                        "preparing its worktree panicked: {}",
+                        panic_message(&*payload)
+                    ),
+                    DispatchFault::Gg,
+                    &spawn_emitter,
+                );
+                return;
+            }
             run_agent(orch, agent, role, client, inbox_rx, origin).await;
         });
-        self.tasks.lock().expect("subagent tasks lock").push(handle);
+        self.tasks.lock().expect("subagent tasks lock").push(task);
     }
 
     /// Give up on dispatching `issue_id`: mark it [`Failed`](crate::board::IssueStatus::Failed),
@@ -2491,20 +2752,34 @@ impl Orchestrator {
     ///
     /// `slot` is the assignee the dispatch was for, and `None` when the issue named none at all —
     /// the one case with no slot to blame, which the message must therefore not invent.
+    ///
+    /// When the failure was gg's ([`DispatchFault::Gg`]) the run ends too, on the run's
+    /// [fault latch](crate::fault). A failed issue is visible, but visible is not the same as
+    /// comparable: the tree this run leaves is missing whatever that issue was for, because gg
+    /// could not stand up the agent that would have done it, and a run scored on that tree reports
+    /// our defect as the model's shortfall.
     fn abort_issue_dispatch(
         self: &Arc<Self>,
         issue_id: &str,
         slot: Option<&str>,
         err: &str,
+        whose: DispatchFault,
         emitter: &Emitter,
     ) {
         let on_slot = slot
             .map(|slot| format!(" on the `{slot}` slot"))
             .unwrap_or_default();
+        let consequence = match whose {
+            DispatchFault::Gg => "marking it failed, and the run ends with it: this is a gg defect",
+            DispatchFault::Credential => "marking it failed",
+        };
         emitter.emit(log(
             "error",
-            format!("cannot dispatch issue `{issue_id}`{on_slot}: {err}; marking it failed."),
+            format!("cannot dispatch issue `{issue_id}`{on_slot}: {err}; {consequence}."),
         ));
+        if matches!(whose, DispatchFault::Gg) {
+            self.fault.in_dispatch(issue_id, slot, err);
+        }
         self.board.fail_issue(issue_id);
         self.on_issue_progress(emitter);
     }
@@ -2703,6 +2978,32 @@ fn status_word(status: IssueStatus) -> &'static str {
     }
 }
 
+/// One spawned agent task, kept with the identity of the agent it is running.
+///
+/// The identity travels with the handle because of what a [join](run_with_seams) can find: a task
+/// that did not complete panicked *outside* [`run_agent`]'s own teardown, and a diagnostic for that
+/// has nothing else to name the agent by. A bare `JoinHandle` made the one thing an operator needs
+/// — which agent — the one thing the join could not say.
+struct AgentTask {
+    /// The agent this task is running.
+    id: String,
+    /// The [profile](GgAgentConfig) it was dispatched under.
+    slot: String,
+    /// The task itself.
+    handle: JoinHandle<()>,
+}
+
+impl AgentTask {
+    /// Spawn `run` as the task of the agent `id` running under `slot`.
+    fn spawned(id: &str, slot: &str, run: impl Future<Output = ()> + Send + 'static) -> Self {
+        Self {
+            id: id.to_string(),
+            slot: slot.to_string(),
+            handle: tokio::spawn(run),
+        }
+    }
+}
+
 /// How an agent driven by [`run_agent`] is dispatched: the [`Root`](Self::Root) driven by the
 /// run's build prompt, a [`Sub`](Self::Sub)agent driven by a delegated brief and wired to
 /// signal its spawner on completion, or an [`Issue`](Self::Issue) agent gg auto-dispatched to
@@ -2761,12 +3062,16 @@ enum AgentRole {
         /// path an [exec'd](Opening::Carried) successor takes, because it is the same thing seen
         /// from the far side.
         seed: Option<Box<Succession>>,
-        /// The spawner's wait condition the subagent signals on completion.
-        parent_wait: Arc<ParentWait>,
-        /// The channel the subagent's [return value](AgentReturn) is delivered on.
-        result: oneshot::Sender<AgentReturn>,
-        /// Flipped when the subagent's loop ends, so its spawner's `send_message` refuses.
-        finished: Arc<AtomicBool>,
+        /// The wires this subagent answers its spawner on: the [wait condition](ParentWait) it
+        /// signals, the channel it delivers its [return value](AgentReturn) on, and the flag that
+        /// makes its spawner's `send_message` refuse once it has returned.
+        ///
+        /// Taken out of the role by [`run_agent`] before anything else reads it, and held by the
+        /// [teardown](AgentTeardown) from then on — because they are wires that must be answered on
+        /// whether the agent returns *or* panics, and only something outside the driving frame can
+        /// promise that. `None` therefore means "already taken", exactly as it does for `seed`
+        /// above.
+        link: Option<SpawnerLink>,
     },
 }
 
@@ -2850,6 +3155,17 @@ struct ProjectContext {
 /// role. It is recorded into the [capture journal](crate::capture) here — at the one point every
 /// agent goes through — rather than at each of the five sites that create one, and it is
 /// *re-pointed* at each [succession](Handoff), which is the sixth.
+///
+/// # A panic ends the agent here rather than escaping it
+///
+/// [`drive_agent`] below is the whole of the above, and this is the frame that catches it unwinding.
+/// A panic anywhere under it — the realistic one is a lock some earlier panic poisoned — is the one
+/// gg defect the agent that meets it cannot report, because the frame that would read the run's
+/// [fault latch](crate::fault) at the next turn boundary is the frame being unwound. Caught here it
+/// becomes an ordinary [teardown](AgentTeardown): the fault is latched, the spawner (or the board's
+/// waiters) is woken immediately instead of at the run's deadline, the running slot goes back, and
+/// the caller is handed the `internal_error` ending it was promised. What a panic allowed to escape
+/// this frame does to a run instead is in [`teardown`]'s module docs.
 async fn run_agent(
     orch: Arc<Orchestrator>,
     agent: Agent,
@@ -2858,6 +3174,52 @@ async fn run_agent(
     inbox_rx: mpsc::UnboundedReceiver<String>,
     origin: GgSessionAgentOrigin,
 ) -> LoopEnd {
+    // An [FSM shell](crate::fsm::is_shell) has no turns of its own: an agent about to run one
+    // *becomes* the machine's entry state instead of spawning a child to do it. This is what keeps a
+    // machine indistinguishable from an ordinary agent to whoever put it to work — one id in the
+    // tree, one scheduler slot, one return value — and it is done before the teardown below, which
+    // resolves the exclusivity key: the slot is then acquired under the state agent's own
+    // exclusivity rather than the shell's.
+    let agent = match orch.machine(&agent.slot) {
+        Some(machine) => agent.entering(machine),
+        None => agent,
+    };
+
+    let mut teardown = AgentTeardown::new(&orch, &agent, &origin, &mut role);
+    // Bound to a `let` rather than matched on directly: a `match` scrutinee's temporaries outlive
+    // the match, and the future borrows the teardown the panic arm has to have back.
+    let driven = AssertUnwindSafe(drive_agent(
+        orch,
+        agent,
+        role,
+        client,
+        inbox_rx,
+        origin,
+        &mut teardown,
+    ))
+    .catch_unwind()
+    .await;
+    match driven {
+        Ok(end) => end,
+        Err(payload) => teardown.panicked(payload.as_ref()),
+    }
+}
+
+/// [`run_agent`]'s whole body, in the frame a panic is allowed to unwind.
+///
+/// Split out for exactly one reason: everything the panic path needs — the exclusivity key the slot
+/// is held under, the wires the spawner is waiting on, which instance was running — has to live
+/// somewhere the unwind does not pass through, which is the `teardown` this borrows.
+#[allow(clippy::too_many_arguments)]
+async fn drive_agent(
+    orch: Arc<Orchestrator>,
+    mut agent: Agent,
+    mut role: AgentRole,
+    client: Box<dyn ModelClient>,
+    inbox_rx: mpsc::UnboundedReceiver<String>,
+    origin: GgSessionAgentOrigin,
+    teardown: &mut AgentTeardown,
+) -> LoopEnd {
     // What this agent was **handed at birth**, when it is a [fork](crate::tools::FORK_TOOL): a copy
     // of everything its forker held. Taken out of the role here, before anything else reads the
     // role, so the rest of this function sees an ordinary subagent.
@@ -2865,23 +3227,6 @@ async fn run_agent(
         AgentRole::Sub { seed, .. } => seed.take().map(|seed| *seed),
         AgentRole::Issue { .. } | AgentRole::Root => None,
     };
-
-    // An [FSM shell](crate::fsm::is_shell) has no turns of its own: an agent about to run one
-    // *becomes* the machine's entry state instead of spawning a child to do it. This is what keeps a
-    // machine indistinguishable from an ordinary agent to whoever put it to work — one id in the
-    // tree, one scheduler slot, one return value — and it is done before the slot is taken, so the
-    // slot is acquired under the state agent's own exclusivity rather than the shell's.
-    let mut agent = match orch.machine(&agent.slot) {
-        Some(machine) => agent.entering(machine),
-        None => agent,
-    };
-
-    // The exclusivity key this agent holds its slot under: its profile's name when the profile is
-    // [persistent](crate::persistence), so a second instance of it queues behind this one
-    // instead of running beside it; `None` for every ordinary agent, which contends with nothing.
-    // Resolved before the slot is taken, re-resolved (never carried) at each release, and
-    // [exchanged](Scheduler::rekey) — never released — when a succession changes the profile.
-    let mut exclusive = orch.exclusive_key(&agent.slot);
 
     // How this agent came to exist, re-pointed at each succession so the row every incarnation
     // records names the thing that created *it*.
@@ -2896,7 +3241,8 @@ async fn run_agent(
     // scheduler grants one (the root's is granted immediately). This is the parallelism cap. It is
     // taken **once for the whole succession**: a transition is the continuation of work already in
     // progress, and making it queue behind unrelated agents would stall a machine mid-stride.
-    orch.scheduler.acquire_start(exclusive.as_deref()).await;
+    orch.scheduler.acquire_start(teardown.exclusive()).await;
+    teardown.acquired();
 
     let is_root = matches!(role, AgentRole::Root);
     let issue_id = match &role {
@@ -2964,13 +3310,14 @@ async fn run_agent(
     // it. The overwhelming majority of agents go round this loop exactly once, with all four of
     // these at their initial values.
     //
-    // The client is an option because the *first* incarnation's was resolved by whoever dispatched
-    // this agent, and every later one resolves its own from the profile the machine (or the exec)
-    // named. A dispatch onto an FSM shell resolved the entry state's profile
-    // ([`GgCapabilitySet::dispatched_agent`]), which is the profile this agent is already standing in
-    // by the time it gets here — so the client it was handed is the right one, and re-resolving it
-    // would ask the model seam for a second client on one agent's identity.
-    let mut pending_client: Option<Box<dyn ModelClient>> = Some(client);
+    // The client the incarnation about to start runs on: the one whoever dispatched this agent
+    // resolved, and after that the one each succession resolves for its successor from the profile
+    // the machine (or the exec) named. It is **carried** across the loop's back edge rather than
+    // re-resolved at the top of it, because re-resolving would ask the model seam for a second
+    // client on one agent's identity — and a dispatch onto an FSM shell resolved the entry state's
+    // profile ([`GgCapabilitySet::dispatched_agent`]), which is the profile this agent is already
+    // standing in by the time it gets here, so the client it was handed is the right one.
+    let mut next_client: Box<dyn ModelClient> = client;
     // What the previous incarnation handed over: its modules (already transferred), the opening note
     // gg wrote about the handoff, and the state it came from.
     //
@@ -3002,25 +3349,33 @@ async fn run_agent(
             issue_id.clone(),
         );
         let emitter = &agent_emitter;
+        // Point the teardown at this incarnation's stream, so an agent that panics reports it on its
+        // own node in the tree rather than only at run level. A successor re-points it here, which
+        // is why this is inside the loop.
+        teardown.on_stream(emitter);
         let first_incarnation = succession.is_none();
 
         // This agent's profile — the source of its capabilities, model, execution mode, and prompt.
-        // A name this run does not declare is a gg defect and ends this agent's loop here — and
-        // with it the session, when the agent is the root ([`STATUS_INTERNAL_ERROR`]) — for the
-        // same reason the client resolution below does and one step earlier: the alternative is
-        // running this agent under some *other* profile's capabilities, model and execution mode
-        // while every event it emits is attributed to the profile it was dispatched as.
+        // A name this run does not declare is a gg defect and ends this agent's loop here — and the
+        // whole session with it ([`STATUS_INTERNAL_ERROR`], raised on the run's
+        // [fault latch](crate::fault) whichever agent this is) — for the same reason the client
+        // resolution below does and one step earlier: the alternative is running this agent under
+        // some *other* profile's capabilities, model and execution mode while every event it emits
+        // is attributed to the profile it was dispatched as.
         let Some(profile) = orch.declared_profile(&agent.slot).cloned() else {
+            let detail = format!(
+                "agent profile `{}` is not declared by this run, so there is nothing to run it as",
+                agent.slot
+            );
             emitter.emit(log(
                 "error",
                 format!(
-                    "agent profile `{}` is not declared by this run, so there is nothing to run \
-                     it as; this agent's loop ends here — and the session with it, if this is \
-                     the root agent — rather than running it as another profile. This is a gg \
-                     defect: launch validation accepts no reference to an undeclared profile.",
-                    agent.slot
+                    "{detail}; this agent's loop ends here — and the run with it — rather than \
+                     running it as another profile. This is a gg defect: launch validation accepts \
+                     no reference to an undeclared profile."
                 ),
             ));
+            orch.fault.in_agent(&agent.id, &agent.slot, detail);
             break (
                 LoopEnd {
                     status: STATUS_INTERNAL_ERROR,
@@ -3037,44 +3392,13 @@ async fn run_agent(
             );
         };
 
-        // This incarnation's client. Carried in from the dispatch on the first pass; resolved from
-        // the profile the machine (or the exec) named on every later one. A model that will not
-        // resolve mid-succession ends the session rather than silently continuing as the previous
-        // agent, which would be a different run than the one the record describes.
-        let client = match pending_client.take() {
-            Some(client) => client,
-            None => match profile_binding(&orch.caps, &agent.slot).and_then(|binding| {
-                orch.factory
-                    .client_for_agent(&binding, &AgentIdentity::agent(origin.clone()))
-                    .map_err(|err| err.to_string())
-            }) {
-                Ok(client) => client,
-                Err(err) => {
-                    emitter.emit(log(
-                        "error",
-                        format!(
-                            "agent profile `{}` could not be resolved to a model ({err}); the \
-                             session ends here rather than continuing as its predecessor.",
-                            agent.slot
-                        ),
-                    ));
-                    break (
-                        LoopEnd {
-                            status: STATUS_MODEL_ERROR,
-                            turns: turns_taken,
-                            tokens: TokenCounts::default(),
-                            cost: None,
-                            slot: agent.slot.clone(),
-                            final_text: None,
-                            ending: None,
-                            limit: None,
-                            handoff: None,
-                        },
-                        agent_emitter,
-                    );
-                }
-            },
-        };
+        // This incarnation's client, taken off the carrier above. There is deliberately **no**
+        // fallback resolution here: every one of the four dispatch sites resolves a client before it
+        // calls this function, and the succession below resolves the successor's before it re-points
+        // the loop, so an incarnation without one is a state nothing can produce. A fallback would
+        // be a second way for an agent to acquire its model — with a failure arm that has to decide
+        // whose fault an unresolvable profile is, on a path no run and no test can ever take.
+        let client = next_client;
 
         let model_id = client.model_id().to_string();
         emitter.emit(log(
@@ -3476,14 +3800,14 @@ async fn run_agent(
             match subagent_context.as_mut() {
                 Some(sub) => {
                     sub.inherited = InheritedModules::from_spawner(modules.caps());
-                    sub.ctx.exclusive = exclusive.clone();
+                    sub.ctx.exclusive = teardown.exclusive_owned();
                 }
                 None => {
                     subagent_context = Some(SubagentContext {
                         orch: Arc::clone(&orch),
                         ctx: AgentCtx::new(
                             inbox_rx.take().expect("the inbox is taken exactly once"),
-                            exclusive.clone(),
+                            teardown.exclusive_owned(),
                         ),
                         // Taken from this agent's own modules, so a child that inherits binds the
                         // very store this agent is curating rather than a snapshot of it.
@@ -3547,6 +3871,7 @@ async fn run_agent(
                         deadline: orch.deadline,
                         spend: Arc::clone(&orch.spend),
                         cancel: orch.cancel.clone(),
+                        fault: orch.fault.clone(),
                     },
                     compaction,
                     amc,
@@ -3620,20 +3945,23 @@ async fn run_agent(
         // cannot be resolved never runs and must not spend an ordinal. An undeclared name here is
         // a gg defect — a handoff's target is checked against this agent's roster (or its
         // machine's transitions) before the handoff is accepted — and it ends this loop exactly as
-        // an unresolvable model does (the session with it when this is the root,
-        // [`STATUS_INTERNAL_ERROR`]), rather than succeeding into whichever profile happens to be
-        // the root and recording its turns under the name the handoff asked for.
+        // an unresolvable model does (and the run with it, [`STATUS_INTERNAL_ERROR`]), rather than
+        // succeeding into whichever profile happens to be the root and recording its turns under
+        // the name the handoff asked for.
         let Some(successor_profile) = orch.declared_profile(&successor_slot).cloned() else {
+            let detail = format!(
+                "the `{successor_slot}` agent is not declared by this run, so there is nothing to \
+                 succeed into"
+            );
             emitter.emit(log(
                 "error",
                 format!(
-                    "the `{successor_slot}` agent is not declared by this run, so there is \
-                     nothing to succeed into; this agent's loop ends here — and the session with \
-                     it, if this is the root agent — rather than succeeding into another profile. \
-                     This is a gg defect: launch validation accepts no reference to an undeclared \
-                     profile."
+                    "{detail}; this agent's loop ends here — and the run with it — rather than \
+                     succeeding into another profile. This is a gg defect: launch validation \
+                     accepts no reference to an undeclared profile."
                 ),
             ));
+            orch.fault.in_agent(&agent.id, &agent.slot, detail);
             break (
                 LoopEnd {
                     status: STATUS_INTERNAL_ERROR,
@@ -3657,25 +3985,33 @@ async fn run_agent(
         // The successor's window limit and execution mode, which its modules are re-resolved
         // against: an agent moving from a million-token window onto a 32k one is over its window the
         // instant it arrives, and its first turn's compaction check is what has to see that.
-        let successor_client = match profile_binding(&orch.caps, &successor_slot).and_then(
-            |binding| {
-                orch.factory
-                    .client_for_agent(&binding, &AgentIdentity::agent(successor_origin.clone()))
-                    .map_err(|err| err.to_string())
-            },
-        ) {
+        let successor_client = match resolve_agent_client(&orch, &successor_slot, &successor_origin)
+        {
             Ok(client) => client,
-            Err(err) => {
+            Err(unresolved) => {
                 emitter.emit(log(
                     "error",
                     format!(
-                        "the `{successor_slot}` agent could not be resolved to a model ({err}); the \
-                         session ends here rather than continuing as its predecessor."
+                        "the `{successor_slot}` agent could not be resolved to a model ({}); {}.",
+                        unresolved.detail,
+                        unresolved.consequence()
                     ),
                 ));
+                // As above: gg's half of the resolution ends the run, the operator's refused
+                // credential ends this agent.
+                // Named as the *predecessor*, which is the agent that was running: the successor
+                // has no id yet and never ran a turn. Which successor it was reaching for is in the
+                // detail, and is the more useful half of the sentence anyway.
+                if unresolved.status == STATUS_INTERNAL_ERROR {
+                    let detail = format!(
+                        "the `{successor_slot}` agent could not be resolved to a model ({})",
+                        unresolved.detail
+                    );
+                    orch.fault.in_agent(&agent.id, &agent.slot, detail);
+                }
                 break (
                     LoopEnd {
-                        status: STATUS_MODEL_ERROR,
+                        status: unresolved.status,
                         handoff: None,
                         ..end
                     },
@@ -3721,9 +4057,8 @@ async fn run_agent(
         // already holds, unless the key is held by somebody else.
         let successor_exclusive = orch.exclusive_key(&successor_slot);
         orch.scheduler
-            .rekey(exclusive.as_deref(), successor_exclusive.as_deref())
+            .rekey(teardown.exclusive(), successor_exclusive.as_deref())
             .await;
-        exclusive = successor_exclusive;
 
         succession = Some(Succession {
             note: succession_note(
@@ -3737,11 +4072,15 @@ async fn run_agent(
             from_state: handoff.reason.departed_state(),
             turn_base: turns_taken,
         });
-        pending_client = Some(successor_client);
+        next_client = successor_client;
         let successor = agent.succeeding(successor_id, successor_slot, successor_fsm);
         origin = successor_origin;
         record_session_agent(&orch, &successor, &origin, None);
         agent = successor;
+        // Re-point the teardown at the instance now running on this slot, under the key it was just
+        // exchanged for. A panic in the successor must name the successor, and the slot it gives
+        // back must be given back under the key it is actually held under.
+        teardown.succeeded(&agent, &origin, successor_exclusive);
     };
     let emitter = &agent_emitter;
 
@@ -3764,27 +4103,25 @@ async fn run_agent(
     // continued as somebody else.
     record_session_agent(&orch, &agent, &origin, Some(&end));
 
+    // Every arm ends the agent through the [teardown](AgentTeardown) rather than touching the
+    // scheduler and the spawner's wires directly, because a panicked agent is ended through the very
+    // same calls — and an ending that had two implementations would have the panic path drifting
+    // from the ordinary one on whichever detail was changed in only one of them.
     match role {
         AgentRole::Root => {
             // The root frees its slot so any cap-limited subagents it spawned can now run to
             // completion while the session joins them.
-            orch.scheduler.release(exclusive.as_deref());
+            teardown.released();
         }
         AgentRole::Issue {
             issue_id, retry, ..
         } => {
             // Free the slot first (like the root), so a re-dispatch or a newly-unblocked issue can
             // acquire it, then reconcile the issue against what the agent did.
-            orch.scheduler.release(exclusive.as_deref());
+            teardown.released();
             reconcile_issue(&orch, &issue_id, retry, completed, emitter).await;
         }
-        AgentRole::Sub {
-            worktree,
-            parent_wait,
-            result,
-            finished,
-            ..
-        } => {
+        AgentRole::Sub { worktree, .. } => {
             // The summary is the subagent's final assistant message (its return value), or a short
             // status when it produced none.
             let summary = end
@@ -3809,13 +4146,11 @@ async fn run_agent(
             }
             // Flip finished and deliver the result *before* signalling the parent, so by the time
             // the spawner is woken its collect finds the result ready.
-            finished.store(true, Ordering::SeqCst);
-            let _ = result.send(AgentReturn {
+            teardown.returned(AgentReturn {
                 summary,
                 status: end.status,
                 ending: end.ending.clone(),
             });
-            parent_wait.child_completed(&orch.scheduler, &agent.id, exclusive.as_deref());
         }
     }
     end
@@ -4160,6 +4495,28 @@ impl From<DispatchError> for ToolOutcome {
     }
 }
 
+/// What a spawner is told when gg could not stand up a child it had already accepted the name of.
+///
+/// The class is [`Refused`](ToolFailure::Refused) rather than
+/// [`InvalidArgument`](ToolFailure::InvalidArgument), and the wording says whose defect it is, for
+/// the reason [`resolve_delegation_target`] gives on the other refusal of this shape: the
+/// vocabulary a program branches on exists so a program can *do something else*, and a gg defect is
+/// not something a program can branch its way out of. Naming the argument would be worse than
+/// useless — the name was drawn from the roster this run gave the spawner, so a model told to pass a
+/// different one has nothing better to pass, and the failure would enter its tool-error record as a
+/// mistake it made.
+///
+/// The run is already ending on the [fault latch](crate::fault) by the time this is read, so what
+/// this sentence is for is the record: the spawner's turn says what gg met rather than accusing the
+/// model of it.
+fn ggs_spawn_defect(slot: &str, err: &impl std::fmt::Display) -> String {
+    format!(
+        "cannot spawn agent `{slot}`: {err}. This is a gg defect: the run declares this agent and \
+         launch validation accepts no profile it cannot stand up, so the run ends here rather than \
+         continuing without the work this agent was for."
+    )
+}
+
 /// Resolve and validate the `agent` argument of a model-invoked delegation call
 /// (`spawn_subagent`) against the spawner's
 /// [allowlist](GgAgentConfig::subagents), returning the target profile name or a model-facing
@@ -4239,6 +4596,12 @@ fn resolve_delegation_target(
 /// [spec](ChildSpec::worktree), because isolation belongs to a board issue, which owns a worktree's
 /// whole lifecycle. Returns the [dispatched child](DispatchedChild) or a model-facing error, so
 /// both spawn kinds share one set of refusals.
+///
+/// Two of those refusals are gg's own rather than the model's — a profile that will not bind, and a
+/// client that will not build for a reason other than a refused credential — and both end the run on
+/// the [fault latch](crate::fault) as well as failing the call. A subagent gg could not stand up
+/// leaves the tree missing whatever that agent was for, with nothing in the record to say the work
+/// was ever attempted.
 fn dispatch_child(
     sub: &mut SubagentContext,
     spawner: &Agent,
@@ -4268,13 +4631,20 @@ fn dispatch_child(
         ));
     }
 
-    // The child runs under the named agent profile. A profile this run does not declare (or one
-    // with no model) is a bad *argument*, which is what tells a program to pass a different one.
+    // The child runs under the named agent profile. By the time the dispatch reaches this line the
+    // name has already been checked against the spawner's own roster ([`resolve_delegation_target`]),
+    // and launch validation has already rejected a roster reference to an undeclared profile and a
+    // profile bound to an empty model id. So a binding that fails here is not a bad argument the
+    // model can correct: it is gg having read one configuration two different ways, which ends the
+    // run for the reason [`resolve_agent_client`] ends it one seam over. Telling the model its
+    // argument was wrong would file gg's defect as the model's and let the run be scored.
     let binding = profile_binding(&orch.caps, &slot).map_err(|err| {
-        DispatchError::new(
-            ToolFailure::InvalidArgument,
+        orch.fault.in_agent(
+            &spawner.id,
+            &spawner.slot,
             format!("cannot spawn agent `{slot}`: {err}"),
-        )
+        );
+        DispatchError::new(ToolFailure::Refused, ggs_spawn_defect(&slot, &err))
     })?;
     // Keyed on the spawner and the spawn's position in the spawner's own strictly-ordered turn
     // loop, counted across **all** spawn kinds rather than per profile: a fork runs the forker's
@@ -4290,19 +4660,33 @@ fn dispatch_child(
         parent: spawner.id.clone(),
         ordinal: orch.peek_ordinal(&spawn_key),
     };
-    // The profile is bound but its client would not resolve — a missing credential, a provider that
-    // could not be built. Nothing about the call was wrong, so it is an I/O-class failure.
+    // The profile is bound but its client would not resolve, and the two halves of that are not one
+    // failure — the same split [`resolve_agent_client`] draws for an agent standing itself up. A
+    // refused credential is the operator's to supply: nothing about the call was wrong, the spawner
+    // is told so as an I/O-class failure, and the run carries on. Anything else is a provider gg
+    // could not build for a profile gg validated, which is gg's defect and ends the run.
     let client = orch
         .factory
         .client_for_agent(&binding, &AgentIdentity::agent(origin.clone()))
         .map_err(|err| {
-            DispatchError::new(
-                ToolFailure::IoError,
+            if err.is_auth_failure() {
+                return DispatchError::new(
+                    ToolFailure::IoError,
+                    format!(
+                        "cannot spawn agent `{slot}` (model `{}`): {err}",
+                        binding.model_id
+                    ),
+                );
+            }
+            orch.fault.in_agent(
+                &spawner.id,
+                &spawner.slot,
                 format!(
                     "cannot spawn agent `{slot}` (model `{}`): {err}",
                     binding.model_id
                 ),
-            )
+            );
+            DispatchError::new(ToolFailure::Refused, ggs_spawn_defect(&slot, &err))
         })?;
     let model_id = client.model_id().to_string();
 
@@ -4335,9 +4719,11 @@ fn dispatch_child(
         // profile's decision — see `MemoriesRuntime::resolve`.
         inherited: sub.inherited.offer(),
         seed,
-        parent_wait: Arc::clone(&sub.ctx.wait),
-        result: result_tx,
-        finished: Arc::clone(&finished),
+        link: Some(SpawnerLink {
+            parent_wait: Arc::clone(&sub.ctx.wait),
+            result: result_tx,
+            finished: Arc::clone(&finished),
+        }),
     };
     // Take the ordinal the identity above was peeked at, now that the child is certainly being
     // created. Debug-asserted equal because the two diverging would silently bind this child to a
@@ -4352,10 +4738,10 @@ fn dispatch_child(
         "a spawn's peeked ordinal and the one it took must agree"
     );
     let orch_for_task = Arc::clone(orch);
-    let handle = tokio::spawn(async move {
+    let task = AgentTask::spawned(&child_id, &slot, async move {
         run_agent(orch_for_task, child, role, client, inbox_rx, origin).await;
     });
-    orch.tasks.lock().expect("subagent tasks lock").push(handle);
+    orch.tasks.lock().expect("subagent tasks lock").push(task);
     sub.ctx.children.push(ChildHandle {
         id: child_id.clone(),
         inbox: inbox_tx,
@@ -4716,6 +5102,10 @@ enum RoundOutcome {
 /// 3. It stopped without finishing and the retries are spent: the issue is
 ///    [failed](BoardRuntime::fail_issue) and its worktree discarded unmerged.
 ///
+/// A fourth possibility supersedes all three: the run has [faulted](crate::fault). Then this agent
+/// stopped because gg broke, in it or in some other agent, and the issue is
+/// [abandoned](abandon_issue_on_fault) instead of reviewed or retried.
+///
 /// Every path ends by [pumping the board](Orchestrator::on_issue_progress), so dependents unblock
 /// and waiters wake exactly once the issue's real state is settled.
 async fn reconcile_issue(
@@ -4725,7 +5115,9 @@ async fn reconcile_issue(
     completed: bool,
     emitter: &Emitter,
 ) {
-    if completed && orch.board.submit_issue_for_review(issue_id) {
+    if let Some(fault) = orch.fault.raised() {
+        abandon_issue_on_fault(orch, issue_id, retry, completed, fault, emitter);
+    } else if completed && orch.board.submit_issue_for_review(issue_id) {
         match run_issue_review(orch, issue_id, emitter).await {
             RoundOutcome::Approved => {
                 accept_issue(orch, issue_id, emitter).await;
@@ -4770,6 +5162,58 @@ async fn reconcile_issue(
     orch.on_issue_progress(emitter);
 }
 
+/// Settle issue `issue_id` on a run that has [faulted](crate::fault): mark it failed, keep its
+/// worktree, and dispatch nothing further for it.
+///
+/// **A run gg broke in starts no new work.** Two of the three paths this replaces stand a fresh
+/// agent up: a re-dispatch of an unfinished issue, and a reviewer over a finished one. Each of those
+/// agents reads the latch at its first turn boundary and stops there, having done nothing. The
+/// board would then record `maxRetries` attempts at an issue nothing ever attempted, which is a
+/// worse account of the run than no attempt at all: it reads as a model that could not finish the
+/// work.
+///
+/// **Failed** is the honest state whichever way the agent ended, and it is the state that resolves
+/// the waits. On this board `failed` means terminal without being done, so an issue whose
+/// implementer was cut short by the fault is failed for the obvious reason, and one whose
+/// implementer finished is failed because its work was never gated by its reviewers or merged back.
+/// Leaving either `in_progress` would strand every agent suspended in a `wait_for_issue` on it until
+/// the run's wall-clock deadline, and the caller's [pump](Orchestrator::on_issue_progress) wakes
+/// them precisely because this made the issue terminal.
+///
+/// The worktree is **kept**. A run winding down under a fault is evidence for the defect that
+/// stopped it, and the branch this issue's agent was working on is part of that evidence; the
+/// retries-exhausted path discards its worktree because that run is a result, and this one is not.
+fn abandon_issue_on_fault(
+    orch: &Arc<Orchestrator>,
+    issue_id: &str,
+    retry: u32,
+    completed: bool,
+    fault: &str,
+    emitter: &Emitter,
+) {
+    if !orch.board.issue_is_terminal(issue_id) {
+        orch.board.fail_issue(issue_id);
+    }
+    let what = if completed {
+        format!("issue `{issue_id}` was implemented but never reviewed or merged")
+    } else {
+        format!(
+            "issue `{issue_id}` was left unfinished on attempt {}",
+            retry + 1
+        )
+    };
+    // Repeated on the issue's own stream rather than pointing at the run-level line, for the reason
+    // every wind-down message repeats it: a reader who starts from the red issue on the board is
+    // standing here, and the cause is what they need.
+    emitter.emit(log(
+        "warn",
+        format!(
+            "{what}: {fault}. It is marked failed with its worktree kept, and no further attempt \
+             is dispatched: a run gg broke in starts no new work."
+        ),
+    ));
+}
+
 /// Run one **review round** over `issue_id`: dispatch each of its [reviewers](Orchestrator::reviewer_slots)
 /// in turn against the current diff of its work, and report what the round concluded.
 ///
@@ -4788,8 +5232,10 @@ async fn reconcile_issue(
 /// fails the issue rather than merging work its filer gated on a review that never happened — the
 /// two are indistinguishable on the board and in the telemetry once the name has been dropped, so
 /// the name is never dropped. That such a name arrived is gg's own defect, nothing an operator or a
-/// model can configure, so it is reported at `error` level here: the abort says only that the issue
-/// was not accepted, which is the consequence rather than the cause.
+/// model can configure, so it is reported at `error` level here and [ends the run](crate::fault):
+/// the abort says only that the issue was not accepted, which is the consequence rather than the
+/// cause, and a run whose configured gate never ran is not one to compare against a run whose
+/// did.
 async fn run_issue_review(
     orch: &Arc<Orchestrator>,
     issue_id: &str,
@@ -4797,14 +5243,19 @@ async fn run_issue_review(
 ) -> RoundOutcome {
     let reviewers = match orch.reviewer_slots(issue_id) {
         Ok(reviewers) => reviewers,
+        // A reviewer nothing declares is the same gg defect as an assignee nothing declares, one
+        // step further along the board: the issue fails rather than merging work no reviewer gated,
+        // and the run ends with it, because a run missing a review it was configured to make cannot
+        // be compared with one that made it.
         Err(err) => {
             emitter.emit(log(
                 "error",
                 format!(
                     "cannot review issue `{issue_id}`: {err}; failing the issue rather than \
-                     accepting work no reviewer gated."
+                     accepting work no reviewer gated, and ending the run: this is a gg defect."
                 ),
             ));
+            orch.fault.in_dispatch(issue_id, None, &err);
             return RoundOutcome::Aborted(err);
         }
     };
@@ -5183,6 +5634,12 @@ async fn remove_worktree(orch: &Orchestrator, worktree: &Worktree, emitter: &Emi
 /// the two callers pass seven values that are all "what this agent was dispatched for", and a
 /// positional list of that length is one transposed `Option<String>` away from reviewing the wrong
 /// issue.
+///
+/// A dispatch that fails before the agent exists is split by owner, like every other resolution of a
+/// client: a refused credential costs this dispatch alone, and everything else is a configuration gg
+/// validated and then could not stand up, which ends the run on the
+/// [fault latch](latch_detached_dispatch). The `Err` says which, so the caller's own report of it
+/// says which too.
 fn run_detached_agent<'a>(
     orch: &'a Arc<Orchestrator>,
     dispatch: DetachedDispatch<'a>,
@@ -5197,18 +5654,44 @@ fn run_detached_agent<'a>(
             ending,
             origin,
         } = dispatch;
-        let binding = profile_binding(&orch.caps, profile)
-            .map_err(|err| format!("could not be dispatched: {err}"))?;
+        // A reviewer's name is checked against the run's declared profiles before the round starts
+        // ([`reviewer_slots`]) and a merge agent's at launch, and launch validation accepts no
+        // profile it cannot bind a model to. So a binding that fails here is gg reading one
+        // configuration two different ways, exactly as it is on the two spawn paths, and it ends the
+        // run rather than failing the issue alone: an issue whose review never ran and an issue
+        // whose merge never ran both leave a tree that cannot be compared with a clean one.
+        let binding = profile_binding(&orch.caps, profile).map_err(|err| {
+            latch_detached_dispatch(orch, &agent_id, profile, issue_id.as_deref(), &err);
+            format!("could not be dispatched: {err}; this is a gg defect, so the run ends with it")
+        })?;
         // The dispatch already carries this agent's origin — a reviewer's issue/round/position, or
         // a merge agent's issue/ordinal — because it is the only thing that knows it. Both are
         // board state, which is what makes them re-derivable; neither agent has a parent to be
         // keyed by.
+        //
+        // The client is split the way every other resolution of one is: a refused credential is the
+        // operator's to supply and costs this dispatch alone, while anything else is gg's and takes
+        // the run with it.
         let client = orch
             .factory
             .client_for_agent(&binding, &AgentIdentity::agent(origin.clone()))
             .map_err(|err| {
+                if err.is_auth_failure() {
+                    return format!(
+                        "could not be dispatched (model `{}`): {err}",
+                        binding.model_id
+                    );
+                }
+                latch_detached_dispatch(
+                    orch,
+                    &agent_id,
+                    profile,
+                    issue_id.as_deref(),
+                    &format!("(model `{}`) {err}", binding.model_id),
+                );
                 format!(
-                    "could not be dispatched (model `{}`): {err}",
+                    "could not be dispatched (model `{}`): {err}; this is a gg defect, so the run \
+                     ends with it",
                     binding.model_id
                 )
             })?;
@@ -5230,20 +5713,53 @@ fn run_detached_agent<'a>(
             // and nobody forked it.
             inherited: InheritedModules::default(),
             seed: None,
-            parent_wait: Arc::new(ParentWait::new()),
-            result: result_tx,
-            finished: Arc::new(AtomicBool::new(false)),
+            // A detached agent's spawner is gg itself, which is waiting on the result channel below
+            // rather than on a [`ParentWait`] — so the wait condition is its own and nothing but its
+            // own slot release ever depends on it. Held all the same, because what the
+            // [teardown](AgentTeardown) does is not conditional on who is listening.
+            link: Some(SpawnerLink {
+                parent_wait: Arc::new(ParentWait::new()),
+                result: result_tx,
+                finished: Arc::new(AtomicBool::new(false)),
+            }),
         };
         let (_inbox_tx, inbox_rx) = mpsc::unbounded_channel();
         let orch_for_task = Arc::clone(orch);
-        let handle = tokio::spawn(async move {
+        let (task_id, task_slot) = (agent.id.clone(), agent.slot.clone());
+        let task = AgentTask::spawned(&task_id, &task_slot, async move {
             run_agent(orch_for_task, agent, role, client, inbox_rx, origin).await;
         });
-        orch.tasks.lock().expect("subagent tasks lock").push(handle);
+        orch.tasks.lock().expect("subagent tasks lock").push(task);
+        // A dispatch that produced no result is a panicked agent — its teardown drops the sender
+        // rather than synthesizing a return — which has already latched the run's fault. The caller
+        // still fails its issue or its review round with this, which stays correct: the run is
+        // ending, and an issue nobody reviewed is not an issue that was approved.
         result_rx
             .await
             .map_err(|_| "produced no result".to_string())
     })
+}
+
+/// Record on the run's [fault latch](crate::fault) that gg could not stand up a
+/// [detached agent](run_detached_agent) — a reviewer or a merge agent — that the board was waiting
+/// on.
+///
+/// Reported as a **dispatch** fault when the agent was dispatched for an issue, because the issue is
+/// what an operator will be looking at and no agent ran; as an agent fault otherwise, so a dispatch
+/// with no issue behind it still names something. The consequence is the same either way, and it is
+/// the run: the tree is missing the review or the merge, and nothing downstream can tell that tree
+/// from one where the work was done.
+fn latch_detached_dispatch(
+    orch: &Orchestrator,
+    agent_id: &str,
+    profile: &str,
+    issue_id: Option<&str>,
+    detail: &(impl std::fmt::Display + ?Sized),
+) {
+    match issue_id {
+        Some(issue_id) => orch.fault.in_dispatch(issue_id, Some(profile), detail),
+        None => orch.fault.in_agent(agent_id, profile, detail),
+    }
 }
 
 /// What a [detached agent](run_detached_agent) is dispatched as, and for.
@@ -5466,7 +5982,13 @@ impl LoopEnd {
     /// (Emitted as a log, not a second [`Usage`](GgTelemetryKind::Usage): per-turn
     /// `Usage` events are incremental deltas that consumers sum, so a total `Usage`
     /// would double-count.)
-    fn summary(&self) -> String {
+    ///
+    /// The `status` is passed in rather than read off `self` because this is the **session's**
+    /// sentence built from the **root's** figures, and the two can disagree: a gg defect anywhere
+    /// in the tree ends the run under [`STATUS_INTERNAL_ERROR`] however the root's own loop ended
+    /// (see [`crate::fault`]). A line that named the root's status here would be the one place a
+    /// reader is told the session ended `completed` when it did not.
+    fn summary(&self, status: &str) -> String {
         let tokens = self
             .tokens
             .total()
@@ -5477,8 +5999,8 @@ impl LoopEnd {
             None => String::new(),
         };
         format!(
-            "session ended ({}) after {} turn(s); {tokens} total tokens{cost}.",
-            self.status, self.turns
+            "session ended ({status}) after {} turn(s); {tokens} total tokens{cost}.",
+            self.turns
         )
     }
 }
@@ -5884,12 +6406,13 @@ impl Agent {
         // ceiling between them rather than one each. It is `0` for the overwhelming majority of
         // agents, which have exactly one incarnation.
         for turn in turn_base..turn_bound {
-            // An operator killed the run. Checked first, and at the same boundary as the two
-            // run-wide ceilings below, because a human's decision outranks every configured one —
-            // and on the same terms, so a killed run winds down exactly as cleanly as a run that
-            // spent its clock: this turn has not started, so nothing is abandoned, and the epilogue
-            // still emits the session summary, the per-slot rollups and the replay sidecar that are
-            // the whole reason a killed run is worth keeping.
+            // An operator killed the run. Read here, and acted on below the fault check, at the
+            // same boundary as the two run-wide ceilings further down: a human's decision outranks
+            // every *configured* one, and is enforced on the same terms, so a killed run winds down
+            // exactly as cleanly as a run that spent its clock — this turn has not started, so
+            // nothing is abandoned, and the epilogue still emits the session summary, the per-slot
+            // rollups and the replay sidecar that are the whole reason a killed run is worth
+            // keeping.
             let canceled = limits.cancel.is_canceled();
             // Replay capture: the probe and the clock read below are inputs in the strict sense —
             // both can end the session, and neither is derivable from anything else the record
@@ -5902,6 +6425,27 @@ impl Agent {
                 if let Some(clock) = limits.read_clock() {
                     recorder.record_clock(&self.id, clock.elapsed_ms, clock.remaining_ms);
                 }
+            }
+            // gg broke — here or in some other agent of this run. Acted on **before** the
+            // cancellation above it, and before every ceiling: the other conditions decide when a
+            // run stops, while this one decides that the run is not a measurement at all, and a run
+            // that stopped for two reasons has to be recorded under the one that disqualifies it.
+            // (The two can only coincide by racing, and an operator killing a run gg had already
+            // broken must not turn our defect into their decision.)
+            //
+            // Every agent reads the same latch, so a defect met by any one of them stops all of
+            // them — see [`crate::fault`] for why a run gg broke in cannot be allowed to finish.
+            if let Some(fault) = limits.fault.raised() {
+                return self.stop_on_fault(
+                    emitter,
+                    fault,
+                    turn,
+                    total_tokens,
+                    total_cost,
+                    code.enabled,
+                    last_report.as_deref(),
+                    last_text,
+                );
             }
             if canceled {
                 return self.stop_on_cancel(
@@ -6612,16 +7156,29 @@ impl Agent {
                             *context = state.context;
                             *caps.skills_mut() = state.skills;
                         }
-                        emitter.emit(log("error", message));
+                        emitter.emit(log("error", message.clone()));
+                        // gg's own machinery, not the model's turn: the model answered, and the
+                        // answer was never run — a guest artifact that would not run, a host fault,
+                        // or a program gg accepted and could not prepare for its guest. So the
+                        // agent ends on gg's status ([`STATUS_INTERNAL_ERROR`]),
+                        // which is what keeps our defect out of the model's column of the run's
+                        // attribution data, and out of the [error ceilings](RunLimits) the
+                        // [fatal outcome](TurnOutcome::Fatal) already keeps it out of.
+                        //
+                        // ...and the run stops with it, whichever agent this is. A host fault
+                        // strikes a subagent far more often than the root — there are more of them
+                        // — and the tree that came back from a run with a hole in it cannot be
+                        // compared with one from a run without.
+                        limits.fault.in_agent(&self.id, &self.slot, message);
                         return LoopEnd {
-                            status: STATUS_MODEL_ERROR,
+                            status: STATUS_INTERNAL_ERROR,
                             turns: turn + 1,
                             tokens: total_tokens,
                             cost: total_cost,
                             slot: self.slot.clone(),
                             final_text: ended_text(
                                 true,
-                                STATUS_MODEL_ERROR,
+                                STATUS_INTERNAL_ERROR,
                                 last_report.as_deref(),
                                 last_text,
                             ),
@@ -7525,6 +8082,54 @@ impl Agent {
             handoff: None,
         }
     }
+
+    /// End this agent because **gg broke** — in this agent or in any other agent of the run
+    /// ([`crate::fault`]) — [`stop_on_cancel`](Self::stop_on_cancel)'s twin in shape, and its
+    /// opposite in what it means.
+    ///
+    /// The wind-down is identical because the mechanics are: a run-wide condition, observed at a
+    /// turn boundary, stopping each agent at its own. What differs is the status
+    /// ([`STATUS_INTERNAL_ERROR`], not [`STATUS_CANCELED`]) and therefore everything downstream of
+    /// it — the session exits non-zero and is never scored, where a killed run exits `0` and is
+    /// collected. An operator who stopped a run knows why it stopped; nobody stopped this one.
+    ///
+    /// The `error` line **repeats the run's fault** rather than saying "the run faulted": most
+    /// agents that end here never saw the defect, and their own stream is where a console reader
+    /// looking at that agent is standing. A line that made them go and find the cause somewhere
+    /// else in the tree would be a line that costs an operator the thing they need most.
+    #[allow(clippy::too_many_arguments)]
+    fn stop_on_fault(
+        &self,
+        emitter: &Emitter,
+        fault: &str,
+        turns: usize,
+        tokens: TokenCounts,
+        cost: Option<Cost>,
+        code_mode: bool,
+        last_report: Option<&str>,
+        last_text: Option<String>,
+    ) -> LoopEnd {
+        emitter.emit(log(
+            "error",
+            format!(
+                "agent `{}` stopped at a turn boundary after {turns} turns: {fault}. The whole run \
+                 ends here, because a tree a gg defect stopped is not a tree the model produced \
+                 and must not be scored as one.",
+                self.id
+            ),
+        ));
+        LoopEnd {
+            status: STATUS_INTERNAL_ERROR,
+            turns,
+            tokens,
+            cost,
+            slot: self.slot.clone(),
+            final_text: ended_text(code_mode, STATUS_INTERNAL_ERROR, last_report, last_text),
+            ending: None,
+            limit: None,
+            handoff: None,
+        }
+    }
 }
 
 /// The terminal status one breached [ceiling](GgLimitKind) ends an agent under.
@@ -8219,6 +8824,10 @@ struct LimitsSetup {
     /// the two run-wide ceilings. Not a ceiling — nothing is measured and nothing is breached — but
     /// enforced on identical terms, which is why it travels with them rather than beside them.
     cancel: CancelWatch,
+    /// The run's [internal-fault latch](crate::fault), read at the same boundary as the watch above
+    /// for the same reason: it is a run-wide condition every agent stops itself on, and the only
+    /// thing that varies between the two is who decided the run should stop.
+    fault: FaultLatch,
 }
 
 /// One read of the run's wall-clock deadline, as a
@@ -10035,6 +10644,11 @@ use transitions::{
     Handoff, Opening, PendingFork, Succession, handle_exec, handle_fork, handle_transition,
     succession_note,
 };
+
+#[path = "agent.teardown.rs"]
+mod teardown;
+
+use teardown::{AgentTeardown, SpawnerLink};
 
 #[cfg(test)]
 #[path = "agent.test.rs"]

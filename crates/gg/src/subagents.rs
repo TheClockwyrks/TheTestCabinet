@@ -235,8 +235,9 @@ pub struct WaiterToken(u64);
 /// [signals completion](Self::child_completed). When the last awaited child finishes, the parent's
 /// blocked scheduler waiter is marked ready **and** the finishing child's slot is released in a
 /// single scheduler step, so the freed slot is offered to the now-ready parent ahead of any
-/// fresh waiter (the blocked-frees-slot-with-priority rule). The lock order is always
-/// `ParentWait` → `Scheduler`.
+/// fresh waiter (the blocked-frees-slot-with-priority rule). A child that ended without ever
+/// running signals [abandonment](Self::child_abandoned) instead, which is the same wake with no
+/// slot behind it. The lock order is always `ParentWait` → `Scheduler`.
 pub struct ParentWait {
     inner: Mutex<ParentWaitInner>,
 }
@@ -273,23 +274,41 @@ impl ParentWait {
     /// ([`Scheduler::finish_and_ready`]) so the freed slot goes to the ready parent ahead of any
     /// fresh waiter. Otherwise the slot is simply [released](Scheduler::release).
     pub fn child_completed(&self, scheduler: &Scheduler, child_id: &str, key: ExclusiveKey<'_>) {
-        let ready_token = {
-            let mut inner = self.inner.lock().expect("parent wait lock");
-            inner.finished.insert(child_id.to_string());
-            let mut ready_token = None;
-            if let Some(set) = inner.waiting_on.as_mut() {
-                set.remove(child_id);
-                if set.is_empty() {
-                    ready_token = inner.token.take();
-                    inner.waiting_on = None;
-                }
-            }
-            ready_token
-        };
-        match ready_token {
+        match self.record_finished(child_id) {
             Some(token) => scheduler.finish_and_ready(token, key),
             None => scheduler.release(key),
         }
+    }
+
+    /// Signal that the child `child_id` has ended **without ever holding a running slot**, which a
+    /// child whose task [panicked](crate::agent) before the scheduler granted it one has.
+    ///
+    /// The same signal as [`child_completed`](Self::child_completed) minus the release: a slot this
+    /// child never took cannot be given back, and giving one back regardless would run an agent over
+    /// the parallelism cap and free an [exclusivity key](ExclusiveKey) another instance of that
+    /// profile is running under. A parent waiting on it is marked ready all the same, because a
+    /// child that will never run is a child nothing may go on waiting for.
+    pub fn child_abandoned(&self, scheduler: &Scheduler, child_id: &str) {
+        if let Some(token) = self.record_finished(child_id) {
+            scheduler.mark_ready(token);
+        }
+    }
+
+    /// Mark `child_id` finished and take the parent's waiter token when this was the **last**
+    /// outstanding child of an active wait, so the caller can make the parent ready.
+    ///
+    /// The whole of the bookkeeping happens under one lock, which is what keeps a child completing
+    /// concurrently from slipping between the removal and the token being taken.
+    fn record_finished(&self, child_id: &str) -> Option<WaiterToken> {
+        let mut inner = self.inner.lock().expect("parent wait lock");
+        inner.finished.insert(child_id.to_string());
+        let set = inner.waiting_on.as_mut()?;
+        set.remove(child_id);
+        if !set.is_empty() {
+            return None;
+        }
+        inner.waiting_on = None;
+        inner.token.take()
     }
 
     /// Begin waiting on `awaited`: register a blocked waiter (freeing the caller's slot, and the

@@ -439,7 +439,9 @@ describe("the specific error type", () => {
         count: 1,
       },
     ]);
-    expect(errorTypeLabel("transpile_lowering")).toBe("lowering failed");
+    expect(errorTypeLabel("transpile_compile")).toBe(
+      "compiler rejected the program",
+    );
   });
 
   it("takes its labels from the contract, so every published type has one", () => {

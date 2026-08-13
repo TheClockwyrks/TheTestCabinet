@@ -140,8 +140,8 @@ sentence naming what to change and carries no coordinates.
 The check's verdict is decided on whether `tsc` produced a diagnostic about the
 file gg gave it. A diagnostic located in the program is a compile failure.
 Diagnostics located only in gg's generated declarations are a lowering failure,
-which keeps "the model's text failed" and "gg's pipeline failed" from being read
-as one number. A non-zero exit with no diagnostic at all is a toolchain failure,
+which is gg's own defect: it reaches the operator rather than the model and ends
+the run. A non-zero exit with no diagnostic at all is a toolchain failure,
 as is a missing `node`, a `node` killed by a signal, and the 60 second timeout.
 A toolchain failure tells the model its program was not run and carries no
 diagnostic, while the operator gets the exit status and the stderr tail.

@@ -386,6 +386,7 @@ fn only_error_outcomes_count_as_errors() {
         TurnOutcome::Error(TurnErrorType::MissingCompletionNoCall),
         TurnOutcome::Fatal(FatalFault::ArtifactDefect),
         TurnOutcome::Fatal(FatalFault::HostFault),
+        TurnOutcome::Fatal(FatalFault::Lowering),
     ];
 
     for outcome in every_outcome {
@@ -401,7 +402,6 @@ fn only_error_outcomes_count_as_errors() {
                 | TurnErrorType::TranspileSyntax
                 | TurnErrorType::TranspileSemantic
                 | TurnErrorType::TranspileCompile
-                | TurnErrorType::TranspileLowering
                 | TurnErrorType::TranspileUnsupported
                 | TurnErrorType::ProgramToolError
                 | TurnErrorType::ProgramUnknownName
@@ -470,8 +470,10 @@ fn every_outcome_publishes_itself_and_carries_a_kind_exactly_when_it_is_an_error
             Some(GgTurnErrorKind::MissingCompletion),
             Some(GgTurnErrorType::MissingCompletionCompaction),
         ),
-        // Both faults publish the same `fatal`: *which* piece of gg's machinery broke is a defect
-        // report the `error` log carries in sentences, not a dimension a study slices on.
+        // Every fault publishes the same `fatal`: *which* piece of gg's machinery broke is a defect
+        // report the `error` log carries in sentences, not a dimension a study slices on. What
+        // matters here is the `None`s beside it — a fatal turn carries no error type at all, which
+        // is what keeps gg's defect out of the model's error record.
         (
             TurnOutcome::Fatal(FatalFault::ArtifactDefect),
             GgTurnOutcome::Fatal,
@@ -480,6 +482,12 @@ fn every_outcome_publishes_itself_and_carries_a_kind_exactly_when_it_is_an_error
         ),
         (
             TurnOutcome::Fatal(FatalFault::HostFault),
+            GgTurnOutcome::Fatal,
+            None,
+            None,
+        ),
+        (
+            TurnOutcome::Fatal(FatalFault::Lowering),
             GgTurnOutcome::Fatal,
             None,
             None,
@@ -587,7 +595,6 @@ fn every_turn_error_type() -> impl Iterator<Item = TurnErrorType> {
         TurnErrorType::TranspileSyntax,
         TurnErrorType::TranspileSemantic,
         TurnErrorType::TranspileCompile,
-        TurnErrorType::TranspileLowering,
         TurnErrorType::TranspileUnsupported,
         TurnErrorType::ProgramToolError,
         TurnErrorType::ProgramUnknownName,
@@ -611,7 +618,6 @@ fn every_turn_error_type() -> impl Iterator<Item = TurnErrorType> {
             | TurnErrorType::TranspileSyntax
             | TurnErrorType::TranspileSemantic
             | TurnErrorType::TranspileCompile
-            | TurnErrorType::TranspileLowering
             | TurnErrorType::TranspileUnsupported
             | TurnErrorType::ProgramToolError
             | TurnErrorType::ProgramUnknownName

@@ -57,6 +57,7 @@ fn setup_from(declared: GgRunLimits) -> LimitsSetup {
         deadline: limits.max_runtime.map(|budget| Instant::now() + budget),
         spend: Arc::new(RunSpend::default()),
         cancel: CancelWatch::disabled(),
+        fault: FaultLatch::default(),
     }
 }
 
@@ -558,8 +559,10 @@ async fn a_model_api_error_is_still_fatal_on_the_first_occurrence() {
 /// The [`Fatal`](TurnOutcome::Fatal) arm is the one place gg's own failures are kept off the model's
 /// error budget, and it is the arm a regression is silent in — its whole job is to *not* count
 /// something. So it is driven end to end: the sandbox reports a failure of gg's plumbing, and the
-/// loop must end the session on gg's terms, credit no ceiling with it, and leave a ceiling armed at
-/// **one** error unbreached, because a defect in the harness is not a failed turn by the model.
+/// loop must end the session under gg's own status, credit no ceiling with it, and leave a ceiling
+/// armed at **one** error unbreached, because a defect in the harness is not a failed turn by the
+/// model. The status is the other half of the same rule the budget is: `agent.faults.test.rs`
+/// holds it for both faults.
 ///
 /// A fault this shape cannot be provoked honestly — the prebuilt component compiles, the engine
 /// config is a constant, and the blocking task only fails to join if the host panicked — so it is
@@ -595,8 +598,8 @@ async fn a_host_fault_ends_the_session_without_charging_the_model() {
     .await;
 
     assert_eq!(
-        end.status, "model_error",
-        "a fault in gg's own machinery ends the session loudly rather than burning the run"
+        end.status, "internal_error",
+        "a fault in gg's own machinery ends the session loudly, under gg's own status"
     );
     assert_eq!(end.turns, 1, "the turn is still counted");
     assert!(

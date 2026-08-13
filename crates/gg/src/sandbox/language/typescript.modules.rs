@@ -47,7 +47,7 @@ use oxc::ast::ast::{
 use oxc::parser::{Parser, ParserReturn};
 use oxc::span::{GetSpan, SourceType};
 
-use crate::sandbox::language::{PrepareError, PreparedModule};
+use crate::sandbox::language::{PrepareError, PrepareFailure, PreparedModule};
 
 use super::{
     MAX_NESTING_DEPTH, located, nesting_depth, on_a_deep_stack, over_nested_message, strip_types,
@@ -82,10 +82,12 @@ const TOP_LEVEL_AWAIT_MESSAGE: &str = "This code module used top-level `await`. 
 /// module is untrusted input whoever wrote it, and the parser below it recurses without a depth
 /// guard. Length is not guarded, here either — a module of any size is prepared, on a stack sized
 /// for it.
-pub fn prepare_module(src: &str) -> Result<PreparedModule, PrepareError> {
+pub fn prepare_module(src: &str) -> Result<PreparedModule, PrepareFailure> {
     let deepest = nesting_depth(src);
     if deepest > MAX_NESTING_DEPTH {
-        return Err(PrepareError::Unsupported(over_nested_message(deepest)));
+        return Err(PrepareFailure::Program(PrepareError::Unsupported(
+            over_nested_message(deepest),
+        )));
     }
 
     // One trip to the deep stack for both parses: the plan's and the strip's. They recurse to the

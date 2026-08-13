@@ -338,8 +338,6 @@ pub enum TurnErrorType {
     /// The language's compiler read the whole program and rejected it — a type error, a borrow
     /// error, a name that does not resolve.
     TranspileCompile,
-    /// The program could not be lowered into what the guest evaluates.
-    TranspileLowering,
     /// The program asks for something the sandbox will not run it with.
     TranspileUnsupported,
     /// The program's uncaught throw was a **failed call** — one the membrane serviced and the tool
@@ -382,7 +380,6 @@ impl TurnErrorType {
             Self::TranspileSyntax
             | Self::TranspileSemantic
             | Self::TranspileCompile
-            | Self::TranspileLowering
             | Self::TranspileUnsupported => TurnErrorKind::Transpile,
             Self::ProgramToolError | Self::ProgramUnknownName | Self::ProgramThrow => {
                 TurnErrorKind::ProgramFault
@@ -410,7 +407,6 @@ impl TurnErrorType {
             Self::TranspileSyntax => GgTurnErrorType::TranspileSyntax,
             Self::TranspileSemantic => GgTurnErrorType::TranspileSemantic,
             Self::TranspileCompile => GgTurnErrorType::TranspileCompile,
-            Self::TranspileLowering => GgTurnErrorType::TranspileLowering,
             Self::TranspileUnsupported => GgTurnErrorType::TranspileUnsupported,
             Self::ProgramToolError => GgTurnErrorType::ProgramToolError,
             Self::ProgramUnknownName => GgTurnErrorType::ProgramUnknownName,
@@ -435,12 +431,21 @@ impl TurnErrorType {
     }
 }
 
-/// A failure of gg's own machinery, which ends the session rather than costing the model a turn.
+/// A failure of gg's own machinery, which ends the **run** rather than costing the model a turn.
 ///
 /// Both are unreachable in a healthy released build, and both would recur identically on every
-/// further turn, so the run ends loudly on the first occurrence instead of burning to its deadline
-/// — and neither is ever counted against an [error ceiling](RunLimits), because attributing gg's
-/// defect to the model would be the same misattribution the `auth_error` status exists to prevent.
+/// further turn, so the run ends loudly on the first occurrence instead of burning to its deadline.
+/// gg's defect is kept off the model in both of the places a run is read from: neither is ever
+/// counted against an [error ceiling](RunLimits), and the terminal status the loop ends on is gg's
+/// own `internal_error` rather than `model_error`. Filing it as the model's would be the same
+/// misattribution the `auth_error` status exists to prevent, and this one is worse for being
+/// invisible: a run recorded as a model error is scored as one.
+///
+/// The **whole run** ends, and not only the agent the fault landed on — which matters here more
+/// than at any other site, because a host fault strikes whichever agent happened to be taking a
+/// turn and there are more subagents than roots. A run that carried on around one would hand back
+/// a tree with work missing from it and no way to tell, which is the same misattribution one level
+/// down. See [gg's fault latch](crate::fault).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FatalFault {
     /// The committed sandbox component could not be compiled or instantiated — artifact drift
@@ -449,6 +454,16 @@ pub enum FatalFault {
     /// gg's own plumbing failed: the wasm engine could not be configured or linked, or the
     /// sandbox's blocking task did not complete.
     HostFault,
+    /// gg could not prepare a program its language had already accepted: the transform over the
+    /// parsed source failed, or the surface gg generated for the model to write against was itself
+    /// rejected. See [`SandboxError::Lowering`](crate::sandbox::SandboxError::Lowering).
+    ///
+    /// The one fatal fault that arrives wearing a compiler's clothes, and the reason it is named
+    /// here rather than folded into [`HostFault`](Self::HostFault): it was recorded as a
+    /// `transpile_lowering` **turn error** until this taxonomy was taken at its word, which put gg's
+    /// bug in the model's error record, counted it against the model's ceilings, and handed the
+    /// model gg's diagnostic to rewrite a correct program against.
+    Lowering,
 }
 
 // ---------------------------------------------------------------------------------------------
