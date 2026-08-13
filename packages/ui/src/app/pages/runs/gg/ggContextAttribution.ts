@@ -138,9 +138,8 @@ export interface GgContextAttribution {
   /** One row per tool whose output sat in the window, costliest first. */
   byTool: GgAttributionRow[];
   /**
-   * The billed tokens of views whose selector could not be resolved — in practice an older
-   * stream's re-framed pinned file view, since a text view is keyed by a label gg always
-   * records. Reported so the view list is honest about what it does not cover.
+   * The billed tokens of views carrying no selector tag at all. Reported so the view list is
+   * honest about what it does not cover.
    */
   unattributedViewTokens: number;
 }

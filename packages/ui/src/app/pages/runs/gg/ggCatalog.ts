@@ -813,10 +813,8 @@ export const MODULE_KINDS: ReadonlyArray<{
   },
 ];
 
-// Which capability backs each module kind. It is what a surface asks when it has to decide
-// whether an agent holds a module at all and the record predates module rosters — and, read
-// the other way, what lets a module's row link back to the capability an operator would
-// tune.
+// Which capability backs each module kind — what lets a module's row link back to the
+// capability an operator would tune.
 //
 // Deliberately *not* the same list as `MODULE_CAPABILITIES` in `crates/gg/src/modules.rs`,
 // which is the narrower question of which capabilities carry an [ownership](ownershipParam)

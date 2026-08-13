@@ -263,8 +263,7 @@ export function RequestMetricsGraphs({
   prompts: PromptTurn[];
   // Per-turn phase timings, which head the file. Unlike the metrics below them these
   // are not per-*request*: a turn is timed whether or not it reached the model, so a
-  // run can have timings before it has a single request (and, on a stream recorded
-  // before gg timed turns, requests with no timings).
+  // run can have timings before it has a single request.
   timings?: TurnTiming[];
 }) {
   if (prompts.length === 0 && timings.length === 0) {

@@ -942,8 +942,7 @@ export interface GgRunState {
 // The events are a lifecycle with no round id of their own: a `requested` opens a round
 // and the `changes_requested`/`approved` that follows closes the one it opened. So this
 // appends on `requested` and amends the open round otherwise — and, for a stream whose
-// opening event was lost (or one recorded before rounds were tracked), amends a synthetic
-// round rather than dropping the verdict.
+// opening event was lost, amends a synthetic round rather than dropping the verdict.
 function withReviewRound(
   rounds: IssueReviewRound[],
   gg: Extract<GgTelemetryEvent, { type: "issue_review" }>,

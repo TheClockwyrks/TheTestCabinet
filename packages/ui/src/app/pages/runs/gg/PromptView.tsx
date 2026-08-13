@@ -5,11 +5,10 @@
 // For any agent but the main one this is the whole point of reading its prompt: the
 // *brief it was dispatched with* — by its parent when an agent spawned it, by the
 // board when it was dispatched for an issue — is the direct content of the
-// delegation, so it leads, and it comes off the spawn event, so it is present even
-// for an older run that recorded no rendered prompt. Beneath it (and, for the main
-// agent, alone) is the rendered
-// opening prompt: the system framing and the build/user prompt the agent actually
-// started its first turn from, resolved from the de-duplicated message log.
+// delegation, so it leads, and it comes off the spawn event, so it is there from the
+// moment the agent is dispatched. Beneath it (and, for the main agent, alone) is the
+// rendered opening prompt: the system framing and the build/user prompt the agent
+// actually started its first turn from, resolved from the de-duplicated message log.
 
 import type { CSSProperties } from "react";
 import type { GgContextSource } from "@test-cabinet/run-record/gg";

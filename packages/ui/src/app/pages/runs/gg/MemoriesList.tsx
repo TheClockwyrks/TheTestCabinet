@@ -31,18 +31,14 @@ interface MemoriesListProps {
 const numberFmt = new Intl.NumberFormat("en-US");
 
 // How each strategy is labeled in the panel, and what it means for the window.
-// An empty strategy is a record written before memories had more than one, which
-// was the scratchpad.
 const STRATEGY_LABELS: Record<string, string> = {
-  "": "Scratchpad",
   scratchpad: "Scratchpad",
   markdown: "Markdown + index",
   "keyword-search": "Keyword search",
 };
 
-// How each memory scope is labeled on the panel's badge. An empty scope is a record
-// written before scoping existed, when every instance was its holder's own — which is
-// exactly what "isolated" means, so it needs no badge of its own and gets none.
+// How each memory scope is labeled on the panel's badge. `isolated` is a notebook nobody
+// else can reach, which is the ordinary case and needs no badge of its own, so it has none.
 const SCOPE_LABELS: Record<string, string> = {
   shared: "Shared with every instance of this agent",
   inherited: "Inherited from this agent's spawner",
@@ -224,9 +220,8 @@ interface MemoryRow extends GgMemoryHistory {
   byAnother: boolean;
 }
 
-// Whether an agent holding this instance is holding it with somebody else. `isolated`
-// (and the empty scope of a record written before scoping existed) is a private
-// notebook, where every memory in the snapshot is necessarily this agent's own.
+// Whether an agent holding this instance is holding it with somebody else. `isolated` is a
+// private notebook, where every memory in the snapshot is necessarily this agent's own.
 function linked(scope: string): boolean {
   return scope === "shared" || scope === "inherited" || scope === "read-only";
 }
@@ -242,10 +237,6 @@ function linked(scope: string): boolean {
 // the two this agent happened to type. So the snapshot fills the rest in, marked as
 // another holder's — which is also the honest thing to say, since this agent's stream
 // has no revisions for them to show.
-//
-// The same fallback keeps the panel honest on a run recorded before gg streamed
-// revisions at all: nothing is marked, because on an isolated store there is nobody
-// else it could be.
 function records(memory: GgMemoryState): MemoryRow[] {
   const own = memory.history.map((entry) => ({ ...entry, byAnother: false }));
   const mine = new Set(own.map((entry) => entry.name));
@@ -291,11 +282,6 @@ export function MemoriesList({ memory }: MemoriesListProps) {
     live: entry.live,
     byAnother: entry.byAnother,
   }));
-  // Peaks are absent on a record written before gg reported them; the live figure is
-  // the honest floor for one, and stating it as the peak is better than showing zero.
-  const peakCount = Math.max(peak?.count ?? 0, count);
-  const peakLen = Math.max(peak?.totalLen ?? 0, totalLen);
-  const peakLines = Math.max(peak?.totalLines ?? 0, totalLines);
 
   return (
     <div className={styles.stack}>
@@ -329,9 +315,9 @@ export function MemoriesList({ memory }: MemoriesListProps) {
       </div>
       {/* What is held now against what was held at the run's high-water mark. */}
       <ModuleStats label="Memories">
-        <StatTile label="memories" now={count} peak={peakCount} />
-        <StatTile label="characters" now={totalLen} peak={peakLen} />
-        <StatTile label="lines" now={totalLines} peak={peakLines} />
+        <StatTile label="memories" now={count} peak={peak.count} />
+        <StatTile label="characters" now={totalLen} peak={peak.totalLen} />
+        <StatTile label="lines" now={totalLines} peak={peak.totalLines} />
       </ModuleStats>
       {all.length === 0 ? (
         <p className={styles.empty}>

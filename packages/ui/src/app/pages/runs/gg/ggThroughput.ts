@@ -11,9 +11,9 @@
 // The run's overall rate is its total generation over its total model time, not the mean of
 // the per-model rates. A run whose main agent grinds out 40 tok/s while a one-call
 // summarizer hits 300 generates at 40-something; averaging the two rates would claim it ran
-// at 170. Generation an agent's stream never attributed to a model (a spawn recorded before
-// gg named its model) still counts toward that overall rate — it happened — it simply has no
-// per-model row to sit in.
+// at 170. Generation an agent's stream never attributed to a model (an instance read before
+// its own spawn arrived) still counts toward that overall rate — it happened — it simply has
+// no per-model row to sit in.
 
 import { useMemo } from "react";
 import { useFindModelOptional } from "../../../data/useModels";

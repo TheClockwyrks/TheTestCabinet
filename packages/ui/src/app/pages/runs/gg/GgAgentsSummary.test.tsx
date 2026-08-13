@@ -12,7 +12,7 @@
 // The section is only meaningful in the contrasts it draws — a tool offered and not used
 // must stay in the list and read differently from one that was called, an entry only some of
 // the profile's instances were offered must say so rather than being folded in with the rest,
-// and a record written before gg reported any of this must produce no section at all rather
+// and a profile no instance has reported a surface for must produce no section at all rather
 // than an empty one claiming the agent was offered nothing. Each of those is asserted below,
 // because each of them looks fine on screen when it is wrong.
 //
@@ -602,8 +602,9 @@ describe("GgAgentsSummary offered surface", () => {
   });
 
   it("renders no section at all for a run that reported no surface", () => {
-    // Every record written before gg emitted the event. An empty "Tools" section would read
-    // as "this agent was offered nothing", which is the one thing it does not mean.
+    // A profile whose instances have not reported what they were offered. An empty "Tools"
+    // section would read as "this agent was offered nothing", which is the one thing it does
+    // not mean.
     const { detail } = openReviewer();
     expect(
       within(detail).queryByRole("region", { name: "reviewer tools" }),
@@ -669,9 +670,8 @@ describe("GgAgentsSummary ablation chips", () => {
   });
 
   it("falls back to the configuration where no instance reported a surface", () => {
-    // Every record written before gg emitted the event, and every arm the run never
-    // spawned. There is no resolved answer to prefer, so the chip says what the arm asked
-    // for — and says so as a request, never as an outcome.
+    // An arm the run never spawned. There is no resolved answer to prefer, so the chip says
+    // what the arm asked for — and says so as a request, never as an outcome.
     const { detail } = openReviewer(stubNav(), EVENTS, ABLATING);
     expect(within(detail).getByText("−read_files")).toHaveAttribute(
       "title",

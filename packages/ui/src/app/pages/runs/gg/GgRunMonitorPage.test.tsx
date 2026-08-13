@@ -237,8 +237,8 @@ function roster(
 // same tools through namespaced objects instead of naming them. `withheld` is the other
 // arm gg resolves: the profile's `disabledTools` entries that actually name a gg tool, so
 // a name gg does not know is already gone by the time it reaches the console. Nearly every
-// fixture in this file reports none at all — which is what a run recorded before gg
-// emitted the event looks like, and it has to keep rendering.
+// fixture in this file reports none at all — which is what an instance read before its own
+// `agent_surface` arrived looks like, and it has to keep rendering.
 function surface(
   agentId: string,
   tools: string[],
@@ -252,8 +252,7 @@ function surface(
     tools,
     apis,
     withheld,
-    // Omitted by a tool-calling instance, which opens no documentation at all, and by
-    // every record written before gg reported the mode.
+    // Omitted by a tool-calling instance, which opens no documentation at all.
     ...(docViewTypes ? { docViewTypes } : {}),
   } as GgTelemetryKind);
 }
@@ -1510,9 +1509,9 @@ describe("GgRunMonitorPage", () => {
   });
 
   it("says nothing about documentation for an instance that reported no mode", () => {
-    // A tool-calling instance opens no documentation, and a record written before gg
-    // reported the mode has none to report. Neither may read as "off", which is a real arm
-    // of the comparison and a different finding entirely.
+    // A tool-calling instance opens no documentation, so it has no mode to report. That may
+    // not read as "off", which is a real arm of the comparison and a different finding
+    // entirely.
     renderMonitor([
       sessionStarted(["filesystem"]),
       gg({
@@ -1591,9 +1590,9 @@ describe("GgRunMonitorPage", () => {
   });
 
   it("offers no surface file to an instance that never reported one", () => {
-    // Every run recorded before gg emitted the event, and every instance of a mixed run
-    // that predates it. An empty "tools" file would assert the one thing the file exists
-    // to distinguish — nothing offered — so the entry is absent instead.
+    // An instance read before its own `agent_surface` has arrived. An empty "tools" file
+    // would assert the one thing the file exists to distinguish — nothing offered — so the
+    // entry is absent instead.
     renderMonitor([
       sessionStarted(["shell", "filesystem"]),
       gg({

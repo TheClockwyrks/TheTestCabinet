@@ -114,15 +114,14 @@ const FILE_ORDER: ReadonlyArray<AgentFileKind> = [
 const FILE_CAPABILITIES: Record<AgentFileKind, ReadonlyArray<string>> = {
   overview: [],
   // Unconditional: a subagent's brief rides on the (always-present) spawn event, and
-  // the root's opening prompt is a first-class thing to read. An older run that recorded
-  // no rendered prompt shows the brief or says so rather than being absent — the same
-  // "offered, may be empty" contract as overview and activity.
+  // the root's opening prompt is a first-class thing to read — the same "offered, may be
+  // empty" contract as overview and activity.
   prompt: [],
   // Not capability-shaped, and the empty list here is not "unconditional": the surface
   // file is the one file gated on the INSTANCE rather than on the configuration — it is
   // offered exactly when that instance reported what it was offered (see {@link
-  // filesFor}). It has to be, because a stream recorded before gg reported surfaces
-  // carries none at all, and a file that showed an empty toolset for those runs would
+  // filesFor}). It has to be, because an instance read before its `agent_surface` has
+  // arrived reports none at all, and a file that showed an empty toolset for it would
   // assert the very thing it exists to distinguish: nothing offered.
   surface: [],
   activity: [],
@@ -242,8 +241,7 @@ export const MODULE_ICONS: Record<
 //
 // The surface file is the exception, and takes the instance's own reported surface: it
 // is offered when that incarnation said what it was offered, and withheld — completely,
-// not as an empty list — when it did not, which is every instance of every run recorded
-// before gg reported surfaces at all.
+// not as an empty list — until it has.
 export function filesFor(
   set: GgCapabilitySet | null,
   agent: string | null | undefined,

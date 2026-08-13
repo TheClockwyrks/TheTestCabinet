@@ -1210,7 +1210,8 @@ function ApiSurface({
   calls: ReadonlyMap<string, number>;
   /**
    * Which SDK types this instance's documentation lookups opened beside a function, as gg
-   * resolved it — the arm of a per-agent comparison. Null where the record predates it.
+   * resolved it — the arm of a per-agent comparison. Null for a tool-calling instance, which
+   * opens no documentation.
    */
   docViewTypes: string | null;
 }) {

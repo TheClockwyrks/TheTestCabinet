@@ -65,12 +65,6 @@ describe("MemoriesList", () => {
     expect(screen.getAllByText("controls").length).toBeGreaterThan(0);
   });
 
-  it("badges nothing for a record written before scoping existed", () => {
-    render(<MemoriesList memory={memory({ scope: "" })} />);
-    expect(screen.getAllByText("controls").length).toBeGreaterThan(0);
-    expect(screen.queryByText("read-only")).not.toBeInTheDocument();
-  });
-
   // gg attributes a `memory_revision` to the agent that made the write, so a linked
   // holder's own stream carries the history of ITS writes and nothing else, while its
   // snapshot is the whole store. Listing only the history would report a store of two

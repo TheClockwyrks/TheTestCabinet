@@ -459,13 +459,11 @@ function IssueDetail({
         <dl className={panels.projMeta}>
           {/* The profile the issue was filed *against* — the agent whoever filed it
               chose to dispatch it to — as distinct from the agent id gg then spawned
-              under that profile, below. Older runs recorded no assignee. */}
-          {issue.agent && (
-            <div className={panels.projMetaRow}>
-              <dt className={panels.projMetaLabel}>Assigned to</dt>
-              <dd className={panels.projMetaValue}>{issue.agent}</dd>
-            </div>
-          )}
+              under that profile, below. */}
+          <div className={panels.projMetaRow}>
+            <dt className={panels.projMetaLabel}>Assigned to</dt>
+            <dd className={panels.projMetaValue}>{issue.agent}</dd>
+          </div>
           {issue.reviewers && issue.reviewers.length > 0 && (
             <div className={panels.projMetaRow}>
               <dt className={panels.projMetaLabel}>Reviewers</dt>

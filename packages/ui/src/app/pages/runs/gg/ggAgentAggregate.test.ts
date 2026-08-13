@@ -834,9 +834,9 @@ describe("deriveGgAgentSummaries", () => {
   });
 
   it("leaves a run that never reported a surface with none, and nothing else changed", () => {
-    // Every record written before gg emitted `agent_surface`. A null surface is what tells
-    // the panels to show nothing at all — an empty one would read as "offered nothing" —
-    // and the rest of the row must fold exactly as it did before the event existed.
+    // A profile whose instances have not reported what they were offered. A null surface is
+    // what tells the panels to show nothing at all — an empty one would read as "offered
+    // nothing" — and the rest of the row must fold exactly the same.
     const summaries = summarize(
       [
         spawn("root", "Root", "vendor/big"),
