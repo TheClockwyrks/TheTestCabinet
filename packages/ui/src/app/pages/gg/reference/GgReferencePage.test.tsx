@@ -88,7 +88,6 @@ function arm(
         brief: "Read a file.",
         body: `${fqn}(path)\n\nRead a file and return its contents.`,
         operation: "files.read_file",
-        gate: "read_file",
       },
     ],
   };

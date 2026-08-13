@@ -212,7 +212,7 @@ function ToolDetail({
 
           {/* Everything the capabilities alone do not decide — a bound store, a writable
               handle, a memory strategy, a non-empty roster, a position in a machine.
-              These sentences are gg's, composed from the ablation it ran against its own
+              These sentences are gg's, composed from the sweep it ran against its own
               registry: it withholds one thing at a time from a maximal run and records
               what disappears. The console renders a string it never wrote, which is why
               a condition here cannot be wrong about the code it describes — the

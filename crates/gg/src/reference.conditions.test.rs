@@ -52,7 +52,8 @@ fn the_derived_conditions_predict_every_registry() {
 }
 
 /// Every configuration this test asks about: the maximal points, every single and every pair of
-/// ablations from them, a deterministic sample of arbitrary ones, and the policy cross product.
+/// single-capability configurations from them, a deterministic sample of arbitrary ones, and the
+/// policy cross product.
 ///
 /// The singles and the pairs are what the derivation itself looked at, so they prove only that it
 /// recorded what it saw. The **sample** is the part that can find something new — every axis and
@@ -230,7 +231,8 @@ fn every_condition_is_a_sentence_over_named_axes() {
 }
 
 /// The three conditions that are worth reading in full, because each is a shape a single-axis
-/// ablation cannot see or a sentence a reader would otherwise have to take on trust.
+/// single-capability configuration cannot see, or a sentence a reader would otherwise have to take
+/// on trust.
 ///
 /// Pinned as *text* rather than as structure on purpose: what is being checked is that the
 /// derivation reached the right conclusion about three genuinely awkward gates, and the sentence is
@@ -250,7 +252,7 @@ fn the_disjunctive_conditions_name_both_alternatives() {
     };
 
     // An agent can have children by spawning them from a roster or by forking itself, and either is
-    // enough. Neither ablation alone reveals it, which is why the derivation looks at pairs.
+    // enough. Neither capability alone reveals it, which is why the derivation looks at pairs.
     assert_eq!(
         sentences("wait_for_subagents"),
         vec![

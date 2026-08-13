@@ -184,7 +184,7 @@ not executed, and it also states:
   compile error on the turn that wrote it;
 - the module paths are the only names it gives, a function is found by searching
   the documentation, and the SDK declares every function whatever the run
-  enabled, so a call to a withheld one compiles and fails when it runs.
+  enabled, so a call the agent was not granted compiles and fails when it runs.
 
 ## Healing dialect
 

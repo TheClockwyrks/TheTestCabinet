@@ -80,7 +80,7 @@ public sealed class ToolException : Exception
 {
     /// <summary>Build a failure, which gg raises and a program has no reason to.</summary>
     /// <param name="code">The failure class.</param>
-    /// <param name="tool">The gg tool that failed.</param>
+    /// <param name="tool">The call that failed, by the operation's key.</param>
     /// <param name="message">The model-facing guidance.</param>
     public ToolException(ToolErrorCode code, string tool, string message)
         : base(message)
@@ -92,6 +92,10 @@ public sealed class ToolException : Exception
     /// <summary>The failure class, so a catch site branches on a value rather than on prose.</summary>
     public ToolErrorCode Code { get; }
 
-    /// <summary>The gg tool that failed — <c>read_file</c>, <c>spawn_subagent</c>.</summary>
+    /// <summary>The call that failed, by the key of the operation this program reached for.</summary>
+    /// <remarks>
+    /// <c>read_file</c> for <c>Files.ReadFile</c>, <c>read_text_file</c> for
+    /// <c>Files.ReadTextFile</c>.
+    /// </remarks>
     public string Tool { get; }
 }

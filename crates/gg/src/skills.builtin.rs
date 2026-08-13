@@ -23,9 +23,10 @@
 //! # Only what the agent has
 //!
 //! A family is offered **only when the agent has at least one of its functions**. A skill that
-//! described a tool this run withheld would be the one thing a directory must never do, and it is
-//! the same rule the [docs runtime](crate::docs::DocsRuntime) already obeys — which is why the
-//! responses-as-code arm can simply hand it the names and let it answer.
+//! described a call this agent was not given would be the one thing a directory must never do, and
+//! it is the same rule the [docs runtime](crate::docs::DocsRuntime) already obeys — which is why the
+//! responses-as-code arm can simply hand it the agent's own
+//! [grant](crate::sandbox::Grants) and let it answer.
 //!
 //! # Selecting them
 //!
@@ -41,6 +42,7 @@ use test_cabinet_core::gg::GgProgramLanguage;
 use super::{CodeFiles, Skill, parse_skill};
 use crate::ending::EndingRole;
 use crate::model::ToolDefinition;
+use crate::sandbox::OperationId;
 
 /// The `params` key on the [skills](test_cabinet_core::gg::CAPABILITY_SKILLS) capability naming
 /// which built-in skills the agent is offered.
@@ -193,16 +195,23 @@ pub(crate) const FAMILIES: &[Family] = &[
 
 /// The built-in skills this agent is offered.
 ///
-/// `offered` is the agent's own tool vocabulary (the registry's names, which is what
-/// [`scope_tools`](crate::sandbox::scope_tools) hands the sandbox); `definitions` is the same
-/// registry's live [`ToolDefinition`]s, which the native arm renders its bodies from;
-/// `program_language` picks which of the two arms a family's skill is built in — `Some(l)` is the
-/// code arm, written in `l`'s spellings, and `None` is the native one; `params` is the skills
-/// capability's params, read for the [`builtIns`](PARAM_BUILT_INS) toggles.
+/// The two arms take their vocabulary from the surface the agent actually has, and each takes only
+/// its own. `offered` and `definitions` are the tool arm's: the names of the tools the agent's
+/// [registry](crate::tools::ToolRegistry) offers, and the live [`ToolDefinition`]s the native bodies
+/// are rendered from. `capabilities` and `operations` are the program arm's: what its agent was
+/// [granted](crate::sandbox::Grants), handed down from the loop so that this catalogue, the
+/// membrane and the model's own lookups are built from one reading of one profile. `role` is the
+/// [ending role](EndingRole) the agent was dispatched in, which decides which verdict calls its
+/// session family carries; `params` is the skills capability's params, read for the
+/// [`builtIns`](PARAM_BUILT_INS) toggles.
 ///
-/// The language and "is this the code arm?" are one parameter rather than two, because they are one
-/// fact: a family's skill is built from a [directory](crate::docs::DocsRuntime) exactly when the
-/// agent writes programs, and the language is only there to say how the entries in it are spelled.
+/// `program_language` picks which of the two arms a family's skill is built in — `Some(l)` is the
+/// code arm, written in `l`'s spellings, and `None` is the native one. The language and "is this the
+/// code arm?" are one parameter rather than two, because they are one fact: a family's skill is
+/// built from a [directory](crate::docs::DocsRuntime) exactly when the agent writes programs, and
+/// the language is only there to say how the entries in it are spelled. The unused arm's parameters
+/// are simply not read — an agent has one surface, so one of the two pairs describes something it
+/// does not have.
 ///
 /// A family with nothing bound is not offered at all. In code mode the four carve-out families
 /// (`docs`, `view`, `programs`, `harness`) are decided by [`DocsRuntime`](crate::docs::DocsRuntime)
@@ -212,26 +221,15 @@ pub fn builtin_skills(
     offered: &[String],
     definitions: &[ToolDefinition],
     role: EndingRole,
-    library: bool,
-    docview_close: bool,
+    capabilities: &[String],
+    operations: &[OperationId],
     program_language: Option<GgProgramLanguage>,
     params: &Value,
 ) -> Vec<Skill> {
     let off = switched_off(params);
     let offered: BTreeSet<&str> = offered.iter().map(String::as_str).collect();
-    // The capabilities that buy part of the model-facing surface, as the documentation runtime takes
-    // them: ids rather than the booleans this function is handed, because gg's gating vocabulary is
-    // capability ids and the booleans are this caller's resolved answers about them. Turned into ids
-    // by the one function that does that, so this catalogue and the membrane cannot come to hold
-    // different grants — which they did, this side never carrying `docview-close` at all.
-    let capabilities = crate::sandbox::surface_capabilities(library, docview_close);
     let docs = program_language.map(|language| {
-        crate::docs::DocsRuntime::new(
-            offered.iter().map(|name| (*name).to_string()).collect(),
-            role,
-            &capabilities,
-            language,
-        )
+        crate::docs::DocsRuntime::new(capabilities.to_vec(), role, operations, language)
     });
 
     FAMILIES

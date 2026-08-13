@@ -13,11 +13,14 @@
 use std::time::Duration;
 
 use serde_json::{Value, json};
+use test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY;
 
 use super::*;
 use crate::context::ViewKind;
 use crate::ending::{Ending, EndingRole};
-use crate::sandbox::fake::{CallLog, FakeToolApi, all_tools, canned_outcome, typescript};
+use crate::sandbox::fake::{
+    CallLog, FakeToolApi, all_capabilities, all_operations, canned_outcome, typescript,
+};
 use crate::tools::{ToolFailure, ToolOutcome};
 
 #[path = "sandbox.membrane.test.rs"]
@@ -29,34 +32,42 @@ mod fault_tests;
 #[path = "sandbox.compile.test.rs"]
 mod compile_tests;
 
-/// Run `program` with every tool bound, the canned invoker, and the default ceilings.
+/// Run `program` with every call granted, the canned invoker, and the default ceilings.
 fn run(program: &str) -> (SandboxOutcome, CallLog) {
     run_with(
         program,
-        &all_tools(),
+        &all_operations(),
         SandboxLimits::default(),
         canned_outcome,
     )
 }
 
-/// Run `program` against `enabled`'s tools under `limits`, answering calls with `responder`. The
+/// Run `program` granted `operations` under `limits`, answering calls with `responder`. The
 /// program is given the [standard](EndingRole::Standard) ending group; [`run_as`] varies that.
+///
+/// The [program library](crate::programs) is the one capability deliberately **off** here, and it is
+/// off because the guest binds its module only for a run that keeps one: a fixture that switched it
+/// on would put `programs` in every program's scope, and the case that asserts an unkept library is
+/// an unbound name would have nothing left to assert. [`run_with_library`] is the arm that keeps it.
 fn run_with(
     program: &str,
-    enabled: &[String],
+    operations: &[crate::sandbox::OperationId],
     limits: SandboxLimits,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
     let log = CallLog::default();
+    let capabilities: Vec<String> = all_capabilities()
+        .into_iter()
+        .filter(|id| id != CAPABILITY_PROGRAM_LIBRARY)
+        .collect();
     let (outcome, _api) = run_program(
         typescript(),
         program,
         ProgramScope {
-            enabled,
+            capabilities: &capabilities,
+            operations,
             modules: &[],
             ending: RunEnding::Role(EndingRole::Standard),
-            library: false,
-            docview_close: false,
         },
         limits,
         None,
@@ -77,11 +88,10 @@ fn run_with_library(program: &str, held: &[(u64, &str)]) -> SandboxOutcome {
         typescript(),
         program,
         ProgramScope {
-            enabled: &all_tools(),
+            capabilities: &all_capabilities(),
+            operations: &all_operations(),
             modules: &[],
             ending: RunEnding::Role(EndingRole::Standard),
-            library: true,
-            docview_close: false,
         },
         SandboxLimits::default(),
         None,
@@ -98,11 +108,10 @@ fn run_as(program: &str, role: EndingRole) -> SandboxOutcome {
         typescript(),
         program,
         ProgramScope {
-            enabled: &[],
+            capabilities: &[],
+            operations: &[],
             modules: &[],
             ending: RunEnding::Role(role),
-            library: false,
-            docview_close: false,
         },
         SandboxLimits::default(),
         None,
@@ -209,7 +218,12 @@ fn a_program_runs_typed_calls_in_order() {
             .iter()
             .map(|call| call.name.as_str())
             .collect::<Vec<_>>(),
-        ["list_dir", "read_file", "read_file", "write_file"],
+        [
+            "files.list_dir",
+            "files.read_text_file",
+            "files.read_text_file",
+            "files.write_file"
+        ],
         "the host's own record must match what the loop was actually asked to do"
     );
 
@@ -499,7 +513,7 @@ fn the_limits_stop_a_runaway_program() {
     // A program that calls nothing and never returns is stopped by the timeout alone.
     let (outcome, _) = run_with(
         "while (true) {}",
-        &all_tools(),
+        &all_operations(),
         short_timeout,
         canned_outcome,
     );
@@ -515,7 +529,7 @@ fn the_limits_stop_a_runaway_program() {
     // The calls that landed before the trap are still the model's to see: they really happened.
     let (outcome, log) = run_with(
         "fs.listDir(\"src\");\nwhile (true) {}",
-        &all_tools(),
+        &all_operations(),
         short_timeout,
         canned_outcome,
     );
@@ -527,7 +541,7 @@ fn the_limits_stop_a_runaway_program() {
             .iter()
             .map(|call| call.name.as_str())
             .collect::<Vec<_>>(),
-        ["list_dir"]
+        ["files.list_dir"]
     );
 
     // A cap below the guest engine's ~10 MiB floor fails at INSTANTIATION, and is reported as the
@@ -535,7 +549,7 @@ fn the_limits_stop_a_runaway_program() {
     // what makes the two distinguishable at all.
     let (outcome, _) = run_with(
         "return 1;",
-        &all_tools(),
+        &all_operations(),
         SandboxLimits {
             max_memory_bytes: 4 * 1024 * 1024,
             ..SandboxLimits::default()
@@ -556,7 +570,7 @@ fn the_limits_stop_a_runaway_program() {
             "for (let i = 0; i < 20000000; i++) { held.push({ i, tag: i * 2 }); }\n",
             "return held.length;",
         ),
-        &all_tools(),
+        &all_operations(),
         SandboxLimits {
             max_memory_bytes: 64 * 1024 * 1024,
             ..SandboxLimits::default()
@@ -583,7 +597,7 @@ fn the_limits_stop_a_runaway_program() {
             "}\n",
             "console.log(total);",
         ),
-        &all_tools(),
+        &all_operations(),
         SandboxLimits::default(),
         |name, args| {
             if name == "read_file" {
@@ -848,10 +862,11 @@ fn a_role_gets_only_its_own_ending_calls() {
         }
     );
     // A reviewer's scope carries `harness` like every other name — the SDK is static — and calling
-    // `finish` on it reaches the host, which refuses it and says which endings a reviewer *does*
-    // have. That sentence is the whole of what the inversion bought here: an agent that reached for
-    // the wrong ending is told the right one on the same turn, where a missing name told it only
-    // that something was absent.
+    // `finish` on it reaches the host, which refuses it and names the endings a reviewer *does*
+    // have. That is the whole of what an ending refusal says: an agent that reached for the wrong
+    // ending is handed the right one on the same turn, where a missing name told it only that
+    // something was absent. Why the wrong one is unavailable is not said, because a role is
+    // dispatched rather than chosen and nothing the program does can change it.
     let outcome = run_as(
         "harness.finish(\"the work is complete\");",
         EndingRole::Review,
@@ -859,12 +874,12 @@ fn a_role_gets_only_its_own_ending_calls() {
     assert_eq!(program_error(&outcome).kind, ProgramErrorKind::UnknownName);
     let message = &program_error(&outcome).message;
     assert!(
-        message.contains("you were dispatched to review work"),
-        "a reviewer is told why: {message:?}"
-    );
-    assert!(
-        message.contains("gg.session.approve") && message.contains("gg.session.requestChanges"),
-        "and which calls it does have, spelled as this program would write them: {message:?}"
+        message.contains(
+            "`gg.session.finish` is not available. Use `gg.session.approve` or \
+             `gg.session.requestChanges` instead."
+        ),
+        "a reviewer is handed the calls it does have, spelled as this program would write them, \
+         and told nothing it could not act on: {message:?}"
     );
     assert!(outcome.completion.is_none());
 
@@ -908,7 +923,7 @@ fn a_role_gets_only_its_own_ending_calls() {
 fn a_refused_call_is_the_same_turn_error_as_an_unbound_name() {
     let (outcome, _) = run_with(
         "fs.listDir();",
-        &all_tools(),
+        &all_operations(),
         SandboxLimits::default(),
         |_, _| {
             ToolOutcome::failed(
@@ -934,7 +949,7 @@ fn a_refused_call_is_the_same_turn_error_as_an_unbound_name() {
     // failure: the call was offered, was made, and the thing it asked for is not there.
     let (outcome, _) = run_with(
         "fs.listDir();",
-        &all_tools(),
+        &all_operations(),
         SandboxLimits::default(),
         |_, _| ToolOutcome::failed(ToolFailure::NotFound, "no such directory"),
     );
@@ -985,16 +1000,15 @@ fn the_view_object_is_always_bound_and_only_open_file_is_gated() {
         "closing a selector that is not open is an answer, not a failure"
     );
 
-    // …but `openFile` is a read, and a run without `read_file` is refused it. The function is bound
-    // like every other — the SDK is static — so what the model gets is gg's own sentence naming the
-    // capability that buys it, rather than a `TypeError` about a property that is not a function.
+    // …but `openFile` is a read, and an agent not granted it is refused. The function is bound like
+    // every other — the SDK is static — so what the model gets is gg's own sentence naming the call
+    // it wrote, rather than a `TypeError` about a property that is not a function.
     let outcome = run_as("view.openFile(\"src/a.ts\");", EndingRole::Standard);
     assert_eq!(program_error(&outcome).kind, ProgramErrorKind::UnknownName);
     let message = &program_error(&outcome).message;
     assert!(
-        message.contains("`gg.views.openFile` is not available to you")
-            && message.contains("the gg tool `read_file`"),
-        "a run without `read_file` is refused `view.openFile`: {message:?}"
+        message.ends_with("`gg.views.openFile` is not available."),
+        "an agent not granted the read is refused `view.openFile`: {message:?}"
     );
 
     // With `read_file` enabled it IS bound, and it dispatches a real `read_file` carrying the same
@@ -1042,13 +1056,14 @@ fn the_view_object_is_always_bound_and_only_open_file_is_gated() {
          }));");
     assert_eq!(logged_json(&outcome), json!({ "closed": 1, "left": ["b"] }));
 
-    // A refused view arrives as a catchable `ToolError` naming the function the program called —
-    // there is no gg tool name to report, and `openText` is what the model wrote.
+    // A refused view arrives as a catchable `ToolError` naming the call the program made, by the
+    // key of the operation it wrote — the same identity every other failed call on this membrane
+    // carries.
     let (outcome, _) = run("try { view.openText(\"\", \"body\"); }\n\
          catch (e) { console.log(JSON.stringify({ isToolError: e instanceof ToolError, tool: (e as ToolError).tool, code: (e as ToolError).code })); }");
     assert_eq!(
         logged_json(&outcome),
-        json!({ "isToolError": true, "tool": "openText", "code": "invalid-argument" }),
+        json!({ "isToolError": true, "tool": "open_text", "code": "invalid-argument" }),
         "a view with no selector could never be closed or attributed, so it is refused"
     );
 
@@ -1189,11 +1204,10 @@ fn run_with_modules_logged(program: &str, modules: &[(&str, &str)]) -> (SandboxO
         typescript(),
         program,
         ProgramScope {
-            enabled: &all_tools(),
+            capabilities: &all_capabilities(),
+            operations: &all_operations(),
             modules: &bound,
             ending: RunEnding::Role(EndingRole::Standard),
-            library: false,
-            docview_close: false,
         },
         SandboxLimits::default(),
         None,
@@ -1292,11 +1306,10 @@ fn an_on_use_script_has_no_ending_calls_in_scope() {
         typescript(),
         "harness.finish(\"done\");",
         ProgramScope {
-            enabled: &all_tools(),
+            capabilities: &all_capabilities(),
+            operations: &all_operations(),
             modules: &[],
             ending: RunEnding::None,
-            library: false,
-            docview_close: false,
         },
         SandboxLimits::default(),
         None,

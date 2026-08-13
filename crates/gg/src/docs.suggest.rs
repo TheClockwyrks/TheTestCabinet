@@ -6,9 +6,10 @@
 //! fix. Watching real code-mode turns, the miss is almost never a name the model invented. It is one
 //! of three near-misses on a name that does exist:
 //!
-//! * the **gg tool name** where the program spelling belongs — `write_file` for `writeFile`, a
-//!   confusion the model comes by honestly, since the tool name is what its telemetry, its prompt's
-//!   capability lists and gg's own sentences call the same function;
+//! * gg's own **`snake_case` key** for the call where the program spelling belongs — `write_file`
+//!   for `writeFile`. The model comes by that honestly: an [operation](crate::sandbox::OperationId)
+//!   key is written that way, and an arm whose SDK is camel-cased spells the same call differently
+//!   from the way the surface is filed;
 //! * a **stem** — `write`, `read`, `open` — a name recalled by its first word and completed by
 //!   guess;
 //! * a **typo** in a name it has already used correctly.
@@ -20,9 +21,9 @@
 //! # Only names this agent binds
 //!
 //! The candidates are the bound ones — exactly the set [`read`](super::DocsRuntime::read) would have
-//! answered from — and never the whole catalogue. Offering `editFile` to an agent whose run withheld
-//! `edit_file` would trade a `not-found` the model can act on for a name that evaluates to
-//! `undefined` on the turn it writes it, which is the one failure a hint must never cause.
+//! answered from — and never the whole catalogue. Offering `editFile` to an agent whose grant does
+//! not cover `files.edit_file` would trade a `not-found` the model can act on for a call the host
+//! then refuses on the turn it writes it, which is the one failure a hint must never cause.
 //!
 //! # Why the matching is tiered rather than scored
 //!
@@ -78,8 +79,9 @@ pub(super) fn nearest<'a>(
         .collect()
 }
 
-/// A name reduced to what a comparison should ignore: the object a qualified guess carries, the
-/// separators that distinguish a gg tool name from its program spelling, and case.
+/// A name reduced to what a comparison should ignore: the module a qualified guess carries, the
+/// separators that distinguish gg's `snake_case` key for a call from this arm's spelling of it, and
+/// case.
 ///
 /// Dropping the qualifier is what makes `fs.writeFile` a hit rather than a miss, and dropping the
 /// separators and case is what makes `write_file` one: both are the *right* function under the wrong

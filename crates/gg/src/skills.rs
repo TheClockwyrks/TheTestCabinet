@@ -24,7 +24,7 @@
 //!   [`SkillsState`](test_cabinet_core::gg::GgTelemetryKind::SkillsState) telemetry are
 //!   derived.
 //!
-//! The capability is **ablatable**: when it is off the loop never builds a library
+//! The capability is **switchable**: when it is off the loop never builds a library
 //! ([`SkillsRuntime::disabled`]), so there is no `read_skill` tool, no prompt listing, and
 //! no telemetry — the feature vanishes.
 
@@ -283,7 +283,7 @@ impl SkillLibrary {
 /// skills read so far.
 ///
 /// Constructed [enabled](Self::new) with a loaded library or [disabled](Self::disabled)
-/// (an ablation's off arm). It produces the catalog the
+/// (a configuration with the capability off). It produces the catalog the
 /// [system prompt](crate::prompts::SystemContext::skills) lists
 /// ([`prompt_entries`](Self::prompt_entries)), the
 /// [`SkillsState`](GgTelemetryKind::SkillsState) telemetry

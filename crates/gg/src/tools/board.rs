@@ -17,7 +17,7 @@
 //!
 //! The tools are contributed to the registry only when the
 //! [`project-management`](test_cabinet_core::gg::CAPABILITY_PROJECT_MANAGEMENT) capability is enabled and
-//! a store is bound; when it is off, none are offered (ablation).
+//! a store is bound; when it is off, none are offered.
 
 use std::sync::{Arc, Mutex};
 
@@ -893,7 +893,7 @@ pub const WAIT_FOR_ISSUE_TOOL: &str = "wait_for_issue";
 /// Like the [delegation tools](crate::tools::subagents), this is **not** self-contained: waiting
 /// frees the agent's scheduler slot and blocks on the orchestrator's issue-wait registry, which a
 /// [`Tool`] cannot reach. So the [turn loop](crate::agent) **intercepts** the call and performs the
-/// wait; this declaration exists only so the tool is offered, listed, and ablatable uniformly. Its
+/// wait; this declaration exists only so the tool is offered, listed, and granted uniformly. Its
 /// [`invoke`](Tool::invoke) is a defensive fallback that never runs in a correctly wired session.
 pub struct WaitForIssueTool;
 

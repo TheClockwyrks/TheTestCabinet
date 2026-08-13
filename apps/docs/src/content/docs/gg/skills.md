@@ -188,9 +188,9 @@ unconfigured run gets all of them:
 Switching one off withholds the manual and leaves the functions: the family
 still works, and the agent is not handed a description of it.
 
-The built-ins are resolved against this agent's toolset, so two agents in one run
-hold catalogues that agree about every authored skill and differ exactly where
-their capabilities do. With no authored skills and no built-ins there is nothing
+The built-ins are resolved against what this agent may call, so two agents in one
+run hold catalogues that agree about every authored skill and differ exactly
+where their grants do. With no authored skills and no built-ins there is nothing
 to read, and gg offers no `read_skill` tool.
 
 ## The catalogue in the system prompt

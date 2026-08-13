@@ -41,9 +41,8 @@ Each agent in the overview reads as a row carrying its own turn count, the peak
 its context window reached, its share of the run's tokens, and what it called,
 chipped in that agent's own vocabulary. A tool-calling agent's chips name its
 tools; a [code-shaped](/gg/responses-as-code/overview/) one's name the API
-functions its programs wrote (`gg.files.readFile`, rather than the `read_file` gg
-dispatched to serve it). Each row links into that agent's files in the Instances
-explorer.
+functions its programs wrote (`gg.files.readFile`). Each row links into that
+agent's files in the Instances explorer.
 
 The cost read-out leads the row it shares with the token tally and is the taller
 tile, carrying the run's whole account of its spend with the configuration
@@ -166,11 +165,9 @@ leading column that can be read straight down the list. A tool the instance neve
 reached for reads a real `0×` and is muted rather than dropped, which is the
 point of the file; the row's hover text says the same zero in the same words
 ("offered, 0 calls") and spends the rest of its length saying that this is a
-finding about something the agent held. Beside those rows sit the tools this
-instance's [ablation](/gg/toolset-ablation/) withheld, marked as such. That
-withheld list is gg's own, reported on the same event rather than re-read from
-the configuration, so a `disabledTools` entry naming nothing gg offers is never
-shown here as an applied ablation.
+finding about something the agent held. The list is the resolved surface gg
+reported on the instance's own event rather than a re-reading of the
+configuration, so what the file shows is what the model was given.
 
 A code agent reads the same thing through its modules: one card per module,
 carrying the one-line description its own system prompt introduced the module by,
@@ -178,8 +175,8 @@ over the functions this instance bound, each carrying its own count. No gg tool
 name appears on that file. gg records a model-facing call under the operation it
 resolved to, so a view call, a documentation lookup, an ending call and a
 [program-library](/gg/program-library/) call are counted exactly as a file read
-is, and three functions over one core (`gg.files.readFile`,
-`gg.files.readTextFile` and `gg.views.openFile` all run a `read_file`) are three
+is, and three functions over one implementation (`gg.files.readFile`,
+`gg.files.readTextFile` and `gg.views.openFile` all perform one read) are three
 figures rather than one shared between them. The file's own heading names the
 documentation mode this instance ran under, because the tokens that mode cost are
 this agent's own. Every row carries a figure, so a `0×` is a bound function the

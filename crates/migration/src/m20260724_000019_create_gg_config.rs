@@ -2,8 +2,9 @@
 //!
 //! A gg run is configured by a declarative capability set rather than the flat
 //! `(harness, model, orchestrator)` tuple a third-party-harness run carries, so the
-//! configuration is the thing worth naming and reusing across runs (and across an
-//! ablation's arms). An account may hold many, each with its own opaque id, name,
+//! configuration is the thing worth naming and reusing across runs (and across the two
+//! configurations a comparison puts side by side). An account may hold many, each with its own
+//! opaque id, name,
 //! and optional description; the set itself is JSON text, read and written whole
 //! like the coverage plans' list columns. Built from the portable schema builder so
 //! it applies identically to SQLite and PostgreSQL; the timestamp is an RFC 3339

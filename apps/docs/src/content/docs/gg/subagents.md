@@ -105,5 +105,5 @@ children at all, whether by spawning them from its roster or by forking itself.
 | --- | --- | --- |
 | `maxDepth` | 3 | The deepest an agent may sit in the delegation tree; a spawn at that depth fails as a limit. |
 
-Like every capability this one is ablatable. Switched off, none of the three
-tools is offered and the agent delegates nothing of its own.
+Switched off, none of the three tools is offered and the agent delegates nothing
+of its own.

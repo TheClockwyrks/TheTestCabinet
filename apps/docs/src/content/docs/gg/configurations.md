@@ -28,7 +28,7 @@ three tabs:
   here, since in gg they are per agent.
 
 Duplicate seeds a new configuration from an existing one. The usual way to build
-an ablation arm is to duplicate the arm beside it and change the one thing under
+a comparison arm is to duplicate the arm beside it and change the one thing under
 test.
 
 A configuration names no test case, and it does not have to name the models it
@@ -88,8 +88,8 @@ Each profile carries:
 
 - an [agent type](#agent-type), chosen above everything else because it decides
   what the rest of the form offers;
-- its own enabled capabilities, their implementations and params, and per-tool
-  [ablation](/gg/toolset-ablation/) overrides;
+- its own enabled capabilities, their implementations and params, and the
+  [calls it is granted](#granting-calls) out of them;
 - one model, either pinned outright or deferred to a declared [model
   slot](#model-slots), and the [prompt-cache lifetime](#prompt-cache-lifetime)
   its requests ask for;
@@ -119,6 +119,55 @@ Two capabilities backed by a [module](/gg/modules/), project management and
 agent-managed context, carry an `ownership` param deciding whether the agent's
 prompt carries that module or only its tools do. Left alone it is `owned`. The
 other module-backed capabilities always sit in the agent's prompt.
+
+### Granting calls
+
+An enabled capability says which calls exist for an agent. A second, per-agent
+allowlist says which of them the agent is given, and that list is the whole
+grant: an agent's surface is exactly the calls its allowlist names, out of the
+capabilities it holds.
+
+There are two allowlists, one per surface, and each is checked against its own
+vocabulary:
+
+- `tools` names gg tool names, and is the surface a Tools agent is offered.
+- `operations` names operation ids, such as `files.read_file` and
+  `memories.update_memory`, and is what a RaC agent's programs may call.
+
+The two vocabularies are scoped. A tool name is never callable from a program and
+an operation id is never callable as a tool, so a name written under the wrong
+field, or one gg does not have at all, is reported as an error when the run
+starts. The API surface is strictly the larger of the two: every tool has an
+operation behind it, and operations exist that no tool does.
+
+A granted call is withheld when the run cannot service it. The capability and the
+allowlist are properties of the configuration; whether the agent holds a bound
+store, a writable memory handle, a memory strategy with named memories, a
+compaction strategy the model itself performs, a non-empty roster, or a position
+in a machine is a property of the instance. Both surfaces apply those conditions,
+so a call the run cannot make is neither offered as a tool nor documented,
+searchable or callable from a program. The [Reference](/gg/reference/) states each
+condition per call.
+
+`delegation.transition_state` is the one call a configuration cannot grant at all.
+An agent holds it when it stands in a [machine](/gg/fsms/) state with somewhere to
+go, and the machine is declared on the shell profile driving it rather than on the
+agent's own.
+
+The editor asks for neither list directly. Switching a capability on grants that
+capability's whole set of calls for the agent's type, and the capability's
+Features sliders take back one bundle at a time, such as evicting file views,
+revising memories or creating issues. Each capability page states the sliders it
+offers.
+
+An enabled capability that grants none of its calls for the agent's type is
+warned about on its card in the editor. Such a configuration is still saved and
+still launches; the warning exists because the resulting run is indistinguishable
+from one where the model was offered the capability and left it alone.
+
+Studying a narrower surface is therefore a comparison of two configurations:
+duplicate the arm, take the calls out of the copy, and run both against the same
+test case and model.
 
 ### Agent type
 
@@ -266,10 +315,10 @@ offered in that selector because that is where an operator says how a run is
 conducted, which makes it the one place the choice belongs. gg is offered for
 every test type: it replaces the harness rather than the session strategy.
 
-The fan-out is the same as any other run's, and it is what an ablation study
-wants: `configurations × models × run count` runs from one submission. Fixing
-the model and varying the configuration is an ablation; fixing the configuration
-and varying the model is a model comparison.
+The fan-out is the same as any other run's, and it is what a study wants:
+`configurations × models × run count` runs from one submission. Fixing the model
+and varying the configuration measures the configuration; fixing the
+configuration and varying the model measures the model.
 
 ## Watching a run
 
@@ -282,7 +331,7 @@ A launched gg run is read on gg's own monitor, which renders its
 - Agents — the run read per configured agent, each profile's instances summed
   into one read-out: how many ran, what they spent between them, which files and
   tools filled their windows, and what [state](/gg/modules/) they held. This is
-  the grain an ablation is read at.
+  the grain two configurations are compared at.
 - Instances — the per-running-agent explorer, which lays the run out as a
   filesystem. An instance is a folder, the things you can monitor about it are
   its files, and a spawned agent is a folder under `subagents`.

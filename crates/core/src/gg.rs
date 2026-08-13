@@ -17,6 +17,7 @@
 //! `npm run gen:contract` after any change here. JSON is camelCase.
 
 use std::collections::BTreeMap;
+use std::fmt;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -260,8 +261,8 @@ pub const MEMORY_PARAM_SCOPE: &str = "scope";
 /// [`scope`](MEMORY_PARAM_SCOPE) param, resolved.
 ///
 /// [`Isolated`](Self::Isolated) is the default: a subagent starts with an empty notebook and
-/// nothing it writes is seen by anyone else, which is the right answer for an ablation that wants
-/// each agent measured on its own curation. The other three bind the *same* store to several
+/// nothing it writes is seen by anyone else, which is the right answer for a configuration that
+/// wants each agent measured on its own curation. The other three bind the *same* store to several
 /// holders, which is what makes a study of shared, accumulated knowledge possible at all.
 ///
 /// Two rules make the four coherent, and they are the ones a configuration's reader has to know:
@@ -537,8 +538,8 @@ pub struct GgAgentModule {
     /// module, which has no store to identify.
     pub module_id: String,
     /// Whether the capability behind the module is on for this instance. A disabled module still
-    /// occupies its row, so an ablation's off arm is legible rather than absent — the same reason
-    /// it still occupies its slot in gg's own module set.
+    /// occupies its row, so a capability switched off is legible rather than absent — the same
+    /// reason it still occupies its slot in gg's own module set.
     pub enabled: bool,
     /// Whether this holder's prompt carries the module ([`owned`](GgModuleOwnership::Owned)) or it
     /// is reachable through its tools alone ([`unowned`](GgModuleOwnership::Unowned)).
@@ -642,10 +643,11 @@ impl std::fmt::Display for GgModuleDisposition {
 /// row of an [`AgentSurface`](GgTelemetryKind::AgentSurface)'s
 /// [`apis`](GgTelemetryKind::AgentSurface::apis) list.
 ///
-/// A module is present exactly when the agent binds at least one of its functions, so a withheld
-/// capability drops the whole module rather than leaving a named-but-empty one. The
-/// [description](Self::description) is the same one-line prose the agent's own system prompt names
-/// the module by — the surface reports what the model was told, not a second wording of it.
+/// A module is present exactly when the agent binds at least one of its functions, so a capability
+/// this agent was granted nothing from drops the whole module rather than leaving a named-but-empty
+/// one. The [description](Self::description) is the same one-line prose the agent's own system
+/// prompt names the module by — the surface reports what the model was told, not a second wording
+/// of it.
 ///
 /// # Two names, because two readers want different ones
 ///
@@ -710,9 +712,9 @@ pub struct GgAgentApiFunction {
 /// window. When the thread nears the window it summarizes the ephemeral history and
 /// carries the pinned state (read skills, in-play memories, the task list) across the
 /// boundary verbatim. Unlike the Phase 1 defaults this is **opt-in** — a run must name
-/// it in its [`GgCapabilitySet`] to enable the backstop — so an ablation's off arm
-/// simply never compacts. Its `summaryHeadroom` param sets the fraction of the window
-/// reserved for the summarization call — which also defines the fullness threshold that
+/// it in its [`GgCapabilitySet`] to enable the backstop — so a configuration that
+/// leaves it off simply never compacts. Its `summaryHeadroom` param sets the fraction of
+/// the window reserved for the summarization call — which also defines the fullness threshold that
 /// triggers a compaction (`1 - summaryHeadroom`) — and its
 /// [`implementation`](GgCapabilityConfig::implementation) selects the **compaction
 /// strategy**: who writes the summary, and what the restarted thread is rebuilt from.
@@ -839,13 +841,13 @@ pub const CAPABILITY_AGENT_MANAGED_CONTEXT: &str = "agent-managed-context";
 /// [`Done`](GgIssueStatus::Done) and its worktree merged. The lifecycle is streamed as
 /// [`IssueReview`](GgTelemetryKind::IssueReview) telemetry.
 ///
-/// The blocked-by DAG and `wait_for_issue` are **core** to the capability — never ablated
+/// The blocked-by DAG and `wait_for_issue` are **core** to the capability — never withheld
 /// away — but two features are optional per agent: **issue creation** (withholding
 /// `create_epic`/`create_issue` leaves an agent read-only access to the board, still able to
 /// wait on and complete issues) and **required [reviewers](GgBoardIssue::reviewers)** (the
 /// `reviewers` param, which makes `create_issue` demand one or more reviewer profiles). The
-/// capability as a whole is opt-in, like compaction and agent-managed context — an ablation's off
-/// arm simply never offers the board tools.
+/// capability as a whole is opt-in, like compaction and agent-managed context — a configuration
+/// that leaves it off simply never offers the board calls.
 ///
 /// [project management]: https://docs.testcabinet.ai/gg/project-management/
 /// [wait on an issue]: https://docs.testcabinet.ai/gg/project-management/
@@ -1080,8 +1082,9 @@ pub const CAPABILITY_FORK: &str = "fork";
 /// fence tag, or as a line of prose, belongs to the program language; the repairs themselves do not.
 /// Every application is disclosed to the model in its turn feedback
 /// and [counted on the run](GgHealingSummary), because a repair the model is not told about teaches
-/// it nothing and corrupts the ablation; each [strategy](GgHealingStrategy) is independently
-/// toggleable through the capability's `healing` param — the first two on unless turned off, and
+/// it nothing and corrupts the figures two configurations would be compared on; each
+/// [strategy](GgHealingStrategy) is independently toggleable through the capability's `healing`
+/// param — the first two on unless turned off, and
 /// [`drop-doubled-response`](GgHealingStrategy::DropDoubledResponse) off unless a run arms it.
 ///
 /// Every tool the run offers is bound into the program's surface: there is no class of call a
@@ -1246,8 +1249,8 @@ pub struct GgCapabilitySet {
     /// They ride on the capability set rather than on the [launch envelope](GgInvocation)
     /// because the set is what a run *records*: a ceiling that stopped a run is only
     /// interpretable beside the value it was set to. They are deliberately not a
-    /// capability — a capability is a feature under ablation, a ceiling is an operator's
-    /// guardrail over every capability at once — so they never appear in the
+    /// capability — a capability is a feature a configuration switches on or off, a ceiling is an
+    /// operator's guardrail over every capability at once — so they never appear in the
     /// [`cap.*`](crate::gg_query) document namespace.
     /// A set that declares none omits the key entirely.
     #[serde(default, skip_serializing_if = "GgRunLimits::is_empty")]
@@ -1262,8 +1265,9 @@ pub struct GgCapabilitySet {
     /// non-session event in this list is a configuration error, not a run-wide shorthand.
     ///
     /// Deliberately not a [capability](GgCapabilityConfig), for the same reason the
-    /// [ceilings](Self::limits) are not: a capability is a feature the *model* is given and a study
-    /// ablates, while a hook is the operator reaching into the run from outside it.
+    /// [ceilings](Self::limits) are not: a capability is a feature the *model* is given and one
+    /// configuration switches off where another leaves it on, while a hook is the operator
+    /// reaching into the run from outside it.
     ///
     /// A set that declares none omits the key entirely.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1329,8 +1333,14 @@ impl GgCapabilitySet {
             .expect("a gg capability set always has at least one agent")
     }
 
-    /// The [root agent](Self::root)'s name — what a helper knob, an issue assignee, or a
-    /// telemetry slot falls back to when it means "whichever profile drives this run".
+    /// The [root agent](Self::root)'s name — what a helper knob or a telemetry slot names when it
+    /// means "whichever profile drives this run".
+    ///
+    /// Never a **substitute** for a profile that was asked for by name and is not declared: an
+    /// agent run under the root instead of the profile it was dispatched as is a different agent
+    /// with a different model and different capabilities, recorded under the wrong name. gg reports
+    /// that as its own defect and ends the agent that asked — and the whole session with it, when
+    /// that agent is the run's root — rather than answering it from here.
     pub fn root_name(&self) -> &str {
         &self.root().name
     }
@@ -1375,9 +1385,15 @@ impl GgCapabilitySet {
         self.root().capability(id)
     }
 
-    /// Whether `tool` is withheld from the [Root agent](Self::root).
-    pub fn is_tool_disabled(&self, tool: &str) -> bool {
-        self.root().is_tool_disabled(tool)
+    /// Whether the [Root agent's](Self::root) [allowlist](GgAgentConfig::tools) grants `tool`.
+    pub fn grants_tool(&self, tool: &str) -> bool {
+        self.root().grants_tool(tool)
+    }
+
+    /// Whether the [Root agent's](Self::root) [allowlist](GgAgentConfig::operations) grants the
+    /// operation with the rendered id `operation`.
+    pub fn grants_operation(&self, operation: &str) -> bool {
+        self.root().grants_operation(operation)
     }
 
     /// The profile that actually **runs** when work is dispatched onto the profile named `name`:
@@ -1389,15 +1405,36 @@ impl GgCapabilitySet {
     /// state before its first turn, and the shell itself has no model at all. One hop is enough —
     /// a state may not run another shell.
     ///
-    /// Falls back to the shell itself when its machine names an entry agent the set does not
-    /// declare, so a broken machine is reported by whoever asked (a launch check with the whole
-    /// set in hand) rather than silently answered `None` here.
-    pub fn dispatched_agent(&self, name: &str) -> Option<&GgAgentConfig> {
-        let agent = self.agent(name)?;
-        match agent.fsm_entry_agent() {
-            Some(entry) => Some(self.agent(entry).unwrap_or(agent)),
-            None => Some(agent),
+    /// Every way this can fail names the profile that is missing ([`GgDispatchError`]); none of
+    /// them answers with some *other* profile. Resolving a shell whose entry agent the set does not
+    /// declare as the shell itself is the worst answer available here, not the safest: a shell
+    /// carries no model, so the caller would report the **shell** as the agent missing a binding —
+    /// a true sentence about an agent nobody asked about, sending whoever reads it to the wrong
+    /// line of the configuration. Worse, a shell that *does* carry a stray `modelId` would resolve
+    /// clean, and the run would be launched, recorded and compared against a model the
+    /// configuration never named for it. Attribution that reads as real is worse than no
+    /// attribution, and attribution is what a run is for.
+    pub fn dispatched_agent<'a>(
+        &'a self,
+        name: &'a str,
+    ) -> Result<&'a GgAgentConfig, GgDispatchError<'a>> {
+        let agent = self
+            .agent(name)
+            .ok_or(GgDispatchError::UndeclaredProfile(name))?;
+        if !agent.is_fsm_shell() {
+            return Ok(agent);
         }
+        // Asked of the shell rather than of `fsm_entry_agent` alone, which answers `None` both for
+        // "not a machine" and for "a machine nothing can be entered at" — two different facts that
+        // must not share a report.
+        let entry = agent
+            .fsm_entry_agent()
+            .ok_or(GgDispatchError::UnreadableMachine { shell: &agent.name })?;
+        self.agent(entry)
+            .ok_or(GgDispatchError::UndeclaredEntryAgent {
+                shell: &agent.name,
+                entry,
+            })
     }
 
     /// The declaration of the named [model slot](GgModelSlot), or `None` when this set
@@ -1446,13 +1483,69 @@ impl GgCapabilitySet {
     }
 }
 
+/// Why [`GgCapabilitySet::dispatched_agent`] cannot name the profile a dispatch would run.
+///
+/// Every arm is the same underlying fault — a name the set does not declare — and they are held
+/// apart because they are *different names*. That is the entire value of returning one: whoever
+/// reports it can say which profile is missing, and a machine's fault is never reported against
+/// the machine.
+///
+/// None of these is reachable in a launched run: gg's launch validation refuses a set with any of
+/// them in it, and the backend refuses the launch body before that. Reaching one means the two have
+/// come apart, which is a defect in gg rather than a configuration an operator can fix — so callers
+/// report it and stop rather than picking a profile to carry on as.
+///
+/// Borrows the set it was produced from, so a report can name the profile without copying: these
+/// are read, formatted and dropped at the site that asked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GgDispatchError<'a> {
+    /// The set declares no profile by this name at all.
+    UndeclaredProfile(&'a str),
+    /// `shell` is an [FSM shell](GgAgentConfig::is_fsm_shell) whose machine has no readable
+    /// [entry state](GgAgentConfig::fsm_entry_agent) — no states, or a first state naming no
+    /// agent — so there is nothing for a dispatch onto it to become.
+    UnreadableMachine {
+        /// The shell profile whose machine could not be entered.
+        shell: &'a str,
+    },
+    /// `shell` is an [FSM shell](GgAgentConfig::is_fsm_shell) whose machine enters a state running
+    /// the `entry` agent, which the set does not declare.
+    UndeclaredEntryAgent {
+        /// The shell profile the dispatch was aimed at.
+        shell: &'a str,
+        /// The entry state's agent — the name that is actually missing.
+        entry: &'a str,
+    },
+}
+
+impl fmt::Display for GgDispatchError<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UndeclaredProfile(profile) => {
+                write!(f, "no `{profile}` agent profile is declared")
+            }
+            Self::UnreadableMachine { shell } => write!(
+                f,
+                "the `{shell}` agent is a state machine with no readable entry state, so there is \
+                 no agent profile for it to run"
+            ),
+            Self::UndeclaredEntryAgent { shell, entry } => write!(
+                f,
+                "the `{shell}` agent is a state machine that enters the `{entry}` agent, which is \
+                 not a declared agent profile"
+            ),
+        }
+    }
+}
+
 /// A single **agent profile** within a [`GgCapabilitySet`] — the per-agent unit that
 /// makes gg's capabilities configurable independently for each agent in a run.
 ///
 /// Every profile has a unique [`name`](Self::name) (the first is always the
-/// [Root](ROOT_AGENT)), its own enabled [capabilities](Self::capabilities) and per-tool
-/// [ablation](Self::disabled_tools), its own model (pinned via [`model_id`](Self::model_id)
-/// or [deferred](Self::model_slot) to a launch-time [model slot](GgModelSlot)), an optional
+/// [Root](ROOT_AGENT)), its own enabled [capabilities](Self::capabilities) and the
+/// [tool](Self::tools) or [operation](Self::operations) allowlist that narrows them, its own model
+/// (pinned via [`model_id`](Self::model_id) or [deferred](Self::model_slot) to a launch-time
+/// [model slot](GgModelSlot)), an optional
 /// [custom prompt](Self::custom_instructions) / [full template override](Self::system_prompt_template),
 /// and the set of other agents it may spawn as [subagents](Self::subagents).
 ///
@@ -1471,7 +1564,7 @@ pub struct GgAgentConfig {
     /// The capabilities this agent is configured with, each identified by a stable id.
     /// A capability absent from this list is off *and* unconfigured; one present but
     /// [disabled](GgCapabilityConfig::enabled) is off but records the configuration it
-    /// would have used, which keeps an ablation's on/off arms symmetric.
+    /// would have used, which keeps two configurations differing only in that switch comparable.
     #[serde(default)]
     pub capabilities: Vec<GgCapabilityConfig>,
     /// The opaque model id this agent runs on, passed through to the model client.
@@ -1487,12 +1580,40 @@ pub struct GgAgentConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub model_slot: Option<String>,
-    /// Individual tool names to **withhold** from this agent even when the capability
-    /// that offers them is on — the finest-grained ablation lever, one notch below
-    /// toggling a whole [capability](GgCapabilityConfig::enabled). A named tool is not
-    /// offered to the model and not dispatchable, exactly as if its capability were off.
+    /// The gg **tool names** this agent may call — the allowlist that decides which of the tools
+    /// its enabled capabilities offer it actually gets. Meaningful for an agent that answers with
+    /// tool calls; inert for one that writes programs, which is offered no tools at all and takes
+    /// its surface from [`operations`](Self::operations) instead.
+    ///
+    /// **The list is the grant.** Absent or empty grants *nothing*: a capability being on says which
+    /// tools exist to be given out, and this says which of them this agent is given. There is no
+    /// implicit "everything" to fall back to, because a blocklist cannot express the setting an
+    /// operator most often wants — *this agent gets these three calls* — without enumerating every
+    /// tool it does not get and re-enumerating them each time gg grows one. The console's editor
+    /// fills in a capability's full set of tools the moment that capability is switched on, so
+    /// switching one on still yields a working agent; that is the editor being helpful, not a
+    /// runtime default.
+    ///
+    /// Every name is checked against gg's tool vocabulary at launch, and one that is not a gg tool
+    /// — a typo, a tool since removed, or an [operation id](Self::operations) from the other surface
+    /// — is an error, not a silently inert entry. An allowlist entry that grants nothing looks
+    /// exactly like a deliberate narrowing, so nothing but a launch-time complaint can tell an
+    /// operator that the call they meant to hand over never arrived.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub disabled_tools: Vec<String>,
+    pub tools: Vec<String>,
+    /// The **operation ids** — `files.read_file`, `memories.update_memory` — that this agent's
+    /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) programs may call. Meaningful for an agent
+    /// that writes programs; inert for a tool-calling one, whose surface is
+    /// [`tools`](Self::tools).
+    ///
+    /// The allowlist semantics, the launch-time validation and the editor's seeding are exactly
+    /// [`tools`](Self::tools)'. What differs is the vocabulary, and the two are **scoped**: the API
+    /// surface is strictly the larger of the two — every tool has an operation behind it, and
+    /// operations exist that no tool does — but a name is granted on precisely the surface it
+    /// belongs to. A tool name here, or an operation id there, is a mistake gg reports rather than
+    /// a spelling it accepts.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub operations: Vec<String>,
     /// Operator-authored instructions inserted into this agent's system prompt. `None`
     /// (or empty) leaves the stock prompt. This is the field an operator edits normally;
     /// [`system_prompt_template`](Self::system_prompt_template) is the escape hatch for
@@ -1550,15 +1671,34 @@ pub struct GgAgentConfig {
 }
 
 impl GgAgentConfig {
-    /// A fresh [Root agent](ROOT_AGENT) with the default capabilities and no model
-    /// binding.
+    /// A fresh [Root agent](ROOT_AGENT) with the default capabilities, every call those capabilities
+    /// offer granted on both surfaces, and no model binding.
+    ///
+    /// The two allowlists are **written out** here rather than left empty, and that is not a
+    /// runtime default sneaking back in. Nothing is being inferred from an absent key — an agent
+    /// that omits `tools` still gets nothing, which is what [`tools`](Self::tools) documents. What
+    /// this constructor does is *author a document*, exactly as the console's editor does when an
+    /// operator switches a capability on: it states the grant it means. A default profile that
+    /// enabled the shell and four filesystem capabilities and then handed out none of their calls
+    /// would be a configuration describing an agent that cannot act.
+    ///
+    /// Both surfaces are filled because the default profile does not yet know which it will have.
+    /// [`execution_mode`](CAPABILITY_RESPONSES_AS_CODE) is a capability like any other, so a
+    /// document that starts here and turns it on is a responses-as-code agent, and one that does
+    /// not is a tool-calling one. Exactly one of the two lists is read for any given agent, so
+    /// carrying both costs nothing and leaves the switch a one-line edit.
+    ///
+    /// The names are gg's, and gg holds this to being exactly what the default capabilities offer —
+    /// an entry that stopped matching a tool or an operation would be a default profile silently
+    /// short of a call.
     pub fn root() -> Self {
         Self {
             name: ROOT_AGENT.to_string(),
             capabilities: default_capabilities(),
             model_id: String::new(),
             model_slot: None,
-            disabled_tools: Vec::new(),
+            tools: DEFAULT_TOOLS.iter().map(|name| name.to_string()).collect(),
+            operations: DEFAULT_OPERATIONS.iter().map(|id| id.to_string()).collect(),
             custom_instructions: None,
             system_prompt_template: None,
             prompt_cache_ttl: GgPromptCacheTtl::default(),
@@ -1568,10 +1708,19 @@ impl GgAgentConfig {
         }
     }
 
-    /// Whether the tool named `tool` is [withheld](Self::disabled_tools) from this agent
-    /// even when its capability is on — the per-tool ablation override.
-    pub fn is_tool_disabled(&self, tool: &str) -> bool {
-        self.disabled_tools.iter().any(|t| t == tool)
+    /// Whether this agent's [tool allowlist](Self::tools) grants the tool named `tool`.
+    ///
+    /// A capability being on is necessary and not sufficient: the capability decides the tool
+    /// exists to be granted, this decides whether *this* agent got it.
+    pub fn grants_tool(&self, tool: &str) -> bool {
+        self.tools.iter().any(|t| t == tool)
+    }
+
+    /// Whether this agent's [operation allowlist](Self::operations) grants the operation with the
+    /// rendered id `operation` (`files.read_file`) — the API surface's half of
+    /// [`grants_tool`](Self::grants_tool), asked of the vocabulary a program calls by.
+    pub fn grants_operation(&self, operation: &str) -> bool {
+        self.operations.iter().any(|o| o == operation)
     }
 
     /// The configuration for the capability with the given id, or `None` when it is
@@ -1951,7 +2100,7 @@ fn default_agents() -> Vec<GgAgentConfig> {
 /// Tasks is on by default for the same reason — a lightweight to-do list is core to a
 /// coding agent; it offers the `add_task`/`update_task`/`set_blocked_by`/`complete_task`/
 /// `remove_task` tools, but starts empty, so it adds nothing to the window until the model
-/// plans one. An ablation's off arm turns any of these off explicitly.
+/// plans one. A configuration that wants any of them off turns it off explicitly.
 fn default_capabilities() -> Vec<GgCapabilityConfig> {
     vec![
         GgCapabilityConfig::enabled(CAPABILITY_SHELL),
@@ -1964,6 +2113,64 @@ fn default_capabilities() -> Vec<GgCapabilityConfig> {
         GgCapabilityConfig::enabled(CAPABILITY_TASKS),
     ]
 }
+
+/// Every gg **tool** the [default capabilities](default_capabilities) offer — the tool-calling half
+/// of the grant [`GgAgentConfig::root`] authors, in gg's own order.
+///
+/// Written here rather than derived because the vocabulary belongs to gg and this crate is the one
+/// that states the contract; gg's `the_default_profile_grants_what_its_capabilities_offer` holds the
+/// two to being the same set, so a tool added to a default capability fails there rather than
+/// quietly shrinking every default profile by one call.
+const DEFAULT_TOOLS: &[&str] = &[
+    "shell",
+    "read_file",
+    "write_file",
+    "edit_file",
+    "list_dir",
+    "read_skill",
+    "write_memory",
+    "update_memory",
+    "create_memory",
+    "read_memory",
+    "edit_memory",
+    "search_memories",
+    "delete_memory",
+    "add_task",
+    "update_task",
+    "set_blocked_by",
+    "complete_task",
+    "remove_task",
+];
+
+/// Every **operation** the [default capabilities](default_capabilities) offer — the
+/// responses-as-code half of the grant [`GgAgentConfig::root`] authors, and the same calls as
+/// [`DEFAULT_TOOLS`] spelled in the other surface's vocabulary.
+///
+/// Held to gg's operations table by the same test, and for the same reason.
+const DEFAULT_OPERATIONS: &[&str] = &[
+    "shell.shell",
+    "files.read_file",
+    "files.read_text_file",
+    "files.write_file",
+    "files.edit_file",
+    "files.list_dir",
+    "skills.read_skill",
+    "memories.write_memory",
+    "memories.update_memory",
+    "memories.create_memory",
+    "memories.read_memory",
+    "memories.edit_memory",
+    "memories.search_memories",
+    "memories.delete_memory",
+    "tasks.add_task",
+    "tasks.update_task",
+    "tasks.set_blocked_by",
+    "tasks.complete_task",
+    "tasks.remove_task",
+    // The read-file capability's second row: a program opens a file straight into its own window
+    // rather than into a variable, and that channel is bought by the same capability the read is.
+    "views.open_file",
+];
 
 /// The configuration of a single capability within a [`GgCapabilitySet`].
 ///
@@ -1981,8 +2188,8 @@ pub struct GgCapabilityConfig {
     /// comparable.
     pub id: String,
     /// Whether the capability is on. Off means gg behaves as if the feature does not
-    /// exist — no tools for it are exposed and it consumes no context — which is the
-    /// basis for ablation studies.
+    /// exist — nothing it offers is exposed and it consumes no context — which is what makes two
+    /// configurations differing in one capability worth comparing.
     pub enabled: bool,
     /// The selected implementation of the capability, when it offers more than one
     /// (for example two compaction strategies or two memory strategies). `None` selects the
@@ -2010,8 +2217,8 @@ impl GgCapabilityConfig {
         }
     }
 
-    /// A capability present but disabled — recorded (so an ablation's off arm names
-    /// what it turned off) yet inert.
+    /// A capability present but disabled — recorded (so a configuration names what it turned off)
+    /// yet inert.
     pub fn disabled(id: impl Into<String>) -> Self {
         Self {
             enabled: false,
@@ -2528,8 +2735,8 @@ pub enum GgHookOutcomeKind {
 /// stop a session and record which one stopped it, plus the
 /// [parallelism cap](Self::max_parallel) that bounds how much of the run happens at once.
 ///
-/// Deliberately **not** a [capability](GgCapabilityConfig): a capability is a feature under
-/// ablation, with tools and an on/off arm a study varies; a ceiling is an operator's guardrail
+/// Deliberately **not** a [capability](GgCapabilityConfig): a capability is a feature a
+/// configuration switches on or off, with calls behind it; a ceiling is an operator's guardrail
 /// that applies to every capability and to both execution modes at once. They live on the
 /// [capability set](GgCapabilitySet) rather than on the [launch envelope](GgInvocation) because
 /// the set is what a run **records**, so a run stopped by a ceiling carries both the
@@ -2545,9 +2752,9 @@ pub enum GgHookOutcomeKind {
 /// and an **error rate above 0.4 over the last 50 turns**. Runtime and cost stay off when unset —
 /// the host owns the clock, and gg will not invent a spend ceiling nobody asked for. A field set to
 /// a value that cannot bound anything — a zero window, a negative rate, a rate above `1.0` — is a
-/// startup warning and is ignored, never an error, on the same terms as an unknown name in
-/// [`disabled_tools`](GgAgentConfig::disabled_tools); a **partially** declared error rate (a rate
-/// without a window, or a window without a rate) is likewise a warning and no ceiling, and does not
+/// startup warning and is ignored, never an error, because a ceiling that cannot bind still leaves
+/// the run the operator asked for runnable; a **partially** declared error rate (a rate without a
+/// window, or a window without a rate) is likewise a warning and no ceiling, and does not
 /// fall back to the default. The run records the ceilings that were actually in force on
 /// [`GgSessionSummary::limits`], so a default is a recorded fact rather than a hidden one.
 ///
@@ -3007,8 +3214,8 @@ pub enum GgTurnErrorType {
     ProgramToolError,
     /// **The program reached for something this run does not offer it**, and the throw ended the
     /// turn: a name that was never in the program's scope, or a call the membrane refused
-    /// `unavailable` because this agent's capability set, role or program library does not include
-    /// it.
+    /// `unavailable` because this agent's capability set, [allowlist](GgAgentConfig::operations),
+    /// role or program library does not include it.
     ///
     /// The two are one fact and one recovery — write against the surface you were given — and they
     /// are folded together on purpose. Which of the two a language *produces* is an accident of how
@@ -3174,12 +3381,13 @@ impl GgTurnErrorType {
 /// Why one call failed, in the class the caller branches on — the wire mirror of gg's own
 /// `ToolFailure`, and of the membrane's `error-code`.
 ///
-/// It rides on both halves of a failed call's record: the
-/// [`ToolResult`](GgTelemetryKind::ToolResult) that says what *ran*, and the
-/// [`ApiResult`](GgTelemetryKind::ApiResult) that says what the *model wrote*. Those are two
-/// surfaces over one core (see [`ApiCall`](GgTelemetryKind::ApiCall)), and a failure is classified
-/// on each because only one of them exists for a given call: a membrane refusal and a call no tool
-/// backs have an `ApiResult` and no `ToolResult`, and a tool-calling agent has the reverse.
+/// It is carried by whichever of the two surfaces' closing records the call has: the
+/// [`ToolResult`](GgTelemetryKind::ToolResult) a tool-calling agent's dispatch closes with, or the
+/// [`ApiResult`](GgTelemetryKind::ApiResult) a responses-as-code agent's call closes with. **A call
+/// has exactly one of them**, because an agent has exactly one surface (see
+/// [`ApiCall`](GgTelemetryKind::ApiCall)) — so the class is spelled on both types rather than on a
+/// shared one, and a cross-surface count of a failure class is a sum over two disjoint sets rather
+/// than a join over one.
 ///
 /// Without this, a failed call recorded nothing at all about *why*: the class was computed where
 /// the failure was raised, handed to the program to branch on, and then dropped at the telemetry
@@ -4136,8 +4344,8 @@ pub struct GgReviewer {
 /// that reason.
 ///
 /// Every application is disclosed to the model in its turn feedback — a repair the model is never
-/// told about teaches it nothing and corrupts the ablation, whose whole question is whether models
-/// learn the contract.
+/// told about teaches it nothing and corrupts the very question a run of this shape asks, which is
+/// whether models learn the contract.
 ///
 /// Two of the three are armed unless a configuration turns them off, because for those, repairing
 /// is strictly safer than not: the reply they delete from could not have run as sent. The exception
@@ -4601,11 +4809,11 @@ pub struct GgHealingSummary {
     /// applies them — the resolved configuration, recorded rather than left to be re-derived from
     /// the capability set.
     ///
-    /// This is what makes an ablation legible from the telemetry alone. Every counter above is a
-    /// measurement of what fired, and a run in which nothing fired is byte-identical whether its
-    /// strategies were all armed or all disabled — so without this field the healing-off arm of a
-    /// study and its healing-on arm are indistinguishable in the data, and a study slicing on the
-    /// arm has to go back to the invocation files that produced it.
+    /// This is what makes the configuration legible from the telemetry alone. Every counter above
+    /// is a measurement of what fired, and a run in which nothing fired is byte-identical whether
+    /// its strategies were all armed or all disabled — so without this field a run with healing off
+    /// and a run with healing on are indistinguishable in the data, and comparing the two means
+    /// going back to the invocation files that produced them.
     ///
     /// Empty means every strategy was disabled **for a responses-as-code run**, and means nothing
     /// at all for a tool-calling one, where healing never runs;
@@ -4790,9 +4998,18 @@ pub struct GgSlotCost {
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgSessionSummary {
     /// How the session ended — the [`SessionEnded`](GgTelemetryKind::SessionEnded) status this
-    /// summary precedes (for example `"completed"`, `"model_error"`, `"exhausted"`,
-    /// `"timed_out"`, `"limit_exceeded"`, or `"error"`). A slice-by facet for "how often does
-    /// configuration X finish cleanly?".
+    /// summary precedes. A slice-by facet for "how often does configuration X finish cleanly?".
+    ///
+    /// One of gg's nine terminal statuses, and here they all are: `"completed"`; the three ceiling
+    /// endings `"exhausted"`, `"timed_out"` and `"limit_exceeded"`; an operator's `"canceled"`; and
+    /// the four failures `"model_error"`, `"auth_error"`, `"hook_error"` and `"internal_error"`.
+    /// Written out rather than sampled with a "for example", because this is where a consumer of
+    /// the schema meets the vocabulary and a facet built from a partial list does not report the
+    /// statuses it never heard of — it silently drops the runs that ended on one.
+    ///
+    /// Never `"error"`, the status a **launch** failure ends on, even though a reader watching the
+    /// event stream will see that one: a launch failure stops the session before it has a turn to
+    /// summarize, and emits no summary beside it.
     ///
     /// Under [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), `completed` is reachable **only**
     /// through an explicit `finish` call inside a program — there is no implicit completion on
@@ -4918,14 +5135,16 @@ pub struct GgSessionSummary {
     /// in the order they were presented to the model. This is what the run's
     /// [capability set](GgCapabilitySet) *actually resolved to* — a capability contributes
     /// its tools only when enabled (and, for the stateful ones, only when its store is
-    /// non-empty), minus any individually [withheld](GgAgentConfig::disabled_tools) tool —
+    /// non-empty), narrowed to what the agent's [allowlist](GgAgentConfig::tools) grants —
     /// so recording it durably makes the toolset a first-class experimental variable a query
     /// can slice by ("group by whether `edit_file` was offered", "runs with only
     /// `write_file`"). Because switching a capability on/off *is* offering/withholding its
-    /// tools, this is the ground truth an ablation study reads rather than re-deriving the
-    /// toolset from the capability set. Empty only for a run whose agent was offered no tools
-    /// at all. Recorded off the root agent's toolset (recorded from the root agent, whose
-    /// profile is the run's headline configuration).
+    /// tools, this is the ground truth a comparison of two configurations reads rather than
+    /// re-deriving the toolset from the capability set. Empty for a run whose agent was offered no
+    /// tools at all — including every run whose root answers with programs rather than tool calls,
+    /// which is offered no tools by construction and whose surface is its
+    /// [operations](GgAgentConfig::operations). Recorded from the root agent, whose profile is the
+    /// run's headline configuration.
     pub effective_tools: Vec<String>,
     /// The [execution ceilings](GgRunLimits) that were actually **in force** for this run — the
     /// configured set with gg's own defaults filled in (the error ceilings a run left unset, and an
@@ -5081,44 +5300,24 @@ pub enum GgTelemetryKind {
     /// A [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program called one of the functions its
     /// modules offer it — the **model-facing** record, emitted once per call the program makes.
     ///
-    /// It is deliberately independent of [`ToolCall`](Self::ToolCall). The API surface and gg's tool
-    /// vocabulary are two surfaces over one core, so a call is recorded here under what the *model
-    /// wrote* (`views.open_file`) and there under what *ran* (`read_file`), and neither figure is
-    /// derived from the other. That independence is the whole reason this event exists: a call no
-    /// tool backs — `views.openText`, `session.finish`, `programs.get` — has no `ToolCall` to be
-    /// counted through.
+    /// It is not a variant spelling of [`ToolCall`](Self::ToolCall), and the two never describe the
+    /// same call. gg's tool vocabulary and its API surface are two independent surfaces over one
+    /// core, and an agent is offered **exactly one** of them: a responses-as-code agent's calls are
+    /// recorded here and only here, and a tool-calling agent emits `ToolCall`/`ToolResult` and none
+    /// of these. Neither event is derived from, or counted through, the other.
     ///
-    /// It carries **no arguments**. A bridged call's `ToolCall` already carries them, and a
-    /// carve-out's are either trivial (`session.finish()`) or enormous
-    /// (`views.openText(label, body)`) — so a second copy would double the stream's largest payloads
-    /// to say nothing new.
+    /// It carries **no arguments**. They are either trivial (`session.finish()`) or enormous
+    /// (`views.openText(label, body)`), and the program that composed them is itself the model's
+    /// reply — so a second copy would double the stream's largest payloads to say nothing the
+    /// turn's own text does not already say.
     ///
-    /// Emitted **before** the call runs, so anything the call produces — a delegation's child
-    /// events, the `ToolCall`/`ToolResult` pair of the tool it bridges to — lands between it and its
-    /// [`ApiResult`](Self::ApiResult), exactly as `ToolCall` brackets a native tool call. An agent
-    /// answering with tool calls rather than programs emits none of these.
+    /// Emitted **before** the call runs, so anything the call produces — a delegation's child events
+    /// — lands between it and its [`ApiResult`](Self::ApiResult), exactly as `ToolCall` brackets a
+    /// native tool call.
     ApiCall {
-        /// The **legacy** grouping gg files the call under — `fs`, `view`, `harness`, `memory`,
-        /// `agents`, `project`, `system`, `review`, `context`, `tasks`, `skills`, `programs`,
-        /// `docs`.
-        ///
-        /// **It does not join to anything, and in particular it is not a
-        /// [module](GgAgentApi::module).** The two vocabularies were written at different times and
-        /// disagree on eight of their twelve entries — a call filed here under `fs` sits in the
-        /// module a surface reports as `files`, `view`/`views`, `harness`/`session`,
-        /// `memory`/`memories`, `agents`/`delegation`, `project`/`board`, `system`/`shell` — so
-        /// grouping `api_call` by this field and looking the groups up among an agent's offered
-        /// modules yields empty folders and reads as *every function was offered and none was
-        /// called*. Join on [`operation`](Self::ApiCall::operation), which is the one key both
-        /// sides carry and the one this pair is retained beside rather than replaced by.
-        object: String,
-        /// gg's own key for the function within that grouping — `read_file`, `open_file`, `finish`.
-        /// The other half of the legacy pair, and it carries the same caveat
-        /// [`object`](Self::ApiCall::object) does.
-        function: String,
-        /// **The cross-arm join key**: gg's [operation](Self::ApiCall::operation) id for what was
-        /// called — `files.read_file` — the same string the agent's
-        /// [surface](GgAgentApiFunction::operation) reports the bound function under.
+        /// **The cross-arm join key**: gg's operation id for what was called — `files.read_file` —
+        /// the same string the agent's [surface](GgAgentApiFunction::operation) reports the bound
+        /// function under.
         ///
         /// It is here because eleven arms legitimately spell one operation eleven ways, and by
         /// design they do: an arm's surface answers to its own language, so `read_file`,
@@ -5126,46 +5325,35 @@ pub enum GgTelemetryKind {
         /// gg has exactly one name for. A study comparing arms — or comparing two agents of one run
         /// written in two languages — joins on this and on nothing else.
         ///
-        /// `None` for the [documentation](https://docs.testcabinet.ai/gg/responses-as-code/views/)
-        /// carve-outs, which no arm's catalogue spells and which therefore name no operation. They
-        /// are already recorded under gg's own words for them, so `object`.`function` reads exactly
-        /// as an operation id would (`docs`.`search`) — the identity is there, it is simply not the
-        /// operations table's to give. That is the one case, and every other call states it.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "contract", ts(optional))]
-        operation: Option<String>,
+        /// Every model-facing call has one, including the
+        /// [documentation](https://docs.testcabinet.ai/gg/responses-as-code/views/) family: the
+        /// operations table is the single vocabulary of the API surface, so a call with no row in it
+        /// is a call the surface could not have offered.
+        operation: String,
     },
     /// The [`ApiCall`](Self::ApiCall) beside this one returned.
     ///
-    /// `ok` is the **API function's** verdict, which can legitimately differ from the verdict of the
-    /// tool underneath it: it is settled after the call's result has been converted into what the
-    /// program is handed, so a tool that answered `ok` with a payload the function could not use is
-    /// a failed call here and a successful one on the tool stream. The API layer is the one the
-    /// model experienced.
+    /// `ok` is the **API function's** verdict, settled after the call's result has been converted
+    /// into what the program is handed — so a typed implementation that answered with a payload the
+    /// function could not turn into its return type is a failed call here. The API layer is the one
+    /// the model experienced, and it is the only layer this event reports.
     ApiResult {
-        /// The [legacy grouping](Self::ApiCall::object), repeated so this event stands alone —
-        /// including its caveat: it is not a module id and joins to nothing.
-        object: String,
-        /// gg's own key for the function, repeated for the same reason.
-        function: String,
-        /// The [operation](Self::ApiCall::operation), repeated for the same reason — and it is the
-        /// repetition that earns its keep here rather than a formality: *how often did this
+        /// The [operation](Self::ApiCall::operation), repeated so this event stands alone — and it
+        /// is the repetition that earns its keep here rather than a formality: *how often did this
         /// operation fail* is a question about results, and answering it by pairing each result
         /// with the call before it would mean re-deriving a bracket across every child event a
         /// delegation emitted inside it.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "contract", ts(optional))]
-        operation: Option<String>,
+        operation: String,
         /// Whether the call returned a value to the program rather than throwing into it.
         ok: bool,
         /// The [class](GgToolFailure) of the `ToolError` thrown into the program, on a call that
         /// threw. Present on exactly the results whose [`ok`](Self::ApiResult::ok) is `false`.
         ///
         /// This is the **model's** view of why its call failed — the same `code` the program itself
-        /// branches on in a `catch` — and it is the only record of it for the calls that never
-        /// reach a tool: a carve-out no tool backs, and a call the membrane refused before dispatch
-        /// (a spent wall-clock budget, a name this run does not offer) which has no `ToolResult` to
-        /// carry a class on.
+        /// branches on in a `catch` — and it is the only record of it, because a responses-as-code
+        /// agent's calls are recorded on this stream alone. That includes the call the membrane
+        /// refused before dispatch (a spent wall-clock budget, a name this agent was not granted),
+        /// which never reached an implementation at all.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         failure: Option<GgToolFailure>,
     },
@@ -5667,7 +5855,7 @@ pub enum GgTelemetryKind {
     /// including which of those holders are still running.
     AgentModules {
         /// One entry per [kind](GgModuleKind::ALL), in kind order — including the kinds this
-        /// instance's profile has switched off, so an ablation's off arm is legible rather than
+        /// instance's profile has switched off, so a capability left off is legible rather than
         /// absent.
         modules: Vec<GgAgentModule>,
     },
@@ -5677,30 +5865,27 @@ pub enum GgTelemetryKind {
     ///
     /// Emitted **once per incarnation, for every instance** — the root, every subagent, every
     /// successor — immediately after that instance's [`AgentModules`](Self::AgentModules), and
-    /// un-gated: an agent offered nothing at all still reports an empty
-    /// [`tools`](Self::AgentSurface::tools), which is a finding rather than an absence. It is
+    /// un-gated: an agent offered nothing at all still reports an empty surface, which is a finding
+    /// rather than an absence. It is
     /// emitted once and never re-emitted, for the same reason a roster is: everything that changes
     /// what an agent holds — an `exec`, an [FSM](CAPABILITY_FSM) transition, a `fork` — mints a new
     /// agent id, and the new instance reports its own surface.
     ///
-    /// It exists because *"the model was never given that tool"* and *"the model was given it and
-    /// never touched it"* are different findings, and nothing else in the record tells them apart:
-    /// a [`ToolCall`](Self::ToolCall) reports only what was called, and re-deriving the offered set
-    /// from the run's capability set cannot know about a
+    /// It exists because *"the model was never given that call"* and *"the model was given it and
+    /// never made it"* are different findings, and nothing else in the record tells them apart: a
+    /// [`ToolCall`](Self::ToolCall) or an [`ApiCall`](Self::ApiCall) reports only what was called,
+    /// and re-deriving the offered set from the run's capability set cannot know about a
     /// [module binding](GgModuleKind), a [memory](CAPABILITY_MEMORIES) strategy, where the instance
-    /// stands in its machine, or the per-tool
-    /// [ablation](GgAgentConfig::disabled_tools) that withheld one tool of an enabled capability.
-    /// [`tools`](Self::AgentSurface::tools) is the resolved, post-gating, post-`disabledTools` set,
-    /// so a consumer joining it to this agent's calls can say which of the two happened, and
-    /// [`withheld`](Self::AgentSurface::withheld) names that ablation as gg understood it — the one
-    /// thing a consumer must not re-derive from the configuration, because a name gg does not
-    /// recognize withholds nothing at all.
+    /// stands in its machine, or the [allowlist](GgAgentConfig::tools) its profile narrowed an
+    /// enabled capability to. What is reported here is the resolved, post-gating set — so a consumer
+    /// joining it to this agent's calls can say which of the two happened.
     ///
-    /// The two [execution modes](Self::AgentSurface::execution_mode) offer the same capabilities
-    /// through different surfaces, so the payload reports both shapes and each mode fills the one
-    /// that describes it: a tool-calling agent is offered tool names, and a responses-as-code agent
-    /// composes those same tools as functions in capability [modules](GgAgentApi), which is what
-    /// [`apis`](Self::AgentSurface::apis) enumerates.
+    /// The two [execution modes](Self::AgentSurface::execution_mode) are independent surfaces over
+    /// one core and an instance has **exactly one** of them, so the payload carries a field per
+    /// surface and exactly one of them is populated: [`tools`](Self::AgentSurface::tools) for a
+    /// tool-calling instance, [`apis`](Self::AgentSurface::apis) for a responses-as-code one. The
+    /// two vocabularies are scoped, not two spellings of one list — a tool name is never callable
+    /// from a program, and an operation id is never callable as a tool.
     ///
     /// # It is where a within-run comparison reads its arm from
     ///
@@ -5752,18 +5937,19 @@ pub enum GgTelemetryKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "contract", ts(optional))]
         doc_view_types: Option<String>,
-        /// Every gg tool name this instance is offered, in the order the model is shown them: the
-        /// registry's tools in registration order, then the ending calls its dispatched role may
-        /// end with (`finish`, or a reviewer's `approve`/`request_changes`, or a judge's
-        /// `select_winner`).
+        /// Every gg tool name a **tool-calling** instance is offered, in the order the model is
+        /// shown them: the registry's tools in registration order, then the ending calls its
+        /// dispatched role may end with (`finish`, or a reviewer's `approve`/`request_changes`, or
+        /// a judge's `select_winner`).
         ///
         /// The ending calls are appended by the loop rather than contributed by a capability, and
         /// are included here because the model is genuinely offered them every turn — a surface
         /// that omitted them would answer *"was `finish` offered?"* with silence.
         ///
-        /// Populated in **both** execution modes: a responses-as-code agent reaches these same
-        /// tools through its [`apis`](Self::AgentSurface::apis), and its calls are recorded under
-        /// these names.
+        /// Empty for a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) instance, which is offered
+        /// no tools at all: it reaches the same typed implementations through the API surface
+        /// [`apis`](Self::AgentSurface::apis) enumerates, under operation ids the tool vocabulary
+        /// does not share and cannot be joined to.
         tools: Vec<String>,
         /// The capability modules a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program
         /// binds, in the order the system prompt lists them. Empty for a tool-calling agent, which
@@ -5774,23 +5960,6 @@ pub enum GgTelemetryKind {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         #[cfg_attr(feature = "contract", ts(optional = nullable))]
         apis: Vec<GgAgentApi>,
-        /// The tools this instance's per-tool [ablation](GgAgentConfig::disabled_tools) actually
-        /// took away: the names its profile disables that **are gg tools**. A name gg does not know
-        /// — a typo, a tool since removed — is absent, because it withheld nothing; gg logs a
-        /// startup warning about it and offers the agent exactly the surface it would have had.
-        /// A consumer may therefore state each of these as an applied ablation without re-checking
-        /// it against gg's vocabulary, which it has no way to know anyway.
-        ///
-        /// A name here is *asked for* rather than necessarily *taken*: an ablation may also name a
-        /// real tool no enabled capability was contributing, which withholds nothing in practice
-        /// but is a deliberate, meaningful setting for an arm of a sweep. What was actually offered
-        /// is [`tools`](Self::AgentSurface::tools) — the two together say which of the two
-        /// happened, and neither derives the other.
-        // Omitted from the wire whenever it is empty, which is every agent that ablates nothing —
-        // same optionality problem, and the same fix, as `apis` above.
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        #[cfg_attr(feature = "contract", ts(optional = nullable))]
-        withheld: Vec<String>,
     },
     /// A per-[slot](GgSlotBinding) usage/cost rollup for the run so far — the accounting that
     /// replaces "one figure for one model" now that a run spans several models.
@@ -6013,21 +6182,28 @@ pub enum GgTelemetryKind {
         /// a crash of the run. Independent of [`finished`](Self::CodeExecution::finished): a
         /// program that finished the run and then threw is `ok: false` with `finished` present.
         ok: bool,
-        /// How many tool calls the program composed that **reached the turn loop** (and so were
-        /// bridged to the real toolset), in the order it made them — each also streamed as its own
-        /// [`ToolCall`](Self::ToolCall)/[`ToolResult`](Self::ToolResult) pair, so this figure is
-        /// exactly the number of those pairs the turn produced. A call the sandbox refused before it
-        /// got that far — a turn-level transition, or a tool this run did not enable — is not one of
-        /// these and never inflates the count.
+        /// How many of the program's calls **reached the turn loop** and were dispatched against
+        /// gg's real machinery — the shell, the filesystem, a store — rather than being answered
+        /// inside the sandbox or refused before dispatch.
+        ///
+        /// It is *not* a count of tool calls, and no `ToolCall`/`ToolResult` pair is streamed beside
+        /// any of them: a program has no tool surface, and what it shares with one is the typed
+        /// implementation under the call, not the vocabulary above it. The name is the historical
+        /// one for "reached a dispatch"; the events that bracket each of these are its
+        /// [`ApiCall`](Self::ApiCall)/[`ApiResult`](Self::ApiResult) pair, like every other call the
+        /// program made.
+        ///
+        /// A call the sandbox refused before it got that far — a turn-level transition, or an
+        /// operation this agent was not granted — is not one of these and never inflates the count.
         tool_calls: u64,
         /// How many **model-facing API calls** the program made — one per
-        /// [`ApiCall`](Self::ApiCall)/[`ApiResult`](Self::ApiResult) pair the turn produced, whether
-        /// or not a gg tool backs the function.
+        /// [`ApiCall`](Self::ApiCall)/[`ApiResult`](Self::ApiResult) pair the turn produced. Every
+        /// call a program makes is one of these; it is the complete count.
         ///
         /// It legitimately **exceeds** [`tool_calls`](Self::CodeExecution::tool_calls), and by two
-        /// things: the calls no tool backs (a view, an ending, a program-library call), and the
-        /// calls the sandbox refused before dispatch (a spent wall-clock
-        /// budget, a tool this run does not offer) — the model made those, so the API layer counts
+        /// things: the calls that dispatch nothing (a view, an ending, a program-library call), and
+        /// the calls the sandbox refused before dispatch (a spent wall-clock budget, an operation
+        /// this agent was not granted) — the model made those, so the API layer counts
         /// them even though nothing ran. The two figures answer different questions and are not
         /// meant to agree.
         ///
@@ -6245,8 +6421,17 @@ pub enum GgTelemetryKind {
     },
     /// A gg session ended.
     SessionEnded {
-        /// How the session ended (for example `"completed"`, `"error"`, or
-        /// `"timed_out"`).
+        /// How the session ended, as one of gg's ten status words — and here they all are:
+        /// `"completed"`; the three ceiling endings `"exhausted"`, `"timed_out"` and
+        /// `"limit_exceeded"`; an operator's `"canceled"`; the four failures `"model_error"`,
+        /// `"auth_error"`, `"hook_error"` and `"internal_error"`; and `"error"` for a session that
+        /// never launched, which is the one value [`GgSessionSummary::terminal_status`] cannot carry,
+        /// because a launch failure has nothing to summarize.
+        ///
+        /// Listed in full rather than sampled with a few: a consumer branching on this is deciding
+        /// whether a run is scoreable at all, and the words that decide it — `"error"`,
+        /// `"auth_error"` and `"internal_error"`, the three gg exits non-zero on — are exactly the
+        /// ones a short example list leaves out.
         status: String,
     },
 }

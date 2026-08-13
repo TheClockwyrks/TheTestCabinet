@@ -45,49 +45,51 @@ pub struct FunctionSummary {
     pub summary: String,
 }
 
-/// One tool call a program made and the loop serviced — the composed-calls record the loop feeds
-/// back to the model and telemetry counts.
+/// One call a program made that reached a **dispatch** — the composed-calls record the turn's
+/// accounting counts and the operator's stream reads.
 ///
-/// It deliberately does **not** carry the arguments. The loop already sends the same `Value` to the
-/// servicing seam, which emits it as `ToolCall` telemetry and hands it to the session recorder, so a
+/// It deliberately does **not** carry the arguments. The loop already builds the call's
+/// [dispatch record](crate::agent) with the same `Value` and hands it to the session recorder, so a
 /// second full copy retained for the whole turn would be pure waste — a program that rewrites forty
 /// 64 KiB files would hold ~2.5 MiB of dead clones, uncapped, for a field nothing renders.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SandboxToolCall {
-    /// The gg tool name the program called.
+    /// What the **model wrote**, as gg's own [operation id](super::operations::OperationId) for it —
+    /// `files.read_text_file`, `views.open_file`. Never the name of whatever ran underneath: three
+    /// operations share one internal read, and a roster keyed on the implementation would report
+    /// two of them as the third.
     pub name: String,
-    /// Whether the tool reported success.
+    /// Whether the call succeeded.
     pub ok: bool,
-    /// The tool's short summary, when it recorded one.
+    /// The short summary the dispatch recorded, when it recorded one.
     pub summary: Option<String>,
     /// The failure message, when it failed — so the feedback can say *how* a call failed even when
     /// the program caught the throw and carried on to return a value.
     pub error: Option<String>,
 }
 
-/// A call the membrane refused because this run does not offer it: a turn-level transition, a tool
-/// outside the enabled set, an ending this agent's role does not declare, or a program-library call
-/// from an agent that keeps no library.
+/// A call the membrane refused because this agent was not granted it: a call outside its allowlist,
+/// one bought by a capability it does not hold, or an ending its role does not declare.
 ///
 /// One roster for all of them, because they are one fact — **the model reached for something it was
-/// not given** — and that fact is what a toolset ablation exists to count. What is *not* here is a
+/// not given** — and that fact is what a comparison of two configurations counts. What is *not* here is a
 /// call the model was offered and got wrong: a blank argument, a second hand-over in one turn. Those
 /// throw and say why, and putting them here would make the roster a count of mistakes rather than a
 /// count of withheld capabilities.
 ///
-/// Refusals are kept apart from [serviced calls](SandboxToolCall) because they produce no telemetry
-/// and no session-record entry — nothing was dispatched — so counting them together would make the
-/// `CodeExecution` event's `tool_calls` disagree with the number of `ToolCall`/`ToolResult` pairs
-/// the turn actually streamed.
+/// Refusals are kept apart from [dispatched calls](SandboxToolCall) because nothing was dispatched:
+/// no session-record entry was written and no work was done, so folding them into that roster would
+/// make the `CodeExecution` event's dispatch count include calls that reached nothing.
 ///
-/// The **API** record makes the opposite choice, and the contrast is the difference between the two
-/// layers: the model wrote the call, so [`begin_api_call`](ToolApi::begin_api_call) records it (as a
-/// failure), while the tool layer records nothing because nothing ran.
+/// The **API** record makes the opposite choice, and the contrast is what the two records are for:
+/// the model wrote the call, so [`begin_api_call`](ToolApi::begin_api_call) brackets it and closes
+/// it as a failure — an agent reaching for something it was not given is exactly what a comparison
+/// of two configurations counts — while this roster stays a record of what a turn *ran*.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SandboxRefusal {
-    /// What was refused: a gg tool's name for a tool, and the whole `object.key` identity for a
-    /// model-facing call that is not one — `review.approve`, `programs.rerun` — because there is no
-    /// tool name those could honestly be filed under.
+    /// What was refused, as gg's own [operation id](super::operations::OperationId) for it —
+    /// `session.approve`, `programs.rerun`. Never a tool name: a tool is the other surface's
+    /// vocabulary, and most of what can be refused here has none.
     pub name: String,
     /// Why — the same text the program's `ToolError` carried.
     pub message: String,
@@ -193,38 +195,24 @@ pub const PROGRAM_CALL_ID_PREFIX: &str = "program:";
 /// [record](test_cabinet_core::gg::GgTelemetryKind::ApiCall) carries, and the argument both halves
 /// of the bracket take.
 ///
-/// Three fields rather than one, because they answer to different authorities and a reader wants a
-/// different one for each question:
+/// One field, because there is one identity: the [operation](super::operations::OperationId) gg
+/// files the call under, rendered (`files.read_file`). It is the cross-arm join — eleven language
+/// arms legitimately spell one operation eleven ways, so it is the only key under which two arms'
+/// calls can be counted together — and it is never a spelling: a program that wrote `readFile` is
+/// recorded as `files.read_file`.
 ///
-/// * [`operation`](Self::operation) is **gg's** identity for what was done (`files.read_file`). It
-///   is the cross-arm join: eleven language arms legitimately spell one operation eleven ways, so it
-///   is the only key under which two arms' calls can be counted together. Every model-facing call
-///   now carries one: the three documentation calls were the last that did not, because they were
-///   the last with no row in [`OPERATIONS`](super::operations::OPERATIONS) to name, and `None` is
-///   left reachable only as the drift answer for a pair gg has renamed out from under a caller.
-/// * [`object`](Self::object) and [`function`](Self::function) are the **legacy** grouping and key
-///   gg files the call under. They are never one SDK's spelling either — a program that wrote
-///   `readFile` is recorded as `read_file` — and on the documentation family the pair reads exactly
-///   as its operation id does (`docs`.`search`). For the rest of the population
-///   they do not: the grouping predates the module vocabulary and disagrees with it on eight of
-///   twelve entries (`fs`/`files`, `view`/`views`, `harness`/`session`, `memory`/`memories`,
-///   `agents`/`delegation`, `project`/`board`, `system`/`shell`), so nothing may be joined on this
-///   pair. That is what `operation` is for.
+/// It used to carry a second `(object, function)` pair beside this, from the vocabulary that
+/// preceded the module surface. That pair disagreed with the operation id on seven of twelve
+/// groupings (`fs`/`files`, `view`/`views`, `harness`/`session`, `memory`/`memories`,
+/// `agents`/`delegation`, `project`/`board`, `system`/`shell`), so nothing could be joined on it,
+/// and a record carrying two names for one call is a record whose readers will pick different ones.
 ///
-/// Grouped into one value rather than passed as three arguments so that the opening and the closing
-/// half of a bracket cannot describe two different calls: they are handed the same value.
+/// A struct rather than a bare string so that the opening and the closing half of a bracket cannot
+/// describe two different calls: they are handed the same value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ApiIdentity<'a> {
-    /// The legacy grouping gg files the call under — `fs`, `view`, `harness`, `memory`, `agents`,
-    /// `project`, `system`, `review`, `context`, `tasks`, `skills`, `programs`, `docs`. Not a
-    /// module id; see the type's own note.
-    pub object: &'a str,
-    /// gg's own key for the function within that grouping — `read_file`, `open_text`, `finish`.
-    pub function: &'a str,
-    /// gg's [operation](super::operations::OperationId) id, rendered — `files.read_file`. `None`
-    /// only for a pair no operations row covers, which today means a pair gg has renamed out from
-    /// under a caller; see the type's own note.
-    pub operation: Option<&'a str>,
+    /// gg's [operation](super::operations::OperationId) id, rendered — `files.read_file`.
+    pub operation: &'a str,
 }
 
 /// The native, typed surface the membrane calls — one standard method per gg API function, plus the

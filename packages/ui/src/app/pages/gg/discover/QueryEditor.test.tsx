@@ -7,7 +7,10 @@
 // it, and discover that a capability a run never mentioned still stores `false`.
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { GgFieldCatalog, GgInterval } from "@test-cabinet/run-record/gg-query";
+import type {
+  GgFieldCatalog,
+  GgInterval,
+} from "@test-cabinet/run-record/gg-query";
 import { parseQuery } from "../query";
 import { QueryEditor } from "./QueryEditor";
 
@@ -84,7 +87,9 @@ function mount(initial = "", onSubmit = vi.fn()) {
 
 /** Type `value` into the editor and let the caret land at its end. */
 function type(value: string) {
-  const box = screen.getByRole("combobox", { name: "Query" }) as HTMLTextAreaElement;
+  const box = screen.getByRole("combobox", {
+    name: "Query",
+  }) as HTMLTextAreaElement;
   fireEvent.focus(box);
   fireEvent.change(box, { target: { value, selectionStart: value.length } });
   return box;
@@ -108,7 +113,10 @@ describe("field discovery", () => {
     type("cap.");
     editor.rerender("cap.");
     const offered = suggestions();
-    expect(offered.map((s) => s.label)).toEqual(["cap.compaction", "cap.subagents"]);
+    expect(offered.map((s) => s.label)).toEqual([
+      "cap.compaction",
+      "cap.subagents",
+    ]);
     expect(offered.map((s) => s.count)).toEqual(["400", "400"]);
   });
 
@@ -129,8 +137,8 @@ describe("value discovery", () => {
   it("offers both true and false for a total capability field, with non-zero counts", () => {
     // The `cap.*` namespace is total: the document builder writes an explicit `false` for
     // every capability a run did not enable. A completer that only offered values observed
-    // as `true` would hide exactly the half an ablation query is looking for — and the
-    // counts prove the `false` half is real data rather than an offered guess.
+    // as `true` would hide exactly the half a query comparing two configurations is looking
+    // for — and the counts prove the `false` half is real data rather than an offered guess.
     const editor = mount();
     type("cap.compaction:");
     editor.rerender("cap.compaction:");
@@ -189,7 +197,9 @@ describe("live validation", () => {
 
   it("says nothing about a query that parses", () => {
     mount("not state:completed | stats count() by preset");
-    expect(screen.queryByText(/Unexpected|Unterminated/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Unexpected|Unterminated/),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -198,7 +208,9 @@ describe("the example menu", () => {
     // The question autocomplete cannot answer: what does a whole query look like?
     const editor = mount();
     fireEvent.click(screen.getByRole("button", { name: "Examples" }));
-    const example = screen.getByText("Context overflow with compaction off, per model");
+    const example = screen.getByText(
+      "Context overflow with compaction off, per model",
+    );
     fireEvent.click(example);
     expect(editor.text()).toContain("cap.compaction:false");
     expect(editor.text()).toContain("| stats avg(summary.ranOutOfContext)");
@@ -209,7 +221,9 @@ describe("the example menu", () => {
     // query — so the range's explicit interval is what the example carries.
     mount();
     fireEvent.click(screen.getByRole("button", { name: "Examples" }));
-    expect(screen.getByText("| stats count() by bucket(started, 1d)")).toBeInTheDocument();
+    expect(
+      screen.getByText("| stats count() by bucket(started, 1d)"),
+    ).toBeInTheDocument();
   });
 
   it("offers only queries that parse", () => {

@@ -96,7 +96,7 @@
 //!   [`BoardState`](test_cabinet_core::gg::GgTelemetryKind::BoardState) telemetry, and the
 //!   pinned context block).
 //!
-//! The capability is **ablatable**: when it is off the run builds a
+//! The capability is **switchable**: when it is off the run builds a
 //! [`disabled`](BoardRuntime::disabled) runtime, so there are no board tools, no prompt
 //! text, no context block, no telemetry, and no auto-dispatch — the feature vanishes.
 
@@ -117,6 +117,10 @@ use crate::modules::{
     detached_ids,
 };
 use crate::prompts::{self, BoardBlockContext, EpicItemView, IssueBriefContext, IssueItemView};
+use crate::sandbox::{
+    BOARD_CREATE_EPIC, BOARD_CREATE_ISSUE, BOARD_REMOVE_EPIC, BOARD_REMOVE_ISSUE,
+    BOARD_SET_ISSUE_BLOCKED_BY, BOARD_UPDATE_ISSUE, OperationId,
+};
 
 /// Default ceiling on the number of epics the board may hold at once.
 pub const DEFAULT_MAX_EPICS: usize = 50;
@@ -144,6 +148,22 @@ pub const UNGROUPED_PREFIX: &str = "ISSUE";
 /// two attempts in all) is a middle ground: it absorbs a single flaky attempt without letting a
 /// genuinely-stuck issue respawn agents without end.
 pub const DEFAULT_MAX_RETRIES: usize = 1;
+
+/// The board **operations** that mutate it — the ones whose success re-pumps the auto-dispatch queue
+/// and refreshes the pinned board block.
+///
+/// `board.wait_for_issue` is absent because it changes nothing about the board: it suspends the
+/// agent that called it. This is the responses-as-code surface's list and
+/// [`is_board_tool`](crate::tools::is_board_tool) is the tool-calling surface's, written
+/// independently for the reason [`MEMORY_MUTATIONS`](crate::memories::MEMORY_MUTATIONS) is.
+pub const BOARD_MUTATIONS: &[OperationId] = &[
+    BOARD_CREATE_EPIC,
+    BOARD_CREATE_ISSUE,
+    BOARD_UPDATE_ISSUE,
+    BOARD_SET_ISSUE_BLOCKED_BY,
+    BOARD_REMOVE_EPIC,
+    BOARD_REMOVE_ISSUE,
+];
 
 /// The project-management capability param naming the [epic ceiling](BoardCaps::max_epics).
 const PARAM_MAX_EPICS: &str = "maxEpics";
@@ -1447,7 +1467,7 @@ fn clean_optional(value: Option<&str>) -> Option<String> {
 /// The loop's live view of the epics-and-issues capability: whether it is on and the shared
 /// [`BoardStore`].
 ///
-/// Constructed [enabled](Self::new) with caps or [disabled](Self::disabled) (an ablation's off
+/// Constructed [enabled](Self::new) with caps or [disabled](Self::disabled) (a configuration's
 /// arm). It hands the [`store`](Self::store) to the board tools, produces the system-prompt
 /// [caps](Self::caps) the [system prompt](crate::prompts::SystemContext::board) states, the
 /// [`BoardState`](GgTelemetryKind::BoardState)

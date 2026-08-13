@@ -22,7 +22,9 @@ use serde_json::{Value, json};
 use super::compile;
 use super::substrate::{evaluate, evaluate_closing_docviews, logs, prepare, sandbox_error};
 use crate::ending::{Ending, EndingRole};
-use crate::sandbox::fake::{CallLog, all_tools, canned_outcome};
+use test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE;
+
+use crate::sandbox::fake::{CallLog, all_operations, all_operations_without, canned_outcome};
 use crate::sandbox::membrane::RunEnding;
 use crate::sandbox::outcome::SandboxOutcome;
 use crate::tools::{ToolFailure, ToolOutcome};
@@ -59,10 +61,16 @@ fn text<'a>(entry: &'a Value, field: &str) -> &'a str {
 /// Compile and run one Swift program with `enabled`'s tools offered and no ending group.
 fn run_with(
     source: &str,
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    evaluate(&prepare(source), enabled, RunEnding::None, false, responder)
+    evaluate(
+        &prepare(source),
+        operations,
+        RunEnding::None,
+        false,
+        responder,
+    )
 }
 
 /// One tool, called through the Swift spelling of it, and the JSON gg's dispatch must have seen.
@@ -330,7 +338,7 @@ fn every_tool_crosses_the_membrane_from_its_swift_spelling() {
         .iter()
         .map(|crossing| format!("{}\n", crossing.statement))
         .collect::<String>();
-    let (outcome, log) = run_with(&program, &all_tools(), canned_outcome);
+    let (outcome, log) = run_with(&program, &all_operations(), canned_outcome);
     assert!(
         matches!(&outcome.result, Ok(result) if result.error.is_none()),
         "the program did not run cleanly: {:?}",
@@ -400,7 +408,7 @@ do {
 try session.finish("read the file and showed myself the result")
 "####,
         ),
-        &all_tools(),
+        &all_operations_without(CAPABILITY_DOCVIEW_CLOSE),
         RunEnding::Role(EndingRole::Standard),
         false,
         canned_outcome,
@@ -479,7 +487,7 @@ let files = ["a", "b"]
 gg.log("\(files.count)")
 gg.log(try gg.files.readTextFile("notes.md"))
 "####,
-        &all_tools(),
+        &all_operations(),
         canned_outcome,
     );
     assert_eq!(logs(&outcome), ["2", "contents of notes.md\nline two\n"]);
@@ -560,7 +568,7 @@ do {
 }
 gg.log("carried on")
 "####,
-        &all_tools(),
+        &all_operations(),
         |_name: &str, _args: &Value| {
             ToolOutcome::failed(
                 ToolFailure::NotFound,
@@ -568,7 +576,7 @@ gg.log("carried on")
             )
         },
     );
-    assert_eq!(logs(&outcome), ["notFound on read_file", "carried on"]);
+    assert_eq!(logs(&outcome), ["notFound on read_text_file", "carried on"]);
 
     // Let out: Swift's top-level code is not a `throws` context anything can wrap, so an uncaught
     // failure is a TRAP rather than a reported error. What a model reads is what the runtime says
@@ -581,7 +589,7 @@ gg.log("before")
 _ = try files.readTextFile("gone.swift")
 gg.log("after")
 "####,
-        &all_tools(),
+        &all_operations(),
         |_name: &str, _args: &Value| {
             ToolOutcome::failed(
                 ToolFailure::NotFound,
@@ -595,7 +603,7 @@ gg.log("after")
         "an uncaught failure did not say what happened to it: {failure}"
     );
     assert!(
-        failure.contains("`read_file` failed (not-found): no such file: gone.swift"),
+        failure.contains("`read_text_file` failed (not-found): no such file: gone.swift"),
         "the model reads gg's own sentence rather than a Swift type name: {failure}"
     );
 
@@ -660,7 +668,7 @@ do {
             .iter()
             .map(|refusal| refusal.name.as_str())
             .collect::<Vec<_>>(),
-        ["system.shell"],
+        ["shell.shell"],
         "the refusal is recorded under gg's own identity for the call: {:?}",
         outcome.refusals
     );

@@ -5,11 +5,12 @@
 //! and this module (with its five submodules) implements every one of them for [`MembraneState`].
 //! That is what makes the boundary typed end to end: a program calls `readFile(path, { limit })`,
 //! the guest lowers it into a WIT call with typed parameters, and the host receives
-//! `read_file(path: String, offset: Option<u32>, limit: Option<u32>)`. Nothing on the model-facing
-//! side dispatches a tool by name with a bag of JSON — that shape exists only *below* this module,
-//! between [`MembraneState::call`] and [`ToolRegistry::dispatch`](crate::tools::ToolRegistry), where
-//! it costs the model nothing — and the compiler, not a test, is what guarantees a WIT function
-//! cannot exist without a host implementation.
+//! `read_file(path: String, offset: Option<u32>, limit: Option<u32>)`. Nothing on this path names a
+//! call by a string or hands it a bag of JSON: [`MembraneState::call`] runs a typed method on the
+//! [api](ToolApi), which builds the native implementation and calls it. Dispatch by name with a JSON
+//! payload is the *other* surface's shape, where a model really does emit a name and an object, and
+//! it is reached from the [loop](crate::agent) rather than from here. The compiler, not a test, is
+//! what guarantees a WIT function cannot exist without a host implementation.
 //!
 //! # Two helpers, so the guarantees exist once
 //!
@@ -17,26 +18,26 @@
 //! an API-call bracket with [`MembraneState::recorded`], which is what records the call the *model
 //! wrote* under its own identity and is the only source of the [`Recording`](recording) token
 //! without which a host function can reach neither the [api](ToolApi) nor the dispatch path. See
-//! [`recording`] for why the API record and the tool record are separate things.
+//! [`recording`] for what that record carries and why it is keyed on the operation.
 //!
-//! Inside that bracket, every host function that dispatches anything funnels through
-//! [`MembraneState::call`] (or its one sibling [`call_raw`](MembraneState::call_raw)) — all 29 bound
-//! tools. That is where the run's wall-clock deadline is honoured, where the ordered call record is
-//! kept, where pictures are collected, and where a failed [`ToolOutcome`] becomes a typed
-//! `tool-error`. A host function itself is three lines: build the JSON its tool's schema already
-//! declares, call, and convert the [structured sidecar](crate::tools::ToolData) into its typed WIT
-//! result.
+//! Inside that bracket, every host function that reaches gg's real machinery funnels through
+//! [`MembraneState::call`] (or its one sibling [`call_raw`](MembraneState::call_raw)), carrying the
+//! same [operation](OperationId) the bracket was opened with. That is where the run's wall-clock
+//! deadline is honoured, where the ordered call record is kept, where pictures are collected, and
+//! where a failed [`ToolOutcome`] becomes a typed `tool-error`. A host function itself is three
+//! lines: normalise what the WIT declared, call, and convert the
+//! [structured sidecar](crate::tools::ToolData) into its typed WIT result.
 //!
-//! A handful of functions dispatch nothing and so reach neither. The three
-//! [session-ending calls](session) — the model-facing functions on this membrane that are not gg
-//! tools — set this agent's ending flag through [`MembraneState::declare`], because ending a session
-//! is the one thing a program may ask for that no spent budget may withhold. The
-//! [documentation directory](docs), the [program library](programs) and four of the five
-//! [view calls](views) go straight to the [api](ToolApi) for the same reason: `dispatch`'s deadline
-//! guard is wrong for a call that is not a tool, and a program that cannot show itself what it
-//! computed has nothing to report at all. The fifth view call, `open-file-view`, **is** a bridged
-//! `read_file` and goes through `dispatch` like any other read — while still being recorded as
-//! `view.open_file`, because that is what the model wrote.
+//! A handful of functions reach nothing and so skip both. The three
+//! [session-ending calls](session) set this agent's ending flag through
+//! [`MembraneState::declare`], because ending a session is the one thing a program may ask for that
+//! no spent budget may withhold. The [documentation directory](docs), the
+//! [program library](programs) and four of the five [view calls](views) go straight to the
+//! [api](ToolApi) for the same reason: `dispatch`'s deadline guard is wrong for a call that performs
+//! no work, and a program that cannot show itself what it computed has nothing to report at all. The
+//! fifth view call, `open-file-view`, performs a read and goes through `dispatch` like any other —
+//! under `views.open_file`, which is the call the model wrote, and not under either of the two other
+//! operations that share the read.
 //!
 //! # The capability gate is the bracket, and it is the only one
 //!
@@ -74,16 +75,18 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
-use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, CAPABILITY_PROGRAM_LIBRARY, GgToolFailure};
+use test_cabinet_core::gg::GgToolFailure;
 use wasmtime::component::ResourceTable;
 use wasmtime_wasi::{DirPerms, FilePerms, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
 use super::invoker::{SandboxRefusal, SandboxToolCall, SandboxViewOpened, ToolApi};
-use super::language::{
-    HARNESS_FINISH, ProgramLanguage, REVIEW_APPROVE, REVIEW_REQUEST_CHANGES, SurfaceCall, spell,
-};
+use super::language::{ProgramLanguage, spell};
 use super::limits::{MemoryLimiter, SandboxLimits};
-use super::{Binding, Grants, ProgramCompletion, ProgramError, ProgramErrorKind, ProgramScope};
+use super::operations::{
+    Binding, Grants, OperationId, SESSION_APPROVE, SESSION_FINISH, SESSION_REQUEST_CHANGES,
+    operation,
+};
+use super::{ProgramCompletion, ProgramError, ProgramErrorKind, ProgramScope};
 use crate::ending::{Ending, EndingRole};
 use crate::tools::{ToolData, ToolFailure, ToolOutcome};
 
@@ -132,7 +135,7 @@ impl RunEnding {
     /// A method rather than a `From` impl on `Option<EndingRole>`, because implementing a trait on a
     /// std type would make `EndingRole` — which is `pub(crate)`, deliberately — reachable at `pub`
     /// through it.
-    fn role(self) -> Option<EndingRole> {
+    pub(super) fn role(self) -> Option<EndingRole> {
         match self {
             Self::Role(role) => Some(role),
             Self::None => None,
@@ -180,10 +183,10 @@ pub(crate) struct MembraneState<A: ToolApi> {
     /// the [documentation runtime](crate::docs::DocsRuntime::bound) answers a search with, so the
     /// call a model can *find* and the call the host will *service* are one set.
     ///
-    /// It carries all three kinds of gate at once — the run's enabled gg tools, this agent's
+    /// It carries all three kinds of gate at once — the capability ids this agent holds, its
     /// [ending role](crate::ending::EndingRole) (or none at all, for an on-use script), and the
-    /// capability ids it holds — because they are three arms of one question and reading them
-    /// separately is how they came to be checked in three different places.
+    /// operations its own allowlist names — because they are three arms of one question and reading
+    /// them separately is how they came to be checked in three different places.
     grants: Grants,
     /// The linear-memory ceiling, and its record of having denied a growth.
     limiter: MemoryLimiter,
@@ -579,17 +582,7 @@ impl<A: ToolApi> MembraneState<A> {
             api: GuardedApi::new(api),
             language,
             api_calls: 0,
-            grants: Grants::new(
-                scope.enabled.iter().cloned(),
-                scope.ending.role(),
-                // The capabilities that buy part of the model-facing surface, resolved from the
-                // flags a caller already holds. They are flags rather than ids on the way in
-                // because that is how the loop resolves them; they become ids through
-                // [`surface_capabilities`](crate::sandbox::surface_capabilities), which is the one
-                // place that turns the one into the other — so this grant and the documentation
-                // runtime's cannot be built from different lists, which they were.
-                crate::sandbox::surface_capabilities(scope.library, scope.docview_close),
-            ),
+            grants: scope.grants(),
             limiter: MemoryLimiter::new(limits.max_memory_bytes),
             deadline,
             program_started: Instant::now(),
@@ -748,21 +741,24 @@ impl<A: ToolApi> MembraneState<A> {
     /// which needs a non-`ok` outcome as a value — see [`call_raw`](Self::call_raw).
     ///
     /// The [`Recording`] is the caller's proof that the API call it is servicing has already been
-    /// recorded under its own identity — which is a different fact from the tool record this
-    /// dispatch keeps, and is why one host function can be `view.open_file` here and `read_file`
-    /// there.
+    /// recorded under its own identity, and `id` is that identity said again for the dispatch —
+    /// the same [operation](OperationId) the bracket was opened with, because that is the call the
+    /// model wrote. What runs underneath may be shared: `files.read_file`, `files.read_text_file`
+    /// and `views.open_file` are three operations over one internal read, and each is recorded,
+    /// refused and reported as itself.
     fn call(
         &mut self,
         recording: Recording,
-        tool: &'static str,
+        id: OperationId,
         run: impl FnOnce(&mut A) -> ToolOutcome,
     ) -> Result<ToolOutcome, ToolError> {
-        // For every tool but `shell`, the tool's own verdict and the call's are the same thing.
-        let outcome = self.dispatch(recording, tool, run, |outcome| outcome.ok)?;
+        // For every call but `shell`, the internal call's verdict and the model-facing call's are
+        // the same thing.
+        let outcome = self.dispatch(recording, id, run, |outcome| outcome.ok)?;
         if outcome.ok {
             Ok(outcome)
         } else {
-            Err(self.tool_error(tool, &outcome))
+            Err(self.tool_error(id, &outcome))
         }
     }
 
@@ -779,10 +775,10 @@ impl<A: ToolApi> MembraneState<A> {
     fn call_raw(
         &mut self,
         recording: Recording,
-        tool: &'static str,
+        id: OperationId,
         run: impl FnOnce(&mut A) -> ToolOutcome,
     ) -> Result<ToolOutcome, ToolError> {
-        self.dispatch(recording, tool, run, |outcome| {
+        self.dispatch(recording, id, run, |outcome| {
             matches!(outcome.data, Some(ToolData::Shell(_)))
         })
     }
@@ -822,11 +818,11 @@ impl<A: ToolApi> MembraneState<A> {
         &mut self,
         _recording: Recording,
         ending: Result<Ending, String>,
-        call: SurfaceCall,
+        id: OperationId,
     ) -> Result<(), ToolError> {
         let ending = ending.map_err(|message| ToolError {
             code: ErrorCode::InvalidArgument,
-            tool: call.key.to_string(),
+            tool: id.key.to_string(),
             message,
         })?;
         let superseded = match self.completion.take() {
@@ -864,13 +860,13 @@ impl<A: ToolApi> MembraneState<A> {
     fn dispatch(
         &mut self,
         recording: Recording,
-        tool: &'static str,
+        id: OperationId,
         run: impl FnOnce(&mut A) -> ToolOutcome,
         completed: fn(&ToolOutcome) -> bool,
     ) -> Result<ToolOutcome, ToolError> {
         if self.deadline_spent() {
             return Err(self.refuse(
-                tool,
+                id,
                 ErrorCode::LimitExceeded,
                 "the run's wall-clock budget is spent",
             ));
@@ -885,18 +881,18 @@ impl<A: ToolApi> MembraneState<A> {
         // picture is dropped here and its description corrected to say so.
         capture::withhold_pictures(&mut outcome, self.language);
         let completed = completed(&outcome);
-        self.record(tool, &outcome, completed);
+        self.record(id, &outcome, completed);
         Ok(outcome)
     }
 
-    /// How this program's [language](ProgramLanguage) spells `call` — the qualified name any
-    /// sentence put in front of the model quotes back.
-    fn spelled(&self, call: SurfaceCall) -> String {
-        spell(self.language, call)
+    /// How this program's [language](ProgramLanguage) spells the operation `id` — the qualified name
+    /// any sentence put in front of the model quotes back.
+    fn spelled(&self, id: OperationId) -> String {
+        spell(self.language, id)
     }
 
-    /// **The capability gate.** Whether this agent may make the call `binding` buys, and — when it
-    /// may not — the sentence that says so.
+    /// **The capability gate.** Whether this agent may make the call `id` names, and — when it may
+    /// not — the sentence that says so.
     ///
     /// This is the whole of gg's enforcement, and it is one call to
     /// [`Grants::permits`](crate::sandbox::Grants::permits). Every arm's SDK is static, so a
@@ -908,17 +904,21 @@ impl<A: ToolApi> MembraneState<A> {
     ///
     /// It is called from inside the call's own [bracket](recording), never before it, so a refused
     /// call is still an API call the model made and is still counted as a failed one. That count is
-    /// the point: "the model reached for something this run does not offer it" is precisely what an
-    /// ablation is run to measure, and a refusal that closed no bracket would be invisible to it.
+    /// the point: "the model reached for something this agent was not granted" is precisely what a
+    /// reader comparing two configurations is looking for, and a refusal that closed no bracket
+    /// would be invisible to it.
+    ///
+    /// An id with no row is **serviced**, and that is the safe direction rather than an oversight:
+    /// it means gg's own table has fallen behind a host function, and refusing every call gg has
+    /// mislaid would take a run down over drift.
     ///
     /// # Why `tool` is gg's name and the message is the language's
     ///
     /// [`ToolError::tool`] is an **identity**: the thing that failed, in gg's own vocabulary, so a
-    /// catch site can report it without parsing prose — exactly as it carries `read_file` for the
-    /// twenty-nine bound tools whose SDK spelling is `fs.readFile`. The `message` is an
-    /// **instruction**, and an instruction naming a call has to name it the way this program would
-    /// write it, so it [spells](spell) every call it quotes. The two fields differ on purpose; they
-    /// are not two attempts at the same thing.
+    /// catch site can report it without parsing prose. The `message` is an **instruction**, and an
+    /// instruction naming a call has to name it the way this program would write it, so it
+    /// [spells](spell) every call it quotes. The two fields differ on purpose; they are not two
+    /// attempts at the same thing.
     ///
     /// The class is [`Unavailable`](ErrorCode::Unavailable) in every case, which is what the host
     /// reads back as [`UnknownName`](super::ProgramErrorKind::UnknownName) when the throw is not
@@ -937,36 +937,43 @@ impl<A: ToolApi> MembraneState<A> {
     /// nine and silently zero on those two.
     ///
     /// What **is** uniform on all eleven is [`record_refusal`](Self::record_refusal) just below:
-    /// every refusal is opened and closed as an API call and lands on the turn's roster as a
-    /// [`SandboxRefusal`] under gg's own `object.key` identity,
-    /// caught or uncaught, whatever the guest made of the throw. That is the record a toolset
-    /// ablation joins on, and `/gg/languages/static-sdks/` tells an operator the same thing.
-    fn granted(&mut self, call: SurfaceCall, binding: Binding) -> Result<(), ToolError> {
-        if self.grants.permits(binding) {
+    /// every refusal is opened and closed as an API call and lands on the turn's roster under gg's
+    /// own [operation id](OperationId), caught or uncaught, whatever the guest made of the throw.
+    /// That is the record a comparison of two configurations joins on, and
+    /// `/gg/languages/static-sdks/` tells an operator the same thing.
+    fn granted(&mut self, id: OperationId) -> Result<(), ToolError> {
+        let Some(operation) = operation(id) else {
+            return Ok(());
+        };
+        if self.grants.permits(operation) {
             return Ok(());
         }
         // Three different names for one call, and each is the only one right where it goes. The
         // model is quoted the call in the language it is writing, because a refusal it can act on
-        // names something it could type. The roster is keyed on gg's own `(object, key)` pair,
-        // because a cross-arm readout joins on an identity no arm chose. And the error carries the
-        // bare key, because a catch site branches on the thing that failed rather than on prose.
-        let message = self.withheld(&spell(self.language, call), binding);
-        self.record_refusal(&format!("{}.{}", call.object, call.key), &message);
+        // names something it could type. The roster is keyed on gg's own operation id, because a
+        // cross-arm readout joins on an identity no arm chose. And the error carries the bare key,
+        // because a catch site branches on the thing that failed rather than on prose.
+        let message = self.withheld(&self.spelled(id), operation.binding);
+        self.record_refusal(id, &message);
         Err(ToolError {
             code: ErrorCode::Unavailable,
-            tool: call.key.to_string(),
+            tool: id.key.to_string(),
             message,
         })
     }
 
-    /// Why `spelled` is withheld from this agent — the sentence a
-    /// [refusal](Self::granted) carries, one per kind of gate.
+    /// Why `spelled` is withheld from this agent — the sentence a [refusal](Self::granted) carries.
     ///
-    /// Every one of them **names what is missing**, not merely that something is: the gg tool a
-    /// toolset did not offer, the capability id an agent was not given, or the ending role it was
-    /// dispatched in. A model that is told only "not available" can do nothing with the sentence
-    /// except stop; a model told which capability is absent can pick another route, and a model
-    /// told which ending it *does* have can end its session on the next line.
+    /// It says that the call is not available and, where there is one, which call to make **instead**.
+    /// It deliberately does not say what would unlock it. Naming the capability or the allowlist
+    /// entry that is missing tells the model about gg's configuration surface, which is the one thing
+    /// in its situation it cannot change: the profile was fixed before the session began and no
+    /// program can edit it, so the sentence would be an explanation the model can only read and not
+    /// act on — and an invitation to spend a turn trying.
+    ///
+    /// An alternative is different, and is the one thing worth saying. A reviewer that reached for
+    /// `finish` has two calls that *do* end its session, so it is told which; there is no equivalent
+    /// for a workspace call this agent was not granted, and inventing one would be gg guessing.
     ///
     /// The call is [spelled](spell) in the program's own language, because the sentence is put in
     /// front of a model and a model reads a name it could write. gg's own vocabulary is what the
@@ -974,21 +981,19 @@ impl<A: ToolApi> MembraneState<A> {
     /// instruction.
     fn withheld(&self, spelled: &str, binding: Binding) -> String {
         match binding {
-            Binding::Tool(tool) => format!(
-                "`{spelled}` is not available to you: it is bought by the gg tool `{tool}`, which \
-                 this run's toolset does not offer."
-            ),
-            Binding::Capability(id) => format!(
-                "`{spelled}` is not available to you: it is bought by the `{id}` capability, which \
-                 this agent was not given — {}.",
-                capability_prose(id)
-            ),
             Binding::Ending(_) => self.wrong_ending(spelled),
-            // Unreachable: `permits` answers `true` for every agent, so nothing that is always
-            // bound ever reaches a refusal. Spelled out rather than `unreachable!()` because a
-            // membrane that panicked would take the store down and tell the model nothing at all,
-            // which is the one failure this whole boundary exists to prevent.
-            Binding::Always => format!("`{spelled}` is not available to you."),
+            // `Always` is unreachable: `permits` answers `true` for every agent, so nothing that is
+            // always bound ever reaches a refusal. It shares the capability arm's sentence rather
+            // than being an `unreachable!()` because a membrane that panicked would take the store
+            // down and tell the model nothing at all, which is the one failure this whole boundary
+            // exists to prevent.
+            // A [positional](Binding::Machine) refusal is the same sentence for the same reason,
+            // and here the reason is not even about configuration: an agent standing outside a
+            // machine — or in a terminal state — has nothing it could do to acquire the transition,
+            // so there is no alternative to name and nothing to explain.
+            Binding::Capability(_) | Binding::Machine | Binding::Always => {
+                format!("`{spelled}` is not available.")
+            }
         }
     }
 
@@ -997,48 +1002,46 @@ impl<A: ToolApi> MembraneState<A> {
     ///
     /// It names the endings the program does have rather than only the one it does not: an agent
     /// that reached for the wrong ending has a right one, and being told which is the difference
-    /// between a turn it recovers from and a turn it spends guessing.
+    /// between a turn it recovers from and a turn it spends guessing. An on-use script has no right
+    /// one — it is not a turn, so no ending belongs to it — and is told only that the call is not
+    /// available, which is the whole of what is true.
     ///
     /// Every call it names is [spelled](spell) for the reason the withheld call itself is: naming
-    /// one is an **instruction** — "call this instead" — and an instruction written in gg's own
+    /// one is an **instruction** — "use this instead" — and an instruction written in gg's own
     /// `snake_case` vocabulary would tell the model to make a call its SDK does not spell that way.
     fn wrong_ending(&self, spelled: &str) -> String {
         match self.grants.ending() {
             Some(EndingRole::Standard) => {
-                let finish = self.spelled(HARNESS_FINISH);
-                format!(
-                    "`{spelled}` is not available to you: you were dispatched to do work, not to \
-                     review it. Report what you did with `{finish}` instead."
-                )
+                let finish = self.spelled(SESSION_FINISH);
+                format!("`{spelled}` is not available. Use `{finish}` instead.")
             }
             Some(EndingRole::Review) => {
-                let approve = self.spelled(REVIEW_APPROVE);
-                let request_changes = self.spelled(REVIEW_REQUEST_CHANGES);
+                let approve = self.spelled(SESSION_APPROVE);
+                let request_changes = self.spelled(SESSION_REQUEST_CHANGES);
                 format!(
-                    "`{spelled}` is not available to you: you were dispatched to review work, so \
-                     your session ends with a verdict — `{approve}`, or `{request_changes}` naming \
-                     every change the work needs."
+                    "`{spelled}` is not available. Use `{approve}` or `{request_changes}` instead."
                 )
             }
-            None => format!(
-                "`{spelled}` is not available here: this code is a skill or a memory being loaded \
-                 rather than your own turn, so it cannot end your session."
-            ),
+            None => format!("`{spelled}` is not available."),
         }
     }
 
     /// Record a refusal and render it as the error the program will see thrown.
+    ///
+    /// The roster is keyed on the rendered [operation id](OperationId) and the error carries the
+    /// bare key, exactly as [`granted`](Self::granted)'s refusals are: a cross-arm readout joins on
+    /// an identity no arm chose, and a `catch` site branches on the call that failed.
     fn refuse(
         &mut self,
-        tool: &'static str,
+        id: OperationId,
         code: ErrorCode,
         message: impl Into<String>,
     ) -> ToolError {
         let message = message.into();
-        self.record_refusal(tool, &message);
+        self.record_refusal(id, &message);
         ToolError {
             code,
-            tool: tool.to_string(),
+            tool: id.key.to_string(),
             message,
         }
     }
@@ -1057,12 +1060,19 @@ impl<A: ToolApi> MembraneState<A> {
             .map(|deadline| deadline.saturating_duration_since(Instant::now()))
     }
 
-    /// The typed error a failed outcome becomes, classified by the tool that raised it rather than
-    /// by matching on its prose.
-    fn tool_error(&self, tool: &str, outcome: &ToolOutcome) -> ToolError {
+    /// The typed error a failed outcome becomes, classified by the failure the internal call
+    /// reported rather than by matching on its prose.
+    ///
+    /// [`ToolError::tool`] carries the **operation's key**, never the name of whatever ran
+    /// underneath. The field's name belongs to the failure type every call shares; what goes in it
+    /// is the call the program wrote, so `gg.files.readTextFile` reports `read_text_file` and
+    /// `gg.views.openFile` reports `open_file` even though one internal read serviced all three.
+    /// Reporting the internal name would put a word in front of the model that its SDK does not
+    /// spell and that no arm can type.
+    fn tool_error(&self, id: OperationId, outcome: &ToolOutcome) -> ToolError {
         ToolError {
             code: error_code(outcome.failure),
-            tool: tool.to_string(),
+            tool: id.key.to_string(),
             // The model-facing text, which for a failure is both the outcome's `output` and its
             // telemetry summary — the same sentence the native tool-calling path would show.
             message: outcome.output.clone(),
@@ -1081,36 +1091,23 @@ impl<A: ToolApi> MembraneState<A> {
     /// recorded a moment ago, as a success: without this the roster the model reads next turn would
     /// say the call succeeded while the program was thrown into, which is the one thing worse than
     /// either message on its own.
-    fn missing_data(&mut self, tool: &str, produced: Option<&ToolData>) -> ToolError {
+    fn missing_data(&mut self, id: OperationId, produced: Option<&ToolData>) -> ToolError {
         let produced = match produced {
             Some(data) => format!(" (it produced a `{}` payload instead)", data_kind(data)),
             None => String::new(),
         };
+        // Spelled for the message and keyed for the field, on the split every model-facing failure
+        // here makes: the sentence is read by a model and names something it could have typed, and
+        // the field is read by a `catch` and names the call in gg's own vocabulary.
+        let spelled = self.spelled(id);
         let message =
-            format!("`{tool}` produced no structured result{produced}; this is a gg defect");
+            format!("`{spelled}` produced no structured result{produced}; this is a gg defect");
         self.amend_last_call_as_failed(&message);
         ToolError {
             code: ErrorCode::IoError,
-            tool: tool.to_string(),
+            tool: id.key.to_string(),
             message,
         }
-    }
-}
-
-/// The clause a [capability refusal](MembraneState::withheld) ends with: what an agent that was not
-/// given `id` does not have, said in the words a model can act on.
-///
-/// The capability **id** is named by the sentence around this, so what is left for this table is the
-/// consequence — and the consequence is the half a model needs, because an id is a configuration
-/// key it has never seen and "keeps no library of the programs it has run" is a fact about its own
-/// session. Written here, beside the gate, rather than at each call site: a capability that buys
-/// part of the model-facing surface needs exactly one sentence, and a capability with no sentence
-/// gets the id alone rather than a wrong one.
-fn capability_prose(id: &str) -> &'static str {
-    match id {
-        CAPABILITY_PROGRAM_LIBRARY => "this agent keeps no library of the programs it has run",
-        CAPABILITY_DOCVIEW_CLOSE => "this agent may open documentation but not close it",
-        _ => "this run did not grant it",
     }
 }
 

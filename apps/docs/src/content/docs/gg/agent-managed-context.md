@@ -12,8 +12,8 @@ an opt-in capability (`agent-managed-context`).
   live window and keeps them searchable.
 
 When the capability is off none of the tools below are offered and no
-context-usage signal is rendered, so the ablation's off arm behaves as a run
-without the feature.
+context-usage signal is rendered, so a configuration that leaves it off behaves
+as a run without the feature.
 
 One reclaim call sits outside the capability: [closing a view](#closing-views),
 which a [responses-as-code](/gg/responses-as-code/overview/) program uses on the
@@ -50,9 +50,9 @@ The figures are followed by one line per reclaim call this agent holds, naming
 the call and the trade using it makes: a file view can be read again, a text
 view holds the only copy of what the agent composed, and archived turns are
 named by the turn numbers on the agent's results. Eviction and archiving are
-separately [ablatable](/gg/toolset-ablation/) and are read off the tool
-registry, and the close line appears only under responses as code, where that
-call exists at all.
+separately [grantable](/gg/configurations/#granting-calls) and are read off what
+this agent was given, and the close line appears only under responses as code,
+where that call exists at all.
 
 Each reclaim call is spelled for the arm reading it. A code agent is shown the
 method its own SDK binds, resolved from that
@@ -131,9 +131,10 @@ autoloaded specification.
 `gg.views.close` sits beside `evict_file_view` rather than inside it, and the
 two differ twice over:
 
-- It is not gated. `evict_file_view` is one of this capability's tools and
-  an ablation can withhold it. `gg.views.close` is bound whatever a run enables,
-  because closing material the agent opened itself is not a privilege.
+- It is not gated. `evict_file_view` is one of this capability's calls and a
+  configuration decides whether an agent gets it. `gg.views.close` is bound
+  whatever a run enables, because closing material the agent opened itself is
+  not a privilege.
 - The trade is not the same. An evicted file view is recoverable by
   re-reading the path. A closed text view held the agent's only copy of
   something it computed, so closing one discards it unless the agent wrote it
@@ -153,7 +154,8 @@ a whole session. A close removes an item from the middle and costs the run every
 cached token after it. Whether that reclaim pays for the invalidation is a
 measurement, so it is a toggle. Keeping the call separate also keeps the
 telemetry attributable: `close_docs_views` has exactly one producer, so a
-capability ablation can say which call reclaimed a documentation view.
+comparison of two capability sets can say which call reclaimed a documentation
+view.
 
 ## Turn headers
 
@@ -237,6 +239,15 @@ This capability is one of the two that read an
 [project management](/gg/project-management/). The archive is by definition out
 of the window, so `"ownership": "unowned"` has no pinned block to withhold. It
 is recorded, carried across a transfer, and otherwise changes nothing.
+
+## Features
+
+Two sliders sit in the capability's Features box, and each is per agent.
+
+| Feature | Default | What switching it changes |
+| --- | --- | --- |
+| Evict file views | on | Off withholds `evict_file_view`, leaving the signal and the archive. |
+| Archive & search the thread | on | Off withholds `archive_thread` and `search_archive`. The two move together, since an archive the agent cannot search back is unreadable. |
 
 ## Parameters
 

@@ -704,6 +704,125 @@ describe("the responses-as-code agent's healing strategies", () => {
   });
 });
 
+// A capability's feature sliders can, between them, name every call it offers — so an
+// operator can switch a capability on and then switch all of it back off, and be left
+// with a card that reads as configured and an agent that can call none of it. Nothing
+// downstream reports that: the run record shows a model that never called the thing,
+// which is what a model choosing not to use it looks like too. The form is the only place
+// it can be said, and only driving the sliders shows that it is.
+describe("a capability switched on whose calls are all switched off", () => {
+  const WARNING = /disabled — this capability is on/;
+
+  // The capability's own switch: the first checkbox in its row, in the header label above
+  // everything its body holds.
+  function capSwitch(capId: string): HTMLInputElement {
+    return within(capabilityRow(capId)).getAllByRole(
+      "checkbox",
+    )[0] as HTMLInputElement;
+  }
+
+  // The per-feature sliders inside one capability's Features group.
+  function featureSliders(capId: string, group: string): HTMLInputElement[] {
+    return within(
+      within(capabilityRow(capId)).getByRole("group", { name: group }),
+    ).getAllByRole("checkbox") as HTMLInputElement[];
+  }
+
+  // Take back every one of a capability's features, one slider at a time — re-querying
+  // between clicks, because each one re-renders the form the next click drives.
+  function switchOffEveryFeature(capId: string, group: string) {
+    for (let i = 0; i < featureSliders(capId, group).length; i += 1) {
+      const slider = featureSliders(capId, group)[i]!;
+      if (slider.checked) fireEvent.click(slider);
+    }
+  }
+
+  // The draft the type-driven half of this starts from: the same agent, answering as code.
+  function codeDraft(): GgConfigDraft {
+    const draft = emptyDraft();
+    return { ...draft, agents: [{ ...draft.agents[0]!, mode: "rac" }] };
+  }
+
+  it("says nothing until the last of a tool agent's tools from it is gone", () => {
+    renderCaps(emptyDraft());
+    // Switching the capability on grants everything it offers, which is the state the
+    // warning must stay quiet about.
+    fireEvent.click(capSwitch("agent-managed-context"));
+    const group = "Agent-managed context features";
+    expect(
+      featureSliders("agent-managed-context", group).every((s) => s.checked),
+    ).toBe(true);
+    expect(
+      within(capabilityRow("agent-managed-context")).queryByText(WARNING),
+    ).toBeNull();
+
+    // One slider off is a narrowed capability, not an empty one.
+    fireEvent.click(featureSliders("agent-managed-context", group)[0]!);
+    expect(
+      within(capabilityRow("agent-managed-context")).queryByText(WARNING),
+    ).toBeNull();
+
+    switchOffEveryFeature("agent-managed-context", group);
+    expect(
+      within(capabilityRow("agent-managed-context")).getByText(
+        /All tools disabled/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("does not block the save it warns about", () => {
+    renderCaps(emptyDraft());
+    fireEvent.click(capSwitch("agent-managed-context"));
+    switchOffEveryFeature(
+      "agent-managed-context",
+      "Agent-managed context features",
+    );
+    expect(screen.getByText(/All tools disabled/)).toBeInTheDocument();
+    // The tab badge counts what would refuse the save, and this is not one of those: an
+    // agent holding a capability it can never call launches, it just never calls it.
+    expect(screen.queryByLabelText(/problem/)).toBeNull();
+  });
+
+  it("goes with the capability when that is switched off", () => {
+    renderCaps(emptyDraft());
+    fireEvent.click(capSwitch("agent-managed-context"));
+    switchOffEveryFeature(
+      "agent-managed-context",
+      "Agent-managed context features",
+    );
+    fireEvent.click(capSwitch("agent-managed-context"));
+    expect(screen.queryByText(WARNING)).toBeNull();
+  });
+
+  it("names the operations a code agent reads, not the tools it never will", () => {
+    renderCaps(codeDraft());
+    fireEvent.click(capSwitch("agent-managed-context"));
+    switchOffEveryFeature(
+      "agent-managed-context",
+      "Agent-managed context features",
+    );
+    expect(
+      within(capabilityRow("agent-managed-context")).getByText(
+        /All operations disabled/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/All tools disabled/)).toBeNull();
+  });
+
+  it("is absent from a capability that hands the agent no call at all", () => {
+    // A pure setting — it changes the window gg gives the model and offers nothing to
+    // call — so an empty allowlist contribution is what it is meant to make.
+    renderCaps(emptyDraft());
+    fireEvent.click(capSwitch("context-window-override"));
+    expect(
+      within(capabilityRow("context-window-override")).getByLabelText(
+        /Window limit/,
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText(WARNING)).toBeNull();
+  });
+});
+
 // Loop detection is a per-agent, non-capability lever: it changes nothing about what the
 // agent can do, only how gg talks to its model. It is authored like a capability all the
 // same — a switch, a purpose, and a body of knobs revealed once it is on — and only

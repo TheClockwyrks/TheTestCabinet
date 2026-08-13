@@ -276,7 +276,7 @@ impl Emitter {
     ///
     /// A fourth configuration fact no event carries, recorded once (on the root's emitter) beside
     /// the ceilings and only for a run that actually runs the pipeline. It is what lets a study
-    /// tell an ablation's healing-off arm from its healing-on arm without reading the invocation
+    /// tell a healing-off configuration from a healing-on one without reading the invocation
     /// files: every other healing figure counts what fired, and neither arm fires anything on a
     /// clean run.
     pub fn record_healing(&self, enabled: Vec<GgHealingStrategy>) {

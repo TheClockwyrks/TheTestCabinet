@@ -414,8 +414,8 @@ export function GgReferenceApiTab({
                 ) : (
                   <>
                     Nothing on the {PROGRAM_LANGUAGE_NAMES[language]} arm of gg{" "}
-                    {arm.ggVersion} could be opened: its entries name modules the
-                    document does not declare. That is a broken projection —
+                    {arm.ggVersion} could be opened: its entries name modules
+                    the document does not declare. That is a broken projection —
                     the documents are written by <code>gg reference --out</code>
                     .
                   </>
@@ -540,16 +540,14 @@ function EntryDetail({
             {module?.import && (
               <span className={styles.chip}>{module.import}</span>
             )}
-            {/* What binds the call, in the one vocabulary that actually decides it. Most
-                functions are bound by a *tool* being enabled — responses as code is the
-                same surface as the toolset, reached differently — while the ending call
-                is bound by the agent's role and a few calls by a capability, which is why
-                three separate fields exist rather than one "gate" string. */}
-            {entry.gate && (
-              <span className={`${styles.chip} ${styles.chipKey}`}>
-                bound by {entry.gate}
-              </span>
-            )}
+            {/* What binds the call. Two kinds of thing decide it and they are two fields
+                rather than one "gate" string: the ending call is bound by the role the
+                agent was dispatched in, and everything a run can configure is bought by a
+                capability — and then, within it, granted by the agent's own allowlist,
+                which is per agent rather than a property of the call and so has no chip
+                here. There is deliberately no third field naming a *tool*: tool calling is
+                a separate surface with its own vocabulary, and nothing on it gates
+                anything on this one. */}
             {entry.ending && (
               <span className={`${styles.chip} ${styles.chipKey}`}>
                 {entry.ending} ending
@@ -562,11 +560,10 @@ function EntryDetail({
             )}
             {/* Nothing gates a view function: every program gets them whatever a run
                 enables, and saying so is more useful than an empty metadata row. This is
-                an affirmative claim, so it is guarded on every field that can withhold a
-                call — a tool, a role, and a capability — and it is not made about a type,
-                which is a declaration and is not withheld from anybody. */}
+                an affirmative claim, so it is guarded on both fields that can withhold a
+                call — a role and a capability — and it is not made about a type, which is a
+                declaration and is not withheld from anybody. */}
             {entry.kind === "function" &&
-              !entry.gate &&
               !entry.ending &&
               !entry.capability && (
                 <span className={styles.chip}>always available</span>

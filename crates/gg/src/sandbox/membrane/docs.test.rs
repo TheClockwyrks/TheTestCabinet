@@ -85,10 +85,8 @@ fn a_close_is_refused_when_the_capability_is_withheld() {
     ] {
         assert_eq!(error.code, ErrorCode::Unavailable);
         assert!(
-            error
-                .message
-                .contains("open documentation but not close it"),
-            "the refusal says what this agent may still do: {}",
+            error.message.ends_with(" is not available."),
+            "the refusal names the call and stops: {}",
             error.message
         );
     }
@@ -97,7 +95,7 @@ fn a_close_is_refused_when_the_capability_is_withheld() {
 /// **A refused close is still counted as a call the model made.**
 ///
 /// "The model reached for something this run does not offer it" is precisely what a capability
-/// ablation is run to measure, so the refusal happens *inside* the call's own record rather than
+/// comparison of two configurations rests on, so the refusal happens *inside* the call's own record rather than
 /// before it. A refusal that closed no bracket would be invisible to the measurement it exists for.
 #[test]
 fn a_refused_close_is_recorded_as_a_call_that_failed() {

@@ -488,7 +488,7 @@ async fn a_structurally_broken_machine_fails_to_launch() {
     let (outcome, events) = run_machine(dir.path(), set).await;
     assert_eq!(
         outcome,
-        SessionOutcome::LaunchFailed,
+        SessionOutcome::HarnessError,
         "an unrunnable machine does not run"
     );
     assert!(
@@ -593,5 +593,47 @@ async fn a_transitions_module_list_names_the_instance_on_both_sides() {
             .origin,
         GgModuleOrigin::Transferred,
         "and knows it was handed it rather than having made it"
+    );
+}
+
+/// A machine gg cannot build **refuses the launch**, rather than being absorbed into an empty
+/// table.
+///
+/// Unreachable through the production path — [`validate_agents`] parses the very same machines and
+/// refuses this set before an orchestrator exists — so it is provoked the only way it can be, by
+/// building one directly. What it guards is that the impossible case is *reported*: an empty table
+/// is not a smaller version of the right answer, it is a different run. Every shell in the set
+/// would come up as an ordinary agent with no states, no transitions and no model of its own,
+/// while the record it produces still calls it a machine and a comparison still counts it as the
+/// FSM arm.
+#[test]
+fn a_machine_that_will_not_build_refuses_the_launch() {
+    let dir = TempDir::new().expect("a temp workspace");
+    let set = machine_set(json!("not a state table"));
+    // The production launch check refuses it first — this is the belt behind that brace.
+    assert!(
+        validate_agents(&set).is_err(),
+        "launch validation is what makes the case below unreachable"
+    );
+
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("build".to_string()), Box::new(sink));
+    let mut warnings = Vec::new();
+    let Err(error) = Orchestrator::build(
+        &invocation(dir.path(), set),
+        &emitter,
+        Arc::new(ScriptedFactory::new()),
+        crate::tools::real_shell(),
+        WorktreesSetup {
+            baseline_commit: None,
+            root: None,
+        },
+        &mut warnings,
+    ) else {
+        panic!("a machine that will not build has no orchestrator to return");
+    };
+    assert!(
+        error.contains(ROOT_AGENT) && error.contains(FSM_PARAM_STATES),
+        "the report names the shell and the param that could not be read: {error}"
     );
 }

@@ -103,8 +103,8 @@ interface GgConfigEditorProps {
 // decides what the rest of the form even offers: Tools and RaC are two ways of driving
 // the same capabilities (with a couple that only one of them reads), and FSM is not a
 // worker at all — a machine has no capabilities of its own, so it is configured by its
-// states instead. Capabilities are per agent, so an ablation can vary what each agent in
-// a run can do, and give different agents different models or even different types.
+// states instead. Capabilities are per agent, so one configuration can vary what each agent
+// in a run can do, and give different agents different models or even different types.
 //
 // Which profile is the **root** — the one that drives the run's top-level session — is a
 // flag on the draft, so it can be renamed to anything and moved to another profile;
@@ -319,7 +319,9 @@ export function GgConfigEditor({
             {limitsError ? (
               <p className={gg.fieldError}>{limitsError}</p>
             ) : (
-              limitsWarning && <p className={gg.limitWarning}>{limitsWarning}</p>
+              limitsWarning && (
+                <p className={gg.limitWarning}>{limitsWarning}</p>
+              )
             )}
           </section>
 

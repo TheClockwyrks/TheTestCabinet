@@ -10,16 +10,20 @@ import {
   agentStates,
   bindModelSlots,
   blankAgentDraft,
+  capabilityActive,
+  capabilityGrantWarning,
   capabilitySetFromDraft,
   draftFromCapabilitySet,
   draftSaveError,
   emptyDraft,
   fsmStatesWarnings,
+  grantsOf,
   launchModelSlots,
   loopDetectionWarning,
   renameStateDraft,
   resetAgentForMode,
   runLimitsWarning,
+  setFeatureBundle,
   type GgAgentDraft,
   type GgConfigDraft,
 } from "./ggConfigDraft";
@@ -35,8 +39,14 @@ import {
   DEFAULT_MEMORY_MAX_LEN_PER,
   DEFAULT_SHELL_MAX_CHARS,
   DEFAULT_SHELL_MAX_LINES,
+  FSM_CAP,
+  FSM_CAP_ID,
+  RESPONSES_AS_CODE_CAP_ID,
+  ROOT_AGENT,
   RUN_LIMIT_SPECS,
+  capabilitySpec,
   paramApplies,
+  type GgAgentMode,
 } from "./ggCatalog";
 
 // One agent profile with only the fields a given assertion cares about; the rest take
@@ -444,6 +454,9 @@ describe("gg agents", () => {
       enabled: true,
       params: {},
     };
+    // Switching a capability on grants what it offers — the pairing the editor writes, and
+    // what makes this agent a filer rather than one holding a board it cannot write to.
+    Object.assign(draft.agents[0]!, grantsOf(["project-management"]));
     expect(draftSaveError(draft)).toContain("no implementer");
 
     // A spawnable-only roster entry is not an implementer, so it does not satisfy it.
@@ -453,13 +466,16 @@ describe("gg agents", () => {
     ];
     expect(draftSaveError(draft)).toContain("no implementer");
 
-    // Read-only board access (no `create_issue`) needs no roster at all.
+    // Read-only board access — the allowlist does not grant `create_issue` — needs no
+    // roster at all.
     draft.agents[0]!.subagents = [];
-    draft.agents[0]!.disabledTools = ["create_epic", "create_issue"];
+    draft.agents[0]!.tools = draft.agents[0]!.tools.filter(
+      (tool) => tool !== "create_epic" && tool !== "create_issue",
+    );
     expect(draftSaveError(draft)).toBeNull();
 
     // And so does a filer with an implementer — a profile may list itself.
-    draft.agents[0]!.disabledTools = [];
+    draft.agents[0]!.tools = [...draft.agents[0]!.tools, "create_issue"];
     draft.agents[0]!.subagents = [
       { agentId: rootId, description: "", scopes: ["implementer"] },
     ];
@@ -1523,6 +1539,229 @@ describe("a state machine", () => {
     expect(committed.customInstructions).toBe("");
     expect(committed.subagents).toEqual([]);
     expect(committed.promptCacheTtl).toBe("standard");
+  });
+
+  // The [mode markers](isModeCapability) are the one entry in the catalog that names a
+  // call without granting it: `fsm` declares `transition_state` so the analyze page can
+  // file the call under the machine that buys it, and gg offers that call from wherever
+  // an instance *stands* rather than off the shell's own allowlist. So no seeding may
+  // ever put it in one.
+  //
+  // Guarded at [grantsOf] rather than at the two places that happen to clear it after the
+  // fact — a machine's allowlists are emptied when it is committed, and a load commits —
+  // because those are rules about machines, and the marker is what must not seed.
+  it("seeds no allowlist from the marker that makes it a machine", () => {
+    expect(FSM_CAP.tools).toEqual(["transition_state"]);
+    expect(grantsOf([FSM_CAP_ID])).toEqual({ tools: [], operations: [] });
+
+    // A fresh machine draft is born holding nothing, before anything downstream has had a
+    // chance to take it back off again.
+    const born = blankAgentDraft("Feature", [FSM_CAP_ID]);
+    expect(born.mode).toBe("fsm");
+    expect(born.tools).toEqual([]);
+    expect(born.operations).toEqual([]);
+
+    // And a marker alongside real capabilities takes nothing away from them: the filter
+    // is on the marker, not on the call.
+    expect(grantsOf([FSM_CAP_ID, "list-dir"])).toEqual(grantsOf(["list-dir"]));
+  });
+});
+
+// --- A capability that grants nothing ----------------------------------------------
+//
+// The one state the allowlist can reach that nothing downstream reports: a capability
+// switched on whose every call has been switched back off. It saves, it launches, and the
+// run record it produces — a model that called none of it — is indistinguishable from a
+// model that had the whole surface and chose not to touch it. So the editor has to say
+// so, and has to say it about the vocabulary the agent will actually be conducted in.
+
+describe("a capability that is on and grants nothing", () => {
+  // `agent-managed-context` is the capability an operator can empty *by hand on the form*:
+  // its two feature sliders between them name all three of its calls, so switching both
+  // off leaves the capability on and the agent holding none of it.
+  const MANAGED = capabilitySpec("agent-managed-context")!;
+
+  // One agent of the given type, with `agent-managed-context` on and granted in both
+  // vocabularies — what switching the capability on leaves behind.
+  function armed(mode: GgAgentMode): GgAgentDraft {
+    const draft = blankAgentDraft(ROOT_AGENT, [
+      "agent-managed-context",
+      ...(mode === "rac" ? [RESPONSES_AS_CODE_CAP_ID] : []),
+    ]);
+    expect(draft.mode).toBe(mode);
+    return draft;
+  }
+
+  it("says nothing while the capability still grants one of its calls", () => {
+    const agent = armed("tools");
+    expect(capabilityGrantWarning(agent, MANAGED)).toBeNull();
+
+    // Both sliders but the last: a capability the operator has narrowed is configured,
+    // not broken, and warning here would fire on the ordinary case.
+    const narrowed = {
+      ...agent,
+      ...setFeatureBundle(agent, MANAGED.features![1]!, false),
+    };
+    expect(narrowed.tools).toEqual(["evict_file_view"]);
+    expect(capabilityGrantWarning(narrowed, MANAGED)).toBeNull();
+  });
+
+  it("fires once a tool-calling agent's last tool from it is switched off", () => {
+    let agent = armed("tools");
+    for (const bundle of MANAGED.features!) {
+      agent = { ...agent, ...setFeatureBundle(agent, bundle, false) };
+    }
+    expect(agent.tools).toEqual([]);
+    expect(capabilityGrantWarning(agent, MANAGED)).toContain(
+      "All tools disabled",
+    );
+  });
+
+  it("fires on the operations a code agent reads, not on the tools it does not", () => {
+    const agent = armed("rac");
+    // Emptied in the vocabulary this agent answers on. Its `tools` half is untouched and
+    // full — it is the half a RaC run never reads, and reading it here would report an
+    // agent that can call plenty as one that can call nothing.
+    const empty = { ...agent, operations: [] };
+    expect(empty.tools).toEqual(MANAGED.tools);
+    expect(capabilityGrantWarning(empty, MANAGED)).toContain(
+      "All operations disabled",
+    );
+
+    // And the mirror: the same draft with the *other* half emptied is a code agent whose
+    // whole API surface is intact.
+    expect(capabilityGrantWarning({ ...agent, tools: [] }, MANAGED)).toBeNull();
+  });
+
+  it("is a warning and not a save error", () => {
+    const base = emptyDraft();
+    const agent = base.agents[0]!;
+    const draft = {
+      ...base,
+      agents: [
+        {
+          ...agent,
+          capabilities: {
+            ...agent.capabilities,
+            [MANAGED.id]: {
+              enabled: true,
+              implementation: "",
+              params: {},
+              extraParams: {},
+            },
+          },
+        },
+      ],
+    };
+    // On, and granting nothing — the capability was switched on by something other than
+    // the editor's own toggle, which is the shape a hand-written configuration arrives in.
+    expect(capabilityGrantWarning(draft.agents[0]!, MANAGED)).toContain(
+      "All tools disabled",
+    );
+    expect(draftSaveError(draft)).toBeNull();
+  });
+
+  it("says nothing about a capability that is switched off", () => {
+    const agent = armed("tools");
+    const off = {
+      ...agent,
+      tools: [],
+      operations: [],
+      capabilities: {
+        ...agent.capabilities,
+        [MANAGED.id]: { ...agent.capabilities[MANAGED.id]!, enabled: false },
+      },
+    };
+    expect(capabilityGrantWarning(off, MANAGED)).toBeNull();
+  });
+
+  it("says nothing about a capability that offers no calls to begin with", () => {
+    // A great many capabilities are pure settings: they change how gg runs the agent and
+    // hand it no call at all, so an empty allowlist is what they are *supposed* to
+    // contribute. Warning on those is how an operator learns to ignore the warning.
+    const settings = CAPABILITIES.filter(
+      (cap) => !cap.tools?.length && !cap.operations?.length,
+    );
+    expect(settings.map((cap) => cap.id)).toContain("context-window-override");
+    for (const mode of ["tools", "rac"] as const) {
+      const agent = {
+        ...armed(mode),
+        capabilities: Object.fromEntries(
+          settings.map((cap) => [
+            cap.id,
+            { enabled: true, implementation: "", params: {}, extraParams: {} },
+          ]),
+        ),
+      };
+      for (const cap of settings) {
+        expect(capabilityGrantWarning(agent, cap)).toBeNull();
+      }
+    }
+  });
+
+  it("says nothing about a capability whose whole surface is the other vocabulary", () => {
+    // `docview-close` buys operations and no tool. It is offered to a code agent only, so
+    // the tool-calling half of the question is answered by the capability not being live
+    // at all — but the warning must not fire on it either way.
+    const docviews = capabilitySpec("docview-close")!;
+    const enable = (agent: GgAgentDraft) => ({
+      ...agent,
+      capabilities: {
+        ...agent.capabilities,
+        [docviews.id]: {
+          enabled: true,
+          implementation: "",
+          params: {},
+          extraParams: {},
+        },
+      },
+    });
+    expect(docviews.tools).toBeUndefined();
+    expect(capabilityGrantWarning(enable(armed("tools")), docviews)).toBeNull();
+    // On, live, and granted under the type that does read it.
+    const code = {
+      ...enable(armed("rac")),
+      operations: [...docviews.operations!],
+    };
+    expect(capabilityGrantWarning(code, docviews)).toBeNull();
+    expect(
+      capabilityGrantWarning({ ...code, operations: [] }, docviews),
+    ).toContain("All operations disabled");
+  });
+
+  it("says nothing about a machine's transition, which no allowlist grants", () => {
+    // The [mode markers](isModeCapability) are the one place a declared name is not a
+    // grant: `fsm` names `transition_state` for the analyze page, nothing seeds an
+    // allowlist from a marker, and a committed machine's two allowlists are emptied
+    // outright — so the naive question ("live, and holding none of what it offers?")
+    // answers yes on every machine ever loaded, on the one agent type whose States tab
+    // has nothing else to say. The advice would be unfollowable there: the type selector
+    // is the marker's switch, and it has no feature slider to put the call back.
+    const machine = draftFromCapabilitySet({
+      agents: [
+        agent({
+          name: "Feature",
+          capabilities: [
+            {
+              id: FSM_CAP_ID,
+              enabled: true,
+              params: {
+                states: [
+                  { name: "explore", agent: "Explorer", transitions: [] },
+                ],
+              },
+            },
+          ],
+        }),
+        agent({ name: "Explorer" }),
+      ],
+    }).agents[0]!;
+    expect(machine.mode).toBe("fsm");
+    // Exactly the shape that fires, every part of it true and none of it a fault.
+    expect(capabilityActive(machine, FSM_CAP)).toBe(true);
+    expect(FSM_CAP.tools).toEqual(["transition_state"]);
+    expect(machine.tools).toEqual([]);
+    expect(capabilityGrantWarning(machine, FSM_CAP)).toBeNull();
   });
 });
 

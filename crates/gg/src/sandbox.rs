@@ -93,6 +93,7 @@ use std::time::{Duration, Instant};
 use wasmtime::component::{HasSelf, Linker};
 use wasmtime::{Store, UpdateDeadline};
 
+mod availability;
 mod engine;
 mod invoker;
 mod language;
@@ -104,12 +105,36 @@ pub(crate) mod signatures;
 
 pub use invoker::ToolApi;
 pub use language::{
-    CONTEXT_ARCHIVE_THREAD, CONTEXT_COMPACT, CONTEXT_EVICT_FILE_VIEW, DOCS_SEARCH, FileWindow,
-    HARNESS_FINISH, MEMORY_CREATE_MEMORY, MEMORY_DELETE_MEMORY, MEMORY_EDIT_MEMORY,
-    MEMORY_READ_MEMORY, MEMORY_UPDATE_MEMORY, MEMORY_WRITE_MEMORY, PROGRAMS_GET, PROGRAMS_RERUN,
-    PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage, REVIEW_APPROVE,
-    REVIEW_REQUEST_CHANGES, SurfaceCall, UnreachableTail, VIEW_CLOSE, all_languages, language,
-    resolve_program_language, spell,
+    FileWindow, PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage, UnreachableTail,
+    all_languages, language, resolve_program_language, spell,
+};
+
+// gg's own name for each model-facing call, for the code outside this module that has to *quote*
+// one: a prompt naming the call that ends a session, a notice naming the hand-over gg did not
+// honour, a refusal naming the memory call it refused. Every one of them is [spelled](spell) in the
+// run's own language before it reaches a model — the constant is the identity, never the text.
+//
+// The whole set is re-exported rather than the handful named today, because this is the vocabulary
+// a responses-as-code call is *made* under: the loop opens a bracket with one of these at every one
+// of its typed api functions, and a set that carried only the ids somebody had needed so far would
+// be a set the next function has to be added to before it can name itself.
+//
+// `#[allow(unused_imports)]` because `sandbox` is a private module, so a re-export nothing outside
+// it names is a warning in a crate built with warnings denied.
+#[allow(unused_imports)]
+pub use operations::{
+    BOARD_CREATE_EPIC, BOARD_CREATE_ISSUE, BOARD_REMOVE_EPIC, BOARD_REMOVE_ISSUE,
+    BOARD_SET_ISSUE_BLOCKED_BY, BOARD_UPDATE_ISSUE, BOARD_WAIT_FOR_ISSUE, CONTEXT_ARCHIVE_THREAD,
+    CONTEXT_COMPACT, CONTEXT_EVICT_FILE_VIEW, CONTEXT_SEARCH_ARCHIVE, DELEGATION_EXEC,
+    DELEGATION_FORK, DELEGATION_SEND_MESSAGE, DELEGATION_SPAWN_SUBAGENT,
+    DELEGATION_TRANSITION_STATE, DELEGATION_WAIT_FOR_SUBAGENTS, DOCS_CLOSE, DOCS_CLOSE_ALL,
+    DOCS_SEARCH, FILES_EDIT_FILE, FILES_LIST_DIR, FILES_READ_FILE, FILES_READ_TEXT_FILE,
+    FILES_WRITE_FILE, MEMORIES_CREATE_MEMORY, MEMORIES_DELETE_MEMORY, MEMORIES_EDIT_MEMORY,
+    MEMORIES_READ_MEMORY, MEMORIES_SEARCH_MEMORIES, MEMORIES_UPDATE_MEMORY, MEMORIES_WRITE_MEMORY,
+    PROGRAMS_GET, PROGRAMS_HISTORY, PROGRAMS_RERUN, SESSION_APPROVE, SESSION_FINISH,
+    SESSION_REQUEST_CHANGES, SHELL_SHELL, SKILLS_READ_SKILL, TASKS_ADD_TASK, TASKS_COMPLETE_TASK,
+    TASKS_REMOVE_TASK, TASKS_SET_BLOCKED_BY, TASKS_UPDATE_TASK, VIEWS_CLOSE, VIEWS_CURRENT,
+    VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE, VIEWS_OPEN_TEXT,
 };
 
 // Named only in documentation and in the seam's own tests today, but exported all the same: they
@@ -121,8 +146,8 @@ pub use language::{
 #[allow(unused_imports)]
 pub use language::{
     CompilerCommand, CompilerDaemon, CompilerPool, CompilerReport, PrepareContext, PrepareError,
-    PromptDialect, ResolvedProgramLanguage, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, VIEW_OPEN_TEXT,
-    Workspace, daemon, place, place_tree, shared_toolchain_dir,
+    PromptDialect, ResolvedProgramLanguage, Workspace, daemon, place, place_tree,
+    shared_toolchain_dir,
 };
 
 // The seam's second implementation, which exists only under test. Re-exported for the one consumer
@@ -137,18 +162,33 @@ pub(crate) use language::fixture_languages;
 #[cfg(test)]
 pub(crate) use language::fixture;
 
-// gg's own vocabulary of model-facing operations: the gating identity every catalogue entry is
-// resolved through, and the successor of the bare `(object, key)` enumeration that preceded it.
-// `operation_by_id` is the same resolution reached by the id a catalogue *writes* rather than by a
-// whole entry, which is what a member function carries: it is one line naming an operation, not a
-// `CatalogueFunction` of its own.
-pub use operations::{Binding, operation_by_id, operation_of};
+// gg's own vocabulary of model-facing operations, and the three ways in: by the id a catalogue
+// *writes* (`operation_by_id`), by a whole catalogue entry (`operation_of`), and by the typed id a
+// host function names its own call with (`operation`). One table, three keys, because those are the
+// three things a caller has in hand. `Binding` travels with them because it is what a row hands
+// back, and `#[allow(unused_imports)]` for the reason the constants above carry one.
+#[allow(unused_imports)]
+pub use operations::{Binding, operation, operation_by_id, operation_of};
 
 // **What one agent was granted, and the one predicate that reads it.** The membrane holds one to
 // decide whether a call is serviced or refused; the documentation runtime holds one to decide what
-// a search may return. Two readers, one implementation — see [`Grants`](operations::Grants) — and
-// one construction of the capability half of it, so the two cannot be built from different lists.
-pub use operations::{Grants, family_of_module, operation_by_call, surface_capabilities};
+// a search may return. Two readers, one implementation — see [`Grants`](operations::Grants).
+//
+// Beside it, the three functions that turn a configuration into one: `capability_operations` is
+// every call a set of capabilities *offers*, which is what an editor seeds a grant from;
+// `resolve_operations` is what a configured allowlist actually names — plus the names in it that
+// answer to no operation, which are an error rather than an inert entry; and `instance_operations`
+// is what a position rather than a configuration buys.
+#[allow(unused_imports)]
+pub use operations::{
+    Grants, capability_operations, family_of_module, gating_capabilities, instance_operations,
+    resolve_operations,
+};
+
+// **What one instance actually holds**, which is `resolve_operations` narrowed to what this agent's
+// run can service and widened by what its position bought it. Every reader of a grant takes this
+// value; nothing but the launch's own allowlist report reads the raw resolution.
+pub use availability::granted_operations;
 
 // The whole table, for the gates that resolve every operation against every registered language and
 // against what the membrane records. A production reader resolves one entry at a time through
@@ -209,29 +249,35 @@ pub use membrane::CodeModule;
 #[cfg(test)]
 pub use invoker::{SandboxRefusal, SandboxToolCall};
 
-use crate::tools::ToolRegistry;
 use membrane::{MembraneParts, MembraneState, Sandbox};
 
-/// **Everything one program was granted**, as one value: what its run enabled, what its agent's role
-/// declares, and which capabilities it holds — plus the code modules bound beside its scope.
+/// **Everything one program was granted**, as one value: the capabilities its agent holds, the
+/// operations its allowlist names, and what its agent's role may declare — plus the code modules
+/// bound beside its scope.
 ///
 /// They travel together because they *are* one thing, the answer to "may this agent call X" — and
-/// because that answer is now enforced in exactly one place. No guest builds a program's scope out
-/// of them: every arm's SDK is **static**, every function is bound into every program, and a call
-/// this agent was not granted reaches the [membrane](membrane::MembraneState) and is refused there
-/// with a sentence naming the capability that is missing. This value is what that membrane is built
-/// from, and the [documentation runtime](crate::docs::DocsRuntime) is built from the same three
-/// facts, so what a search may show and what the host will service are one set.
+/// because that answer is enforced in exactly one place. No guest builds a program's scope out of
+/// them: every arm's SDK is **static**, every function is bound into every program, and a call this
+/// agent was not granted reaches the [membrane](membrane::MembraneState) and is refused there. This
+/// value is what that membrane is built from, and the
+/// [documentation runtime](crate::docs::DocsRuntime) is built from the same facts, so what a search
+/// may show and what the host will service are one set.
 ///
-/// The guest is still *told* them — the WIT `run` takes all three — and on the four arms that used
-/// to build a scope from them, nothing reads them. See the WIT's own note for why the parameters
-/// stay.
+/// The guest is still *told* what was granted — the WIT `run` takes the list — and no arm reads it.
+/// See the WIT's own note for why the parameter stays.
 #[derive(Clone, Copy)]
 pub struct ProgramScope<'a> {
-    /// The run's scope-bound gg tool names ([`scope_tools`]) — every operation bound by one of them
-    /// is available to this program, and every operation bound by a tool outside this set is
-    /// refused when it is called.
-    pub enabled: &'a [String],
+    /// The gg capability ids this agent's profile enables. Half of every gate a run can configure;
+    /// the other half is [`operations`](Self::operations).
+    pub capabilities: &'a [String],
+    /// **The agent's operation allowlist**: the calls it was granted within the capabilities it
+    /// holds, resolved from its configuration by [`resolve_operations`].
+    ///
+    /// It is an allowlist rather than a set of exceptions, so an empty one grants nothing a
+    /// capability gates. What is *always* granted regardless — the view surface, the documentation
+    /// search, this agent's own ending calls — is bound by the operations table and is not
+    /// configurable, so it is deliberately not written here.
+    pub operations: &'a [OperationId],
     /// The already-prepared code the agent has loaded by reading a code [skill](crate::skills) or
     /// [memory](crate::memories). The guest evaluates each one before the program and binds its
     /// exports at `lib.<name>`; an empty list binds no `lib` at all.
@@ -243,18 +289,22 @@ pub struct ProgramScope<'a> {
     /// [role](crate::ending::EndingRole), or [none at all](RunEnding::None) for an on-use script.
     /// Every ending call is bound in every program; this decides which the host accepts.
     pub ending: RunEnding,
-    /// Whether this agent keeps a [program library](crate::programs), which is what buys the three
-    /// `programs` calls. A flag rather than a tool name because the library is one of the two
-    /// model-facing families a *capability* gates rather than the toolset.
-    pub library: bool,
-    /// Whether this agent holds [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE),
-    /// which is what decides whether it may take a documentation view back out of its window.
+}
+
+impl ProgramScope<'_> {
+    /// **What this program was granted**, as the one value both readers of a grant hold.
     ///
-    /// The other capability-gated family. Unlike [`library`](Self::library) it is not on the WIT's
-    /// `run` at all — there was never a guest that needed to hear it, because no arm's SDK spells
-    /// the close calls and because, since the surfaces went static, no guest acts on any of these
-    /// three anyway.
-    pub docview_close: bool,
+    /// A scope is the three configured facts as a caller holds them; a [`Grants`] is the question
+    /// they answer. Built here rather than by each reader so that the membrane's copy and the list
+    /// the guest is handed cannot be assembled differently — which is exactly how the documentation
+    /// runtime and the membrane once came to disagree about one capability.
+    fn grants(&self) -> Grants {
+        Grants::new(
+            self.capabilities.iter().cloned(),
+            self.ending.role(),
+            self.operations.iter().copied(),
+        )
+    }
 }
 
 /// Run one program end to end: prepare it for its guest, instantiate that guest's interpreter
@@ -350,12 +400,28 @@ fn evaluate<A: ToolApi>(
     compile: Option<Duration>,
 ) -> (SandboxOutcome, A) {
     let ProgramScope {
-        enabled,
+        capabilities,
         modules,
         ending,
-        library,
-        docview_close: _,
+        operations: _,
     } = scope;
+    // What the guest is told it holds: the operations this agent may actually call, rendered, which
+    // is the grant answered for the whole table rather than the allowlist as configured. The two
+    // differ by exactly what no configuration decides — the views, the documentation search, this
+    // agent's own endings — and the guest, which acts on none of it, is better handed the true
+    // answer than the configured half of it.
+    let granted: Vec<String> = scope
+        .grants()
+        .granted()
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    // The one capability the WIT still asks about by name. Derived from the capability set rather
+    // than carried beside it, so there is no second place a run can say whether this agent keeps a
+    // library of its own programs.
+    let library = capabilities
+        .iter()
+        .any(|id| id == test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY);
     let unreachable = prepared.unreachable;
     // Either the language's embedded component, or — for an arm whose prepare step compiled the
     // program itself into one — this program's own. The wait is reported the same way for both.
@@ -389,7 +455,7 @@ fn evaluate<A: ToolApi>(
             &mut store,
             &prepared.source,
             modules,
-            enabled,
+            &granted,
             ending.into(),
             library,
         )
@@ -607,19 +673,6 @@ pub fn prepare_module(
     language.prepare_module(source, &PrepareContext::new())
 }
 
-/// The gg tool names to bind into a program's scope for `registry`: **every** tool the run offers.
-///
-/// There is no class of call a program is denied. gg once withheld the three *turn-level*
-/// transitions — they changed the loop's mode rather than producing a value a program could use —
-/// but those tools are gone, and nothing has replaced them, so a program's scope and a
-/// tool-calling session's toolset are now the same set.
-///
-/// Derived from the registry rather than from a list, so a capability toggle or a per-tool ablation
-/// changes the program's scope and the system prompt together — they are the same source.
-pub fn scope_tools(registry: &ToolRegistry) -> Vec<String> {
-    registry.tool_names()
-}
-
 /// The name of the one model-facing sandbox function that is **not** a gg tool: the call that ends
 /// the run.
 ///
@@ -659,11 +712,10 @@ pub(crate) fn component_bound_tools(
     // Nothing at all is offered: the guest reports what it *can* bind, which does not depend on
     // what this particular store enables.
     let scope = ProgramScope {
-        enabled: &[],
+        capabilities: &[],
+        operations: &[],
         modules: &[],
         ending: RunEnding::None,
-        library: false,
-        docview_close: false,
     };
     let state = MembraneState::new(fake::FakeToolApi::new(&log), language, scope, limits, None);
     let mut store = bounded_store(state, limits);

@@ -4,7 +4,7 @@
 //!
 //! The first three are contributed only when the
 //! [`agent-managed-context`](test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT)
-//! capability is enabled (ablation); `compact` only under the
+//! capability is enabled; `compact` only under the
 //! [self-compaction](crate::compaction::CompactionStrategy::SelfCompaction) compaction strategy.
 //!
 //! # Why three of these are thin
@@ -61,13 +61,6 @@ pub const MAX_ARCHIVE_RANGES: usize = 32;
 /// The maximum number of hits a single `search_archive` returns, so a broad query cannot
 /// itself flood the window it is meant to relieve.
 const SEARCH_RESULT_CAP: usize = 8;
-
-/// Whether `name` is one of the two agent-managed-context tools that reclaim from the **live**
-/// window (and so are applied by the [loop](crate::agent) against the context model, not by the
-/// tool's own `invoke`). `search_archive` is *not* one of these — it only reads the archive.
-pub fn is_context_reclaim_tool(name: &str) -> bool {
-    matches!(name, EVICT_FILE_VIEW_TOOL | ARCHIVE_THREAD_TOOL)
-}
 
 /// Parse `evict_file_view`'s optional `path` argument: `None`/absent means "evict every file
 /// view", a string selects one path, anything else is a usage error. Shared by the tool's

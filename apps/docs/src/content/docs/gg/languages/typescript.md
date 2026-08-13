@@ -117,8 +117,8 @@ assembled once per process:
 - `typescript.globals.d.ts`, the names a program reaches that no SDK declaration
   covers.
 
-`gg.d.ts` declares the whole surface, including the functions this run's toolset
-withholds. The SDK is static, so those functions are bound and fail as
+`gg.d.ts` declares the whole surface, including the functions this agent was not
+granted. The SDK is static, so those functions are bound and fail as
 themselves at run time, and a checker that refused them would refuse programs
 that run. A verdict must also depend on the program alone, because the same text
 is checked as a turn's program, as a skill's on-use script and as the code half

@@ -61,7 +61,8 @@ declares this language.
 
 The SDK is the guest package's hand-written TypeScript SDK. It is bound
 statically: every module and every function is in scope in every program, and a
-call the run withheld fails as a host refusal rather than as a missing name. The
+call the agent was not granted fails as a host refusal rather than as a missing
+name. The
 shared rules for that surface are on
 [the agent surface page](/gg/languages/agent-surface/).
 
@@ -127,8 +128,8 @@ The arm's two templates are `system-code.javascript.hbs` and
 - a few short names, `gg`, `ToolError` and `lib` among them, are the evaluated
   function's parameters, so redeclaring one is a `SyntaxError` that ends the
   turn before the program runs;
-- every function is bound whatever the run enabled, so a call to a withheld one
-  runs and fails naming the capability it needed.
+- every function is bound whatever the run enabled, so a call the agent was not
+  granted runs and fails as a refusal.
 
 The templates describe a program that is evaluated as written. Neither carries a
 section about a compile step.

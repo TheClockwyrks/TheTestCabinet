@@ -21,9 +21,9 @@ occurs several times are distinct failures with distinct recoveries: the first
 has to be re-read, the second disambiguated.
 
 :::note
-The capability is the level at which a tool is configured.
-[Toolset ablation](/gg/toolset-ablation/) is the separate lever that withholds a
-named tool from a capability that stays on.
+The capability is the level at which a call is configured. An agent's
+[allowlist](/gg/configurations/#granting-calls) is the separate lever that
+decides which of an enabled capability's calls that agent is given.
 :::
 
 ## Paths

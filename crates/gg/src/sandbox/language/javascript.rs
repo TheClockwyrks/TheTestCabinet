@@ -46,8 +46,9 @@ use crate::sandbox::signatures::SignatureCatalogue;
 use super::typescript;
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
+    ProgramLanguage, PromptDialect, spell,
 };
+use crate::sandbox::operations::{VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
 /// This language's catalogue: the same SDK declarations TypeScript's is reflected from, emitted a
 /// second time under this language's own id by the guest package's `signatures.sh`.
@@ -195,14 +196,14 @@ impl ProgramLanguage for JavaScript {
     /// [`gg.views.openFile("src/main.js");`](super::typescript::open_file_statement), with the name
     /// resolved from **this** language's catalogue.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
-        typescript::open_file_statement(&spell(self, VIEW_OPEN_FILE), path, window)
+        typescript::open_file_statement(&spell(self, VIEWS_OPEN_FILE), path, window)
     }
 
     /// [A `const` array and a `for…of` over
     /// it](super::typescript::open_docs_views_statement), with the name resolved from **this**
     /// language's catalogue.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
-        typescript::open_docs_views_statement(&spell(self, VIEW_OPEN_DOCS_VIEW), names)
+        typescript::open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
     }
 }
 

@@ -31,9 +31,8 @@ two, so an A/B of the response shape is a comparison inside a single run.
   `gg.session.requestChanges(items)`. A program that throws after calling one
   loses the ending.
 - Every function of the SDK is bound in every program whatever the run enabled.
-  A call to a withheld function runs and fails, naming what is missing: the gg
-  tool a toolset did not offer, the capability the agent was not given, or the
-  endings the agent does have.
+  A call the agent was not granted runs and fails, saying that the call is not
+  available and, where the agent has one, which call to make instead.
 
 ## Configuration
 
@@ -78,7 +77,7 @@ for each arm.
 - [Programs](/gg/responses-as-code/programs/): the reply gg accepts, how a turn
   executes, the outcomes a turn can have, hand-over chains, and the rules for
   ending a session.
-- [Tools](/gg/responses-as-code/tools/): the typed function surface a program
+- [APIs](/gg/responses-as-code/tools/): the typed function surface a program
   calls, the module vocabulary, the capability gate, how a failed call is
   reported, and `lib` for code the agent loaded.
 - [Views](/gg/responses-as-code/views/): the four kinds of view, their caps and

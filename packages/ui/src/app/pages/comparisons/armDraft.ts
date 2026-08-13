@@ -33,7 +33,7 @@ export interface ArmDraft {
 
 /**
  * How an arm reads when the operator has not labeled it themselves: the thing it
- * runs, then the model it runs on — "Pi · claude-opus-4.8", "ablation A ·
+ * runs, then the model it runs on — "Pi · claude-opus-4.8", "configuration A ·
  * claude-opus-4.8". The model belongs in the label because it is per arm now: two
  * arms can share a harness (or a gg configuration) and differ only in model, and a
  * chart legend that showed just "Pi" twice would be unreadable.

@@ -69,7 +69,6 @@ fn entry(name: &str, kind: GgReferenceEntryKind) -> GgReferenceEntry {
         operation: None,
         alias_of: None,
         receiver: None,
-        gate: None,
         ending: None,
         capability: None,
         types: Vec::new(),

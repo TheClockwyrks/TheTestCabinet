@@ -101,8 +101,8 @@ The SDK is spelled the way a Java library is spelled:
 - A failure is an unchecked `ToolError` carrying `code()`, so a composed program
   needs no `try` around every line.
 
-Every function is bound in every program, and a withheld call is refused by the
-host. See [static SDKs](/gg/languages/static-sdks/) for that surface's rules.
+Every function is bound in every program, and a call the agent was not granted is
+refused by the host. See [static SDKs](/gg/languages/static-sdks/) for that surface's rules.
 
 The catalogue is reflected by `javadoc` and a doclet of gg's own, so a signature
 is javac's reading of the declaration and every word of prose comes off the

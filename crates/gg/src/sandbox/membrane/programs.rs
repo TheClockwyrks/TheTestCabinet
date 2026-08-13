@@ -29,7 +29,7 @@
 use super::test_cabinet::gg::programs::{Host as ProgramsHost, ProgramSummary};
 use super::test_cabinet::gg::types::{ErrorCode, ToolError};
 use super::{MembraneState, ToolApi};
-use crate::sandbox::language::{PROGRAMS_GET, PROGRAMS_HISTORY, PROGRAMS_RERUN};
+use crate::sandbox::operations::{PROGRAMS_GET, PROGRAMS_HISTORY, PROGRAMS_RERUN};
 
 impl<A: ToolApi> ProgramsHost for MembraneState<A> {
     /// The programs this agent has run, oldest first — or `unavailable` when it keeps no library.
@@ -112,9 +112,9 @@ impl<A: ToolApi> ProgramsHost for MembraneState<A> {
 /// It does **not** go on the [refusal roster](MembraneState::record_refusal), and that is the line
 /// between the two kinds of refusal this file produces. The roster answers "what did the model reach
 /// for that this run does not offer it" — which is what the bracket's own
-/// [gate](MembraneState::granted) records, and what an ablation counts. A blank
+/// [gate](MembraneState::granted) records, and what a comparison of two configurations counts. A blank
 /// source, or a second hand-over in one turn, is neither: the call was offered and was made, and
-/// what it says about the model is nothing an ablation is measuring. The throw the program sees is
+/// what it says about the model is nothing such a comparison is measuring. The throw the program sees is
 /// the whole report, which is what it is for — the model reads it, drops the second hand-over, and
 /// carries on.
 fn refused(code: ErrorCode, message: &str) -> ToolError {

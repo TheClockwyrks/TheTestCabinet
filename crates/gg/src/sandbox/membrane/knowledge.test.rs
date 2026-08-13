@@ -10,7 +10,7 @@ use serde_json::json;
 
 use super::super::ErrorCode;
 use super::*;
-use crate::sandbox::fake::{CallLog, all_tools, membrane, membrane_with};
+use crate::sandbox::fake::{CallLog, all_operations, membrane, membrane_with};
 use crate::tools::{ToolFailure, ToolOutcome};
 
 /// A skill's body is its own result — the one tool whose typed value is the outcome's text.
@@ -30,7 +30,7 @@ fn read_skill_returns_the_body() {
 #[test]
 fn an_unknown_skill_is_not_found() {
     let log = CallLog::default();
-    let mut state = membrane_with(&log, &all_tools(), None, |_, _| {
+    let mut state = membrane_with(&log, &all_operations(), None, |_, _| {
         ToolOutcome::failed(
             ToolFailure::NotFound,
             "read_skill: no skill named `nope`; available skills: testing",
@@ -333,7 +333,7 @@ fn an_epic_assignment_maps_onto_the_schemas_sentinel() {
 #[test]
 fn a_store_refusal_keeps_its_class() {
     let log = CallLog::default();
-    let mut state = membrane_with(&log, &all_tools(), None, |_, _| {
+    let mut state = membrane_with(&log, &all_operations(), None, |_, _| {
         ToolOutcome::failed(
             ToolFailure::Conflict,
             "add_task: a task `t1` already exists",

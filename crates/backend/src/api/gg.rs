@@ -128,18 +128,35 @@ impl GgRunRequest {
         // A root that is an [FSM shell](GgAgentConfig::is_fsm_shell) has no model of its own — a
         // machine takes no turns — so the run's model is the one its entry state runs, which is
         // the model the session's very first turn is actually charged to.
+        //
+        // A machine that cannot say which agent it enters is refused here by the name that is
+        // actually missing, never resolved back to the shell: the shell is the one profile in the
+        // set that is *supposed* to carry no model, so reporting it would name the only agent whose
+        // empty binding is correct — and a shell left holding a stray `modelId` would sail through
+        // and record the whole run against a model nothing asked it to run.
         let root = self.capability_set.root();
         let runner = self
             .capability_set
             .dispatched_agent(&root.name)
-            .unwrap_or(root);
+            .map_err(|err| format!("the gg capability set cannot be launched: {err}"))?;
         let model = runner
             .resolved_model_id()
             .ok_or_else(|| {
-                format!(
-                    "the gg capability set must bind a model to its root agent (`{}`)",
-                    runner.name
-                )
+                if runner.name == root.name {
+                    format!(
+                        "the gg capability set must bind a model to its root agent (`{}`)",
+                        root.name
+                    )
+                } else {
+                    // The root is a machine, so the agent needing the binding is the one its
+                    // entry state runs — named alongside the machine, because an operator
+                    // reading this is looking at a root profile with no model field at all.
+                    format!(
+                        "the gg capability set must bind a model to the `{}` agent, which its \
+                         root agent (`{}`) enters first",
+                        runner.name, root.name
+                    )
+                }
             })?
             .to_string();
         let variant = self.resolved_variant();

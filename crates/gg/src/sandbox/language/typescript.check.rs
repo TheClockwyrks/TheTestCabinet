@@ -68,25 +68,25 @@
 //! `typescript` its catalogue was emitted with are the same release by construction rather than by
 //! a check somebody has to run.
 //!
-//! ## The surface is the whole one, not the run's
+//! ## The surface is the whole one, not the agent's
 //!
 //! `gg.d.ts` declares every module and every function the catalogue carries, including the ones this
-//! run's toolset withholds and the ending calls of roles this agent does not have. That is
-//! deliberate, and it is the opposite of what the *prompt* does — a withheld capability contributes
-//! no prompt text at all.
+//! agent was not granted and the ending calls of roles it does not have. That is deliberate, and it
+//! is the opposite of what the *prompt* does — a call an agent does not hold contributes no prompt
+//! text at all.
 //!
 //! Two reasons, both load-bearing:
 //!
-//! * **A withheld name must stay reachable as a withheld name.** A tool this run does not offer is
-//!   not in the program's scope, so calling it is a `ReferenceError` the turn records as
-//!   `program_unknown_name` — "the model reached for something it was not given", which is the
-//!   measurement [toolset ablation](crate::tools) exists to take. If the checker refused those
-//!   programs instead, that measurement would be recorded as `transpile_compile` in a checked
-//!   language and as `program_unknown_name` in an unchecked one, and the two arms of a study would
-//!   no longer be counting the same event.
+//! * **A call the agent does not hold must stay writable.** Every arm's SDK is
+//!   [static](crate::sandbox::membrane), so such a call compiles, reaches the host and is
+//!   **refused** there — and that refusal is the record of "the model reached for something this
+//!   agent was not granted", which is precisely what a reader comparing two configurations is
+//!   looking for. If the checker refused those programs instead, the same reach would be a
+//!   `transpile_compile` failure in a checked language and a host refusal in an unchecked one, and
+//!   two arms of a study would no longer be counting the same event.
 //! * **A verdict must depend on the program alone.** The same text must check the same way whether
 //!   it arrives as a turn's program, as a skill's on-use script, or as the code half of a memory
-//!   being written — none of which is prepared with a run's toolset in hand.
+//!   being written — none of which is prepared with an agent's grant in hand.
 //!
 //! # Coordinates
 //!
@@ -127,7 +127,6 @@ use serde::Deserialize;
 
 use crate::sandbox::language::compile::{CompilerReport, NODE_ENV, place, shared_toolchain_dir};
 use crate::sandbox::language::{PrepareContext, PrepareError, PrepareFailure, ProgramLanguage};
-use crate::sandbox::operations::operation_by_id;
 use crate::sandbox::signatures::{EntryKind, SignatureCatalogue};
 
 /// The compiler behind the `tsc` CLI, at the release the repository-root `package.json` pins.
@@ -592,7 +591,7 @@ fn fingerprint(surface: &str) -> u64 {
 /// # Why the aliases are part of the surface rather than a convenience
 ///
 /// The shim binds every type bare beside its qualified name, and binds each module under the
-/// [legacy grouping](legacy_groupings) a sibling arm reaches it by, so a program that writes
+/// [bare name](SHIM_BOUND_NAMES) a sibling arm reaches it by, so a program that writes
 /// `catch (e) { if (e instanceof ToolError) … }` or `fs.readFile(…)` is a program that runs. A
 /// checker that knew only the qualified names would refuse it, which is the one thing a checker must
 /// never do. `import x = y.z` is TypeScript's own alias form and carries a namespace's *types* as
@@ -601,7 +600,7 @@ fn fingerprint(surface: &str) -> u64 {
 /// A module is deliberately **not** aliased under its own bare id. The shim does not bind one, for
 /// the reason it says: `files` and `shell` are ordinary variable names, and a parameter of that name
 /// turns `const files = …` into a `SyntaxError` about a redeclared formal parameter. Four modules
-/// are the exception rather than the rule — [`legacy_groupings`] explains why `tasks`, `skills`,
+/// are the exception rather than the rule — [`SHIM_BOUND_NAMES`] explains why `tasks`, `skills`,
 /// `context` and `programs` are declared here all the same — and it is the *legacy grouping* that
 /// puts them in scope, not the module id.
 fn surface(catalogue: &SignatureCatalogue) -> String {
@@ -625,8 +624,8 @@ fn surface(catalogue: &SignatureCatalogue) -> String {
     }
     out.push_str("}\n");
     for module in &catalogue.modules {
-        for legacy in legacy_groupings(catalogue, &module.id) {
-            out.push_str(&format!("import {legacy} = gg.{};\n", module.id));
+        for bound in shim_bound_names(&module.id) {
+            out.push_str(&format!("import {bound} = gg.{};\n", module.id));
         }
     }
     for declaration in &catalogue.types {
@@ -638,35 +637,48 @@ fn surface(catalogue: &SignatureCatalogue) -> String {
     out
 }
 
-/// The **legacy grouping names** the shim also binds the module `id` under, in operation order.
+/// The **bare identifiers the shim binds each module under**, beside its qualified name.
 ///
-/// gg files every operation under an `(object, key)` pair that predates the module vocabulary, and
-/// the shim binds each module under that object's name as well as under its own id — not for this
-/// arm's sake but for the PureScript arm's, whose compiled bundle this same
-/// component evaluates and which resolves `fs`, `view` and the rest as free identifiers.
+/// This is a fact about the guest and nothing else: it mirrors `LEGACY_GROUPINGS` in
+/// `packages/gg-sandbox/src/catalogue.ts`, which is the list the shim actually seeds a program's
+/// scope with. It exists there for the PureScript, Java and Kotlin arms, whose compiled bundles this
+/// same component evaluates and which resolve `fs`, `view` and the rest as free identifiers; it is
+/// in no catalogue, so nothing ever puts one of these names in front of a model.
 ///
-/// A name the shim binds is a name a program can call, so the checker declares it. It is nowhere in
-/// the catalogue, so nothing puts it in front of a model: it is reachable and undocumented, which is
-/// the honest shape of an alias that exists for a sibling arm.
+/// The checker needs it for both directions at once. A name the shim binds is a name a TypeScript
+/// program can **call**, and a checker that refused `fs.readFile(…)` would reject a program that
+/// runs. It is also a formal parameter of the function the guest evaluates a program as, so
+/// `const context = …` is a `SyntaxError` at run time — and a checker that did not know the name was
+/// taken would accept a program the guest cannot even parse. Four of the entries are a module's own
+/// id (`tasks`, `skills`, `context`, `programs`) for exactly that second reason.
 ///
-/// Derived from gg's own [operations table](crate::sandbox::operations) rather than listed here,
-/// because the pair it comes from is gg's and a second copy would be a second thing to keep in step.
-/// `session` yields two — an ending's grouping is its *role's* — and both are declared, exactly as
-/// both roles' ending calls are. Four modules' groupings are their own id (`tasks`, `skills`,
-/// `context`, `programs`), and those are declared too rather than skipped as redundant: the module id
-/// is not otherwise a name, so skipping one would leave a name the shim binds undeclared.
-fn legacy_groupings(catalogue: &SignatureCatalogue, id: &str) -> Vec<&'static str> {
-    let mut out: Vec<&'static str> = Vec::new();
-    for function in catalogue.functions.iter().filter(|f| f.module == id) {
-        let Some(operation) = operation_by_id(&function.operation) else {
-            continue;
-        };
-        let object = operation.call.object;
-        if !out.contains(&object) {
-            out.push(object);
-        }
-    }
-    out
+/// It is written out here rather than derived, because there is nothing left on gg's side to derive
+/// it from. It used to be read off an `(object, key)` pair carried beside every
+/// [operation](crate::sandbox::operations) — a second vocabulary that disagreed with the operation
+/// ids on seven of twelve groupings and gated nothing, which is why it was deleted. What remains is
+/// the guest's own reserved-name list, and the guest is the authority on it.
+const SHIM_BOUND_NAMES: &[(&str, &[&str])] = &[
+    ("files", &["fs"]),
+    ("shell", &["system"]),
+    ("board", &["project"]),
+    ("tasks", &["tasks"]),
+    ("memories", &["memory"]),
+    ("docs", &["docs"]),
+    ("views", &["view"]),
+    ("context", &["context"]),
+    ("delegation", &["agents"]),
+    ("skills", &["skills"]),
+    ("programs", &["programs"]),
+    ("session", &["harness", "review"]),
+];
+
+/// The [names the shim binds](SHIM_BOUND_NAMES) the module `id` under, or nothing for a module it
+/// binds bare nowhere.
+fn shim_bound_names(id: &str) -> &'static [&'static str] {
+    SHIM_BOUND_NAMES
+        .iter()
+        .find(|(module, _)| *module == id)
+        .map_or(&[], |(_, names)| *names)
 }
 
 /// Every signature the module `id` binds, in catalogue order.

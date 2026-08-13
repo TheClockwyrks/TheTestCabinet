@@ -73,7 +73,7 @@ public final class Wire {
         @JSProperty
         JSObject getValue();
 
-        /** The gg tool that failed, under gg's own name for it. */
+        /** The call that failed, by the key of the operation the program reached for. */
         @JSProperty
         String getTool();
 

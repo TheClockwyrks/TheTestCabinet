@@ -4,6 +4,8 @@ use serde_json::json;
 
 use super::*;
 use crate::model::ToolDefinition;
+use crate::sandbox::{FILES_READ_FILE, FILES_WRITE_FILE, capability_operations};
+use test_cabinet_core::gg::{CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_READ_FILE};
 
 /// A `read_file` definition, as the registry would build one.
 fn read_file() -> ToolDefinition {
@@ -22,15 +24,42 @@ fn read_file() -> ToolDefinition {
 }
 
 /// The names of the skills produced for an agent offering `offered`, in native tool-calling mode.
+///
+/// The grant is empty because a native agent's built-ins are decided by the tools it is *offered*:
+/// nothing here reads the code surface at all, which is what makes the two arms of this file
+/// separate rather than parameterised.
 fn native(offered: &[&str], params: serde_json::Value) -> Vec<Skill> {
     let names: Vec<String> = offered.iter().map(|name| (*name).to_string()).collect();
     builtin_skills(
         &names,
         &[read_file()],
         EndingRole::Standard,
-        /* library */ false,
-        /* docview_close */ false,
+        &[],
+        &[],
         /* program_language */ None,
+        &params,
+    )
+}
+
+/// The skills produced for a code agent granted `capabilities` and every operation they offer, in
+/// `role`, on `language`.
+fn code(
+    capabilities: &[&str],
+    role: EndingRole,
+    language: GgProgramLanguage,
+    params: serde_json::Value,
+) -> Vec<Skill> {
+    let operations = capability_operations(capabilities.iter().copied());
+    builtin_skills(
+        &[],
+        &[],
+        role,
+        &capabilities
+            .iter()
+            .map(|id| (*id).to_string())
+            .collect::<Vec<_>>(),
+        &operations,
+        Some(language),
         &params,
     )
 }
@@ -75,14 +104,11 @@ fn a_native_skill_only_lists_the_tools_the_agent_really_has() {
 
 #[test]
 fn the_code_arm_carries_an_on_use_script_and_no_body() {
-    let skills = builtin_skills(
-        &["read_file".to_string()],
-        &[read_file()],
+    let skills = code(
+        &[CAPABILITY_READ_FILE],
         EndingRole::Standard,
-        /* library */ false,
-        /* docview_close */ false,
-        /* program_language */ Some(GgProgramLanguage::TypeScript),
-        &json!({}),
+        GgProgramLanguage::TypeScript,
+        json!({}),
     );
     let fs = skills
         .iter()
@@ -104,23 +130,20 @@ fn the_code_arm_carries_an_on_use_script_and_no_body() {
 ///
 /// The script is generated from the family's own functions, and a family that came back empty makes
 /// `built_in_code` decline to generate a skill at all — silently, because declining is also the
-/// right answer for a family this run withheld. That is exactly what happens if the functions are
-/// asked for by **API object**: an arm files the filesystem family under `gg::files` rather than
-/// under `fs`, so gg's own word for the object matches nothing and the arm quietly loses all eleven
-/// of its built-in skills. They are asked for by family, which is gg's identity for the grouping,
-/// and this is the gate that says so for every arm at once rather than for whichever one the tests
-/// above picked.
+/// right answer for a family this agent was not granted. That is exactly what happens if the
+/// functions are asked for by the **arm's own grouping**: an arm files the filesystem family under
+/// `gg::files` and another under `fs`, so a word matched against one matches nothing on the other
+/// and that arm quietly loses all eleven of its built-in skills. They are asked for by family, which
+/// is gg's identity for the grouping, and this is the gate that says so for every arm at once rather
+/// than for whichever one the tests above picked.
 #[test]
 fn every_arm_generates_the_built_in_family_skills() {
     for language in crate::sandbox::all_languages() {
-        let skills = builtin_skills(
-            &["read_file".to_string()],
-            &[read_file()],
+        let skills = code(
+            &[CAPABILITY_READ_FILE, CAPABILITY_PROGRAM_LIBRARY],
             EndingRole::Standard,
-            /* library */ true,
-            /* docview_close */ false,
-            Some(language.id()),
-            &json!({}),
+            language.id(),
+            json!({}),
         );
         let offered = |name: &str| skills.iter().find(|skill| skill.name() == name);
         let files = offered("gg-filesystem").unwrap_or_else(|| {
@@ -139,25 +162,21 @@ fn every_arm_generates_the_built_in_family_skills() {
         // is not, whatever that arm calls it. The script names each function by the name it is
         // called by rather than by a qualified path, so the qualifier comes off the spelling gg
         // resolved.
-        let named = |id: &str| {
-            let operation = crate::sandbox::OPERATIONS
-                .iter()
-                .find(|operation| operation.id.to_string() == id)
-                .expect("gg has this operation");
-            let spelled = crate::sandbox::spell(language, operation.call);
+        let named = |id: crate::sandbox::OperationId| {
+            let spelled = crate::sandbox::spell(language, id);
             spelled
                 .rsplit(language.member_separator())
                 .next()
                 .unwrap_or(&spelled)
                 .to_string()
         };
-        let read = named("files.read_file");
+        let read = named(FILES_READ_FILE);
         assert!(
             script.contains(&read),
             "{}'s filesystem skill does not open `{read}`:\n{script}",
             language.display_name()
         );
-        let write = named("files.write_file");
+        let write = named(FILES_WRITE_FILE);
         assert!(
             !script.contains(&write),
             "{}'s filesystem skill opens `{write}`, which this run withheld:\n{script}",
@@ -176,14 +195,11 @@ fn every_arm_generates_the_built_in_family_skills() {
 
 #[test]
 fn the_code_arm_offers_the_carve_out_families_a_native_run_has_no_tools_for() {
-    let skills = builtin_skills(
-        &[],
-        &[],
+    let skills = code(
+        &[CAPABILITY_PROGRAM_LIBRARY],
         EndingRole::Standard,
-        /* library */ true,
-        /* docview_close */ false,
-        /* program_language */ Some(GgProgramLanguage::TypeScript),
-        &json!({}),
+        GgProgramLanguage::TypeScript,
+        json!({}),
     );
     let names: Vec<&str> = skills.iter().map(Skill::name).collect();
     // `view` and `harness` are bound to every program whatever a run enables; `programs` follows the
@@ -195,28 +211,22 @@ fn the_code_arm_offers_the_carve_out_families_a_native_run_has_no_tools_for() {
 
 #[test]
 fn the_program_library_family_follows_the_library_flag() {
-    let without = builtin_skills(
-        &[],
+    let without = code(
         &[],
         EndingRole::Standard,
-        /* library */ false,
-        /* docview_close */ false,
-        /* program_language */ Some(GgProgramLanguage::TypeScript),
-        &json!({}),
+        GgProgramLanguage::TypeScript,
+        json!({}),
     );
     assert!(!without.iter().any(|skill| skill.name() == "gg-programs"));
 }
 
 #[test]
 fn a_reviewers_session_skill_documents_the_reviewers_ending() {
-    let skills = builtin_skills(
-        &[],
+    let skills = code(
         &[],
         EndingRole::Review,
-        false,
-        false,
-        Some(GgProgramLanguage::TypeScript),
-        &json!({}),
+        GgProgramLanguage::TypeScript,
+        json!({}),
     );
     let session = skills
         .iter()

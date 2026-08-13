@@ -150,7 +150,7 @@ const SPELLING_EXEMPT: &[(&str, &str)] = &[
 ///
 /// Every function name, signature and description a model reads is reflected out of the declaration
 /// it describes and arrives in that language's catalogue; gg reaches for one by
-/// [identity](crate::sandbox::SurfaceCall) and resolves it with
+/// [identity](crate::sandbox::OperationId) and resolves it with
 /// [`spell`](crate::sandbox::spell). A `&'static str` or a `format!` in this crate that writes
 /// `view.openFile` instead is the defect that rule exists to remove, and it is invisible in review:
 /// it reads correctly, it is correct *today*, and it becomes a lie the moment the SDK renames the
@@ -322,41 +322,46 @@ fn string_literals(line: &str) -> Vec<&str> {
     out
 }
 
-/// **No API object's name is a `const` in gg's own code.**
+/// **No module path an arm groups its surface under is a `const` in gg's own code.**
 ///
 /// The weaker, shape-based half of
 /// [`no_sdk_spelling_is_written_by_hand_in_ggs_own_code`], and it exists because the strong half is
-/// textual: `const OBJECT: &str = "context"` beside `const FUNCTION: &str = "compact"`, joined at
+/// textual: `const OBJECT: &str = "gg.context"` beside `const FUNCTION: &str = "compact"`, joined at
 /// the call site with a `format!`, is a hand-written spelling that no substring search can see. That
 /// is not a hypothetical shape — it is the one [compaction](crate::compaction) actually had.
 ///
-/// So the rule is about the ingredient rather than the product: an API object's name has no business
-/// being a constant in this crate at all. gg names a call by
-/// [identity](crate::sandbox::SurfaceCall), which carries the object already.
+/// So the rule is about the ingredient rather than the product: the half of a model-facing name that
+/// says *where* a call lives has no business being a constant in this crate. gg names a call by
+/// [identity](crate::sandbox::OperationId) and resolves it to what a model reads with
+/// [`spell`](crate::sandbox::spell).
 ///
-/// # Where the vocabulary comes from
+/// # Why the needles are the arms' spellings and not gg's own namespaces
 ///
-/// From **gg's own side**, off the [operations table](crate::sandbox::OPERATIONS), rather than out
-/// of the arms' catalogues. No catalogue declares an API object at all — a catalogue groups a call
-/// under a module path — so a rule that searched for the needles there would have nothing to search
-/// for and would pass vacuously, which was measured rather than reasoned: a
-/// `const PROBE_OBJECT: &str = "fs";` planted in this crate passed such a rule.
+/// Because only one of the two is something a model ever reads. An
+/// [operation id](crate::sandbox::OperationId) is gg's *internal* vocabulary — what a
+/// configuration's [allowlist](test_cabinet_core::gg::GgAgentConfig::operations) is written in and
+/// what a call is recorded under — and a `format!` that assembled one would have assembled something
+/// no model is ever shown. It is also a vocabulary that collides with the *other* surface's by
+/// design: gg's `shell` namespace and gg's `shell` tool are the same word for the same thing said on
+/// two independent surfaces, so needles taken from there would flag every tool-name constant in the
+/// crate for a spelling hazard that does not exist.
 ///
-/// The subject is real all the same. gg's API-object vocabulary is
-/// [`SurfaceCall::object`](crate::sandbox::SurfaceCall::object) — on the wire, what the console
-/// groups by, and what a `format!` could join a function name onto — and stating the needles where
-/// gg states the vocabulary is what keeps the rule from being emptied by an arm's own shape.
+/// A [module path](crate::sandbox::CatalogueFunction::object) is the other thing entirely: it is
+/// what the model types, it differs per arm by design, and half of it in a `const` here is half of a
+/// sentence that will be false the moment an SDK is reshaped or a twelfth arm is registered.
 #[test]
 fn no_object_name_is_a_constant_waiting_to_be_joined() {
-    let mut objects: Vec<&str> = crate::sandbox::OPERATIONS
-        .iter()
-        .map(|operation| operation.call.object)
-        .collect();
+    let mut objects: Vec<&str> = Vec::new();
+    for language in crate::sandbox::all_languages() {
+        for function in crate::sandbox::catalogue_functions(language) {
+            objects.push(function.object);
+        }
+    }
     objects.sort_unstable();
     objects.dedup();
     assert!(
         !objects.is_empty(),
-        "gg's operations table names no API object, so this rule has nothing to search for"
+        "no registered arm groups its surface under anything, so this rule has nothing to search for"
     );
 
     fn walk(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<(String, String)>) {
@@ -408,9 +413,9 @@ fn no_object_name_is_a_constant_waiting_to_be_joined() {
 
     assert!(
         offenders.is_empty(),
-        "an API object's name is a constant in gg's own code, which is half of a hand-written \
-         spelling waiting for a `format!`. Name the call by its `SurfaceCall` identity and resolve \
-         it with `spell` instead:\n{}",
+        "an arm's module path is a constant in gg's own code, which is half of a hand-written \
+         spelling waiting for a `format!`. Name the call by its `OperationId` and resolve it with \
+         `spell` instead:\n{}",
         offenders.join("\n"),
     );
 }

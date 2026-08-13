@@ -1,5 +1,5 @@
-//! gg's own vocabulary of **operations**: every model-facing call the surface has, and — for each —
-//! the one thing that decides whether an agent is given it.
+//! gg's own vocabulary of **operations**: every call a [responses-as-code](crate::sandbox) program
+//! can make, and — for each — the one thing that decides whether an agent is given it.
 //!
 //! An operation is a *capability a program can exercise*, named once, on gg's side, in gg's own
 //! words. It is deliberately not a function: a function is a spelling, and every registered
@@ -7,18 +7,20 @@
 //! `requestChanges` are one operation; so are a free function and the method some arm hangs off the
 //! type it operates on.
 //!
-//! # What this replaces, and why it is stronger
+//! # This is the responses-as-code vocabulary, and only that
 //!
-//! The table below is the successor of `MODEL_FACING_CALLS`, which enumerated the same 47 calls as
-//! bare `(object, key)` pairs and stopped there. Everything *about* a call that gg then had to act
-//! on — the tool whose being enabled binds it, the [ending role](EndingRole) whose programs get it,
-//! the fact that the [program library](crate::programs)'s three are bought by a capability — lived
-//! in eleven catalogues, one per arm, as the `requires` and `ending` fields a reflector wrote.
-//! Eleven copies of one fact, kept equal by comparing them to each other.
+//! gg has two model-facing surfaces over one core of typed implementations, and an agent has
+//! **exactly one** of them: a tool-calling agent emits a JSON tool call, a responses-as-code agent
+//! writes a program that calls typed API functions. The two are independent all the way down to the
+//! typed implementation they share — the chain is *tool → internal* and *operation → internal*, never
+//! one through the other — and the names are independent with them. An operation id is not usable as
+//! a tool name and a tool name is not usable here; nothing in this table is derived from gg's tool
+//! vocabulary, and nothing in that vocabulary is derived from this table.
 //!
-//! Here it is stated once, by gg, as a [`Binding`]. An arm no longer has a field it can be wrong in,
-//! and the [documentation runtime](crate::docs::DocsRuntime::bound) — the single predicate deciding
-//! what a model may be shown — reads this rather than the arm's own claim about itself.
+//! Which is not to say the two are equals. Responses-as-code is the strictly richer surface: fourteen
+//! operations have no tool behind them at all, three operations share one read, and a program
+//! composes calls a tool-calling turn can only make one at a time. Tool calling is the **subset**,
+//! and a gate that held the two in bijection would be asserting a symmetry gg does not have.
 //!
 //! # Every SDK is static, so this table is the enforcement
 //!
@@ -32,9 +34,8 @@
 //!
 //! # No arm, and no reflected catalogue, ever learns a capability id
 //!
-//! [`Binding::Capability`] names a gg capability id (`program-library`, `docview-close`), and that
-//! name appears
-//! **only** here. It is not in any `signatures.json`, not in any SDK, and not in anything a
+//! [`Binding::Capability`] names a gg capability id (`read-file`, `program-library`), and that name
+//! appears **only** here. It is not in any `signatures.json`, not in any SDK, and not in anything a
 //! reflector emits — a catalogue that carried one would be an arm asserting something about gg's
 //! configuration surface, which is the one thing an arm cannot be held to. The
 //! [projection](super::signatures::CatalogueFunction::capability) that carries the id to the docs
@@ -44,25 +45,15 @@ use std::collections::BTreeSet;
 use std::fmt;
 
 use test_cabinet_core::gg::{
-    CAPABILITY_DOCVIEW_CLOSE, CAPABILITY_PROGRAM_LIBRARY, GgProgramLanguage,
+    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_DOCVIEW_CLOSE,
+    CAPABILITY_EDIT_FILE, CAPABILITY_EXEC, CAPABILITY_FORK, CAPABILITY_LIST_DIR,
+    CAPABILITY_MEMORIES, CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_PROJECT_MANAGEMENT,
+    CAPABILITY_READ_FILE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS,
+    CAPABILITY_TASKS, CAPABILITY_WRITE_FILE, GgProgramLanguage,
 };
 
 use crate::ending::EndingRole;
-use crate::tools::ALL_TOOL_NAMES;
 
-use super::language::{
-    AGENTS_EXEC, AGENTS_FORK, AGENTS_SEND_MESSAGE, AGENTS_SPAWN_SUBAGENT, AGENTS_TRANSITION_STATE,
-    AGENTS_WAIT_FOR_SUBAGENTS, CONTEXT_ARCHIVE_THREAD, CONTEXT_COMPACT, CONTEXT_EVICT_FILE_VIEW,
-    CONTEXT_SEARCH_ARCHIVE, DOCS_CLOSE, DOCS_CLOSE_ALL, DOCS_SEARCH, FS_EDIT_FILE, FS_LIST_DIR,
-    FS_READ_FILE, FS_READ_TEXT_FILE, FS_WRITE_FILE, HARNESS_FINISH, MEMORY_CREATE_MEMORY,
-    MEMORY_DELETE_MEMORY, MEMORY_EDIT_MEMORY, MEMORY_READ_MEMORY, MEMORY_SEARCH_MEMORIES,
-    MEMORY_UPDATE_MEMORY, MEMORY_WRITE_MEMORY, PROGRAMS_GET, PROGRAMS_HISTORY, PROGRAMS_RERUN,
-    PROJECT_CREATE_EPIC, PROJECT_CREATE_ISSUE, PROJECT_REMOVE_EPIC, PROJECT_REMOVE_ISSUE,
-    PROJECT_SET_ISSUE_BLOCKED_BY, PROJECT_UPDATE_ISSUE, PROJECT_WAIT_FOR_ISSUE, REVIEW_APPROVE,
-    REVIEW_REQUEST_CHANGES, SKILLS_READ_SKILL, SYSTEM_SHELL, SurfaceCall, TASKS_ADD_TASK,
-    TASKS_COMPLETE_TASK, TASKS_REMOVE_TASK, TASKS_SET_BLOCKED_BY, TASKS_UPDATE_TASK, VIEW_CLOSE,
-    VIEW_CURRENT, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, VIEW_OPEN_TEXT,
-};
 use super::signatures::CatalogueFunction;
 
 /// One operation's **identity**: the family it belongs to, and gg's own key for it within that
@@ -80,8 +71,8 @@ pub struct OperationId {
     /// It is the family's *name*, not its id: the skills library files the filesystem family under
     /// `gg-filesystem`, because a skill's id is a handle a model reads, and an operation id
     /// carrying that prefix would spell `gg-filesystem.read_file` — gg's own name for gg, twice.
-    /// The two are held in bijection by this module's tests, so the short name is a rename of one
-    /// vocabulary rather than a second one.
+    /// The two are held in bijection by the [capability gate](mod@super::language), so the short name is
+    /// a rename of one vocabulary rather than a second one.
     pub namespace: &'static str,
     /// gg's own key for the operation within its family: `read_file`, `request_changes`. Always
     /// `snake_case`, and deliberately not any one SDK's spelling of it.
@@ -101,30 +92,228 @@ impl fmt::Display for OperationId {
     }
 }
 
-/// What buys one operation — the whole of gg's gating vocabulary, and the only place any of it is
-/// written down.
+// ---------------------------------------------------------------------------------------------
+// The ids
+// ---------------------------------------------------------------------------------------------
+
+// Every operation gg has, named once. A constant rather than a literal at the row below it because
+// these are what the rest of gg *quotes*: the membrane opens each call's record under one, the
+// prompt names calls by one, and a refusal spells one back at the model in the arm's own words. Two
+// literals for one operation — one in the table and one at the call site — is the drift the surface
+// call pair used to be, and it disagreed with the table on seven of twelve groupings before it was
+// deleted.
+//
+// The constant is named for the id it carries, namespace first, so that a reader who has the
+// rendered id from an event (`memories.update_memory`) can find its row by reading the name.
+
+/// Run a shell command in the workspace.
+pub const SHELL_SHELL: OperationId = OperationId::new("shell", "shell");
+
+/// Read a workspace file, as the variant the read returns.
+pub const FILES_READ_FILE: OperationId = OperationId::new("files", "read_file");
+
+/// Read a workspace file's text directly — the one helper, which shares
+/// [`read_file`](FILES_READ_FILE)'s gate and has an identity of its own.
+pub const FILES_READ_TEXT_FILE: OperationId = OperationId::new("files", "read_text_file");
+
+/// Write a workspace file whole.
+pub const FILES_WRITE_FILE: OperationId = OperationId::new("files", "write_file");
+
+/// Replace one string in a workspace file.
+pub const FILES_EDIT_FILE: OperationId = OperationId::new("files", "edit_file");
+
+/// List a workspace directory.
+pub const FILES_LIST_DIR: OperationId = OperationId::new("files", "list_dir");
+
+/// Read an authored skill.
+pub const SKILLS_READ_SKILL: OperationId = OperationId::new("skills", "read_skill");
+
+/// Write the agent's single scratchpad memory.
+pub const MEMORIES_WRITE_MEMORY: OperationId = OperationId::new("memories", "write_memory");
+
+/// Update an existing memory whole.
+pub const MEMORIES_UPDATE_MEMORY: OperationId = OperationId::new("memories", "update_memory");
+
+/// Create a new memory.
+pub const MEMORIES_CREATE_MEMORY: OperationId = OperationId::new("memories", "create_memory");
+
+/// Read one memory.
+pub const MEMORIES_READ_MEMORY: OperationId = OperationId::new("memories", "read_memory");
+
+/// Replace one string in a memory.
+pub const MEMORIES_EDIT_MEMORY: OperationId = OperationId::new("memories", "edit_memory");
+
+/// Search the memory index by keyword.
+pub const MEMORIES_SEARCH_MEMORIES: OperationId = OperationId::new("memories", "search_memories");
+
+/// Delete a memory.
+pub const MEMORIES_DELETE_MEMORY: OperationId = OperationId::new("memories", "delete_memory");
+
+/// Add a task to the agent's own list.
+pub const TASKS_ADD_TASK: OperationId = OperationId::new("tasks", "add_task");
+
+/// Patch a task.
+pub const TASKS_UPDATE_TASK: OperationId = OperationId::new("tasks", "update_task");
+
+/// Re-state a task's dependencies.
+pub const TASKS_SET_BLOCKED_BY: OperationId = OperationId::new("tasks", "set_blocked_by");
+
+/// Mark a task done.
+pub const TASKS_COMPLETE_TASK: OperationId = OperationId::new("tasks", "complete_task");
+
+/// Drop a task.
+pub const TASKS_REMOVE_TASK: OperationId = OperationId::new("tasks", "remove_task");
+
+/// Open an epic on the board.
+pub const BOARD_CREATE_EPIC: OperationId = OperationId::new("board", "create_epic");
+
+/// File an issue on the board.
+pub const BOARD_CREATE_ISSUE: OperationId = OperationId::new("board", "create_issue");
+
+/// Patch an issue.
+pub const BOARD_UPDATE_ISSUE: OperationId = OperationId::new("board", "update_issue");
+
+/// Re-state an issue's dependencies.
+pub const BOARD_SET_ISSUE_BLOCKED_BY: OperationId =
+    OperationId::new("board", "set_issue_blocked_by");
+
+/// Remove an epic.
+pub const BOARD_REMOVE_EPIC: OperationId = OperationId::new("board", "remove_epic");
+
+/// Remove an issue.
+pub const BOARD_REMOVE_ISSUE: OperationId = OperationId::new("board", "remove_issue");
+
+/// Register a deferred wait on a board issue.
+pub const BOARD_WAIT_FOR_ISSUE: OperationId = OperationId::new("board", "wait_for_issue");
+
+/// Reclaim a file view from the agent's own window.
+pub const CONTEXT_EVICT_FILE_VIEW: OperationId = OperationId::new("context", "evict_file_view");
+
+/// Archive a range of the agent's own thread.
+pub const CONTEXT_ARCHIVE_THREAD: OperationId = OperationId::new("context", "archive_thread");
+
+/// Search what the agent has archived.
+pub const CONTEXT_SEARCH_ARCHIVE: OperationId = OperationId::new("context", "search_archive");
+
+/// Register a compaction of the agent's own window.
+pub const CONTEXT_COMPACT: OperationId = OperationId::new("context", "compact");
+
+/// Spawn a child agent.
+pub const DELEGATION_SPAWN_SUBAGENT: OperationId = OperationId::new("delegation", "spawn_subagent");
+
+/// Block until child agents return.
+pub const DELEGATION_WAIT_FOR_SUBAGENTS: OperationId =
+    OperationId::new("delegation", "wait_for_subagents");
+
+/// Send a message to a running child.
+pub const DELEGATION_SEND_MESSAGE: OperationId = OperationId::new("delegation", "send_message");
+
+/// Declare a move to another state of this agent's machine.
+pub const DELEGATION_TRANSITION_STATE: OperationId =
+    OperationId::new("delegation", "transition_state");
+
+/// Declare that this session continues as another agent.
+pub const DELEGATION_EXEC: OperationId = OperationId::new("delegation", "exec");
+
+/// Register a copy of this agent.
+pub const DELEGATION_FORK: OperationId = OperationId::new("delegation", "fork");
+
+/// **The call the whole discovery loop begins at**: search the surface this agent binds by keyword,
+/// by module, or by both, and read the briefs that come back.
+///
+/// The prompt names no function, so this is the only way a model can learn what it holds without
+/// having been told a name first — which is why it is bound to every program whatever a run enables.
+pub const DOCS_SEARCH: OperationId = OperationId::new("docs", "search");
+
+/// Take one documentation view back out of the agent's window, by the key it was opened under.
+pub const DOCS_CLOSE: OperationId = OperationId::new("docs", "close");
+
+/// Take **every** documentation view out of the agent's window — the blanket form of
+/// [`DOCS_CLOSE`], behind the same capability.
+pub const DOCS_CLOSE_ALL: OperationId = OperationId::new("docs", "close_all");
+
+/// Read a workspace file **and** show it to the agent. It shares the read gate with
+/// [`files.read_file`](FILES_READ_FILE) and is recorded as itself: what the model wrote is
+/// `views.open_file`, and what runs underneath is the execution layer's business.
+pub const VIEWS_OPEN_FILE: OperationId = OperationId::new("views", "open_file");
+
+/// The call that shows the agent a value it computed — quoted in the prompt's account of the
+/// message kinds an agent receives.
+pub const VIEWS_OPEN_TEXT: OperationId = OperationId::new("views", "open_text");
+
+/// Show the agent one function's documentation.
+pub const VIEWS_OPEN_DOCS_VIEW: OperationId = OperationId::new("views", "open_docs_view");
+
+/// The call that closes a view — what the context-pressure block points an agent at when text views
+/// are holding window it could reclaim.
+pub const VIEWS_CLOSE: OperationId = OperationId::new("views", "close");
+
+/// What is open in the agent's window right now.
+pub const VIEWS_CURRENT: OperationId = OperationId::new("views", "current");
+
+/// The [program library](crate::programs)'s own directory.
+pub const PROGRAMS_HISTORY: OperationId = OperationId::new("programs", "history");
+
+/// The program-library call that fetches a program the agent already ran.
+pub const PROGRAMS_GET: OperationId = OperationId::new("programs", "get");
+
+/// The program-library call that hands gg a program to run in place of the current one — quoted in
+/// every notice about a hand-over gg did not honour.
+pub const PROGRAMS_RERUN: OperationId = OperationId::new("programs", "rerun");
+
+/// The [standard](crate::ending::EndingRole::Standard) role's ending call.
+pub const SESSION_FINISH: OperationId = OperationId::new("session", "finish");
+
+/// The [review](crate::ending::EndingRole::Review) role's approval.
+pub const SESSION_APPROVE: OperationId = OperationId::new("session", "approve");
+
+/// The review role's change request.
+pub const SESSION_REQUEST_CHANGES: OperationId = OperationId::new("session", "request_changes");
+
+/// What buys one operation — the whole of gg's gating vocabulary for the responses-as-code surface,
+/// and the only place any of it is written down.
 ///
 /// The four arms are not four spellings of one condition; they are four different *kinds* of thing
-/// deciding, and an agent's scope is assembled from all four at once. Modelling them as one
-/// `Option<String>` was what forced the [program library](crate::programs) to travel as a boolean
-/// beside the gate it could not be expressed in.
+/// deciding, and an agent's scope is assembled from all four at once.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Binding {
-    /// Bound when the run enables this gg tool — a member of [`ALL_TOOL_NAMES`], exactly.
-    ///
-    /// More than one operation may name the same tool, and three do: `files.read_file`,
-    /// `files.read_text_file` and `views.open_file` are three operations over one read. They are
-    /// separate operations because they are separately *documented* and separately called, and one
-    /// tool because there is one thing they do to the workspace.
-    Tool(&'static str),
     /// Bound for agents dispatched in this [ending role](EndingRole), and withheld from every
     /// other: "the work is complete" is not a verdict a reviewer is asked for.
+    ///
+    /// The one gate no configuration reaches. A role is what an agent was *dispatched* as, so an
+    /// allowlist that could withhold an ending would be a configuration in which an agent cannot end
+    /// its own session.
     Ending(EndingRole),
-    /// Bound when the agent holds this gg capability — the gate neither of the two above can
-    /// express, because nothing dispatches it and no role decides it.
+    /// Bought by this gg capability, and — within it — by the agent's own operation allowlist. Every
+    /// operation a run can configure at all is one of these; see [`Grants::permits`] for why both
+    /// halves are asked.
+    ///
+    /// More than one operation may name the same capability, and most do: a capability is a *family*
+    /// of calls in gg's configuration surface, and `read-file` alone buys three — `files.read_file`,
+    /// `files.read_text_file` and `views.open_file` are three operations over one read. They are
+    /// separate operations because they are separately documented, separately called and separately
+    /// grantable.
     Capability(&'static str),
-    /// Bound to every program whatever a run enables. A run that offers no tools at all must still
-    /// be able to show its model something — and must always be able to *find* what it does hold —
+    /// Bought by **where this instance stands**, and by nothing on its own profile: the one call an
+    /// agent holds because of a machine it was placed in rather than because of a capability
+    /// somebody switched on for it.
+    ///
+    /// It has exactly one member, [`transition_state`](DELEGATION_TRANSITION_STATE), and the arm
+    /// exists because that call cannot be spelled as a capability without becoming unreachable. The
+    /// [`fsm`](test_cabinet_core::gg::CAPABILITY_FSM) capability is what makes a profile the *shell*
+    /// driving a machine, and a shell takes no turns; the profile that actually runs a state is an
+    /// ordinary one that never declares it. Filing the row under that capability would therefore ask
+    /// a question whose answer is `false` for every agent that could ever make the call, and leave a
+    /// program standing in a state it cannot move out of.
+    ///
+    /// No allowlist reaches it either, for the same reason and by the same argument the ending calls
+    /// make: an agent's configuration is written where the machine is not visible, so a list that
+    /// could withhold the transition would be a configuration in which a state has no exit.
+    /// [`Grants`] carries it as a granted operation the run resolved rather than as one the
+    /// configuration named — see [`crate::sandbox::granted_operations`].
+    Machine,
+    /// Bound to every program whatever a run enables. A run that grants nothing at all must still be
+    /// able to show its model something — and must always be able to *find* what it does hold —
     /// which is why the view surface is mostly this and why the documentation search is exactly it.
     Always,
 }
@@ -157,7 +346,7 @@ pub enum Binding {
               arm binds and watch every arm fail, then excuse them and watch it pass."
 )]
 pub enum Applicability {
-    /// Every registered language offers it. The default, and the state of all 47 today.
+    /// Every registered language offers it. The default, and the state of all 50 today.
     Universal,
     /// Every registered language offers it **except** these, each paired with the reason — prose,
     /// required, and reviewed. An exemption naming a language that in fact binds the operation is
@@ -175,8 +364,8 @@ pub enum Applicability {
 #[derive(Debug, Clone, Copy)]
 #[allow(
     dead_code,
-    reason = "a run reads two of these fields — `call` to resolve a catalogue entry to its row, and \
-              `binding` to decide whether the agent has it. The other four are read by the \
+    reason = "a run reads two of these fields — `id` to resolve a catalogue entry to its row, and \
+              `binding` to decide whether the agent has it. The other three are read by the \
               capability gate (`language/agreement.rs`), which is where a table that exists to be \
               *correct* rather than to be *called* earns its keep; each becomes a run-time read as \
               the stages that consume it land."
@@ -188,13 +377,6 @@ pub struct Operation {
     /// one grouping that survives every arm being idiomatic, and therefore the one the
     /// [id](Self::id) is namespaced on.
     pub family: &'static str,
-    /// The `(object, key)` pair gg names this operation by in its **own** sentences.
-    ///
-    /// The one field here that is about *spelling*. It is what the [`SurfaceCall`] constants are
-    /// written in — how a prompt, a refusal or the membrane's own record names a call — and what
-    /// [`spell`](super::language::spell) turns into the arm's spelling when gg names the call back
-    /// at a model.
-    pub call: SurfaceCall,
     /// What buys it. gg decides this; **no arm declares it**.
     pub binding: Binding,
     /// Whether a program passes it anything at all.
@@ -231,29 +413,26 @@ const TAKES_INPUT: bool = true;
 /// [`Operation::takes_input`], spelled — the operations a program calls with nothing.
 const NO_INPUT: bool = false;
 
-/// One operation, spelled compactly: its id, its family, the call today's catalogues file it under,
-/// what binds it, and whether it takes input.
+/// One operation, spelled compactly: its id, its family, what binds it, and whether it takes input.
 ///
 /// The second form carries [exemptions](Applicability::UniversalExcept). It has no uses today —
 /// every arm offers every operation — and it is written down all the same, because the first arm
 /// that legitimately cannot offer one must have somewhere to say so *here*, in the diff that
 /// excuses it.
 macro_rules! operation {
-    ($namespace:literal, $key:literal, $family:expr, $call:expr, $binding:expr, $input:expr) => {
+    ($id:expr, $family:expr, $binding:expr, $input:expr) => {
         Operation {
-            id: OperationId::new($namespace, $key),
+            id: $id,
             family: $family,
-            call: $call,
             binding: $binding,
             takes_input: $input,
             applies: Applicability::Universal,
         }
     };
-    ($namespace:literal, $key:literal, $family:expr, $call:expr, $binding:expr, $input:expr, $except:expr) => {
+    ($id:expr, $family:expr, $binding:expr, $input:expr, $except:expr) => {
         Operation {
-            id: OperationId::new($namespace, $key),
+            id: $id,
             family: $family,
-            call: $call,
             binding: $binding,
             takes_input: $input,
             applies: Applicability::UniversalExcept($except),
@@ -261,16 +440,17 @@ macro_rules! operation {
     };
 }
 
-/// **Every model-facing operation gg has**, in catalogue order.
+/// **Every operation a responses-as-code program can make**, in catalogue order.
 ///
-/// Enumerated rather than derived, for the reason its predecessor was: it is one half of an
-/// agreement. An operation with no arm behind it puts a sentence in front of a model naming
-/// something its scope does not hold; an arm binding something with no row here is a call gg has no
-/// identity to record, gate or document under. Deriving either from the other would prove neither.
+/// Enumerated rather than derived, because it is one half of an agreement. An operation with no arm
+/// behind it puts a sentence in front of a model naming something its scope does not hold; an arm
+/// binding something with no row here is a call gg has no identity to record, gate or document
+/// under. Deriving either from the other would prove neither.
 ///
-/// The **tool** half is nonetheless held to [`ALL_TOOL_NAMES`] by a `const` assertion below, so a
-/// tool added to gg fails this file to compile until it has an operation. That is the one direction
-/// where derivation is safe, because the tool vocabulary is already gg's own.
+/// It is derived from nothing at all on the *tool* side either, and that is the point of the whole
+/// table: a tool name is a second, independent vocabulary belonging to the other surface, and a row
+/// here says which **capability** buys the call. Two operations that a tool-calling agent would reach
+/// through one tool are two rows; fourteen rows correspond to no tool whatsoever.
 ///
 /// # The `docs` family, and why it is a family of its own
 ///
@@ -293,408 +473,288 @@ macro_rules! operation {
 /// drawn this way everywhere else: they have their own WIT interface, their own membrane file, and
 /// their own [runtime](crate::docs::DocsRuntime).
 ///
-/// What stays behind in `views` is [`open_docs_view`](super::language::VIEW_OPEN_DOCS_VIEW), and
-/// that is the right side of the line rather than a leftover: opening a documentation view *is*
-/// putting material into the window, which is what the view family is, and it is the one of the four
-/// that a run can neither buy nor withhold.
+/// What stays behind in `views` is [`open_docs_view`](VIEWS_OPEN_DOCS_VIEW), and that is the right
+/// side of the line rather than a leftover: opening a documentation view *is* putting material into
+/// the window, which is what the view family is, and it is the one of the four that a run can
+/// neither buy nor withhold.
 pub const OPERATIONS: &[Operation] = &[
     operation!(
-        "shell",
-        "shell",
+        SHELL_SHELL,
         FAMILY_SHELL,
-        SYSTEM_SHELL,
-        Binding::Tool("shell"),
+        Binding::Capability(CAPABILITY_SHELL),
         TAKES_INPUT
     ),
     operation!(
-        "files",
-        "read_file",
+        FILES_READ_FILE,
         FAMILY_FILESYSTEM,
-        FS_READ_FILE,
-        Binding::Tool("read_file"),
+        Binding::Capability(CAPABILITY_READ_FILE),
         TAKES_INPUT
     ),
     operation!(
-        "files",
-        "read_text_file",
+        FILES_READ_TEXT_FILE,
         FAMILY_FILESYSTEM,
-        FS_READ_TEXT_FILE,
-        Binding::Tool("read_file"),
+        Binding::Capability(CAPABILITY_READ_FILE),
         TAKES_INPUT
     ),
     operation!(
-        "files",
-        "write_file",
+        FILES_WRITE_FILE,
         FAMILY_FILESYSTEM,
-        FS_WRITE_FILE,
-        Binding::Tool("write_file"),
+        Binding::Capability(CAPABILITY_WRITE_FILE),
         TAKES_INPUT
     ),
     operation!(
-        "files",
-        "edit_file",
+        FILES_EDIT_FILE,
         FAMILY_FILESYSTEM,
-        FS_EDIT_FILE,
-        Binding::Tool("edit_file"),
+        Binding::Capability(CAPABILITY_EDIT_FILE),
         TAKES_INPUT
     ),
     operation!(
-        "files",
-        "list_dir",
+        FILES_LIST_DIR,
         FAMILY_FILESYSTEM,
-        FS_LIST_DIR,
-        Binding::Tool("list_dir"),
+        Binding::Capability(CAPABILITY_LIST_DIR),
         TAKES_INPUT
     ),
     operation!(
-        "skills",
-        "read_skill",
-        FAMILY_SKILLS,
         SKILLS_READ_SKILL,
-        Binding::Tool("read_skill"),
+        FAMILY_SKILLS,
+        Binding::Capability(CAPABILITY_SKILLS),
         TAKES_INPUT
     ),
     operation!(
-        "memories",
-        "write_memory",
+        MEMORIES_WRITE_MEMORY,
         FAMILY_MEMORY,
-        MEMORY_WRITE_MEMORY,
-        Binding::Tool("write_memory"),
+        Binding::Capability(CAPABILITY_MEMORIES),
         TAKES_INPUT
     ),
     operation!(
-        "memories",
-        "update_memory",
+        MEMORIES_UPDATE_MEMORY,
         FAMILY_MEMORY,
-        MEMORY_UPDATE_MEMORY,
-        Binding::Tool("update_memory"),
+        Binding::Capability(CAPABILITY_MEMORIES),
         TAKES_INPUT
     ),
     operation!(
-        "memories",
-        "create_memory",
+        MEMORIES_CREATE_MEMORY,
         FAMILY_MEMORY,
-        MEMORY_CREATE_MEMORY,
-        Binding::Tool("create_memory"),
+        Binding::Capability(CAPABILITY_MEMORIES),
         TAKES_INPUT
     ),
     operation!(
-        "memories",
-        "read_memory",
+        MEMORIES_READ_MEMORY,
         FAMILY_MEMORY,
-        MEMORY_READ_MEMORY,
-        Binding::Tool("read_memory"),
+        Binding::Capability(CAPABILITY_MEMORIES),
         TAKES_INPUT
     ),
     operation!(
-        "memories",
-        "edit_memory",
+        MEMORIES_EDIT_MEMORY,
         FAMILY_MEMORY,
-        MEMORY_EDIT_MEMORY,
-        Binding::Tool("edit_memory"),
+        Binding::Capability(CAPABILITY_MEMORIES),
         TAKES_INPUT
     ),
     operation!(
-        "memories",
-        "search_memories",
+        MEMORIES_SEARCH_MEMORIES,
         FAMILY_MEMORY,
-        MEMORY_SEARCH_MEMORIES,
-        Binding::Tool("search_memories"),
+        Binding::Capability(CAPABILITY_MEMORIES),
         TAKES_INPUT
     ),
     operation!(
-        "memories",
-        "delete_memory",
+        MEMORIES_DELETE_MEMORY,
         FAMILY_MEMORY,
-        MEMORY_DELETE_MEMORY,
-        Binding::Tool("delete_memory"),
+        Binding::Capability(CAPABILITY_MEMORIES),
         TAKES_INPUT
     ),
     operation!(
-        "tasks",
-        "add_task",
-        FAMILY_TASKS,
         TASKS_ADD_TASK,
-        Binding::Tool("add_task"),
+        FAMILY_TASKS,
+        Binding::Capability(CAPABILITY_TASKS),
         TAKES_INPUT
     ),
     operation!(
-        "tasks",
-        "update_task",
-        FAMILY_TASKS,
         TASKS_UPDATE_TASK,
-        Binding::Tool("update_task"),
+        FAMILY_TASKS,
+        Binding::Capability(CAPABILITY_TASKS),
         TAKES_INPUT
     ),
     operation!(
-        "tasks",
-        "set_blocked_by",
-        FAMILY_TASKS,
         TASKS_SET_BLOCKED_BY,
-        Binding::Tool("set_blocked_by"),
+        FAMILY_TASKS,
+        Binding::Capability(CAPABILITY_TASKS),
         TAKES_INPUT
     ),
     operation!(
-        "tasks",
-        "complete_task",
-        FAMILY_TASKS,
         TASKS_COMPLETE_TASK,
-        Binding::Tool("complete_task"),
-        TAKES_INPUT
-    ),
-    operation!(
-        "tasks",
-        "remove_task",
         FAMILY_TASKS,
+        Binding::Capability(CAPABILITY_TASKS),
+        TAKES_INPUT
+    ),
+    operation!(
         TASKS_REMOVE_TASK,
-        Binding::Tool("remove_task"),
+        FAMILY_TASKS,
+        Binding::Capability(CAPABILITY_TASKS),
         TAKES_INPUT
     ),
     operation!(
-        "board",
-        "create_epic",
+        BOARD_CREATE_EPIC,
         FAMILY_PROJECT,
-        PROJECT_CREATE_EPIC,
-        Binding::Tool("create_epic"),
+        Binding::Capability(CAPABILITY_PROJECT_MANAGEMENT),
         TAKES_INPUT
     ),
     operation!(
-        "board",
-        "create_issue",
+        BOARD_CREATE_ISSUE,
         FAMILY_PROJECT,
-        PROJECT_CREATE_ISSUE,
-        Binding::Tool("create_issue"),
+        Binding::Capability(CAPABILITY_PROJECT_MANAGEMENT),
         TAKES_INPUT
     ),
     operation!(
-        "board",
-        "update_issue",
+        BOARD_UPDATE_ISSUE,
         FAMILY_PROJECT,
-        PROJECT_UPDATE_ISSUE,
-        Binding::Tool("update_issue"),
+        Binding::Capability(CAPABILITY_PROJECT_MANAGEMENT),
         TAKES_INPUT
     ),
     operation!(
-        "board",
-        "set_issue_blocked_by",
+        BOARD_SET_ISSUE_BLOCKED_BY,
         FAMILY_PROJECT,
-        PROJECT_SET_ISSUE_BLOCKED_BY,
-        Binding::Tool("set_issue_blocked_by"),
+        Binding::Capability(CAPABILITY_PROJECT_MANAGEMENT),
         TAKES_INPUT
     ),
     operation!(
-        "board",
-        "remove_epic",
+        BOARD_REMOVE_EPIC,
         FAMILY_PROJECT,
-        PROJECT_REMOVE_EPIC,
-        Binding::Tool("remove_epic"),
+        Binding::Capability(CAPABILITY_PROJECT_MANAGEMENT),
         TAKES_INPUT
     ),
     operation!(
-        "board",
-        "remove_issue",
+        BOARD_REMOVE_ISSUE,
         FAMILY_PROJECT,
-        PROJECT_REMOVE_ISSUE,
-        Binding::Tool("remove_issue"),
+        Binding::Capability(CAPABILITY_PROJECT_MANAGEMENT),
         TAKES_INPUT
     ),
     operation!(
-        "board",
-        "wait_for_issue",
+        BOARD_WAIT_FOR_ISSUE,
         FAMILY_PROJECT,
-        PROJECT_WAIT_FOR_ISSUE,
-        Binding::Tool("wait_for_issue"),
+        Binding::Capability(CAPABILITY_PROJECT_MANAGEMENT),
         TAKES_INPUT
     ),
     operation!(
-        "context",
-        "evict_file_view",
-        FAMILY_CONTEXT,
         CONTEXT_EVICT_FILE_VIEW,
-        Binding::Tool("evict_file_view"),
+        FAMILY_CONTEXT,
+        Binding::Capability(CAPABILITY_AGENT_MANAGED_CONTEXT),
         TAKES_INPUT
     ),
     operation!(
-        "context",
-        "archive_thread",
-        FAMILY_CONTEXT,
         CONTEXT_ARCHIVE_THREAD,
-        Binding::Tool("archive_thread"),
+        FAMILY_CONTEXT,
+        Binding::Capability(CAPABILITY_AGENT_MANAGED_CONTEXT),
         TAKES_INPUT
     ),
     operation!(
-        "context",
-        "search_archive",
-        FAMILY_CONTEXT,
         CONTEXT_SEARCH_ARCHIVE,
-        Binding::Tool("search_archive"),
-        TAKES_INPUT
-    ),
-    operation!(
-        "context",
-        "compact",
         FAMILY_CONTEXT,
+        Binding::Capability(CAPABILITY_AGENT_MANAGED_CONTEXT),
+        TAKES_INPUT
+    ),
+    operation!(
         CONTEXT_COMPACT,
-        Binding::Tool("compact"),
+        FAMILY_CONTEXT,
+        Binding::Capability(CAPABILITY_COMPACTION),
         TAKES_INPUT
     ),
     operation!(
-        "delegation",
-        "spawn_subagent",
+        DELEGATION_SPAWN_SUBAGENT,
         FAMILY_DELEGATION,
-        AGENTS_SPAWN_SUBAGENT,
-        Binding::Tool("spawn_subagent"),
+        Binding::Capability(CAPABILITY_SUBAGENTS),
         TAKES_INPUT
     ),
     operation!(
-        "delegation",
-        "wait_for_subagents",
+        DELEGATION_WAIT_FOR_SUBAGENTS,
         FAMILY_DELEGATION,
-        AGENTS_WAIT_FOR_SUBAGENTS,
-        Binding::Tool("wait_for_subagents"),
+        Binding::Capability(CAPABILITY_SUBAGENTS),
         TAKES_INPUT
     ),
     operation!(
-        "delegation",
-        "send_message",
+        DELEGATION_SEND_MESSAGE,
         FAMILY_DELEGATION,
-        AGENTS_SEND_MESSAGE,
-        Binding::Tool("send_message"),
+        Binding::Capability(CAPABILITY_SUBAGENTS),
         TAKES_INPUT
     ),
     operation!(
-        "delegation",
-        "transition_state",
+        DELEGATION_TRANSITION_STATE,
         FAMILY_DELEGATION,
-        AGENTS_TRANSITION_STATE,
-        Binding::Tool("transition_state"),
+        Binding::Machine,
         TAKES_INPUT
     ),
     operation!(
-        "delegation",
-        "exec",
+        DELEGATION_EXEC,
         FAMILY_DELEGATION,
-        AGENTS_EXEC,
-        Binding::Tool("exec"),
+        Binding::Capability(CAPABILITY_EXEC),
         TAKES_INPUT
     ),
     operation!(
-        "delegation",
-        "fork",
+        DELEGATION_FORK,
         FAMILY_DELEGATION,
-        AGENTS_FORK,
-        Binding::Tool("fork"),
+        Binding::Capability(CAPABILITY_FORK),
         TAKES_INPUT
     ),
+    operation!(DOCS_SEARCH, FAMILY_DOCS, Binding::Always, TAKES_INPUT),
     operation!(
-        "docs",
-        "search",
-        FAMILY_DOCS,
-        DOCS_SEARCH,
-        Binding::Always,
-        TAKES_INPUT
-    ),
-    operation!(
-        "docs",
-        "close",
-        FAMILY_DOCS,
         DOCS_CLOSE,
-        Binding::Capability(CAPABILITY_DOCVIEW_CLOSE),
-        TAKES_INPUT
-    ),
-    operation!(
-        "docs",
-        "close_all",
         FAMILY_DOCS,
+        Binding::Capability(CAPABILITY_DOCVIEW_CLOSE),
+        TAKES_INPUT
+    ),
+    operation!(
         DOCS_CLOSE_ALL,
+        FAMILY_DOCS,
         Binding::Capability(CAPABILITY_DOCVIEW_CLOSE),
         NO_INPUT
     ),
     operation!(
-        "views",
-        "open_file",
+        VIEWS_OPEN_FILE,
         FAMILY_VIEWS,
-        VIEW_OPEN_FILE,
-        Binding::Tool("read_file"),
+        Binding::Capability(CAPABILITY_READ_FILE),
         TAKES_INPUT
     ),
+    operation!(VIEWS_OPEN_TEXT, FAMILY_VIEWS, Binding::Always, TAKES_INPUT),
     operation!(
-        "views",
-        "open_text",
+        VIEWS_OPEN_DOCS_VIEW,
         FAMILY_VIEWS,
-        VIEW_OPEN_TEXT,
         Binding::Always,
         TAKES_INPUT
     ),
+    operation!(VIEWS_CLOSE, FAMILY_VIEWS, Binding::Always, TAKES_INPUT),
+    operation!(VIEWS_CURRENT, FAMILY_VIEWS, Binding::Always, NO_INPUT),
     operation!(
-        "views",
-        "open_docs_view",
-        FAMILY_VIEWS,
-        VIEW_OPEN_DOCS_VIEW,
-        Binding::Always,
-        TAKES_INPUT
-    ),
-    operation!(
-        "views",
-        "close",
-        FAMILY_VIEWS,
-        VIEW_CLOSE,
-        Binding::Always,
-        TAKES_INPUT
-    ),
-    operation!(
-        "views",
-        "current",
-        FAMILY_VIEWS,
-        VIEW_CURRENT,
-        Binding::Always,
-        NO_INPUT
-    ),
-    operation!(
-        "programs",
-        "history",
-        FAMILY_PROGRAMS,
         PROGRAMS_HISTORY,
+        FAMILY_PROGRAMS,
         Binding::Capability(CAPABILITY_PROGRAM_LIBRARY),
         NO_INPUT
     ),
     operation!(
-        "programs",
-        "get",
-        FAMILY_PROGRAMS,
         PROGRAMS_GET,
-        Binding::Capability(CAPABILITY_PROGRAM_LIBRARY),
-        TAKES_INPUT
-    ),
-    operation!(
-        "programs",
-        "rerun",
         FAMILY_PROGRAMS,
-        PROGRAMS_RERUN,
         Binding::Capability(CAPABILITY_PROGRAM_LIBRARY),
         TAKES_INPUT
     ),
     operation!(
-        "session",
-        "finish",
+        PROGRAMS_RERUN,
+        FAMILY_PROGRAMS,
+        Binding::Capability(CAPABILITY_PROGRAM_LIBRARY),
+        TAKES_INPUT
+    ),
+    operation!(
+        SESSION_FINISH,
         FAMILY_SESSION,
-        HARNESS_FINISH,
         Binding::Ending(EndingRole::Standard),
         TAKES_INPUT
     ),
     operation!(
-        "session",
-        "approve",
+        SESSION_APPROVE,
         FAMILY_SESSION,
-        REVIEW_APPROVE,
         Binding::Ending(EndingRole::Review),
         NO_INPUT
     ),
     operation!(
-        "session",
-        "request_changes",
+        SESSION_REQUEST_CHANGES,
         FAMILY_SESSION,
-        REVIEW_REQUEST_CHANGES,
         Binding::Ending(EndingRole::Review),
         TAKES_INPUT
     ),
@@ -729,18 +789,16 @@ pub fn operation_by_id(id: &str) -> Option<&'static Operation> {
         .find(|operation| operation.id.namespace == namespace && operation.id.key == key)
 }
 
-/// The operation gg files under `call` — the `(object, key)` pair a refusal or a prompt names a call
-/// by — or `None` for a pair no row carries.
+/// The row `id` belongs to, or `None` for an id no row carries.
 ///
-/// The membrane is the caller. Every host function on it opens its bracket with one of the
-/// [`SurfaceCall`] constants, and `every_host_function_records_its_own_api_call` asserts that the
-/// set of pairs so recorded is exactly this table's, so the `None` arm is unreachable from there.
-/// It is still an `Option` rather than a panic for the reason [`operation_of`] is: a call gg has no
-/// identity for is drift, and taking a run down over drift is the larger failure.
-pub fn operation_by_call(call: SurfaceCall) -> Option<&'static Operation> {
-    OPERATIONS
-        .iter()
-        .find(|operation| operation.call.object == call.object && operation.call.key == call.key)
+/// The membrane is the caller: every host function opens its bracket with one of the
+/// [id constants](SHELL_SHELL) above, and needs the row's [binding](Operation::binding) to ask
+/// whether this agent has the call. `every_host_function_records_its_own_api_call` asserts that the
+/// set of ids so recorded is exactly this table's, so the `None` arm is unreachable from there. It is
+/// still an `Option` rather than a panic for the reason [`operation_of`] is: an id gg has no row for
+/// is drift, and taking a run down over drift is the larger failure.
+pub fn operation(id: OperationId) -> Option<&'static Operation> {
+    OPERATIONS.iter().find(|operation| operation.id == id)
 }
 
 /// The [family](Operation::family) whose operations are namespaced on `module` — `gg-filesystem` for
@@ -763,13 +821,106 @@ pub fn family_of_module(module: &str) -> Option<&'static str> {
         .map(|operation| operation.family)
 }
 
+/// **Every gg capability that buys part of this surface**, in table order and each once.
+///
+/// Derived rather than listed, because a list beside the table is a list that will disagree with it.
+/// Two callers need it and both need it to be complete: the [reference](crate::reference), which
+/// documents the surface as a maximally-granted agent sees it, and gg's own fixtures, which build
+/// such an agent. Neither is asking "which capabilities does gg have" — that is
+/// [the catalog](test_cabinet_core::gg_query::GG_CAPABILITY_CATALOG), and most of its entries buy no
+/// call at all.
+pub fn gating_capabilities() -> Vec<&'static str> {
+    let mut out: Vec<&'static str> = Vec::new();
+    for operation in OPERATIONS {
+        if let Binding::Capability(id) = operation.binding
+            && !out.contains(&id)
+        {
+            out.push(id);
+        }
+    }
+    out
+}
+
+/// **Every operation the gg capabilities in `capabilities` offer** — the whole of what a run *could*
+/// grant with those capabilities on, in table order.
+///
+/// It is not what any agent holds. A grant is an [allowlist](Grants), so an agent holds the subset of
+/// this its configuration names; what this answers is the question the other side of that
+/// configuration asks — *which calls are there to choose from?* The console's agent editor seeds a
+/// capability's calls from this set the moment the capability is switched on, and gg's own fixtures
+/// build a fully-granted agent from it rather than writing fifty ids out by hand. Both would
+/// otherwise keep a copy of the capability-to-operation mapping, and a copy of this table is a copy
+/// that will disagree with it.
+pub fn capability_operations<'a>(
+    capabilities: impl IntoIterator<Item = &'a str>,
+) -> Vec<OperationId> {
+    let held: BTreeSet<&str> = capabilities.into_iter().collect();
+    OPERATIONS
+        .iter()
+        .filter(|operation| match operation.binding {
+            Binding::Capability(id) => held.contains(id),
+            Binding::Ending(_) | Binding::Machine | Binding::Always => false,
+        })
+        .map(|operation| operation.id)
+        .collect()
+}
+
+/// **Every operation bought by where an instance stands** rather than by anything its configuration
+/// says — the [`Machine`](Binding::Machine) rows, in table order.
+///
+/// Two callers, and they are the two that have to agree with each other: the run, which adds these
+/// to an agent's grant when the agent really is standing in a machine state, and the
+/// [reference](crate::reference), which documents the surface as a maximally-granted agent sees it
+/// and would otherwise leave out a call no capability can be switched on to reach. Deriving both
+/// from the table is what keeps the page and the run describing one surface.
+pub fn instance_operations() -> Vec<OperationId> {
+    OPERATIONS
+        .iter()
+        .filter(|operation| matches!(operation.binding, Binding::Machine))
+        .map(|operation| operation.id)
+        .collect()
+}
+
+/// The operations `names` grant, and every name that grants nothing — the resolution of a configured
+/// allowlist against this table.
+///
+/// The unresolved half is returned rather than dropped because it is the **error** a run starts with
+/// rather than an inert entry: a name that answers to no operation is either a typo or a call from
+/// the other surface's vocabulary (a bare `read_file`, which is a gg tool and not an operation id),
+/// and in both cases the agent has silently been granted less than whoever configured it intended. A
+/// list that quietly ignores what it cannot read is a list nobody can tell is wrong.
+///
+/// Order and duplication are the table's, not the caller's: the granted ids come back in table
+/// order and each at most once, so two configurations that name the same set resolve to the same
+/// value however they were written.
+pub fn resolve_operations<'a>(
+    names: impl IntoIterator<Item = &'a str>,
+) -> (Vec<OperationId>, Vec<String>) {
+    let mut granted: BTreeSet<OperationId> = BTreeSet::new();
+    let mut unknown = Vec::new();
+    for name in names {
+        match operation_by_id(name) {
+            Some(operation) => {
+                granted.insert(operation.id);
+            }
+            None => unknown.push(name.to_string()),
+        }
+    }
+    let granted = OPERATIONS
+        .iter()
+        .map(|operation| operation.id)
+        .filter(|id| granted.contains(id))
+        .collect();
+    (granted, unknown)
+}
+
 /// **What one agent was granted**, and therefore the one answer to "may this agent call X".
 ///
 /// It is the counterpart of [`Binding`]: a binding says what buys an operation, and this says what
-/// this agent holds — the run's enabled gg tools, the [ending role](EndingRole) it was dispatched
-/// in (or none at all, for the on-use script of a skill or a memory), and the gg capability ids it
-/// was given. [`permits`](Self::permits) is where the two meet, and it is the **only** place in gg
-/// where they meet.
+/// this agent holds — the gg capabilities on its profile, the [ending role](EndingRole) it was
+/// dispatched in (or none at all, for the on-use script of a skill or a memory), and the operations
+/// it was [granted](crate::sandbox::granted_operations). [`permits`](Self::permits) is where the two
+/// meet, and it is the **only** place in gg where they meet.
 ///
 /// # Why there is exactly one of these
 ///
@@ -786,43 +937,87 @@ pub fn family_of_module(module: &str) -> Option<&'static str> {
 /// its own.
 #[derive(Debug, Clone, Default)]
 pub struct Grants {
-    /// The run's enabled gg tool names — every one a member of [`ALL_TOOL_NAMES`].
-    tools: BTreeSet<String>,
+    /// The gg capability ids this agent's profile enables.
+    capabilities: BTreeSet<String>,
     /// The [ending role](EndingRole) this agent was dispatched in, or `None` for code that is not
     /// the agent's own turn at all and may therefore not declare the session over.
     ending: Option<EndingRole>,
-    /// The gg capability ids this agent holds that buy part of the surface — the gate neither of
-    /// the two above can express, because nothing dispatches a capability and no role decides one.
-    capabilities: BTreeSet<&'static str>,
+    /// **The operations this agent was granted**, as
+    /// [resolved for the instance](crate::sandbox::granted_operations): what its own allowlist names,
+    /// narrowed to what its run can actually service, plus whatever its position bought it. Empty
+    /// grants nothing that a capability gates; see [`permits`](Self::permits).
+    operations: BTreeSet<OperationId>,
 }
 
 impl Grants {
-    /// What an agent holding `tools`, dispatched in `ending`, and given `capabilities` was granted.
+    /// What an agent holding `capabilities`, dispatched in `ending`, and granted `operations` was
+    /// given.
     pub fn new(
-        tools: impl IntoIterator<Item = String>,
+        capabilities: impl IntoIterator<Item = String>,
         ending: Option<EndingRole>,
-        capabilities: impl IntoIterator<Item = &'static str>,
+        operations: impl IntoIterator<Item = OperationId>,
     ) -> Self {
         Self {
-            tools: tools.into_iter().collect(),
-            ending,
             capabilities: capabilities.into_iter().collect(),
+            ending,
+            operations: operations.into_iter().collect(),
         }
     }
 
-    /// **Whether this agent may exercise an operation bound by `binding`.**
+    /// **Whether this agent may exercise `operation`.**
     ///
     /// The four arms are four different kinds of thing deciding, and each is checked against the
-    /// half of the grant that can answer it. Nothing here falls back: an operation whose tool is
-    /// not enabled is not reachable by holding a capability, and an ending belonging to another role
-    /// is not reachable by having been given every tool gg has.
-    pub fn permits(&self, binding: Binding) -> bool {
-        match binding {
-            Binding::Tool(tool) => self.tools.contains(tool),
+    /// half of the grant that can answer it. Nothing here falls back: an operation whose capability
+    /// is off is not reachable by naming it in an allowlist, and an ending belonging to another role
+    /// is not reachable by holding every capability gg has.
+    ///
+    /// # Why a capability gate *and* an allowlist
+    ///
+    /// Because they are answers to two different questions, and a configuration that could only ask
+    /// one of them could not express what runs are actually compared. The capability says whether the
+    /// machinery exists for this agent at all — whether it has a memory store, a board, a library of
+    /// its own programs. The allowlist says which of that capability's calls this agent was handed,
+    /// which is how one run gives an agent memories it may read and not revise while another gives it
+    /// both.
+    ///
+    /// The allowlist is an allowlist and not a set of exceptions: an absent or empty list grants
+    /// **nothing** the capability offers, because the list *is* the grant. There is no configuration
+    /// that means "everything" and nothing here supplies one — what looks like that in the console is
+    /// its editor writing the capability's whole set into the list when the capability is switched
+    /// on, which is a fact about the editor and not a default here.
+    ///
+    /// # A [`Machine`](Binding::Machine) row asks the allowlist half alone
+    ///
+    /// Because there is no capability half to ask: the capability that declares a machine sits on a
+    /// profile that takes no turns, so a conjunction naming it would be `false` for every agent that
+    /// could make the call. What the set holds for such a row is not a configured entry at all but
+    /// the run's own answer to "does this instance stand somewhere it can move from", written into
+    /// the grant by [`granted_operations`](crate::sandbox::granted_operations) beside everything
+    /// else, so that one predicate still decides every call.
+    pub fn permits(&self, operation: &Operation) -> bool {
+        match operation.binding {
+            Binding::Capability(id) => {
+                self.capabilities.contains(id) && self.operations.contains(&operation.id)
+            }
+            Binding::Machine => self.operations.contains(&operation.id),
             Binding::Ending(role) => self.ending == Some(role),
-            Binding::Capability(id) => self.capabilities.contains(id),
             Binding::Always => true,
         }
+    }
+
+    /// **Every operation this agent may exercise**, in table order.
+    ///
+    /// [`permits`](Self::permits) answered for the whole table at once, which is what a reader that
+    /// has to *state* a grant rather than check one call against it needs: what the guest is told it
+    /// was given, and what the agent's own surface record publishes. Derived here rather than
+    /// assembled by each of them, so that "what this agent holds" and "what this agent is refused"
+    /// cannot be computed two ways.
+    pub fn granted(&self) -> Vec<OperationId> {
+        OPERATIONS
+            .iter()
+            .filter(|operation| self.permits(operation))
+            .map(|operation| operation.id)
+            .collect()
     }
 
     /// The [ending role](EndingRole) this agent was dispatched in, for a refusal that has to name
@@ -830,71 +1025,6 @@ impl Grants {
     pub fn ending(&self) -> Option<EndingRole> {
         self.ending
     }
-}
-
-/// **The gg capability ids that buy part of the model-facing surface**, from the flags a caller has
-/// already resolved.
-///
-/// There are two, and both are read by [`Grants`]: [`program-library`](CAPABILITY_PROGRAM_LIBRARY)
-/// buys the `programs` family, and [`docview-close`](CAPABILITY_DOCVIEW_CLOSE) buys taking a
-/// documentation view back out of the window. Every other gate on a model-facing call is a gg tool
-/// or an ending role, which the other two halves of a grant carry.
-///
-/// It exists so that the two readers of a grant cannot be built from different lists. The membrane
-/// derives its grant from a [`ProgramScope`](super::ProgramScope)'s flags and the
-/// [documentation runtime](crate::docs::DocsRuntime) is constructed at three separate call sites;
-/// while each of them wrote the list out for itself, the docs runtime's grant could never carry
-/// `docview-close` and the membrane's could, so the "one predicate over one value" the whole design
-/// rests on held for the predicate and not for the value. It cost nothing only while
-/// `docview-close` had no row in [`OPERATIONS`] — the two calls it buys were gated inline, at the
-/// membrane, and were in no catalogue for a search to filter. Now that they are rows, the defect it
-/// prevents is live: an agent granted the capability would be able to call them and never able to
-/// find them.
-///
-/// The flags come in resolved rather than as a profile, because *resolved* is what the caller knows:
-/// an agent whose profile asks for a program library it was not given keeps neither the object nor
-/// its documentation.
-pub fn surface_capabilities(library: bool, docview_close: bool) -> Vec<&'static str> {
-    [
-        library.then_some(CAPABILITY_PROGRAM_LIBRARY),
-        docview_close.then_some(CAPABILITY_DOCVIEW_CLOSE),
-    ]
-    .into_iter()
-    .flatten()
-    .collect()
-}
-
-/// `&str` equality, in a `const` context, where `==` is not available.
-const fn same(left: &str, right: &str) -> bool {
-    let (left, right) = (left.as_bytes(), right.as_bytes());
-    if left.len() != right.len() {
-        return false;
-    }
-    let mut i = 0;
-    while i < left.len() {
-        if left[i] != right[i] {
-            return false;
-        }
-        i += 1;
-    }
-    true
-}
-
-/// Whether some operation is bound by the gg tool `tool`.
-const fn some_operation_binds(tool: &str) -> bool {
-    let mut i = 0;
-    while i < OPERATIONS.len() {
-        match OPERATIONS[i].binding {
-            Binding::Tool(bound) => {
-                if same(bound, tool) {
-                    return true;
-                }
-            }
-            Binding::Ending(_) | Binding::Capability(_) | Binding::Always => {}
-        }
-        i += 1;
-    }
-    false
 }
 
 /// Whether `text` is empty or nothing but ASCII whitespace.
@@ -914,53 +1044,9 @@ const fn is_blank(text: &str) -> bool {
     true
 }
 
-/// Whether `tool` is one of the tools gg can offer.
-const fn is_a_gg_tool(tool: &str) -> bool {
-    let mut i = 0;
-    while i < ALL_TOOL_NAMES.len() {
-        if same(ALL_TOOL_NAMES[i], tool) {
-            return true;
-        }
-        i += 1;
-    }
-    false
-}
-
-/// **The bijection between the tool half of this table and gg's tool vocabulary**, asserted at
-/// compile time rather than under test — because the failure it catches is a tool being *added* to
-/// gg, and a table that has to be remembered is a table that will not be. A `cargo build` fails
-/// here, before anything has a chance to run and quietly not document it.
-///
-/// It is a bijection of **sets**, not of rows, and deliberately: three operations share the
-/// `read_file` tool (see [`Binding::Tool`]), so a row-for-row equality would be a claim that no tool
-/// may back more than one operation, which is false and is not the property worth holding.
-const _: () = {
-    let mut i = 0;
-    while i < ALL_TOOL_NAMES.len() {
-        assert!(
-            some_operation_binds(ALL_TOOL_NAMES[i]),
-            "every gg tool must have a model-facing operation bound to it — a tool added to \
-             `ALL_TOOL_NAMES` needs a row in `OPERATIONS`"
-        );
-        i += 1;
-    }
-    let mut j = 0;
-    while j < OPERATIONS.len() {
-        match OPERATIONS[j].binding {
-            Binding::Tool(tool) => assert!(
-                is_a_gg_tool(tool),
-                "an operation is bound to a name that is not a gg tool — check it against \
-                 `ALL_TOOL_NAMES`"
-            ),
-            Binding::Ending(_) | Binding::Capability(_) | Binding::Always => {}
-        }
-        j += 1;
-    }
-};
-
 /// **Every [exemption](Applicability::UniversalExcept) carries a written reason**, asserted at
-/// compile time for the same reason the tool bijection is: the failure is an omission, and an
-/// omission is exactly what a reviewer skims past.
+/// compile time because the failure it catches is an omission, and an omission is exactly what a
+/// reviewer skims past.
 ///
 /// Coverage cannot catch this one. A blank reason still excuses the arm, so the arm really does not
 /// bind the operation, the dead-exemption converse stays quiet, and the operation is waived there
@@ -978,7 +1064,7 @@ const _: () = {
 /// gate's own sentence — which names both the operation and the arm (``` `files.list_dir` is
 /// excused on `ruby` with no reason ```) — is never reached on the real table. What this one can
 /// say is that *a* row is wrong, with the span pointing at the assertion rather than at the row, so
-/// on a table of 47 the next step is to read the exemptions rather than to follow the error. The
+/// on a table of 50 the next step is to read the exemptions rather than to follow the error. The
 /// two are not redundant: [`is_blank`] recognises ASCII whitespace only, where the gate's
 /// `reason.trim()` also strips U+00A0, so the gate is the stricter of the two on a reason it will
 /// never be shown — and the gate is the copy that can be *watched* rejecting a table, which this

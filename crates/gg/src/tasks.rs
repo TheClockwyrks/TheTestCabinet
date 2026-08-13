@@ -40,7 +40,7 @@
 //!   [`TasksState`](test_cabinet_core::gg::GgTelemetryKind::TasksState) telemetry, and the
 //!   pinned context block).
 //!
-//! The capability is **ablatable**: when it is off the loop builds a
+//! The capability is **switchable**: when it is off the loop builds a
 //! [`disabled`](TasksRuntime::disabled) runtime, so there are no task tools, no prompt
 //! section, no context block, and no telemetry — the feature vanishes.
 
@@ -792,7 +792,8 @@ fn require_non_empty_when_present(
 /// [`TaskStore`].
 ///
 /// Constructed [enabled](Self::new) with a count cap or [disabled](Self::disabled) (an
-/// ablation's off arm). It hands the [`store`](Self::store) to the task tools, produces the
+/// configuration with the capability off). It hands the [`store`](Self::store) to the task tools,
+/// produces the
 /// count cap the [system prompt](crate::prompts::SystemContext::tasks) states, the
 /// [`TasksState`](GgTelemetryKind::TasksState) [telemetry](Self::state_event), and the
 /// pinned [context block](Self::context_block) the loop keeps in the window.
@@ -857,7 +858,7 @@ impl TasksRuntime {
     /// Build the tasks module `profile` configures: when the [tasks](CAPABILITY_TASKS) capability
     /// is enabled, an empty DAG holding at most the [count](resolve_max_tasks) its params resolve
     /// in the [mode](TaskMode) they name; otherwise a [disabled](Self::disabled) module (an
-    /// ablation's off arm).
+    /// configuration with the capability off).
     pub fn resolve(profile: &GgAgentConfig, ctx: &ModuleResolveCtx<'_>) -> Self {
         if !profile.is_enabled(CAPABILITY_TASKS) {
             return Self::disabled();

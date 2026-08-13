@@ -6,10 +6,14 @@
 //! must actually differ in what they open on a real arm's catalogue.
 
 use serde_json::json;
-use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgCapabilityConfig, GgProgramLanguage};
+use test_cabinet_core::gg::{
+    CAPABILITY_LIST_DIR, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE,
+    CAPABILITY_RESPONSES_AS_CODE, GgCapabilityConfig, GgProgramLanguage,
+};
 
 use super::*;
 use crate::ending::EndingRole;
+use crate::sandbox::{capability_operations, gating_capabilities};
 
 /// An agent whose responses-as-code capability is on and carries `params`.
 fn set_with(params: serde_json::Value) -> GgAgentConfig {
@@ -38,16 +42,28 @@ fn opened_as(name: &str) -> String {
     .unwrap_or_else(|| name.to_string())
 }
 
-/// A runtime over the TypeScript catalogue with the tools these assertions need bound.
+/// A runtime over the TypeScript catalogue with the calls these assertions need bound.
 fn runtime() -> DocsRuntime {
+    granting(&[
+        CAPABILITY_READ_FILE,
+        CAPABILITY_PROJECT_MANAGEMENT,
+        CAPABILITY_LIST_DIR,
+    ])
+}
+
+/// A runtime for an agent holding `capabilities` and granted every operation they offer.
+fn granting(capabilities: &[&str]) -> DocsRuntime {
+    on(capabilities, GgProgramLanguage::TypeScript)
+}
+
+/// [`granting`], answering in `language`.
+fn on(capabilities: &[&str], language: GgProgramLanguage) -> DocsRuntime {
+    let operations = capability_operations(capabilities.iter().copied());
     DocsRuntime::new(
-        ["read_file", "update_issue", "list_dir"]
-            .into_iter()
-            .map(str::to_string)
-            .collect(),
+        capabilities.iter().map(|id| id.to_string()).collect(),
         EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
+        &operations,
+        language,
     )
 }
 
@@ -183,12 +199,7 @@ fn a_type_key_opens_no_further_types() {
 /// the shape of what it would have returned.
 #[test]
 fn a_withheld_function_selects_no_types() {
-    let docs = DocsRuntime::new(
-        vec!["update_issue".to_string()],
-        EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
+    let docs = granting(&[CAPABILITY_PROJECT_MANAGEMENT]);
     assert!(
         docs.types_to_open("readFile", DocViewTypes::ReturnAndParameters)
             .is_empty()
@@ -200,15 +211,7 @@ fn a_withheld_function_selects_no_types() {
 #[test]
 fn every_arm_selects_only_types_it_declares() {
     for language in crate::sandbox::all_languages() {
-        let docs = DocsRuntime::new(
-            crate::tools::ALL_TOOL_NAMES
-                .iter()
-                .map(|tool| tool.to_string())
-                .collect(),
-            EndingRole::Standard,
-            &[],
-            language.id(),
-        );
+        let docs = on(&gating_capabilities(), language.id());
         for function in crate::sandbox::catalogue_functions(language) {
             for referenced in docs.types_to_open(function.name, DocViewTypes::ReturnAndParameters) {
                 assert!(
@@ -238,15 +241,7 @@ fn every_arm_selects_only_types_it_declares() {
 #[test]
 fn every_arm_opens_only_types_its_own_signature_names() {
     for language in crate::sandbox::all_languages() {
-        let docs = DocsRuntime::new(
-            crate::tools::ALL_TOOL_NAMES
-                .iter()
-                .map(|tool| tool.to_string())
-                .collect(),
-            EndingRole::Standard,
-            &[],
-            language.id(),
-        );
+        let docs = on(&gating_capabilities(), language.id());
         for function in crate::sandbox::catalogue_functions(language) {
             // Everything this function writes down: each shape's rendered signature, and each
             // documented parameter's declared type. A parameter's inline *fields* are deliberately
@@ -298,15 +293,7 @@ fn every_arm_opens_only_types_its_own_signature_names() {
 #[test]
 fn both_type_modes_are_distinguishable_on_every_arm() {
     for language in crate::sandbox::all_languages() {
-        let docs = DocsRuntime::new(
-            crate::tools::ALL_TOOL_NAMES
-                .iter()
-                .map(|tool| tool.to_string())
-                .collect(),
-            EndingRole::Standard,
-            &[],
-            language.id(),
-        );
+        let docs = on(&gating_capabilities(), language.id());
         let widened = crate::sandbox::catalogue_functions(language)
             .into_iter()
             .filter(|function| {

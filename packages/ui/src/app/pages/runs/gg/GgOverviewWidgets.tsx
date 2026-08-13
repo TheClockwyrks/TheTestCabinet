@@ -492,7 +492,7 @@ export const TOP_ERROR_TYPES_SHOWN = 3;
  * and the worst streak within it.
  *
  * Never a bare percentage — 50% of two turns and 50% of two hundred are not the same claim
- * about an arm of an ablation — and a scope with no reported outcomes says so rather than
+ * about a configuration — and a scope with no reported outcomes says so rather than
  * showing a clean record it has no evidence for.
  *
  * Shared by every scope that states an error rate (a profile's `errored turns` stat, an
@@ -584,9 +584,10 @@ export const TOP_CALL_FAILURES_SHOWN = 3;
  * facts a run has, and until this it was folded, tested, queryable and shown nowhere.
  *
  * `surface` names which of the two records is ranked, and the caption above says so out
- * loud: the two overlap for a bridged call and neither is derived from the other, so a
- * ranking that did not say which it was drawn from would be a figure whose population a
- * reader could not state (see `callFailureSurface`).
+ * loud: they are two disjoint populations — an agent has one surface and records its calls
+ * on that one only — so neither is the run's total, and a ranking that did not say which it
+ * was drawn from would be a figure whose population a reader could not state (see
+ * `callFailureSurface`).
  *
  * The nothing is one nothing rather than the type ranking's two: every failed call carries
  * its class, so an empty record here is a scope whose calls all succeeded — or one that made
@@ -696,15 +697,16 @@ export function ErrorsWidget({
         <ErrorTypeRanking errors={errors} />
       </div>
       {/* Named for the surface it is drawn from, never just "failed calls": the two records
-          overlap for a bridged call, so a caption that did not say which one this is would
-          leave a reader unable to state what the figures counted — and it must not read as
-          more of the ranking above it, which counts turns. */}
+          are disjoint populations and neither is the run's total, so a caption that did not
+          say which one this is would leave a reader unable to state what the figures
+          counted — and it must not read as more of the ranking above it, which counts
+          turns. */}
       <div className={styles.spendGroup}>
         <span
           className={styles.spendGroupLabel}
           title={
             surface === "api"
-              ? "Calls this agent's own programs were thrown, by class — the failures the MODEL met and had to write around, including the calls no gg tool ever ran (a function no tool backs, and a call the membrane refused). A different population from the turn errors above: a call that failed inside a program that carried on is not an errored turn."
+              ? "Calls this agent's own programs were thrown, by class — the failures the MODEL met and had to write around, including the call the membrane refused before it ran. A different population from the turn errors above: a call that failed inside a program that carried on is not an errored turn."
               : "Dispatched tool calls that failed, by class — what gg ran and what it returned. A different population from the turn errors above: a call that failed on a turn the agent went on to complete is not an errored turn."
           }
         >

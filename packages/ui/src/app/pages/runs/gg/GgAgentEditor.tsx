@@ -38,7 +38,8 @@ import {
   blankCapabilityDraft,
   loopDetectionError,
   loopDetectionWarning,
-  setToolBundle,
+  setFeatureBundle,
+  withCapabilityGrants,
   type GgAgentDraft,
   type GgCapabilityDraft,
   type GgConfigDraft,
@@ -76,12 +77,7 @@ type AgentTab = "agent" | "tools" | "apis" | "roster" | "hooks" | "states";
  */
 function tabsForMode(mode: GgAgentMode): ReadonlyArray<AgentTab> {
   if (mode === "fsm") return ["agent", "states"];
-  return [
-    "agent",
-    mode === "rac" ? "apis" : "tools",
-    "roster",
-    "hooks",
-  ];
+  return ["agent", mode === "rac" ? "apis" : "tools", "roster", "hooks"];
 }
 
 const AGENT_TAB_LABELS: Record<AgentTab, string> = {
@@ -167,8 +163,26 @@ export function GgAgentEditor({
     delete params[key];
     updateCap(id, { params });
   };
-  const setToolAblation = (tools: ReadonlyArray<string>, on: boolean) =>
-    onPatch({ disabledTools: setToolBundle(agent.disabledTools, tools, on) });
+  // Switching a capability writes its grant beside its flag: on hands over everything it
+  // offers, off takes all of it back. The two must move together — a capability that is on
+  // and grants nothing is an agent with a board it cannot file to — and doing it here
+  // rather than in the toggle's own handler is what keeps the pairing true of every place
+  // a capability can be switched.
+  const setCapabilityEnabled = (cap: CapSpec, enabled: boolean) =>
+    onPatch({
+      capabilities: {
+        ...agent.capabilities,
+        [cap.id]: {
+          ...(agent.capabilities[cap.id] ?? blankCapabilityDraft()),
+          enabled,
+        },
+      },
+      ...withCapabilityGrants(agent, cap, enabled),
+    });
+  const setFeature = (
+    bundle: { tools: ReadonlyArray<string>; operations: ReadonlyArray<string> },
+    on: boolean,
+  ) => onPatch(setFeatureBundle(agent, bundle, on));
   // Loop detection's switch and its knobs, written separately: the knobs survive the
   // switch going off, so an operator who tunes the detector and then disarms it finds
   // their settings still there when they arm it again.
@@ -213,7 +227,7 @@ export function GgAgentEditor({
       updateCap(cap.id, patch),
     onSetParam: (key: string, param: string) => setParam(cap.id, key, param),
     onClearParam: (key: string) => clearParam(cap.id, key),
-    onSetToolAblation: setToolAblation,
+    onSetFeature: setFeature,
   });
 
   // A roster entry exists exactly while it carries at least one scope: turning the
@@ -368,9 +382,7 @@ export function GgAgentEditor({
                     }
                   >
                     <option value="model-slot">a model slot (at launch)</option>
-                    <option value="model">
-                      a specific model (fixed here)
-                    </option>
+                    <option value="model">a specific model (fixed here)</option>
                   </select>
                 </label>
                 {agent.modelSource === "model-slot" ? (
@@ -380,9 +392,7 @@ export function GgAgentEditor({
                       className={runExec.select}
                       value={agent.modelSlotId}
                       disabled={readOnly}
-                      onChange={(e) =>
-                        onPatch({ modelSlotId: e.target.value })
-                      }
+                      onChange={(e) => onPatch({ modelSlotId: e.target.value })}
                     >
                       {/* The offered slots are the ones this configuration declares, by
                           id — a slot the operator renamed keeps its binding, and one they
@@ -440,15 +450,15 @@ export function GgAgentEditor({
               {agent.modelSource === "model-slot" && !boundSlot && (
                 <p className={gg.fieldError}>
                   This agent defers to no model slot, so a run could never give
-                  it a model. Pick one of the configuration&rsquo;s slots, or pin
-                  it a model.
+                  it a model. Pick one of the configuration&rsquo;s slots, or
+                  pin it a model.
                 </p>
               )}
               {agent.promptCacheTtl === "extended" && (
                 <p className={gg.cacheTtlNote}>
-                  Worth it for an agent that delegates, or whose turns run builds
-                  and test suites; wasted on one that answers quickly and is
-                  never resumed.
+                  Worth it for an agent that delegates, or whose turns run
+                  builds and test suites; wasted on one that answers quickly and
+                  is never resumed.
                 </p>
               )}
 
@@ -506,7 +516,9 @@ export function GgAgentEditor({
                               // it doubled the width of every one of these fields to
                               // say so five times over; each knob's hint says it in
                               // words for anyone who wants it spelled out.
-                              placeholder={spec.ggDefault.toLocaleString("en-US")}
+                              placeholder={spec.ggDefault.toLocaleString(
+                                "en-US",
+                              )}
                             />
                           </label>
                         ))}
@@ -521,7 +533,6 @@ export function GgAgentEditor({
                     </div>
                   )}
                 </div>
-
               </div>
 
               {/* Custom instructions — the field an operator edits normally; inserted
@@ -565,9 +576,9 @@ export function GgAgentEditor({
                     <p className={`${runExec.muted}`}>
                       The full template gg renders for this agent. Custom
                       instructions are inserted at the{" "}
-                      <code>{"{{customInstructions}}"}</code> block near the top.
-                      Edit here only to rewrite the whole prompt; leaving it
-                      equal to the default stores no override.
+                      <code>{"{{customInstructions}}"}</code> block near the
+                      top. Edit here only to rewrite the whole prompt; leaving
+                      it equal to the default stores no override.
                     </p>
                     <textarea
                       className={`${gg.textarea} ${gg.promptTextarea}`}
@@ -652,7 +663,7 @@ export function GgAgentEditor({
                               checked={enabled}
                               disabled={readOnly}
                               onChange={(next) =>
-                                updateCap(cap.id, { enabled: next })
+                                setCapabilityEnabled(cap, next)
                               }
                             />
                             <span className={gg.capName}>{cap.name}</span>
@@ -695,7 +706,7 @@ export function GgAgentEditor({
               const on = Boolean(entry);
               return (
                 <div key={target.id} className={gg.subagentRow}>
-                  <span className={gg.ablationName}>
+                  <span className={gg.featureName}>
                     {target.name || "unnamed"}
                     {target.id === agent.id && (
                       <span className={gg.capId}> (self)</span>
@@ -705,7 +716,7 @@ export function GgAgentEditor({
                     {SUBAGENT_SCOPES.map((scope) => (
                       <label
                         key={scope.value}
-                        className={gg.ablationLabel}
+                        className={gg.featureLabel}
                         title={scope.hint}
                       >
                         <Switch

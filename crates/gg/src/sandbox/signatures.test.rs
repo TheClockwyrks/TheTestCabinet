@@ -9,7 +9,7 @@
 //! it cannot be *stale* — but it can be *mis-reflected*, and these read the emitted document rather
 //! than the SDK for exactly that reason. There is no committed copy anybody reviewed on the way in.
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_core::gg::{CAPABILITY_READ_FILE, GgProgramLanguage};
 
 use super::*;
 use crate::sandbox::FINISH_FUNCTION;
@@ -171,9 +171,9 @@ fn read_text_file_is_a_helper_not_a_tool() {
         helper.key
     );
     assert_eq!(
-        helper.gate,
-        Some("read_file"),
-        "the helper is bound only when the tool it wraps is"
+        helper.capability,
+        Some(CAPABILITY_READ_FILE),
+        "the helper is bought by the capability the read it wraps is bought by"
     );
 }
 
@@ -240,15 +240,15 @@ fn typescript_spells_its_view_calls_as_its_sdk_declares_them() {
     let open_file = function("openFile");
     assert_eq!(open_file.object, "gg.views");
     assert_eq!(
-        open_file.gate,
-        Some("read_file"),
-        "opening a file view is a read, and closes with reading"
+        open_file.capability,
+        Some(CAPABILITY_READ_FILE),
+        "opening a file view is a read, and is bought with reading"
     );
 
     for name in ["openText", "openDocsView", "close", "current"] {
         let entry = member("gg.views", name);
         assert!(
-            entry.gate.is_none() && entry.ending.is_none() && entry.capability.is_none(),
+            entry.ending.is_none() && entry.capability.is_none(),
             "`{name}` is bound whatever a run enables"
         );
     }
@@ -288,9 +288,9 @@ fn typescript_spells_its_view_calls_as_its_sdk_declares_them() {
             .find(|function| function.name == name)
             .unwrap_or_else(|| panic!("`{name}` is documented"))
     };
-    assert_eq!(projected("openFile").gate, Some("read_file"));
+    assert_eq!(projected("openFile").capability, Some(CAPABILITY_READ_FILE));
     assert_eq!(projected("openFile").object, "gg.views");
-    assert!(projected("openText").gate.is_none());
+    assert!(projected("openText").capability.is_none());
     assert!(projected("openText").ending.is_none());
     assert!(!projected("current").prose.brief.is_empty());
 }
@@ -334,29 +334,31 @@ fn catalogue_functions_carry_object_and_gate() {
         .expect("finish is documented");
     assert_eq!(finish.object, "gg.session");
     assert!(
-        finish.gate.is_none(),
-        "finish is not gated by any capability"
+        finish.capability.is_none(),
+        "finish is not bought by any capability"
     );
 
-    // A tool is gated by its own gg tool name and grouped under the module it is declared in.
+    // A workspace call is bought by its own capability and grouped under the module it is declared
+    // in.
     let read = functions
         .iter()
         .find(|function| function.name == "readFile")
         .expect("readFile is documented");
     assert_eq!(read.object, "gg.files");
-    assert_eq!(read.gate, Some("read_file"));
+    assert_eq!(read.capability, Some(CAPABILITY_READ_FILE));
     assert!(
         !read.prose.brief.is_empty(),
         "every function carries a brief"
     );
 
-    // The helper is gated by the tool it wraps, and lives in that tool's module.
+    // The helper is bought by the capability the read it wraps is bought by, and lives in that
+    // read's module.
     let helper = functions
         .iter()
         .find(|function| function.name == "readTextFile")
         .expect("readTextFile is documented");
     assert_eq!(helper.object, "gg.files");
-    assert_eq!(helper.gate, Some("read_file"));
+    assert_eq!(helper.capability, Some(CAPABILITY_READ_FILE));
 }
 
 /// A type's declaration is returned verbatim, so what a doc lookup shows is what the SDK wrote — and
@@ -577,11 +579,11 @@ fn the_gate_of_an_entry_is_synthesized_from_ggs_own_table() {
             .unwrap_or_else(|| panic!("`{name}` is in the fixture"))
     };
 
-    // A tool.
-    assert_eq!(by_name("read_file").gate, Some("read_file"));
+    // A workspace call, whose capability id no catalogue ever learns either.
+    assert_eq!(by_name("read_file").capability, Some(CAPABILITY_READ_FILE));
     // An ending, whose role gg names.
     assert_eq!(by_name("finish").ending, Some("standard"));
-    assert!(by_name("finish").gate.is_none());
+    assert!(by_name("finish").capability.is_none());
     // A capability, whose id no catalogue ever learns.
     assert_eq!(
         by_name("get").capability,
@@ -589,7 +591,7 @@ fn the_gate_of_an_entry_is_synthesized_from_ggs_own_table() {
     );
     // And an unconditional one: bound to every program whatever a run enables.
     let close = by_name("close");
-    assert!(close.gate.is_none() && close.ending.is_none() && close.capability.is_none());
+    assert!(close.ending.is_none() && close.capability.is_none());
 
     // The fixture never says any of that: the JSON carries an operation id and no gate at all.
     assert!(!fixture::CATALOGUE.contains("\"requires\""));

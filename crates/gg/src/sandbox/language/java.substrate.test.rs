@@ -40,15 +40,18 @@ use std::time::Instant;
 use serde_json::Value;
 use wasmtime::component::Component;
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 
 use super::super::typescript;
 use super::compile::{compile_module, compile_program};
-use crate::sandbox::fake::{CallLog, FakeToolApi, canned_outcome};
+use crate::sandbox::fake::{
+    CallLog, FakeToolApi, all_capabilities, canned_outcome, granted_operations,
+};
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{ProgramError, SandboxError, SandboxOutcome};
 use crate::sandbox::{
-    CodeModule, PrepareContext, ProgramScope, SandboxLimits, bounded_store, engine, linker, reclaim,
+    CodeModule, PrepareContext, ProgramScope, SandboxLimits, bounded_store, capability_operations,
+    engine, linker, reclaim,
 };
 use crate::tools::ToolOutcome;
 
@@ -76,7 +79,7 @@ fn prepare(source: &str) -> String {
     }
 }
 
-/// Evaluate already-compiled JavaScript through the real membrane, with `enabled`'s gg tools offered
+/// Evaluate already-compiled JavaScript through the real membrane, granting `operations`
 /// and `modules` bound at `lib.<name>`.
 ///
 /// A near-copy of [`run_program`](crate::sandbox::run_program) with one thing left out, because it
@@ -87,11 +90,18 @@ fn prepare(source: &str) -> String {
 /// a refusal these tests read is the one a Java agent would really be handed.
 fn evaluate(
     program: &str,
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     modules: &[CodeModule],
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    evaluate_as(program, enabled, modules, RunEnding::None, false, responder)
+    evaluate_as(
+        program,
+        operations,
+        modules,
+        RunEnding::None,
+        false,
+        responder,
+    )
 }
 
 /// [`evaluate`], with the agent's [ending group](RunEnding) and its
@@ -99,59 +109,52 @@ fn evaluate(
 /// decide what this agent is permitted once the guest has bound the whole SDK.
 pub(super) fn evaluate_as(
     program: &str,
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     modules: &[CodeModule],
     ending: RunEnding,
     library: bool,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    evaluate_granting(program, enabled, modules, ending, library, false, responder)
+    evaluate_granting(program, operations, modules, ending, library, responder)
 }
 
-/// [`evaluate_as`] for an agent that also holds `docview-close`.
-///
-/// Its own function rather than a seventh argument on the one above, because every other caller here
-/// wants the default and a second bare `false` at the end of an argument list says nothing about
-/// which flag it is. What it buys is the only way to drive
-/// [`docs.close`](crate::sandbox::DOCS_CLOSE) to a *success*: without the capability the membrane
-/// refuses the call before this arm's lowering of the answer is ever reached.
+/// [`evaluate_as`] for a program with no ending group at all — an on-use script's shape, and what
+/// the documentation-close cases want, since what they drive is the lowering of an answer rather
+/// than an ending.
 pub(super) fn evaluate_closing_docviews(
     program: &str,
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    evaluate_granting(
-        program,
-        enabled,
-        &[],
-        RunEnding::None,
-        false,
-        true,
-        responder,
-    )
+    let granted: Vec<crate::sandbox::operations::OperationId> = operations
+        .iter()
+        .copied()
+        .chain(capability_operations([CAPABILITY_DOCVIEW_CLOSE]))
+        .collect();
+    evaluate_granting(program, &granted, &[], RunEnding::None, false, responder)
 }
 
-/// What both of the above are: one evaluation, with every flag the scope carries stated.
+/// What both of the above are: one evaluation, with everything the scope carries stated.
 fn evaluate_granting(
     program: &str,
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     modules: &[CodeModule],
     ending: RunEnding,
     library: bool,
-    docview_close: bool,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
     let limits = SandboxLimits::default();
     let log = CallLog::default();
     let api = FakeToolApi::with(&log, responder);
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let operations = granted_operations(operations, library);
     let scope = ProgramScope {
-        enabled,
+        capabilities: &all_capabilities(),
+        operations: &operations,
         modules,
         ending,
-        library,
-        docview_close,
     };
+    let granted: Vec<String> = operations.iter().map(ToString::to_string).collect();
     // The component is resolved BEFORE the store, and the order is the whole of it rather than a
     // tidying. `bounded_store` arms the guest's execution deadline the instant it builds the state —
     // `MembraneState::new` takes `Instant::now()` and the epoch callback compares WALL clock against
@@ -191,7 +194,7 @@ fn evaluate_granting(
             &mut store,
             program,
             modules,
-            enabled,
+            &granted,
             ending.into(),
             library,
         )

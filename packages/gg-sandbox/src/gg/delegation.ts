@@ -58,7 +58,14 @@ function handle(spawned: raw.SubagentHandle): SubagentHandle {
   };
 }
 
-/** How a child agent's loop ended, in the six words the native path also reports. */
+/**
+ * How a child agent's loop ended, in the six words the native path also reports.
+ *
+ * A child stopped by a gg **defect** (`internal_error` natively) has no word here and arrives as
+ * `undefined`: this vocabulary is what a program branches on, and there is no branch to write
+ * against a bug in the harness running it. The defect is reported to the operator, not to the
+ * program.
+ */
 export type AgentEnding =
   /** It finished normally: it called `finish`, and its summary is what it returned. */
   | "completed"

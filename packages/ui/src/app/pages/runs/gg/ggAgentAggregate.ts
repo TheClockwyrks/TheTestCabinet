@@ -13,8 +13,8 @@
 // sum everything that sums — instances, turns, tokens, cost, the calls they made, and the
 // [context accounting](./ggContextAttribution) that says which files and tools filled their
 // windows. A profile the configuration declares but the run never instantiated is included
-// with nothing in it, because "the reviewer never ran" is one of the more useful things an
-// ablation can tell you and an absent row says it silently.
+// with nothing in it, because "the reviewer never ran" is one of the more useful things
+// comparing two configurations can tell you and an absent row says it silently.
 //
 // Instances are grouped by the profile name their `agent_spawned` named (the wire's `slot`,
 // which is the agent profile — see the telemetry contract). The main agent read before its
@@ -166,23 +166,14 @@ export interface GgAgentSurfaceSummary {
    * figure down for a tool every reporting instance held.
    */
   reportingInstances: number;
-  /** Every gg tool any instance was offered, in the order the model was shown them. */
+  /**
+   * Every gg tool any instance was offered, in the order the model was shown them. Empty
+   * for a responses-as-code profile, which is offered no tool at all — the two surfaces
+   * are independent, and an agent has exactly one.
+   */
   tools: GgAgentSurfaceEntry[];
   /** The modules a responses-as-code profile's programs bind. Empty for tool calling. */
   apis: GgAgentSurfaceApi[];
-  /**
-   * The tools an ablation took off this profile — gg's own account of it, and only the
-   * `disabledTools` entries that NAME A GG TOOL. A name gg does not recognise withheld
-   * nothing (gg warns and offers the agent the surface it would have had), so it is absent
-   * here, which is the whole reason this is unioned off the instances rather than re-read
-   * from the configuration: a typo shown as an applied ablation is the one claim this panel
-   * cannot afford.
-   *
-   * Unlike everything else here the union is uniform by construction — an ablation is a
-   * property of the profile, not of where an instance stands in its machine — so the entries
-   * carry no `offeredBy` count to read against {@link reportingInstances}.
-   */
-  withheld: string[];
 }
 
 /** Everything one configured agent did, summed across every instance of it. */
@@ -206,8 +197,6 @@ export interface GgAgentSummary {
   modelName: string | null;
   /** The capability ids the configuration has on for this profile. */
   capabilities: string[];
-  /** Tools withheld from this profile even where their capability is on (an ablation). */
-  disabledTools: string[];
   /** Every instance of the profile, in forest order. */
   instances: GgAgentInstance[];
   /** How many instances ended in each lifecycle state. */
@@ -216,9 +205,9 @@ export interface GgAgentSummary {
   turns: number;
   /**
    * How those turns went, summed across the profile's instances — the figure that says
-   * whether this arm of the ablation is one the model can actually drive. A profile
-   * failing a third of its turns and finishing anyway looks identical to a clean one in
-   * every other figure on this row.
+   * whether this configuration is one the model can actually drive. A profile failing a
+   * third of its turns and finishing anyway looks identical to a clean one in every other
+   * figure on this row.
    *
    * {@link GgErrorTally.maxConsecutive} is the worst any ONE instance reached, not a
    * streak across them: twelve reviewers that each failed twice did not fail
@@ -254,8 +243,8 @@ export interface GgAgentSummary {
    */
   calls: GgCallBreakdown;
   /**
-   * How many times each API function its instances called was called, keyed
-   * `object.function` on the function's own identity — `view.open_file`, `context.list`.
+   * How many times each API function its instances called was called, keyed on gg's own
+   * operation id for it — `views.open_file`, `docs.search`.
    *
    * The raw model-facing record, kept whichever surface {@link calls} reports on, because
    * the offered-surface section joins its entries on the wire identity rather than on the
@@ -263,11 +252,12 @@ export interface GgAgentSummary {
    */
   apiCalls: ReadonlyMap<string, number>;
   /**
-   * How many times each gg TOOL its instances dispatched was called, keyed by tool name —
-   * the execution layer of the pair {@link apiCalls} records above it.
+   * How many times each gg TOOL its instances called was called, keyed by tool name — the
+   * other surface's record, and empty for a profile whose instances write programs.
    *
-   * Kept beside it for the same reason: the offered-surface section joins a tool-calling
-   * profile's entries on this record, whichever surface {@link calls} is reported on.
+   * Kept beside {@link apiCalls} for the same reason: the offered-surface section joins a
+   * tool-calling profile's entries on this record, whichever surface {@link calls} is
+   * reported on.
    */
   toolCalls: ReadonlyMap<string, number>;
   /**
@@ -298,9 +288,9 @@ export interface GgAgentSummary {
    */
   modules: GgAgentModuleSummary[];
   /**
-   * What its instances were OFFERED, unioned across them — the counterpart to {@link tools},
-   * which is only what they went on to CALL. Reading the two together is the point: a tool
-   * present here and absent there was offered and ignored, and a tool absent from both was
+   * What its instances were OFFERED, unioned across them — the counterpart to {@link calls},
+   * which is only what they went on to CALL. Reading the two together is the point: a call
+   * present here and absent there was offered and ignored, and a call absent from both was
    * never on the table at all.
    *
    * Null when no instance reported a surface — a profile the run never instantiated, and one
@@ -425,14 +415,10 @@ export function mergeAgentSurfaces(
   // The documentation mode, folded like the execution mode beside it: a set, so instances
   // that disagree produce no answer rather than an arbitrary one.
   const docModes = new Set<string>();
-  // A set, not a tally: every instance of a profile is ablated identically, so a name is
-  // either in the profile's control arm or it is not.
-  const withheld = new Set<string>();
 
   for (const part of parts) {
     modes.add(part.executionMode);
     if (part.docViewTypes) docModes.add(part.docViewTypes);
-    for (const name of part.withheld) withheld.add(name);
     for (const name of part.tools) {
       const at = tools.get(name);
       if (at) at.offeredBy += 1;
@@ -481,7 +467,6 @@ export function mergeAgentSurfaces(
       functions: [...group.functions.values()],
       offeredBy: group.offeredBy,
     })),
-    withheld: [...withheld],
   };
 }
 
@@ -660,7 +645,6 @@ export function deriveGgAgentSummaries(
       modelName: modelId ? (nameOf(modelId) ?? modelId) : null,
       capabilities:
         config?.capabilities.filter((c) => c.enabled).map((c) => c.id) ?? [],
-      disabledTools: config?.disabledTools ?? [],
       instances: rows,
       statusCounts,
       turns,

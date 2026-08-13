@@ -129,9 +129,7 @@ async fn a_consecutive_error_ceiling_stops_a_live_session_rather_than_only_recor
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-limits".to_string()), Box::new(sink.clone()));
     let mut set = GgCapabilitySet::minimal("mock/primary");
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+    crate::tools::grant(&mut set.agents[0], CAPABILITY_RESPONSES_AS_CODE);
     set.limits = GgRunLimits {
         max_turns: Some(20),
         max_consecutive_errors: Some(3),
@@ -911,9 +909,7 @@ async fn a_subagents_error_ceiling_ends_it_alone() {
     let mut set = subagent_set(2, 3, &["subagent"]);
     // Both the parent and the child run programs, so responses-as-code is on for every profile.
     for agent in &mut set.agents {
-        agent
-            .capabilities
-            .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+        crate::tools::grant(agent, CAPABILITY_RESPONSES_AS_CODE);
     }
     set.limits = GgRunLimits {
         max_turns: Some(6),
@@ -979,9 +975,9 @@ async fn a_subagents_error_ceiling_ends_it_alone() {
 
 /// **Unusable limit declarations warn on the root stream and launch anyway.**
 ///
-/// A sweep's one shared configuration document has to stay interpretable by every arm, so a ceiling
-/// that cannot bound anything is a loud no-op rather than a refused launch — the same terms an
-/// unknown name in `disabled_tools` is read on.
+/// One shared configuration document has to stay interpretable by every configuration it describes,
+/// so a ceiling that cannot bound anything is a loud no-op rather than a refused launch — the same
+/// terms a name no gg tool bears is read on in an agent's own allowlist.
 #[tokio::test]
 async fn unusable_limit_declarations_warn_on_the_root_stream_and_launch_anyway() {
     let dir = TempDir::new().unwrap();
@@ -991,7 +987,7 @@ async fn unusable_limit_declarations_warn_on_the_root_stream_and_launch_anyway()
     let mut code = GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE);
     code.params = json!({ "healing": { "stripFences": false } });
     code.enabled = false;
-    set.agents[0].capabilities.push(code);
+    crate::tools::grant_configured(&mut set.agents[0], code);
     set.limits = GgRunLimits {
         max_consecutive_errors: Some(0),
         max_error_rate: Some(0.5),
@@ -1072,12 +1068,15 @@ async fn an_unbound_compaction_model_slot_warns_and_launches_anyway() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-compaction".to_string()), Box::new(sink.clone()));
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    set.agents[0].capabilities.push(GgCapabilityConfig {
-        id: CAPABILITY_COMPACTION.to_string(),
-        enabled: true,
-        implementation: Some("handoff-summarization".to_string()),
-        params: serde_json::json!({ "modelSlot": "summarizer" }),
-    });
+    crate::tools::grant_configured(
+        &mut set.agents[0],
+        GgCapabilityConfig {
+            id: CAPABILITY_COMPACTION.to_string(),
+            enabled: true,
+            implementation: Some("handoff-summarization".to_string()),
+            params: serde_json::json!({ "modelSlot": "summarizer" }),
+        },
+    );
 
     assert_eq!(
         run(&invocation(dir.path(), set), &emitter).await,

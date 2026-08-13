@@ -32,8 +32,8 @@ describe("ggCallBreakdown", () => {
     const state = reduceGgEvents([
       gg({ type: "session_started" } as GgTelemetryKind),
       // Three `tool_call` events: read_file twice, shell once. Counted from the events
-      // rather than from the rows the feed rendered — the feed folds a bridged call into
-      // the API row above it, so a count taken off it would depend on how a run READS.
+      // rather than from the rows the feed rendered, so the figure is what the agent did
+      // and not a function of how the feed chose to lay it out.
       gg({ type: "tool_call", name: "read_file", args: {} } as GgTelemetryKind),
       gg({ type: "tool_call", name: "read_file", args: {} } as GgTelemetryKind),
       gg({ type: "tool_call", name: "shell", args: {} } as GgTelemetryKind),
@@ -129,33 +129,26 @@ describe("ggCallBreakdown", () => {
   });
 
   it("counts a code agent's calls under the functions its program wrote", () => {
-    // The bridged call is the case that matters: one `fs.readFile` dispatched one
-    // `read_file`, and the two records must each report their own layer rather than one
-    // of them borrowing the other's vocabulary.
+    // Every call a program makes is on this record and on no other, whether or not a gg
+    // tool runs underneath it — and each is spelled the way the program spelled it.
     const state = reduceGgEvents([
       gg({ type: "session_started" } as GgTelemetryKind),
       gg({
         type: "api_call",
-        object: "fs",
-        function: "read_file",
+        operation: "files.read_file",
       } as GgTelemetryKind),
-      gg({ type: "tool_call", name: "read_file", args: {} } as GgTelemetryKind),
       gg({
         type: "api_result",
-        object: "fs",
-        function: "read_file",
+        operation: "files.read_file",
         ok: true,
       } as GgTelemetryKind),
-      // …and a call no tool backs at all, which the tool record cannot see.
       gg({
         type: "api_call",
-        object: "context",
-        function: "list",
+        operation: "views.current",
       } as GgTelemetryKind),
       gg({
         type: "api_result",
-        object: "context",
-        function: "list",
+        operation: "views.current",
         ok: true,
       } as GgTelemetryKind),
     ]);
@@ -164,40 +157,37 @@ describe("ggCallBreakdown", () => {
       state,
       "api",
       new Map([
-        ["fs.read_file", "fs.readFile"],
-        ["context.list", "context.list"],
+        ["files.read_file", "gg.files.readFile"],
+        ["views.current", "gg.views.current"],
       ]),
     );
     expect(api.surface).toBe("api");
     expect(api.calls).toEqual([
-      { name: "context.list", calls: 1, outputTokens: 0 },
-      { name: "fs.readFile", calls: 1, outputTokens: 0 },
+      { name: "gg.files.readFile", calls: 1, outputTokens: 0 },
+      { name: "gg.views.current", calls: 1, outputTokens: 0 },
     ]);
     expect(api.totalCalls).toBe(2);
     // A code turn produces no tool-role messages, so there is nothing to attribute per
     // function and the breakdown says so rather than reporting a zero.
     expect(api.outputTokensKnown).toBe(false);
 
-    // The execution record underneath is untouched: one tool ran, once.
-    expect(ggCallBreakdown(state, "tool").calls).toEqual([
-      { name: "read_file", calls: 1, outputTokens: 0 },
-    ]);
+    // And the other surface's record is empty: a program emits no `tool_call` at all.
+    expect(ggCallBreakdown(state, "tool").calls).toEqual([]);
   });
 
   it("falls back to the wire spelling when the surface cannot name a call", () => {
-    // A truncated stream, a record from before `agent_surface`, or a function with no
-    // `key`: the identity the call was RECORDED under is the honest answer, and it is
-    // never a guessed camelCase.
+    // A truncated stream, a record from before `agent_surface`, or a function the arm's
+    // catalogue does not spell: the operation id the call was RECORDED under is the honest
+    // answer, and it is never a guessed camelCase.
     const state = reduceGgEvents([
       gg({ type: "session_started" } as GgTelemetryKind),
       gg({
         type: "api_call",
-        object: "fs",
-        function: "read_file",
+        operation: "files.read_file",
       } as GgTelemetryKind),
     ]);
     expect(ggCallBreakdown(state, "api").calls).toEqual([
-      { name: "fs.read_file", calls: 1, outputTokens: 0 },
+      { name: "files.read_file", calls: 1, outputTokens: 0 },
     ]);
   });
 });
@@ -234,7 +224,7 @@ describe("callsPerResponse", () => {
   });
 
   it("does not clamp a single turn that made many calls", () => {
-    // The responses-as-code shape: one turn whose program bridges dozens of calls. That is
+    // The responses-as-code shape: one turn whose program makes dozens of calls. That is
     // forty calls a response, and reporting it as anything lower would hide the mode's
     // whole point.
     expect(rate(1, 40)).toBe(40);

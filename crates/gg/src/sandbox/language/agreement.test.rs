@@ -19,11 +19,13 @@
 //!   `const` that nothing could ever be observed rejecting.
 
 use serde_json::{Value, json};
-use test_cabinet_core::gg::{CAPABILITY_PROGRAM_LIBRARY, GgProgramLanguage};
+use test_cabinet_core::gg::{
+    CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_READ_FILE, CAPABILITY_WRITE_FILE, GgProgramLanguage,
+};
 
 use super::super::fixture::{a_language_whose_catalogue, fixture_language};
 use super::*;
-use crate::sandbox::language::{SurfaceCall, all_languages};
+use crate::sandbox::language::all_languages;
 use crate::sandbox::operations::FAMILY_FILESYSTEM;
 
 /// Every registered language, as the gate takes them.
@@ -73,10 +75,17 @@ fn every_registered_language_describes_one_capability_surface() {
 /// fails here — and asking the guest which tools it binds proves the artifact is not merely
 /// *loadable* but current.
 ///
-/// It lives with the capability gate because it is the same assertion as the table's own tool
-/// bijection, one layer down: the table says what gg *gates*, the catalogue says what a language
-/// *documents*, and the component says what it *binds*. A language whose halves disagreed would
-/// offer a study an arm that documents one surface and runs another.
+/// It lives with the capability gate because it is the third of the three statements that have to
+/// agree about one arm: the table says what gg *gates*, the catalogue says what a language
+/// *documents*, and the component says what it *binds*. Only this one can be stale without any
+/// source file being wrong, which is why it asks the artifact. A language whose halves disagreed
+/// would offer a study an arm that documents one surface and runs another.
+///
+/// What it does **not** assert is any correspondence between gg's two model-facing vocabularies. The
+/// names here are the WIT tool interfaces a guest imports, and the check is that the committed
+/// artifact still imports the set gg provides; the operations a program may *write* are a separate,
+/// richer vocabulary, and holding the two in bijection would be asserting a symmetry gg does not
+/// have.
 ///
 /// For a [compiled arm](super::super::PreparedProgram::component) the artifact asked is one this
 /// test **compiled seconds ago**, out of the one whole program the seam guarantees every language
@@ -635,44 +644,27 @@ fn a_gating_rule_gg_gets_wrong_is_caught() {
             "the view `views.open_file` is bound by Always",
         ),
         (
-            "a view bound to a tool that does not read the workspace",
+            "a view bought by a capability that does not read the workspace",
             Box::new(|rows: &mut Vec<Operation>| {
-                row(rows, "views.open_text").binding = Binding::Tool("write_file");
+                row(rows, "views.open_text").binding = Binding::Capability(CAPABILITY_WRITE_FILE);
             }),
-            "the view `views.open_text` is bound by Tool(\"write_file\")",
+            "the view `views.open_text` is bound by Capability(\"write-file\")",
         ),
         (
-            "an operation gated on something that is not a gg tool",
+            "an operation gated on something that is not a gg capability",
             Box::new(|rows: &mut Vec<Operation>| {
-                row(rows, "shell.shell").binding = Binding::Tool("bash");
+                row(rows, "shell.shell").binding = Binding::Capability("bash");
             }),
-            "`shell.shell` is bound by `bash`, which is not a gg tool",
+            "`shell.shell` is bought by `bash`, which is not a gg capability",
         ),
         (
-            "two operations that swapped the tools they are named after",
+            "a capability left buying nothing in a family it is paired with",
             Box::new(|rows: &mut Vec<Operation>| {
-                // The fault the set bijection cannot see: both tools still buy an operation, both
-                // operations still name a real tool, and every arm would document and bind
-                // `remove_task` to a run that enabled only `add_task`.
-                row(rows, "tasks.add_task").binding = Binding::Tool("remove_task");
-                row(rows, "tasks.remove_task").binding = Binding::Tool("add_task");
+                // The shape a re-gating leaves behind: the shell family's one operation moved onto
+                // another capability, and the pairing that excused it still standing.
+                row(rows, "shell.shell").binding = Binding::Capability(CAPABILITY_READ_FILE);
             }),
-            "`tasks.add_task` is gg's own name for the tool `add_task` and is bought by \
-             Tool(\"remove_task\")",
-        ),
-        (
-            "an operation named after a tool and handed to every program",
-            Box::new(|rows: &mut Vec<Operation>| {
-                row(rows, "files.list_dir").binding = Binding::Always;
-            }),
-            "`files.list_dir` is gg's own name for the tool `list_dir` and is bought by Always",
-        ),
-        (
-            "a gg tool that buys nothing at all",
-            Box::new(|rows: &mut Vec<Operation>| {
-                rows.retain(|operation| operation.id.to_string() != "shell.shell");
-            }),
-            "the gg tool `shell` buys no operation",
+            "the capability `shell` is paired with the `gg-shell` family and buys nothing in it",
         ),
         (
             "an ending offered to a role gg does not offer it to",
@@ -819,20 +811,16 @@ fn gg_s_own_operations_table_is_not_a_disagreement() {
 /// The helper an SDK added and gg wrote down — one operation no arm binds, in the shape a new helper
 /// arrives in.
 ///
-/// It is a second read on the filesystem family, gated on the tool the reads it wraps are gated on,
-/// so nothing else in the table changes: [`gating`](super::gating) stays silent about it and the
-/// only thing under test is whether every arm is required to follow.
+/// It is a second read on the filesystem family, bought by the capability the reads it wraps are
+/// bought by, so nothing else in the table changes: [`gating`](super::gating) stays silent about it
+/// and the only thing under test is whether every arm is required to follow.
 const HELPER: Operation = Operation {
     id: OperationId {
         namespace: "files",
         key: "read_file_twice",
     },
     family: FAMILY_FILESYSTEM,
-    call: SurfaceCall {
-        object: "fs",
-        key: "read_file_twice",
-    },
-    binding: Binding::Tool("read_file"),
+    binding: Binding::Capability(CAPABILITY_READ_FILE),
     takes_input: true,
     applies: Applicability::Universal,
 };

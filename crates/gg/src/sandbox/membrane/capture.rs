@@ -27,7 +27,8 @@ use super::{
     ErrorCode, MembraneState, ProgramError, ProgramErrorKind, SandboxRefusal, SandboxToolCall,
     SandboxViewOpened, ToolApi,
 };
-use crate::sandbox::language::{FS_READ_FILE, ProgramLanguage, VIEW_OPEN_FILE, spell};
+use crate::sandbox::language::{ProgramLanguage, spell};
+use crate::sandbox::operations::{FILES_READ_FILE, OperationId, VIEWS_OPEN_FILE};
 use crate::tools::{ToolData, ToolOutcome};
 
 /// The most log lines one program's output is kept from. A JavaScript guest can log in a loop well
@@ -88,13 +89,20 @@ pub(super) const MAX_CALL_ERROR_BYTES: usize = 512;
 pub(super) const MAX_RECORDED_VIEW_EVENTS: usize = 100;
 
 impl<A: ToolApi> MembraneState<A> {
-    /// Push the ordered record of one serviced call.
+    /// Push the ordered record of one dispatched call, under gg's own
+    /// [operation id](OperationId) for it.
     ///
-    /// `completed` is whether the **call** succeeded, which is not always whether the tool reported
-    /// success: a `shell` command that exits non-zero is a completed call whose result the program
-    /// branched on, and recording it as a failure would make the next turn's roster contradict both
-    /// the program and the rule the membrane is built around.
-    pub(super) fn record(&mut self, tool: &str, outcome: &ToolOutcome, completed: bool) {
+    /// The id and not the internal call's name, on the rule this whole membrane keeps: the record is
+    /// of what the **model wrote**, and three operations may share one internal read. Keying it on
+    /// what ran would make `views.open_file` and `files.read_text_file` both report as the read they
+    /// were composed out of, which is the reading the offered-versus-called contrast exists to rule
+    /// out.
+    ///
+    /// `completed` is whether the **call** succeeded, which is not always whether the internal call
+    /// reported success: a `shell` command that exits non-zero is a completed call whose result the
+    /// program branched on, and recording it as a failure would make the next turn's roster
+    /// contradict both the program and the rule the membrane is built around.
+    pub(super) fn record(&mut self, id: OperationId, outcome: &ToolOutcome, completed: bool) {
         if self.calls.len() >= MAX_RECORDED_CALLS {
             self.calls_suppressed = self.calls_suppressed.saturating_add(1);
             self.last_recorded_call = None;
@@ -102,7 +110,7 @@ impl<A: ToolApi> MembraneState<A> {
         }
         self.last_recorded_call = Some(self.calls.len());
         self.calls.push(SandboxToolCall {
-            name: tool.to_string(),
+            name: id.to_string(),
             ok: completed,
             summary: outcome.summary.clone(),
             // The failure text is kept even though the program may catch the throw: a caught
@@ -133,14 +141,15 @@ impl<A: ToolApi> MembraneState<A> {
         }
     }
 
-    /// Record a call the membrane refused before it reached the invoker.
-    pub(super) fn record_refusal(&mut self, tool: &str, message: &str) {
+    /// Record a call the membrane refused before it reached the invoker, under the same
+    /// [operation id](OperationId) a serviced one is recorded under.
+    pub(super) fn record_refusal(&mut self, id: OperationId, message: &str) {
         if self.refusals.len() >= MAX_RECORDED_REFUSALS {
             self.refusals_suppressed = self.refusals_suppressed.saturating_add(1);
             return;
         }
         self.refusals.push(SandboxRefusal {
-            name: tool.to_string(),
+            name: id.to_string(),
             message: message.to_string(),
         });
     }
@@ -220,8 +229,8 @@ pub(super) fn withhold_pictures(outcome: &mut ToolOutcome, language: &dyn Progra
         // and acts on, so naming a call it cannot make would be worse than saying nothing.
         image.not_shown_reason = Some(format!(
             "`{}` does not show images; open one with `{}(path)`",
-            spell(language, FS_READ_FILE),
-            spell(language, VIEW_OPEN_FILE),
+            spell(language, FILES_READ_FILE),
+            spell(language, VIEWS_OPEN_FILE),
         ));
     }
 }

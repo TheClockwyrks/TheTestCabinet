@@ -1,5 +1,5 @@
 ---
-title: "The tool surface"
+title: "The API surface"
 ---
 
 ## Typed functions
@@ -16,8 +16,9 @@ family: `types`, `shell`, `files`, `helpers`, `skills`, `memories`, `tasks`,
 `board`, `context`, `session`, `docs`, `views`, `programs`, `delegation`,
 `feedback`. Three properties follow, and each is required:
 
-- A membrane function cannot exist without a host implementation, so a tool
-  cannot be added, renamed or removed without a typed signature following it.
+- A membrane function cannot exist without a host implementation, so an
+  operation cannot be added, renamed or removed without a typed signature
+  following it.
 - A model gets a real API. `gg.files.readFile(p, { limit: 200 })` is
   discoverable and wrong in ways the SDK can name.
 - The membrane is the only route to gg. What the interface does not declare is
@@ -25,10 +26,9 @@ family: `types`, `shell`, `files`, `helpers`, `skills`, `memories`, `tasks`,
 
 No JSON crosses the membrane and none reaches a tool implementation. The
 membrane calls a native, typed method per operation, and that method calls gg's
-tool struct directly. JSON is built in one place only: as the recorded arguments
-of the `ToolCall` a program's call streams as, so
-[session-record](/gg/session-record/) capture and telemetry are the same for a
-program's call and a native one.
+tool struct directly. JSON is built in one place only, as the request
+[session-record](/gg/session-record/) capture keys a dispatched call on, so a
+replay re-feeds a program's call from the same shape it re-feeds a native one.
 
 The WIT is language-neutral. Each arm binds this same world and layers its own
 idiomatic SDK over it, so two arms differ in the spelling of a call rather than
@@ -74,7 +74,7 @@ prompt says that gg seeds short names of its own into the scope, naming `gg`,
 
 The scope is static and takes no argument. Every function of the SDK is
 compiled, linked and callable in every program whatever the run enabled, and the
-surface a program's scope is built from covers all 35 gg tools. Both ending
+surface a program's scope is built from covers all 50 operations. Both ending
 groups are bound on every agent, and the agent's role decides which of them the
 membrane accepts.
 
@@ -93,17 +93,21 @@ that created it.
 
 ## The capability gate
 
-`crates/gg/src/sandbox/operations.rs` holds gg's whole model-facing vocabulary
-as 50 operations. Each row names an `OperationId` of the form `namespace.key`
-(`files.read_file`), the family it belongs to, whether the call takes input, and
-its `Binding`. A `Binding` is one of four things:
+`crates/gg/src/sandbox/operations.rs` holds this surface's whole model-facing
+vocabulary as 50 operations, and it is the only vocabulary the surface has. gg's
+tool names are the other surface's, are callable from no program, and decide
+nothing here.
 
-- `Tool(name)`, bought by a gg tool the run's toolset offers. 37 rows over the
-  35 tools: `files.read_file`, `files.read_text_file` and `views.open_file` are
-  three operations over the one `read_file` tool.
-- `Capability(id)`, bought by a gg capability. `docs.close` and `docs.close_all`
-  are bought by `docview-close`; `programs.history`, `programs.get` and
-  `programs.rerun` by `program-library`.
+Each row names an `OperationId` of the form `namespace.key` (`files.read_file`),
+the family it belongs to, whether the call takes input, and its `Binding`. A
+`Binding` is one of three things:
+
+- `Capability(id)`, bought by a gg capability the agent holds and named in that
+  agent's [allowlist](/gg/configurations/#granting-calls). 42 rows, and a
+  capability commonly buys several: `read-file` alone buys `files.read_file`,
+  `files.read_text_file` and `views.open_file`, which are three separately
+  documented, separately called and separately grantable operations over one
+  read.
 - `Ending(role)`, bought by the agent's ending role. `session.finish` is
   `Standard`; `session.approve` and `session.request_changes` are `Review`.
 - `Always`, bound to every program whatever a run enables. `docs.search`,
@@ -119,14 +123,14 @@ is one implementation of the question, so what a model can find and what gg will
 service are one set.
 
 The same grant decides the prompt's vocabulary. A module is named in the system
-prompt where this agent binds a function in it, so a withheld capability
-contributes no prompt text and the toolset and its description come from one
-source.
+prompt where this agent binds a function in it, so a capability this agent was
+granted nothing from contributes no prompt text, and the surface and its
+description come from one source.
 
 The gate is asked inside the call's own recording bracket, so a refused call is
 still an API call the model made and lands on the turn's refusal roster as a
-failed one. That count is what [toolset ablation](/gg/toolset-ablation/)
-measures.
+failed one. That roster is what a comparison of two configurations reads to see
+what a narrowed agent reached for anyway.
 
 An operation's `Applicability` is `Universal` or `UniversalExcept`, and every
 exemption carries a written reason held at compile time. No operation carries an
@@ -135,12 +139,13 @@ exemption.
 ### Refusals
 
 A refusal is a typed `ToolError` with code `unavailable`, which a program can
-catch and recover from on the same turn. Its message names what is missing: the
-gg tool a toolset did not offer, the capability id the agent was not given, or
-the endings the agent does have. The call the message quotes is spelled in the
-program's own language, because the sentence is an instruction the model can
-act on. The error's `tool` field carries gg's own key instead, because a catch
-site branches on identity rather than on prose.
+catch and recover from on the same turn. Its message says the call is not
+available and, where the agent has one, which call to make instead. It says
+nothing about what would have unlocked the call, since the profile was fixed
+before the session began and no program can edit it. The call the message quotes
+is spelled in the program's own language, because the sentence is an instruction
+the model can act on; the error's `tool` field carries the operation's own key
+instead, because a catch site branches on identity rather than on prose.
 
 An uncaught refusal is classified from the failure code, so it records as
 `program_unknown_name`. Two arms do not carry a code up with the throw, so a
@@ -154,10 +159,9 @@ A failed call throws a typed `ToolError` carrying `.tool`, `.code` and
 the program landed before the throw has landed for good. What the model is told
 is which statement threw, at the coordinates of its own program.
 
-- `.tool` names the failed call in gg's own vocabulary: the gg tool a dispatched
-  call ran, or the operation's own key for one the membrane refused. The guest
-  re-tags a binding-level `TypeError` as a `ToolError` on the call it came out
-  of, and that one carries the SDK's spelling, so
+- `.tool` names the failed call by the key of the operation the program wrote.
+  The guest re-tags a binding-level `TypeError` as a `ToolError` on the call it
+  came out of, and that one carries the SDK's spelling, so
   `gg.tasks.addTask({ title: "x" })` reports as `` `addTask` failed
   (invalid-argument) `` with the bindings' own complaint after it.
 - `ToolError` serialises. It carries an explicit `toJSON`, because a plain

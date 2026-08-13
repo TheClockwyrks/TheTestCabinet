@@ -77,17 +77,13 @@ fn every_library_call_is_refused_without_the_capability() {
             refused.tool, call,
             "the identity field is gg's own name for the call"
         );
-        assert!(
-            refused.message.contains("no library"),
-            "`{call}`: {}",
-            refused.message
-        );
-        // ...and the sentence names the call the way the program would have written it, object and
-        // all, rather than under the bare key gg files it by.
-        assert!(
-            refused.message.contains(&format!("`gg.programs.{call}`")),
-            "`{call}`: {}",
-            refused.message
+        // The sentence names the call the way the program would have written it, module and all,
+        // rather than under the bare key gg files it by — and says nothing about what would have
+        // had to be configured differently, which is not this agent's to change.
+        assert_eq!(
+            refused.message,
+            format!("`gg.programs.{call}` is not available."),
+            "`{call}`"
         );
     }
 
@@ -119,11 +115,7 @@ fn the_capability_is_checked_before_the_arguments() {
     let refused = state.rerun(String::new()).unwrap_err();
 
     assert_eq!(refused.code, ErrorCode::Unavailable);
-    assert!(
-        refused.message.contains("no library"),
-        "{}",
-        refused.message
-    );
+    assert_eq!(refused.message, "`gg.programs.rerun` is not available.");
 }
 
 #[test]
@@ -215,7 +207,7 @@ fn a_hand_over_is_revoked_when_the_program_then_fails() {
 /// A bad **argument** to a call the agent does have is not what the refusal roster counts.
 ///
 /// The roster answers "what did the model reach for that this run does not offer it" — the question
-/// an ablation is run to ask — and a blank hand-over from an agent that may hand over is not an
+/// a comparison of two configurations asks — and a blank hand-over from an agent that may hand over is not an
 /// answer to it. The withheld-capability refusal above is, and it is on the roster.
 #[test]
 fn a_hand_over_refused_over_its_argument_is_not_on_the_refusal_roster() {

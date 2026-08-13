@@ -26,21 +26,18 @@ use super::test_cabinet::gg::delegation::{
 };
 use super::test_cabinet::gg::types::ToolError;
 use super::{MembraneState, ToolApi};
-use crate::sandbox::language::{
-    AGENTS_EXEC, AGENTS_FORK, AGENTS_SEND_MESSAGE, AGENTS_SPAWN_SUBAGENT, AGENTS_TRANSITION_STATE,
-    AGENTS_WAIT_FOR_SUBAGENTS,
+use crate::sandbox::operations::{
+    DELEGATION_EXEC, DELEGATION_FORK, DELEGATION_SEND_MESSAGE, DELEGATION_SPAWN_SUBAGENT,
+    DELEGATION_TRANSITION_STATE, DELEGATION_WAIT_FOR_SUBAGENTS,
 };
-use crate::tools::{
-    AgentStatusData, EXEC_TOOL, FORK_TOOL, SEND_MESSAGE_TOOL, SPAWN_SUBAGENT_TOOL,
-    SubagentHandleData, SubagentResultData, TRANSITION_STATE_TOOL, ToolData,
-    WAIT_FOR_SUBAGENTS_TOOL,
-};
+use crate::tools::{AgentStatusData, SubagentHandleData, SubagentResultData, ToolData};
+
 impl<A: ToolApi> DelegationHost for MembraneState<A> {
     fn spawn_subagent(&mut self, request: SpawnRequest) -> Result<SubagentHandle, ToolError> {
-        self.recorded(AGENTS_SPAWN_SUBAGENT, |state, rec| {
+        self.recorded(DELEGATION_SPAWN_SUBAGENT, |state, rec| {
             let (prompt, issue_id) = brief(request.task);
             let agent = request.agent;
-            let outcome = state.call(rec, SPAWN_SUBAGENT_TOOL, |api| {
+            let outcome = state.call(rec, DELEGATION_SPAWN_SUBAGENT, |api| {
                 api.spawn_subagent(agent, prompt, issue_id)
             })?;
             // Every payload here is destructured field by field rather than read through dots, so a
@@ -50,7 +47,7 @@ impl<A: ToolApi> DelegationHost for MembraneState<A> {
                 Some(ToolData::SubagentSpawned(SubagentHandleData { id, slot, model_id })) => {
                     Ok(SubagentHandle { id, slot, model_id })
                 }
-                other => Err(state.missing_data(SPAWN_SUBAGENT_TOOL, other.as_ref())),
+                other => Err(state.missing_data(DELEGATION_SPAWN_SUBAGENT, other.as_ref())),
             }
         })
     }
@@ -65,8 +62,8 @@ impl<A: ToolApi> DelegationHost for MembraneState<A> {
         // budget is what the loop stops at the next turn boundary either way. Every one of those
         // children's events therefore lands inside this call's API bracket, which is what the
         // opening half being emitted before the work is for.
-        self.recorded(AGENTS_WAIT_FOR_SUBAGENTS, |state, rec| {
-            let outcome = state.call(rec, WAIT_FOR_SUBAGENTS_TOOL, |api| {
+        self.recorded(DELEGATION_WAIT_FOR_SUBAGENTS, |state, rec| {
+            let outcome = state.call(rec, DELEGATION_WAIT_FOR_SUBAGENTS, |api| {
                 api.wait_for_subagents(ids)
             })?;
             match outcome.data {
@@ -84,14 +81,14 @@ impl<A: ToolApi> DelegationHost for MembraneState<A> {
                         },
                     )
                     .collect()),
-                other => Err(state.missing_data(WAIT_FOR_SUBAGENTS_TOOL, other.as_ref())),
+                other => Err(state.missing_data(DELEGATION_WAIT_FOR_SUBAGENTS, other.as_ref())),
             }
         })
     }
 
     fn send_message(&mut self, agent_id: String, message: String) -> Result<(), ToolError> {
-        self.recorded(AGENTS_SEND_MESSAGE, |state, rec| {
-            state.call(rec, SEND_MESSAGE_TOOL, |api| {
+        self.recorded(DELEGATION_SEND_MESSAGE, |state, rec| {
+            state.call(rec, DELEGATION_SEND_MESSAGE, |api| {
                 api.send_message(agent_id, message)
             })?;
             Ok(())
@@ -106,8 +103,8 @@ impl<A: ToolApi> DelegationHost for MembraneState<A> {
     /// into — mid-execution would pull every remaining call out from under it. Success carries no
     /// payload; what the successor received is told to *it*, in the note it opens on.
     fn transition_state(&mut self, target: String, note: Option<String>) -> Result<(), ToolError> {
-        self.recorded(AGENTS_TRANSITION_STATE, |state, rec| {
-            state.call(rec, TRANSITION_STATE_TOOL, |api| {
+        self.recorded(DELEGATION_TRANSITION_STATE, |state, rec| {
+            state.call(rec, DELEGATION_TRANSITION_STATE, |api| {
                 api.transition_state(target, note)
             })?;
             Ok(())
@@ -121,8 +118,8 @@ impl<A: ToolApi> DelegationHost for MembraneState<A> {
     /// carries no payload — what the successor received is told to *it*, in the note it opens on,
     /// and this program will not be running by the time there is anything to report.
     fn exec(&mut self, agent: String, prompt: Option<String>) -> Result<(), ToolError> {
-        self.recorded(AGENTS_EXEC, |state, rec| {
-            state.call(rec, EXEC_TOOL, |api| api.exec(agent, prompt))?;
+        self.recorded(DELEGATION_EXEC, |state, rec| {
+            state.call(rec, DELEGATION_EXEC, |api| api.exec(agent, prompt))?;
             Ok(())
         })
     }
@@ -133,13 +130,13 @@ impl<A: ToolApi> DelegationHost for MembraneState<A> {
     /// ordinary child from the moment it starts, and a program that has one should be able to name
     /// it, wait on it and message it with the code it already has for children.
     fn fork(&mut self, prompt: String) -> Result<SubagentHandle, ToolError> {
-        self.recorded(AGENTS_FORK, |state, rec| {
-            let outcome = state.call(rec, FORK_TOOL, |api| api.fork(prompt))?;
+        self.recorded(DELEGATION_FORK, |state, rec| {
+            let outcome = state.call(rec, DELEGATION_FORK, |api| api.fork(prompt))?;
             match outcome.data {
                 Some(ToolData::SubagentSpawned(SubagentHandleData { id, slot, model_id })) => {
                     Ok(SubagentHandle { id, slot, model_id })
                 }
-                other => Err(state.missing_data(FORK_TOOL, other.as_ref())),
+                other => Err(state.missing_data(DELEGATION_FORK, other.as_ref())),
             }
         })
     }

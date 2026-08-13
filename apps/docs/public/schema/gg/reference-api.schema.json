@@ -16,7 +16,7 @@
           "type": "string"
         },
         "capability": {
-          "description": "The **capability** that buys this function, by gg's own id for it (`program-library`,\n`docview-close`), or `None` for a function no capability gates.\n\n[`gate`](Self::gate) names a *tool*, [`ending`](Self::ending) names a *role*, and this names\nthe third and last thing that can withhold a call — so a reader that finds all three empty\nmay say the function is always available, and one that does not must not.",
+          "description": "The **capability** that buys this function, by gg's own id for it (`memories`,\n`program-library`, `docview-close`), or `None` for a function no capability gates.\n\nThis and [`ending`](Self::ending) are the only two things that can withhold a call — a\ncapability the agent's profile does not switch on, or an ending belonging to another role —\nso a reader that finds both empty may say the function is always available, and one that does\nnot must not.\n\nThere is deliberately no third field naming a *tool*. The API surface is not gated by the\ntool surface: the two are independent vocabularies over one core, an agent holds exactly one\nof them, and a tool name on an API function was an answer to a question nobody could ask.",
           "type": ["string", "null"]
         },
         "category": {
@@ -30,10 +30,6 @@
         "fqn": {
           "description": "**The key this entry is opened by** — the fully-qualified name a `view.openDocsView` takes\nand a documentation search files its hit under (`gg.files.readFile`, `gg.files.FileRead`).\n\nUnique within the document, which is what makes it the page's own route parameter. The bare\n[`name`](Self::name) is not: a convenience method on a value and the free function it aliases\nmay share one.",
           "type": "string"
-        },
-        "gate": {
-          "description": "The gg tool whose being enabled binds this function, or `None` for one nothing gates —\nan ending call (decided by the agent's [role](Self::ending)), a view function bound to\nevery program whatever a run enables, or one a [capability](Self::capability) buys.",
-          "type": ["string", "null"]
         },
         "kind": {
           "$ref": "#/$defs/GgReferenceEntryKind",

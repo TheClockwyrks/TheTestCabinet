@@ -8,8 +8,8 @@
 //!
 //! # Why this is not a capability
 //!
-//! Everything else gg configures is a capability: a feature the model is offered, an arm a study
-//! ablates. A hook is the opposite end of the telescope — the operator reaching in from outside the
+//! Everything else gg configures is a capability: a feature the model is offered, and one that
+//! two configurations being compared may differ over. A hook is the opposite end of the telescope — the operator reaching in from outside the
 //! run. The model is never told a hook exists, is offered no tool for one, and cannot decline one;
 //! a blocked write comes back looking like a refusal from the harness, because that is what it is.
 //! They never appear in the `cap.*` query namespace.

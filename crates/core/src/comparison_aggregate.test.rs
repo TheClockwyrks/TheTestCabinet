@@ -347,7 +347,7 @@ fn a_harness_arm_and_a_gg_arm_are_aggregated_side_by_side() {
     config.arms[0].run_ids = vec!["pi-1".into()];
     config.arms.push(ComparisonArm {
         id: "gg".into(),
-        label: "gg — ablation A".into(),
+        label: "gg — configuration A".into(),
         harness_slug: None,
         model_id: None,
         gg_config_id: Some("builtin:default".into()),

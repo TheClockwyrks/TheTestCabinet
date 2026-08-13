@@ -44,7 +44,7 @@ fn this_arm_commits_no_component_and_compiles_one_instead() {
 fn a_module_is_reached_with_a_dot() {
     assert_eq!(swift().member_separator(), ".");
     assert_eq!(
-        spell(swift(), crate::sandbox::VIEW_OPEN_TEXT),
+        spell(swift(), crate::sandbox::VIEWS_OPEN_TEXT),
         "gg.views.openText",
     );
 }

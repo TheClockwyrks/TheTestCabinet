@@ -392,30 +392,8 @@ function Figure({
 // and what they called. Each is a direct child of
 // `.agentDetail`, so every boundary between them is the single gap that container sets — see
 // the stylesheet for why the uniformity is deliberate.
-// The tools this profile's chips mark as struck, and whether that marking is a finding or
-// only a reading of the configuration.
-//
-// gg's own account wins wherever there is one. It holds exactly the `disabledTools` entries
-// that NAME A GG TOOL, because a name gg does not recognise withholds nothing — gg warns at
-// startup and offers the agent the surface it would have had — so a typo is absent from it
-// and a chip claiming an ablation that never applied cannot be drawn. Re-reading the
-// configuration here would draw precisely that chip, on the panel whose whole job is telling
-// "the harness never gave it" apart from "the model ignored it".
-//
-// The configuration is the fallback and only the fallback: a profile the run never spawned has
-// no account to prefer. There the chips still say what the arm asked for — losing that would
-// leave an unexercised arm undescribed — but they say it as a request rather than as an outcome.
-function agentAblation(agent: GgAgentSummary): {
-  tools: readonly string[];
-  applied: boolean;
-} {
-  if (agent.surface) return { tools: agent.surface.withheld, applied: true };
-  return { tools: agent.disabledTools, applied: false };
-}
-
 function AgentDetail({ agent }: { agent: GgAgentSummary }) {
   const ran = agent.instances.length > 0;
-  const ablation = agentAblation(agent);
   return (
     <>
       {/* Who actually ran, first — see the note above this component. It renders nothing at
@@ -423,24 +401,11 @@ function AgentDetail({ agent }: { agent: GgAgentSummary }) {
           `never` line below is that case's whole answer. */}
       <InstanceChips agent={agent} />
 
-      {(agent.capabilities.length > 0 || ablation.tools.length > 0) && (
+      {agent.capabilities.length > 0 && (
         <div className={styles.capabilities}>
           {agent.capabilities.map((id) => (
             <span key={id} className={dash.capability}>
               {id}
-            </span>
-          ))}
-          {ablation.tools.map((tool) => (
-            <span
-              key={`-${tool}`}
-              className={styles.disabledTool}
-              title={
-                ablation.applied
-                  ? "withheld from this agent even though its capability is on"
-                  : "the configuration asks for this to be withheld; no instance of this agent reported what it was offered, so whether it applied is unknown"
-              }
-            >
-              −{tool}
             </span>
           ))}
         </div>
@@ -448,9 +413,9 @@ function AgentDetail({ agent }: { agent: GgAgentSummary }) {
 
       {/* Directly under the capability chips, because it is the same statement made one step
           later: those chips are what the configuration asked for, this is what gg resolved
-          out of them for the instances that actually ran — with the struck chips above
-          already gg's own (see `agentAblation`). It renders nothing at all for a profile
-          the run never spawned, whose instances therefore reported no surface. */}
+          out of them — the capability, narrowed by the agent's own allowlist — for the
+          instances that actually ran. It renders nothing at all for a profile the run never
+          spawned, whose instances therefore reported no surface. */}
       <SurfaceSection agent={agent} />
 
       {ran ? (
@@ -499,11 +464,11 @@ function AgentDetail({ agent }: { agent: GgAgentSummary }) {
 // binds.
 //
 // It exists to make one distinction readable that nothing else on this panel can make. The
-// observed-usage section at the foot of the detail lists what an agent *called*, so a tool it
-// was never given and a tool it was given and ignored look identical there — and telling
-// those two apart is the entire question a toolset ablation is run to answer. So this section
-// lists the offered set whole, keeps the never-called entries in it rather than dropping
-// them, and only dims them.
+// observed-usage section at the foot of the detail lists what an agent *called*, so a call it
+// was never given and a call it was given and ignored look identical there — and telling
+// those two apart is the entire question comparing one configuration against another is run
+// to answer. So this section lists the offered set whole, keeps the never-called entries in
+// it rather than dropping them, and only dims them.
 //
 // The union across instances is the aggregate's, not this file's (see
 // {@link GgAgentSurfaceSummary}), and it is deliberately not averaged away: a profile's
@@ -518,8 +483,8 @@ function AgentDetail({ agent }: { agent: GgAgentSummary }) {
 // knows which shape the agent's turn actually took. The fallback covers the two answers a
 // mode cannot give — instances that disagreed, and a mode this console has not met — where
 // what the instances actually bound is the better witness than a name nothing here
-// understands. A code agent that bound no object at all falls back with them, and reads as
-// the tools its program's calls were gated on, which is the only surface there is to show.
+// understands, and it is conclusive: the two surfaces are disjoint, so an instance that bound
+// a module wrote programs and one that did not was handed tools.
 function readsAsApis(surface: GgAgentSurfaceSummary): boolean {
   if (surface.executionMode === "tool_calling") return false;
   return surface.apis.length > 0;
@@ -531,11 +496,12 @@ function SurfaceSection({ agent }: { agent: GgAgentSummary }) {
   const asApis = surface != null && readsAsApis(surface);
   // The profile's observed calls, keyed the way this section's entries are RECORDED: an API
   // surface joins on the OPERATION — gg's own identity for what the call does — and a tool
-  // surface on the gg tool name. Two layers over one core, and only the layer this section is showing.
-  // Both come off the raw per-layer records rather than off the profile's call breakdown,
-  // which reports only the layer that profile's read-out is taken on: the two questions can
-  // legitimately part company for a code profile that bound no API objects at all, which is
-  // read as APIs nowhere and shows the tools its calls were gated on here.
+  // surface on the gg tool name. Two independent vocabularies over one core, and a profile
+  // is offered exactly one of them, so the record this reads is the record that surface
+  // writes and the other is empty. Both come off the raw per-surface records rather than off
+  // the profile's call breakdown, which reports only one of the two: the breakdown resolves
+  // the surface a second time, and a section that has already decided which one it is
+  // showing should not be able to disagree with itself about it.
   const calls = asApis ? agent.apiCalls : agent.toolCalls;
   if (!surface) return null;
 

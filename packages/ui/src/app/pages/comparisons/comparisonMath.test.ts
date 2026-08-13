@@ -159,7 +159,7 @@ describe("withArmRunIds", () => {
       },
       {
         id: "b",
-        label: "gg — ablation A",
+        label: "gg — config A",
         ggConfigId: "builtin:default",
         ggSlotModels: { primary: "anthropic/claude-opus-4.8" },
         runIds: [],

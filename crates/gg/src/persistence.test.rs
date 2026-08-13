@@ -13,6 +13,18 @@ use super::*;
 use crate::context::{FileRegion, HeuristicTokenEstimator, OpenTextView, Retention};
 use crate::telemetry::CollectingSink;
 
+/// A documentation runtime for an agent granted the read-file capability and every call it offers —
+/// enough to bind `readFile` and the type it hands back, and nothing else.
+fn reader() -> DocsRuntime {
+    let capability = test_cabinet_core::gg::CAPABILITY_READ_FILE;
+    DocsRuntime::new(
+        vec![capability.to_string()],
+        crate::ending::EndingRole::Standard,
+        &crate::sandbox::capability_operations([capability]),
+        GgProgramLanguage::TypeScript,
+    )
+}
+
 /// A context model measuring with the deterministic heuristic estimator, in tool-calling mode.
 fn context() -> ContextModel {
     ContextModel::new(
@@ -104,7 +116,7 @@ fn only_a_persistent_profile_takes_an_exclusivity_key() {
     assert_eq!(exclusive_key(set.root()), None);
 }
 
-/// The capability being *present but disabled* is off, like every other capability — so an ablation's
+/// The capability being *present but disabled* is off, like every other capability — so a comparison's
 /// control arm keeps the configuration it would have used without serializing anything.
 #[test]
 fn a_disabled_persistence_capability_takes_no_key() {
@@ -585,12 +597,7 @@ fn a_closed_text_view_is_not_carried_over() {
 /// right answer and replaying is the wrong one.
 #[test]
 fn a_documentation_view_is_recorded_by_key_and_re_rendered() {
-    let docs = DocsRuntime::new(
-        vec!["read_file".to_string()],
-        crate::ending::EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
+    let docs = reader();
 
     let mut window = context();
     window.open_docview(
@@ -645,12 +652,7 @@ fn a_documentation_view_is_recorded_by_key_and_re_rendered() {
 /// reason the desk stores a key rather than the text: replaying the text would have restored it.
 #[test]
 fn a_key_this_instance_cannot_bind_is_not_restored() {
-    let full = DocsRuntime::new(
-        vec!["read_file".to_string()],
-        crate::ending::EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
+    let full = reader();
     let mut window = context();
     window.open_docview(
         "readFile".to_string(),
@@ -658,7 +660,7 @@ fn a_key_this_instance_cannot_bind_is_not_restored() {
     );
     let recorded = PersistedDesk::of(&window);
 
-    let ablated = DocsRuntime::new(
+    let withheld = DocsRuntime::new(
         Vec::new(),
         crate::ending::EndingRole::Standard,
         &[],
@@ -666,7 +668,7 @@ fn a_key_this_instance_cannot_bind_is_not_restored() {
     );
     let mut next = context();
     assert_eq!(
-        restore_docviews(&mut next, &recorded.docviews, &ablated),
+        restore_docviews(&mut next, &recorded.docviews, &withheld),
         0,
         "the next instance cannot call `readFile`, so it is not shown its documentation"
     );
@@ -676,12 +678,7 @@ fn a_key_this_instance_cannot_bind_is_not_restored() {
 /// A view the agent **closed** is off the desk, on the same terms a closed text view is.
 #[test]
 fn a_closed_documentation_view_is_not_carried_over() {
-    let docs = DocsRuntime::new(
-        vec!["read_file".to_string()],
-        crate::ending::EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
+    let docs = reader();
     let mut window = context();
     for key in ["readFile", "FileRead"] {
         window.open_docview(

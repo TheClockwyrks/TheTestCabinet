@@ -36,7 +36,11 @@ use test_cabinet_core::gg::GgProgramLanguage;
 
 use crate::context::ViewKind;
 use crate::ending::EndingRole;
-use crate::sandbox::fake::{CallLog, FakeToolApi, all_tools, canned_outcome};
+use test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE;
+
+use crate::sandbox::fake::{
+    CallLog, FakeToolApi, all_capabilities, all_operations, all_operations_without, canned_outcome,
+};
 use crate::sandbox::{
     ProgramLanguage, ProgramScope, RunEnding, SandboxLimits, SandboxOutcome, language, run_program,
 };
@@ -48,22 +52,24 @@ fn javascript() -> &'static dyn ProgramLanguage {
 
 /// Run `program` on this arm with every tool bound, the canned invoker and the default ceilings.
 fn run(program: &str) -> (SandboxOutcome, CallLog) {
-    run_with(program, &all_tools())
+    run_with(program, &all_operations())
 }
 
 /// Run `program` on this arm against exactly `enabled` — what a reduced toolset really looks like
 /// from inside a program.
-fn run_with(program: &str, enabled: &[String]) -> (SandboxOutcome, CallLog) {
+fn run_with(
+    program: &str,
+    operations: &[crate::sandbox::operations::OperationId],
+) -> (SandboxOutcome, CallLog) {
     let log = CallLog::default();
     let (outcome, _api) = run_program(
         javascript(),
         program,
         ProgramScope {
-            enabled,
+            capabilities: &all_capabilities(),
+            operations,
             modules: &[],
             ending: RunEnding::Role(EndingRole::Standard),
-            library: false,
-            docview_close: false,
         },
         SandboxLimits::default(),
         None,
@@ -152,8 +158,14 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
             .iter()
             .map(|call| call.name.as_str())
             .collect::<Vec<_>>(),
-        ["list_dir", "read_file", "read_file", "write_file"],
-        "and the host's own record matches what it was actually asked to do"
+        [
+            "files.list_dir",
+            "files.read_text_file",
+            "files.read_text_file",
+            "files.write_file"
+        ],
+        "and the roster names what the MODEL wrote, which is `readTextFile` twice — the log above \
+         names the read each of them was serviced by"
     );
 
     // 3. The arm's variable, observed rather than inferred. `view.openText` takes two strings; this
@@ -432,7 +444,7 @@ fn a_withheld_capability_is_still_bound_and_refused_with_a_sentence() {
             "  console.log(error.message);\n",
             "}\n",
         ),
-        &["shell".to_string()],
+        &[crate::sandbox::operations::SHELL_SHELL],
     );
     let lines = logs(&outcome);
     assert_eq!(
@@ -443,10 +455,9 @@ fn a_withheld_capability_is_still_bound_and_refused_with_a_sentence() {
         lines[1], "true unavailable list_dir",
         "the refusal is a typed value the program narrowed and read: {lines:?}"
     );
-    assert!(
-        lines[2].contains("`gg.files.listDir` is not available to you")
-            && lines[2].contains("the gg tool `list_dir`"),
-        "and it names the call as this program would write it, and what is missing: {lines:?}"
+    assert_eq!(
+        lines[2], "`gg.files.listDir` is not available.",
+        "and it names the call as this program would write it: {lines:?}"
     );
     assert!(
         log.calls().is_empty(),
@@ -455,7 +466,7 @@ fn a_withheld_capability_is_still_bound_and_refused_with_a_sentence() {
     assert_eq!(
         outcome.refusals.len(),
         1,
-        "and the reach is recorded, which is what an ablation counts: {:?}",
+        "and the reach is recorded, which is what a comparison of two configurations counts: {:?}",
         outcome.refusals
     );
 
@@ -473,7 +484,7 @@ fn a_withheld_capability_is_still_bound_and_refused_with_a_sentence() {
             "  console.log(error.message);\n",
             "}\n",
         ),
-        &all_tools(),
+        &all_operations_without(CAPABILITY_DOCVIEW_CLOSE),
     );
     let lines = logs(&outcome);
     assert_eq!(
@@ -484,9 +495,9 @@ fn a_withheld_capability_is_still_bound_and_refused_with_a_sentence() {
         lines[1], "true unavailable close_all",
         "and closing is, so it refused as a value the program narrowed: {lines:?}"
     );
-    assert!(
-        lines[2].contains("docview-close"),
-        "naming the capability that is missing rather than merely saying no: {lines:?}"
+    assert_eq!(
+        lines[2], "`gg.docs.closeAll` is not available.",
+        "naming the call the program wrote and stopping there: {lines:?}"
     );
     assert!(
         log.calls().is_empty(),

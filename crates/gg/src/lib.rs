@@ -207,10 +207,11 @@ async fn run_session(config: &std::path::Path) -> ExitCode {
     let emitter = Emitter::new(Some(invocation.session_id.clone()));
 
     // A session that ran (however it ended) exits `0` — its outcome is in the telemetry; only a
-    // launch failure (no model to run) exits non-zero.
+    // failure that was gg's own or the operator's (no model to run, a rejected credential, a gg
+    // defect) exits non-zero, because none of those leaves a run to score.
     match agent::run(&invocation, &emitter).await {
         agent::SessionOutcome::Ran => ExitCode::SUCCESS,
-        agent::SessionOutcome::LaunchFailed => ExitCode::FAILURE,
+        agent::SessionOutcome::HarnessError => ExitCode::FAILURE,
     }
 }
 

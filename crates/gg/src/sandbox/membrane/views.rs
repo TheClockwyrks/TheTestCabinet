@@ -3,28 +3,27 @@
 //!
 //! # Why these are not gg tools
 //!
-//! The eight tool interfaces stand in exact one-to-one correspondence with gg's
-//! [tool vocabulary](crate::tools::ALL_TOOL_NAMES), and `crates/gg/src/sandbox.test.rs` checks the
-//! prebuilt component's `bound-tools` against it. A view function is not a tool: no capability
-//! offers one, nothing dispatches one by name, and four of the five are bound into every program's
-//! scope whatever a run enables. Filing them among the tool interfaces would break that bijection —
-//! and making them *real* tools would hand a native tool-calling session an `open_file_view` that
-//! duplicates `read_file` for no gain, since on that path every result is already an attributable
-//! message.
+//! Because the tool-calling surface has no use for them. A view is how a **program** puts material
+//! into its own agent's window, and a tool-calling turn needs no such call: on that path every tool
+//! result is already an attributable message in the window, so an `open_file_view` tool would
+//! duplicate `read_file` for no gain. No capability offers one, nothing dispatches one by name, and
+//! four of the five are bound to every program whatever a run enables — which is what makes the view
+//! surface the one channel a run that granted nothing at all still has.
 //!
-//! # One of the five dispatches a tool, and is still recorded as itself
+//! # One of the five reaches the workspace, and is still recorded as itself
 //!
-//! [`open_file_view`](ViewsHost::open_file_view) **runs** a `read_file`. It goes through
-//! [`dispatch`](MembraneState) against that tool name, so it keeps the wall-clock deadline guard and
-//! the ordered roster entry — and, on the far side of the
-//! [api](ToolApi), the loop's own servicing: the compaction gate, the `ToolCall`/`ToolResult`
-//! telemetry pair and the session capture. What it adds is the view itself: the read's result also
-//! becomes a context item, keyed by the path it came from.
+//! [`open_file_view`](ViewsHost::open_file_view) **performs a read**. It goes through
+//! [`dispatch`](MembraneState), so it keeps the wall-clock deadline guard, the ordered roster entry
+//! and — on the far side of the [api](ToolApi) — the loop's own servicing: the compaction gate and
+//! the session capture. What it adds is the view itself: the read's result also becomes a context
+//! item, keyed by the path it came from.
 //!
-//! None of that is what the **model** called. It called `view.openFile`, and that is the identity
-//! its [API record](super::recording) carries — one function's count, not a share of `read_file`'s.
-//! The two records are independent on purpose: the tool one says what ran, this one says what was
-//! written.
+//! Every one of those records names `views.open_file`, because that is what the **model** wrote. The
+//! internal read is shared with `files.read_file` and `files.read_text_file` — three operations over
+//! one implementation — and none of the three is recorded, refused or reported as either of the
+//! others. A program that opened a view of a file it may not read is refused `views.open_file`; a
+//! read that fails throws with `open_file` in the error's `tool` field; and the turn's roster carries
+//! one entry per call the model made.
 //!
 //! The other four bypass `dispatch`, whose deadline guard is wrong for them: it would withhold them
 //! at exactly the moment they matter most — the same carve-out
@@ -54,30 +53,21 @@ use super::workspace::{file_read, read_window};
 use super::{MembraneState, ToolApi, error_code};
 use crate::context::{FileRegion, OpenViewInfo, ViewKind as HostViewKind};
 use crate::sandbox::invoker::{ViewOpenOutcome, ViewRefusal};
-use crate::sandbox::language::{
-    VIEW_CLOSE, VIEW_CURRENT, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, VIEW_OPEN_TEXT,
+use crate::sandbox::operations::{
+    OperationId, VIEWS_CLOSE, VIEWS_CURRENT, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE, VIEWS_OPEN_TEXT,
 };
-use crate::tools::READ_FILE_TOOL;
-
-/// The name a refused view call is reported under. It is not a gg tool name — nothing dispatches it
-/// — but a `tool-error` must name *something* a model can recognise, and this is the function it
-/// called.
-const OPEN_TEXT_VIEW_FUNCTION: &str = "openText";
-/// The name a refused `view.close` is reported under, on the same terms.
-const CLOSE_VIEW_FUNCTION: &str = "close";
-/// The name a refused (or unresolvable) `view.openDocsView` is reported under.
-const OPEN_DOCS_VIEW_FUNCTION: &str = "openDocsView";
 
 impl<A: ToolApi> ViewsHost for MembraneState<A> {
     /// Read a workspace file and open a view of it.
     ///
-    /// The bridged half is an ordinary `read_file` — same tool name, same guards, same roster line —
-    /// so a program that opens a view of a file it may not read is refused exactly as a bare read
-    /// would be. The view itself is pushed on the api side, which is why the record of it travels
-    /// back out of the closure rather than out of the outcome.
+    /// The read is the same one `files.read_file` performs, under the same guards, so a program that
+    /// opens a view of a file it may not read is refused exactly as a bare read would be. The view
+    /// itself is pushed on the api side, which is why the record of it travels back out of the
+    /// closure rather than out of the outcome.
     ///
-    /// What the **model** called, though, is `view.openFile`, and that is what the API bracket
-    /// records: the tool underneath is the execution layer's business and appears nowhere in what
+    /// Everything the call leaves behind says `views.open_file`, because that is what the **model**
+    /// wrote: the API bracket, the roster line, and the `tool` field of the error a failed read
+    /// throws. What runs underneath is the execution layer's business and appears nowhere in what
     /// this agent's surface reports.
     fn open_file_view(
         &mut self,
@@ -85,11 +75,11 @@ impl<A: ToolApi> ViewsHost for MembraneState<A> {
         offset: Option<u32>,
         limit: Option<u32>,
     ) -> Result<FileRead, ToolError> {
-        self.recorded(VIEW_OPEN_FILE, |state, rec| {
+        self.recorded(VIEWS_OPEN_FILE, |state, rec| {
             let (offset, limit) = read_window(offset, limit);
             let mut opened = None;
             let outcome = state
-                .call(rec, READ_FILE_TOOL, |api| {
+                .call(rec, VIEWS_OPEN_FILE, |api| {
                     let ViewOpenOutcome {
                         outcome,
                         opened: view,
@@ -101,20 +91,20 @@ impl<A: ToolApi> ViewsHost for MembraneState<A> {
             if let Some(view) = opened {
                 state.record_view_opened(view);
             }
-            file_read(state, outcome.data)
+            file_read(state, VIEWS_OPEN_FILE, outcome.data)
         })
     }
 
     /// Open (or replace) a text view. Never dispatched and never refused for a spent budget; the
     /// only failures are the ones the api's caps raise.
     fn open_text_view(&mut self, label: String, body: String) -> Result<(), ToolError> {
-        self.recorded(VIEW_OPEN_TEXT, |state, rec| {
+        self.recorded(VIEWS_OPEN_TEXT, |state, rec| {
             match state.api(rec).open_text_view(label, body) {
                 Ok(view) => {
                     state.record_view_opened(view);
                     Ok(())
                 }
-                Err(refusal) => Err(state.refuse_view(OPEN_TEXT_VIEW_FUNCTION, refusal)),
+                Err(refusal) => Err(state.refuse_view(VIEWS_OPEN_TEXT, refusal)),
             }
         })
     }
@@ -135,7 +125,7 @@ impl<A: ToolApi> ViewsHost for MembraneState<A> {
     /// An unknown or unbound name is `not-found`, worded so the model is pointed at the one call
     /// that enumerates what it *does* have.
     fn open_docs_view(&mut self, name: String) -> Result<(), ToolError> {
-        self.recorded(VIEW_OPEN_DOCS_VIEW, |state, rec| {
+        self.recorded(VIEWS_OPEN_DOCS_VIEW, |state, rec| {
             match state.api(rec).open_docs_view(name) {
                 Ok(views) => {
                     for view in views {
@@ -143,7 +133,7 @@ impl<A: ToolApi> ViewsHost for MembraneState<A> {
                     }
                     Ok(())
                 }
-                Err(refusal) => Err(state.refuse_view(OPEN_DOCS_VIEW_FUNCTION, refusal)),
+                Err(refusal) => Err(state.refuse_view(VIEWS_OPEN_DOCS_VIEW, refusal)),
             }
         })
     }
@@ -151,7 +141,7 @@ impl<A: ToolApi> ViewsHost for MembraneState<A> {
     /// Close every view carrying `selector` and report how many. Closing nothing is `0`, not a
     /// failure — a program that tidies up unconditionally should not have to guard every call.
     fn close_view(&mut self, selector: String) -> Result<u32, ToolError> {
-        self.recorded(VIEW_CLOSE, |state, rec| {
+        self.recorded(VIEWS_CLOSE, |state, rec| {
             match state.api(rec).close_view(selector.clone()) {
                 Ok(closed) => {
                     if closed > 0 {
@@ -159,7 +149,7 @@ impl<A: ToolApi> ViewsHost for MembraneState<A> {
                     }
                     Ok(closed)
                 }
-                Err(refusal) => Err(state.refuse_view(CLOSE_VIEW_FUNCTION, refusal)),
+                Err(refusal) => Err(state.refuse_view(VIEWS_CLOSE, refusal)),
             }
         })
     }
@@ -167,7 +157,7 @@ impl<A: ToolApi> ViewsHost for MembraneState<A> {
     /// What is open in this agent's window. It cannot fail: an agent with nothing open gets an empty
     /// list, which is an answer rather than an error.
     fn current_views(&mut self) -> Vec<OpenView> {
-        self.recorded_ok(VIEW_CURRENT, |state, rec| {
+        self.recorded_ok(VIEWS_CURRENT, |state, rec| {
             state
                 .api(rec)
                 .current_views()
@@ -181,15 +171,20 @@ impl<A: ToolApi> ViewsHost for MembraneState<A> {
 impl<A: ToolApi> MembraneState<A> {
     /// Record a refused view call and render it as the error the program will see thrown.
     ///
-    /// It deliberately does **not** go through [`refuse`](Self::refuse), which records into the
-    /// membrane's *tool* refusal roster: nothing was dispatched and no tool was withheld, so a
-    /// refusal filed there would make the turn's report claim a tool call that never existed. The
-    /// view report is where it belongs.
-    pub(super) fn refuse_view(&mut self, function: &str, refusal: ViewRefusal) -> ToolError {
+    /// It deliberately does **not** go through [`refuse`](Self::refuse), which files into the
+    /// membrane's roster of calls this agent was not granted: nothing was withheld here, the agent
+    /// holds the call and made it, and a cap said no. A refusal filed there would make the turn's
+    /// report claim the agent reached for something it does not have, which is the one thing that
+    /// roster is counted for. The view report is where it belongs.
+    ///
+    /// The error carries the operation's key, exactly as every other failed call on this membrane
+    /// does — a `catch` site branches on the call that failed, and the sentence beside it is the
+    /// api's own, already written for the model.
+    pub(super) fn refuse_view(&mut self, id: OperationId, refusal: ViewRefusal) -> ToolError {
         self.record_view_refusal(&refusal.message);
         ToolError {
             code: error_code(Some(refusal.failure)),
-            tool: function.to_string(),
+            tool: id.key.to_string(),
             message: refusal.message,
         }
     }

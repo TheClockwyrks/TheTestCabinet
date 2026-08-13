@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use super::super::ErrorCode;
 use super::super::capture::MAX_RECORDED_VIEW_EVENTS;
 use super::*;
-use crate::sandbox::fake::{CallLog, all_tools, canned_outcome, membrane, membrane_with};
+use crate::sandbox::fake::{CallLog, all_operations, canned_outcome, membrane, membrane_with};
 use crate::tools::{FileTextData, ToolData, ToolFailure, ToolOutcome};
 
 /// **`open-file-view` is a `read_file`, and is rostered as one.**
@@ -40,7 +40,10 @@ fn opening_a_file_view_dispatches_a_read_file() {
         1,
         "and it takes an ordinary roster entry, not a special one"
     );
-    assert_eq!(parts.calls[0].name, "read_file");
+    assert_eq!(
+        parts.calls[0].name, "views.open_file",
+        "recorded as the call the model wrote, not as the read it was serviced by"
+    );
     let opened = &parts.views_opened;
     assert_eq!(opened.len(), 1);
     assert_eq!(opened[0].selector, "src/a.ts");
@@ -56,7 +59,7 @@ fn opening_a_file_view_dispatches_a_read_file() {
 #[test]
 fn a_paged_file_view_reports_its_region() {
     let log = CallLog::default();
-    let mut state = membrane_with(&log, &all_tools(), None, |_name, args| {
+    let mut state = membrane_with(&log, &all_operations(), None, |_name, args| {
         let path = args["path"].as_str().unwrap_or_default().to_string();
         ToolOutcome::ok(format!("page of {path}"), "read 2 lines").with_data(ToolData::FileText(
             FileTextData {
@@ -92,7 +95,7 @@ fn a_paged_file_view_reports_its_region() {
 #[test]
 fn a_failed_read_opens_no_view_and_is_reported_as_a_refusal() {
     let log = CallLog::default();
-    let mut state = membrane_with(&log, &all_tools(), None, |_name, _args| {
+    let mut state = membrane_with(&log, &all_operations(), None, |_name, _args| {
         ToolOutcome::failed(ToolFailure::NotFound, "no such file `nope.ts`")
     });
 
@@ -215,7 +218,7 @@ fn an_empty_label_is_an_argument_error() {
         .open_text_view("   ".to_string(), "body".to_string())
         .expect_err("a blank label names nothing");
     assert_eq!(error.code, ErrorCode::InvalidArgument);
-    assert_eq!(error.tool, "openText", "it names the function it called");
+    assert_eq!(error.tool, "open_text", "it names the operation it called");
 
     let parts = state.into_parts();
     assert_eq!(parts.view_refusals.len(), 1);
@@ -235,7 +238,7 @@ fn an_empty_label_is_an_argument_error() {
 fn a_spent_budget_refuses_the_read_but_not_the_report() {
     let log = CallLog::default();
     let spent = Instant::now() - Duration::from_secs(1);
-    let mut state = membrane_with(&log, &all_tools(), Some(spent), canned_outcome);
+    let mut state = membrane_with(&log, &all_operations(), Some(spent), canned_outcome);
 
     state
         .open_text_view(
@@ -254,22 +257,22 @@ fn a_spent_budget_refuses_the_read_but_not_the_report() {
     assert_eq!(error.code, ErrorCode::LimitExceeded);
 }
 
-/// **A run that withholds `read_file` does not get one through `view.openFile`.**
+/// **An agent granted no read does not get one through `views.openFile`.**
 ///
-/// Three operations share the `read_file` tool — `fs.readFile`, `fs.readTextFile` and this one —
-/// and this is the one a side door could be opened through: it is filed under `views`, where the
-/// rest of the family is bound to every program whatever a run enables. The gate reads the
-/// **operation's** binding rather than its family, so a run with reading withheld refuses all
-/// three. Every guest binds `openFile` in such a run, since every SDK is static, so this is a path
-/// a program really does reach.
+/// Three operations are bought by the read capability — `files.read_file`, `files.read_text_file`
+/// and this one — and this is the one a side door could be opened through: it is filed under
+/// `views`, where the rest of the family is bound to every program whatever a run enables. The gate
+/// reads the **operation's** own binding rather than its family, so an agent whose allowlist names
+/// none of the three is refused all three. Every guest binds `openFile` in such a run, since every
+/// SDK is static, so this is a path a program really does reach.
 #[test]
 fn a_run_without_read_file_cannot_open_a_file_view() {
     let log = CallLog::default();
-    let enabled: Vec<String> = all_tools()
+    let granted: Vec<_> = all_operations()
         .into_iter()
-        .filter(|tool| tool != "read_file")
+        .filter(|id| id.namespace != "files" && *id != crate::sandbox::VIEWS_OPEN_FILE)
         .collect();
-    let mut state = membrane_with(&log, &enabled, None, canned_outcome);
+    let mut state = membrane_with(&log, &granted, None, canned_outcome);
 
     let error = state
         .open_file_view("src/a.ts".to_string(), None, None)

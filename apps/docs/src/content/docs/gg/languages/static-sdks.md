@@ -11,27 +11,29 @@ was not granted returns a refusal from the host.
 
 gg names every model-facing call an operation, under a `namespace.key` identity
 of its own rather than any arm's spelling, and states once what buys it. That is
-the operation's binding, and there are four kinds.
+the operation's binding, and there are three kinds.
 
 | Binding | What buys the operation |
 | --- | --- |
-| Tool | The run enabled the named gg tool. |
+| Capability | The agent holds the named gg capability, and its [allowlist](/gg/configurations/#granting-calls) names this operation. |
 | Ending | The agent was dispatched in the named [ending role](/gg/ending-a-session/). |
-| Capability | The agent holds the named gg capability. |
 | Always | Every program has it. |
 
-An agent's grant is the other half of the pair: the gg tools its run enabled,
-the ending role it was dispatched in, and the gg capability ids it was given.
-Each kind of binding is answered by the half of the grant that can answer it. A
-withheld tool stays withheld for an agent holding every capability, and an
-ending belonging to another role stays withheld for an agent holding every tool.
+An agent's grant is the other half of the pair: the gg capability ids it was
+given, the operation ids its allowlist grants, and the ending role it was
+dispatched in. Each kind of binding is answered by the half of the grant that can
+answer it, and nothing falls back. An operation whose capability is off stays
+refused however the allowlist reads, and an ending belonging to another role
+stays refused for an agent holding every capability gg has.
+
+The tool vocabulary decides none of this. A program's grant is stated in
+operation ids from end to end, and a gg tool name is neither writable in a
+program nor readable by this gate.
 
 `crates/gg/src/sandbox/operations.rs` carries the operations table and the
-predicate over it, and one helper there turns a run's resolved flags into the
-capability ids a grant holds, so the membrane's grant and the documentation
-runtime's are built from one list. A gg capability id is written down in that
-table and nowhere else: an SDK declares none and a signature catalogue carries
-none.
+predicate over it, so the membrane's grant and the documentation runtime's are
+built from one list. A gg capability id is written down in that table and nowhere
+else: an SDK declares none and a signature catalogue carries none.
 
 ## The compile-time surface and the discovery surface
 
@@ -68,44 +70,38 @@ Per arm, the qualifier is held like this:
 | Swift | `files.readFile(…)` | `@_exported import gg` re-exports the module enums; the functions are inside them. |
 | PureScript | `Gg.Files.readFile` | Modules are imported by the program. |
 
-## What a withheld call raises
+## What a refused call raises
 
-A withheld call raises the arm's own gg failure type, the one a failed tool
+A refused call raises the arm's own gg failure type, the one every failed call
 raises. It carries three fields.
 
 - `code` is `unavailable`.
-- `tool` is gg's own key for the operation: `read_file` for `gg.files.readFile`
-  and `read_text_file` for `gg.files.readTextFile`. It is the operation's key
-  rather than the gg tool the call would have dispatched, because several
-  operations share one tool and a refusal has to say which of them the model
-  reached for.
-- `message` names what is missing, written in this program's own spelling of the
-  call.
+- `tool` carries the key of the operation the program reached for: `read_file`
+  for `gg.files.readFile`, `read_text_file` for `gg.files.readTextFile`. The
+  field's name belongs to the failure type every call shares; what a refusal
+  puts in it is an operation key, so a `catch` branches on the call that was
+  refused rather than on prose.
+- `message` says the call is not available, written in this program's own
+  spelling of it.
 
-There is one sentence per kind of gate. A tool binding names the gg tool this
-run's toolset leaves out:
+The message says what is unavailable and, where the agent has one, which call to
+make instead. It says nothing about what would unlock the call. The profile was
+fixed before the session began and no program can edit it, so naming the missing
+capability or allowlist entry would describe the one thing in the model's
+situation it cannot change, and invite it to spend a turn trying.
 
-```
-`gg.files.readFile` is not available to you: it is bought by the gg tool
-`read_file`, which this run's toolset does not offer.
-```
-
-A capability binding names the capability id and what holding it would buy:
+A capability or allowlist gate has no alternative to offer:
 
 ```
-`gg.programs.history` is not available to you: it is bought by the
-`program-library` capability, which this agent was not given — this agent keeps
-no library of the programs it has run.
+`gg.programs.history` is not available.
 ```
 
-An [ending call](/gg/ending-a-session/) belonging to another role names the
-endings the agent does have, so an agent that reached for the wrong one ends its
-session on the next line:
+An [ending call](/gg/ending-a-session/) belonging to another role does, so an
+agent that reached for the wrong one ends its session on the next line:
 
 ```
-`gg.session.finish` is not available to you: you were dispatched to review
-work, so your session ends with a verdict — `gg.session.approve`, or
-`gg.session.requestChanges` naming every change the work needs.
+`gg.session.finish` is not available. Use `gg.session.approve` or
+`gg.session.requestChanges` instead.
 ```
 
 ## The turn error for an uncaught refusal
@@ -120,22 +116,22 @@ Two arms report differently.
 - Swift's guest shell has no top-level `throws` context to wrap, so an uncaught
   error arrives as a sandbox trap.
 
-The refusal itself is recorded identically on all eleven arms, so a
-[toolset ablation](/gg/toolset-ablation/) counts withheld reaches from the
-refusal roster rather than from the turn's error type.
+The refusal itself is recorded identically on all eleven arms, so a study
+counting what an agent reached for and was not granted reads the refusal roster
+rather than the turn's error type.
 
 ## Argument lowering on the interpreted arms
 
 On TypeScript, JavaScript, Python and Ruby a call's arguments are lowered inside
 the guest, before the call crosses into the host, and the gate sits on the host
-side of that crossing. A call that is both withheld and malformed therefore
+side of that crossing. A call that is both refused and malformed therefore
 fails on the malformed half, inside the guest, and reaches neither the host nor
 the refusal roster. The other seven arms are compiled, so an argument of the
 wrong type is a compile error and no program runs at all.
 
 ## What the guest is handed
 
-The guest's `run` export takes the run's enabled tool names, the agent's ending
-kind and the program-library flag. Every guest ignores all three, because the
-membrane answers the question each of them was for. They stay in the WIT world
-because all eleven guests implement it.
+The guest's `run` export takes the operation ids this agent is granted, its
+ending kind and the program-library flag. Every guest ignores all three, because
+the membrane answers the question each of them was for. They stay in the WIT
+world because all eleven guests implement it.

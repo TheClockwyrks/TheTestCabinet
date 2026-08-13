@@ -21,7 +21,9 @@ use super::substrate::{
     evaluate, evaluate_closing_docviews, evaluate_with_program, logs, prepare, program_error,
 };
 use crate::ending::{Ending, EndingRole};
-use crate::sandbox::fake::{CallLog, all_tools, canned_outcome};
+use test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE;
+
+use crate::sandbox::fake::{CallLog, all_operations, all_operations_without, canned_outcome};
 use crate::sandbox::membrane::RunEnding;
 use crate::sandbox::outcome::{ProgramErrorKind, SandboxOutcome};
 use crate::tools::{ToolFailure, ToolOutcome};
@@ -57,12 +59,12 @@ fn text<'a>(entry: &'a Value, field: &str) -> &'a str {
 /// Compile and run one Rust program with `enabled`'s tools offered and no ending group.
 fn run_with(
     source: &str,
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
     evaluate(
         &prepare(source),
-        enabled,
+        operations,
         &[],
         RunEnding::None,
         false,
@@ -348,7 +350,7 @@ fn every_tool_crosses_the_membrane_from_its_rust_spelling() {
         .iter()
         .map(|crossing| format!("{}\n", crossing.statement))
         .collect::<String>();
-    let (outcome, log) = run_with(&program, &all_tools(), canned_outcome);
+    let (outcome, log) = run_with(&program, &all_operations(), canned_outcome);
     assert!(
         matches!(&outcome.result, Ok(result) if result.error.is_none()),
         "the program did not run cleanly: {:?}",
@@ -425,7 +427,7 @@ match docs::close_all() {
 session::finish("read the file and showed the result")?;
 "####,
         ),
-        &all_tools(),
+        &all_operations_without(CAPABILITY_DOCVIEW_CLOSE),
         &[],
         RunEnding::Role(EndingRole::Standard),
         false,
@@ -592,7 +594,7 @@ let open = views::current();
 gg::log(format!("{} {}", open[0].close()?, views::current().len()));
 "####,
         ),
-        &all_tools(),
+        &all_operations(),
         &[],
         RunEnding::Role(EndingRole::Standard),
         false,
@@ -664,12 +666,12 @@ match files::read_text_file("gone.rs", files::ReadOptions::default()) {
 }
 gg::log("carried on");
 "####,
-        &all_tools(),
+        &all_operations(),
         |_name: &str, _args: &Value| {
             ToolOutcome::failed(ToolFailure::NotFound, "no such file: gone.rs".to_string())
         },
     );
-    assert_eq!(logs(&outcome), ["NotFound on read_file", "carried on"]);
+    assert_eq!(logs(&outcome), ["NotFound on read_text_file", "carried on"]);
 
     // Let out with `?`: the program's own body returns `Result<(), Failure>`, so the failure ends
     // the turn — carrying the CODE the call itself failed with, which is the field the host
@@ -681,7 +683,7 @@ gg::log("before");
 files::read_text_file("gone.rs", files::ReadOptions::default())?;
 gg::log("after");
 "####,
-        &all_tools(),
+        &all_operations(),
         |_name: &str, _args: &Value| {
             ToolOutcome::failed(ToolFailure::NotFound, "no such file: gone.rs".to_string())
         },
@@ -689,7 +691,9 @@ gg::log("after");
     let error = program_error(&outcome);
     assert_eq!(error.kind, ProgramErrorKind::ToolFailure, "{error:?}");
     assert!(
-        error.message.contains("`read_file` failed (not-found)"),
+        error
+            .message
+            .contains("`read_text_file` failed (not-found)"),
         "the model reads gg's own sentence rather than a Rust type name: {}",
         error.message
     );

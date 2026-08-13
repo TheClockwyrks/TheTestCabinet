@@ -17,9 +17,12 @@
 //! state with no outgoing edges is terminal, and the machine ends when the agent in it ends.
 //!
 //! Because a shell runs no model, a dispatch onto one resolves its client through
-//! [`dispatched_profile`] — the entry state's agent — rather than through the shell. A machine is
-//! therefore namable everywhere an ordinary profile is without ever being given a model binding
-//! that nothing would read.
+//! [`GgCapabilitySet::dispatched_agent`] — the entry state's agent — rather than through the shell.
+//! A machine is therefore namable everywhere an ordinary profile is without ever being given a
+//! model binding that nothing would read. That resolution reads the entry state off the raw
+//! capability set rather than off a parsed [`FsmSpec`], so the profile a dispatch binds and the
+//! profile the backend names as the run's model cannot come apart; one hop is enough, because
+//! [`validate`] refuses a machine whose state runs another shell.
 //!
 //! ```jsonc
 //! { "id": "fsm", "enabled": true, "params": { "states": [
@@ -366,29 +369,6 @@ pub fn machines(set: &GgCapabilitySet) -> Result<BTreeMap<String, Arc<FsmSpec>>,
 /// turns of its own.
 pub fn is_shell(profile: &GgAgentConfig) -> bool {
     profile.is_fsm_shell()
-}
-
-/// The profile whose **model** actually runs when work is dispatched onto the profile named
-/// `profile`: itself, or — when it is an [FSM shell](is_shell) — the agent its machine's
-/// [entry state](FsmSpec::entry) runs.
-///
-/// A shell has no model of its own, so a dispatch onto one has to resolve its client through the
-/// state the agent will be standing in the moment it starts. This is the seam that lets a machine
-/// be named anywhere an ordinary profile is — as the root, as a roster target, as an issue's
-/// implementer — without the configuration having to give it a model it would never call.
-///
-/// One hop is enough: [`validate`] refuses a machine whose state runs another shell, so the entry
-/// state's agent is always an ordinary worker.
-///
-/// The entry state is read by [`GgCapabilitySet::dispatched_agent`] rather than off a parsed
-/// [`FsmSpec`], so the profile a dispatch binds and the profile the backend names as a run's model
-/// cannot come apart. A machine that will not parse at all resolves as itself, and the caller
-/// reports the model binding it does not have — which is the right error for a set [`validate`] has
-/// already refused.
-pub fn dispatched_profile<'a>(set: &'a GgCapabilitySet, profile: &'a str) -> &'a str {
-    set.dispatched_agent(profile)
-        .map(|agent| agent.name.as_str())
-        .unwrap_or(profile)
 }
 
 /// Validate every [machine](FsmSpec) `set` declares, returning the first structural problem.

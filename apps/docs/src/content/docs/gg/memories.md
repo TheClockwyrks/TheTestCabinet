@@ -75,6 +75,14 @@ exactly once. Appending means quoting the last line and replacing it with itself
 plus what is being added. An edit that would leave the memory empty is refused,
 and the model is told to delete it instead.
 
+## Features
+
+One slider sits in the capability's Features box, per agent.
+
+| Feature | Default | What switching it changes |
+| --- | --- | --- |
+| Revise memories | on | Off withholds `update_memory`, `edit_memory` and `delete_memory`, so memories are append-only. |
+
 ## Limits
 
 Every limit is set through the capability's `params`, and `0` disables it. A

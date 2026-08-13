@@ -14,7 +14,7 @@ use super::super::test_cabinet::gg::files::Host as FilesHost;
 use super::*;
 use crate::ending::EndingRole;
 use crate::sandbox::fake::{
-    CallLog, all_tools, canned_outcome, membrane, membrane_as, membrane_ending, membrane_in,
+    CallLog, all_operations, canned_outcome, membrane, membrane_as, membrane_ending, membrane_in,
     membrane_with, typescript,
 };
 use crate::sandbox::language::fixture::fixture_language;
@@ -166,7 +166,7 @@ fn a_revoked_completion_is_taken_back_and_kept() {
 fn finishing_is_allowed_after_the_wall_clock_budget_is_spent() {
     let log = CallLog::default();
     let spent = Instant::now() - Duration::from_secs(1);
-    let mut state = membrane_with(&log, &all_tools(), Some(spent), canned_outcome);
+    let mut state = membrane_with(&log, &all_operations(), Some(spent), canned_outcome);
 
     let refused = state
         .list_dir(None)
@@ -238,7 +238,7 @@ fn a_tool_call_after_a_completion_is_ordinary_work() {
             .iter()
             .map(|call| call.name.as_str())
             .collect::<Vec<_>>(),
-        ["list_dir"],
+        ["files.list_dir"],
         "and is recorded in the roster like any other"
     );
     assert!(parts.refusals.is_empty(), "{:?}", parts.refusals);
@@ -249,28 +249,24 @@ fn a_tool_call_after_a_completion_is_ordinary_work() {
     );
 }
 
-/// A tool withheld by the run's capability set is refused as *unavailable*, whether or not the run
-/// has been declared finished — and the sentence names the capability that is missing, spelled the
-/// way this program would have written the call.
+/// A call this agent was not granted is refused as *unavailable*, whether or not the run has been
+/// declared finished — and the sentence names the call, spelled the way this program would have
+/// written it, and says nothing else.
+///
+/// Nothing about *why* is offered, because nothing about why is actionable: the capability and the
+/// allowlist are the run's configuration, and no program can change either. A sentence naming them
+/// would spend the model's next turn on a gate it cannot open.
 #[test]
-fn a_withheld_tool_is_refused_as_unavailable() {
+fn an_ungranted_call_is_refused_as_unavailable() {
     let log = CallLog::default();
     let mut state = membrane_with(&log, &[], None, canned_outcome);
 
-    let refused = state.list_dir(None).expect_err("the tool is not offered");
+    let refused = state.list_dir(None).expect_err("the call is not granted");
 
     assert_eq!(refused.code, ErrorCode::Unavailable);
-    assert!(
-        refused
-            .message
-            .contains("`gg.files.listDir` is not available to you"),
-        "the call is named as the model wrote it: {}",
-        refused.message
-    );
-    assert!(
-        refused.message.contains("the gg tool `list_dir`"),
-        "and what is missing is named, not merely that something is: {}",
-        refused.message
+    assert_eq!(
+        refused.message, "`gg.files.listDir` is not available.",
+        "the call is named as the model wrote it, and nothing more is said"
     );
 }
 
@@ -403,7 +399,7 @@ fn an_ending_outside_this_agents_role_is_refused_by_the_host() {
 /// **A refusal names the calls this program could have made in that program's own language**, not in
 /// gg's.
 ///
-/// gg's [vocabulary](crate::sandbox::language::SurfaceCall) is `snake_case` and belongs to no SDK:
+/// gg's [vocabulary](crate::sandbox::OperationId) is `snake_case` and belongs to no SDK:
 /// `request_changes` is a name TypeScript does not bind and a model could not write. A sentence whose
 /// whole job is to say "call this instead" has to say something callable, so it goes through
 /// [`spell`](crate::sandbox::language::spell) — and the two spellings below are the same three calls
@@ -502,8 +498,10 @@ fn an_on_use_script_may_declare_no_ending_at_all() {
     {
         let refused = refused.unwrap_or_else(|| panic!("`{call}` ends no session from a script"));
         assert_eq!(refused.code, ErrorCode::Unavailable, "`{call}`");
+        // No ending is *right* for a script, so there is no alternative to name and the refusal
+        // says only that this one is not available.
         assert!(
-            refused.message.contains("skill or a memory"),
+            refused.message.ends_with(" is not available."),
             "`{call}`: {}",
             refused.message
         );
@@ -511,11 +509,12 @@ fn an_on_use_script_may_declare_no_ending_at_all() {
     assert!(state.into_parts().completion.is_none());
 }
 
-/// A withheld ending goes on the **refusal roster**, under its whole `object.key` identity.
+/// An ending this agent's role does not hold goes on the **refusal roster**, under its whole
+/// [operation id](crate::sandbox::OperationId).
 ///
-/// It is the same fact a withheld tool is — the model reached for something this run does not offer
-/// it — and it is the fact a toolset ablation is run to count. There is no tool name to file it
-/// under, so it is filed under the name the model actually wrote.
+/// It is the same fact an ungranted call is — the model reached for something this agent does not
+/// have — and it is the fact a comparison of two configurations counts. There is no tool name to
+/// file it under, so it is filed under gg's own identity for the call.
 #[test]
 fn a_withheld_ending_is_recorded_on_the_refusal_roster() {
     let log = CallLog::default();
@@ -530,7 +529,7 @@ fn a_withheld_ending_is_recorded_on_the_refusal_roster() {
             .iter()
             .map(|refusal| refusal.name.as_str())
             .collect::<Vec<_>>(),
-        vec!["review.approve"]
+        vec!["session.approve"]
     );
     assert!(
         log.calls().is_empty(),

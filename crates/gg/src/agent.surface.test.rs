@@ -6,11 +6,16 @@
 //! wrong: *was the model never given that call, or was it given it and never made it?* Nothing else
 //! in the record separates those — a `ToolCall` reports only what was called — so what has to be
 //! true is that every instance reports its **resolved** offered set, after capability gating and
-//! after the per-tool ablation, and reports it whether or not it ever used any of it.
+//! after its own allowlist, and reports it whether or not it ever used any of it.
 //!
 //! The gating itself is proven by the toolset tests; what only these can reach is that the resolved
 //! set is really emitted, really emitted per instance rather than once for the root, and really
 //! carries the ending calls the loop appends outside the registry.
+//!
+//! **An instance has exactly one surface**, so exactly one of the two lists is populated: a
+//! tool-calling instance reports tools and no apis, a responses-as-code one reports apis and no
+//! tools. Nothing here compares the two — the vocabularies are scoped, so there is nothing to
+//! compare.
 
 use std::sync::Arc;
 
@@ -26,17 +31,10 @@ use test_cabinet_core::gg::{
 use super::{ScriptedFactory, invocation, subagent_set};
 
 /// One instance's reported surface, keyed by the agent that emitted it.
-type Surface = (
-    String,
-    String,
-    Option<String>,
-    Vec<String>,
-    Vec<GgAgentApi>,
-    Vec<String>,
-);
+type Surface = (String, String, Option<String>, Vec<String>, Vec<GgAgentApi>);
 
 /// Every `AgentSurface` in the stream, as
-/// `(emitting agent, execution mode, documentation mode, tools, apis, withheld)`.
+/// `(emitting agent, execution mode, documentation mode, tools, apis)`.
 fn surfaces(events: &[GgTelemetryEvent]) -> Vec<Surface> {
     events
         .iter()
@@ -47,18 +45,28 @@ fn surfaces(events: &[GgTelemetryEvent]) -> Vec<Surface> {
                 doc_view_types,
                 tools,
                 apis,
-                withheld,
             } => Some((
                 event.agent_id.clone().unwrap_or_default(),
                 execution_mode.clone(),
                 doc_view_types.clone(),
                 tools.clone(),
                 apis.clone(),
-                withheld.clone(),
             )),
             _ => None,
         })
         .collect()
+}
+
+/// The two halves of what `profile` was granted, resolved exactly as the loop resolves them: the
+/// capabilities it has switched on, and the operations its own allowlist names.
+///
+/// Both readers of a grant — the surface readout and the documentation runtime — take these, so a
+/// fixture that built either half a second way would be asserting against something the loop never
+/// computes.
+fn grant(profile: &GgAgentConfig) -> (Vec<String>, Vec<crate::sandbox::OperationId>) {
+    let (operations, _) =
+        crate::sandbox::resolve_operations(profile.operations.iter().map(String::as_str));
+    (enabled_capabilities(profile), operations)
 }
 
 /// The functions bound in the module this arm spells `path`, as `(spelling, operation)`.
@@ -86,7 +94,7 @@ async fn a_tool_calling_instance_reports_its_offered_tools_and_no_apis() {
     assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
 
     let surfaces = surfaces(&sink.events());
-    let (_, mode, _, tools, apis, _) = surfaces
+    let (_, mode, _, tools, apis) = surfaces
         .first()
         .expect("the root instance reports its surface");
     assert_eq!(mode, "tool_calling");
@@ -121,61 +129,92 @@ async fn a_tool_calling_instance_reports_its_offered_tools_and_no_apis() {
     );
 }
 
-/// A tool withheld by the per-tool [ablation](GgAgentConfig::disabled_tools) is **absent** from the
-/// surface, even though the capability contributing it is on — and its code-mode function is absent
-/// from the reported surface with it, so the two execution modes agree about what was withheld.
+/// A tool the agent's [allowlist](GgAgentConfig::tools) does not name is **absent** from the
+/// surface, even though the capability contributing it is on.
 ///
 /// This is the finest-grained thing the surface has to get right: the capability set alone cannot
-/// tell a reader that `write_file` was withheld from a run whose write-file capability is enabled.
+/// tell a reader that `write_file` never reached a run whose write-file capability is enabled.
 #[tokio::test]
-async fn a_withheld_tool_is_absent_from_the_surface_and_from_its_api_object() {
+async fn a_tool_the_allowlist_omits_is_absent_from_the_surface() {
     let dir = TempDir::new().unwrap();
     seed_default_skill(dir.path());
     let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-ablation".to_string()), Box::new(sink.clone()));
+    let emitter = Emitter::with_sink(Some("run-allowlist".to_string()), Box::new(sink.clone()));
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    // The ablation names a **tool**, not the capability that contributes it: `write-file` is on,
-    // and exactly one of its tools is withheld.
-    set.agents[0].disabled_tools = vec!["write_file".to_string()];
+    // The allowlist names **tools**, not the capability that contributes them: `write-file` is on,
+    // and exactly one of its tools goes ungranted.
+    set.agents[0].tools.retain(|name| name != "write_file");
     let inv = invocation(dir.path(), set.clone());
 
     assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
 
     let surfaces = surfaces(&sink.events());
-    let (_, _, _, tools, _, _) = surfaces.first().expect("a surface");
+    let (_, _, _, tools, _) = surfaces.first().expect("a surface");
     assert!(
         !tools.contains(&"write_file".to_string()),
-        "the withheld tool is not offered: {tools:?}"
+        "the ungranted tool is not offered: {tools:?}"
     );
     assert!(
         tools.contains(&"read_file".to_string()),
         "the rest of the toolset is untouched: {tools:?}"
     );
+}
 
-    // The same registry decides what a program may *call*, so the withheld tool's function is
-    // reported as not offered here too — `gg.files` survives on its other three calls rather than
-    // disappearing. The function is still **bound** in the program's scope, because every SDK is
-    // static; what this readout answers is the question an ablation asks, which is what the agent
-    // was offered rather than what its language compiled.
-    let registry = ToolRegistry::from_capabilities(set.root());
-    let apis = api_surface(
-        &registry,
+/// The **other** surface's half of the same rule, and the reason the two are separate tests: an
+/// operation the [allowlist](GgAgentConfig::operations) does not name is absent from the API
+/// surface, and narrowing the *tool* allowlist does nothing to it.
+///
+/// The two vocabularies are independent, and this is where that is visible. `write_file` and
+/// `files.write_file` reach the same core, and an agent holds exactly one of the two surfaces — so
+/// a configuration that withdrew the tool and left the operation has withdrawn nothing from an
+/// agent that writes programs, and saying otherwise would report a narrower surface than the model
+/// was actually offered.
+///
+/// The function is still **bound** in a program's scope whatever the grant, because every SDK is
+/// static; what this readout answers is what the agent was *offered*, which is the question a
+/// console reader asks.
+#[test]
+fn an_operation_the_allowlist_omits_is_absent_from_the_api_surface() {
+    let mut profile = GgCapabilitySet::minimal("mock/echo").root().clone();
+    // Only the tool goes: the API surface must not notice.
+    profile.tools.retain(|name| name != "write_file");
+    let (capabilities, operations) = grant(&profile);
+    let names = |apis: &[GgAgentApi]| -> Vec<String> {
+        functions_on(apis, "gg.files")
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect()
+    };
+    let untouched = api_surface(
+        &capabilities,
+        &operations,
         EndingRole::Standard,
-        false,
-        false,
         GgProgramLanguage::TypeScript,
     );
-    let names: Vec<String> = functions_on(&apis, "gg.files")
-        .into_iter()
-        .map(|(name, _)| name)
-        .collect();
     assert!(
-        !names.contains(&"writeFile".to_string()),
-        "the withheld tool's function is unbound: {names:?}"
+        names(&untouched).contains(&"writeFile".to_string()),
+        "a narrowed tool allowlist says nothing about the API surface: {:?}",
+        names(&untouched)
+    );
+
+    // And the operation allowlist is what does say something about it.
+    profile.operations.retain(|id| id != "files.write_file");
+    let (capabilities, operations) = grant(&profile);
+    let narrowed = api_surface(
+        &capabilities,
+        &operations,
+        EndingRole::Standard,
+        GgProgramLanguage::TypeScript,
     );
     assert!(
-        names.contains(&"readFile".to_string()),
-        "its object survives on the calls that are still bound: {names:?}"
+        !names(&narrowed).contains(&"writeFile".to_string()),
+        "the ungranted operation's function is unbound: {:?}",
+        names(&narrowed)
+    );
+    assert!(
+        names(&narrowed).contains(&"readFile".to_string()),
+        "its module survives on the calls that are still granted: {:?}",
+        names(&narrowed)
     );
 }
 
@@ -190,7 +229,7 @@ async fn a_subagent_reports_its_own_surface() {
     // The child's profile withholds `shell`, so the two surfaces are distinguishable by what they
     // offer rather than only by who emitted them.
     let mut set = subagent_set(2, 3, &["subagent"]);
-    set.agents[1].disabled_tools = vec!["shell".to_string()];
+    set.agents[1].tools.retain(|name| name != "shell");
     let inv = invocation(dir.path(), set);
     let factory = ScriptedFactory::new().slot(ROOT_AGENT, |binding| {
         Box::new(MockClient::with_subagent_parent_script(&binding.model_id))
@@ -207,8 +246,8 @@ async fn a_subagent_reports_its_own_surface() {
         2,
         "the root and its child each report one surface"
     );
-    let (root_id, _, _, root_tools, _, _) = &surfaces[0];
-    let (child_id, _, _, child_tools, _, _) = &surfaces[1];
+    let (root_id, _, _, root_tools, _) = &surfaces[0];
+    let (child_id, _, _, child_tools, _) = &surfaces[1];
     assert_ne!(root_id, child_id, "each surface names its own instance");
     assert!(
         root_tools.contains(&"shell".to_string()),
@@ -238,12 +277,11 @@ async fn a_subagent_reports_its_own_surface() {
 #[test]
 fn each_objects_description_and_its_place_come_from_the_catalogue() {
     let set = GgCapabilitySet::minimal("mock/echo");
-    let registry = ToolRegistry::from_capabilities(set.root());
+    let (capabilities, operations) = grant(set.root());
     let apis = api_surface(
-        &registry,
+        &capabilities,
+        &operations,
         EndingRole::Standard,
-        false,
-        false,
         GgProgramLanguage::TypeScript,
     );
 
@@ -292,12 +330,11 @@ fn each_objects_description_and_its_place_come_from_the_catalogue() {
 #[test]
 fn the_api_surface_carries_each_modules_functions_and_their_own_operations() {
     let set = GgCapabilitySet::minimal("mock/echo");
-    let registry = ToolRegistry::from_capabilities(set.root());
+    let (capabilities, operations) = grant(set.root());
     let apis = api_surface(
-        &registry,
+        &capabilities,
+        &operations,
         EndingRole::Standard,
-        false,
-        false,
         GgProgramLanguage::TypeScript,
     );
 
@@ -371,10 +408,9 @@ fn the_api_surface_carries_each_modules_functions_and_their_own_operations() {
 
     // The reviewer's arm of the same rule: a dispatched role decides which verdict object exists.
     let reviewer = api_surface(
-        &registry,
+        &capabilities,
+        &operations,
         EndingRole::Review,
-        false,
-        false,
         GgProgramLanguage::TypeScript,
     );
     let verdicts = functions_on(&reviewer, "gg.session");
@@ -418,23 +454,24 @@ fn the_api_surface_carries_each_modules_functions_and_their_own_operations() {
 #[test]
 fn the_prompt_projection_is_the_surface_without_its_functions() {
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_PROGRAM_LIBRARY));
-    let registry = ToolRegistry::from_capabilities(set.root());
+    crate::tools::grant(&mut set.agents[0], CAPABILITY_PROGRAM_LIBRARY);
+    set.agents[0].operations.extend(
+        crate::sandbox::capability_operations([CAPABILITY_PROGRAM_LIBRARY])
+            .into_iter()
+            .map(|id| id.to_string()),
+    );
+    let (capabilities, operations) = grant(set.root());
 
     let surface = api_surface(
-        &registry,
+        &capabilities,
+        &operations,
         EndingRole::Standard,
-        true,
-        false,
         GgProgramLanguage::TypeScript,
     );
     let views = module_views(
-        &registry,
+        &capabilities,
+        &operations,
         EndingRole::Standard,
-        true,
-        false,
         GgProgramLanguage::TypeScript,
     );
     assert_eq!(
@@ -479,18 +516,18 @@ fn the_prompt_projection_is_the_surface_without_its_functions() {
         views.iter().all(|view| view.import.is_none()),
         "an arm whose catalogue declares no import line is given none"
     );
-    // The library is the one family a capability gates rather than a tool or a role, so it is the
-    // one whose presence proves the flag is threaded through both consumers.
+    // The library is the one family a capability gates rather than a role, so it is the one whose
+    // presence proves the grant is threaded through both consumers.
     assert!(
         surface.iter().any(|api| api.path == "gg.programs"),
-        "an enabled program library binds its object"
+        "an enabled program library binds its module"
     );
+    let (without, without_operations) = grant(GgCapabilitySet::minimal("mock/echo").root());
     assert!(
         api_surface(
-            &registry,
+            &without,
+            &without_operations,
             EndingRole::Standard,
-            false,
-            false,
             GgProgramLanguage::TypeScript
         )
         .iter()
@@ -499,8 +536,8 @@ fn the_prompt_projection_is_the_surface_without_its_functions() {
     );
 }
 
-/// A capability the profile switches **off** contributes nothing to the surface — the ablation's
-/// off arm, one level up from the per-tool one above.
+/// A capability the profile switches **off** contributes nothing to the surface — one level up from
+/// the allowlist above, and the coarser of the two levers.
 #[tokio::test]
 async fn a_disabled_capability_contributes_nothing_to_the_surface() {
     let dir = TempDir::new().unwrap();
@@ -516,7 +553,7 @@ async fn a_disabled_capability_contributes_nothing_to_the_surface() {
     assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
 
     let surfaces = surfaces(&sink.events());
-    let (_, _, _, tools, _, _) = surfaces.first().expect("a surface");
+    let (_, _, _, tools, _) = surfaces.first().expect("a surface");
     assert!(
         !tools.contains(&"shell".to_string()),
         "a capability switched off offers no tools: {tools:?}"
@@ -544,23 +581,25 @@ async fn a_disabled_capability_contributes_nothing_to_the_surface() {
 #[test]
 fn the_surface_reports_the_bound_catalogue_and_nothing_else() {
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_PROGRAM_LIBRARY));
-    let registry = ToolRegistry::from_capabilities(set.root());
-    // The reviewer's role, so the object a dispatched role binds is covered alongside the tool-gated
-    // and capability-gated ones.
+    crate::tools::grant(&mut set.agents[0], CAPABILITY_PROGRAM_LIBRARY);
+    set.agents[0].operations.extend(
+        crate::sandbox::capability_operations([CAPABILITY_PROGRAM_LIBRARY])
+            .into_iter()
+            .map(|id| id.to_string()),
+    );
+    let (capabilities, operations) = grant(set.root());
+    // The reviewer's role, so the module a dispatched role binds is covered alongside the
+    // capability-gated ones.
     let apis = api_surface(
-        &registry,
+        &capabilities,
+        &operations,
         EndingRole::Review,
-        true,
-        false,
         GgProgramLanguage::TypeScript,
     );
     let docs = crate::docs::DocsRuntime::new(
-        scope_tools(&registry),
+        capabilities.clone(),
         EndingRole::Review,
-        &[CAPABILITY_PROGRAM_LIBRARY],
+        &operations,
         GgProgramLanguage::TypeScript,
     );
 
@@ -586,58 +625,4 @@ fn the_surface_reports_the_bound_catalogue_and_nothing_else() {
             api.path
         );
     }
-}
-
-/// What the surface calls **withheld** is the ablation gg could actually apply: a `disabledTools`
-/// entry that names a real gg tool. A name gg does not know withholds nothing — it is inert, and gg
-/// says so in the run log — so it is absent rather than reported as an applied ablation.
-///
-/// This is the whole point of emitting the field instead of letting a consumer read the capability
-/// set: a typo rendered as *"withheld"* on the one screen that separates "never offered" from "never
-/// called" asserts an experiment that did not happen.
-#[tokio::test]
-async fn withheld_names_the_ablations_gg_could_apply_and_omits_the_ones_it_could_not() {
-    let dir = TempDir::new().unwrap();
-    seed_default_skill(dir.path());
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-withheld".to_string()), Box::new(sink.clone()));
-    let mut set = GgCapabilitySet::minimal("mock/echo");
-    // One real tool, and one plausible-looking name gg has never offered.
-    set.agents[0].disabled_tools = vec!["write_file".to_string(), "read_files".to_string()];
-    let inv = invocation(dir.path(), set);
-
-    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
-
-    let surfaces = surfaces(&sink.events());
-    let (_, _, _, tools, _, withheld) = surfaces.first().expect("a surface");
-    assert_eq!(
-        withheld,
-        &vec!["write_file".to_string()],
-        "only the name that is a gg tool is reported as withheld: {withheld:?}"
-    );
-    assert!(
-        !tools.contains(&"write_file".to_string()),
-        "and it is genuinely gone from the offered set: {tools:?}"
-    );
-}
-
-/// An agent that ablates nothing reports nothing withheld — the empty case is a statement, not a
-/// gap: the surface is emitted for every instance whatever its configuration, so a consumer reading
-/// an empty list knows the ablation was empty rather than unreported.
-#[tokio::test]
-async fn an_agent_with_no_ablation_reports_nothing_withheld() {
-    let dir = TempDir::new().unwrap();
-    seed_default_skill(dir.path());
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-unablated".to_string()), Box::new(sink.clone()));
-    let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/echo"));
-
-    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
-
-    let surfaces = surfaces(&sink.events());
-    let (_, _, _, _, _, withheld) = surfaces.first().expect("a surface");
-    assert!(
-        withheld.is_empty(),
-        "an unablated agent withholds nothing: {withheld:?}"
-    );
 }

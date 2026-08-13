@@ -45,18 +45,29 @@ use tokio::runtime::Handle;
 use test_cabinet_core::gg::GgSubagentRef;
 use test_cabinet_core::gg_session_record::GgShellOrigin;
 
+use crate::board::BOARD_MUTATIONS;
 use crate::context::{
     DocviewOpen, EvictionResult, OpenViewInfo, SEARCH_RESULTS_VIEW, ViewKind, ViewsClosed,
 };
 use crate::docs::{DocQuery, DocSearch};
 use crate::ending::Ending;
 use crate::knowledge::{KnowledgeError, KnowledgeModules, KnowledgeOrigin, PendingOnUse};
+use crate::memories::MEMORY_MUTATIONS;
 use crate::memories::MemoryCode;
 use crate::programs::{ProgramLibrary, ProgramRefusal, ProgramSummary};
 use crate::sandbox::{
-    ApiIdentity, DocSearchQuery, DocSearchResult, PreparedProgram, ProgramError, ProgramLanguage,
-    ProgramScope, RunEnding, SandboxViewOpened, ToolApi, UnreachableTail, ViewOpenOutcome,
-    ViewRefusal, run_prepared_program,
+    ApiIdentity, BOARD_CREATE_EPIC, BOARD_CREATE_ISSUE, BOARD_REMOVE_EPIC, BOARD_REMOVE_ISSUE,
+    BOARD_SET_ISSUE_BLOCKED_BY, BOARD_UPDATE_ISSUE, BOARD_WAIT_FOR_ISSUE, CONTEXT_ARCHIVE_THREAD,
+    CONTEXT_COMPACT, CONTEXT_EVICT_FILE_VIEW, CONTEXT_SEARCH_ARCHIVE, DELEGATION_EXEC,
+    DELEGATION_FORK, DELEGATION_SEND_MESSAGE, DELEGATION_SPAWN_SUBAGENT,
+    DELEGATION_TRANSITION_STATE, DELEGATION_WAIT_FOR_SUBAGENTS, DocSearchQuery, DocSearchResult,
+    FILES_EDIT_FILE, FILES_LIST_DIR, FILES_READ_FILE, FILES_WRITE_FILE, MEMORIES_CREATE_MEMORY,
+    MEMORIES_DELETE_MEMORY, MEMORIES_EDIT_MEMORY, MEMORIES_READ_MEMORY, MEMORIES_SEARCH_MEMORIES,
+    MEMORIES_UPDATE_MEMORY, MEMORIES_WRITE_MEMORY, OperationId, PreparedProgram, ProgramError,
+    ProgramLanguage, ProgramScope, RunEnding, SHELL_SHELL, SKILLS_READ_SKILL, SandboxViewOpened,
+    TASKS_ADD_TASK, TASKS_COMPLETE_TASK, TASKS_REMOVE_TASK, TASKS_SET_BLOCKED_BY,
+    TASKS_UPDATE_TASK, ToolApi, UnreachableTail, ViewOpenOutcome, ViewRefusal,
+    run_prepared_program, spell,
 };
 use crate::tasks::TaskStatus;
 use crate::tools::{
@@ -320,9 +331,10 @@ pub(super) async fn run_code_turn(
         ));
     }
 
-    // The composed calls the turn actually dispatched — which is what streamed as
-    // `ToolCall`/`ToolResult` pairs — is the roster plus whatever the roster cap (or a panicked
-    // sandbox) stopped describing, never the roster's length.
+    // The composed calls the turn actually **dispatched** — the roster plus whatever the roster cap
+    // (or a panicked sandbox) stopped describing, never the roster's length. It is a count of calls
+    // that reached a tool implementation, not of tool calls: a program makes none of those, and
+    // nothing streams a tool-shaped record beside its `ApiCall`/`ApiResult` pair.
     let tool_calls = outcome.tool_calls.len() as u64 + outcome.tool_calls_suppressed;
     emitter.emit(GgTelemetryKind::CodeExecution {
         ok: matches!(&outcome.result, Ok(result) if result.error.is_none()),
@@ -966,8 +978,6 @@ pub(super) struct CodeTurn<'a> {
     /// program under, and the same number the window's turn headers carry, so a model that reads
     /// `Turn #12` and asks for `programs.get(12)` is naming the turn it saw.
     pub(super) turn: u64,
-    /// The run's toolset, which decides both what the program binds and what dispatch reaches.
-    pub(super) registry: &'a ToolRegistry,
     /// The workspace root and vision context every tool call is executed against.
     pub(super) tool_ctx: &'a ToolContext,
     /// The read policy `read_file` is bound with — whether ambient reads are permitted.
@@ -1004,9 +1014,18 @@ pub(super) struct CodeTurn<'a> {
     /// Which SDK types this agent's documentation opens beside a function — its resolved
     /// [`DocViewTypes`], per agent exactly as its program language is.
     pub(super) doc_view_types: DocViewTypes,
-    /// Whether this agent holds [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE),
-    /// which is what decides whether the documentation-close calls are in its program's reach.
-    pub(super) docview_close: bool,
+    /// **What this agent was granted on the API surface**: the ids of the capabilities its profile
+    /// switches on, and the operations its own [allowlist](GgAgentConfig::operations) names within
+    /// them.
+    ///
+    /// The two travel together because they are one answer — *may this agent call X* — and because
+    /// the membrane the program is run behind is built from exactly these. They are resolved once
+    /// for the session and handed down rather than re-read per turn: the documentation runtime the
+    /// model's own lookups are answered from was built from the same pair, and a second reading is
+    /// how the two once came to disagree.
+    pub(super) capabilities: &'a [String],
+    /// The operation half of the grant above.
+    pub(super) operations: &'a [OperationId],
     /// The agents this one may become — its own
     /// [roster](test_cabinet_core::gg::GgAgentConfig::subagents), which is what an `exec` target is
     /// checked against. Empty when it has none, which is also when the call is not bound.
@@ -1076,11 +1095,17 @@ pub(super) struct CodeTurnState {
 /// The sandbox is synchronous and CPU-bound, so it runs on a
 /// [`spawn_blocking`](tokio::task::spawn_blocking) thread (the same offload the Foray/Lattice
 /// validators use). Every call the program composes is serviced by the turn's [`LoopToolApi`], which
-/// runs **on that blocking thread** — calling the stage-1 typed tool functions directly and routing
+/// runs **on that blocking thread** — calling the typed implementations directly and routing
 /// the delegation family back onto the async loop via `block_on`. That is where every must-survive
-/// loop behaviour lives now: the compaction gate, `ToolCall`/`ToolResult` telemetry, replay
-/// capture, knowledge-state re-emission, agent-managed-context reclaim, and skill pinning — all
-/// exactly as a native tool call is serviced.
+/// loop behaviour lives now: the compaction gate, the session record, knowledge-state re-emission,
+/// agent-managed-context reclaim, and skill pinning.
+///
+/// What it does **not** do is pretend a program made a tool call. The typed implementation under a
+/// call is shared with the tool that fronts it on the other surface; nothing above it is. A
+/// program's call is bracketed by its own
+/// [`ApiCall`](GgTelemetryKind::ApiCall)/[`ApiResult`](GgTelemetryKind::ApiResult) pair and by
+/// nothing else, and every gate on this path is keyed on the
+/// [operation](crate::sandbox::OperationId) the program called rather than on a tool's name.
 ///
 /// The per-turn state (`context`/`skills`/`docs`/`subagents`) is **moved into** the api so a
 /// program's calls act on the live window, then reclaimed from it here and handed back to the loop.
@@ -1117,23 +1142,18 @@ async fn run_code_program(
     subagents: Option<SubagentContext>,
 ) -> (SandboxOutcome, ProgramChain, Option<CodeTurnState>) {
     let program = source.to_string();
-    // The tools bound into the program's scope: the run's offered toolset minus the turn-level
-    // transitions. Derived from the same registry the system prompt was rendered from, so the
-    // functions in scope and the signatures the model was shown are the same set.
-    let enabled = scope_tools(turn.registry);
-    // The ending group bound alongside them. It is the agent's role rather than a capability, which
-    // is why it travels beside the tool names instead of among them.
+    // What this agent was granted: the capabilities its profile switches on and the operations its
+    // allowlist names within them. Every arm's SDK is static, so this decides nothing about what the
+    // guest *binds* — it is what the membrane refuses against, and it is the same pair the
+    // documentation runtime beside it was built from, so what the model was told it has and what the
+    // host will service are one set.
+    // Owned rather than borrowed, because the whole chain below runs on a `spawn_blocking` thread
+    // and nothing borrowed from the turn survives the move onto it.
+    let capabilities = turn.capabilities.to_vec();
+    let operations = turn.operations.to_vec();
+    // The ending group, which the same membrane enforces. It is the agent's role rather than a
+    // capability, which is why it travels beside the grant instead of inside it.
     let role = turn.ending_role;
-    // Whether the `programs` object is bound into the program's scope, read off the library itself
-    // rather than from a second flag — so the object a program sees and the state gg would answer it
-    // from can never disagree.
-    let library = programs.is_enabled();
-    // Whether this agent may take a documentation view back out of its window — what decides
-    // whether `docs.close` and `docs.close_all` are names its programs can reach at all. Held
-    // beside the library flag because the two are the surface's only capability-bought families,
-    // and it goes to the scope alone: the api needs no copy of it, because closing documentation is
-    // reachable only through the calls the scope binds and the membrane refuses.
-    let docview_close = turn.docview_close;
     // The production `ToolApi`: the loop's own per-turn state, servicing each typed call inline. The
     // mutable, reclaimed-after-the-turn state moves in; the rest is cloned from the turn (all
     // Arc-backed, so cheap) or captured fresh (`Handle::current()` bridges the delegation family
@@ -1187,11 +1207,10 @@ async fn run_code_program(
                 language,
                 &source,
                 ProgramScope {
-                    enabled: &enabled,
+                    capabilities: &capabilities,
+                    operations: &operations,
                     modules: &modules,
                     ending: RunEnding::Role(role),
-                    library,
-                    docview_close,
                 },
                 limits,
                 deadline,
@@ -1227,7 +1246,15 @@ async fn run_code_program(
         // program has ended. Deferring is not a convenience: a read reaches gg from inside a
         // membrane call that already holds the api, so there is no api to run a second program
         // against until this point — and the views these open belong in the *next* prompt anyway.
-        api = run_on_use_scripts(language, &mut merged, &enabled, limits, deadline, api);
+        api = run_on_use_scripts(
+            language,
+            &mut merged,
+            &capabilities,
+            &operations,
+            limits,
+            deadline,
+            api,
+        );
         (merged, chain, api)
     });
 
@@ -1474,6 +1501,14 @@ fn merge_chain(earlier: SandboxOutcome, later: SandboxOutcome) -> SandboxOutcome
 /// is valid without a call to answer — exactly what
 /// [`clear_ephemeral`](ContextModel::clear_ephemeral) rewrites a retained `tool` item into for the
 /// same reason.
+/// # Which call this is, is the caller's to know
+///
+/// It is reached only from the [servicing tail](LoopToolApi::complete)'s
+/// `operation == SKILLS_READ_SKILL` arm, and it does not re-check. It cannot: the
+/// [dispatch record](LoopToolApi::begin) a program's call is minted with is named for the
+/// **operation**, because that is the only vocabulary this surface has — a tool name is the other
+/// surface's, and no program ever wrote one. A guard here re-reading that field against a tool name
+/// would refuse every call it was handed.
 fn pin_read_skill(
     context: &mut ContextModel,
     skills: &mut SkillsRuntime,
@@ -1481,7 +1516,7 @@ fn pin_read_skill(
     outcome: &ToolOutcome,
     emitter: &Emitter,
 ) {
-    if call.name != READ_SKILL_TOOL || !outcome.ok {
+    if !outcome.ok {
         return;
     }
     let Some(name) = call.arguments.get("name").and_then(Value::as_str) else {
@@ -1576,22 +1611,22 @@ fn absorb_on_use_script(outcome: &mut SandboxOutcome, script: SandboxOutcome) ->
 /// script is an ordinary [`run_program_charged`] against the **same api** — so its views land in
 /// this agent's window, its tool calls appear in this turn's roster, and its cost is the turn's
 /// (see [`absorb_on_use_script`] for the whole of what it contributes), which is right: they
-/// happened on this turn, and an operator reading the run must be able to see them. Two things
-/// differ from a
-/// turn's own program, and both are the same rule stated twice:
-///
-/// * [`RunEnding::None`] — an on-use script is not the agent's turn, so it has no `finish` to call.
-/// * `library: false` — nor any business handing gg a replacement program.
+/// happened on this turn, and an operator reading the run must be able to see them. One thing
+/// differs from a turn's own program: [`RunEnding::None`] — an on-use script is not the agent's
+/// turn, so it has no `finish` to call, and no verdict either. Everything else it is granted is
+/// exactly what the agent that read it holds, because it is running on that agent's behalf.
 ///
 /// A script that fails is **not** the model's failure. Its source was never shown to the model, so
 /// reporting the throw as a program error would be an accusation about code the model cannot see;
 /// it goes into `module_errors`, which the turn's feedback renders as one sentence naming the skill
 /// or memory. `outcome.result` is untouched: the turn succeeded or failed on the model's own
 /// program, whatever a skill's script then did.
+#[allow(clippy::too_many_arguments)]
 fn run_on_use_scripts(
     language: &'static dyn ProgramLanguage,
     outcome: &mut SandboxOutcome,
-    enabled: &[String],
+    capabilities: &[String],
+    operations: &[OperationId],
     limits: SandboxLimits,
     deadline: Option<Instant>,
     mut api: LoopToolApi,
@@ -1612,13 +1647,10 @@ fn run_on_use_scripts(
             language,
             program,
             ProgramScope {
-                enabled,
+                capabilities,
+                operations,
                 modules: &modules,
                 ending: RunEnding::None,
-                // An on-use script has no business handing gg a replacement for the model's turn,
-                // nor any business rewriting the window the agent that read it is working in.
-                library: false,
-                docview_close: false,
             },
             limits,
             deadline,
@@ -1714,11 +1746,15 @@ const MAX_COMPOSED_VIEW_BYTES_PER_TURN: usize = 8 * 1024 * 1024;
 // The native `ToolApi`: the loop's own state, servicing each typed call inline
 // ---------------------------------------------------------------------------
 
-/// The production [`ToolApi`]: the loop's own state, servicing each typed call exactly as the
-/// tool-calling loop services a native one — the compaction gate, ToolCall/ToolResult telemetry,
-/// replay, agent-managed-context reclaim, skill pinning, board pump + state events — and routing the
-/// delegation family to the subagent scheduler via `block_on` (the sandbox runs on a blocking
-/// thread).
+/// The production [`ToolApi`]: the loop's own state, servicing each typed call — the compaction
+/// gate, the session record, agent-managed-context reclaim, skill pinning, board pump + state
+/// events — and routing the delegation family to the subagent scheduler via `block_on` (the sandbox
+/// runs on a blocking thread).
+///
+/// A call serviced here is a **program's** call, and it is recorded as one: the membrane brackets it
+/// with an [`ApiCall`](GgTelemetryKind::ApiCall)/[`ApiResult`](GgTelemetryKind::ApiResult) pair and
+/// nothing here emits a second, tool-shaped record beside it. The two surfaces are independent, and
+/// a program that never made a tool call must not appear to have made one.
 pub(super) struct LoopToolApi {
     /// The [program language](ProgramLanguage) this agent writes in.
     ///
@@ -1909,66 +1945,78 @@ impl LoopToolApi {
         }
     }
 
-    /// Gate the call and, if it is allowed, run `exec` (an ordinary typed tool call), then service
-    /// the outcome (telemetry, AMC reclaim, replay, board pump, state events, skill pin). Returns
-    /// the serviced outcome the membrane maps to a WIT result.
+    /// Gate the call and, if it is allowed, run `exec` (the same typed implementation a tool's
+    /// `invoke` runs), then service the outcome (AMC reclaim, session record, board pump, state
+    /// events, skill pin). Returns the serviced outcome the membrane maps to a WIT result.
+    ///
+    /// Everything here is keyed on the [operation](OperationId) the program called, which is the
+    /// only vocabulary this path has: a program does not name a tool, and gg does not translate one
+    /// into the other. What the two surfaces share is what `exec` reaches — `ReadFileTool::read` and
+    /// its siblings — and nothing above it.
     fn serviced(
         &mut self,
-        name: &str,
+        operation: OperationId,
         args: Value,
         exec: impl FnOnce(&mut Self) -> ToolOutcome,
     ) -> ToolOutcome {
-        // The gate is evaluated first, but the `ToolCall` is streamed *before* the call runs either
-        // way — a refusal is a serviced call that streams its `ToolCall`/`ToolResult` pair exactly
-        // as a call that ran does, so its telemetry order matches the native path's.
-        let refused = self.gate(name);
-        let call = self.begin(name, args);
+        // The gate is evaluated first, but the dispatch record is minted *before* the call runs
+        // either way — a refusal is a serviced call, so the session record carries it exactly as it
+        // carries one that ran.
+        let refused = self.gate(operation);
+        let call = self.begin(operation, args);
         if let Some(refused) = refused {
-            return self.complete(call, refused, Vec::new());
+            return self.complete(operation, call, refused, Vec::new());
         }
         let mut outcome = exec(self);
         // Agent-managed context: rewrite the outcome with what the loop actually reclaimed.
-        let managed = if self.amc.enabled && outcome.ok && is_context_reclaim_tool(name) {
-            apply_context_reclaim(
+        let managed = match ContextReclaim::of_operation(operation) {
+            Some(reclaim) if self.amc.enabled && outcome.ok => apply_context_reclaim(
                 &mut self.context,
                 &self.amc.archive,
                 &self.amc.archive_id,
-                &call,
+                reclaim,
+                &call.arguments,
                 &mut outcome,
-            )
-        } else {
-            Vec::new()
+            ),
+            _ => Vec::new(),
         };
-        self.complete(call, outcome, managed)
+        self.complete(operation, call, outcome, managed)
     }
 
-    /// The gates every serviced call passes: `Some(refusal_outcome)` when this call is withheld.
+    /// The gates every serviced call passes: `Some(refusal_outcome)` when this call cannot run.
     ///
-    /// Two, and they are refusals for different reasons. **Memory access** is structural — a
-    /// [read-only](crate::memories::MemoryScope::ReadOnly) holder may not write, ever — and is the
-    /// belt to the registry's braces: such a holder is offered no write call at all, so nothing a
-    /// program written against the scope it actually has can reach one, and this catches only a
-    /// program written against a scope it does not.
+    /// Neither of them is the capability gate — that is the [membrane](crate::sandbox)'s, applied
+    /// before the call ever reaches this api, and it answers from the agent's own
+    /// [grant](crate::sandbox::Grants). These two are conditions of the *moment*, which no grant
+    /// could express.
+    ///
+    /// **Memory access** is structural — a [read-only](crate::memories::MemoryScope::ReadOnly)
+    /// holder may not write, ever — and is the belt to the grant's braces: such a holder is
+    /// [granted](crate::sandbox::granted_operations) no memory write at all, so a program written
+    /// against the scope it actually has cannot reach one, and this catches only a program written
+    /// against a scope it does not.
     ///
     /// **Compaction** is the strictest gate gg has, and temporary: while one is in flight the
     /// window is full, so every call that is not the one compaction asked for is refused. `compact`
-    /// itself is exempt, exactly as the native path lets it through — the run has no way forward
-    /// until the window is reclaimed.
-    fn gate(&self, name: &str) -> Option<ToolOutcome> {
-        if is_memory_tool(name) && !self.memories_rt.is_writable() {
+    /// itself is exempt — the run has no way forward until the window is reclaimed.
+    fn gate(&self, operation: OperationId) -> Option<ToolOutcome> {
+        if MEMORY_MUTATIONS.contains(&operation) && !self.memories_rt.is_writable() {
             return Some(ToolOutcome::failed(
                 ToolFailure::Refused,
                 read_only_refusal(self.memories_rt.strategy(), Some(self.language)),
             ));
         }
         if let Some(pending) = self.pending_compaction
-            && !pending.admits(name, true)
-            && name != COMPACT_TOOL
+            && !pending.admits_operation(operation)
+            && operation != CONTEXT_COMPACT
         {
             return Some(ToolOutcome::failed(
                 ToolFailure::Refused,
                 pending.refusal(
-                    name,
+                    // Named the way this agent's own programs write it, because that is the only
+                    // spelling it has ever seen — a bare operation id here would name a call the
+                    // model cannot make.
+                    &spell(self.language, operation),
                     Some(self.language),
                     self.memories_rt.strategy().calls(Some(self.language)),
                 ),
@@ -1977,39 +2025,36 @@ impl LoopToolApi {
         None
     }
 
-    /// Mint the synthetic call record (ordinal-keyed id, unique within the turn) and stream its
-    /// `ToolCall` — done **before** the call runs, so a delegation's child events land between this
-    /// `ToolCall` and its `ToolResult`, exactly as the native tool-calling loop orders them.
-    fn begin(&mut self, name: &str, args: Value) -> ToolCall {
+    /// Mint this call's **dispatch record** — the ordinal-keyed id unique within the turn, the
+    /// operation it was made under, and the arguments it was made with.
+    ///
+    /// It is not telemetry. The call's model-facing record is its
+    /// [`ApiCall`](GgTelemetryKind::ApiCall)/[`ApiResult`](GgTelemetryKind::ApiResult) pair, which
+    /// the membrane brackets every call with; this is what the [session record](crate::capture)
+    /// keys an outcome under, and what the handful of shared handlers that still read a request as
+    /// JSON (`transition_state`, `exec`, `fork`, the delegation family) are handed. The arguments
+    /// are therefore the call's real request rather than a display copy of it — which is why they
+    /// are built at each call site instead of being reconstructed here.
+    fn begin(&mut self, operation: OperationId, args: Value) -> ToolCall {
         let call = ToolCall {
-            id: format!("{PROGRAM_CALL_ID_PREFIX}{}:{name}", self.serviced),
-            name: name.to_string(),
+            id: format!("{PROGRAM_CALL_ID_PREFIX}{}:{operation}", self.serviced),
+            name: operation.to_string(),
             arguments: args,
         };
         self.serviced += 1;
-        self.emitter.emit(GgTelemetryKind::ToolCall {
-            name: call.name.clone(),
-            args: call.arguments.clone(),
-        });
         call
     }
 
-    /// Stream the `ToolResult`, record replay, pump the board, re-emit knowledge state, and pin a
-    /// fresh skill — the per-call servicing tail shared by ordinary and delegation calls, run after
-    /// the call (or handler) has produced `outcome`. Its [`begin`](Self::begin) already streamed the
-    /// `ToolCall`.
+    /// Record the outcome, pump the board, re-emit knowledge state, and pin a fresh skill — the
+    /// per-call servicing tail shared by ordinary and delegation calls, run after the call (or
+    /// handler) has produced `outcome`.
     fn complete(
         &mut self,
+        operation: OperationId,
         call: ToolCall,
         outcome: ToolOutcome,
         managed: Vec<GgTelemetryKind>,
     ) -> ToolOutcome {
-        self.emitter.emit(GgTelemetryKind::ToolResult {
-            name: call.name.clone(),
-            ok: outcome.ok,
-            summary: outcome.summary.clone(),
-            failure: outcome.wire_failure(),
-        });
         for event in managed {
             self.emitter.emit(event);
         }
@@ -2027,12 +2072,12 @@ impl LoopToolApi {
             }
         }
         if outcome.ok {
-            if is_board_tool(&call.name)
+            if BOARD_MUTATIONS.contains(&operation)
                 && let Some(project) = &self.project
             {
                 project.orch.pump_and_wake(&self.emitter);
             }
-            let state = if is_memory_tool(&call.name) {
+            let state = if MEMORY_MUTATIONS.contains(&operation) {
                 // The revisions first — the append-only record of what the call did, which for
                 // a deletion is the only place it is recorded at all. A program may have made
                 // several memory calls by now; the drain hands over every one of them.
@@ -2040,9 +2085,9 @@ impl LoopToolApi {
                     self.emitter.emit(revision);
                 }
                 self.memories_rt.state_event()
-            } else if is_task_tool(&call.name) {
+            } else if operation.namespace == TASKS_ADD_TASK.namespace {
                 self.tasks_rt.state_event()
-            } else if is_board_tool(&call.name) {
+            } else if BOARD_MUTATIONS.contains(&operation) {
                 self.board.state_event()
             } else {
                 None
@@ -2051,29 +2096,31 @@ impl LoopToolApi {
                 self.emitter.emit(state);
             }
         }
-        pin_read_skill(
-            &mut self.context,
-            &mut self.skills,
-            &call,
-            &outcome,
-            &self.emitter,
-        );
+        if operation == SKILLS_READ_SKILL {
+            pin_read_skill(
+                &mut self.context,
+                &mut self.skills,
+                &call,
+                &outcome,
+                &self.emitter,
+            );
+        }
         outcome
     }
 
-    /// Delegation servicing: gate, stream the `ToolCall`, run the async handler on the blocking
+    /// Delegation servicing: gate, mint the dispatch record, run the async handler on the blocking
     /// thread via `block_on`, then service the tail. `run` gets the handle + mut subagent ctx +
     /// spawner + emitter + call.
     fn delegated(
         &mut self,
-        name: &str,
+        operation: OperationId,
         args: Value,
         run: impl FnOnce(&Handle, &mut SubagentContext, &Agent, &Emitter, &ToolCall) -> ToolOutcome,
     ) -> ToolOutcome {
-        let refused = self.gate(name);
-        let call = self.begin(name, args);
+        let refused = self.gate(operation);
+        let call = self.begin(operation, args);
         if let Some(refused) = refused {
-            return self.complete(call, refused, Vec::new());
+            return self.complete(operation, call, refused, Vec::new());
         }
         let handle = self.handle.clone();
         let spawner = &self.spawner;
@@ -2082,10 +2129,10 @@ impl LoopToolApi {
             Some(sub) => run(&handle, sub, spawner, emitter, &call),
             None => ToolOutcome::failed(
                 ToolFailure::Unavailable,
-                format!("`{name}` is not available: this run has no delegation runtime."),
+                format!("`{}` is not available.", spell(self.language, operation)),
             ),
         };
-        self.complete(call, outcome, Vec::new())
+        self.complete(operation, call, outcome, Vec::new())
     }
 
     /// Validate a `wait_for_issue` request and record it for the loop to honour after the program
@@ -2109,8 +2156,10 @@ impl LoopToolApi {
         if self.project.is_none() {
             return ToolOutcome::failed(
                 ToolFailure::Unavailable,
-                "`wait_for_issue` is not available: this run has no project-management board."
-                    .to_string(),
+                format!(
+                    "`{}` is not available.",
+                    spell(self.language, BOARD_WAIT_FOR_ISSUE)
+                ),
             );
         }
         if self
@@ -2463,20 +2512,19 @@ fn issue_status_word(status: IssueStatus) -> &'static str {
 impl ToolApi for LoopToolApi {
     /// Stream the opening half of one model-facing call's record.
     ///
-    /// Deliberately a **plain emit** rather than a second `serviced`-shaped path: the API layer has
-    /// no gate of its own to apply (a withheld call is not a name in the program's scope, and a
-    /// refused one is the tool layer's refusal), nothing to reclaim, and nothing to pin. What it has
-    /// is an identity and an ordering, and this is both — emitted before the work, so a bridged
-    /// `ToolCall`/`ToolResult` pair and a delegation's whole subtree of child events nest inside it.
+    /// This is the **whole** telemetry of a responses-as-code call. There is no bridged
+    /// `ToolCall`/`ToolResult` pair beside it: an agent has exactly one surface, and a program never
+    /// made a tool call to record. What nests between this event and its
+    /// [result](Self::end_api_call) is the effect the call had — a delegation's whole subtree of
+    /// child events, a context-managed reclaim, a store's refreshed state — which is why it is
+    /// emitted before the work rather than with it.
     ///
-    /// It is not recorded for [replay](crate::capture): replay re-feeds a *tool's* recorded outcome
-    /// to a re-run, and an API call has no outcome of its own to feed — the call is re-made and
-    /// re-recorded when the program runs again.
+    /// It is not recorded for [replay](crate::capture): that is a *dispatch's* record, keyed on the
+    /// call the loop minted for it, and it is written by [`complete`](LoopToolApi::complete) at the
+    /// one place an outcome exists to record.
     fn begin_api_call(&mut self, call: ApiIdentity<'_>) {
         self.emitter.emit(GgTelemetryKind::ApiCall {
-            object: call.object.to_string(),
-            function: call.function.to_string(),
-            operation: call.operation.map(str::to_string),
+            operation: call.operation.to_string(),
         });
     }
 
@@ -2489,9 +2537,7 @@ impl ToolApi for LoopToolApi {
     /// inside it.
     fn end_api_call(&mut self, call: ApiIdentity<'_>, failure: Option<GgToolFailure>) {
         self.emitter.emit(GgTelemetryKind::ApiResult {
-            object: call.object.to_string(),
-            function: call.function.to_string(),
-            operation: call.operation.map(str::to_string),
+            operation: call.operation.to_string(),
             ok: failure.is_none(),
             failure,
         });
@@ -2499,7 +2545,7 @@ impl ToolApi for LoopToolApi {
 
     fn shell(&mut self, command: String, timeout: Duration) -> ToolOutcome {
         self.serviced(
-            "shell",
+            SHELL_SHELL,
             json!({ "command": command, "timeout_secs": timeout.as_secs_f64() }),
             |api| {
                 api.handle.clone().block_on(run_command(
@@ -2521,7 +2567,7 @@ impl ToolApi for LoopToolApi {
         limit: Option<usize>,
     ) -> ToolOutcome {
         self.serviced(
-            READ_FILE_TOOL,
+            FILES_READ_FILE,
             json!({ "path": path, "offset": offset, "limit": limit }),
             |api| {
                 ReadFileTool::new(api.read_policy).read(&api.tool_ctx, path.clone(), offset, limit)
@@ -2530,14 +2576,14 @@ impl ToolApi for LoopToolApi {
     }
     fn write_file(&mut self, path: String, contents: String) -> ToolOutcome {
         self.serviced(
-            "write_file",
+            FILES_WRITE_FILE,
             json!({ "path": path, "contents": contents }),
             |api| WriteFileTool.write(&api.tool_ctx, path.clone(), contents.clone()),
         )
     }
     fn edit_file(&mut self, path: String, old_string: String, new_string: String) -> ToolOutcome {
         self.serviced(
-            "edit_file",
+            FILES_EDIT_FILE,
             json!({ "path": path, "old_string": old_string, "new_string": new_string }),
             |api| {
                 EditFileTool.edit(
@@ -2550,12 +2596,12 @@ impl ToolApi for LoopToolApi {
         )
     }
     fn list_dir(&mut self, path: Option<String>) -> ToolOutcome {
-        self.serviced("list_dir", json!({ "path": path }), |api| {
+        self.serviced(FILES_LIST_DIR, json!({ "path": path }), |api| {
             ListDirTool.list(&api.tool_ctx, path.clone())
         })
     }
     fn read_skill(&mut self, name: String) -> ToolOutcome {
-        self.serviced("read_skill", json!({ "name": name }), |api| {
+        self.serviced(SKILLS_READ_SKILL, json!({ "name": name }), |api| {
             let library = api.skills.library();
             let outcome = ReadSkillTool::new(library.clone()).read(name.clone());
             if !outcome.ok {
@@ -2606,7 +2652,7 @@ impl ToolApi for LoopToolApi {
         code: MemoryCode,
     ) -> ToolOutcome {
         self.serviced(
-            "write_memory",
+            MEMORIES_WRITE_MEMORY,
             memory_args(&name, &description, &body, &code),
             |api| {
                 let outcome = WriteMemoryTool::new(api.memories_rt.binding()).write(
@@ -2627,7 +2673,7 @@ impl ToolApi for LoopToolApi {
         code: MemoryCode,
     ) -> ToolOutcome {
         self.serviced(
-            "update_memory",
+            MEMORIES_UPDATE_MEMORY,
             memory_args(&name, &description, &body, &code),
             |api| {
                 let outcome = UpdateMemoryTool::new(api.memories_rt.binding()).update(
@@ -2648,7 +2694,7 @@ impl ToolApi for LoopToolApi {
         code: MemoryCode,
     ) -> ToolOutcome {
         self.serviced(
-            "create_memory",
+            MEMORIES_CREATE_MEMORY,
             memory_args(&name, &description, &contents, &code),
             |api| {
                 let outcome = CreateMemoryTool::new(api.memories_rt.binding()).create(
@@ -2662,7 +2708,7 @@ impl ToolApi for LoopToolApi {
         )
     }
     fn read_memory(&mut self, name: String) -> ToolOutcome {
-        self.serviced("read_memory", json!({ "name": name }), |api| {
+        self.serviced(MEMORIES_READ_MEMORY, json!({ "name": name }), |api| {
             let binding = api.memories_rt.binding();
             let outcome = ReadMemoryTool::new(binding.clone()).read(name.clone());
             if !outcome.ok {
@@ -2693,7 +2739,7 @@ impl ToolApi for LoopToolApi {
     }
     fn edit_memory(&mut self, name: String, search: String, replace: String) -> ToolOutcome {
         self.serviced(
-            "edit_memory",
+            MEMORIES_EDIT_MEMORY,
             json!({ "name": name, "old_string": search, "new_string": replace }),
             |api| {
                 EditMemoryTool::new(api.memories_rt.binding()).edit(
@@ -2705,12 +2751,14 @@ impl ToolApi for LoopToolApi {
         )
     }
     fn search_memories(&mut self, keywords: Vec<String>) -> ToolOutcome {
-        self.serviced("search_memories", json!({ "keywords": keywords }), |api| {
-            SearchMemoriesTool::new(api.memories_rt.binding()).search(keywords.clone())
-        })
+        self.serviced(
+            MEMORIES_SEARCH_MEMORIES,
+            json!({ "keywords": keywords }),
+            |api| SearchMemoriesTool::new(api.memories_rt.binding()).search(keywords.clone()),
+        )
     }
     fn delete_memory(&mut self, name: String) -> ToolOutcome {
-        self.serviced("delete_memory", json!({ "name": name }), |api| {
+        self.serviced(MEMORIES_DELETE_MEMORY, json!({ "name": name }), |api| {
             DeleteMemoryTool::new(api.memories_rt.binding()).delete(name.clone())
         })
     }
@@ -2722,7 +2770,7 @@ impl ToolApi for LoopToolApi {
         blocked_by: Vec<String>,
     ) -> ToolOutcome {
         self.serviced(
-            "add_task",
+            TASKS_ADD_TASK,
             json!({ "id": id, "title": title, "description": description, "blockedBy": blocked_by }),
             |api| {
                 AddTaskTool::new(api.tasks_rt.store()).add(
@@ -2748,7 +2796,7 @@ impl ToolApi for LoopToolApi {
         if let Some(description) = &description {
             args["description"] = json!(description);
         }
-        self.serviced("update_task", args, |api| {
+        self.serviced(TASKS_UPDATE_TASK, args, |api| {
             UpdateTaskTool::new(api.tasks_rt.store()).update(
                 id.clone(),
                 title.clone(),
@@ -2760,7 +2808,7 @@ impl ToolApi for LoopToolApi {
     }
     fn set_blocked_by(&mut self, id: String, blocked_by: Vec<String>) -> ToolOutcome {
         self.serviced(
-            "set_blocked_by",
+            TASKS_SET_BLOCKED_BY,
             json!({ "id": id, "blockedBy": blocked_by }),
             |api| {
                 SetBlockedByTool::new(api.tasks_rt.store())
@@ -2769,18 +2817,18 @@ impl ToolApi for LoopToolApi {
         )
     }
     fn complete_task(&mut self, id: String) -> ToolOutcome {
-        self.serviced("complete_task", json!({ "id": id }), |api| {
+        self.serviced(TASKS_COMPLETE_TASK, json!({ "id": id }), |api| {
             CompleteTaskTool::new(api.tasks_rt.store()).complete(id.clone())
         })
     }
     fn remove_task(&mut self, id: String) -> ToolOutcome {
-        self.serviced("remove_task", json!({ "id": id }), |api| {
+        self.serviced(TASKS_REMOVE_TASK, json!({ "id": id }), |api| {
             RemoveTaskTool::new(api.tasks_rt.store()).remove(id.clone())
         })
     }
     fn create_epic(&mut self, prefix: String, title: String, description: String) -> ToolOutcome {
         self.serviced(
-            "create_epic",
+            BOARD_CREATE_EPIC,
             json!({ "prefix": prefix, "title": title, "description": description }),
             |api| {
                 CreateEpicTool::new(api.board.store()).create_epic(
@@ -2805,7 +2853,7 @@ impl ToolApi for LoopToolApi {
         reviewers: Vec<String>,
     ) -> ToolOutcome {
         self.serviced(
-            "create_issue",
+            BOARD_CREATE_ISSUE,
             json!({ "title": title, "description": description, "inScope": in_scope, "outOfScope": out_of_scope, "completionCriteria": completion_criteria, "blockedBy": blocked_by, "epicId": epic_id, "agent": agent, "reviewers": reviewers }),
             |api| {
                 CreateIssueTool::new(api.board.store(), api.issue_policy.clone()).create_issue(
@@ -2844,7 +2892,7 @@ impl ToolApi for LoopToolApi {
         if let Some(epic_id) = &epic_id {
             args["epicId"] = json!(epic_id);
         }
-        self.serviced("update_issue", args, |api| {
+        self.serviced(BOARD_UPDATE_ISSUE, args, |api| {
             UpdateIssueTool::new(api.board.store()).update_issue(
                 id.clone(),
                 title.clone(),
@@ -2859,7 +2907,7 @@ impl ToolApi for LoopToolApi {
     }
     fn set_issue_blocked_by(&mut self, id: String, blocked_by: Vec<String>) -> ToolOutcome {
         self.serviced(
-            "set_issue_blocked_by",
+            BOARD_SET_ISSUE_BLOCKED_BY,
             json!({ "id": id, "blockedBy": blocked_by }),
             |api| {
                 SetIssueBlockedByTool::new(api.board.store())
@@ -2868,26 +2916,26 @@ impl ToolApi for LoopToolApi {
         )
     }
     fn remove_epic(&mut self, id: String) -> ToolOutcome {
-        self.serviced("remove_epic", json!({ "id": id }), |api| {
+        self.serviced(BOARD_REMOVE_EPIC, json!({ "id": id }), |api| {
             RemoveEpicTool::new(api.board.store()).remove_epic(id.clone())
         })
     }
     fn remove_issue(&mut self, id: String) -> ToolOutcome {
-        self.serviced("remove_issue", json!({ "id": id }), |api| {
+        self.serviced(BOARD_REMOVE_ISSUE, json!({ "id": id }), |api| {
             RemoveIssueTool::new(api.board.store()).remove_issue(id.clone())
         })
     }
     fn wait_for_issue(&mut self, id: String) -> ToolOutcome {
         // Deferred, not blocking: `register_issue_wait` validates the id and records the request;
         // the loop suspends the agent after the program ends. Serviced like any ordinary call — it
-        // streams a `ToolCall`/`ToolResult` pair and shows up in the composed-calls roster — but the
-        // wait itself is not one of the delegation family's `block_on`s.
-        self.serviced(WAIT_FOR_ISSUE_TOOL, json!({ "issueId": id }), |api| {
+        // shows up in the composed-calls roster and in the session record — but the wait itself is
+        // not one of the delegation family's `block_on`s.
+        self.serviced(BOARD_WAIT_FOR_ISSUE, json!({ "issueId": id }), |api| {
             api.register_issue_wait(id.clone())
         })
     }
     fn evict_file_view(&mut self, path: Option<String>) -> ToolOutcome {
-        self.serviced("evict_file_view", json!({ "path": path }), |_api| {
+        self.serviced(CONTEXT_EVICT_FILE_VIEW, json!({ "path": path }), |_api| {
             EvictFileViewTool.evict(path.clone())
         })
     }
@@ -2898,12 +2946,14 @@ impl ToolApi for LoopToolApi {
             .iter()
             .map(|range| json!([range.from, range.to]))
             .collect();
-        self.serviced("archive_thread", json!({ "ranges": pairs }), move |_api| {
-            ArchiveThreadTool.archive(ranges.clone())
-        })
+        self.serviced(
+            CONTEXT_ARCHIVE_THREAD,
+            json!({ "ranges": pairs }),
+            move |_api| ArchiveThreadTool.archive(ranges.clone()),
+        )
     }
     fn search_archive(&mut self, query: String) -> ToolOutcome {
-        self.serviced("search_archive", json!({ "query": query }), |api| {
+        self.serviced(CONTEXT_SEARCH_ARCHIVE, json!({ "query": query }), |api| {
             SearchArchiveTool::new(api.amc.archive.clone()).search(query.clone())
         })
     }
@@ -2914,7 +2964,7 @@ impl ToolApi for LoopToolApi {
         // native path and the handoff compactor also use), records the request, and the loop
         // rewrites the window once the whole program has ended.
         self.serviced(
-            COMPACT_TOOL,
+            CONTEXT_COMPACT,
             json!({ "summary": summary, "files": files }),
             |api| {
                 let outcome = CompactTool.compact(summary.clone(), files.clone());
@@ -2939,7 +2989,7 @@ impl ToolApi for LoopToolApi {
         // membrane rather than through this dispatch path — so the ending gate is passed `None`.
         let args = json!({ "state": state, "note": note });
         let call_args = args.clone();
-        self.serviced(TRANSITION_STATE_TOOL, args, move |api| {
+        self.serviced(DELEGATION_TRANSITION_STATE, args, move |api| {
             let Some(position) = api.spawner.fsm.clone() else {
                 return ToolOutcome::failed(
                     ToolFailure::Unavailable,
@@ -2949,7 +2999,7 @@ impl ToolApi for LoopToolApi {
             };
             let call = ToolCall {
                 id: String::new(),
-                name: TRANSITION_STATE_TOOL.to_string(),
+                name: DELEGATION_TRANSITION_STATE.to_string(),
                 arguments: call_args,
             };
             handle_transition(&position, &None, &mut api.handoff_requested, &call)
@@ -2961,10 +3011,10 @@ impl ToolApi for LoopToolApi {
         // as well as a handler, and the first of the two a program declares stands.
         let args = json!({ "agent": agent, "prompt": prompt });
         let call_args = args.clone();
-        self.serviced(EXEC_TOOL, args, move |api| {
+        self.serviced(DELEGATION_EXEC, args, move |api| {
             let call = ToolCall {
                 id: String::new(),
-                name: EXEC_TOOL.to_string(),
+                name: DELEGATION_EXEC.to_string(),
                 arguments: call_args,
             };
             let LoopToolApi {
@@ -2983,10 +3033,13 @@ impl ToolApi for LoopToolApi {
         // is a spawn it cannot use — and the child starts a moment later.
         let args = json!({ "prompt": prompt });
         let call_args = args.clone();
-        self.serviced(FORK_TOOL, args, move |api| {
+        // The arm's own spelling of the call, read off the api before the closure borrows it: the
+        // sentence below is put in front of a model, and a model reads a name it could write.
+        let language = self.language;
+        self.serviced(DELEGATION_FORK, args, move |api| {
             let call = ToolCall {
                 id: String::new(),
-                name: FORK_TOOL.to_string(),
+                name: DELEGATION_FORK.to_string(),
                 arguments: call_args,
             };
             let LoopToolApi {
@@ -2999,7 +3052,7 @@ impl ToolApi for LoopToolApi {
                 Some(sub) => handle_fork(sub, spawner, forks_requested, &call),
                 None => ToolOutcome::failed(
                     ToolFailure::Unavailable,
-                    format!("`{FORK_TOOL}` is not available: this run has no delegation runtime"),
+                    format!("`{}` is not available.", spell(language, DELEGATION_FORK)),
                 ),
             }
         })
@@ -3011,33 +3064,34 @@ impl ToolApi for LoopToolApi {
         issue_id: Option<String>,
     ) -> ToolOutcome {
         let args = json!({ "agent": agent, "prompt": prompt, "issueId": issue_id });
+        // Each of the three delegation calls names **its own** handler rather than going through
+        // the tool path's `handle_subagent_call`, which is a switch on a tool name. The
+        // [dispatch record](Self::begin) a program's call is minted with is named for the operation,
+        // because that is the only vocabulary this surface has — routing through a switch on the
+        // other surface's names would fall through to its "not a delegation tool" arm for every
+        // call. What the two paths share is what they should: the handler that does the work, and
+        // the arguments it reads.
         self.delegated(
-            SPAWN_SUBAGENT_TOOL,
+            DELEGATION_SPAWN_SUBAGENT,
             args,
-            |h, sub, spawner, emitter, call| {
-                h.clone()
-                    .block_on(handle_subagent_call(sub, spawner, emitter, call))
-            },
+            |_h, sub, spawner, _emitter, call| spawn_subagent(sub, spawner, &call.arguments),
         )
     }
     fn wait_for_subagents(&mut self, ids: Option<Vec<String>>) -> ToolOutcome {
         self.delegated(
-            WAIT_FOR_SUBAGENTS_TOOL,
+            DELEGATION_WAIT_FOR_SUBAGENTS,
             json!({ "ids": ids }),
-            |h, sub, spawner, emitter, call| {
+            |h, sub, _spawner, emitter, call| {
                 h.clone()
-                    .block_on(handle_subagent_call(sub, spawner, emitter, call))
+                    .block_on(wait_for_subagents(sub, emitter, &call.arguments))
             },
         )
     }
     fn send_message(&mut self, agent_id: String, message: String) -> ToolOutcome {
         self.delegated(
-            SEND_MESSAGE_TOOL,
+            DELEGATION_SEND_MESSAGE,
             json!({ "agentId": agent_id, "message": message }),
-            |h, sub, spawner, emitter, call| {
-                h.clone()
-                    .block_on(handle_subagent_call(sub, spawner, emitter, call))
-            },
+            |_h, sub, _spawner, _emitter, call| send_message(sub, &call.arguments),
         )
     }
     /// Search the documentation surface, hand the program its page, and leave the same page in the
@@ -3272,7 +3326,8 @@ impl ToolApi for LoopToolApi {
     /// did not, this sweep stood in for one, gated on the capability so the semantics were already
     /// these. Nothing stands in for it now, which is also what makes
     /// [`GgContextAction::CloseDocsViews`] mean one thing: `close_docviews` is its only producer, so
-    /// a capability ablation can attribute every documentation close to the call that was bought.
+    /// two configurations differing in that capability can be compared on it, every documentation close
+    /// attributed to the call that was bought.
     fn close_view(&mut self, selector: String) -> Result<u32, ViewRefusal> {
         if let Some(refusal) = close_selector_refusal(&selector) {
             return Err(refusal);

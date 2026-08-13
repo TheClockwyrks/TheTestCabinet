@@ -100,7 +100,7 @@ describe("value completion", () => {
   it("offers both `true` and `false` for a total capability field", () => {
     // The `cap.*` namespace is total, so a capability that a run never mentioned still
     // stores `false`. A completer that only offered observed-as-true values would hide
-    // exactly the half an ablation query is looking for.
+    // exactly the half a query comparing two configurations is looking for.
     expect(labels("cap.compaction:")).toEqual(["true", "false"]);
     expect(at("cap.compaction:").map((c) => c.documents)).toEqual([60, 40]);
   });
@@ -156,7 +156,10 @@ describe("stage completion", () => {
 
   it("offers fields inside an aggregation call", () => {
     expect(labels("| stats avg(")).toContain("cap.compaction");
-    expect(labels("| stats avg(cap.")).toEqual(["cap.compaction", "cap.subagents"]);
+    expect(labels("| stats avg(cap.")).toEqual([
+      "cap.compaction",
+      "cap.subagents",
+    ]);
   });
 
   it("offers fields and `bucket(` after `by`", () => {

@@ -142,8 +142,9 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
+    ProgramLanguage, PromptDialect, spell,
 };
+use crate::sandbox::operations::{VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
 #[path = "cpp.compile.rs"]
 pub(super) mod compile;
@@ -319,14 +320,14 @@ impl ProgramLanguage for Cpp {
     /// [`gg::views::open_file("src/main.cpp");`](self::open_file_statement) — with the window as the
     /// call's own optional second argument, written as a designated initialiser.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
-        open_file_statement(&spell(self, VIEW_OPEN_FILE), path, window)
+        open_file_statement(&spell(self, VIEWS_OPEN_FILE), path, window)
     }
 
     /// [An array of names and a range `for` over it](self::open_docs_views_statement), each
     /// iteration opening one documentation view — inside the `int main` this language has nowhere
     /// else to put a statement than.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
-        open_docs_views_statement(&spell(self, VIEW_OPEN_DOCS_VIEW), names)
+        open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
     }
 
     /// One function returning `name` — because a C++ code module is a file of **declarations** and a

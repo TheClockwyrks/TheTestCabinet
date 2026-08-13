@@ -111,9 +111,13 @@ function ggCodeExecutionDetail(
   const healing = event.healing;
   const parts: string[] = [];
   parts.push(event.ok ? "program ran" : "program failed");
+  // `toolCalls` is the contract's historical name for "reached a dispatch"; a program has
+  // no tool surface, so the label says what the figure counts rather than what the field
+  // is called. An operator reading "N tool calls" beside a responses-as-code turn would be
+  // reading the one vocabulary that turn never used.
   if (event.toolCalls > 0) {
     parts.push(
-      `${event.toolCalls} tool call${event.toolCalls === 1 ? "" : "s"}`,
+      `${event.toolCalls} dispatched call${event.toolCalls === 1 ? "" : "s"}`,
     );
   }
   if (healing?.strategies?.length) {

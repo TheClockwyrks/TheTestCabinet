@@ -28,8 +28,8 @@ run-wide read, true when any agent has the capability on, so an enablement rate
 averaged over it is honest for a run that enabled a capability on one subagent.
 
 Capability params are typed in the document, so a numeric comparison such as
-`cap.compaction.summaryHeadroom > 0.5` is expressible. Ablating one setting of a
-capability needs nothing beyond its param field: a run that left the setting at
+`cap.compaction.summaryHeadroom > 0.5` is expressible. Comparing two settings of
+a capability needs nothing beyond its param field: a run that left the setting at
 its default records no value and buckets as absent.
 
 A query reaches only fields a run durably records, so aggregation and the

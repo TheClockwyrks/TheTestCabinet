@@ -29,7 +29,7 @@ use super::test_cabinet::gg::docs::{DocHit, DocSearch, Host as DocsHost};
 use super::test_cabinet::gg::types::ToolError;
 use super::{MembraneState, ToolApi};
 use crate::sandbox::invoker::{DocSearchQuery, ViewRefusal};
-use crate::sandbox::language::{DOCS_CLOSE, DOCS_CLOSE_ALL, DOCS_SEARCH, SurfaceCall};
+use crate::sandbox::operations::{DOCS_CLOSE, DOCS_CLOSE_ALL, DOCS_SEARCH, OperationId};
 
 impl<A: ToolApi> DocsHost for MembraneState<A> {
     /// Search the surface this agent binds, hand the program its page, and leave the results in the
@@ -94,7 +94,7 @@ impl<A: ToolApi> DocsHost for MembraneState<A> {
     /// The capability is read off the [operation](crate::sandbox::operation_of) gg files this call
     /// under, by the [bracket](super::recording), on exactly the terms every other gated call obeys:
     /// the API call is still opened and still counted as a failure, because "the model reached for
-    /// something this run does not offer it" is the fact a capability ablation exists to measure,
+    /// something this agent was not granted" is the fact a comparison of two configurations rests on,
     /// and a refusal that closed no bracket would be invisible to it.
     fn close_doc_view(&mut self, key: String) -> Result<u32, ToolError> {
         self.recorded(DOCS_CLOSE, |state, rec| {
@@ -135,11 +135,11 @@ impl<A: ToolApi> MembraneState<A> {
     /// the [view](super::views) family's `refuse_view` for the two calls that live on this
     /// interface rather than on `views`, and filed in the same view report for the same reason:
     /// nothing was dispatched and no tool was withheld.
-    fn refuse_docs(&mut self, call: SurfaceCall, refusal: ViewRefusal) -> ToolError {
+    fn refuse_docs(&mut self, id: OperationId, refusal: ViewRefusal) -> ToolError {
         self.record_view_refusal(&refusal.message);
         ToolError {
             code: super::error_code(Some(refusal.failure)),
-            tool: call.key.to_string(),
+            tool: id.key.to_string(),
             message: refusal.message,
         }
     }

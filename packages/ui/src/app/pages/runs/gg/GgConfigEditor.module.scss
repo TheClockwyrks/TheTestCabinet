@@ -73,9 +73,9 @@
   }
 }
 
-// The slider switch worn by every capability toggle and per-feature ablation
-// toggle: a real checkbox whose native box is hidden and replaced by a track+knob,
-// so turning a capability on reads as flipping it live.
+// The slider switch worn by every capability toggle and per-feature toggle: a real
+// checkbox whose native box is hidden and replaced by a track+knob, so turning a
+// capability on reads as flipping it live.
 .switch {
   position: relative;
   display: inline-flex;
@@ -290,7 +290,8 @@
 }
 
 // A capability that is switched off dims its heading so the enabled ones stand
-// out at a glance (its config is still recorded, for ablation symmetry).
+// out at a glance (its config is still recorded, so two configurations being
+// compared stay symmetric).
 .capOff .capName,
 .capOff .capId {
   opacity: 0.55;
@@ -580,13 +581,22 @@
   line-height: 1.6;
 }
 
-// A ceiling set that is well-formed but can never fire — armed, and worth saying so
-// without refusing the save, which is why it is the amber warning cue rather than
-// the negative one `.fieldError` uses.
+// The editor's one warning cue: a setting that is well-formed and will save, but that
+// cannot do the thing it reads as doing — a ceiling that can never fire, a state nothing
+// can enter, a capability that is on and grants no call. Amber rather than the negative
+// cue `.fieldError` wears, because none of these refuses the save, and one cue for all of
+// them so an operator learns the colour once.
 .limitWarning {
   margin: 0 0 t.$space-md;
   font-size: t.$font-sm;
   color: t.$color-warning;
+
+  // Trailing gutter only when something follows. The panels that stack these — a
+  // capability's body, the states field — space their children with `gap`, so a bottom
+  // margin on the last one is a hole at the foot of the card rather than separation.
+  &:last-child {
+    margin-bottom: 0;
+  }
 }
 
 // A per-field validation error (a numeric param that isn't a number, or a fraction
@@ -682,22 +692,22 @@
   color: t.$color-text-muted;
 }
 
-// --- Per-feature tool ablation --------------------------------------------------
+// --- Per-feature sliders ---------------------------------------------------------
 //
-// Withholding a sub-feature of a capability without turning the whole thing off.
-// Lives inside a capability's expanded config (there is no standalone ablation
-// section any more): each slider covers a bundle of tools that move together.
+// Granting a sub-feature of a capability without granting the whole thing. Lives inside a
+// capability's expanded config (there is no standalone section for it): each slider covers
+// a bundle of calls that move together.
 
 // Set the feature toggles off from the param grid above them: the capBody's own gap
 // is tight for a fields row, so give the "Features" heading extra breathing room.
-.ablationGroup {
+.featureGroup {
   display: flex;
   flex-direction: column;
   gap: t.$space-xs;
   margin-top: t.$space-sm;
 }
 
-.ablationList {
+.featureList {
   display: flex;
   flex-direction: column;
   gap: t.$space-xs;
@@ -705,20 +715,20 @@
 
 // One feature toggle: its slider + name (in a label so clicking either toggles it)
 // and an optional help tip beside them.
-.ablationItem {
+.featureItem {
   display: flex;
   align-items: center;
   gap: t.$space-sm;
 }
 
-.ablationLabel {
+.featureLabel {
   display: inline-flex;
   align-items: center;
   gap: t.$space-sm;
   cursor: pointer;
 }
 
-.ablationName {
+.featureName {
   font-size: t.$font-sm;
   color: t.$color-text;
 }

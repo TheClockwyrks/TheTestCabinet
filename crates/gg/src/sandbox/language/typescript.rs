@@ -74,8 +74,9 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
+    ProgramLanguage, PromptDialect, spell,
 };
+use crate::sandbox::operations::{VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
 #[path = "typescript.prepare.rs"]
 pub(super) mod prepare;
@@ -263,13 +264,13 @@ impl ProgramLanguage for TypeScript {
     /// [`gg.views.openFile("src/main.ts");`](self::open_file_statement), with the call's name resolved
     /// from this language's own catalogue rather than written out here.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
-        open_file_statement(&spell(self, VIEW_OPEN_FILE), path, window)
+        open_file_statement(&spell(self, VIEWS_OPEN_FILE), path, window)
     }
 
     /// [A `const` array of names and a `for…of` over
     /// it](self::open_docs_views_statement), each iteration opening one documentation view.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
-        open_docs_views_statement(&spell(self, VIEW_OPEN_DOCS_VIEW), names)
+        open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
     }
 }
 

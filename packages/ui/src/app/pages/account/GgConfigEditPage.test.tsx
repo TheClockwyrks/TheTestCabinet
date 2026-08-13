@@ -210,8 +210,8 @@ describe("GgConfigEditPage", () => {
     const input = createGgConfig.mock.calls[0]![0];
     expect(input.name).toBe("shell-heavy");
     expect(input.capabilitySet.preset).toBe("shell-heavy");
-    // A single Root agent, with the full catalog serialized (on or off) so ablation
-    // arms stay symmetric.
+    // A single Root agent, with the full catalog serialized (on or off) so two
+    // configurations being compared stay symmetric.
     expect(input.capabilitySet.agents).toHaveLength(1);
     const root = input.capabilitySet.agents[0];
     expect(root.name).toBe("Root");
@@ -225,13 +225,14 @@ describe("GgConfigEditPage", () => {
     expect(input.capabilitySet.modelSlots).toEqual([{ name: "primary" }]);
   });
 
-  it("withholds a capability's sub-feature from inside its config", async () => {
+  it("grants a capability's whole offering, less the sub-feature switched off", async () => {
     renderPage();
     fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
       target: { value: "no-revise" },
     });
     openFirstAgentTools();
-    // Turning Memories on expands its config, where its "Revise memories" slider lives.
+    // Turning Memories on expands its config, where its "Revise memories" slider lives —
+    // already on, because switching the capability on granted everything it offers.
     fireEvent.click(screen.getByRole("checkbox", { name: /^Memories/i }));
     const revise = screen.getByRole("checkbox", { name: /Revise memories/i });
     expect(revise).toBeChecked();
@@ -242,15 +243,26 @@ describe("GgConfigEditPage", () => {
       screen.getByRole("button", { name: "Create configuration" }),
     );
     await waitFor(() => expect(createGgConfig).toHaveBeenCalledTimes(1));
-    // The ablation is per agent now.
-    const { disabledTools } =
+    // The allowlist is per agent, and it is written in the tool vocabulary because this
+    // agent answers with tool calls.
+    const { tools, operations } =
       createGgConfig.mock.calls[0]![0].capabilitySet.agents[0];
-    // Every way a memory is revised goes with the lever, whichever strategy the run
+    expect(operations).toBeUndefined();
+    // The rest of the capability arrived whole...
+    for (const tool of [
+      "write_memory",
+      "create_memory",
+      "read_memory",
+      "search_memories",
+    ]) {
+      expect(tools).toContain(tool);
+    }
+    // ...and every way a memory is REVISED went with the lever, whichever strategy the run
     // picks — `update_memory` under the scratchpad, `edit_memory` under the two
     // file-shaped ones, and `delete_memory` under all three.
-    expect(new Set(disabledTools)).toEqual(
-      new Set(["update_memory", "edit_memory", "delete_memory"]),
-    );
+    for (const tool of ["update_memory", "edit_memory", "delete_memory"]) {
+      expect(tools).not.toContain(tool);
+    }
   });
 
   it("adds an agent and lets the Root put it on its roster", async () => {

@@ -14,13 +14,14 @@ import { familyOf } from "../../../data/families";
 import { paramApplies, type CapSpec, type ParamSpec } from "./ggCatalog";
 import {
   blankCapabilityDraft,
+  capabilityGrantWarning,
   fsmStatesWarnings,
   isFsmShell,
   statesDraftValue,
   statesFromDraft,
   togglesDraftValue,
   togglesOff,
-  toolBundleOn,
+  featureBundleOn,
   type GgAgentDraft,
   type GgCapabilityDraft,
   type GgModelSlotDraft,
@@ -188,7 +189,7 @@ function ModelParamField({
 export interface CapabilityBodyProps {
   /** The capability being configured. */
   cap: CapSpec;
-  /** The agent whose configuration this is — its param drafts and its tool ablation. */
+  /** The agent whose configuration this is — its param drafts and its call allowlists. */
   agent: GgAgentDraft;
   /**
    * Every profile in the configuration: an `agent` param picks one, and a machine's
@@ -213,7 +214,15 @@ export interface CapabilityBodyProps {
    * model instead" has to remove the key rather than blank it.
    */
   onClearParam: (key: string) => void;
-  onSetToolAblation: (tools: ReadonlyArray<string>, on: boolean) => void;
+  /**
+   * Grant or take back one [feature bundle](CapSpec.features). It takes the whole bundle
+   * rather than a list of names because both vocabularies move together — the caller
+   * writes each into its own allowlist.
+   */
+  onSetFeature: (
+    bundle: { tools: ReadonlyArray<string>; operations: ReadonlyArray<string> },
+    on: boolean,
+  ) => void;
 }
 
 /**
@@ -233,7 +242,7 @@ export function CapabilityBody({
   onUpdateCap,
   onSetParam,
   onClearParam,
-  onSetToolAblation,
+  onSetFeature,
 }: CapabilityBodyProps) {
   const draft = agent.capabilities[cap.id] ?? blankCapabilityDraft();
   const implementation = draft.implementation;
@@ -244,7 +253,7 @@ export function CapabilityBody({
   const offered = (cap.params ?? []).filter(
     (p) => (p.kind !== "agent" || isRoot) && paramApplies(p, implementation),
   );
-  // A boolean param is a feature switch, not a value: it renders with the tool-ablation
+  // A boolean param is a feature switch, not a value: it renders with the feature
   // sliders rather than in the param grid.
   const params = offered.filter((p) => p.kind !== "boolean");
   const flags = offered.filter((p) => p.kind === "boolean");
@@ -252,12 +261,18 @@ export function CapabilityBody({
   // to change; showing it again under the whole form would say the same thing twice,
   // once far from the fix.
   const errorInline = params.some((p) => p.kind === "states");
+  // A capability switched on that grants nothing. It counts towards having a body, rather
+  // than only being rendered into one that exists for other reasons: the capabilities with
+  // the least to configure are the ones whose whole body *is* this warning, and a card
+  // that renders nothing is exactly where the silent state would stay silent.
+  const grantWarning = capabilityGrantWarning(agent, cap);
   const hasBody =
     params.length ||
     flags.length ||
     cap.implementationLabel ||
-    cap.toolAblation?.length ||
-    error;
+    cap.features?.length ||
+    error ||
+    grantWarning;
   if (!hasBody) return null;
 
   return (
@@ -451,38 +466,38 @@ export function CapabilityBody({
           })}
         </div>
       )}
-      {cap.toolAblation?.length || flags.length ? (
+      {cap.features?.length || flags.length ? (
         <div
-          className={gg.ablationGroup}
+          className={gg.featureGroup}
           role="group"
           aria-label={`${cap.name} features`}
         >
           <span className={runExec.fieldLabel}>Features</span>
-          <div className={gg.ablationList}>
-            {(cap.toolAblation ?? []).map((bundle) => (
-              <div key={bundle.label} className={gg.ablationItem}>
-                <label className={gg.ablationLabel}>
+          <div className={gg.featureList}>
+            {(cap.features ?? []).map((bundle) => (
+              <div key={bundle.label} className={gg.featureItem}>
+                <label className={gg.featureLabel}>
                   <Switch
-                    checked={toolBundleOn(agent.disabledTools, bundle.tools)}
+                    checked={featureBundleOn(agent, bundle)}
                     disabled={readOnly}
-                    onChange={(on) => onSetToolAblation(bundle.tools, on)}
+                    onChange={(on) => onSetFeature(bundle, on)}
                   />
-                  <span className={gg.ablationName}>{bundle.label}</span>
+                  <span className={gg.featureName}>{bundle.label}</span>
                 </label>
                 {bundle.hint && <HelpTip text={bundle.hint} />}
               </div>
             ))}
-            {/* A feature that changes what an offered tool demands, rather than which
-                tools exist: same box, same slider, a capability param behind it. */}
+            {/* A feature that changes what an offered call demands, rather than which
+                calls the agent has: same box, same slider, a capability param behind it. */}
             {flags.map((flag) => (
-              <div key={flag.key} className={gg.ablationItem}>
-                <label className={gg.ablationLabel}>
+              <div key={flag.key} className={gg.featureItem}>
+                <label className={gg.featureLabel}>
                   <Switch
                     checked={draft.params?.[flag.key] === "true"}
                     disabled={readOnly}
                     onChange={(on) => onSetParam(flag.key, on ? "true" : "")}
                   />
-                  <span className={gg.ablationName}>{flag.label}</span>
+                  <span className={gg.featureName}>{flag.label}</span>
                 </label>
                 {flag.hint && <HelpTip text={flag.hint} />}
               </div>
@@ -490,6 +505,11 @@ export function CapabilityBody({
           </div>
         </div>
       ) : null}
+      {/* Directly under the sliders, which are what emptied the grant and what puts it
+          back. Not folded into the error slot below: the two are about different things —
+          a param that cannot be saved, against a capability that saves fine and does
+          nothing — so a capability can honestly have both at once. */}
+      {grantWarning && <span className={gg.limitWarning}>{grantWarning}</span>}
       {error && !errorInline && <span className={gg.fieldError}>{error}</span>}
     </div>
   );

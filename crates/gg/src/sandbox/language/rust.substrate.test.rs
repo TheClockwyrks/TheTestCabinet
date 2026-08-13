@@ -52,7 +52,9 @@ use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::compile::compile_program;
 use crate::ending::{Ending, EndingRole};
-use crate::sandbox::fake::{CallLog, FakeToolApi, canned_outcome};
+use crate::sandbox::fake::{
+    CallLog, FakeToolApi, all_capabilities, all_operations, canned_outcome, granted_operations,
+};
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{ProgramError, SandboxError, SandboxOutcome};
 use crate::sandbox::{
@@ -77,7 +79,7 @@ pub(super) fn prepare(source: &str) -> Vec<u8> {
     }
 }
 
-/// Evaluate an already-compiled component through the real membrane, with `enabled`'s gg tools
+/// Evaluate an already-compiled component through the real membrane, with `operations`
 /// offered.
 ///
 /// A near-copy of [`run_program`](crate::sandbox::run_program) with one thing left out, because it
@@ -92,31 +94,34 @@ pub(super) fn prepare(source: &str) -> Vec<u8> {
 /// `view.open_text`, since an API object here is a module.
 pub(super) fn evaluate(
     component: &[u8],
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     modules: &[CodeModule],
     ending: RunEnding,
     library: bool,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    evaluate_granting(component, enabled, modules, ending, library, false, |log| {
+    evaluate_granting(component, operations, modules, ending, library, |log| {
         FakeToolApi::with(log, responder)
     })
 }
 
-/// [`evaluate`] for an agent that also holds `docview-close`.
+/// [`evaluate`] for a program with no ending group, granted every call.
 ///
-/// Its own function rather than a seventh argument on the one above, because every other caller here
-/// wants the default and a second bare `false` at the end of an argument list says nothing about
-/// which flag it is. What it buys is the only way to drive
-/// [`docs.close`](crate::sandbox::DOCS_CLOSE) to a *success*: without the capability the membrane
-/// refuses the call before this arm's lifting of the answer is ever reached.
+/// Its own function because what the documentation-close cases drive is this arm's lifting of the
+/// answer, which needs the call to *succeed* — and an agent granted the two closes and no ending is
+/// the shortest scope that reaches it.
 pub(super) fn evaluate_closing_docviews(
     component: &[u8],
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    evaluate_granting(component, &[], &[], RunEnding::None, false, true, |log| {
-        FakeToolApi::with(log, responder)
-    })
+    evaluate_granting(
+        component,
+        &all_operations(),
+        &[],
+        RunEnding::None,
+        false,
+        |log| FakeToolApi::with(log, responder),
+    )
 }
 
 /// [`evaluate`] for an agent that keeps a program library with `source` already recorded on `turn`.
@@ -130,12 +135,17 @@ pub(super) fn evaluate_with_program(
     source: &str,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    evaluate_granting(component, &[], &[], RunEnding::None, true, false, |log| {
-        FakeToolApi::with(log, responder).with_program(turn, source)
-    })
+    evaluate_granting(
+        component,
+        &all_operations(),
+        &[],
+        RunEnding::None,
+        true,
+        |log| FakeToolApi::with(log, responder).with_program(turn, source),
+    )
 }
 
-/// What all of the above are: one evaluation, with every flag the scope carries stated.
+/// What all of the above are: one evaluation, with everything the scope carries stated.
 ///
 /// The double is BUILT here rather than passed in, because the log it writes to is created here and
 /// the two must be the same one. `build` takes that log and hands back the api, which is what lets a
@@ -143,11 +153,10 @@ pub(super) fn evaluate_with_program(
 /// every thing a caller might seed.
 fn evaluate_granting(
     component: &[u8],
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     modules: &[CodeModule],
     ending: RunEnding,
     library: bool,
-    docview_close: bool,
     build: impl FnOnce(&CallLog) -> FakeToolApi,
 ) -> (SandboxOutcome, CallLog) {
     let limits = SandboxLimits::default();
@@ -156,13 +165,14 @@ fn evaluate_granting(
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
     let compiled =
         engine::compile_bytes(component).expect("a freshly compiled Rust program is a component");
+    let operations = granted_operations(operations, library);
     let scope = ProgramScope {
-        enabled,
+        capabilities: &all_capabilities(),
+        operations: &operations,
         modules,
         ending,
-        library,
-        docview_close,
     };
+    let granted: Vec<String> = operations.iter().map(ToString::to_string).collect();
     let mut store = bounded_store(
         MembraneState::new(
             api,
@@ -181,7 +191,7 @@ fn evaluate_granting(
         ),
     };
     let returned = bound
-        .call_run(&mut store, "", modules, enabled, ending.into(), library)
+        .call_run(&mut store, "", modules, &granted, ending.into(), library)
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
     if returned.is_err() {
         store.data_mut().revoke_completion();
@@ -310,7 +320,7 @@ fn a_program_reaches_gg_and_ends_the_run_through_the_real_membrane() {
     ));
     let (outcome, log) = evaluate(
         &component,
-        &["read_file".to_string()],
+        &[crate::sandbox::operations::FILES_READ_TEXT_FILE],
         &[],
         RunEnding::Role(EndingRole::Standard),
         false,

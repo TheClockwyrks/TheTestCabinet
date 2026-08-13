@@ -226,7 +226,7 @@ pub fn flatten_json(prefix: &str, value: &Value, out: &mut GgRunDoc) {
 /// [`GgCapabilitySet::any_agent_enabled`](crate::gg::GgCapabilitySet::any_agent_enabled)
 /// was introduced to fix. Per-agent detail is not lost either: each
 /// agent's own enablements are written **sparsely** as `agent.<name>.cap.<id>`, so a
-/// per-agent ablation is expressible without making every document carry the catalog
+/// per-agent difference is expressible without making every document carry the catalog
 /// once per profile.
 pub fn build_run_doc(record: &RunRecord, lifecycle: &GgDocLifecycle) -> GgRunDoc {
     let mut doc = GgRunDoc::default();
@@ -293,8 +293,9 @@ pub fn build_run_doc(record: &RunRecord, lifecycle: &GgDocLifecycle) -> GgRunDoc
 /// `agent.<name>.cap.<id>` namespaces.
 ///
 /// Two populations, deliberately shaped differently. `cap.<id>` is **total** over the
-/// catalog and **run-wide** — the field an ablation slices on, so "configured and off"
-/// and "never mentioned" must collapse into one honest `false` rather than an absence.
+/// catalog and **run-wide** — the field a comparison of two configurations slices on, so
+/// "configured and off" and "never mentioned" must collapse into one honest `false` rather than an
+/// absence.
 /// `agent.<name>.cap.<id>` is **sparse** and per-agent, like `tool.<name>`: writing the
 /// catalog once per profile would multiply a five-agent document's capability fields by
 /// five to say `false` a hundred times, and the question it answers ("which profile had

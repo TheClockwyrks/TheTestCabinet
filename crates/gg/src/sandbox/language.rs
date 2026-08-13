@@ -58,6 +58,7 @@ use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgProgr
 use crate::limits::TurnErrorType;
 
 use super::CodeModule;
+use super::operations::OperationId;
 use super::signatures::SignatureCatalogue;
 
 #[path = "language/compile.rs"]
@@ -469,8 +470,8 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// A trait method rather than a `format!` in [`skills`](crate::skills) because every token of it
     /// is this language's: the list literal, the loop, the statement terminator, and the name of the
     /// call itself. The implementation is expected to resolve that name with
-    /// [`spell`]`(self, `[`VIEW_OPEN_DOCS_VIEW`]`)` rather than writing it out, for the same reason
-    /// nothing else does.
+    /// [`spell`]`(self, `[`VIEWS_OPEN_DOCS_VIEW`](super::VIEWS_OPEN_DOCS_VIEW)`)` rather than
+    /// writing it out, for the same reason nothing else does.
     fn open_docs_views_statement(&self, names: &[&str]) -> String;
 
     /// Replies this language contributes to the delete-only invariant corpus.
@@ -603,222 +604,22 @@ pub struct PromptDialect {
     pub nothing_shown_template_name: &'static str,
 }
 
-/// One model-facing call, named the only way the seam is allowed to name a function: by the API
-/// object it hangs off and the catalogue [key](super::signatures::CatalogueFunction::key) that is
-/// its language-independent identity.
+/// How `language` spells the [operation](super::operations::OperationId) `id`, qualified exactly as
+/// a program writes it — `session.requestChanges`, or `Gg.Session.RequestChanges` on an arm whose
+/// surface is modules.
 ///
-/// The **object** half is identity rather than spelling — `harness`, `review`, `judge` and `view`
-/// are on the wire, the console groups by them, and no language may rename them. The function half
-/// is a spelling, so it is not written down here at all: [`spell`] resolves it against the
-/// language's own catalogue. That is the difference between "a test checks the two agree"
-/// and "there is only one of them".
-///
-/// It is used for two things, and the second is why the constants below cover the *whole* surface
-/// rather than the handful gg quotes. It is what gg [spells](spell) when it names a call back at a
-/// model — and it is the identity every call is **recorded** under, as the
-/// [`ApiCall`](test_cabinet_core::gg::GgTelemetryKind::ApiCall) pair the
-/// [membrane](super::membrane) brackets each host function with. One vocabulary for both, so the
-/// count a console joins to a bound function is keyed on the same thing that named the function.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SurfaceCall {
-    /// The API object it is grouped under in a program's scope.
-    pub object: &'static str,
-    /// Its catalogue key: `request_changes`, `open_text`. gg's own vocabulary, in `snake_case`,
-    /// deliberately not any one SDK's spelling.
-    pub key: &'static str,
-}
-
-impl SurfaceCall {
-    /// The call `key` identifies on `object`.
-    const fn new(object: &'static str, key: &'static str) -> Self {
-        Self { object, key }
-    }
-}
-
-/// Run a shell command in the workspace.
-pub const SYSTEM_SHELL: SurfaceCall = SurfaceCall::new("system", "shell");
-
-/// Read a workspace file, as the variant the tool returns.
-pub const FS_READ_FILE: SurfaceCall = SurfaceCall::new("fs", "read_file");
-
-/// Read a workspace file's text directly — the one helper, which shares
-/// [`read_file`](crate::tools::READ_FILE_TOOL)'s tool and gate and has an identity of its own.
-pub const FS_READ_TEXT_FILE: SurfaceCall = SurfaceCall::new("fs", "read_text_file");
-
-/// Write a workspace file whole.
-pub const FS_WRITE_FILE: SurfaceCall = SurfaceCall::new("fs", "write_file");
-
-/// Replace one string in a workspace file.
-pub const FS_EDIT_FILE: SurfaceCall = SurfaceCall::new("fs", "edit_file");
-
-/// List a workspace directory.
-pub const FS_LIST_DIR: SurfaceCall = SurfaceCall::new("fs", "list_dir");
-
-/// Read an authored skill.
-pub const SKILLS_READ_SKILL: SurfaceCall = SurfaceCall::new("skills", "read_skill");
-
-/// Write the agent's single scratchpad memory.
-pub const MEMORY_WRITE_MEMORY: SurfaceCall = SurfaceCall::new("memory", "write_memory");
-
-/// Update an existing memory whole.
-pub const MEMORY_UPDATE_MEMORY: SurfaceCall = SurfaceCall::new("memory", "update_memory");
-
-/// Create a new memory.
-pub const MEMORY_CREATE_MEMORY: SurfaceCall = SurfaceCall::new("memory", "create_memory");
-
-/// Read one memory.
-pub const MEMORY_READ_MEMORY: SurfaceCall = SurfaceCall::new("memory", "read_memory");
-
-/// Replace one string in a memory.
-pub const MEMORY_EDIT_MEMORY: SurfaceCall = SurfaceCall::new("memory", "edit_memory");
-
-/// Search the memory index by keyword.
-pub const MEMORY_SEARCH_MEMORIES: SurfaceCall = SurfaceCall::new("memory", "search_memories");
-
-/// Delete a memory.
-pub const MEMORY_DELETE_MEMORY: SurfaceCall = SurfaceCall::new("memory", "delete_memory");
-
-/// Add a task to the agent's own list.
-pub const TASKS_ADD_TASK: SurfaceCall = SurfaceCall::new("tasks", "add_task");
-
-/// Patch a task.
-pub const TASKS_UPDATE_TASK: SurfaceCall = SurfaceCall::new("tasks", "update_task");
-
-/// Re-state a task's dependencies.
-pub const TASKS_SET_BLOCKED_BY: SurfaceCall = SurfaceCall::new("tasks", "set_blocked_by");
-
-/// Mark a task done.
-pub const TASKS_COMPLETE_TASK: SurfaceCall = SurfaceCall::new("tasks", "complete_task");
-
-/// Drop a task.
-pub const TASKS_REMOVE_TASK: SurfaceCall = SurfaceCall::new("tasks", "remove_task");
-
-/// Open an epic on the board.
-pub const PROJECT_CREATE_EPIC: SurfaceCall = SurfaceCall::new("project", "create_epic");
-
-/// File an issue on the board.
-pub const PROJECT_CREATE_ISSUE: SurfaceCall = SurfaceCall::new("project", "create_issue");
-
-/// Patch an issue.
-pub const PROJECT_UPDATE_ISSUE: SurfaceCall = SurfaceCall::new("project", "update_issue");
-
-/// Re-state an issue's dependencies.
-pub const PROJECT_SET_ISSUE_BLOCKED_BY: SurfaceCall =
-    SurfaceCall::new("project", "set_issue_blocked_by");
-
-/// Remove an epic.
-pub const PROJECT_REMOVE_EPIC: SurfaceCall = SurfaceCall::new("project", "remove_epic");
-
-/// Remove an issue.
-pub const PROJECT_REMOVE_ISSUE: SurfaceCall = SurfaceCall::new("project", "remove_issue");
-
-/// Register a deferred wait on a board issue.
-pub const PROJECT_WAIT_FOR_ISSUE: SurfaceCall = SurfaceCall::new("project", "wait_for_issue");
-
-/// Reclaim a file view from the agent's own window.
-pub const CONTEXT_EVICT_FILE_VIEW: SurfaceCall = SurfaceCall::new("context", "evict_file_view");
-
-/// Archive a range of the agent's own thread.
-pub const CONTEXT_ARCHIVE_THREAD: SurfaceCall = SurfaceCall::new("context", "archive_thread");
-
-/// Search what the agent has archived.
-pub const CONTEXT_SEARCH_ARCHIVE: SurfaceCall = SurfaceCall::new("context", "search_archive");
-
-/// Register a compaction of the agent's own window.
-pub const CONTEXT_COMPACT: SurfaceCall = SurfaceCall::new("context", "compact");
-
-/// Spawn a child agent.
-pub const AGENTS_SPAWN_SUBAGENT: SurfaceCall = SurfaceCall::new("agents", "spawn_subagent");
-
-/// Block until child agents return.
-pub const AGENTS_WAIT_FOR_SUBAGENTS: SurfaceCall = SurfaceCall::new("agents", "wait_for_subagents");
-
-/// Send a message to a running child.
-pub const AGENTS_SEND_MESSAGE: SurfaceCall = SurfaceCall::new("agents", "send_message");
-
-/// Declare a move to another state of this agent's machine.
-pub const AGENTS_TRANSITION_STATE: SurfaceCall = SurfaceCall::new("agents", "transition_state");
-
-/// Declare that this session continues as another agent.
-pub const AGENTS_EXEC: SurfaceCall = SurfaceCall::new("agents", "exec");
-
-/// Register a copy of this agent.
-pub const AGENTS_FORK: SurfaceCall = SurfaceCall::new("agents", "fork");
-
-/// Read a workspace file **and** show it to the agent. Bridged to
-/// [`read_file`](crate::tools::READ_FILE_TOOL) and recorded as itself: what the model wrote is
-/// `view.openFile`, and the tool underneath it is the execution layer's business.
-pub const VIEW_OPEN_FILE: SurfaceCall = SurfaceCall::new("view", "open_file");
-
-/// The call that shows the agent a value it computed — quoted in the prompt's account of the
-/// message kinds an agent receives.
-pub const VIEW_OPEN_TEXT: SurfaceCall = SurfaceCall::new("view", "open_text");
-
-/// Show the agent one function's documentation.
-pub const VIEW_OPEN_DOCS_VIEW: SurfaceCall = SurfaceCall::new("view", "open_docs_view");
-
-/// The call that closes a view — what the context-pressure block points an agent at when text views
-/// are holding window it could reclaim.
-pub const VIEW_CLOSE: SurfaceCall = SurfaceCall::new("view", "close");
-
-/// What is open in the agent's window right now.
-pub const VIEW_CURRENT: SurfaceCall = SurfaceCall::new("view", "current");
-
-/// **The call the whole discovery loop begins at**: search the surface this agent binds by keyword,
-/// by module, or by both, and read the briefs that come back.
-///
-/// The prompt names no function, so this is the only way a model can learn what it holds without
-/// having been told a name first — which is why it is bound to every program whatever a run enables.
-pub const DOCS_SEARCH: SurfaceCall = SurfaceCall::new("docs", "search");
-
-/// Take one documentation view back out of the agent's window, by the key it was opened under.
-pub const DOCS_CLOSE: SurfaceCall = SurfaceCall::new("docs", "close");
-
-/// Take **every** documentation view out of the agent's window — the blanket form of
-/// [`DOCS_CLOSE`], behind the same capability.
-pub const DOCS_CLOSE_ALL: SurfaceCall = SurfaceCall::new("docs", "close_all");
-
-/// The [program library](crate::programs)'s own directory.
-pub const PROGRAMS_HISTORY: SurfaceCall = SurfaceCall::new("programs", "history");
-
-/// The program-library call that fetches a program the agent already ran.
-pub const PROGRAMS_GET: SurfaceCall = SurfaceCall::new("programs", "get");
-
-/// The program-library call that hands gg a program to run in place of the current one — quoted in
-/// every notice about a hand-over gg did not honour.
-pub const PROGRAMS_RERUN: SurfaceCall = SurfaceCall::new("programs", "rerun");
-
-/// The [standard](crate::ending::EndingRole::Standard) role's ending call.
-pub const HARNESS_FINISH: SurfaceCall = SurfaceCall::new("harness", "finish");
-
-/// The [review](crate::ending::EndingRole::Review) role's approval.
-pub const REVIEW_APPROVE: SurfaceCall = SurfaceCall::new("review", "approve");
-
-/// The review role's change request.
-pub const REVIEW_REQUEST_CHANGES: SurfaceCall = SurfaceCall::new("review", "request_changes");
-
-// The constants above are the *spellings* half of the surface — what gg quotes and what the
-// membrane records under. The half that used to sit here beside them, a bare enumeration of all 47
-// pairs, is now `super::operations::OPERATIONS`: the same surface, with the gate that decides who
-// gets each call written down beside it, where eleven catalogues used to each carry their own copy
-// of that fact.
-
-/// How `language` spells `call`, qualified exactly as a program writes it —
-/// `review.requestChanges`, or `Gg.Session.RequestChanges` on an arm whose surface is modules.
-///
-/// **Both halves are the arm's**, resolved together from its own catalogue by the call's
+/// **Both halves are the arm's**, resolved together from its own catalogue by the operation's
 /// language-independent identity, so a language that renamed a function — or regrouped it — renames
-/// it in gg's sentences too, with nothing to keep in step. Taking the qualifier from
-/// [`SurfaceCall::object`] instead would have gg quoting its own vocabulary at a program that has
-/// no `view` to call anything on.
+/// it in gg's sentences too, with nothing to keep in step. Taking the qualifier from the operation's
+/// own [namespace](super::operations::OperationId::namespace) instead would have gg quoting its own
+/// vocabulary at a program that has no `views` to call anything on.
 ///
-/// A catalogue that carries no such call falls back to gg's own pair: the
+/// A catalogue that carries no such call falls back to gg's own id: the
 /// [operation gate](super::operations) proves every model-facing call resolves in every registered
 /// language, so the fallback is unreachable — and degrading one word of a notice is the right
 /// failure anyway, where panicking mid-run is not.
-pub fn spell(language: &dyn ProgramLanguage, call: SurfaceCall) -> String {
-    let (group, name) =
-        super::signatures::spelling(language, call).unwrap_or((call.object, call.key));
+pub fn spell(language: &dyn ProgramLanguage, id: OperationId) -> String {
+    let (group, name) = super::signatures::spelling(language, id).unwrap_or((id.namespace, id.key));
     format!("{group}{}{name}", language.member_separator())
 }
 

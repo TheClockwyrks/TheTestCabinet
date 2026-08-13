@@ -29,7 +29,9 @@ use std::time::Duration;
 
 use super::*;
 use crate::ending::EndingRole;
-use crate::sandbox::fake::{CallLog, FakeToolApi, all_tools, canned_outcome};
+use crate::sandbox::fake::{
+    CallLog, FakeToolApi, all_capabilities, all_operations, canned_outcome,
+};
 
 /// Drive `program` through the real [`run_program`] in `language`, with every tool bound.
 fn outcome_of(language: &'static dyn ProgramLanguage, program: &str) -> SandboxOutcome {
@@ -38,11 +40,10 @@ fn outcome_of(language: &'static dyn ProgramLanguage, program: &str) -> SandboxO
         language,
         program,
         ProgramScope {
-            enabled: &all_tools(),
+            capabilities: &all_capabilities(),
+            operations: &all_operations(),
             modules: &[],
             ending: RunEnding::Role(EndingRole::Standard),
-            library: false,
-            docview_close: false,
         },
         SandboxLimits::default(),
         None,

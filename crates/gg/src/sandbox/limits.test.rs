@@ -1,8 +1,8 @@
 //! Tests for limit resolution and the memory limiter.
 //!
 //! The resolution half matters more than it looks: these params are what a study sets to measure
-//! what starving (or over-feeding) a sandbox does, and a param that is silently ignored turns an
-//! ablation into a run of the default arm under another name. Each one is therefore asserted both
+//! what starving (or over-feeding) a sandbox does, and a param that is silently ignored turns a
+//! configured arm into a run of the default arm under another name. Each one is therefore asserted both
 //! for being honoured and for **not disturbing the others**, since the failure that costs a study
 //! its result is a sweep in which one configured knob quietly reset another.
 

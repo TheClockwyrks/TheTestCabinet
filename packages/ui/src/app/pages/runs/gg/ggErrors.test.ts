@@ -508,9 +508,11 @@ describe("the call-failure fold", () => {
   // as summing them.
   describe("choosing the surface to read", () => {
     it("reads a responses-as-code agent on the surface its programs met", () => {
-      // The refusal is the case that settles it: it never dispatched, so the tool record
-      // cannot see it at all. Reading this agent on `tool` would drop the failure that
-      // the model actually had to write around.
+      // The reported mode is conclusive on its own, which is what the stray tool record
+      // here is for: gg cannot produce one for this agent — the two surfaces are
+      // independent and an agent has exactly one — so a fold that let one sway the choice
+      // would be deciding the model-facing question on the other vocabulary's evidence,
+      // and would drop the failure the model actually had to write around.
       const state = reduceGgEvents([
         apiResult("root", "unavailable"),
         toolResult("root", "io-error"),
@@ -535,8 +537,8 @@ describe("the call-failure fold", () => {
 
     it("falls back to the evidence when no surface was reported", () => {
       // Any mode from a newer gg than this console. Only a responses-as-code agent can
-      // have recorded an API
-      // failure, so one that did is read as the model-facing surface it must have had.
+      // have recorded an API failure, so one that did is read as the model-facing surface
+      // it must have had.
       const code = reduceGgEvents([apiResult("root", "not-found")]);
       expect(callFailureSurface(code.errors)).toBe("api");
       expect(callFailureSurface(code.errors, "some_mode_from_a_newer_gg")).toBe(

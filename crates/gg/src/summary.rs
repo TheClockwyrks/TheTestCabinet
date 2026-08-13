@@ -302,11 +302,16 @@ impl SessionSummaryTracker {
     /// stream (no event carries the offered toolset), so the binary sets it once, off the root
     /// agent's assembled [`ToolRegistry`](crate::tools::ToolRegistry), before
     /// [finalizing](Self::finalize). Recording
-    /// the *resolved* toolset — a capability's tools only when enabled and, for the stateful ones,
-    /// only when their store is non-empty, minus any individually
-    /// withheld tool — makes the toolset a
-    /// first-class, slice-by ablation variable rather than something a query must re-derive from the
+    /// the *resolved* toolset — a capability's tools only when enabled, for the stateful ones only
+    /// when their store is non-empty, and only the ones this agent's own
+    /// [allowlist](test_cabinet_core::gg::GgAgentConfig::tools) grants — makes the toolset a
+    /// first-class, sliceable fact rather than something a query must re-derive from the
     /// capability set.
+    ///
+    /// Empty for a responses-as-code root, which is offered no tools at all. That is a fact rather
+    /// than a gap: what such a root was offered is its
+    /// [`apis`](test_cabinet_core::gg::GgTelemetryKind::AgentSurface::apis), which is a per-instance
+    /// record and not a summary figure.
     pub fn record_effective_tools(&self, tools: Vec<String>) {
         let mut state = self.inner.lock().expect("summary tracker lock");
         state.effective_tools = tools;
@@ -369,7 +374,7 @@ impl SessionSummaryTracker {
     /// intention that had no effect.
     ///
     /// It exists because every other figure in the [healing rollup](GgHealingSummary) is a
-    /// measurement of what *fired*, and the arm of an ablation in which nothing fired is
+    /// measurement of what *fired*, and a configuration in which nothing fired is
     /// byte-identical to the arm in which nothing could: without this, a study slicing on
     /// "healing on vs healing off" cannot tell its own arms apart from the telemetry.
     pub fn record_healing(&self, enabled: Vec<GgHealingStrategy>) {

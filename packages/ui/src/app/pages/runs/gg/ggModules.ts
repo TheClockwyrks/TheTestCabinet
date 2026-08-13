@@ -216,7 +216,7 @@ export interface GgAgentModuleHold {
  * configuration that could not be honored literally (an `inherited` agent with no spawner
  * quietly gets its own store; a `shared` profile re-binds when a successor takes over). But
  * they are silent everywhere else, and they are exactly the thing that decides whether an
- * ablation's arm ran the way it was written — so they are said out loud, with the cause.
+ * configuration ran the way it was written — so they are said out loud, with the cause.
  */
 export interface GgModuleDivergence {
   /** What the configuration asked for. */

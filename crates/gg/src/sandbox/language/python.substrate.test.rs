@@ -31,14 +31,20 @@
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_core::gg::{
+    CAPABILITY_DOCVIEW_CLOSE, CAPABILITY_PROGRAM_LIBRARY, GgProgramLanguage,
+};
 use wasmtime::component::Component;
 
-use crate::sandbox::fake::{CallLog, FakeToolApi, all_tools, canned_outcome};
+use crate::sandbox::fake::{
+    CallLog, FakeToolApi, all_capabilities, all_operations, all_operations_without, canned_outcome,
+    granted_operations,
+};
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{ProgramError, ProgramErrorKind, SandboxError, SandboxOutcome};
 use crate::sandbox::{
-    CodeModule, ProgramScope, SandboxLimits, bounded_store, engine, linker, reclaim,
+    CodeModule, ProgramScope, SandboxLimits, bounded_store, capability_operations, engine, linker,
+    reclaim,
 };
 use crate::tools::ToolOutcome;
 
@@ -60,7 +66,7 @@ fn component() -> &'static Component {
         .0
 }
 
-/// Run one Python `program` through the real membrane, with `enabled`'s gg tools offered and
+/// Run one Python `program` through the real membrane, granting `operations` and
 /// `limits`'s ceilings armed.
 ///
 /// A near-copy of [`run_program`](crate::sandbox::run_program) with **one** thing left out: the
@@ -74,14 +80,14 @@ fn component() -> &'static Component {
 /// `views.open_file` rather than `view.openFile`.
 fn run_with(
     program: &str,
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     modules: &[CodeModule],
     limits: SandboxLimits,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
     run_as(
         program,
-        enabled,
+        operations,
         modules,
         RunEnding::None,
         false,
@@ -125,7 +131,7 @@ fn run_with(
 /// that order.
 fn run_as(
     program: &str,
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     modules: &[CodeModule],
     ending: RunEnding,
     library: bool,
@@ -137,13 +143,14 @@ fn run_as(
     // Both of these before the store exists, for the reason this function's documentation gives.
     let component = component();
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let operations = granted_operations(operations, library);
     let scope = ProgramScope {
-        enabled,
+        capabilities: &all_capabilities(),
+        operations: &operations,
         modules,
         ending,
-        library,
-        docview_close: false,
     };
+    let granted: Vec<String> = operations.iter().map(ToString::to_string).collect();
     let mut store = bounded_store(
         MembraneState::new(api, python(), scope, limits, None),
         limits,
@@ -160,7 +167,7 @@ fn run_as(
             &mut store,
             program,
             modules,
-            enabled,
+            &granted,
             ending.into(),
             library,
         )
@@ -281,7 +288,7 @@ print(text.splitlines()[0])
 "#;
     let (outcome, log) = run_with(
         read,
-        &["read_file".to_string()],
+        &[crate::sandbox::operations::FILES_READ_TEXT_FILE],
         &[],
         SandboxLimits::default(),
         canned_outcome,
@@ -295,11 +302,11 @@ print(text.splitlines()[0])
         json!({ "path": "notes.md", "offset": null, "limit": null })
     );
 
-    // The same program with the tool withheld. Nothing in the guest hides the binding — every SDK
+    // The same program with the call ungranted. Nothing in the guest hides the binding — every SDK
     // is static — so the refusal is the HOST's, and it arrives in Python as the wire's own typed
-    // error rather than as prose. The identity it carries is the CALL's key (`read_text_file`), not
-    // the tool that call would have dispatched: three operations share the `read_file` tool, and a
-    // refusal has to say which of the three the model reached for.
+    // error rather than as prose. The identity it carries is the OPERATION's key
+    // (`read_text_file`): the read-file capability buys three of them, an allowlist grants them one
+    // at a time, and a refusal has to say which of the three the model reached for.
     let caught = r#"
 from wit_world.imports import helpers
 from componentize_py_types import Err
@@ -730,11 +737,10 @@ fn the_embedded_guest_imports_the_whole_membrane_and_the_whole_wasi_surface() {
     let limits = SandboxLimits::default();
     let log = CallLog::default();
     let scope = ProgramScope {
-        enabled: &[],
+        capabilities: &[],
+        operations: &[],
         modules: &[],
         ending: RunEnding::None,
-        library: false,
-        docview_close: false,
     };
     let mut store = bounded_store(
         MembraneState::new(FakeToolApi::new(&log), python(), scope, limits, None),
@@ -1033,12 +1039,12 @@ fn crossings() -> Vec<Crossing> {
 #[test]
 fn every_tool_crosses_the_membrane_from_its_python_spelling() {
     let crossings = crossings();
-    let enabled = all_tools();
+    let operations = all_operations();
 
     for crossing in &crossings {
         let (outcome, log) = run_with(
             crossing.program,
-            &enabled,
+            &operations,
             &[],
             SandboxLimits::default(),
             canned_outcome,
@@ -1081,7 +1087,7 @@ fn the_sdk_hands_a_program_values_python_can_read() {
     // classes rather than a tagged wrapper — so a program narrows it with `isinstance` and reads a
     // field directly, which is the whole difference between this SDK and the generated bindings
     // underneath it.
-    let enabled = all_tools();
+    let operations = all_operations();
     let (outcome, _log) = run_with(
         r#"
 read = files.read_file("notes.md")
@@ -1110,7 +1116,7 @@ print(archive.archive_empty, archive.hits[0].role is MessageRole.ASSISTANT, arch
 created = board.create_issue("I", "s", "o", "c", "worker")
 print(created.id, created.board.issues, created.board.max_issues)
 "#,
-        &enabled,
+        &operations,
         &[],
         SandboxLimits::default(),
         canned_outcome,
@@ -1150,7 +1156,7 @@ try:
 except dataclasses.FrozenInstanceError:
     print("frozen")
 "#,
-        &enabled,
+        &operations,
         &[],
         SandboxLimits::default(),
         canned_outcome,
@@ -1167,7 +1173,7 @@ except dataclasses.FrozenInstanceError:
 
 #[test]
 fn a_failed_call_arrives_as_a_python_exception() {
-    let enabled = all_tools();
+    let operations = all_operations();
 
     // The wire's `result<T, tool-error>` is a raised `ToolError` carrying a typed code — so a
     // handler branches on a value, and an `except` clause is where a Python programmer expects the
@@ -1180,7 +1186,7 @@ except ToolError as failure:
     print(failure.tool, failure.code is ToolErrorCode.CONFLICT, failure.code.value)
     print(str(failure))
 "#,
-        &enabled,
+        &operations,
         &[],
         SandboxLimits::default(),
         |name, _args| {
@@ -1207,7 +1213,7 @@ except ToolError as failure:
     // gg, from one a program raised by reaching past it into the generated bindings.
     let (outcome, _log) = run_with(
         "files.read_file(\"missing.py\")",
-        &enabled,
+        &operations,
         &[],
         SandboxLimits::default(),
         |name, _args| {
@@ -1233,7 +1239,7 @@ except ToolError as failure:
     // `u32` and reads a window nobody asked for.
     let (outcome, log) = run_with(
         "files.read_file(\"a.py\", offset=-1)",
-        &enabled,
+        &operations,
         &[],
         SandboxLimits::default(),
         canned_outcome,
@@ -1251,7 +1257,7 @@ except ToolError as failure:
     // — better than anything the SDK could add, and the reason there is no validator for it.
     let (outcome, _log) = run_with(
         "tasks.add_task(\"t1\")",
-        &enabled,
+        &operations,
         &[],
         SandboxLimits::default(),
         canned_outcome,
@@ -1273,7 +1279,7 @@ except ToolError as failure:
     ] {
         let (outcome, log) = run_with(
             program,
-            &enabled,
+            &operations,
             &[],
             SandboxLimits::default(),
             canned_outcome,
@@ -1290,13 +1296,13 @@ except ToolError as failure:
 #[test]
 fn what_a_run_withholds_is_still_on_its_module_and_refused_when_it_is_called() {
     // **The surface does not follow the run.** This SDK is static: every function is on its module
-    // whatever the run enabled, and every module is on `gg`, so what a program gets for calling one
+    // whatever the run operations, and every module is on `gg`, so what a program gets for calling one
     // it was not granted is a refusal from the HOST naming the capability that is missing — not an
     // `AttributeError` from Python naming an absence. The two were never the same information, and
     // the second is what the model reads on the ten sibling arms.
     let (outcome, log) = run_with(
         "files.read_file(\"notes.md\")",
-        &["write_file".to_string()],
+        &[crate::sandbox::operations::FILES_WRITE_FILE],
         &[],
         SandboxLimits::default(),
         canned_outcome,
@@ -1306,17 +1312,9 @@ fn what_a_run_withholds_is_still_on_its_module_and_refused_when_it_is_called() {
     // side raised it: reaching for something this run does not offer is one event and one metric on
     // every arm.
     assert_eq!(error.kind, ProgramErrorKind::UnknownName, "{error:?}");
-    assert!(
-        error
-            .message
-            .contains("`gg.files.read_file` is not available to you"),
-        "the call is named as this program would write it: {}",
-        error.message
-    );
-    assert!(
-        error.message.contains("the gg tool `read_file`"),
-        "and the refusal names what is missing, not merely that something is: {}",
-        error.message
+    assert_eq!(
+        error.message, "`gg.files.read_file` is not available.",
+        "the call is named as this program would write it, and nothing more is said"
     );
     assert!(
         log.calls().is_empty(),
@@ -1327,26 +1325,20 @@ fn what_a_run_withholds_is_still_on_its_module_and_refused_when_it_is_called() {
     // is refused on exactly the same terms rather than failing one level up.
     let (outcome, _log) = run_with(
         "board.create_epic(\"epc\", \"E\", \"D\")",
-        &["write_file".to_string()],
+        &[crate::sandbox::operations::FILES_WRITE_FILE],
         &[],
         SandboxLimits::default(),
         canned_outcome,
     );
     let error = program_error(&outcome);
     assert_eq!(error.kind, ProgramErrorKind::UnknownName, "{error:?}");
-    assert!(
-        error
-            .message
-            .contains("`gg.board.create_epic` is not available to you"),
-        "{}",
-        error.message
-    );
+    assert_eq!(error.message, "`gg.board.create_epic` is not available.");
 
     // A name gg does not have AT ALL is the other failure, and it is still this arm's spelling of an
     // unknown name: the module says what it declares, which is now the whole of what gg declares.
     let (outcome, _log) = run_with(
         "files.read_fil(\"notes.md\")",
-        &all_tools(),
+        &all_operations(),
         &[],
         SandboxLimits::default(),
         canned_outcome,
@@ -1364,7 +1356,7 @@ fn what_a_run_withholds_is_still_on_its_module_and_refused_when_it_is_called() {
     // And the same mistake against anything else is the ordinary program bug it looks like.
     let (outcome, _log) = run_with(
         "\"text\".no_such_method()",
-        &all_tools(),
+        &all_operations(),
         &[],
         SandboxLimits::default(),
         canned_outcome,
@@ -1384,7 +1376,7 @@ try:
 except ToolError as failure:
     print(failure.tool, failure.code is ToolErrorCode.UNAVAILABLE)
 "#,
-        &["write_file".to_string()],
+        &[crate::sandbox::operations::FILES_WRITE_FILE],
         &[],
         SandboxLimits::default(),
         canned_outcome,
@@ -1464,7 +1456,7 @@ fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
     );
     let (outcome, _log) = run_as(
         &program,
-        &all_tools(),
+        &all_operations(),
         &[],
         RunEnding::Role(crate::ending::EndingRole::Standard),
         true,
@@ -1508,7 +1500,7 @@ fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
         .collect();
     let (outcome, _log) = run_as(
         &format!("print(\",\".join([{}]))", pairs.join(", ")),
-        &all_tools(),
+        &all_operations(),
         &[],
         RunEnding::Role(crate::ending::EndingRole::Standard),
         true,
@@ -1604,7 +1596,7 @@ print(child.id)
 views.open_text("summary", "eight files, two failing")
 print(views.current()[0].close(), len(views.current()))
 "#,
-        &all_tools(),
+        &all_operations(),
         &[],
         RunEnding::Role(crate::ending::EndingRole::Standard),
         true,
@@ -1655,12 +1647,14 @@ print(views.current()[0].close(), len(views.current()))
     let component = component();
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
     let limits = SandboxLimits::default();
+    // A run that keeps a library: the capability on, and the calls it offers granted.
+    let capabilities = vec![CAPABILITY_PROGRAM_LIBRARY.to_string()];
+    let operations = capability_operations([CAPABILITY_PROGRAM_LIBRARY]);
     let scope = ProgramScope {
-        enabled: &[],
+        capabilities: &capabilities,
+        operations: &operations,
         modules: &[],
         ending: RunEnding::None,
-        library: true,
-        docview_close: false,
     };
     let mut store = bounded_store(
         MembraneState::new(api, python(), scope, limits, None),
@@ -1713,7 +1707,7 @@ views.open_docs_view("write_file")
 whole = views.open_file("notes.md")
 print(type(whole).__name__, [v.region for v in views.current() if v.kind is ViewKind.FILE])
 "#,
-        &all_tools(),
+        &all_operations(),
         &[],
         RunEnding::Role(crate::ending::EndingRole::Standard),
         true,
@@ -1751,7 +1745,7 @@ views.open_file("notes.md", offset=2, limit=1)
 region = [v.region for v in views.current() if v.kind is ViewKind.FILE][0]
 print(type(region).__name__, region.offset, region.limit)
 "#,
-        &all_tools(),
+        &all_operations(),
         &[],
         SandboxLimits::default(),
         |name, _args| {
@@ -1776,7 +1770,7 @@ print(type(region).__name__, region.offset, region.limit)
     // never told that a function called "None" does not exist.
     let (outcome, _log) = run_with(
         "views.open_docs_view(None)",
-        &all_tools(),
+        &all_operations(),
         &[],
         SandboxLimits::default(),
         canned_outcome,
@@ -1797,12 +1791,14 @@ print(type(region).__name__, region.offset, region.limit)
     let component = component();
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
     let limits = SandboxLimits::default();
+    // A run that keeps a library: the capability on, and the calls it offers granted.
+    let capabilities = vec![CAPABILITY_PROGRAM_LIBRARY.to_string()];
+    let operations = capability_operations([CAPABILITY_PROGRAM_LIBRARY]);
     let scope = ProgramScope {
-        enabled: &[],
+        capabilities: &capabilities,
+        operations: &operations,
         modules: &[],
         ending: RunEnding::None,
-        library: true,
-        docview_close: false,
     };
     let mut store = bounded_store(
         MembraneState::new(api, python(), scope, limits, None),
@@ -1844,12 +1840,15 @@ programs.rerun(source.replace("ran", "walked"))
     // the record and the enum argument, and the view the host opens on the way back.
     let log = CallLog::default();
     let api = FakeToolApi::new(&log);
+    // Searching is bound to every program; closing is bought, so this store grants the capability
+    // that buys it and the calls that capability offers.
+    let capabilities = vec![CAPABILITY_DOCVIEW_CLOSE.to_string()];
+    let operations = capability_operations([CAPABILITY_DOCVIEW_CLOSE]);
     let scope = ProgramScope {
-        enabled: &[],
+        capabilities: &capabilities,
+        operations: &operations,
         modules: &[],
         ending: RunEnding::None,
-        library: false,
-        docview_close: true,
     };
     let mut store = bounded_store(
         MembraneState::new(api, python(), scope, limits, None),
@@ -1893,7 +1892,7 @@ try:
 except ToolError as failure:
     print(failure.tool, failure.code is ToolErrorCode.UNAVAILABLE)
 "#,
-        &all_tools(),
+        &all_operations_without(CAPABILITY_DOCVIEW_CLOSE),
         &[],
         SandboxLimits::default(),
         canned_outcome,

@@ -4,7 +4,7 @@
 use serde_json::json;
 
 use super::*;
-use crate::sandbox::fake::{CallLog, all_tools, membrane, membrane_with};
+use crate::sandbox::fake::{CallLog, all_operations, membrane, membrane_with};
 use crate::tools::{ArchiveSearchData, ToolOutcome};
 
 /// A reclaim reports the numbers the loop actually freed, not an estimate the tool made before the
@@ -80,7 +80,7 @@ fn evicting_every_file_view_sends_no_path() {
 #[test]
 fn no_archive_match_is_an_empty_hit_list() {
     let log = CallLog::default();
-    let mut state = membrane_with(&log, &all_tools(), None, |_, _| {
+    let mut state = membrane_with(&log, &all_operations(), None, |_, _| {
         ToolOutcome::ok("no matches", "searched").with_data(crate::tools::ToolData::ArchiveSearch(
             ArchiveSearchData {
                 archive_empty: false,
@@ -102,7 +102,7 @@ fn no_archive_match_is_an_empty_hit_list() {
 #[test]
 fn an_empty_archive_is_distinguished_from_no_match() {
     let log = CallLog::default();
-    let mut state = membrane_with(&log, &all_tools(), None, |_, _| {
+    let mut state = membrane_with(&log, &all_operations(), None, |_, _| {
         ToolOutcome::ok("nothing has been archived yet", "searched").with_data(
             crate::tools::ToolData::ArchiveSearch(ArchiveSearchData {
                 archive_empty: true,

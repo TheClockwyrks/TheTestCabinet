@@ -1,7 +1,8 @@
 use super::*;
 use serde_json::json;
 use test_cabinet_core::gg::{
-    GgAgentConfig, GgCapabilityConfig, GgCapabilitySet, GgSubagentRef, GgSubagentScope, ROOT_AGENT,
+    GgAgentConfig, GgCapabilityConfig, GgCapabilitySet, GgDispatchError, GgSubagentRef,
+    GgSubagentScope, ROOT_AGENT,
 };
 
 /// An ordinary (non-shell) agent profile bound to the mock model.
@@ -29,7 +30,7 @@ fn machine_set(states: Value, agents: &[&str]) -> GgCapabilitySet {
     // is the shape the editor writes, and anything more would earn the "what it declares is
     // ignored" warning in every test here, which is the one this file checks for on purpose.
     set.agents[0].capabilities.clear();
-    set.agents[0].capabilities.push(fsm_capability(states));
+    crate::tools::grant_configured(&mut set.agents[0], fsm_capability(states));
     set.agents[0].model_id = String::new();
     for name in agents {
         set.agents.push(agent(name));
@@ -91,7 +92,7 @@ fn a_profile_without_the_capability_declares_no_machine() {
     assert!(machines(&set).expect("no machines to build").is_empty());
 }
 
-/// An ablation's off arm asks for nothing, so it gets nothing — not an error.
+/// A run with the capability off asks for nothing, so it gets nothing — not an error.
 #[test]
 fn a_disabled_capability_declares_no_machine() {
     let mut set = GgCapabilitySet::minimal("mock/echo");
@@ -106,10 +107,13 @@ fn a_disabled_capability_declares_no_machine() {
 #[test]
 fn an_enabled_capability_without_states_is_a_launch_failure() {
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    set.agents[0].capabilities.push(GgCapabilityConfig {
-        params: json!({ "machine": "tdd" }),
-        ..GgCapabilityConfig::enabled(CAPABILITY_FSM)
-    });
+    crate::tools::grant_configured(
+        &mut set.agents[0],
+        GgCapabilityConfig {
+            params: json!({ "machine": "tdd" }),
+            ..GgCapabilityConfig::enabled(CAPABILITY_FSM)
+        },
+    );
     let error = validate(&set).expect_err("a machine-less FSM agent cannot run");
     assert!(error.contains(FSM_PARAM_STATES), "{error}");
     assert!(error.contains("Root"), "{error}");
@@ -257,9 +261,7 @@ fn an_unknown_transfer_kind_warns_and_is_dropped() {
 #[test]
 fn a_shell_declaring_other_capabilities_warns() {
     let mut set = machine_set(two_state(), &["Explorer", "Builder"]);
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled("memories"));
+    crate::tools::grant(&mut set.agents[0], "memories");
     let warnings = launch_warnings(&set);
     assert!(
         warnings.iter().any(|warning| warning.contains("memories")),
@@ -291,12 +293,35 @@ fn a_shell_declaring_a_workers_configuration_warns_about_each_part() {
 #[test]
 fn a_dispatch_onto_a_shell_resolves_the_entry_states_agent() {
     let set = machine_set(two_state(), &["Explorer", "Builder"]);
-    assert_eq!(dispatched_profile(&set, ROOT_AGENT), "Explorer");
-    assert_eq!(dispatched_profile(&set, "Builder"), "Builder");
-    // A machine gg cannot read resolves as itself, so the caller reports the missing model binding
-    // rather than a second reading of a set `validate` has already refused.
-    let broken = machine_set(json!("not a state list"), &[]);
-    assert_eq!(dispatched_profile(&broken, ROOT_AGENT), ROOT_AGENT);
+    assert_eq!(
+        set.dispatched_agent(ROOT_AGENT).map(|a| a.name.as_str()),
+        Ok("Explorer")
+    );
+    assert_eq!(
+        set.dispatched_agent("Builder").map(|a| a.name.as_str()),
+        Ok("Builder")
+    );
+}
+
+/// A machine whose entry agent this set does not declare is **reported by that agent's name**,
+/// never answered with the shell — which `validate` refuses on the line below, and which is the
+/// same fault seen from the two ends of it.
+///
+/// Both halves matter because both are what an operator reads. The refusal is what stops the run;
+/// the resolution is what every other caller of it would otherwise be told, and a shell is the one
+/// profile in a set that is *meant* to carry no model, so answering with it would send each of them
+/// off to report the only agent whose empty binding is correct.
+#[test]
+fn a_machine_entering_an_undeclared_agent_is_reported_by_that_name() {
+    let set = machine_set(two_state(), &["Builder"]);
+    assert_eq!(
+        set.dispatched_agent(ROOT_AGENT),
+        Err(GgDispatchError::UndeclaredEntryAgent {
+            shell: ROOT_AGENT,
+            entry: "Explorer",
+        })
+    );
+    assert!(validate(&set).unwrap_err().contains("Explorer"));
 }
 
 /// A duplicated transfer entry carries the module once — the transfer is a set, and a repeated

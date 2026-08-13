@@ -181,7 +181,7 @@ fn a_review_without_an_implementer_is_numbered_under_the_issue() {
 }
 
 /// The runtime is the seam the orchestrator actually uses, and a **disabled** board mints nothing at
-/// all — the ablation's off arm has no dispatch, so it has no names either.
+/// all — a run with the capability off has no dispatch, so it has no names either.
 #[test]
 fn a_disabled_runtime_mints_no_names() {
     let runtime = BoardRuntime::disabled();

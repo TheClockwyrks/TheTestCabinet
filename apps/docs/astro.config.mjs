@@ -536,7 +536,7 @@ export default defineConfig({
             "gg/configurations",
             // The ceilings a run is bounded by. Beside Configurations rather than
             // under Capabilities: a ceiling applies to every capability and to
-            // both execution modes, and is not itself under ablation.
+            // both execution modes, and is not itself a capability.
             "gg/execution-limits",
             // The other guardrail that is not a capability: it bounds one reply
             // rather than a run, and is armed per agent.
@@ -577,10 +577,9 @@ export default defineConfig({
                 "gg/ending-a-session",
                 // The lifecycle seam an operator scripts a run through.
                 "gg/hooks",
-                "gg/toolset-ablation",
-                // Answering a turn by writing a program over the tool surface.
+                // Answering a turn by writing a program over gg's typed calls.
                 // Its own group: the capability spans the program contract, the
-                // tool surface, views, gg's replies and the sandbox.
+                // API surface, views, gg's replies and the sandbox.
                 {
                   label: "Responses as code",
                   collapsed: true,
@@ -619,8 +618,9 @@ export default defineConfig({
               ],
             },
             // The axis responses as code is parameterised on. A sibling of
-            // Capabilities rather than a member of it: a language is not itself
-            // ablatable. The design pages come first, then one page per arm.
+            // Capabilities rather than a member of it: a language is a param of
+            // one capability rather than a capability of its own. The design
+            // pages come first, then one page per arm.
             {
               label: "Languages",
               collapsed: true,
@@ -644,8 +644,8 @@ export default defineConfig({
               ],
             },
             // What makes a gg run answerable after the fact. A sibling of
-            // Capabilities for the same reason: none of these is an ablatable
-            // run configuration. They share one contract surface, one run-tree
+            // Capabilities for the same reason: none of these is a configurable
+            // capability. They share one contract surface, one run-tree
             // artifact convention and one post-run stage.
             {
               label: "Analysis",

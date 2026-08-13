@@ -91,7 +91,7 @@ prompt.
 ## Assembly from the capability set
 
 A capability that is off contributes no prompt text at all, which is what makes
-an [ablation](/gg/toolset-ablation/) clean. A capability that is on contributes
+two configurations cleanly comparable. A capability that is on contributes
 its instructions and, where it has one, its state: the pinned blocks and the
 skills catalog. For the two capabilities that carry an
 [`ownership`](/gg/modules/#ownership) param, an unowned module contributes

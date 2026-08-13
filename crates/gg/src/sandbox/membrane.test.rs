@@ -17,8 +17,7 @@ use serde_json::json;
 use super::test_cabinet::gg::files::Host as FilesHost;
 use super::test_cabinet::gg::skills::Host as SkillsHost;
 use super::*;
-use crate::sandbox::fake::{CallLog, all_tools, canned_outcome, membrane, membrane_with};
-use crate::tools::ALL_TOOL_NAMES;
+use crate::sandbox::fake::{CallLog, all_operations, canned_outcome, membrane, membrane_with};
 
 /// **The one call in the sandbox whose failure is swallowed actually succeeds.**
 ///
@@ -41,53 +40,19 @@ fn the_container_root_is_preopenable_for_every_program() {
     );
 }
 
-/// Every tool the model-facing catalogue offers is a real gg tool.
+/// A call this agent was not granted is refused by the membrane itself and never reaches the loop.
 ///
-/// Together with its sibling below this is the drift gate on the *source* side. The gate on the
-/// **embedded artifact** is `the_component_binds_exactly_the_tools_gg_offers` in `sandbox.test.rs`,
-/// which asks the guest itself; nothing here can catch a stale `.wasm`.
-///
-/// The tools a catalogue offers are read as *the gates its entries carry*, which is the question in
-/// both schemas: an arm that files its calls in a `tools` section and one that files them all in a
-/// flat array agree that a call bought by a gg tool is gated on that tool's own name.
+/// Every arm's SDK is static, so a program can write the call and the membrane is the whole of the
+/// enforcement — which is why this is the gate rather than a backstop behind one.
 #[test]
-fn every_bound_tool_is_a_gg_tool_name() {
-    for function in crate::sandbox::catalogue_functions(crate::sandbox::fake::typescript()) {
-        let Some(tool) = function.gate else {
-            continue;
-        };
-        assert!(
-            ALL_TOOL_NAMES.contains(&tool),
-            "`{}` is gated on `{tool}`, which is not a gg tool",
-            function.name
-        );
-    }
-}
-
-/// Every gg tool is offered to a program. A tool added to gg with no typed binding would be
-/// invisible in code mode, which is the drift this catches.
-#[test]
-fn every_gg_tool_name_is_bound() {
-    let gated: Vec<&str> = crate::sandbox::catalogue_functions(crate::sandbox::fake::typescript())
-        .iter()
-        .filter_map(|function| function.gate)
-        .collect();
-    for name in crate::sandbox::signatures::sandbox_tool_names() {
-        assert!(
-            gated.contains(&name),
-            "`{name}` is a gg tool but the sandbox binds no typed function for it"
-        );
-    }
-}
-
-/// A tool this run does not offer is refused by the membrane itself and never reaches the loop.
-///
-/// A program cannot normally get here — a withheld tool is not bound into its scope, so calling it
-/// is an undefined identifier — which is why this is the defensive backstop rather than the gate.
-#[test]
-fn a_disabled_tool_is_unavailable_without_reaching_the_invoker() {
+fn a_call_outside_the_allowlist_is_unavailable_without_reaching_the_invoker() {
     let log = CallLog::default();
-    let mut state = membrane_with(&log, &["shell".to_string()], None, canned_outcome);
+    let mut state = membrane_with(
+        &log,
+        &[crate::sandbox::operations::SHELL_SHELL],
+        None,
+        canned_outcome,
+    );
 
     let error = state
         .list_dir(Some("src".to_string()))
@@ -107,7 +72,12 @@ fn a_disabled_tool_is_unavailable_without_reaching_the_invoker() {
 #[test]
 fn a_refusal_is_recorded_apart_from_the_serviced_calls() {
     let log = CallLog::default();
-    let mut state = membrane_with(&log, &["read_file".to_string()], None, canned_outcome);
+    let mut state = membrane_with(
+        &log,
+        &[crate::sandbox::operations::FILES_READ_FILE],
+        None,
+        canned_outcome,
+    );
 
     state
         .read_file("a.ts".to_string(), None, None)
@@ -119,12 +89,12 @@ fn a_refusal_is_recorded_apart_from_the_serviced_calls() {
     let parts = state.into_parts();
     assert_eq!(parts.calls.len(), 1, "one call was serviced");
     assert_eq!(parts.refusals.len(), 1, "one call was refused");
-    // Filed under gg's whole `(object, key)` identity rather than under the tool the call would
-    // have dispatched. Three operations share the `read_file` tool, so a roster keyed on tools
-    // could not say which of them the model reached for — and the ending and capability refusals
-    // beside it have no tool at all.
-    assert_eq!(parts.refusals[0].name, "fs.list_dir");
-    assert!(parts.refusals[0].message.contains("list_dir"));
+    // Filed under gg's whole [operation id](crate::sandbox::OperationId) rather than under the tool
+    // the call would have dispatched. The read-file capability buys three operations, so a roster
+    // keyed on tools could not say which of them the model reached for — and the ending refusals
+    // beside it answer to no tool at all.
+    assert_eq!(parts.refusals[0].name, "files.list_dir");
+    assert!(parts.refusals[0].message.contains("listDir"));
 }
 
 /// Calls are recorded in the order the program made them — the roster the model reads next turn.
@@ -143,7 +113,13 @@ fn every_call_is_recorded_in_order() {
 
     let parts = state.into_parts();
     let names: Vec<&str> = parts.calls.iter().map(|call| call.name.as_str()).collect();
-    assert_eq!(names, ["list_dir", "read_file", "write_file"]);
+    // The roster names what the MODEL wrote, in gg's own operation vocabulary; the log below
+    // names the internal calls those were serviced by, which is a different question with a
+    // different answer whenever several operations share one implementation.
+    assert_eq!(
+        names,
+        ["files.list_dir", "files.read_file", "files.write_file"]
+    );
     assert_eq!(log.names(), ["list_dir", "read_file", "write_file"]);
     assert!(parts.calls.iter().all(|call| call.ok));
     assert!(parts.calls.iter().all(|call| call.error.is_none()));
@@ -154,7 +130,7 @@ fn every_call_is_recorded_in_order() {
 #[test]
 fn a_failed_call_is_recorded_with_its_message() {
     let log = CallLog::default();
-    let mut state = membrane_with(&log, &all_tools(), None, |_, _| {
+    let mut state = membrane_with(&log, &all_operations(), None, |_, _| {
         ToolOutcome::failed(ToolFailure::NotFound, "no such file `missing.ts`")
     });
 
@@ -183,7 +159,7 @@ fn a_failed_call_is_recorded_with_its_message() {
 #[test]
 fn a_tool_that_returns_no_structured_data_is_an_error_not_a_guess() {
     let log = CallLog::default();
-    let mut state = membrane_with(&log, &all_tools(), None, |_, _| {
+    let mut state = membrane_with(&log, &all_operations(), None, |_, _| {
         ToolOutcome::ok("three entries", "listed")
     });
 
@@ -211,7 +187,7 @@ fn a_tool_that_returns_no_structured_data_is_an_error_not_a_guess() {
 #[test]
 fn a_wrongly_typed_sidecar_names_what_it_produced() {
     let log = CallLog::default();
-    let mut state = membrane_with(&log, &all_tools(), None, |_, _| {
+    let mut state = membrane_with(&log, &all_operations(), None, |_, _| {
         ToolOutcome::ok("wrote it", "wrote").with_data(ToolData::BytesWritten(12))
     });
 
@@ -226,7 +202,7 @@ fn a_wrongly_typed_sidecar_names_what_it_produced() {
 #[test]
 fn an_unclassified_failure_maps_to_other() {
     let log = CallLog::default();
-    let mut state = membrane_with(&log, &all_tools(), None, |_, _| {
+    let mut state = membrane_with(&log, &all_operations(), None, |_, _| {
         ToolOutcome::error("the bridge to the loop closed")
     });
 
@@ -248,7 +224,7 @@ fn a_program_past_the_run_deadline_is_refused_at_its_next_tool_call() {
     let expired = Instant::now()
         .checked_sub(Duration::from_secs(1))
         .expect("a one-second-old instant exists");
-    let mut state = membrane_with(&log, &all_tools(), Some(expired), canned_outcome);
+    let mut state = membrane_with(&log, &all_operations(), Some(expired), canned_outcome);
 
     let error = state
         .read_skill("testing".to_string())
@@ -274,7 +250,7 @@ fn a_program_past_the_run_deadline_is_refused_at_its_next_tool_call() {
 fn a_program_within_the_run_deadline_is_serviced() {
     let log = CallLog::default();
     let deadline = Instant::now() + Duration::from_secs(60);
-    let mut state = membrane_with(&log, &all_tools(), Some(deadline), canned_outcome);
+    let mut state = membrane_with(&log, &all_operations(), Some(deadline), canned_outcome);
 
     state
         .read_skill("testing".to_string())

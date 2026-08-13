@@ -15,7 +15,7 @@
 //! reaches every module at once, so nothing is discovered by already knowing where to look.
 //!
 //! **Looking something up is deliberately not a capability.** Like [`finish`](crate::sandbox), it is
-//! a carve-out: no toolset offers it, no ablation withholds it, and it is bound into every program's
+//! a carve-out: no toolset offers it, no capability withholds it, and it is bound into every program's
 //! scope whatever a run enables — because a model must always be able to discover the functions it
 //! *does* have. So this runtime is created for every code-mode agent, not gated on a capability.
 //!
@@ -28,12 +28,13 @@
 //!
 //! # Why the host, and not the guest
 //!
-//! Both answers depend on facts only gg holds: which tools this run enabled, which
-//! [ending role](EndingRole) this agent has, and which capabilities it was granted. A search index
-//! baked into the guest would return functions the scope did not bind, which is the one thing a
-//! search must never do.
+//! Both answers depend on facts only gg holds: which capabilities this agent's profile switches on,
+//! which of the operations they offer its [allowlist](test_cabinet_core::gg::GgAgentConfig::operations)
+//! names, and which [ending role](EndingRole) it was dispatched in. A search index baked into the
+//! guest would return functions the grant did not cover, which is the one thing a search must never
+//! do.
 //!
-//! Which of those three decides a given function is not a fact the guest holds either, and — since
+//! Which of those decides a given function is not a fact the guest holds either, and — since
 //! the [operations table](crate::sandbox::operation_of) — it is no longer a fact each arm's own
 //! catalogue asserts about itself. gg states it once, and
 //! [`bound`](DocsRuntime::bound) is where it is read.
@@ -79,8 +80,8 @@ use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgProgr
 
 use crate::ending::EndingRole;
 use crate::sandbox::{
-    CatalogueFunction, FunctionSummary, Grants, MemberFunction, Parameter, ParameterKind,
-    ProgramLanguage, TypeDeclaration, TypeReference, catalogue_functions, language,
+    CatalogueFunction, FunctionSummary, Grants, MemberFunction, OperationId, Parameter,
+    ParameterKind, ProgramLanguage, TypeDeclaration, TypeReference, catalogue_functions, language,
     operation_by_id, operation_of, type_declaration,
 };
 
@@ -210,8 +211,8 @@ pub struct ResolvedDocViewTypes {
 /// The per-agent state behind `search` and `view.openDocsView()`: what this agent was
 /// [granted](Grants), which is what decides which functions exist to be documented.
 pub struct DocsRuntime {
-    /// What this agent was granted — the run's enabled gg tools, its [ending role](EndingRole) and
-    /// the capability ids it holds — held as the one value the membrane also holds.
+    /// What this agent was granted — the capability ids it holds, its [ending role](EndingRole) and
+    /// the operations its own allowlist names — held as the one value the membrane also holds.
     ///
     /// It is deliberately not three fields read by a predicate written here. Every arm's SDK is
     /// static, so the membrane refuses a call this agent was not granted, and a membrane that
@@ -227,20 +228,22 @@ pub struct DocsRuntime {
 }
 
 impl DocsRuntime {
-    /// A fresh runtime for an agent whose scope binds `enabled`'s tools, `role`'s ending calls and
-    /// whatever `capabilities` buys — answering in `program_language`'s spellings.
+    /// A fresh runtime for an agent holding `capabilities`, dispatched in `role`, and granted
+    /// `operations` — answering in `program_language`'s spellings.
     ///
-    /// `capabilities` is the agent's own resolved set, not its profile's: an agent whose profile
-    /// asks for a [program library](crate::programs) it was not given keeps neither the object nor
-    /// its documentation, and the caller is the only thing that knows which it ended up with.
+    /// Both halves are the agent's own **resolved** ones rather than its profile's: an agent whose
+    /// profile asks for a [program library](crate::programs) it was not given keeps neither the
+    /// object nor its documentation, and the caller is the only thing that knows which it ended up
+    /// with. `operations` is an allowlist, so an empty one describes nothing a capability gates —
+    /// which is the same thing the membrane will do, and the reason the two are built from one value.
     pub fn new(
-        enabled: Vec<String>,
+        capabilities: Vec<String>,
         role: EndingRole,
-        capabilities: &[&'static str],
+        operations: &[OperationId],
         program_language: GgProgramLanguage,
     ) -> Self {
         Self {
-            grants: Grants::new(enabled, Some(role), capabilities.iter().copied()),
+            grants: Grants::new(capabilities, Some(role), operations.iter().copied()),
             language: language(program_language),
         }
     }
@@ -380,7 +383,7 @@ impl DocsRuntime {
             .iter()
             .filter(|member| {
                 operation_by_id(&member.operation)
-                    .is_some_and(|operation| self.grants.permits(operation.binding))
+                    .is_some_and(|operation| self.grants.permits(operation))
             })
             .collect();
         if !offered.is_empty() {
@@ -614,11 +617,16 @@ impl DocsRuntime {
     /// be shown, and the reason nothing else may grow a second copy of it.
     ///
     /// It answers from gg's [operations table](crate::sandbox::operation_of) rather than from the
-    /// catalogue entry's own gate fields, and that is a deliberate reversal. The three gates the
-    /// module header describes are all still here — a tool this run enabled, this agent's ending
-    /// role, a capability it holds — but which of them applies to a given function is now gg's
-    /// answer, stated once, instead of a claim eleven catalogues each make about themselves. An arm has nothing left to be wrong about, and asking is one call to
+    /// catalogue entry's own gate fields, and that is a deliberate reversal. The gates the module
+    /// header describes are all still here — a capability this agent holds *and* an allowlist that
+    /// names the call, or this agent's ending role — but which of them applies to a given function
+    /// is now gg's answer, stated once, instead of a claim eleven catalogues each make about
+    /// themselves. An arm has nothing left to be wrong about, and asking is one call to
     /// [`Grants::permits`] rather than a boolean, a pair and a fall-through read here.
+    ///
+    /// **No tool name is consulted.** The tool vocabulary decides nothing on this surface: a program
+    /// calls operations, and what a tool-calling agent may call is a different question asked of a
+    /// different agent.
     ///
     /// **The membrane asks the identical question of the identical value.** Every arm's SDK is
     /// static, so a program can *write* a call this predicate answers `false` for, and what happens
@@ -637,7 +645,7 @@ impl DocsRuntime {
     /// reports the very same set and answers it through this predicate. Two copies of "may this
     /// agent call X" is one copy too many the moment either grows a gate.
     pub fn bound(&self, function: &CatalogueFunction) -> bool {
-        operation_of(function).is_some_and(|operation| self.grants.permits(operation.binding))
+        operation_of(function).is_some_and(|operation| self.grants.permits(operation))
     }
 }
 

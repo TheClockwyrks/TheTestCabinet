@@ -161,16 +161,16 @@ several and every one of them runs. A fork declared in a turn that also finished
 still runs: handing work to somebody else and then ending your own session is not
 a retraction.
 
-## Ablation
+## Configuring them
 
-Each is its own capability, so an arm is a capability set rather than a per-tool
-override inside one. Enabling `exec` alone leaves an agent able to become
-something else but not to duplicate itself, and `fork` alone leaves it able to
-work two lines at once but not to change what it is. Both are off by default.
+Each is its own capability, so an arm is a capability set rather than a setting
+inside one. Enabling `exec` alone leaves an agent able to become something else
+but not to duplicate itself, and `fork` alone leaves it able to work two lines at
+once but not to change what it is. Both are off by default.
 
-Each is also individually withholdable through
-[per-tool overrides](/gg/toolset-ablation/), on the same terms as every other
-tool.
+Each is also individually grantable through an agent's
+[allowlist](/gg/configurations/#granting-calls), on the same terms as every other
+call.
 
 ## What is warned at launch
 

@@ -134,7 +134,7 @@ export const CAP_GROUPS: ReadonlyArray<{
 //
 // This is deliberately **not** a capability, and the distinction is the point. A
 // capability is a feature an agent either has or has not, listed beside its peers and
-// ablatable one at a time. The agent type decides which capabilities are offered in the
+// switched one at a time. The agent type decides which capabilities are offered in the
 // first place — and, for a machine, whether the question applies at all.
 //
 // The wire format has no `type` field: it records the type as the two mode-marker
@@ -202,9 +202,8 @@ export interface ParamSpec {
   // profile — how the run-level "which agent runs this?" knobs (issue/reviewer/judge)
   // are configured. The list of choices is threaded in by the editor.
   // A `boolean` param is a **feature switch**, not a value: it renders beside the
-  // per-feature tool-ablation sliders (the "Features" box) rather than in the param
-  // grid, because what it varies is what an offered tool demands rather than a
-  // number the tool reads.
+  // per-feature sliders (the "Features" box) rather than in the param grid, because what
+  // it varies is what an offered call demands rather than a number the call reads.
   // A `model` param names a model the same way an agent's own binding does: either a
   // model slot the launch form fills in, or a model id pinned here. It renders the same
   // two-field control the agent rows use, and writes to *two* keys — this one for a
@@ -332,22 +331,37 @@ export interface CapSpec {
   implementationHint?: string;
   // Dedicated param controls; anything else goes in the generic JSON editor.
   params?: ReadonlyArray<ParamSpec>;
-  // The tool names this capability offers — a run's toolset withholds individual
-  // ones from this list (see `toolAblation`), and the analyze page offers them as
-  // `toolOffered` facet targets.
+  // The gg **tool names** this capability offers a tool-calling agent — the vocabulary
+  // its `tools` allowlist is written in, and the `toolOffered` facet targets the analyze
+  // page offers.
   tools?: ReadonlyArray<string>;
-  // The capability's individually-ablatable sub-features, surfaced as per-feature
-  // sliders in its expanded config. Each entry is one slider that withholds (or
-  // restores) its whole `tools` list at once — so a slider maps to a coherent
-  // feature a study would actually vary, not a raw tool. Tools that are only
-  // meaningful together share one slider, and a capability's core tools (the ones
-  // that come with it) are deliberately absent, so no slider can leave the
-  // capability in a state nobody would run. A capability whose toolset is atomic
-  // (the two workspace writers, say) declares none, and the capability toggle is its
-  // only granularity.
-  toolAblation?: ReadonlyArray<{
+  // The **operation ids** this capability offers a responses-as-code agent — the
+  // vocabulary its `operations` allowlist is written in.
+  //
+  // It is a second list rather than a rendering of the first, because the two surfaces
+  // are independent: gg's operations table decides what a program may call and gg's tool
+  // registry decides what a tool call may name, and neither is derived from the other.
+  // The lists therefore do not line up entry for entry — `read-file` buys one tool and
+  // three operations (a read into a variable, a read as text, and a read straight into
+  // the window), and `docview-close` and `program-library` buy operations and no tool at
+  // all — which is the whole reason a capability has to state both.
+  operations?: ReadonlyArray<string>;
+  // The capability's separately-grantable sub-features, surfaced as per-feature sliders
+  // in its expanded config. Each entry is one slider that adds (or removes) its whole
+  // bundle from the agent's allowlist at once — so a slider maps to a coherent feature an
+  // operator would actually vary, not a raw call. Calls that are only meaningful together
+  // share one slider, and a capability's core calls (the ones that come with it) are
+  // deliberately absent, so no slider can leave the capability in a state nobody would
+  // run. A capability whose surface is atomic (the two workspace writers, say) declares
+  // none, and the capability toggle is its only granularity.
+  //
+  // A bundle names its calls in **both** vocabularies for the reason `operations` is a
+  // second list at all: the editor writes whichever one the agent's type reads, and the
+  // two halves of a feature are not the same names.
+  features?: ReadonlyArray<{
     label: string;
     tools: ReadonlyArray<string>;
+    operations: ReadonlyArray<string>;
     hint?: string;
   }>;
   // The capability cannot be turned on by itself: it is inert — or, as with `fsm`,
@@ -571,10 +585,10 @@ export const AUTOLOAD_LOCKED_HINT =
 
 // The response-healing strategies, in the order gg's pipeline applies them — the
 // conservative, deletion-only repairs gg makes to a model's reply before running it
-// as a program. Each is independently switchable, and switching one off is an
-// ablation arm in its own right ("how much worse does this model do when we stop
-// unwrapping its fences?"), which is why they are toggles in the form rather than a
-// single on/off for the lot.
+// as a program. Each is independently switchable, and switching one off is a
+// configuration worth running against its opposite in its own right ("how much worse
+// does this model do when we stop unwrapping its fences?"), which is why they are
+// toggles in the form rather than a single on/off for the lot.
 //
 // `value` is typed as the contract's `GgHealingStrategy`, so a strategy added to or
 // renamed in `crates/core/src/gg.rs` is a compile error here rather than a control
@@ -1198,6 +1212,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       },
     ],
     tools: ["shell"],
+    operations: ["shell.shell"],
   },
   // --- Filesystem -------------------------------------------------------------
   //
@@ -1224,6 +1239,9 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       },
     ],
     tools: ["read_file"],
+    // Three operations over one read: into a variable, as text, and straight into the
+    // agent's own window. gg buys all three with this one capability.
+    operations: ["files.read_file", "files.read_text_file", "views.open_file"],
   },
   {
     id: "write-file",
@@ -1232,6 +1250,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     purpose: "Create or overwrite a whole file in the run's workspace.",
     defaultOn: true,
     tools: ["write_file"],
+    operations: ["files.write_file"],
   },
   {
     id: "edit-file",
@@ -1241,6 +1260,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       "Patch a file by exact, unique string replacement — the alternative to rewriting it whole.",
     defaultOn: true,
     tools: ["edit_file"],
+    operations: ["files.edit_file"],
   },
   {
     id: "list-dir",
@@ -1249,6 +1269,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     purpose: "List a directory's entries in the run's workspace.",
     defaultOn: true,
     tools: ["list_dir"],
+    operations: ["files.list_dir"],
   },
   {
     id: RESPONSES_AS_CODE_CAP_ID,
@@ -1315,6 +1336,11 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     defaultOn: false,
     purpose:
       "Let the agent take a documentation view back out of its own context window.",
+    // No `tools`: closing a documentation view is a call no tool-calling agent has, which
+    // is what `modes` above already says. A capability with an API surface and no tool
+    // surface is ordinary — the two are independent vocabularies, not two spellings of
+    // one list.
+    operations: ["docs.close", "docs.close_all"],
   },
   {
     id: "program-library",
@@ -1334,6 +1360,9 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         hint: "How many of the agent's most recent programs are retained and can be fetched with `programs.get`. Older ones are dropped, and asking for one says which turns are still held. `0` keeps every program of the session; empty is gg's default of 20.",
       },
     ],
+    // No `tools`, for the reason `modes` gives: there are no programs in a tool-calling
+    // session to keep.
+    operations: ["programs.history", "programs.get", "programs.rerun"],
   },
   // --- Context ----------------------------------------------------------------
   {
@@ -1394,6 +1423,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       },
     ],
     tools: ["compact"],
+    operations: ["context.compact"],
   },
   {
     id: "agent-managed-context",
@@ -1403,12 +1433,22 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       "The agent reclaims window space itself: evicting file views, archiving thread sections.",
     params: [ownershipParam("what it has archived")],
     tools: ["evict_file_view", "archive_thread", "search_archive"],
-    toolAblation: [
-      { label: "Evict file views", tools: ["evict_file_view"] },
+    operations: [
+      "context.evict_file_view",
+      "context.archive_thread",
+      "context.search_archive",
+    ],
+    features: [
+      {
+        label: "Evict file views",
+        tools: ["evict_file_view"],
+        operations: ["context.evict_file_view"],
+      },
       {
         label: "Archive & search the thread",
         tools: ["archive_thread", "search_archive"],
-        hint: "`archive_thread` and `search_archive` are withheld together: an archive the agent cannot search back is unreadable.",
+        operations: ["context.archive_thread", "context.search_archive"],
+        hint: "Archiving and searching the archive are granted together: an archive the agent cannot search back is unreadable.",
       },
     ],
   },
@@ -1442,6 +1482,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       },
     ],
     tools: ["read_skill"],
+    operations: ["skills.read_skill"],
   },
   {
     id: "memories",
@@ -1525,10 +1566,24 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       "search_memories",
       "delete_memory",
     ],
-    toolAblation: [
+    operations: [
+      "memories.write_memory",
+      "memories.update_memory",
+      "memories.create_memory",
+      "memories.read_memory",
+      "memories.edit_memory",
+      "memories.search_memories",
+      "memories.delete_memory",
+    ],
+    features: [
       {
         label: "Revise memories",
         tools: ["update_memory", "edit_memory", "delete_memory"],
+        operations: [
+          "memories.update_memory",
+          "memories.edit_memory",
+          "memories.delete_memory",
+        ],
         hint: "Off leaves memories append-only — the model can write new notes but not edit or delete one.",
       },
     ],
@@ -1568,13 +1623,25 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       "complete_task",
       "remove_task",
     ],
-    toolAblation: [
+    operations: [
+      "tasks.add_task",
+      "tasks.update_task",
+      "tasks.set_blocked_by",
+      "tasks.complete_task",
+      "tasks.remove_task",
+    ],
+    features: [
       {
         label: "Task dependencies",
         tools: ["set_blocked_by"],
+        operations: ["tasks.set_blocked_by"],
         hint: "Off makes the list flat — tasks can't be marked blocked-by one another.",
       },
-      { label: "Revise tasks", tools: ["update_task", "remove_task"] },
+      {
+        label: "Revise tasks",
+        tools: ["update_task", "remove_task"],
+        operations: ["tasks.update_task", "tasks.remove_task"],
+      },
     ],
   },
   {
@@ -1629,18 +1696,33 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       "remove_issue",
       "wait_for_issue",
     ],
+    operations: [
+      "board.create_epic",
+      "board.create_issue",
+      "board.update_issue",
+      "board.set_issue_blocked_by",
+      "board.remove_epic",
+      "board.remove_issue",
+      "board.wait_for_issue",
+    ],
     // The blocked-by DAG (`set_issue_blocked_by`) and `wait_for_issue` are deliberately
     // absent: they are what makes a board a board rather than a list, so they come with
-    // the capability and are never ablated away.
-    toolAblation: [
+    // the capability and no slider can take them away.
+    features: [
       {
         label: "Issue creation",
         tools: ["create_epic", "create_issue"],
+        operations: ["board.create_epic", "board.create_issue"],
         hint: "Off gives this agent read-only access to the board — it still sees it and waits on issues, but files no new work.",
       },
       {
         label: "Revise the board",
         tools: ["update_issue", "remove_epic", "remove_issue"],
+        operations: [
+          "board.update_issue",
+          "board.remove_epic",
+          "board.remove_issue",
+        ],
       },
     ],
   },
@@ -1664,10 +1746,16 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       },
     ],
     tools: ["spawn_subagent", "wait_for_subagents", "send_message"],
-    toolAblation: [
+    operations: [
+      "delegation.spawn_subagent",
+      "delegation.wait_for_subagents",
+      "delegation.send_message",
+    ],
+    features: [
       {
         label: "Inter-agent messaging",
         tools: ["send_message"],
+        operations: ["delegation.send_message"],
         hint: "Off leaves spawn-and-wait only — agents can't message one another mid-run.",
       },
     ],
@@ -1688,6 +1776,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       "Let this agent replace itself with one running another profile, carrying its whole conversation across.",
     defaultOn: false,
     tools: ["exec"],
+    operations: ["delegation.exec"],
   },
   {
     id: "fork",
@@ -1697,6 +1786,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       "Let this agent run a copy of itself — a child that opens knowing everything its parent knew.",
     defaultOn: false,
     tools: ["fork"],
+    operations: ["delegation.fork"],
   },
   {
     id: FSM_CAP_ID,
@@ -1718,9 +1808,15 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         hint: "The machine, in order — the first state is the one it enters. Each state runs an agent profile this configuration declares (never another machine), and each transition names the state it leads to, when the model should take it, and which modules travel with it. A transition carries only the modules it names; one that names none starts its successor on nothing. A new transition is pre-filled with History.",
       },
     ],
+    // Declared so the analyze page can name the transition under the machine that buys it,
+    // and read by no allowlist: [grantsOf] seeds nothing from a mode marker, so this name
+    // reaches no agent's `tools` or `operations`. gg offers the transition from where an
+    // instance STANDS — the machine is declared on this shell profile and the agent running
+    // a state is an ordinary profile that knows nothing about it — on both surfaces alike.
     tools: ["transition_state"],
-    // No ablation slider: withholding `transition_state` leaves a machine that can
-    // only ever sit in its entry state, which is not an arm anyone would run.
+    operations: ["delegation.transition_state"],
+    // No feature slider: withholding the transition leaves a machine that can only ever
+    // sit in its entry state, which is not a configuration anyone would run.
   },
 ];
 
@@ -1754,18 +1850,12 @@ export const OWNERSHIP_MODULE_KINDS: ReadonlySet<GgModuleKind> = new Set(
     .map(([kind]) => kind),
 );
 
-// Every tool name any capability offers, in catalog order, de-duplicated — the
-// universe of `toolOffered` facet targets and toolset-ablation levers.
-export const ALL_TOOL_NAMES: ReadonlyArray<string> = Array.from(
-  new Set(CAPABILITIES.flatMap((c) => c.tools ?? [])),
-);
-
 // --- Run limits -----------------------------------------------------------------
 //
 // The execution ceilings a run is bounded by. Deliberately **not** [CapSpec]s: a
-// capability is a feature under ablation, with tools and an on/off arm a study
-// varies, while a ceiling is an operator's guardrail that applies to every
-// capability and to both execution modes at once. Keeping them out of
+// capability is a feature, with calls and an on/off switch a configuration varies,
+// while a ceiling is an operator's guardrail that applies to every capability and to
+// both execution modes at once. Keeping them out of
 // [CAPABILITIES] is what keeps them out of [CAP_GROUPS] and out of the
 // `capabilityEnabled` facet space, where "is the cost ceiling enabled?" would be a
 // dimension no study wants to slice its results by.

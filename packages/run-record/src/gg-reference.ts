@@ -148,7 +148,7 @@ export type GgRunDataStandIn = {
  * One tool, exactly as it is sent to the provider.
  *
  * The [`description`](Self::description) and [`parameters`](Self::parameters) are the live
- * [tool definition](https://docs.testcabinet.ai/gg/toolset-ablation/) a maximal registry
+ * [tool definition](https://docs.testcabinet.ai/gg/reference/) a maximal registry
  * produced — not a re-description of it — so a renamed argument or a reworded sentence shows
  * up here the moment the tool changes, with no second copy to update. What buys the tool
  * ([`capabilities`](Self::capabilities), [`requires`](Self::requires)) is projected the same way:
@@ -389,23 +389,22 @@ export type GgReferenceEntry = {
    */
   receiver?: string;
   /**
-   * The gg tool whose being enabled binds this function, or `None` for one nothing gates —
-   * an ending call (decided by the agent's [role](Self::ending)), a view function bound to
-   * every program whatever a run enables, or one a [capability](Self::capability) buys.
-   */
-  gate?: string;
-  /**
    * For an ending call, the ending role whose programs bind it (`standard`, `review`);
    * `None` for everything else, which every role reaches the same way.
    */
   ending?: string;
   /**
-   * The **capability** that buys this function, by gg's own id for it (`program-library`,
-   * `docview-close`), or `None` for a function no capability gates.
+   * The **capability** that buys this function, by gg's own id for it (`memories`,
+   * `program-library`, `docview-close`), or `None` for a function no capability gates.
    *
-   * [`gate`](Self::gate) names a *tool*, [`ending`](Self::ending) names a *role*, and this names
-   * the third and last thing that can withhold a call — so a reader that finds all three empty
-   * may say the function is always available, and one that does not must not.
+   * This and [`ending`](Self::ending) are the only two things that can withhold a call — a
+   * capability the agent's profile does not switch on, or an ending belonging to another role —
+   * so a reader that finds both empty may say the function is always available, and one that does
+   * not must not.
+   *
+   * There is deliberately no third field naming a *tool*. The API surface is not gated by the
+   * tool surface: the two are independent vocabularies over one core, an agent holds exactly one
+   * of them, and a tool name on an API function was an answer to a question nobody could ask.
    */
   capability?: string;
   /**

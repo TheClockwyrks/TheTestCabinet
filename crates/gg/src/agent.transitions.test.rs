@@ -344,12 +344,17 @@ fn exec_set() -> GgCapabilitySet {
         GgCapabilityConfig::enabled(CAPABILITY_EXEC),
         GgCapabilityConfig::enabled(CAPABILITY_TASKS),
     ];
-    let after = GgAgentConfig {
+    // Both profiles replace the default capabilities wholesale, so both replace the allowlists the
+    // default profile came with: what those name is the *defaults'* calls, and neither agent has
+    // those capabilities any more.
+    crate::tools::grant_all(&mut before);
+    let mut after = GgAgentConfig {
         name: "After".to_string(),
         model_id: "mock/exec-after".to_string(),
         capabilities: vec![GgCapabilityConfig::enabled(CAPABILITY_MEMORIES)],
         ..GgAgentConfig::root()
     };
+    crate::tools::grant_all(&mut after);
     GgCapabilitySet {
         agents: vec![before, after],
         ..GgCapabilitySet::default()
@@ -661,9 +666,10 @@ async fn an_exec_onto_a_smaller_window_compacts_before_the_successors_first_turn
     let dir = TempDir::new().unwrap();
     let mut set = exec_set();
     // The successor condenses out of band on its own model, which the mock answers off-script.
-    set.agents[1].capabilities.push(GgCapabilityConfig::enabled(
+    crate::tools::grant(
+        &mut set.agents[1],
         test_cabinet_core::gg::CAPABILITY_COMPACTION,
-    ));
+    );
     // A window the predecessor's thread cannot possibly fit in.
     let windows = BTreeMap::from([
         ("mock/exec-before".to_string(), 200_000),
@@ -695,12 +701,15 @@ async fn a_turn_that_compacts_and_execs_hands_over_the_compacted_window() {
     let dir = TempDir::new().unwrap();
     let mut set = exec_set();
     set.agents[0].model_id = "mock/exec-compacting".to_string();
-    set.agents[0].capabilities.push(GgCapabilityConfig {
-        implementation: Some(
-            test_cabinet_core::gg::COMPACTION_STRATEGY_SELF_COMPACTION.to_string(),
-        ),
-        ..GgCapabilityConfig::enabled(test_cabinet_core::gg::CAPABILITY_COMPACTION)
-    });
+    crate::tools::grant_configured(
+        &mut set.agents[0],
+        GgCapabilityConfig {
+            implementation: Some(
+                test_cabinet_core::gg::COMPACTION_STRATEGY_SELF_COMPACTION.to_string(),
+            ),
+            ..GgCapabilityConfig::enabled(test_cabinet_core::gg::CAPABILITY_COMPACTION)
+        },
+    );
     let events = run_exec(dir.path(), set, None).await;
 
     let compacted = events.iter().any(|event| {
@@ -760,6 +769,9 @@ fn fork_set() -> GgCapabilitySet {
         GgCapabilityConfig::enabled(CAPABILITY_TASKS),
         subagents,
     ];
+    // The capabilities were replaced wholesale, so the allowlist the default profile came with —
+    // which names the defaults' calls, none of which this profile has — is replaced with them.
+    crate::tools::grant_all(&mut root);
     GgCapabilitySet {
         agents: vec![root],
         ..GgCapabilitySet::default()

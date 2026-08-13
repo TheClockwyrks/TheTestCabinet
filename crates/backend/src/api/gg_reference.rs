@@ -60,7 +60,7 @@
 //! path and `/gg/reference/{language}` its only child, so neither collides with anything
 //! else mounted under `/gg`.
 //!
-//! [`ToolRegistry`]: https://docs.testcabinet.ai/gg/toolset-ablation/
+//! [`ToolRegistry`]: https://docs.testcabinet.ai/gg/reference/
 
 #[cfg(test)]
 #[path = "gg_reference.test.rs"]

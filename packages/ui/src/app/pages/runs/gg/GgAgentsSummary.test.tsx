@@ -83,16 +83,11 @@ function held(
   };
 }
 
-function profile(
-  name: string,
-  capabilities: string[],
-  disabledTools: string[] = [],
-): GgAgentConfig {
+function profile(name: string, capabilities: string[]): GgAgentConfig {
   return {
     name,
     modelId: "vendor/small",
     capabilities: capabilities.map((id) => ({ id, enabled: true, params: {} })),
-    disabledTools,
   } as GgAgentConfig;
 }
 
@@ -205,19 +200,16 @@ const VIEW_EVENTS: HarnessEvent[] = [
 
 /**
  * What one instance was OFFERED — the event the offered-surface section is built out of.
- * Passing objects makes it a responses-as-code instance, which is the only thing that
- * decides whether its profile reads as tools or as APIs.
+ * Passing APIs makes it a responses-as-code instance, which is the only thing that decides
+ * whether its profile reads as tools or as APIs. gg populates exactly one of the two — an
+ * instance has one surface — so the fixtures below that name BOTH are deliberate: they are
+ * the proof that the mode is conclusive on its own, and that no tool name can reach an API
+ * profile even when one is sitting in the same event.
  */
 function offered(
   agentId: string,
   tools: string[],
   apis?: GgAgentApi[],
-  /**
-   * What the ablation actually took away, as gg resolved it. Omitted is the wire's own
-   * shape for "nothing" — which is what a `disabledTools` entry gg does not recognise
-   * produces, since such a name withholds nothing at all.
-   */
-  withheld?: string[],
   /** The documentation arm this instance ran under, where the fixture is about that. */
   docViewTypes?: string,
 ): HarnessEvent {
@@ -226,7 +218,6 @@ function offered(
     executionMode: apis ? "responses_as_code" : "tool_calling",
     tools,
     ...(apis ? { apis } : {}),
-    ...(withheld?.length ? { withheld } : {}),
     ...(docViewTypes ? { docViewTypes } : {}),
   } as GgTelemetryKind);
 }
@@ -241,20 +232,14 @@ const TOOL_SURFACE_EVENTS: HarnessEvent[] = [
   offered("r2", ["read_file", "write_file"]),
 ];
 
-// One model-facing call, as a responses-as-code program's turn streams it.
-function apiCall(agentId: string, module: string, fn: string): HarnessEvent {
-  return gg(agentId, {
-    type: "api_call",
-    object: module,
-    function: fn,
-    // gg's own identity for the call, which is what a count joins on.
-    operation: `${module}.${fn}`,
-  } as GgTelemetryKind);
+// One model-facing call, as a responses-as-code program's turn streams it. gg's operation
+// id is the whole of what the wire carries, and it is what every count joins on.
+function apiCall(agentId: string, operation: string): HarnessEvent {
+  return gg(agentId, { type: "api_call", operation } as GgTelemetryKind);
 }
 
 // The same run with both reviewers running programs instead: one module, whose functions
-// cover both cases — one each instance called, and one no gg tool backs at all, which used
-// to be reported as having no count and is now counted like anything else.
+// cover both cases — one each instance called, and one neither did.
 const API_SURFACE_EVENTS: HarnessEvent[] = [
   ...EVENTS,
   ...["r1", "r2"].flatMap((id) => [
@@ -272,10 +257,9 @@ const API_SURFACE_EVENTS: HarnessEvent[] = [
           ],
         },
       ] as GgAgentApi[],
-      undefined,
       "return-and-parameters",
     ),
-    apiCall(id, "files", "read_file"),
+    apiCall(id, "files.read_file"),
   ]),
 ];
 
@@ -303,7 +287,7 @@ const SHARED_CORE_EVENTS: HarnessEvent[] = [
         functions: [{ name: "openFile", operation: "views.open_file" }],
       },
     ] as GgAgentApi[]),
-    apiCall(id, "views", "open_file"),
+    apiCall(id, "views.open_file"),
   ]),
 ];
 
@@ -496,7 +480,6 @@ describe("GgAgentsSummary offered surface", () => {
       "title",
       expect.stringContaining("every type a function's signature names"),
     );
-
   });
 
   it("says nothing about a documentation mode on a tool-calling profile", () => {
@@ -553,19 +536,19 @@ describe("GgAgentsSummary offered surface", () => {
     ).toBeNull();
   });
 
-  it("counts a function no gg tool backs exactly as it counts one that has a tool", () => {
-    // The complaint this accounting answers. A view, ending, program-library or `list` call
-    // is bound with no tool behind it, and the old tool-keyed join could only say "nothing
-    // behind it is recorded as a tool call, so it has no count" — a sentence about gg's own
-    // bookkeeping, printed where a fact about the model belongs. It is a call. It is counted.
+  it("counts every offered function on its own operation, called or not", () => {
+    // The accounting joins on gg's operation id and on nothing else, so every function the
+    // profile was offered gets a figure. There is no second class of function here — the
+    // tool vocabulary decides nothing on this surface, so a function it has no counterpart
+    // for is not "unbacked", it is simply a call, counted like any other.
     const { detail } = openReviewer(stubNav(), API_SURFACE_EVENTS);
     const section = within(detail).getByRole("region", {
       name: "reviewer apis",
     });
-    const untooled = chip(section, "watch");
-    expect(within(untooled).getByText("0×")).toBeInTheDocument();
-    expect(untooled).toHaveAttribute("data-uncalled");
-    expect(untooled).toHaveAttribute(
+    const uncalled = chip(section, "watch");
+    expect(within(uncalled).getByText("0×")).toBeInTheDocument();
+    expect(uncalled).toHaveAttribute("data-uncalled");
+    expect(uncalled).toHaveAttribute(
       "title",
       "gg.files.watch was offered, 0 calls — this agent was bound to it and did not use it, which is a different finding from one it was not offered.",
     );
@@ -633,50 +616,6 @@ describe("GgAgentsSummary offered surface", () => {
     const { detail } = openReviewer(stubNav(), TOOL_SURFACE_EVENTS);
     expect(within(detail).getByText("Tool calls · 2")).toBeInTheDocument();
     expect(within(detail).queryByText(/^API calls · /)).toBeNull();
-  });
-});
-
-describe("GgAgentsSummary ablation chips", () => {
-  /** The reviewer with a `disabledTools` entry, whatever the run then made of it. */
-  const ABLATING: GgCapabilitySet = {
-    agents: [
-      profile("Root", ["board"]),
-      profile("reviewer", ["memories"], ["read_files"]),
-    ],
-  } as GgCapabilitySet;
-
-  it("marks only the ablation gg actually applied", () => {
-    // `read_files` is a typo for `read_file`: gg does not recognise it, warns at startup
-    // that it withholds nothing, and offers the agent the surface it would have had — so it
-    // is absent from the surface's withheld set. The panel must not draw it as struck. This
-    // is the one page whose purpose is telling "the harness never gave it" apart from "the
-    // model ignored it", and an arm that silently never applied, read as applied, is worse
-    // than no reading at all.
-    const { detail } = openReviewer(
-      stubNav(),
-      [
-        ...EVENTS,
-        offered("r1", ["read_file"], undefined, ["write_file"]),
-        offered("r2", ["read_file"], undefined, ["write_file"]),
-      ],
-      ABLATING,
-    );
-    expect(within(detail).queryByText("−read_files")).toBeNull();
-    // What gg did strike is there, and marked as the finding it is.
-    expect(within(detail).getByText("−write_file")).toHaveAttribute(
-      "title",
-      "withheld from this agent even though its capability is on",
-    );
-  });
-
-  it("falls back to the configuration where no instance reported a surface", () => {
-    // An arm the run never spawned. There is no resolved answer to prefer, so the chip says
-    // what the arm asked for — and says so as a request, never as an outcome.
-    const { detail } = openReviewer(stubNav(), EVENTS, ABLATING);
-    expect(within(detail).getByText("−read_files")).toHaveAttribute(
-      "title",
-      expect.stringContaining("whether it applied is unknown"),
-    );
   });
 });
 

@@ -67,7 +67,12 @@ export type ToolErrorCode =
  * uncaught one ends the program and is reported back with the line it was thrown on.
  */
 export class ToolError extends Error {
-  /** The gg tool that failed, by gg's own name for it: `read_file`, `spawn_subagent`. */
+  /**
+   * The call that failed, by the key of the operation this program reached for.
+   *
+   * `read_file` for `gg.files.readFile`, `read_text_file` for `gg.files.readTextFile`, `open_file`
+   * for `gg.views.openFile`.
+   */
   readonly tool: string;
 
   /** The failure class, so a catch site branches on a value rather than on prose. */

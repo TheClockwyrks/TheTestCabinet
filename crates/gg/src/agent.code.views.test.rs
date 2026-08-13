@@ -450,7 +450,7 @@ fn an_empty_results_view_says_what_to_try_instead() {
 /// would have to either spend a capability its caller never asked about or answer `0` for an agent
 /// that lacks it — and `0` is indistinguishable, to the model reading it, from a selector that named
 /// nothing. It would also give the capability two routes, one of which never names it, which is what
-/// makes a capability ablation unable to attribute a close.
+/// makes a comparison of two capability sets unable to attribute a close.
 #[test]
 fn closing_documentation_has_exactly_one_producer() {
     let source = std::fs::read_to_string(

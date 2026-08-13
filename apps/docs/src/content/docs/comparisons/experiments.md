@@ -27,8 +27,8 @@ Each arm is one configuration:
 
 The two shapes sit side by side in the one comparison. A gg configuration is
 compared head-to-head against a third-party harness, two gg configurations are
-compared against each other, and the same configuration on two models is an
-ablation, all in the same experiment type.
+compared against each other, and the same configuration on two models is a
+model comparison, all in the same experiment type.
 
 Each arm is run `N` times. Multiple runs are mandatory, because [the spread
 across runs is large](/comparisons/statistics/). The operator picks `N`, and

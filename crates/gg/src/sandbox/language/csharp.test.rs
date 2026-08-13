@@ -62,11 +62,11 @@ fn this_arm_commits_a_component_and_still_compiles_every_program() {
 fn a_module_is_reached_with_a_dot() {
     assert_eq!(csharp().member_separator(), ".");
     assert_eq!(
-        crate::sandbox::spell(csharp(), crate::sandbox::VIEW_OPEN_TEXT),
+        crate::sandbox::spell(csharp(), crate::sandbox::VIEWS_OPEN_TEXT),
         "Gg.Views.OpenText"
     );
     assert_eq!(
-        crate::sandbox::spell(csharp(), crate::sandbox::REVIEW_REQUEST_CHANGES),
+        crate::sandbox::spell(csharp(), crate::sandbox::SESSION_REQUEST_CHANGES),
         "Gg.Session.RequestChanges"
     );
 }

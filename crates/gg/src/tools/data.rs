@@ -420,6 +420,21 @@ impl AgentStatusData {
     /// return value at all leaves behind. An unrecognised ending is reported as "no status" rather
     /// than as a plausible-looking wrong one, since a caller that sees `None` will look at the
     /// summary, whereas one told `Completed` will not.
+    ///
+    /// Three of gg's terminal statuses are deliberately *not* in this vocabulary, and so land in
+    /// that `None`: `internal_error` (a child a gg **defect** stopped), `hook_error` (a child one of
+    /// the operator's own hook scripts stopped), and `canceled` (a child stopped because a human
+    /// killed the run). The vocabulary exists for a spawner to branch on, and none of the three
+    /// leaves it a branch to write: a parent agent cannot work around a bug in the harness running
+    /// it, cannot repair a script it never asked for, and — once the run is winding down at every
+    /// agent's next turn boundary — has no turn left to act in. Offering it a word for any of them
+    /// would invite it to try. `None` sends it to the summary, which names the ending in words; the
+    /// diagnostics naming the profile, the hook and the site are on the operator's stream, where the
+    /// person who can act on them is reading.
+    ///
+    /// Named exhaustively rather than as "gg's own `internal_error`", because a list that stops at
+    /// the first omission reads as though the rest of the vocabulary is here, and a caller would
+    /// take a `canceled` child for one that returned no status at all for some reason of its own.
     pub fn parse(status: &str) -> Option<Self> {
         match status {
             "completed" => Some(Self::Completed),

@@ -12,7 +12,7 @@
 //!
 //! The tools are contributed to the registry only when the
 //! [`tasks`](test_cabinet_core::gg::CAPABILITY_TASKS) capability is enabled and a store is
-//! bound; when it is off, none are offered (ablation).
+//! bound; when it is off, none are offered.
 
 use std::sync::{Arc, Mutex};
 

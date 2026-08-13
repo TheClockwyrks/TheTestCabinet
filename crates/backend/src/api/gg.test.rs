@@ -70,6 +70,64 @@ fn into_launch_body_rejects_a_set_with_an_agent_left_unbound() {
     assert!(err.contains("without a model"), "unexpected reason: {err}");
 }
 
+/// A root that is a **machine** carries no model of its own, so the run's model is the one its
+/// entry state runs — and a machine whose entry state names an agent the set does not declare is
+/// rejected **by that name**, never resolved back to the machine.
+///
+/// The second half is the whole point. Resolving to the shell used to mean one of two wrong
+/// answers: an error naming the machine, which is the one profile in the set whose empty model
+/// binding is correct and so sends the reader to the wrong line; or — when the machine happened to
+/// carry a leftover `modelId`, which the editor writes on a profile switched over to being one —
+/// no error at all, and a run enqueued, priced and compared against a model nothing had asked the
+/// entry state to run.
+#[test]
+fn into_launch_body_lifts_a_machine_roots_entry_model_and_names_a_missing_one() {
+    // A root that is an FSM shell over one worker: the shell carries the machine and the leftover
+    // model binding, and `Explorer` is what a dispatch onto it actually runs.
+    let machine_root = |entry: &str, workers: &[&str]| {
+        let mut set = GgCapabilitySet::minimal("mock/shell-leftover");
+        set.agents[0].capabilities = vec![test_cabinet_core::gg::GgCapabilityConfig {
+            params: serde_json::json!({
+                test_cabinet_core::gg::FSM_PARAM_STATES: [{ "name": "explore", "agent": entry }],
+            }),
+            ..test_cabinet_core::gg::GgCapabilityConfig::enabled(
+                test_cabinet_core::gg::CAPABILITY_FSM,
+            )
+        }];
+        for worker in workers {
+            set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+                name: worker.to_string(),
+                model_id: "mock/worker".to_string(),
+                ..test_cabinet_core::gg::GgAgentConfig::root()
+            });
+        }
+        set
+    };
+
+    let launch = GgRunRequest {
+        capability_set: machine_root("Explorer", &["Explorer"]),
+        ..sample_request()
+    }
+    .into_launch_body()
+    .expect("the entry state binds a model");
+    assert_eq!(
+        launch.model, "mock/worker",
+        "the run's model is the one its first turn is charged to, not the shell's leftover"
+    );
+
+    let err = GgRunRequest {
+        capability_set: machine_root("Explorer", &[]),
+        ..sample_request()
+    }
+    .into_launch_body()
+    .unwrap_err();
+    assert!(err.contains("Explorer"), "unexpected reason: {err}");
+    assert!(
+        !err.contains("mock/shell-leftover"),
+        "the leftover binding must not have been lifted: {err}"
+    );
+}
+
 #[test]
 fn build_new_job_persists_the_capability_set_for_a_gg_run() {
     // Enqueue-time job minting lifts the gg capability set out of the launch request

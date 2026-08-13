@@ -180,8 +180,25 @@ fn agent_returns(events: &[GgTelemetryEvent]) -> Vec<String> {
         .collect()
 }
 
-/// The `ToolCall`/`ToolResult` names in stream order, tagged with which kind they were — the
-/// evidence that a program's composed calls are as visible as a native call's.
+/// The `ApiCall`/`ApiResult` operations in stream order, tagged with which kind they were — the
+/// evidence that a program's composed calls are as visible as a tool-calling agent's are.
+///
+/// The pair a *program* streams is this one and only this one. A responses-as-code agent emits no
+/// `ToolCall`/`ToolResult` at all: the two surfaces are independent, so a call made by a program is
+/// recorded under the operation the program called and never under the tool name a different agent
+/// would have written to reach the same core.
+fn api_telemetry(events: &[GgTelemetryEvent]) -> Vec<(&'static str, String)> {
+    events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::ApiCall { operation, .. } => Some(("call", operation.clone())),
+            GgTelemetryKind::ApiResult { operation, .. } => Some(("result", operation.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Every `ToolCall`/`ToolResult` in the stream — which, on a responses-as-code turn, must be none.
 fn tool_telemetry(events: &[GgTelemetryEvent]) -> Vec<(&'static str, String)> {
     events
         .iter()
@@ -301,8 +318,8 @@ async fn responses_as_code_routes_the_turn_through_the_sandbox() {
         Some(test_cabinet_core::gg::GgProgramLanguage::TypeScript)
     );
     assert!(
-        tools.contains(&"write_file".to_string()),
-        "a code agent still reports the tool names its calls are recorded under: {tools:?}"
+        tools.is_empty(),
+        "a responses-as-code agent has no tool surface at all, so it reports none: {tools:?}"
     );
     let fs = apis
         .iter()
@@ -336,12 +353,15 @@ async fn a_program_compacts_its_own_context_window() {
     const SUMMARY: &str = "scaffolded main.ts; next is the render loop";
     let dir = TempDir::new().unwrap();
     let mut set = code_set("mock/primary", json!({}));
-    set.agents[0].capabilities.push(GgCapabilityConfig {
-        id: CAPABILITY_COMPACTION.to_string(),
-        enabled: true,
-        implementation: Some(COMPACTION_STRATEGY_SELF_COMPACTION.to_string()),
-        params: json!({}),
-    });
+    crate::tools::grant_configured(
+        &mut set.agents[0],
+        GgCapabilityConfig {
+            id: CAPABILITY_COMPACTION.to_string(),
+            enabled: true,
+            implementation: Some(COMPACTION_STRATEGY_SELF_COMPACTION.to_string()),
+            params: json!({}),
+        },
+    );
 
     let program = format!(
         "fs.writeFile(\"main.ts\", \"export const KEPT = 1;\");\n\
@@ -647,8 +667,9 @@ async fn a_program_gets_the_offloaded_tail_and_the_paths_to_the_rest() {
 // The servicing seam: telemetry, ids, delegation, context, skills, images
 // ---------------------------------------------------------------------------
 
-/// Composed calls stay as visible as native ones: every call streams a `ToolCall` immediately
-/// followed by its `ToolResult`, in the order the program made them.
+/// Composed calls stay as visible as a tool-calling agent's are: every call streams an `ApiCall`
+/// immediately followed by its `ApiResult`, in the order the program made them — and streams
+/// **nothing else**, because a program never reaches a tool.
 #[tokio::test]
 async fn composed_calls_stream_call_then_result_telemetry_in_order() {
     let dir = TempDir::new().unwrap();
@@ -666,16 +687,26 @@ async fn composed_calls_stream_call_then_result_telemetry_in_order() {
 
     assert_eq!(outcome, SessionOutcome::Ran);
     assert_eq!(
-        tool_telemetry(&events),
+        api_telemetry(&events),
         vec![
-            ("call", "read_file".to_string()),
-            ("result", "read_file".to_string()),
-            ("call", "write_file".to_string()),
-            ("result", "write_file".to_string()),
-            ("call", "list_dir".to_string()),
-            ("result", "list_dir".to_string()),
+            ("call", "files.read_text_file".to_string()),
+            ("result", "files.read_text_file".to_string()),
+            ("call", "files.write_file".to_string()),
+            ("result", "files.write_file".to_string()),
+            ("call", "files.list_dir".to_string()),
+            ("result", "files.list_dir".to_string()),
+            // The ending is an operation like any other on this surface — the program called it,
+            // so it is recorded here rather than being a fact only the session summary carries.
+            ("call", "session.finish".to_string()),
+            ("result", "session.finish".to_string()),
         ],
-        "each composed call streams its own pair, in program order"
+        "each composed call streams its own pair, in program order, under the operation it called \
+         rather than under the tool that call would have been on the other surface"
+    );
+    assert!(
+        tool_telemetry(&events).is_empty(),
+        "and a program reaches no tool, so it streams no tool pair: {:?}",
+        tool_telemetry(&events)
     );
     assert_eq!(
         std::fs::read_to_string(dir.path().join("copy.txt")).unwrap(),
@@ -683,7 +714,7 @@ async fn composed_calls_stream_call_then_result_telemetry_in_order() {
     );
 }
 
-/// The `CodeExecution` event's `tool_calls` is the number of `ToolCall`/`ToolResult` pairs the turn
+/// The `CodeExecution` event's `tool_calls` is the number of `ApiCall`/`ApiResult` pairs the turn
 /// actually streamed — the invariant that makes the measurement comparable with the tool-calling
 /// path, where one turn's calls are counted the same way.
 #[tokio::test]
@@ -699,14 +730,32 @@ async fn code_execution_tool_calls_equals_the_telemetry_pair_count() {
     .await;
 
     assert_eq!(outcome, SessionOutcome::Ran);
-    let (_, tool_calls, _, _) = first_code_execution(&events).expect("a CodeExecution event");
-    let pairs = tool_telemetry(&events);
+    // Summed over the run's turns rather than read off the first, because the stream is the run's
+    // and the closing turn is a program too.
+    let counted: u64 = code_executions(&events)
+        .into_iter()
+        .map(|(_, tool_calls, _, _)| tool_calls)
+        .sum();
+    let pairs = api_telemetry(&events);
+    // The ending is streamed like every other call the program made and counted by neither figure:
+    // `tool_calls` is the roster of work a turn composed, and declaring the session over is not
+    // work. So it is subtracted here by name rather than swept up, which keeps the identity exact
+    // instead of approximately true.
+    let (endings, composed): (Vec<_>, Vec<_>) = pairs
+        .iter()
+        .partition(|(_, operation)| operation.starts_with("session."));
     assert_eq!(
-        pairs.len() as u64,
-        tool_calls * 2,
-        "one ToolCall and one ToolResult per counted call: {pairs:?}"
+        endings.len(),
+        2,
+        "one ApiCall and one ApiResult for the one ending this run declared: {pairs:?}"
     );
-    assert_eq!(tool_calls, 6, "five writes plus the closing list");
+    assert_eq!(
+        composed.len() as u64,
+        counted * 2,
+        "one ApiCall and one ApiResult per counted call: {pairs:?}"
+    );
+    let (_, first, _, _) = first_code_execution(&events).expect("a CodeExecution event");
+    assert_eq!(first, 6, "five writes plus the closing list");
 }
 
 /// A program that calls one tool repeatedly must not mint one id twice: the synthetic id is
@@ -742,11 +791,12 @@ async fn the_synthetic_call_ids_are_unique_within_a_turn() {
     assert_eq!(
         ids,
         vec![
-            "program:0:write_file",
-            "program:1:write_file",
-            "program:2:write_file"
+            "program:0:files.write_file",
+            "program:1:files.write_file",
+            "program:2:files.write_file"
         ],
-        "each composed call is recorded under its own ordinal id"
+        "each composed call is recorded under its own ordinal id, keyed by the operation the \
+         program called rather than by a tool name no program ever wrote"
     );
 }
 
@@ -775,10 +825,13 @@ async fn a_program_subagent_still_honours_the_scheduler() {
         } else {
             "off"
         };
-        agent.capabilities.push(GgCapabilityConfig {
-            params: json!({ "docViewTypes": mode }),
-            ..GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE)
-        });
+        crate::tools::grant_configured(
+            agent,
+            GgCapabilityConfig {
+                params: json!({ "docViewTypes": mode }),
+                ..GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE)
+            },
+        );
     }
     let inv = invocation(dir.path(), set);
     let factory = ScriptedFactory::new()
@@ -819,10 +872,10 @@ async fn a_program_subagent_still_honours_the_scheduler() {
         code_executions(&events).len() >= 2,
         "both the parent and the subagent ran a program"
     );
-    let parent_calls = tool_telemetry(&events);
+    let parent_calls = api_telemetry(&events);
     assert!(
-        parent_calls.contains(&("call", "spawn_subagent".to_string()))
-            && parent_calls.contains(&("call", "wait_for_subagents".to_string())),
+        parent_calls.contains(&("call", "delegation.spawn_subagent".to_string()))
+            && parent_calls.contains(&("call", "delegation.wait_for_subagents".to_string())),
         "the spawn and the wait were both composed by one program: {parent_calls:?}"
     );
     // The child ended its own session by calling `finish`, and that summary — not its program
@@ -1099,9 +1152,7 @@ async fn a_program_reclaim_really_acts_on_the_live_window() {
     let dir = TempDir::new().unwrap();
     std::fs::write(dir.path().join("big.txt"), "a line\n".repeat(400)).unwrap();
     let mut set = code_set("mock/primary", json!({}));
-    set.agents[0].capabilities.push(GgCapabilityConfig::enabled(
-        CAPABILITY_AGENT_MANAGED_CONTEXT,
-    ));
+    crate::tools::grant(&mut set.agents[0], CAPABILITY_AGENT_MANAGED_CONTEXT);
     let (outcome, events) = drive_code_run(&dir, set, |b| {
         scripted_programs(
             &b.model_id,
@@ -1632,9 +1683,7 @@ async fn a_stopped_subagent_returns_a_status_line_not_its_program_source() {
     let emitter = Emitter::with_sink(Some("run-code-stop".to_string()), Box::new(sink.clone()));
     let mut set = subagent_set(2, 3, &["subagent"]);
     for agent in &mut set.agents {
-        agent
-            .capabilities
-            .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+        crate::tools::grant(agent, CAPABILITY_RESPONSES_AS_CODE);
     }
     // Two turns each: the parent spawns-and-waits then finishes; the child never gets to.
     set.limits.max_turns = Some(2);
@@ -1788,9 +1837,7 @@ async fn a_code_mode_reviewer_declares_its_verdict() {
     let emitter = Emitter::with_sink(Some("run-code-review".to_string()), Box::new(sink.clone()));
     let mut set = issue_review_set(&["reviewer"]);
     for agent in &mut set.agents {
-        agent
-            .capabilities
-            .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+        crate::tools::grant(agent, CAPABILITY_RESPONSES_AS_CODE);
     }
     let inv = invocation(dir.path(), set);
     // The primary slot serves the root (agent 0: build the board, then finish — creating the issue
@@ -1876,9 +1923,7 @@ async fn a_code_mode_issue_agents_worktree_is_merged() {
     let emitter = Emitter::with_sink(Some("run-code-wt".to_string()), Box::new(sink.clone()));
     let mut set = issue_review_set(&[]);
     for agent in &mut set.agents {
-        agent
-            .capabilities
-            .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+        crate::tools::grant(agent, CAPABILITY_RESPONSES_AS_CODE);
     }
     let inv = invocation(dir.path(), set);
     let counter = Arc::new(AtomicUsize::new(0));
@@ -2091,7 +2136,7 @@ async fn a_program_that_finishes_and_keeps_going_still_does_the_work() {
 ///
 /// Every other healing figure counts what *fired*, and a run in which nothing fired is
 /// byte-identical whether its strategies were all armed or all off — so without this the two arms of
-/// the ablation this subsystem exists to serve are indistinguishable in the telemetry, and a study
+/// the comparison this subsystem exists to serve are indistinguishable in the telemetry, and a study
 /// has to go back to the invocation files that produced the runs.
 #[tokio::test]
 async fn the_armed_healing_strategies_are_logged_and_recorded() {
@@ -2235,7 +2280,7 @@ fn library_set(model_id: &str, params: serde_json::Value) -> GgCapabilitySet {
     let mut set = code_set(model_id, json!({}));
     let mut cap = GgCapabilityConfig::enabled(test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY);
     cap.params = params;
-    set.agents[0].capabilities.push(cap);
+    crate::tools::grant_configured(&mut set.agents[0], cap);
     set
 }
 

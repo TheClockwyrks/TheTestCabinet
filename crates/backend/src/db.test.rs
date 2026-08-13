@@ -3858,7 +3858,7 @@ async fn gg_dashboards_round_trip_and_scope_to_account() {
 
     let board = crate::api::GgDashboard {
         id: "d1".to_string(),
-        name: "compaction ablation".to_string(),
+        name: "compaction comparison".to_string(),
         description: String::new(),
         panels: vec![
             crate::api::GgDashboardPanel {

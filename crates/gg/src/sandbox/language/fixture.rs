@@ -75,8 +75,9 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareError, PrepareFailure, PreparedModule,
-    PreparedProgram, ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
+    PreparedProgram, ProgramLanguage, PromptDialect, spell,
 };
+use crate::sandbox::operations::{VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
 /// **The surface the fixture's own is reshaped out of** — a registered arm's catalogue, embedded
 /// straight from the build's `OUT_DIR` rather than reached for through
@@ -309,7 +310,7 @@ impl ProgramLanguage for FixtureLanguage {
     /// what makes "the synthesized turn is written in the agent's own language" an assertion rather
     /// than a restatement of one implementation.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
-        let open_file = spell(self, VIEW_OPEN_FILE);
+        let open_file = spell(self, VIEWS_OPEN_FILE);
         let path = Value::String(path.to_string());
         match window {
             Some(window) => format!(
@@ -324,7 +325,7 @@ impl ProgramLanguage for FixtureLanguage {
     /// because "the program gg generates is written in the agent's own language" is only an
     /// assertion while two languages generate different programs.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
-        let open_docs_view = spell(self, VIEW_OPEN_DOCS_VIEW);
+        let open_docs_view = spell(self, VIEWS_OPEN_DOCS_VIEW);
         names
             .iter()
             .map(|name| format!("{open_docs_view}({})\n", Value::String((*name).to_string())))

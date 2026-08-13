@@ -173,54 +173,12 @@ fn call_everything(state: &mut MembraneState<FakeToolApi>) {
 /// calls vanish; an extra one is a call recorded under a name the agent's own reported surface never
 /// mentions, which joins to nothing and reads as a phantom.
 ///
-/// It is an equality rather than a containment because there is no longer anything model-facing
-/// outside that table. `list` used to be the exception — bound on every object, catalogued on none —
-/// and it was added back here by hand; with it deleted the two sets are the same set by
-/// construction.
+/// It is an equality rather than a containment because there is nothing model-facing outside that
+/// table, and it is asserted over the **operation id** because that is now the whole identity a call
+/// is recorded under. There used to be a second assertion here over an `(object, key)` pair recorded
+/// beside it; the pair is deleted, and with it the possibility of the two disagreeing.
 #[test]
 fn every_host_function_records_its_own_api_call() {
-    let log = CallLog::default();
-    let (mut state, recorded) = recording_membrane(&log);
-
-    call_everything(&mut state);
-
-    let got: BTreeSet<String> = recorded.names().into_iter().collect();
-    let want: BTreeSet<String> = OPERATIONS
-        .iter()
-        .map(|operation| format!("{}.{}", operation.call.object, operation.call.key))
-        .collect();
-
-    assert_eq!(
-        got, want,
-        "the membrane's API records and gg's model-facing surface must be the same set"
-    );
-    assert_eq!(
-        recorded.calls().len(),
-        want.len(),
-        "each function was called once and recorded once: {:?}",
-        recorded.names()
-    );
-    assert!(
-        recorded.calls().iter().all(|call| call.ok.is_some()),
-        "every bracket closed: {:?}",
-        recorded.calls()
-    );
-}
-
-/// **Every recorded call also names the operation it resolved to** — the identity that is the same
-/// in all eleven arms, and therefore the only key a cross-language study can count on.
-///
-/// The `(object, key)` pair asserted above is gg's own vocabulary too, but it is the *transitional*
-/// half of it: it is the pair an arm's catalogue used to file a function under, and it is not the
-/// name the agent's reported surface groups by any more. The operation is, so a call that arrived
-/// without one would be a call that can be seen happening and cannot be attributed to anything the
-/// agent was offered.
-///
-/// There is no longer any absence to excuse. The documentation calls were the last three that
-/// recorded no operation, because they were the last three with no row in the table; enrolling them
-/// makes this an equality over the whole surface rather than an equality with a footnote.
-#[test]
-fn every_recorded_call_names_the_operation_it_resolved_to() {
     let log = CallLog::default();
     let (mut state, recorded) = recording_membrane(&log);
 
@@ -231,20 +189,24 @@ fn every_recorded_call_names_the_operation_it_resolved_to() {
         .iter()
         .map(|operation| operation.id.to_string())
         .collect();
+
     assert_eq!(
         got, want,
-        "every model-facing call is recorded under gg's own identity for it"
+        "the membrane's API records and gg's model-facing surface must be the same set"
+    );
+    assert_eq!(
+        recorded.calls().len(),
+        want.len(),
+        "each function was called once and recorded once: {:?}",
+        recorded.operations()
     );
     // Both halves of the bracket, because the two answer different questions — *what did this
     // agent do* is asked of the calls and *what failed* is asked of the results, and a result that
     // had to be paired back to its call to be attributed would have to be paired across every child
     // event a delegation emitted inside it.
     assert!(
-        recorded
-            .calls()
-            .iter()
-            .all(|call| call.operation.is_some() && call.ok.is_some()),
-        "the closing half carries the operation too: {:?}",
+        recorded.calls().iter().all(|call| call.ok.is_some()),
+        "every bracket closed: {:?}",
         recorded.calls()
     );
 }
@@ -268,7 +230,7 @@ fn a_documentation_call_records_the_operation_gg_files_it_under() {
 
     let _ = state.search("read".to_string(), None, None, None, None, None);
 
-    assert_eq!(recorded.names(), vec!["docs.search"]);
+    assert_eq!(recorded.operations(), vec!["docs.search"]);
     assert_eq!(
         recorded.operations(),
         vec!["docs.search".to_string()],
@@ -294,8 +256,8 @@ fn a_call_no_tool_backs_is_still_recorded() {
     state.finish("done".to_string()).expect("finished");
 
     assert_eq!(
-        recorded.names(),
-        vec!["view.current", "view.open_text", "harness.finish"]
+        recorded.operations(),
+        vec!["views.current", "views.open_text", "session.finish"]
     );
     assert!(
         log.calls().is_empty(),
@@ -323,9 +285,11 @@ fn opening_a_file_view_is_recorded_as_the_view_call_and_not_as_a_read() {
         .open_file_view("src/main.rs".to_string(), None, None)
         .expect("the view opens");
 
-    assert_eq!(recorded.names(), vec!["view.open_file"]);
+    assert_eq!(recorded.operations(), vec!["views.open_file"]);
     assert!(
-        !recorded.names().contains(&"fs.read_file".to_string()),
+        !recorded
+            .operations()
+            .contains(&"files.read_file".to_string()),
         "the read it runs is not a call the model made"
     );
     assert_eq!(
@@ -353,7 +317,10 @@ fn the_text_read_helper_is_recorded_apart_from_the_read_it_shares_a_core_with() 
         .expect("the bare read returns a variant");
 
     assert!(!text.is_empty());
-    assert_eq!(recorded.names(), vec!["fs.read_text_file", "fs.read_file"]);
+    assert_eq!(
+        recorded.operations(),
+        vec!["files.read_text_file", "files.read_file"]
+    );
     assert_eq!(
         log.names(),
         vec!["read_file", "read_file"],
@@ -376,11 +343,10 @@ fn a_refused_call_is_recorded_as_a_failed_api_call() {
         api,
         crate::sandbox::fake::typescript(),
         crate::sandbox::ProgramScope {
-            enabled: &["shell".to_string()],
+            capabilities: &[],
+            operations: &[],
             modules: &[],
             ending: crate::sandbox::RunEnding::Role(crate::ending::EndingRole::Standard),
-            library: true,
-            docview_close: false,
         },
         crate::sandbox::SandboxLimits::default(),
         None,
@@ -390,7 +356,7 @@ fn a_refused_call_is_recorded_as_a_failed_api_call() {
         .list_dir(None)
         .expect_err("a withheld tool is refused");
 
-    assert_eq!(recorded.names(), vec!["fs.list_dir"]);
+    assert_eq!(recorded.operations(), vec!["files.list_dir"]);
     assert_eq!(recorded.calls()[0].ok, Some(false));
     // ...and it says *why*. A refusal never dispatches, so this record is the only place the class
     // exists at all: without it, the one call class that says "this run withheld what the model
@@ -427,7 +393,7 @@ fn a_call_whose_result_could_not_be_converted_fails_the_api_record() {
         .list_dir(None)
         .expect_err("a tool that answered with no sidecar throws");
 
-    assert_eq!(recorded.names(), vec!["fs.list_dir"]);
+    assert_eq!(recorded.operations(), vec!["files.list_dir"]);
     assert_eq!(
         recorded.calls()[0].ok,
         Some(false),
@@ -471,13 +437,13 @@ fn a_failed_api_call_records_the_class_it_threw_with() {
     assert_eq!(
         calls
             .iter()
-            .map(|call| (call.function.as_str(), call.failure))
+            .map(|call| (call.operation.as_str(), call.failure))
             .collect::<Vec<_>>(),
         vec![
-            ("read_file", Some(GgToolFailure::NotFound)),
-            ("write_file", Some(GgToolFailure::InvalidArgument)),
+            ("files.read_file", Some(GgToolFailure::NotFound)),
+            ("files.write_file", Some(GgToolFailure::InvalidArgument)),
             // A call that cannot fail records no class, because nothing threw.
-            ("current", None),
+            ("views.current", None),
         ]
     );
 }

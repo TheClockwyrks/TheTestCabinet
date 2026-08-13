@@ -1873,7 +1873,7 @@ impl MockClient {
     /// The `read_skill`, `write_memory`, task, and board calls are harmless when the run offers
     /// the matching capability off — each simply comes back as an unknown/unavailable tool error
     /// and the script proceeds — so a workspace without a seeded `.gg/skills/`, or a run with
-    /// memories, tasks, or the board ablated, still runs the remaining turns unchanged.
+    /// memories, tasks, or the board switched off, still runs the remaining turns unchanged.
     pub fn with_default_script(model_id: impl Into<String>) -> Self {
         let read_skill_call = ModelResponse {
             text: Some("Reading the getting-started skill before building.".to_string()),

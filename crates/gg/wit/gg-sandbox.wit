@@ -67,10 +67,13 @@ interface types {
     record tool-error {
         /// The failure class, so a catch site branches on a value rather than on prose.
         code: error-code,
-        /// The gg tool that failed (`read_file`, `spawn_subagent`, …), so a catch site can report
-        /// it without parsing the message.
+        /// The call that failed, by the KEY of the operation the program reached for:
+        /// `read_file` for `files.read_file`, `read_text_file` for `files.read_text_file`,
+        /// `open_file` for `views.open_file`. A catch site branches on the call the program wrote
+        /// rather than on prose; it is never the name of whatever ran underneath, which several
+        /// operations share.
         tool: string,
-        /// The model-facing guidance — the same text the native tool-calling path shows.
+        /// The model-facing guidance, written in this program's own spelling of the call.
         message: string,
     }
 
@@ -1169,15 +1172,20 @@ world sandbox {
 
     /// Evaluate one program.
     ///
-    /// `program` is source the host has already prepared for this guest. `tools` is the
-    /// run's enabled gg tool names (`read_file`, `shell`, …); ONLY those are bound into the
-    /// program's scope, so a withheld tool is an undefined identifier rather than a call that
-    /// travels to the host to be refused. `ending` selects which group of `session` functions is
-    /// bound, on the same principle: an agent that may not approve has no `review` object at all.
-    /// `library` binds the `programs` object, and is a `bool` rather than a tool name because the
-    /// program library is the one model-facing family a CAPABILITY gates rather than the toolset —
-    /// folding it into `tools` would put a name in the enabled set that no gg tool answers to and
-    /// break the `bound-tools` bijection.
+    /// `program` is source the host has already prepared for this guest. `tools` is what this
+    /// agent was GRANTED, as gg's own rendered operation ids (`files.read_file`, `shell.shell`,
+    /// `views.open_file`); the parameter's name is historical and every SDK is static, so nothing
+    /// is withheld from a program's scope — the whole surface compiles, and a call this agent does
+    /// not hold travels to the host and is refused there, in the one place that can answer the same
+    /// way for all eleven arms. `ending` and `library` are the same fact said twice more, for the
+    /// session group and the program library, and they are equally advisory.
+    ///
+    /// NO GUEST READS ANY OF THE THREE. They are kept because the world is shared with ten sibling
+    /// guests and removing a parameter reshapes every one of them, and because a guest that wanted
+    /// to say something useful about what it holds would need them. What a guest must not do is
+    /// treat them as the gate: an SDK that withheld a name would make an ungranted call an undefined
+    /// identifier in one arm and a refusal in another, and a study comparing the two would be
+    /// comparing the arms rather than the models.
     ///
     /// `modules` is the code the agent has loaded by reading a code skill or a code memory. Each is
     /// evaluated BEFORE the program, against the same scope, and its exports are bound at
@@ -1201,8 +1209,12 @@ world sandbox {
         library: bool,
     );
 
-    /// The gg tool names this component can bind. gg's tests call it to assert the COMMITTED
-    /// component and `ALL_TOOL_NAMES` have not drifted apart — the one check that catches a stale
-    /// artifact rather than a stale source file.
+    /// The gg tool interfaces this component imports, by the name each is declared under above.
+    /// gg's tests call it to assert the built component and `ALL_TOOL_NAMES` have not drifted
+    /// apart — the one check that catches a stale artifact rather than a stale source file.
+    ///
+    /// It says nothing about what a PROGRAM may call: that is the operations vocabulary, which is
+    /// richer than this one (several operations share one of these, and many reach none of them at
+    /// all) and is decided by the host from the agent's grant.
     export bound-tools: func() -> list<string>;
 }

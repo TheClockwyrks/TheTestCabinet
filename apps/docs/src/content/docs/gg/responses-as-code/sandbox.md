@@ -80,6 +80,18 @@ with full directory and file permissions. A model reaching for its language's
 ordinary date, random or file APIs is a model using the language it was told to
 write in.
 
+A narrowed [grant](/gg/configurations/#granting-calls) does not narrow that
+reach. An agent not granted `files.read_file` still reads files through its own
+language's standard library, and the same holds for the network, so a
+configuration that takes those calls away measures whether the model reaches for
+gg's typed surface rather than whether it reaches the filesystem at all. Studying
+a program that genuinely lacks either means running it in an environment that
+lacks it.
+
+`shell.shell` is the exception. WASI p2 exposes no process-spawn interface, so a
+guest cannot run a command through its standard library and an agent not granted
+the call cannot run one at all.
+
 Stdout is withheld, because gg's telemetry stream is on fd 1. Stderr is captured
 rather than inherited: the host keeps the last 8 KiB of it and never fails a
 write, so a guest runtime's dying message reaches the model's feedback instead

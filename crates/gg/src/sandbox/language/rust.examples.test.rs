@@ -66,7 +66,7 @@ use crate::prompts::{
     render_code_nothing_shown_for, render_system_for,
 };
 use crate::sandbox::{
-    HARNESS_FINISH, PrepareContext, ProgramLanguage, REVIEW_APPROVE, REVIEW_REQUEST_CHANGES,
+    PrepareContext, ProgramLanguage, SESSION_APPROVE, SESSION_FINISH, SESSION_REQUEST_CHANGES,
     catalogue_functions, spell,
 };
 
@@ -269,9 +269,9 @@ fn everything_on() -> SystemContext {
         ending: EndingView {
             standard: true,
             review: true,
-            finish: spell(rust(), HARNESS_FINISH),
-            approve: spell(rust(), REVIEW_APPROVE),
-            request_changes: spell(rust(), REVIEW_REQUEST_CHANGES),
+            finish: spell(rust(), SESSION_FINISH),
+            approve: spell(rust(), SESSION_APPROVE),
+            request_changes: spell(rust(), SESSION_REQUEST_CHANGES),
         },
     }
 }

@@ -311,7 +311,7 @@ fn a_non_positive_cost_ceiling_is_off_and_says_so() {
 #[test]
 fn resolution_never_fails_a_launch() {
     // Every unusable declaration at once. The run still resolves to a launchable configuration —
-    // here one with nothing armed, bounded only by the host's clock — because an ablation sweep
+    // here one with nothing armed, bounded only by the host's clock — because a sweep of configurations
     // shares one document across arms, and an arm that cannot launch measures nothing at all.
     // (Every ceiling was declared unusable, so even the error defaults are suppressed: a
     // half-declared rate is a mistake, not an unset field.)

@@ -40,7 +40,7 @@
 //! Nothing here does I/O, reads a clock, allocates a `Store`, or is `async`; its only imports are
 //! `serde_json::Value` and the two capability types the resolver reads. Two things follow. Every
 //! case in this module's tests is a microsecond-scale unit test with no component compile behind it,
-//! and the ablation is honest: turning a strategy off changes only what [`heal`] returns.
+//! and the comparison is honest: turning a strategy off changes only what [`heal`] returns.
 //!
 //! # The skeleton and the [dialect](Dialect)
 //!
@@ -292,7 +292,8 @@ impl Default for HealingConfig {
 }
 
 impl HealingConfig {
-    /// Every strategy off — the master switch's arm, and the ablation's floor.
+    /// Every strategy off — what the master switch produces, and the floor two configurations are
+    /// compared against.
     ///
     /// [`heal`] still runs under it and still canonicalises; it simply repairs nothing, so the reply
     /// reaches its language's prepare step exactly as the model sent it.
@@ -327,7 +328,7 @@ impl HealingConfig {
     /// plainly that none is.
     ///
     /// The counterpart of [`RunLimits::armed_summary`](crate::limits::RunLimits::armed_summary), and
-    /// emitted for the same reason: the disabled arm of an ablation is otherwise indistinguishable
+    /// emitted for the same reason: a configuration with healing off is otherwise indistinguishable
     /// from the enabled one in an operator's log, because a run in which nothing needed repairing
     /// says nothing either way.
     pub fn armed_summary(&self) -> String {
@@ -361,7 +362,7 @@ impl HealingConfig {
 /// A [healing configuration](HealingConfig) resolved from a capability set, together with every
 /// `healing` key gg could not act on.
 ///
-/// The unknown keys are carried out rather than dropped because a typo in an ablation's
+/// The unknown keys are carried out rather than dropped because a typo in a configuration's
 /// configuration is the one failure this subsystem cannot survive: `{"stripFences": false}` would
 /// otherwise run the default arm silently, under the disabled arm's name, and every number the study
 /// produced would be a measurement of the wrong thing.

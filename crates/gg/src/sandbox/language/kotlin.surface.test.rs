@@ -22,7 +22,7 @@ use serde_json::{Value, json};
 use super::compile::{compile_module, compile_program};
 use super::substrate::{evaluate_as, evaluate_closing_docviews, logs, program_error};
 use crate::ending::{Ending, EndingRole};
-use crate::sandbox::fake::{CallLog, all_tools, canned_outcome};
+use crate::sandbox::fake::{CallLog, all_operations, canned_outcome};
 use crate::sandbox::membrane::RunEnding;
 use crate::sandbox::outcome::{ProgramErrorKind, SandboxOutcome};
 use crate::sandbox::{CodeModule, PrepareContext};
@@ -42,7 +42,7 @@ const SIGNATURES: &str = include_str!(concat!(
 /// Compile and run one Kotlin program, with the ending group and the library flag said out loud.
 fn run_as(
     source: &str,
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     ending: RunEnding,
     library: bool,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
@@ -51,7 +51,7 @@ fn run_as(
         Ok(prepared) => prepared.source,
         Err(failure) => panic!("the Kotlin toolchain did not compile this program: {failure}"),
     };
-    evaluate_as(&prepared, enabled, &[], ending, library, responder)
+    evaluate_as(&prepared, operations, &[], ending, library, responder)
 }
 
 /// One Kotlin program through the production prepare step, or a panic with what the toolchain said.
@@ -65,10 +65,10 @@ fn prepare_program(source: &str) -> String {
 /// Compile and run one Kotlin program with `enabled`'s tools offered and no ending group.
 fn run_with(
     source: &str,
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    run_as(source, enabled, RunEnding::None, false, responder)
+    run_as(source, operations, RunEnding::None, false, responder)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -340,7 +340,7 @@ fn every_tool_crosses_the_membrane_from_its_kotlin_spelling() {
         .iter()
         .map(|crossing| format!("{}\n", crossing.statement))
         .collect::<String>();
-    let (outcome, log) = run_with(&program, &all_tools(), canned_outcome);
+    let (outcome, log) = run_with(&program, &all_operations(), canned_outcome);
     assert!(
         matches!(&outcome.result, Ok(result) if result.error.is_none()),
         "the program did not run cleanly: {:?}",
@@ -396,7 +396,7 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
          \x20   is gg.files.ImageFile -> read.label\n\
          })\n\
          gg.session.finish(\"read the file and showed myself the result\")\n",
-        &all_tools(),
+        &all_operations(),
         RunEnding::Role(EndingRole::Standard),
         false,
         canned_outcome,
@@ -517,7 +517,7 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
          } catch (failure: gg.core.ToolError) {\n\
          \x20   println(failure.code.toString())\n\
          }\n",
-        &all_tools(),
+        &all_operations(),
         RunEnding::None,
         true,
         canned_outcome,
@@ -656,7 +656,7 @@ fn a_failure_is_a_kotlin_exception_whether_it_is_caught_or_not() {
          \x20   println(\"${failure.code} on ${failure.tool}\")\n\
          }\n\
          println(\"carried on\")\n",
-        &all_tools(),
+        &all_operations(),
         |_name: &str, _args: &Value| {
             ToolOutcome::failed(
                 crate::tools::ToolFailure::NotFound,
@@ -664,7 +664,10 @@ fn a_failure_is_a_kotlin_exception_whether_it_is_caught_or_not() {
             )
         },
     );
-    assert_eq!(logs(&outcome), ["NOT_FOUND on read_file", "carried on"]);
+    assert_eq!(
+        logs(&outcome),
+        ["NOT_FOUND on read_text_file", "carried on"]
+    );
 
     // And the half that no SDK could do for itself: one that ESCAPED must still reach the guest as a
     // tool failure rather than as a JVM exception, because gg classifies a turn's error from the
@@ -674,7 +677,7 @@ fn a_failure_is_a_kotlin_exception_whether_it_is_caught_or_not() {
         "println(\"before\")\n\
          gg.files.readTextFile(\"gone.kt\")\n\
          println(\"after\")\n",
-        &all_tools(),
+        &all_operations(),
         |_name: &str, _args: &Value| {
             ToolOutcome::failed(
                 crate::tools::ToolFailure::NotFound,
@@ -685,7 +688,9 @@ fn a_failure_is_a_kotlin_exception_whether_it_is_caught_or_not() {
     let error = program_error(&outcome);
     assert_eq!(error.kind, ProgramErrorKind::ToolFailure, "{error:?}");
     assert!(
-        error.message.contains("`read_file` failed (not-found)"),
+        error
+            .message
+            .contains("`read_text_file` failed (not-found)"),
         "the model reads gg's own sentence rather than a Kotlin class: {}",
         error.message
     );
@@ -696,7 +701,7 @@ fn a_failure_is_a_kotlin_exception_whether_it_is_caught_or_not() {
     let (outcome, _log) = run_with(
         "val read = runCatching { gg.files.readTextFile(\"gone.kt\") }\n\
          println(read.exceptionOrNull().let { it is gg.core.ToolError }.toString())\n",
-        &all_tools(),
+        &all_operations(),
         |_name: &str, _args: &Value| {
             ToolOutcome::failed(
                 crate::tools::ToolFailure::NotFound,
@@ -709,7 +714,7 @@ fn a_failure_is_a_kotlin_exception_whether_it_is_caught_or_not() {
 
 #[test]
 fn a_capability_this_run_withheld_is_refused_as_unavailable() {
-    // The SDK exposes the whole surface — it is compiled once, into a jar, and a run's enabled set is
+    // The SDK exposes the whole surface — it is compiled once, into a jar, and a run's operations set is
     // decided per run — so what stops a withheld capability from being reachable is a refusal rather
     // than a missing name. It carries the code the HOST refuses an out-of-set call with, because gg
     // classifies a turn's error from the code: a capability nobody granted must not be recorded as a

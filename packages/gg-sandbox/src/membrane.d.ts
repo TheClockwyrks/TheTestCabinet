@@ -69,7 +69,7 @@ declare module "test-cabinet:gg/types" {
   export interface ToolErrorRecord {
     /** The failure class, so a catch site branches on a value rather than on prose. */
     code: ErrorCode;
-    /** The gg tool that failed (`read_file`, `spawn_subagent`, …). */
+    /** The call that failed, by the key of the operation the program reached for. */
     tool: string;
     /** The model-facing guidance — the same text the native tool-calling path shows. */
     message: string;

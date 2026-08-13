@@ -97,8 +97,9 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
+    ProgramLanguage, PromptDialect, spell,
 };
+use crate::sandbox::operations::{VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
 #[path = "ruby.compile.rs"]
 pub(super) mod compile;
@@ -267,13 +268,13 @@ impl ProgramLanguage for Ruby {
     /// [`view.open_file("src/main.rb")`](self::open_file_statement), with the window as keyword
     /// arguments and no terminator.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
-        open_file_statement(&spell(self, VIEW_OPEN_FILE), path, window)
+        open_file_statement(&spell(self, VIEWS_OPEN_FILE), path, window)
     }
 
     /// [An array of names and an `each` with a
     /// block](self::open_docs_views_statement), each iteration opening one documentation view.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
-        open_docs_views_statement(&spell(self, VIEW_OPEN_DOCS_VIEW), names)
+        open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
     }
 }
 

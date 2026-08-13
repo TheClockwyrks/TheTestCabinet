@@ -128,7 +128,7 @@ pub type ModuleIds = Arc<ModuleIdMint>;
 ///
 /// It is what the by-hand constructors (`MemoriesRuntime::new`, `TasksRuntime::with_mode`, …) fall
 /// back to, which in practice means the tests and the [disabled](Module::enabled) modules an
-/// ablation's off arm holds. Every module a *run* builds is resolved through
+/// configuration with a capability off holds. Every module a *run* builds is resolved through
 /// [`ModuleSet::resolve`] (or transferred/forked from one that was), and those all carry the run's
 /// own mint off [`ModuleResolveCtx::ids`] — so ids are unique within a run, which is the only scope
 /// they are ever compared in.
@@ -263,7 +263,7 @@ pub trait Module: Send {
     }
 
     /// Whether the capability behind this module is on for its holder. A disabled module still
-    /// occupies its slot in the set — so an ablation's off arm is legible rather than absent —
+    /// occupies its slot in the set — so a capability that is off is legible rather than absent —
     /// and contributes nothing: no tools, no prompt, no block, no telemetry.
     fn enabled(&self) -> bool;
 
@@ -934,7 +934,7 @@ impl CapabilityModules {
     }
 
     /// The memories module. Always present; [disabled](Module::enabled) when the capability is
-    /// off, which is what makes an ablation's off arm legible rather than absent.
+    /// off, which is what makes a capability that is off legible rather than absent.
     pub fn memories(&self) -> &MemoriesRuntime {
         &self.memories
     }

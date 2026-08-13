@@ -314,7 +314,7 @@ and session summary record the root agent's resolved set.
 
 An unreadable key is reported at `warn` on the run's own stream before the first
 turn and changes nothing. `{"stripFences": false}` would otherwise run the
-default arm under the disabled arm's name, and every number that ablation
+default arm under the disabled arm's name, and every number that comparison
 produced would measure the wrong thing. No such warning fails a launch, since a
 sweep's one shared configuration document has to stay interpretable by every
 arm.
@@ -376,7 +376,7 @@ so numerator and denominator come from one mechanism:
 | `stripFences`, `stripProse`, `dropDoubledResponse` | Applications of each strategy. |
 | `enabled` | The strategies armed for the run, in application order. Empty means every one was off for a code-mode run; `executionMode` tells that apart from a tool-calling run, where healing never runs. |
 
-`enabled` is what makes an ablation legible from the telemetry alone. Every
+`enabled` is what makes an arm legible from the telemetry alone. Every
 other figure counts what fired, and a run in which nothing fired is
 byte-identical whether its strategies were all armed or all disabled. It is
 therefore always written, empty list included. The same resolved set is named on
@@ -389,7 +389,7 @@ response healing: strip-fences, strip-prose, drop-doubled-response
 
 The first line is the default arm, printed by a run that says nothing about
 healing. The second is what a run that armed the extra strategy prints, and the
-one strategy between them is the whole ablation. A run with every strategy off
+one strategy between them is the whole difference. A run with every strategy off
 logs `response healing: disabled`, followed by the note that a reply is compiled
 exactly as the model sent it.
 
@@ -431,7 +431,7 @@ The rate is `healed / codeExecutions` and is deliberately not stored as a third
 field, for the reason no error percentage is: a figure that can disagree with
 its own denominator is worse than one the reader divides.
 
-The ablation needs nothing further. A capability's params are flattened into the
+A comparison needs nothing further. A capability's params are flattened into the
 same document, so each strategy's declaration is its own field under
 `cap.responses-as-code.healing.<strategy>`, and a run that left a strategy at
 its default falls out of the comparison rather than being counted as a value it

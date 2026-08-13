@@ -93,9 +93,9 @@ tool to be offered:
   decides it.
 - every further condition, one sentence each: a bound store, a writable handle,
   a memory strategy, a non-empty roster, a position in a machine. Those
-  sentences are gg's, composed from an ablation it runs against its own
-  registry, withholding one thing at a time from a maximal run and recording
-  what disappears.
+  sentences are gg's, composed from a sweep it runs against its own registry,
+  withholding one thing at a time from a maximal run and recording what
+  disappears.
 - variants, for the seven tools whose definition changes with how their
   capability is configured.
 
@@ -166,11 +166,11 @@ An entry's own heading is the fully-qualified name a documentation lookup takes
 - the gg [operation](/gg/telemetry/agent-surface/) it serves
   (`files.read_file`), which is the one identity on the page that is the same in
   every arm and the string a run's `api_call` records name it by;
-- what binds it, in the vocabulary that decides it: a tool being enabled for
-  most calls, the agent's ending role for the ending calls, a capability for a
-  few. When all three are empty the page says always available, an
-  affirmative claim made only about functions, since a type is a declaration and
-  is withheld from nobody;
+- what binds it: the capability that buys it for most calls, the agent's ending
+  role for the three ending calls. When neither is set the page says always
+  available, an affirmative claim made only about functions, since a type is a
+  declaration and is withheld from nobody. No gg tool name appears, because no
+  tool decides anything on this surface;
 - where the arm hangs a convenience off the value it operates on, the receiver
   and the operation it is a second way to reach;
 - the `import` line, on the arm that needs one.
@@ -280,5 +280,5 @@ The wire shape is `GgReference` and `GgReferenceApi` in
 `crates/core/src/gg_reference.rs`, which is where each field's meaning is
 documented. The projection that fills them in is `crates/gg/src/reference.rs`
 and its three halves: `reference.tools.rs` for the registry's own definitions,
-`reference.conditions.rs` for the ablation that derives what buys a tool, and
+`reference.conditions.rs` for the sweep that derives what buys a tool, and
 `reference.api.rs` for the documentation runtime's own bodies, per arm.

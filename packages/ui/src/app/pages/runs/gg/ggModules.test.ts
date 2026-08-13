@@ -3,8 +3,8 @@
 // The one thing worth pinning above all others is the distinction the whole feature exists
 // for: **two agents sharing one store** against **two agents holding distinct stores whose
 // contents happen to agree**. Those two runs are indistinguishable in every other view, and
-// telling them apart is the difference between "the shared-memory ablation is working" and
-// "the shared-memory ablation silently fell back to private notebooks".
+// telling them apart is the difference between "the shared-memory configuration is working"
+// and "the shared-memory configuration silently fell back to private notebooks".
 //
 // The rest pin the derivations that make the three module surfaces trustworthy: the scope is
 // read off the observed holders and never off the declared configuration (the configuration
@@ -184,7 +184,6 @@ function set(agents: Array<[string, string[]]>): GgCapabilitySet {
         enabled: true,
         params: {},
       })),
-      disabledTools: [],
       subagents: [],
       promptCacheTtl: "default",
     })),
@@ -754,7 +753,6 @@ describe("deriveGgModules", () => {
               params: { ownership: "unowned" },
             },
           ],
-          disabledTools: [],
           subagents: [],
           promptCacheTtl: "default",
         },
@@ -801,7 +799,6 @@ describe("deriveGgModules", () => {
             { id: "skills", enabled: true, params: {} },
             { id: "tasks", enabled: true, params: {} },
           ],
-          disabledTools: [],
           subagents: [],
           promptCacheTtl: "default",
         },

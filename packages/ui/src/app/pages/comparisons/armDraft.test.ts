@@ -16,7 +16,7 @@ function draft(overrides: Partial<ArmDraft> = {}): ArmDraft {
 }
 
 const ggName = (key: string) =>
-  key === "builtin:default" ? "Default" : "Ablation A";
+  key === "builtin:default" ? "Default" : "Config A";
 
 describe("armLabel", () => {
   it("names a harness arm by its harness display name and model", () => {
@@ -42,7 +42,7 @@ describe("armLabel", () => {
         }),
         ggName,
       ),
-    ).toBe("Ablation A · anthropic/claude-opus-4.8");
+    ).toBe("Config A · anthropic/claude-opus-4.8");
   });
 
   it("falls back to the first bound slot when the configuration has no primary", () => {

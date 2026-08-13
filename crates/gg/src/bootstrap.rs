@@ -64,7 +64,7 @@
 use crate::context::ContextModel;
 use crate::docs::DocsRuntime;
 use crate::sandbox::{
-    DOCS_SEARCH, SurfaceCall, VIEW_OPEN_DOCS_VIEW, catalogue_functions, operation_of,
+    DOCS_SEARCH, OperationId, VIEWS_OPEN_DOCS_VIEW, catalogue_functions, operation_of,
 };
 
 /// **The calls the bootstrap opens the documentation of** — the ones discovery is made of, and
@@ -81,7 +81,7 @@ use crate::sandbox::{
 /// rendered nothing. It is here because the call now has a row in gg's own
 /// [operations table](crate::sandbox::operation_of) — until each arm follows, an arm that does not
 /// catalogue it is skipped by [`bootstrap_keys`] and fails the capability gate by name.
-pub(crate) const BOOTSTRAP_CALLS: &[SurfaceCall] = &[DOCS_SEARCH, VIEW_OPEN_DOCS_VIEW];
+pub(crate) const BOOTSTRAP_CALLS: &[OperationId] = &[DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW];
 
 /// Seed `context` with the bootstrap turn: one program that opens the
 /// [bootstrap calls](BOOTSTRAP_CALLS)' documentation, then those views.
@@ -126,11 +126,11 @@ pub(crate) fn seed_bootstrap(context: &mut ContextModel, docs: &DocsRuntime) -> 
 /// The **fully-qualified name**, which is the key the catalogue advertises, the key search files a
 /// hit under, and the only spelling that two modules each offering a `close` could not both claim.
 ///
-/// Resolved by the **operation** each entry names rather than by the grouping it was filed under,
-/// because gg's `(object, key)` pair is its own identity and an arm's surface carries neither half
-/// of it. A call this arm does not catalogue yields nothing and is skipped: gg cannot open a view of
-/// a name that is in no catalogue, and guessing one would seed the model a key that resolves to
-/// nothing.
+/// Resolved by the **operation** each entry names rather than by the spelling an arm files it
+/// under, because the [operation id](OperationId) is gg's own identity for a call and a spelling is
+/// one of eleven. A call this arm does not catalogue yields nothing and is skipped: gg cannot open a
+/// view of a name that is in no catalogue, and guessing one would seed the model a key that resolves
+/// to nothing.
 fn bootstrap_keys(docs: &DocsRuntime) -> Vec<String> {
     let functions = catalogue_functions(docs.language());
     BOOTSTRAP_CALLS
@@ -141,9 +141,7 @@ fn bootstrap_keys(docs: &DocsRuntime) -> Vec<String> {
                 .find(|function| {
                     function.alias_of.is_none()
                         && docs.bound(function)
-                        && operation_of(function).is_some_and(|operation| {
-                            operation.call.object == call.object && operation.call.key == call.key
-                        })
+                        && operation_of(function).is_some_and(|operation| operation.id == *call)
                 })
                 .map(|function| function.fqn.to_string())
         })

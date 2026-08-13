@@ -39,16 +39,20 @@ use std::time::Instant;
 use serde_json::{Value, json};
 use wasmtime::component::Component;
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 
 use super::super::typescript;
 use super::compile::{compile_module, compile_program};
 use crate::ending::{Ending, EndingRole};
-use crate::sandbox::fake::{CallLog, FakeToolApi, all_tools, canned_outcome};
+use crate::sandbox::fake::{
+    CallLog, FakeToolApi, all_capabilities, all_operations, all_operations_without, canned_outcome,
+    granted_operations,
+};
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{ProgramError, ProgramErrorKind, SandboxError, SandboxOutcome};
 use crate::sandbox::{
-    CodeModule, PrepareContext, ProgramScope, SandboxLimits, bounded_store, engine, linker, reclaim,
+    CodeModule, PrepareContext, ProgramScope, SandboxLimits, bounded_store, capability_operations,
+    engine, linker, reclaim,
 };
 use crate::tools::ToolOutcome;
 
@@ -81,7 +85,7 @@ fn prepare(source: &str) -> String {
     }
 }
 
-/// Evaluate already-compiled JavaScript through the real membrane, with `enabled`'s gg tools offered,
+/// Evaluate already-compiled JavaScript through the real membrane, granting `operations`,
 /// `modules` bound at `lib.<name>`, and the ending group `ending`'s role produces.
 ///
 /// A near-copy of [`run_program`](crate::sandbox::run_program) with one thing left out, because it
@@ -115,7 +119,7 @@ fn prepare(source: &str) -> String {
 /// really is the only thing left out.
 fn evaluate(
     program: &str,
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     modules: &[CodeModule],
     ending: RunEnding,
     library: bool,
@@ -127,13 +131,14 @@ fn evaluate(
     // Both of these before the store exists, for the reason this function's documentation gives.
     let component = component();
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let operations = granted_operations(operations, library);
     let scope = ProgramScope {
-        enabled,
+        capabilities: &all_capabilities(),
+        operations: &operations,
         modules,
         ending,
-        library,
-        docview_close: false,
     };
+    let granted: Vec<String> = operations.iter().map(ToString::to_string).collect();
     let mut store = bounded_store(
         MembraneState::new(api, purescript(), scope, limits, None),
         limits,
@@ -150,7 +155,7 @@ fn evaluate(
             &mut store,
             program,
             modules,
-            enabled,
+            &granted,
             ending.into(),
             library,
         )
@@ -163,17 +168,24 @@ fn evaluate(
 /// already been through, or a line of JavaScript standing in for one.
 fn evaluate_js(
     program: &str,
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     modules: &[CodeModule],
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    evaluate(program, enabled, modules, RunEnding::None, false, responder)
+    evaluate(
+        program,
+        operations,
+        modules,
+        RunEnding::None,
+        false,
+        responder,
+    )
 }
 
 /// Compile and run one PureScript program, with everything about the run said explicitly.
 fn run_as(
     source: &str,
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     modules: &[CodeModule],
     ending: RunEnding,
     library: bool,
@@ -181,7 +193,7 @@ fn run_as(
 ) -> (SandboxOutcome, CallLog) {
     evaluate(
         &prepare(source),
-        enabled,
+        operations,
         modules,
         ending,
         library,
@@ -192,11 +204,18 @@ fn run_as(
 /// Compile and run one PureScript program with `enabled`'s tools offered and no ending group.
 fn run_with(
     source: &str,
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     modules: &[CodeModule],
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    run_as(source, enabled, modules, RunEnding::None, false, responder)
+    run_as(
+        source,
+        operations,
+        modules,
+        RunEnding::None,
+        false,
+        responder,
+    )
 }
 
 /// Compile and run one PureScript program with no gg tool offered — the shape most cases here want.
@@ -896,7 +915,12 @@ fn every_tool_crosses_the_membrane_from_its_purescript_spelling() {
         .iter()
         .map(|crossing| crossing.statement)
         .collect();
-    let (outcome, log) = run_with(&program_of(&statements), &all_tools(), &[], canned_outcome);
+    let (outcome, log) = run_with(
+        &program_of(&statements),
+        &all_operations(),
+        &[],
+        canned_outcome,
+    );
     assert!(
         matches!(&outcome.result, Ok(result) if result.error.is_none()),
         "the program did not run cleanly: {:?}",
@@ -955,13 +979,13 @@ fn a_convenience_function_reaches_the_operation_it_is_an_alias_of() {
     // Both of these before the store exists, for the reason [`evaluate`] gives.
     let component = component();
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
-    let enabled = all_tools();
+    let operations = all_operations();
+    let granted: Vec<String> = operations.iter().map(ToString::to_string).collect();
     let scope = ProgramScope {
-        enabled: &enabled,
+        capabilities: &all_capabilities(),
+        operations: &operations,
         modules: &[],
         ending: RunEnding::None,
-        library: true,
-        docview_close: false,
     };
     let mut store = bounded_store(
         MembraneState::new(api, purescript(), scope, limits, None),
@@ -1001,7 +1025,7 @@ fn a_convenience_function_reaches_the_operation_it_is_an_alias_of() {
             &mut store,
             &program,
             &[],
-            &enabled,
+            &granted,
             RunEnding::None.into(),
             true,
         )
@@ -1072,7 +1096,7 @@ fn the_views_docs_program_library_helper_and_endings_modules_are_reached_in_pure
             "import Effect (Effect)\n",
             "import Effect (Effect)\nimport Effect.Class.Console as Console\n",
         ),
-        &all_tools(),
+        &all_operations(),
         &[],
         RunEnding::Role(EndingRole::Standard),
         false,
@@ -1191,12 +1215,15 @@ fn the_views_docs_program_library_helper_and_endings_modules_are_reached_in_pure
     let api = FakeToolApi::new(&log);
     let component = component();
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    // Searching is bound to every program; closing is bought, so this store grants the capability
+    // that buys it and the calls that capability offers.
+    let capabilities = vec![CAPABILITY_DOCVIEW_CLOSE.to_string()];
+    let operations = capability_operations([CAPABILITY_DOCVIEW_CLOSE]);
     let scope = ProgramScope {
-        enabled: &[],
+        capabilities: &capabilities,
+        operations: &operations,
         modules: &[],
         ending: RunEnding::None,
-        library: false,
-        docview_close: true,
     };
     let mut store = bounded_store(
         MembraneState::new(api, purescript(), scope, limits, None),
@@ -1256,7 +1283,7 @@ fn the_views_docs_program_library_helper_and_endings_modules_are_reached_in_pure
             "import Effect (Effect)\nimport Data.Either (Either(..))\n\
              import Effect.Class.Console as Console\n",
         ),
-        &all_tools(),
+        &all_operations_without(CAPABILITY_DOCVIEW_CLOSE),
         &[],
         canned_outcome,
     );
@@ -1265,7 +1292,7 @@ fn the_views_docs_program_library_helper_and_endings_modules_are_reached_in_pure
 
 #[test]
 fn a_capability_this_run_withheld_is_refused_as_unavailable() {
-    // The SDK exposes the whole surface — it is compiled once and a run's enabled set is decided per
+    // The SDK exposes the whole surface — it is compiled once and a run's operations set is decided per
     // run — so what stops a withheld capability from being reachable is a refusal rather than a
     // missing name. It carries the code the HOST refuses an out-of-set call with, because gg
     // classifies a turn's error from the code: a capability nobody granted must not be recorded as a
@@ -1302,7 +1329,7 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
             "import Effect (Effect)\nimport Data.Either (Either(..))\n\
              import Effect.Class.Console as Console\n",
         ),
-        &all_tools(),
+        &all_operations(),
         &[],
         |_name: &str, _args: &Value| {
             ToolOutcome::failed(

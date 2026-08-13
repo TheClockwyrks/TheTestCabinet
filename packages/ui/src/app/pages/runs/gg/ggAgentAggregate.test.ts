@@ -90,15 +90,11 @@ function turn(agentId: string): HarnessEvent {
 // One model-facing call, as a responses-as-code program's turn streams it. The opening half
 // is what a count reads: it is emitted before the call runs, so a program stopped mid-call
 // still shows the call it was making.
-function apiCall(agentId: string, module: string, fn: string): HarnessEvent {
-  return gg(agentId, {
-    type: "api_call",
-    object: module,
-    function: fn,
-    // gg's own identity for what was called — the key the count is kept under, and the one
-    // string that would be the same had the program been written in another language.
-    operation: `${module}.${fn}`,
-  } as GgTelemetryKind);
+function apiCall(agentId: string, operation: string): HarnessEvent {
+  // gg's own identity for what was called is the whole of what the wire carries — the key
+  // the count is kept under, and the one string that would be the same had the program
+  // been written in another language.
+  return gg(agentId, { type: "api_call", operation } as GgTelemetryKind);
 }
 
 function status(
@@ -166,14 +162,12 @@ function offered(
   agentId: string,
   tools: string[],
   apis?: GgAgentApi[],
-  withheld?: string[],
 ): HarnessEvent {
   return gg(agentId, {
     type: "agent_surface",
     executionMode: apis ? "responses_as_code" : "tool_calling",
     tools,
     ...(apis ? { apis } : {}),
-    ...(withheld?.length ? { withheld } : {}),
   } as GgTelemetryKind);
 }
 
@@ -271,7 +265,7 @@ describe("deriveGgAgentSummaries", () => {
   });
 
   it("keeps a declared profile the run never instantiated", () => {
-    // The point of an ablation arm that never ran is that you can see it did not.
+    // The point of a declared profile that never ran is that you can see it did not.
     const summaries = summarize(
       [spawn("root", "Root", "vendor/big"), turn("root")],
       set(
@@ -533,7 +527,7 @@ describe("deriveGgAgentSummaries", () => {
   });
 
   it("folds an isolated profile's memories into one store per instance", () => {
-    // The ablation's other arm, and the control for the test above: byte-for-byte the same
+    // The other configuration, and the control for the test above: byte-for-byte the same
     // run except that the two instances report two ids. Nothing here belongs to the agent,
     // so `agentScoped` must be null — a surface that rendered either store as "the
     // reviewer's memories" would be lying about the other instance.
@@ -707,7 +701,6 @@ describe("deriveGgAgentSummaries", () => {
       { name: "approve", key: "approve", offeredBy: 2 },
     ]);
     expect(surface.apis).toEqual([]);
-    expect(surface.withheld).toEqual([]);
 
     // The whole point of carrying both: `approve` was offered to both reviewers and called
     // by neither, which the observed breakdown alone cannot say.
@@ -719,30 +712,6 @@ describe("deriveGgAgentSummaries", () => {
         .find((s) => s.name === "Root")!
         .surface!.tools.map((t) => t.name),
     ).toEqual(["spawn_agent", "finish"]);
-  });
-
-  it("carries the ablation gg resolved, never the one the configuration asked for", () => {
-    // The configuration names two ablations; only one of them is a tool gg has. gg reports
-    // just that one, because the other withheld nothing — and the union has to be gg's, so
-    // that no panel above it can mark an inert ablation as applied.
-    const summaries = summarize(
-      [
-        spawn("root", "Root", "vendor/big"),
-        spawn("r1", "reviewer", "vendor/small", "root"),
-        offered("r1", ["read_file"], undefined, ["write_file"]),
-        spawn("r2", "reviewer", "vendor/small", "root"),
-        offered("r2", ["read_file"], undefined, ["write_file"]),
-      ],
-      set(
-        profile("Root", "vendor/big", ["subagents"]),
-        profile("reviewer", "vendor/small", []),
-      ),
-    );
-
-    // A set, not a tally: every instance of a profile is ablated identically, so the two
-    // reports of the same name are one entry rather than a count of two.
-    expect(summaries.find((s) => s.name === "reviewer")!.surface!.withheld) //
-      .toEqual(["write_file"]);
   });
 
   it("unions a responses-as-code profile's modules, keeping each function's own operation", () => {
@@ -816,10 +785,10 @@ describe("deriveGgAgentSummaries", () => {
       [
         spawn("root", "Root", "vendor/big"),
         spawn("w1", "worker", "vendor/small", "root"),
-        apiCall("w1", "views", "open_file"),
-        apiCall("w1", "views", "current"),
+        apiCall("w1", "views.open_file"),
+        apiCall("w1", "views.current"),
         spawn("w2", "worker", "vendor/small", "root"),
-        apiCall("w2", "views", "open_file"),
+        apiCall("w2", "views.open_file"),
       ],
       set(
         profile("Root", "vendor/big", ["subagents"]),

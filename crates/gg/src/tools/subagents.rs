@@ -8,14 +8,14 @@
 //! [agent-managed-context](crate::tools::context) tools —
 //! the [turn loop](crate::agent) **intercepts** these calls and performs the real work against the
 //! orchestrator; the [`Tool`] implementations here exist only to **declare** the tools to the
-//! model (their name, description, and schema, so toolset ablation and the system-prompt listing
+//! model (their name, description, and schema, so capability gating and the system-prompt listing
 //! work uniformly). Their [`invoke`](Tool::invoke) is a defensive fallback that never runs in a
 //! correctly wired session (whenever these tools are offered, the loop holds the subagent runtime
 //! and handles them before dispatch).
 //!
 //! The tools are contributed to the registry only when the
 //! [`subagents`](test_cabinet_core::gg::CAPABILITY_SUBAGENTS) capability is enabled; when it is
-//! off, none are offered (ablation), and a run stays single-agent.
+//! off, none are offered, and a run stays single-agent.
 
 use async_trait::async_trait;
 use serde_json::{Value, json};

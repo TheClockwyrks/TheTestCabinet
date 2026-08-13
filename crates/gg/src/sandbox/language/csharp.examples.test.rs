@@ -59,7 +59,8 @@ use crate::prompts::{
     render_code_nothing_shown_for, render_system_for,
 };
 use crate::sandbox::{
-    HARNESS_FINISH, PrepareContext, ProgramLanguage, REVIEW_APPROVE, REVIEW_REQUEST_CHANGES, spell,
+    PrepareContext, ProgramLanguage, SESSION_APPROVE, SESSION_FINISH, SESSION_REQUEST_CHANGES,
+    spell,
 };
 
 /// This arm, resolved from the registry.
@@ -141,9 +142,9 @@ fn everything_on() -> SystemContext {
         ending: EndingView {
             standard: true,
             review: true,
-            finish: spell(csharp(), HARNESS_FINISH),
-            approve: spell(csharp(), REVIEW_APPROVE),
-            request_changes: spell(csharp(), REVIEW_REQUEST_CHANGES),
+            finish: spell(csharp(), SESSION_FINISH),
+            approve: spell(csharp(), SESSION_APPROVE),
+            request_changes: spell(csharp(), SESSION_REQUEST_CHANGES),
         },
     }
 }

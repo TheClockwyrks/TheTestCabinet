@@ -513,8 +513,9 @@ fn the_capability_namespace_is_total_over_the_catalog() {
 ///
 /// The root-only reading of a capability set is a defect this codebase has already been
 /// bitten by once — enabling `replay` on the one subagent under suspicion did nothing at
-/// all, which is why [`GgCapabilitySet::any_agent_enabled`] exists. `cap.*` is the field an
-/// ablation slices on and `avg(cap.x)` is meant to be an enablement *rate*, so a run that
+/// all, which is why [`GgCapabilitySet::any_agent_enabled`] exists. `cap.*` is the field a
+/// comparison of two configurations slices on and `avg(cap.x)` is meant to be an enablement
+/// *rate*, so a run that
 /// configured a capability per-agent must not be counted as a run that did without it.
 #[test]
 fn the_capability_namespace_reads_every_agent() {

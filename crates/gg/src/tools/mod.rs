@@ -5,9 +5,19 @@
 //! implementation* backs each — so a capability is, in practice, "offer this tool"
 //! and an A/B is "offer a different implementation of it". The set of tools
 //! exposed to the model is derived from the run's
-//! [`GgAgentConfig`]: a capability that
-//! is off contributes no tools and no prompt text (the basis for
-//! [ablation](test_cabinet_core::gg)).
+//! [`GgAgentConfig`]: a capability that is off contributes no tools and no prompt text, so
+//! comparing two configurations is comparing the runs of two capability sets.
+//!
+//! # This is one of gg's two model-facing surfaces, and it is the whole of this one
+//!
+//! An agent answers a turn either by emitting a tool call or by writing a
+//! [program](crate::sandbox) — its
+//! [execution mode](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) — and it has exactly one
+//! of the two, never both. Everything in this module is the first of them. A program never reaches
+//! a [`Tool`]: it calls a typed API function, which calls the same *implementation* a tool's
+//! `invoke` calls (`ReadFileTool::read` and friends), so the two surfaces share their final
+//! behaviour and share no vocabulary at all. A tool name is not an operation id, an operation id is
+//! not a tool name, and neither list decides anything about the other.
 //!
 //! # The toolset abstraction
 //!
@@ -27,9 +37,11 @@
 //! # Capability gating
 //!
 //! [`ToolRegistry::from_capabilities`] assembles the offered toolset from *only* the
-//! enabled capabilities of a [`GgAgentConfig`]: a disabled (or absent) capability
-//! contributes no tools, so the model is never shown their schemas and never sees
-//! them in a prompt. This is the concrete basis for toolset ablation. The Phase 0
+//! enabled capabilities of a [`GgAgentConfig`], narrowed to the agent's own
+//! [tool allowlist](GgAgentConfig::tools): a disabled (or absent) capability
+//! contributes no tools, and a tool the allowlist does not name is not offered even when its
+//! capability is on — so the model is never shown their schemas and never sees
+//! them in a prompt. The Phase 0
 //! toolset is what the core loop needs to build a test case:
 //! [`shell`](test_cabinet_core::gg::CAPABILITY_SHELL) (run commands in the run
 //! container) plus one capability per filesystem primitive —
@@ -57,6 +69,7 @@ mod subagents;
 mod tasks;
 mod transitions;
 
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -65,9 +78,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_EDIT_FILE, CAPABILITY_EXEC,
-    CAPABILITY_FORK, CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
-    CAPABILITY_READ_FILE, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS,
-    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WRITE_FILE, GgAgentConfig, GgToolFailure,
+    CAPABILITY_FORK, CAPABILITY_FSM, CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES,
+    CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE, CAPABILITY_RESPONSES_AS_CODE,
+    CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS,
+    CAPABILITY_WRITE_FILE, GgAgentConfig, GgToolFailure,
 };
 
 use crate::board::IssuePolicy;
@@ -78,13 +92,14 @@ use crate::modules::CapabilityModules;
 use crate::vision::VisionSupport;
 
 pub use board::{
-    CREATE_ISSUE_TOOL, CreateEpicTool, CreateIssueTool, RemoveEpicTool, RemoveIssueTool,
-    SetIssueBlockedByTool, UpdateIssueTool, WAIT_FOR_ISSUE_TOOL, is_board_tool,
+    CREATE_EPIC_TOOL, CREATE_ISSUE_TOOL, CreateEpicTool, CreateIssueTool, REMOVE_EPIC_TOOL,
+    REMOVE_ISSUE_TOOL, RemoveEpicTool, RemoveIssueTool, SET_ISSUE_BLOCKED_BY_TOOL,
+    SetIssueBlockedByTool, UPDATE_ISSUE_TOOL, UpdateIssueTool, WAIT_FOR_ISSUE_TOOL, is_board_tool,
 };
 pub use context::{
     ARCHIVE_THREAD_TOOL, ArchiveThreadTool, COMPACT_TOOL, CompactTool, EVICT_FILE_VIEW_TOOL,
-    EvictFileViewTool, SEARCH_ARCHIVE_TOOL, SearchArchiveTool, is_context_reclaim_tool,
-    parse_archive_ranges, parse_compact_request, parse_evict_path,
+    EvictFileViewTool, SEARCH_ARCHIVE_TOOL, SearchArchiveTool, parse_archive_ranges,
+    parse_compact_request, parse_evict_path,
 };
 // Every payload shape, including the ones the LOOP produces rather than a tool (a context reclaim
 // and the four delegation results). They are declared beside the outcome they ride on, because that
@@ -110,8 +125,9 @@ pub use filesystem::{
 };
 pub use memories::{
     CREATE_MEMORY_TOOL, CreateMemoryTool, DELETE_MEMORY_TOOL, DeleteMemoryTool, EDIT_MEMORY_TOOL,
-    EditMemoryTool, READ_MEMORY_TOOL, ReadMemoryTool, SearchMemoriesTool, UPDATE_MEMORY_TOOL,
-    UpdateMemoryTool, WRITE_MEMORY_TOOL, WriteMemoryTool, is_memory_tool, read_only_refusal,
+    EditMemoryTool, READ_MEMORY_TOOL, ReadMemoryTool, SEARCH_MEMORIES_TOOL, SearchMemoriesTool,
+    UPDATE_MEMORY_TOOL, UpdateMemoryTool, WRITE_MEMORY_TOOL, WriteMemoryTool, is_memory_tool,
+    read_only_refusal,
 };
 pub use shell::{OffloadPolicy, SHELL_TOOL};
 pub(crate) use shell::{
@@ -128,15 +144,25 @@ pub use tasks::{
 };
 pub use transitions::{EXEC_TOOL, FORK_TOOL, TRANSITION_STATE_TOOL};
 
-/// Every tool name gg can offer, across **all** capabilities — the canonical vocabulary a per-tool
-/// [override](GgAgentConfig::disabled_tools) is validated against.
+/// Every tool name gg can offer, across **all** capabilities — the canonical vocabulary an agent's
+/// [tool allowlist](GgAgentConfig::tools) is validated against.
 ///
-/// A name in a run's `disabled_tools` that is **not** in this set is unknown (a typo, or a tool that
-/// no longer exists) and is surfaced as a startup warning by [`unknown_disabled_tools`]; a name that
-/// *is* here but that the run's enabled capabilities do not offer simply withholds nothing (it is
-/// not flagged, so a sweep can name a tool only some arms offer). The list is the single source of
-/// truth for the vocabulary; a test asserts a maximal registry offers exactly these, so a newly
-/// added or renamed tool cannot drift out of sync.
+/// A name in a run's `tools` that is **not** in this set is unknown — a typo, a tool that no longer
+/// exists, or an [operation id](crate::sandbox::OperationId) written where a tool name belongs —
+/// and is reported at launch as an error rather than silently granting nothing. A name that *is*
+/// here but that the run's enabled capabilities do not offer grants nothing and is not flagged, so
+/// one shared configuration document can name a tool only some of the configurations it describes
+/// enable.
+///
+/// This list is the single source of truth for the vocabulary, and it is deliberately **not** the
+/// [operations table](crate::sandbox::Operation)'s: the two surfaces are scoped, so gg
+/// holds no invariant relating them and nothing here is derived from there. A test asserts a maximal
+/// registry offers exactly these, so a newly added or renamed tool cannot drift out of sync.
+///
+/// The order is authored rather than incidental — the [reference](crate::reference) renders the
+/// toolset in it — which is why it is a list here and a
+/// [binding column](tool_capability) beside it, rather than one table of pairs whose order would be
+/// decided by which capability happened to come first.
 pub const ALL_TOOL_NAMES: &[&str] = &[
     SHELL_TOOL,
     READ_FILE_TOOL,
@@ -191,17 +217,83 @@ pub struct AgentFacts<'a> {
     pub fsm: Option<&'a FsmPosition>,
 }
 
-/// The names in a capability set's per-tool [overrides](GgAgentConfig::disabled_tools) that are
-/// **unknown** — not a tool gg can offer at all (a typo, or a removed tool), validated against
-/// [`ALL_TOOL_NAMES`].
+/// **The gg capability that offers the tool named `name`**, or `None` for a name no capability
+/// offers — which today means a name that is not in [`ALL_TOOL_NAMES`] at all.
 ///
-/// The loop reports these as a startup **warning** rather than failing the run: a misconfigured
-/// override should be loud but must not abort a study, and a name that is a real tool yet is not
-/// offered by *this* run's enabled capabilities (so it withholds nothing) is deliberately *not*
-/// flagged — a preset can list a tool that only some arms of a sweep offer.
-pub fn unknown_disabled_tools(capabilities: &GgAgentConfig) -> Vec<String> {
+/// This is the tool vocabulary's binding column, and the exact counterpart of
+/// [`Binding::Capability`](crate::sandbox::Binding) on the operations table. It is written as a
+/// match over the tool-name constants rather than derived from [`ToolRegistry::from_run`], because
+/// that assembly also consults an agent's modules, its roster and its position in a machine — facts
+/// about one *instance*, where this is a fact about the vocabulary.
+///
+/// `transition_state` is filed under [`fsm`](CAPABILITY_FSM) even though the registry offers it from
+/// the agent's [position in a machine](AgentFacts::fsm) rather than from a switch on its own
+/// profile: the machine is what buys the call, and the position is only which of its targets are
+/// legal.
+pub fn tool_capability(name: &str) -> Option<&'static str> {
+    Some(match name {
+        SHELL_TOOL => CAPABILITY_SHELL,
+        READ_FILE_TOOL => CAPABILITY_READ_FILE,
+        "write_file" => CAPABILITY_WRITE_FILE,
+        "edit_file" => CAPABILITY_EDIT_FILE,
+        "list_dir" => CAPABILITY_LIST_DIR,
+        READ_SKILL_TOOL => CAPABILITY_SKILLS,
+        WRITE_MEMORY_TOOL | UPDATE_MEMORY_TOOL | CREATE_MEMORY_TOOL | READ_MEMORY_TOOL
+        | EDIT_MEMORY_TOOL | SEARCH_MEMORIES_TOOL | DELETE_MEMORY_TOOL => CAPABILITY_MEMORIES,
+        "add_task" | "update_task" | "set_blocked_by" | "complete_task" | "remove_task" => {
+            CAPABILITY_TASKS
+        }
+        CREATE_EPIC_TOOL
+        | CREATE_ISSUE_TOOL
+        | UPDATE_ISSUE_TOOL
+        | SET_ISSUE_BLOCKED_BY_TOOL
+        | REMOVE_EPIC_TOOL
+        | REMOVE_ISSUE_TOOL
+        | WAIT_FOR_ISSUE_TOOL => CAPABILITY_PROJECT_MANAGEMENT,
+        EVICT_FILE_VIEW_TOOL | ARCHIVE_THREAD_TOOL | SEARCH_ARCHIVE_TOOL => {
+            CAPABILITY_AGENT_MANAGED_CONTEXT
+        }
+        COMPACT_TOOL => CAPABILITY_COMPACTION,
+        SPAWN_SUBAGENT_TOOL | WAIT_FOR_SUBAGENTS_TOOL | SEND_MESSAGE_TOOL => CAPABILITY_SUBAGENTS,
+        TRANSITION_STATE_TOOL => CAPABILITY_FSM,
+        EXEC_TOOL => CAPABILITY_EXEC,
+        FORK_TOOL => CAPABILITY_FORK,
+        _ => return None,
+    })
+}
+
+/// **Every tool name the gg capabilities in `capabilities` offer** — the whole of what a
+/// configuration *could* grant with those capabilities on, in [`ALL_TOOL_NAMES`] order.
+///
+/// The tool surface's half of
+/// [`capability_operations`](crate::sandbox::capability_operations), and it answers the same
+/// question about the same kind of allowlist: not *what does this agent hold* — that is
+/// [`GgAgentConfig::tools`], and an empty one holds nothing — but *which names are there to
+/// choose from*. The console's agent editor seeds a capability's tools from this the moment the
+/// capability is switched on, which is what makes an allowlist feel like a default without there
+/// being one.
+pub fn capability_tools<'a>(capabilities: impl IntoIterator<Item = &'a str>) -> Vec<&'static str> {
+    let held: BTreeSet<&str> = capabilities.into_iter().collect();
+    ALL_TOOL_NAMES
+        .iter()
+        .copied()
+        .filter(|name| tool_capability(name).is_some_and(|id| held.contains(id)))
+        .collect()
+}
+
+/// The names in an agent's [tool allowlist](GgAgentConfig::tools) that grant **nothing** — not a
+/// tool gg can offer at all, validated against [`ALL_TOOL_NAMES`].
+///
+/// The loop reports each of these at launch as an **error**, because an allowlist that quietly
+/// ignores what it cannot read is an allowlist nobody can tell is wrong: an entry that grants
+/// nothing looks exactly like a deliberate narrowing, so nothing but a launch-time complaint can
+/// tell an operator that the call they meant to hand over never arrived. A name that *is* a gg tool
+/// yet is not offered by this configuration's enabled capabilities is deliberately not flagged — one
+/// shared configuration document may name a tool only some of the configurations it describes
+/// enable.
+pub fn ungranted_tools(capabilities: &GgAgentConfig) -> Vec<String> {
     capabilities
-        .disabled_tools
+        .tools
         .iter()
         .filter(|name| !ALL_TOOL_NAMES.contains(&name.as_str()))
         .cloned()
@@ -525,12 +617,13 @@ pub trait Tool: Send + Sync {
 }
 
 /// The toolset offered to the agent for a run, assembled from the enabled
-/// capabilities in a [`GgAgentConfig`].
+/// capabilities in a [`GgAgentConfig`] and narrowed to its [tool allowlist](GgAgentConfig::tools).
 ///
-/// The registry is the concrete basis for toolset ablation: a capability that is off
-/// contributes no tools, so the model is offered no schema and shown no prompt text
-/// for it. Dispatch routes a [`ToolCall`] to the tool whose [`name`](Tool::name)
-/// matches and answers an unknown name with an error outcome.
+/// The registry is where both gates land: a capability that is off contributes no tools, and a tool
+/// the allowlist does not name is dropped from what the capability did contribute — so in either
+/// case the model is offered no schema and shown no prompt text for it. Dispatch routes a
+/// [`ToolCall`] to the tool whose [`name`](Tool::name) matches and answers an unknown name with an
+/// error outcome.
 pub struct ToolRegistry {
     tools: Vec<Box<dyn Tool>>,
 }
@@ -638,13 +731,15 @@ impl ToolRegistry {
         // of the set is disjoint, so a model is never shown two ways to write the same memory.
         //
         // A **read-only** holder (a [read-only](crate::memories::MemoryScope::ReadOnly) inherited
-        // handle onto another agent's instance) is offered the read calls alone. Gating here, on
-        // the module's access rather than on a list of tool names, is what makes the restriction
-        // total in one move: the responses-as-code scope is derived from this registry, and so is
-        // the API section of the system prompt, so a read-only agent is never *shown* a write call
-        // it would then have to be refused for using. Under the scratchpad — which has no read
-        // call, its memories being the pinned block itself — that leaves no memory tools at all,
-        // which is coherent: such an agent reads its memories by having them in its window.
+        // handle onto another agent's instance) is offered the read calls alone. Gating on the
+        // module's access rather than on a list of tool names is what makes the restriction total
+        // for this surface: a tool the registry never pushed is in no request and is dispatchable by
+        // nothing, so a read-only agent is never *shown* a write it would then have to be refused
+        // for using. The other surface states the same conditions for itself — see
+        // `sandbox::granted_operations`, which reads this run's modules and strategies directly
+        // rather than through the tool vocabulary. Under the scratchpad — which has no read call,
+        // its memories being the pinned block itself — that leaves no memory tools at all, which is
+        // coherent: such an agent reads its memories by having them in its window.
         if capabilities.is_enabled(CAPABILITY_MEMORIES) && modules.memories().offers_memories() {
             let memories = modules.memories().binding();
             let strategy = memories.lock().strategy();
@@ -789,8 +884,8 @@ impl ToolRegistry {
         // The two succession calls: becoming another agent ([exec](CAPABILITY_EXEC)) and running a
         // copy of yourself ([fork](CAPABILITY_FORK)). Both drive the same machinery a machine
         // transition uses, with the model choosing when rather than a declared table — but each is
-        // its own capability, so a study can offer one without the other rather than reaching for a
-        // per-tool ablation inside a shared one.
+        // its own capability, so a configuration can offer one without the other by switching a
+        // capability rather than by narrowing an allowlist inside a shared one.
         //
         // `exec` needs somewhere to go — the roster it is validated against is the same one
         // spawning uses — and is withheld from an agent standing in a machine state, where the
@@ -807,17 +902,32 @@ impl ToolRegistry {
             tools.push(Box::new(transitions::ForkTool));
         }
 
-        // Apply the per-tool ablation overrides last: an individually
-        // [withheld](GgAgentConfig::disabled_tools) tool is dropped from the offered set even
-        // though the capability that contributes it is on, so it is never shown to the model (no
-        // schema, absent from [`definitions`](Self::definitions)) and never dispatchable (absent
-        // from [`dispatch`](Self::dispatch)). This is the finest-grained toolset ablation lever —
-        // one notch below toggling a whole capability. Names that match no offered tool are inert
-        // here (they withhold nothing); the loop separately warns about ones that are wholly
-        // [unknown](unknown_disabled_tools).
-        if !capabilities.disabled_tools.is_empty() {
-            tools.retain(|tool| !capabilities.is_tool_disabled(tool.name()));
-        }
+        // Narrow to the agent's own [allowlist](GgAgentConfig::tools) last. Everything above says
+        // which tools *exist* to be handed to this agent; this says which of them it was handed. A
+        // tool its allowlist does not name is never shown to the model (no schema, absent from
+        // [`definitions`](Self::definitions)) and never dispatchable (absent from
+        // [`dispatch`](Self::dispatch)), whatever capability contributed it.
+        //
+        // The list is the grant, so an absent or empty one offers **nothing** and there is no
+        // fallback that would mean "everything": a blocklist cannot express the narrowing an
+        // operator most often wants — *this agent gets these three calls* — without enumerating
+        // every tool it does not get and re-enumerating them each time gg grows one. What looks
+        // like a default in the console is its editor writing a capability's whole set into the
+        // list when that capability is switched on. A name that answers to no gg tool grants
+        // nothing here and is reported at launch by [`ungranted_tools`].
+        //
+        // What it narrows is what **this agent's own profile** bought. A tool offered on other
+        // terms is left alone, and there is exactly one: `transition_state` is bought by the
+        // [machine](crate::fsm) a *shell* profile declares and offered from where this instance
+        // stands in it, so the capability that buys it never appears on this agent's own
+        // configuration and no allowlist of this agent's could name it — an editor seeding from
+        // its capabilities would seed nothing, and the agent would be left standing in a machine
+        // it cannot move through. It is offered on the terms that bought it, exactly as the ending
+        // calls the loop appends outside this registry are.
+        tools.retain(|tool| match tool_capability(tool.name()) {
+            Some(id) => !capabilities.is_enabled(id) || capabilities.grants_tool(tool.name()),
+            None => true,
+        });
 
         Self { tools }
     }
@@ -828,10 +938,10 @@ impl ToolRegistry {
     }
 
     /// The names of the offered tools, in registration order — the run's **effective toolset** after
-    /// capability gating and per-tool [overrides](GgAgentConfig::disabled_tools).
+    /// capability gating and the [allowlist](GgAgentConfig::tools).
     ///
     /// Recorded on the run's [session summary](test_cabinet_core::gg::GgSessionSummary::effective_tools)
-    /// so the exact set of tools a run offered is a durable, slice-by ablation variable — the ground
+    /// so the exact set of tools a run offered is a durable, sliceable fact — the ground
     /// truth "which tools actually mattered?" queries read, rather than re-deriving the toolset from
     /// the capability set.
     pub fn tool_names(&self) -> Vec<String> {
@@ -841,9 +951,10 @@ impl ToolRegistry {
             .collect()
     }
 
-    /// Whether the tool named `name` is offered this run — after capability gating and per-tool
-    /// [overrides](GgAgentConfig::disabled_tools). The [system prompt](crate::prompts) asks this
-    /// before describing a specific tool's configuration, so a withheld tool is never explained.
+    /// Whether the tool named `name` is offered this run — after capability gating and the
+    /// [allowlist](GgAgentConfig::tools). The [system prompt](crate::prompts) asks this
+    /// before describing a specific tool's configuration, so a tool this agent was not given is
+    /// never explained.
     pub fn offers(&self, name: &str) -> bool {
         self.tools.iter().any(|tool| tool.name() == name)
     }
@@ -967,6 +1078,85 @@ fn required_str_array(args: &Value, field: &str) -> Result<Vec<String>, Argument
 /// one of the three). The same single class as every helper's, by construction.
 fn invalid_argument(message: impl Into<String>) -> ToolOutcome {
     ArgumentError(message.into()).into()
+}
+
+/// **Switch `capability` on for `profile` and grant every call it offers**, on both surfaces — the
+/// shape the console's agent editor writes when an operator turns a capability on, and therefore the
+/// shape a fixture wants whenever what it is testing is the capability rather than the allowlist.
+///
+/// A capability the profile already declares is left as it stands, params and all; only the
+/// allowlists grow. Use [`grant_configured`] to switch one on *with* a configuration of its own.
+///
+/// Shared test support, and deliberately one function rather than a stanza in each test file. An
+/// allowlist written out by hand is one that quietly stops covering a call its capability grows, and
+/// a hundred hand-written copies are a hundred places for a fixture to start passing for the wrong
+/// reason — a call absent because the *capability* is off looks exactly like a call absent because
+/// the fixture forgot to name it. The tests that are about an allowlist narrow what this leaves
+/// behind, which reads as the deliberate act it is.
+#[cfg(test)]
+pub(crate) fn grant(profile: &mut GgAgentConfig, capability: &str) {
+    if !profile.is_enabled(capability) {
+        grant_configured(
+            profile,
+            test_cabinet_core::gg::GgCapabilityConfig::enabled(capability),
+        );
+        return;
+    }
+    grant_calls(profile, capability);
+}
+
+/// [`grant`] for a capability that carries a configuration of its own — an implementation, or the
+/// params a policy is read from.
+///
+/// The config **replaces** whatever the profile declared for that capability, because that is what a
+/// caller writing one out means; the calls it offers are granted either way.
+#[cfg(test)]
+pub(crate) fn grant_configured(
+    profile: &mut GgAgentConfig,
+    capability: test_cabinet_core::gg::GgCapabilityConfig,
+) {
+    let id = capability.id.clone();
+    profile.capabilities.retain(|declared| declared.id != id);
+    profile.capabilities.push(capability);
+    grant_calls(profile, &id);
+}
+
+/// **Reset `profile`'s two allowlists to everything its enabled capabilities offer.**
+///
+/// What a fixture that assigns [`capabilities`](GgAgentConfig::capabilities) wholesale needs: the
+/// allowlists it inherited from [`GgAgentConfig::root`] name the *default* capabilities' calls, so a
+/// profile rebuilt around exec and fork would be granted a filesystem it no longer has and none of
+/// what it now does. [`grant`] is for adding one capability to a profile that keeps its own.
+#[cfg(test)]
+pub(crate) fn grant_all(profile: &mut GgAgentConfig) {
+    profile.tools.clear();
+    profile.operations.clear();
+    let enabled: Vec<String> = profile
+        .capabilities
+        .iter()
+        .filter(|capability| capability.enabled)
+        .map(|capability| capability.id.clone())
+        .collect();
+    for id in enabled {
+        grant_calls(profile, &id);
+    }
+}
+
+/// Add every call `capability` offers to `profile`'s two allowlists, each name once.
+#[cfg(test)]
+fn grant_calls(profile: &mut GgAgentConfig, capability: &str) {
+    let tools: Vec<String> = capability_tools([capability])
+        .into_iter()
+        .filter(|name| !profile.grants_tool(name))
+        .map(str::to_string)
+        .collect();
+    profile.tools.extend(tools);
+    let operations: Vec<String> = crate::sandbox::capability_operations([capability])
+        .into_iter()
+        .map(|id| id.to_string())
+        .filter(|id| !profile.grants_operation(id))
+        .collect();
+    profile.operations.extend(operations);
 }
 
 #[cfg(test)]

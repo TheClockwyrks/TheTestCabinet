@@ -877,9 +877,7 @@ fn a_spawner_is_told_its_isolated_memories_may_still_be_shared() {
 
     // A profile that can spawn, in a run where somebody inherits.
     let mut delegating = scratchpad("Lead", MemoryScope::Isolated);
-    delegating
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
+    crate::tools::grant(&mut delegating, CAPABILITY_SUBAGENTS);
     let lead = MemoriesRuntime::resolve(&delegating, &world.ctx_in_run("agent-0", &nothing, true));
     assert!(
         lead.is_linked(),

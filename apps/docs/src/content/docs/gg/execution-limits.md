@@ -307,9 +307,11 @@ building and driving an implementation the run was told to stop writing. See the
 5. The session tail runs unchanged: slot rollups, the closing log, the
    [session record](/gg/session-record/), the session summary, the session-ended
    event.
-6. The process exits 0. Of the sessions that ran, only one with a refused
-   credential exits non-zero, so a limit-stopped run is collected, validated and
-   scored on whatever artifact it produced.
+6. The process exits 0. Of the sessions that ran, only two exit non-zero: one
+   whose credential was refused (`auth_error`) and one stopped by a gg defect
+   (`internal_error`). Both are reported as harness errors rather than scored,
+   so a limit-stopped run is collected, validated and scored on whatever
+   artifact it produced.
 7. The workspace is exactly as the last completed turn left it, and gg rolls
    nothing back. A limit-stopped subagent's isolated worktree is discarded
    unmerged: the run's artifact is the main tree, and a subagent cut off mid-task

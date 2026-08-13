@@ -92,8 +92,8 @@ The SDK is `packages/gg-sandbox-purescript/src/Gg/`: one module per capability
 capability and carries the failure types, `attempt`, `toolError`,
 `toolErrorCode` and `lib`. Each module carries an explicit export list.
 `Gg.Internal.Wire` is the only module that names the guest's own scope objects,
-resolving them as free identifiers in the bundle, so a capability the run
-withheld arrives as a `ToolError` carrying `unavailable` from the host. The
+resolving them as free identifiers in the bundle, so a call the agent was not
+granted arrives as a `ToolError` carrying `unavailable` from the host. The
 rules every arm's SDK obeys are on
 [the agent surface](/gg/languages/agent-surface/).
 

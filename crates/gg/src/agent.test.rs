@@ -355,7 +355,7 @@ fn code_set(model_id: &str, params: serde_json::Value) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model_id);
     let mut cap = GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE);
     cap.params = params;
-    set.agents[0].capabilities.push(cap);
+    crate::tools::grant_configured(&mut set.agents[0], cap);
     set
 }
 
@@ -934,7 +934,7 @@ async fn run_reports_launch_failure_when_no_slot_is_bound() {
     let inv = invocation(dir.path(), GgCapabilitySet::default());
 
     let outcome = run(&inv, &emitter).await;
-    assert_eq!(outcome, SessionOutcome::LaunchFailed);
+    assert_eq!(outcome, SessionOutcome::HarnessError);
 
     let events = sink.events();
     // gg announces its capability set on the very first event, so a console watching
@@ -967,7 +967,7 @@ async fn run_reports_launch_failure_when_a_model_has_no_context_window() {
     let mut inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/echo"));
     inv.model_windows.clear();
 
-    assert_eq!(run(&inv, &emitter).await, SessionOutcome::LaunchFailed);
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::HarnessError);
 
     let events = sink.events();
     assert!(
@@ -1609,15 +1609,18 @@ fn system_prompt_names_the_modules_in_code_mode() {
     assert!(!full.contains("openDocsView"), "{full}");
 
     // A run that enables nothing still has the session module (and so its ending), and no workspace
-    // modules.
-    let empty_set = GgAgentConfig {
+    // modules. It is the **profile** that is emptied rather than the registry: a program is offered
+    // no tools at all, so what its module list is derived from is the agent's grant.
+    let nothing = DisabledRuntimes::new().with_profile(GgAgentConfig {
         capabilities: Vec::new(),
+        tools: Vec::new(),
+        operations: Vec::new(),
         ..GgAgentConfig::root()
-    };
-    let empty_registry = ToolRegistry::from_capabilities(&empty_set);
+    });
+    let empty_registry = ToolRegistry::from_capabilities(&nothing.profile);
     let empty = system_prompt(PromptInputs {
         program_language: Some(GgProgramLanguage::TypeScript),
-        ..runtimes.inputs(&empty_registry)
+        ..nothing.inputs(&empty_registry)
     });
     assert!(empty.contains("`gg.session`"), "{empty}");
     assert!(!empty.contains("`gg.files`"), "{empty}");
@@ -2025,9 +2028,7 @@ fn system_prompt_states_whether_images_can_be_seen() {
 #[test]
 fn system_prompt_omits_image_guidance_without_read_file() {
     let mut set = GgCapabilitySet::minimal("mock/x");
-    set.agents[0]
-        .disabled_tools
-        .push(READ_FILE_TOOL.to_string());
+    set.agents[0].tools.retain(|name| name != READ_FILE_TOOL);
     let library = Arc::new(SkillLibrary::empty());
     let registry = ToolRegistry::from_run(
         set.root(),
@@ -2067,10 +2068,7 @@ fn the_board_section_follows_the_agents_own_capability() {
     // The same run, for the profile that *does* own the board: the section is rendered.
     let mut authoring = DisabledRuntimes::new();
     authoring.board = Some(BoardRuntime::new(BoardCaps::default()));
-    authoring
-        .profile
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT));
+    crate::tools::grant(&mut authoring.profile, CAPABILITY_PROJECT_MANAGEMENT);
     let registry = ToolRegistry::from_run(
         &authoring.profile,
         &skills_modules(&library)
@@ -2131,13 +2129,19 @@ struct DisabledRuntimes {
     /// vary custom instructions or the delegation allowlist. Owned here so `PromptInputs` can
     /// borrow it.
     profile: GgAgentConfig,
+    /// The API grant the prompt's module list is rendered from, resolved from
+    /// [`profile`](Self::profile) exactly as the loop resolves it. Owned here for the same reason
+    /// everything else is, and derived rather than written out so a test that changes the profile
+    /// changes the surface with it — see [`with_profile`](Self::with_profile).
+    granted_capabilities: Vec<String>,
+    granted_operations: Vec<crate::sandbox::OperationId>,
     /// The `shell` output policy the prompt describes — inline by default, so these tests render no
     /// shell-output section. Owned here so `PromptInputs` can borrow it.
     shell_offload: OffloadPolicy,
 }
 
 impl DisabledRuntimes {
-    /// Build every runtime in its disabled (ablated-off) form.
+    /// Build every runtime in its disabled form.
     fn new() -> Self {
         Self {
             skills: Some(SkillsRuntime::disabled()),
@@ -2148,8 +2152,33 @@ impl DisabledRuntimes {
             // the model it can see images.
             vision: VisionContext::unknown(),
             profile: GgAgentConfig::root(),
+            granted_capabilities: Vec::new(),
+            granted_operations: Vec::new(),
             shell_offload: OffloadPolicy::Inline,
         }
+        .with_profile(GgAgentConfig::root())
+    }
+
+    /// The same base rendering for `profile`, with the API grant re-resolved from it.
+    ///
+    /// The two travel together because the loop resolves them together: a prompt reads what the
+    /// agent was *granted*, not what its document says, so a fixture that set one without the other
+    /// would render a surface no run could produce.
+    fn with_profile(mut self, profile: GgAgentConfig) -> Self {
+        let (operations, _) = crate::sandbox::granted_operations(
+            &profile,
+            &crate::modules::CapabilityModules::inert(),
+            &crate::tools::AgentFacts::default(),
+        );
+        self.granted_capabilities = profile
+            .capabilities
+            .iter()
+            .filter(|capability| capability.enabled)
+            .map(|capability| capability.id.clone())
+            .collect();
+        self.granted_operations = operations;
+        self.profile = profile;
+        self
     }
 
     /// The same base, but with the model declared **text-only** — the arm in which the
@@ -2178,6 +2207,8 @@ impl DisabledRuntimes {
             shell_offload: &self.shell_offload,
             vision: &self.vision,
             program_language: None,
+            granted_capabilities: &self.granted_capabilities,
+            granted_operations: &self.granted_operations,
             program_library: false,
             autoload_specs: None,
             persistence: false,
@@ -2433,10 +2464,13 @@ fn resolve_window_limit_narrows_with_the_param() {
 #[test]
 fn resolve_window_limit_ignores_a_disabled_override() {
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
-    set.agents[0].capabilities.push(GgCapabilityConfig {
-        enabled: false,
-        ..window_override(42_000)
-    });
+    crate::tools::grant_configured(
+        &mut set.agents[0],
+        GgCapabilityConfig {
+            enabled: false,
+            ..window_override(42_000)
+        },
+    );
     assert_eq!(
         resolve_window_limit(
             &set,
@@ -2493,9 +2527,7 @@ fn resolve_window_limit_clamps_an_override_above_the_model_window() {
 #[test]
 fn resolve_window_limit_reserves_compaction_headroom() {
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_COMPACTION));
+    crate::tools::grant(&mut set.agents[0], CAPABILITY_COMPACTION);
     let catalog = windows("anthropic/claude-opus-4.8", 200_000);
     assert_eq!(
         resolve_window_limit(&set, &catalog, "anthropic/claude-opus-4.8"),
@@ -2530,10 +2562,10 @@ fn resolve_window_limit_is_per_model() {
 }
 
 // ---------------------------------------------------------------------------
-// Skills: ablation, and the pinned, deduplicated skill read
+// Skills: the capability switch, and the pinned, deduplicated skill read
 // ---------------------------------------------------------------------------
 
-/// `minimal`, with the skills capability disabled (the ablation off arm).
+/// `minimal`, with the skills capability disabled (the off arm of the comparison).
 fn minimal_without_skills(model: &str) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model);
     for cap in &mut set.agents[0].capabilities {
@@ -2580,7 +2612,7 @@ fn text_only_response() -> ModelResponse {
 }
 
 /// With the skills capability off, the run offers no `read_skill` tool and emits no
-/// `SkillsState` — even though a skills directory is present (the ablation makes the
+/// `SkillsState` — even though a skills directory is present (switching the capability off makes the
 /// feature vanish). The default script's `read_skill` call comes back as an unknown tool.
 #[tokio::test]
 async fn run_without_skills_capability_offers_no_skill_tool_or_state() {
@@ -2600,7 +2632,7 @@ async fn run_without_skills_capability_offers_no_skill_tool_or_state() {
             .any(|e| matches!(e.kind, GgTelemetryKind::SkillsState { .. })),
         "skills off must not emit any SkillsState"
     );
-    // The `read_skill` call is not dispatchable — it is withheld like any ablated tool.
+    // The `read_skill` call is not dispatchable — it is withheld like any tool a run does not offer.
     assert!(
         events.iter().any(|e| matches!(
             &e.kind,
@@ -2726,10 +2758,10 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
 }
 
 // ---------------------------------------------------------------------------
-// Memories: ablation, and the bounded, pinned, model-curated scratchpad
+// Memories: the capability switch, and the bounded, pinned, model-curated scratchpad
 // ---------------------------------------------------------------------------
 
-/// `minimal`, with the memories capability disabled (the ablation off arm).
+/// `minimal`, with the memories capability disabled (the off arm of the comparison).
 fn minimal_without_memories(model: &str) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model);
     for cap in &mut set.agents[0].capabilities {
@@ -2757,7 +2789,7 @@ fn write_memory_call(id: &str, name: &str, body: &str) -> ModelResponse {
 }
 
 /// With the memories capability off, the run offers no memory tools and emits no
-/// `MemoryState` — even though the default script tries to write one (the ablation makes
+/// `MemoryState` — even though the default script tries to write one (switching the capability off makes
 /// the feature vanish). The write_memory call comes back as an unknown tool.
 #[tokio::test]
 async fn run_without_memories_capability_offers_no_memory_tools_or_state() {
@@ -2790,7 +2822,7 @@ async fn run_without_memories_capability_offers_no_memory_tools_or_state() {
         }),
         "memories off must never account tokens to the Memory source"
     );
-    // The write_memory call is withheld like any ablated tool.
+    // The write_memory call is withheld like any tool a run does not offer.
     assert!(
         events.iter().any(|e| matches!(
             &e.kind,
@@ -3191,10 +3223,10 @@ async fn the_memory_block_costs_nothing_until_the_boundary() {
 }
 
 // ---------------------------------------------------------------------------
-// Tasks: ablation, and the blocked-by DAG driven through the loop
+// Tasks: the capability switch, and the blocked-by DAG driven through the loop
 // ---------------------------------------------------------------------------
 
-/// `minimal`, with the tasks capability disabled (the ablation off arm).
+/// `minimal`, with the tasks capability disabled (the off arm of the comparison).
 fn minimal_without_tasks(model: &str) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model);
     for cap in &mut set.agents[0].capabilities {
@@ -3206,7 +3238,7 @@ fn minimal_without_tasks(model: &str) -> GgCapabilitySet {
 }
 
 /// With the tasks capability off, the run offers no task tools and emits no `TasksState` —
-/// even though the default script tries to build a DAG (the ablation makes the feature
+/// even though the default script tries to build a DAG (switching the capability off makes the feature
 /// vanish). The task calls come back as unknown tools, and no TaskList tokens accumulate.
 #[tokio::test]
 async fn run_without_tasks_capability_offers_no_task_tools_or_state() {
@@ -3239,7 +3271,7 @@ async fn run_without_tasks_capability_offers_no_task_tools_or_state() {
         }),
         "tasks off must never account tokens to the TaskList source"
     );
-    // The add_task call is withheld like any ablated tool.
+    // The add_task call is withheld like any tool a run does not offer.
     assert!(
         events.iter().any(|e| matches!(
             &e.kind,
@@ -3474,7 +3506,7 @@ async fn drive_always_carries_the_task_list_in_the_window() {
     assert_eq!(end.status, "completed");
 
     let events = sink.events();
-    // The call ran and the store took it — the module is live, not ablated.
+    // The call ran and the store took it — the module is live, not switched off.
     assert!(
         events.iter().any(|e| matches!(
             &e.kind,
@@ -3509,7 +3541,7 @@ async fn drive_always_carries_the_task_list_in_the_window() {
 }
 
 // ---------------------------------------------------------------------------
-// Epics & issues: ablation, and the board built through the loop
+// Epics & issues: the capability switch, and the board built through the loop
 // ---------------------------------------------------------------------------
 
 /// `minimal`, plus the (opt-in) project-management capability enabled. The Root lists itself in its
@@ -3517,10 +3549,13 @@ async fn drive_always_carries_the_task_list_in_the_window() {
 /// agent (which the capability requires).
 fn minimal_with_epics_issues(model: &str) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model);
-    set.agents[0].capabilities.push(GgCapabilityConfig {
-        params: json!({ "mergeAgent": ROOT_AGENT }),
-        ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
-    });
+    crate::tools::grant_configured(
+        &mut set.agents[0],
+        GgCapabilityConfig {
+            params: json!({ "mergeAgent": ROOT_AGENT }),
+            ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
+        },
+    );
     set.agents[0].subagents.push(GgSubagentRef::any(ROOT_AGENT));
     set
 }
@@ -3560,7 +3595,7 @@ async fn run_without_epics_issues_capability_offers_no_board_tools_or_state() {
         }),
         "the board off must never account tokens to the Board source"
     );
-    // The create_epic call is withheld like any ablated tool.
+    // The create_epic call is withheld like any tool a run does not offer.
     assert!(
         events.iter().any(|e| matches!(
             &e.kind,
@@ -4063,10 +4098,13 @@ async fn board_band_driving(profile: &GgAgentConfig, board: BoardRuntime) -> u64
 #[tokio::test]
 async fn the_board_block_is_withheld_from_an_agent_without_the_capability() {
     let mut authoring = GgAgentConfig::root();
-    authoring.capabilities.push(GgCapabilityConfig {
-        params: json!({ "mergeAgent": ROOT_AGENT }),
-        ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
-    });
+    crate::tools::grant_configured(
+        &mut authoring,
+        GgCapabilityConfig {
+            params: json!({ "mergeAgent": ROOT_AGENT }),
+            ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
+        },
+    );
     authoring.subagents.push(GgSubagentRef::any(ROOT_AGENT));
 
     assert!(
@@ -4088,9 +4126,7 @@ async fn the_board_block_is_withheld_from_an_agent_without_the_capability() {
 /// defaults, so the reclaim tools are offered and the fullness signal is injected.
 fn minimal_with_amc(model: &str) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model);
-    set.agents[0].capabilities.push(GgCapabilityConfig::enabled(
-        CAPABILITY_AGENT_MANAGED_CONTEXT,
-    ));
+    crate::tools::grant(&mut set.agents[0], CAPABILITY_AGENT_MANAGED_CONTEXT);
     set
 }
 
@@ -4129,9 +4165,7 @@ fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
 
     // On, unconfigured: both reclaim tools, and the documented default breakdown length.
     let mut on = GgAgentConfig::root();
-    on.capabilities.push(GgCapabilityConfig::enabled(
-        CAPABILITY_AGENT_MANAGED_CONTEXT,
-    ));
+    crate::tools::grant(&mut on, CAPABILITY_AGENT_MANAGED_CONTEXT);
     let default = resolve(&on);
     assert!(default.enabled && default.can_evict && default.can_archive);
     assert_eq!(default.top_file_views, DEFAULT_TOP_FILE_VIEWS);
@@ -4148,18 +4182,21 @@ fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
 
     // On, configured: the breakdown is as long as the profile asked for.
     let mut configured = GgAgentConfig::root();
-    configured.capabilities.push(GgCapabilityConfig {
-        params: json!({ PARAM_TOP_FILE_VIEWS: 12 }),
-        ..GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)
-    });
+    crate::tools::grant_configured(
+        &mut configured,
+        GgCapabilityConfig {
+            params: json!({ PARAM_TOP_FILE_VIEWS: 12 }),
+            ..GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)
+        },
+    );
     assert_eq!(resolve(&configured).top_file_views, 12);
 
-    // A withheld tool is read off the registry rather than assumed from the capability, so the
+    // An ungranted tool is read off the registry rather than assumed from the capability, so the
     // block never points at a call this agent does not have.
     let mut without_evict = on.clone();
     without_evict
-        .disabled_tools
-        .push(EVICT_FILE_VIEW_TOOL.to_string());
+        .tools
+        .retain(|name| name != EVICT_FILE_VIEW_TOOL);
     let narrowed = resolve(&without_evict);
     assert!(narrowed.enabled && narrowed.can_archive);
     assert!(!narrowed.can_evict);
@@ -4168,8 +4205,7 @@ fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
     // `view` is not a tool: it is bound into every program's scope unconditionally. Without this an
     // agent could be shown a `Text Views` band with no call named that reclaims it.
     let mut code = on.clone();
-    code.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+    crate::tools::grant(&mut code, CAPABILITY_RESPONSES_AS_CODE);
     assert!(resolve(&code).program_language.is_some());
 }
 
@@ -4382,7 +4418,7 @@ fn prompt_contents(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<Ve
 }
 
 /// With the capability off, none of the agent-managed-context tools are offered and no
-/// `ContextManaged` effect or fullness signal is produced — the ablation off arm. Driving the
+/// `ContextManaged` effect or fullness signal is produced — the capability-off arm. Driving the
 /// same script, every reclaim/search call comes back as an unknown-tool error and the run still
 /// completes.
 #[tokio::test]
@@ -4631,7 +4667,7 @@ async fn run_reports_a_refused_credential_as_a_launch_failure() {
 
     assert_eq!(
         run_with_factory(&inv, &emitter, Arc::new(factory)).await,
-        SessionOutcome::LaunchFailed,
+        SessionOutcome::HarnessError,
     );
 
     // The terminal status names the credential, so the failure is legible in the stream
@@ -4692,7 +4728,7 @@ async fn run_tags_launch_failure_events_as_root() {
     let emitter = Emitter::with_sink(Some("run-lf".to_string()), Box::new(sink.clone()));
     let inv = invocation(dir.path(), GgCapabilitySet::default());
 
-    assert_eq!(run(&inv, &emitter).await, SessionOutcome::LaunchFailed);
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::HarnessError);
 
     let events = sink.events();
     assert!(!events.is_empty());
@@ -4890,17 +4926,24 @@ fn validate_agents_enforces_the_profile_invariants() {
 /// is the supported way to have an issue-less board, and it is accepted.
 #[test]
 fn an_issue_filer_needs_an_implementer_to_assign_to() {
-    let board_agent = |disabled: &[&str], subagents: Vec<GgSubagentRef>| {
+    let board_agent = |ungranted: &[&str], subagents: Vec<GgSubagentRef>| {
         let mut root = GgAgentConfig {
             model_id: "mock/a".to_string(),
-            disabled_tools: disabled.iter().map(|t| t.to_string()).collect(),
             subagents,
             ..GgAgentConfig::root()
         };
-        root.capabilities.push(GgCapabilityConfig {
-            params: json!({ "mergeAgent": ROOT_AGENT }),
-            ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
-        });
+        crate::tools::grant_configured(
+            &mut root,
+            GgCapabilityConfig {
+                params: json!({ "mergeAgent": ROOT_AGENT }),
+                ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
+            },
+        );
+        // …minus whichever of the board's calls this case withholds. Read-only board access is the
+        // supported way to have an issue-less board, and under an allowlist it is expressed by
+        // leaving `create_issue` out rather than by naming it anywhere.
+        root.tools
+            .retain(|name| !ungranted.contains(&name.as_str()));
         GgCapabilitySet {
             agents: vec![root],
             ..GgCapabilitySet::default()
@@ -5057,7 +5100,7 @@ fn subagent_set(max_parallel: u64, max_depth: u64, extra_agents: &[&str]) -> GgC
             subagents: allowlist.clone(),
             ..GgAgentConfig::root()
         };
-        agent.capabilities.push(subagents.clone());
+        crate::tools::grant_configured(&mut agent, subagents.clone());
         agent
     };
     let mut agents = vec![profile(ROOT_AGENT, "mock/primary")];
@@ -5094,7 +5137,7 @@ fn agent_spawns(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<Spawn
         .collect()
 }
 
-/// The subagent tools are only offered when the capability is on — the ablation off arm.
+/// The subagent tools are only offered when the capability is on — the capability-off arm.
 #[test]
 fn subagent_tools_are_gated_on_the_capability() {
     let names = ["spawn_subagent", "wait_for_subagents", "send_message"];
@@ -5110,9 +5153,7 @@ fn subagent_tools_are_gated_on_the_capability() {
 
     // On (and with at least one agent it may spawn): all three offered.
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
+    crate::tools::grant(&mut set.agents[0], CAPABILITY_SUBAGENTS);
     set.agents[0].subagents.push(GgSubagentRef {
         agent: ROOT_AGENT.to_string(),
         description: String::new(),
@@ -5126,16 +5167,14 @@ fn subagent_tools_are_gated_on_the_capability() {
         );
     }
 
-    // On but with an empty allowlist: there is no agent to spawn, so the tools stay withheld.
+    // On but with an empty roster: there is no agent to spawn, so the tools stay withheld.
     let mut empty = GgCapabilitySet::minimal("mock/echo");
-    empty.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
+    crate::tools::grant(&mut empty.agents[0], CAPABILITY_SUBAGENTS);
     let empty = ToolRegistry::from_capabilities(empty.root());
     for name in names {
         assert!(
             !empty.definitions().iter().any(|d| d.name == name),
-            "`{name}` must not be offered with an empty subagent allowlist"
+            "`{name}` must not be offered with an empty subagent roster"
         );
     }
 }
@@ -5948,10 +5987,13 @@ fn review_implementer(attempt: usize) -> String {
 /// review-gated run. `extra_slots` names the profiles the scripted issue lists as its reviewers.
 fn issue_review_set(extra_slots: &[&str]) -> GgCapabilitySet {
     let mut set = subagent_set(4, 3, extra_slots);
-    set.agents[0].capabilities.push(GgCapabilityConfig {
-        params: json!({ "mergeAgent": ROOT_AGENT }),
-        ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
-    });
+    crate::tools::grant_configured(
+        &mut set.agents[0],
+        GgCapabilityConfig {
+            params: json!({ "mergeAgent": ROOT_AGENT }),
+            ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
+        },
+    );
     set
 }
 
@@ -6140,7 +6182,7 @@ fn project_set(max_retries: Option<u64>) -> GgCapabilitySet {
     if let Some(retries) = max_retries {
         cap.params = json!({ "mergeAgent": ROOT_AGENT, "maxRetries": retries });
     }
-    set.agents[0].capabilities.push(cap);
+    crate::tools::grant_configured(&mut set.agents[0], cap);
     set.agents[0].subagents.push(GgSubagentRef {
         agent: ROOT_AGENT.to_string(),
         description: String::new(),
@@ -6289,10 +6331,13 @@ const CODER_AGENT: &str = "Coder";
 /// division of labour: the Root has the board capability, so it always had the ending call.
 fn split_project_set() -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal("mock/primary");
-    set.agents[0].capabilities.push(GgCapabilityConfig {
-        params: json!({ "mergeAgent": ROOT_AGENT }),
-        ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
-    });
+    crate::tools::grant_configured(
+        &mut set.agents[0],
+        GgCapabilityConfig {
+            params: json!({ "mergeAgent": ROOT_AGENT }),
+            ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
+        },
+    );
     set.agents[0].subagents.push(GgSubagentRef::new(
         CODER_AGENT,
         &[GgSubagentScope::Implementer],
@@ -6408,9 +6453,7 @@ async fn a_board_owned_by_a_non_root_profile_still_dispatches() {
         .pop()
         .expect("the project-management capability just pushed");
     let roster = std::mem::take(&mut set.agents[0].subagents);
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
+    crate::tools::grant(&mut set.agents[0], CAPABILITY_SUBAGENTS);
     set.agents[0]
         .subagents
         .push(GgSubagentRef::new("Planner", &[GgSubagentScope::Subagent]));
@@ -6420,7 +6463,7 @@ async fn a_board_owned_by_a_non_root_profile_still_dispatches() {
         subagents: roster,
         ..GgAgentConfig::root()
     };
-    planner.capabilities.push(board_cap);
+    crate::tools::grant_configured(&mut planner, board_cap);
     set.agents.push(planner);
     let inv = invocation(dir.path(), set);
 
@@ -6519,9 +6562,7 @@ async fn an_agent_can_wait_for_an_issue_until_it_completes() {
 /// and the agents gg auto-dispatches both run their turns as programs.
 fn code_project_set() -> GgCapabilitySet {
     let mut set = project_set(None);
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+    crate::tools::grant(&mut set.agents[0], CAPABILITY_RESPONSES_AS_CODE);
     set
 }
 
@@ -6571,11 +6612,14 @@ async fn a_code_program_waits_for_an_issue_after_it_ends() {
     let events = sink.events();
 
     // The program's `waitForIssue` was bound and serviced under responses-as-code — it registered
-    // the wait rather than throwing, which is the parity this change exists to give.
+    // the wait rather than throwing, which is the parity this change exists to give. Recorded as
+    // an `ApiResult` under the operation the program called, because that is the whole of what a
+    // program's call produces: no tool pair is streamed on this surface at all.
     assert!(
         events.iter().any(|e| matches!(
             &e.kind,
-            GgTelemetryKind::ToolResult { name, ok: true, .. } if name == "wait_for_issue"
+            GgTelemetryKind::ApiResult { operation, ok: true, .. }
+                if operation == "board.wait_for_issue"
         )),
         "the program's waitForIssue was serviced"
     );
@@ -7270,9 +7314,7 @@ fn project_management_requires_a_shell_capable_merge_agent() {
 
     // No merge agent at all.
     let mut missing = base();
-    missing.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT));
+    crate::tools::grant(&mut missing.agents[0], CAPABILITY_PROJECT_MANAGEMENT);
     let err = validate_agents(&missing).expect_err("a board with no merge agent is refused");
     assert!(
         err.contains("mergeAgent"),
@@ -7281,19 +7323,25 @@ fn project_management_requires_a_shell_capable_merge_agent() {
 
     // A merge agent that is not a declared profile.
     let mut unknown = base();
-    unknown.agents[0].capabilities.push(GgCapabilityConfig {
-        params: json!({ "mergeAgent": "nobody" }),
-        ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
-    });
+    crate::tools::grant_configured(
+        &mut unknown.agents[0],
+        GgCapabilityConfig {
+            params: json!({ "mergeAgent": "nobody" }),
+            ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
+        },
+    );
     let err = validate_agents(&unknown).expect_err("an undeclared merge agent is refused");
     assert!(err.contains("nobody"), "the error names the profile: {err}");
 
     // A declared merge agent without the shell capability.
     let mut shell_less = base();
-    shell_less.agents[0].capabilities.push(GgCapabilityConfig {
-        params: json!({ "mergeAgent": "merger" }),
-        ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
-    });
+    crate::tools::grant_configured(
+        &mut shell_less.agents[0],
+        GgCapabilityConfig {
+            params: json!({ "mergeAgent": "merger" }),
+            ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
+        },
+    );
     let mut merger = GgAgentConfig {
         name: "merger".to_string(),
         model_id: "mock/merger".to_string(),
@@ -7309,9 +7357,7 @@ fn project_management_requires_a_shell_capable_merge_agent() {
 
     // The same set with the shell restored launches.
     let mut ok = shell_less.clone();
-    ok.agents[1]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_SHELL));
+    crate::tools::grant(&mut ok.agents[1], CAPABILITY_SHELL);
     assert!(
         validate_agents(&ok).is_ok(),
         "a shell-capable merge agent is accepted"
@@ -7352,10 +7398,13 @@ fn issue_review_e2e_set() -> GgCapabilitySet {
         model_id: "mock/demo-issue-review-parent".to_string(),
         ..GgAgentConfig::root()
     };
-    root.capabilities.push(GgCapabilityConfig {
-        params: json!({ "mergeAgent": ROOT_AGENT }),
-        ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
-    });
+    crate::tools::grant_configured(
+        &mut root,
+        GgCapabilityConfig {
+            params: json!({ "mergeAgent": ROOT_AGENT }),
+            ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
+        },
+    );
     root.subagents = vec![
         GgSubagentRef::new(ROOT_AGENT, &[GgSubagentScope::Implementer]),
         GgSubagentRef::new("reviewer", &[GgSubagentScope::Reviewer]),
@@ -7547,8 +7596,8 @@ async fn run_emits_a_session_summary_immediately_before_session_ended() {
     assert_eq!(summary.slot_costs.len(), 1);
     assert_eq!(summary.slot_costs[0].slot, ROOT_AGENT);
     // The effective toolset is recorded on the summary: the exact set of tools the run offered its
-    // agent (shell + the filesystem tools among them), so the toolset is a durable, slice-by
-    // ablation variable.
+    // agent (shell + the filesystem tools among them), so two configurations are comparable on what
+    // their agents were actually handed.
     assert!(
         !summary.effective_tools.is_empty(),
         "the run recorded its effective toolset"
@@ -7561,27 +7610,27 @@ async fn run_emits_a_session_summary_immediately_before_session_ended() {
     }
 }
 
-/// A per-tool override recorded on the capability set is honored end to end: the withheld tool is
+/// An allowlist recorded on the capability set is honored end to end: a tool it does not name is
 /// absent from the effective toolset the summary records, while the rest of its capability's tools
-/// remain — the finest-grained toolset-ablation lever, observable on the run's durable outcome.
+/// remain — the finest-grained lever there is, observable on the run's durable outcome.
 #[tokio::test]
-async fn a_per_tool_override_is_reflected_in_the_recorded_effective_toolset() {
+async fn an_allowlist_is_reflected_in_the_recorded_effective_toolset() {
     let dir = TempDir::new().unwrap();
     seed_default_skill(dir.path());
     let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-ablate".to_string()), Box::new(sink.clone()));
-    // Filesystem stays on, but `edit_file` is individually withheld (the apply-patch-vs-write lever).
+    let emitter = Emitter::with_sink(Some("run-narrowed".to_string()), Box::new(sink.clone()));
+    // Filesystem stays on, but `edit_file` is left out (the apply-patch-vs-write lever).
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    set.agents[0].disabled_tools = vec!["edit_file".to_string()];
+    set.agents[0].tools.retain(|name| name != "edit_file");
     let inv = invocation(dir.path(), set);
 
     assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
     let summary = session_summary(&sink.events()).unwrap();
 
-    // The withheld tool is absent from the recorded effective toolset...
+    // The ungranted tool is absent from the recorded effective toolset...
     assert!(
         !summary.effective_tools.iter().any(|t| t == "edit_file"),
-        "edit_file was withheld by the per-tool override"
+        "`edit_file` is not in this agent's allowlist"
     );
     // ...while the rest of the filesystem capability's tools (and shell) remain offered.
     for tool in ["read_file", "write_file", "list_dir", "shell"] {
@@ -8563,12 +8612,12 @@ impl ModelClient for SharedClient {
 /// survives.
 #[test]
 fn the_view_heading_is_documented_for_every_code_run() {
-    let ablated = code_heading_views(false, false, false, false);
+    let withheld = code_heading_views(false, false, false, false);
     let heading = code_heading(GgContextSource::TextView).expect("a text view carries a heading");
-    let row = ablated
+    let row = withheld
         .iter()
         .find(|view| view.heading == heading)
-        .unwrap_or_else(|| panic!("no `{heading}` row in {ablated:#?}"));
+        .unwrap_or_else(|| panic!("no `{heading}` row in {withheld:#?}"));
     // The heading a text view actually carries is `View: {label}`, so the description has to say
     // where the label goes or the model cannot match a block to the value it showed itself.
     assert!(row.description.contains("label"), "{row:#?}");
@@ -8577,7 +8626,7 @@ fn the_view_heading_is_documented_for_every_code_run() {
     assert!(
         !row.description.contains(&crate::sandbox::spell(
             crate::sandbox::language(GgProgramLanguage::TypeScript),
-            crate::sandbox::VIEW_OPEN_TEXT
+            crate::sandbox::VIEWS_OPEN_TEXT
         )),
         "{row:#?}"
     );
@@ -8585,7 +8634,7 @@ fn the_view_heading_is_documented_for_every_code_run() {
     // The `File` heading, by contrast, is gated: a run that neither reads, autoloads nor persists
     // can never show one, and naming it would describe a message kind that cannot arrive.
     let file = code_heading(GgContextSource::FileView).expect("a file view carries a heading");
-    assert!(!ablated.iter().any(|view| view.heading == file));
+    assert!(!withheld.iter().any(|view| view.heading == file));
     assert!(
         code_heading_views(false, false, false, true)
             .iter()
@@ -8700,6 +8749,15 @@ mod module_tests;
 #[path = "agent.surface.test.rs"]
 mod surface_tests;
 
+/// **An agent profile the run does not declare**, at each of the four sites that resolve one.
+///
+/// Separate because every test in it has to *skip the launch checks* to reach what it guards —
+/// these are gg's own defects, unreachable from any configuration a launch would accept — so they
+/// build the [`Orchestrator`] by hand rather than driving a session through the real entry point,
+/// which is the one thing the files above all do.
+#[path = "agent.profiles.test.rs"]
+mod profile_tests;
+
 /// The **handoff-compaction summarizer's** model call reaches the record.
 ///
 /// It did not before this: gg's second model client was resolved through the same factory as the
@@ -8719,14 +8777,17 @@ async fn a_handoff_compactions_summarizer_call_reaches_the_record() {
     let emitter = Emitter::with_sink(Some("run-handoff".to_string()), Box::new(sink.clone()));
 
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    set.agents[0].capabilities.push(GgCapabilityConfig {
-        id: CAPABILITY_COMPACTION.to_string(),
-        enabled: true,
-        implementation: Some(
-            test_cabinet_core::gg::COMPACTION_STRATEGY_HANDOFF_COMPACTION.to_string(),
-        ),
-        params: json!({ test_cabinet_core::gg::COMPACTION_PARAM_MODEL: "mock/compactor" }),
-    });
+    crate::tools::grant_configured(
+        &mut set.agents[0],
+        GgCapabilityConfig {
+            id: CAPABILITY_COMPACTION.to_string(),
+            enabled: true,
+            implementation: Some(
+                test_cabinet_core::gg::COMPACTION_STRATEGY_HANDOFF_COMPACTION.to_string(),
+            ),
+            params: json!({ test_cabinet_core::gg::COMPACTION_PARAM_MODEL: "mock/compactor" }),
+        },
+    );
     // A window narrow enough that the thread crosses the trigger within a few turns, so the run
     // actually hands off rather than passing the assertion below by never compacting at all.
     let mut inv = invocation(dir.path(), set);
@@ -8915,7 +8976,7 @@ async fn every_agent_binds_its_client_under_its_provenance() {
     compaction.implementation =
         Some(test_cabinet_core::gg::COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION.to_string());
     compaction.params = json!({ "model": "mock/condenser" });
-    set.agents[0].capabilities.push(compaction);
+    crate::tools::grant_configured(&mut set.agents[0], compaction);
     let mut inv = invocation(dir.path(), set);
     inv.model_windows
         .insert("mock/condenser".to_string(), TEST_CONTEXT_WINDOW);

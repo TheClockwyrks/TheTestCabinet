@@ -187,17 +187,6 @@
   gap: t.$space-2xs;
 }
 
-// A withheld tool — an ablation one notch below turning a capability off. Marked negative
-// so it does not read as one more thing the agent has.
-.disabledTool {
-  font-size: t.$font-sm;
-  color: t.$color-negative;
-  border: t.$border-hairline solid
-    color-mix(in srgb, t.$color-negative 40%, transparent);
-  border-radius: t.$radius-sm;
-  padding: 0 t.$space-xs;
-}
-
 // --- What the agent was offered -------------------------------------------------
 //
 // The offered surface is chips rather than ranked rows, and that is the same decision the
@@ -281,10 +270,9 @@
   border-radius: t.$radius-sm;
   padding: 0 t.$space-xs;
 
-  // Offered and not used — a real `0×`, dimmed, never dropped. The contrast between this and the
-  // withheld chip above it (`.disabledTool`, marked negative) is the reason the section
-  // exists at all, so it is drawn the way a deleted memory is on the module views: still
-  // there, plainly not live.
+  // Offered and not used — a real `0×`, dimmed, never dropped. Telling this apart from a call
+  // that has no row here at all is the reason the section exists, so it is drawn the way a
+  // deleted memory is on the module views: still there, plainly not live.
   &[data-uncalled] {
     color: t.$color-text-muted;
     border-style: dashed;

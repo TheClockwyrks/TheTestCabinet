@@ -1,29 +1,75 @@
 //! Tests for the [documentation carve-out runtime](super::DocsRuntime).
 
-use test_cabinet_core::gg::{CAPABILITY_PROGRAM_LIBRARY, GgProgramLanguage};
+use test_cabinet_core::gg::{
+    CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE,
+    CAPABILITY_SHELL, CAPABILITY_SUBAGENTS, CAPABILITY_WRITE_FILE, GgProgramLanguage,
+};
 
 use super::*;
 use crate::ending::EndingRole;
+use crate::sandbox::{
+    BOARD_CREATE_ISSUE, BOARD_UPDATE_ISSUE, BOARD_WAIT_FOR_ISSUE, OperationId,
+    capability_operations, gating_capabilities,
+};
 
-/// The scope-bound tool names a full run offers, as gg expresses its enabled set — enough to bind
-/// `fs`, `system`, and `project`.
-fn enabled() -> Vec<String> {
-    ["read_file", "write_file", "shell", "create_issue"]
-        .into_iter()
-        .map(str::to_string)
-        .collect()
+/// The capabilities a full run enables — enough to reach the filesystem, the shell and the board.
+const ENABLED: &[&str] = &[
+    CAPABILITY_READ_FILE,
+    CAPABILITY_WRITE_FILE,
+    CAPABILITY_SHELL,
+    CAPABILITY_PROJECT_MANAGEMENT,
+];
+
+/// A runtime for an agent holding `capabilities` and granted **every operation they offer** — the
+/// ordinary shape, and the one every test that is about something other than the allowlist wants.
+///
+/// The allowlist is seeded rather than left empty because an empty one withholds everything: a
+/// fixture that named no operations would make each assertion below pass for the wrong reason. The
+/// tests that *are* about the allowlist ([`granting`]) name their operations explicitly.
+fn runtime(capabilities: &[&str]) -> DocsRuntime {
+    in_role(capabilities, EndingRole::Standard)
 }
 
-/// `openDocsView` is documented ungated — a run that enables no tools at all must still be able to
+/// [`runtime`], dispatched in `role`.
+fn in_role(capabilities: &[&str], role: EndingRole) -> DocsRuntime {
+    let operations = capability_operations(capabilities.iter().copied());
+    DocsRuntime::new(
+        capabilities.iter().map(|id| id.to_string()).collect(),
+        role,
+        &operations,
+        GgProgramLanguage::TypeScript,
+    )
+}
+
+/// A runtime for an agent holding `capabilities` and granted exactly `operations` — the two halves
+/// of a grant set independently, which is what the allowlist tests are for.
+fn granting(capabilities: &[&str], operations: &[OperationId]) -> DocsRuntime {
+    DocsRuntime::new(
+        capabilities.iter().map(|id| id.to_string()).collect(),
+        EndingRole::Standard,
+        operations,
+        GgProgramLanguage::TypeScript,
+    )
+}
+
+/// A runtime for an agent granted **everything** on `language`, in `role` — every capability that
+/// gates a call, and every operation those capabilities offer.
+fn everything(language: GgProgramLanguage, role: EndingRole) -> DocsRuntime {
+    let capabilities = gating_capabilities();
+    let operations = capability_operations(capabilities.iter().copied());
+    DocsRuntime::new(
+        capabilities.into_iter().map(str::to_string).collect(),
+        role,
+        &operations,
+        language,
+    )
+}
+
+/// `openDocsView` is documented ungated — an agent granted nothing at all must still be able to
 /// read what the functions it *does* have do.
 #[test]
 fn view_always_carries_open_docs_view() {
-    let docs = DocsRuntime::new(
-        Vec::new(),
-        EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
+    let docs = runtime(&[]);
     assert!(docs.read("openDocsView").is_some());
 }
 
@@ -39,12 +85,7 @@ fn view_always_carries_open_docs_view() {
 /// signature names its types, and a lookup of a type declares one.
 #[test]
 fn a_function_lookup_is_its_signature_and_its_prose() {
-    let docs = DocsRuntime::new(
-        enabled(),
-        EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
+    let docs = runtime(ENABLED);
 
     let first = docs.read("readFile").expect("readFile is bound");
     assert!(
@@ -72,12 +113,7 @@ fn a_function_lookup_is_its_signature_and_its_prose() {
 /// [`a_type_only_a_withheld_function_reaches_is_not_readable`].
 #[test]
 fn a_type_lookup_declares_the_type_and_explains_its_members() {
-    let docs = DocsRuntime::new(
-        vec!["read_file".to_string()],
-        EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
+    let docs = runtime(&[CAPABILITY_READ_FILE]);
     let file_read = docs
         .read_type("FileRead")
         .expect("FileRead is in the catalogue");
@@ -109,12 +145,7 @@ fn a_type_lookup_declares_the_type_and_explains_its_members() {
 /// does not exist.
 #[test]
 fn a_type_only_a_withheld_function_reaches_is_not_readable() {
-    let reader = DocsRuntime::new(
-        vec!["read_file".to_string()],
-        EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
+    let reader = runtime(&[CAPABILITY_READ_FILE]);
     assert!(
         reader.read_type("SubagentHandle").is_none(),
         "only `spawn_subagent` and its family reach it, and this agent has neither"
@@ -123,12 +154,7 @@ fn a_type_only_a_withheld_function_reaches_is_not_readable() {
 
     // And the same name is readable for an agent that does hold one of those calls, so what is being
     // asserted is the gate rather than the type being unrenderable.
-    let delegator = DocsRuntime::new(
-        vec!["spawn_subagent".to_string()],
-        EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
+    let delegator = runtime(&[CAPABILITY_SUBAGENTS]);
     assert!(delegator.read_type("SubagentHandle").is_some());
 }
 
@@ -137,12 +163,7 @@ fn a_type_only_a_withheld_function_reaches_is_not_readable() {
 /// different kind of block than the one it lost.
 #[test]
 fn read_any_resolves_a_function_or_a_type() {
-    let docs = DocsRuntime::new(
-        enabled(),
-        EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
+    let docs = runtime(ENABLED);
     assert_eq!(docs.read_any("readFile"), docs.read("readFile"));
     assert_eq!(docs.read_any("FileRead"), docs.read_type("FileRead"));
     assert!(docs.read_any("neitherOne").is_none());
@@ -161,12 +182,7 @@ fn read_any_resolves_a_function_or_a_type() {
 /// is where this rule came from, and this is the function half catching up to it.
 #[test]
 fn a_lookup_spelled_either_way_resolves_to_one_key() {
-    let docs = DocsRuntime::new(
-        enabled(),
-        EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
+    let docs = runtime(ENABLED);
 
     let key = docs.docview_key("readFile").expect("readFile is bound");
     assert_eq!(
@@ -181,13 +197,8 @@ fn a_lookup_spelled_either_way_resolves_to_one_key() {
     // The same three gates the reader answers against, so a name the agent cannot look up has no
     // key either — a key resolved for a withheld call would file a view nothing may render.
     assert_eq!(docs.docview_key("neitherOne"), None);
-    let ablated = DocsRuntime::new(
-        Vec::new(),
-        EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
-    assert_eq!(ablated.docview_key("readFile"), None);
+    let withheld = runtime(&[]);
+    assert_eq!(withheld.docview_key("readFile"), None);
 }
 
 /// **A lookup says what each argument is for, and what each field of the result means.**
@@ -199,12 +210,7 @@ fn a_lookup_spelled_either_way_resolves_to_one_key() {
 /// assertion that the reflection reaches the model rather than stopping at the emitted JSON.
 #[test]
 fn a_lookup_explains_every_argument_and_every_field() {
-    let docs = DocsRuntime::new(
-        enabled(),
-        EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
+    let docs = runtime(ENABLED);
     let read_file = docs.read("readFile").expect("readFile is bound");
 
     // The argument, and the fields of the structured argument nested under it.
@@ -273,12 +279,7 @@ fn an_argument_passed_by_name_is_marked_and_a_positional_one_is_not() {
 /// values whose difference is prose, and nothing but the prose can tell it which to write.
 #[test]
 fn a_lookup_explains_the_arms_of_a_union() {
-    let docs = DocsRuntime::new(
-        vec!["update_issue".to_string()],
-        EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
+    let docs = granting(&[CAPABILITY_PROJECT_MANAGEMENT], &[BOARD_UPDATE_ISSUE]);
     let status = docs
         .read_type("IssueStatus")
         .expect("the status union is catalogued");
@@ -289,12 +290,7 @@ fn a_lookup_explains_the_arms_of_a_union() {
 /// available rather than shown docs for a method its scope does not carry.
 #[test]
 fn read_of_a_withheld_function_is_none() {
-    let docs = DocsRuntime::new(
-        vec!["read_file".to_string()],
-        EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
+    let docs = runtime(&[CAPABILITY_READ_FILE]);
     assert!(docs.read("writeFile").is_none());
 }
 
@@ -305,12 +301,7 @@ fn read_of_a_withheld_function_is_none() {
 /// withheld `write_file` does not hear `writeFile` back — from the lookup or from the hint.
 #[test]
 fn a_suggestion_never_names_a_function_this_agent_lacks() {
-    let docs = DocsRuntime::new(
-        vec!["read_file".to_string()],
-        EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
+    let docs = runtime(&[CAPABILITY_READ_FILE]);
     assert!(docs.read("writeFile").is_none());
     assert!(
         docs.suggest("write_file").is_empty(),
@@ -325,19 +316,9 @@ fn a_suggestion_never_names_a_function_this_agent_lacks() {
 
     // The ending gate is a scope like any other: a reviewer's verdicts are not suggested to an
     // agent doing work, and `finish` is not suggested to a reviewer.
-    let worker = DocsRuntime::new(
-        enabled(),
-        EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
+    let worker = runtime(ENABLED);
     assert!(worker.suggest("request_changes").is_empty());
-    let reviewer = DocsRuntime::new(
-        enabled(),
-        EndingRole::Review,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
+    let reviewer = in_role(ENABLED, EndingRole::Review);
     assert_eq!(
         reviewer.suggest("request_changes"),
         vec!["requestChanges", "gg.session.requestChanges"]
@@ -354,22 +335,14 @@ fn a_suggestion_never_names_a_function_this_agent_lacks() {
 /// `ReferenceError` about a name gg itself named.
 #[test]
 fn the_program_library_is_documented_only_when_the_agent_keeps_one() {
-    let without = DocsRuntime::new(
-        enabled(),
-        EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
+    let without = runtime(ENABLED);
     for call in ["rerun", "history", "get"] {
         assert!(without.read(call).is_none(), "`{call}` is not bought");
     }
 
-    let with = DocsRuntime::new(
-        enabled(),
-        EndingRole::Standard,
-        &[CAPABILITY_PROGRAM_LIBRARY],
-        GgProgramLanguage::TypeScript,
-    );
+    let mut with_library = ENABLED.to_vec();
+    with_library.push(CAPABILITY_PROGRAM_LIBRARY);
+    let with = runtime(&with_library);
     for call in ["rerun", "history", "get"] {
         assert!(with.read(call).is_some(), "`{call}` is bought");
     }
@@ -381,12 +354,7 @@ fn the_program_library_is_documented_only_when_the_agent_keeps_one() {
     // The gate is the library's alone: it does not withdraw anything else, and it is not withdrawn
     // by an ending role.
     assert!(with.read("readFile").is_some());
-    let reviewer = DocsRuntime::new(
-        enabled(),
-        EndingRole::Review,
-        &[CAPABILITY_PROGRAM_LIBRARY],
-        GgProgramLanguage::TypeScript,
-    );
+    let reviewer = in_role(&with_library, EndingRole::Review);
     assert!(reviewer.read("get").is_some());
 }
 
@@ -418,15 +386,7 @@ fn every_name_a_model_is_shown_opens_on_every_arm() {
         // Both roles, because the endings are bound one group per role and a name no role binds
         // is a name no model is ever shown.
         for role in [EndingRole::Standard, EndingRole::Review] {
-            let docs = DocsRuntime::new(
-                crate::tools::ALL_TOOL_NAMES
-                    .iter()
-                    .map(|tool| tool.to_string())
-                    .collect(),
-                role,
-                test_cabinet_core::gg_query::GG_CAPABILITY_CATALOG,
-                language.id(),
-            );
+            let docs = everything(language.id(), role);
             for function in crate::sandbox::catalogue_functions(language) {
                 if !docs.bound(&function) {
                     continue;
@@ -463,15 +423,14 @@ fn every_name_a_model_is_shown_opens_on_every_arm() {
 /// The second half is the gate, and it is not defensive. A type is readable when *some* bound
 /// function reaches it, which is strictly weaker than every operation hanging off it being bound:
 /// `IssueCreated` is what `createIssue` hands back, and `wait` on it binds the separate
-/// `wait_for_issue` tool. An agent granted the first and not the second must not be handed the
-/// second's name by the declaration of the value it is holding.
+/// `board.wait_for_issue` operation — the same capability, a different entry in the allowlist. An
+/// agent granted the first and not the second must not be handed the second's name by the
+/// declaration of the value it is holding.
 #[test]
 fn a_type_view_lists_the_member_functions_this_agent_binds() {
-    let both = DocsRuntime::new(
-        vec!["create_issue".to_string(), "wait_for_issue".to_string()],
-        EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
+    let both = granting(
+        &[CAPABILITY_PROJECT_MANAGEMENT],
+        &[BOARD_CREATE_ISSUE, BOARD_WAIT_FOR_ISSUE],
     );
     let listed = both
         .read_type("IssueCreated")
@@ -486,12 +445,7 @@ fn a_type_view_lists_the_member_functions_this_agent_binds() {
         "and that name is one a model can then open"
     );
 
-    let creator = DocsRuntime::new(
-        vec!["create_issue".to_string()],
-        EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
+    let creator = granting(&[CAPABILITY_PROJECT_MANAGEMENT], &[BOARD_CREATE_ISSUE]);
     let withheld = creator
         .read_type("IssueCreated")
         .expect("`createIssue` still reaches it");
@@ -513,15 +467,7 @@ fn a_type_view_lists_the_member_functions_this_agent_binds() {
 fn every_catalogued_member_function_reaches_a_type_view() {
     for language in crate::sandbox::all_languages() {
         let arm = language.display_name();
-        let docs = DocsRuntime::new(
-            crate::tools::ALL_TOOL_NAMES
-                .iter()
-                .map(|tool| tool.to_string())
-                .collect(),
-            EndingRole::Standard,
-            test_cabinet_core::gg_query::GG_CAPABILITY_CATALOG,
-            language.id(),
-        );
+        let docs = everything(language.id(), EndingRole::Standard);
         for declaration in &language.catalogue().types {
             for member in &declaration.member_functions {
                 let Some(body) = docs.read_type(declaration.key()) else {

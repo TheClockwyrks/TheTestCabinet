@@ -63,8 +63,8 @@ describe("the Errors widget's failed-call ranking", () => {
       "not found": "40",
       unavailable: "3",
     });
-    // Not "Failed calls": the two records overlap for a bridged call, so the caption is
-    // the only thing that says what the figures counted.
+    // Not "Failed calls": the two records are disjoint populations and neither is the
+    // run's total, so the caption is the only thing that says what the figures counted.
     expect(screen.queryByText("Failed tool calls")).toBeNull();
     expect(screen.queryByText("I/O error")).toBeNull();
   });

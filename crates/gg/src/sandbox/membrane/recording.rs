@@ -1,34 +1,34 @@
 //! The **API-call bracket**: the one place a model-facing call is recorded, and the reason no host
 //! function on this membrane can quietly skip it.
 //!
-//! # Two surfaces over one core, recorded separately
+//! # Two surfaces over one core, and only one of them is here
 //!
-//! gg's tools and gg's API objects are two surfaces over one core of typed functions
-//! ([`ToolApi`]), and they are independent: a tool exists because a tool-calling model needs a JSON
-//! name to dispatch, an API function exists because a program needs something to write, and neither
-//! is defined in terms of the other. What follows is that a call has **two** honest records, and
-//! they answer different questions:
+//! gg's tools and gg's [operations](crate::sandbox::operations) are two surfaces over one core of
+//! typed functions ([`ToolApi`]), and they are independent: a tool exists because a tool-calling
+//! model needs a JSON name to dispatch, an operation exists because a program needs something to
+//! write, and neither is defined in terms of the other. An agent has exactly one of the two, so what
+//! is recorded here is the **whole** account of what a responses-as-code agent did — no tool-call
+//! record accompanies it — and the record is keyed on the operation the model called rather than on
+//! whatever the internals dispatched underneath.
 //!
-//! * the [tool record](super::capture) — what *ran*: `read_file`, dispatched, streamed as a
-//!   `ToolCall`/`ToolResult` pair, pinned in the [replay](crate::capture) so a re-run feeds the
-//!   recorded outcome back;
-//! * the API record — what the *model wrote*: `view.open_file`, which happens to bridge to
-//!   `read_file`, and `view.current`, which bridges to nothing at all.
-//!
-//! Only the second can answer "was this agent offered that call, and did it use it?", which is the
-//! question an ablation is run to ask. The first cannot: several API functions share one tool
-//! (`fs.readFile`, `fs.readTextFile` and `view.openFile` are all reads), fourteen API functions have
-//! no tool at all, and a call the membrane refused has no tool record even though the model made it.
+//! What runs underneath is recorded under the same identity, and that is the point rather than a
+//! coincidence: a dispatched call is pinned in the [replay](crate::capture) under the **operation**,
+//! so a re-run feeds the recorded outcome back to the call the model actually wrote. Several
+//! operations share one implementation (`files.read_file`, `files.read_text_file` and
+//! `views.open_file` are all reads), so a replay keyed on the implementation would feed one
+//! operation's recorded outcome to another's call. Fourteen operations reach no internal dispatch at
+//! all, and a call the membrane refused ran nothing whatsoever though the model made it — both are
+//! still API calls, and both are recorded here.
 //!
 //! # Why the bracket is at the host function, not inside `dispatch`
 //!
-//! [`dispatch`](super::MembraneState::dispatch) knows a tool name and nothing else — the API
-//! identity is the host function's own knowledge and is gone by the time dispatch is reached. So the
-//! bracket goes around the *whole* host function body, which buys three things at once: it covers
-//! the carve-outs that never dispatch; it closes **after** the typed conversion, so a tool that
-//! answered `ok` with a payload the function could not use is a failed API call even though its
-//! `ToolResult` already streamed a success; and it encloses the bridged pair, so the nesting on the
-//! stream reads the way it happened.
+//! [`dispatch`](super::MembraneState::dispatch) knows which internal call is being made and nothing
+//! else — the operation is the host function's own knowledge and is gone by the time dispatch is
+//! reached. So the bracket goes around the *whole* host function body, which buys three things at
+//! once: it covers the calls that never dispatch; it closes **after** the typed conversion, so an
+//! internal call that answered `ok` with a payload the function could not use is a failed API call;
+//! and it encloses everything the call set off, so the nesting on the stream reads the way it
+//! happened.
 //!
 //! # Why a token
 //!
@@ -43,9 +43,8 @@
 
 use super::test_cabinet::gg::types::ToolError;
 use super::{MembraneState, ToolApi, wire_failure};
+use crate::sandbox::OperationId;
 use crate::sandbox::invoker::ApiIdentity;
-use crate::sandbox::language::SurfaceCall;
-use crate::sandbox::{Binding, Operation, operation_by_call};
 
 /// Proof that a model-facing API call is being recorded around whatever is done with it.
 ///
@@ -88,13 +87,12 @@ impl<A: ToolApi> MembraneState<A> {
     /// Record one model-facing API call around `body` — the bracket every host function on this
     /// membrane opens, and the only source of the [`Recording`] its body needs to do anything.
     ///
-    /// The identity is a [`SurfaceCall`]: the API object and the function's language-independent
-    /// [key](SurfaceCall::key), never the SDK spelling the model actually typed, so a count means
-    /// the same thing in every arm of a cross-language study.
+    /// The identity is an [`OperationId`]: gg's own name for the call, never the SDK spelling the
+    /// model actually typed, so a count means the same thing in every arm of a cross-language study.
     ///
-    /// A membrane **refusal** — a spent wall-clock budget, a capability this agent was not granted
-    /// — closes the bracket as a failed call rather than skipping it. The model made the call; that
-    /// nothing ran is the tool layer's fact, which is exactly why
+    /// A membrane **refusal** — a spent wall-clock budget, a call this agent was not granted —
+    /// closes the bracket as a failed call rather than skipping it. The model made the call; that
+    /// nothing ran underneath it is the execution layer's fact, which is exactly why
     /// [`SandboxRefusal`](crate::sandbox::invoker::SandboxRefusal) is kept out of the tool roster
     /// and why an API call is not.
     ///
@@ -109,29 +107,18 @@ impl<A: ToolApi> MembraneState<A> {
     /// call the model made and gg refused is a failed API call, not an absence.
     pub(super) fn recorded<R>(
         &mut self,
-        call: SurfaceCall,
+        id: OperationId,
         body: impl FnOnce(&mut Self, Recording) -> Result<R, ToolError>,
     ) -> Result<R, ToolError> {
-        // A call gg has no operation for is drift rather than a run-time condition, and it is
-        // treated as ungated — and recorded with no operation — for the reason `operation_of` hands
-        // back an `Option` at all: taking a run down over a table that has fallen behind is the
-        // larger failure. `every_host_function_records_its_own_api_call` holds the recorded set
-        // equal to the table's, so neither fallback is reachable in a correct build.
-        let operation = operation_by_call(call);
-        let binding = operation.map_or(Binding::Always, |operation| operation.binding);
-        let id = rendered(operation);
+        let rendered = id.to_string();
         // Built once and used for **both** halves of the bracket, so a closing record cannot name a
         // different call from the opening one it answers.
         let identity = ApiIdentity {
-            object: call.object,
-            function: call.key,
-            operation: id.as_deref(),
+            operation: &rendered,
         };
         self.api.api.begin_api_call(identity);
         self.api_calls = self.api_calls.saturating_add(1);
-        let result = self
-            .granted(call, binding)
-            .and_then(|()| body(self, Recording(())));
+        let result = self.granted(id).and_then(|()| body(self, Recording(())));
         // The class the program is about to be thrown with, taken from the error itself. It is the
         // API layer's own reason, not the tool's: a membrane refusal has no tool record at all, and
         // a typed conversion that failed over a tool that answered `ok` is a failure here and a
@@ -143,7 +130,7 @@ impl<A: ToolApi> MembraneState<A> {
 
     /// As [`recorded`](Self::recorded), for the one call that cannot fail.
     ///
-    /// `view.current` answers with a list — an agent with nothing open gets an empty one, which is
+    /// `views.current` answers with a list — an agent with nothing open gets an empty one, which is
     /// an answer rather than an error — so there is no verdict to take and the record is always
     /// `ok`. Spelling that out here is what keeps its host function from having to invent a
     /// `Result` it would then unwrap.
@@ -151,23 +138,20 @@ impl<A: ToolApi> MembraneState<A> {
     /// `programs.history` is not one: the host checks the [program-library](super::programs)
     /// capability, because an agent with no library and an agent that has run nothing are different
     /// facts and one empty list could only tell the model one of them.
-    /// With the directory gone every recorded call names a fixed pair again.
     ///
     /// It carries **no capability gate**, and it is the only bracket that does not. Its one caller
-    /// is bound by [`Binding::Always`] — nothing gates showing a
+    /// is bound by [`Binding::Always`](crate::sandbox::Binding::Always) — nothing gates showing a
     /// program its own open views — so a gate here could only ever answer yes, and giving it one
     /// would mean inventing a `Result` for a call that cannot fail.
     /// `the_one_ungated_bracket_serves_an_operation_nothing_gates` is what holds that true.
     pub(super) fn recorded_ok<R>(
         &mut self,
-        call: SurfaceCall,
+        id: OperationId,
         body: impl FnOnce(&mut Self, Recording) -> R,
     ) -> R {
-        let id = rendered(operation_by_call(call));
+        let rendered = id.to_string();
         let identity = ApiIdentity {
-            object: call.object,
-            function: call.key,
-            operation: id.as_deref(),
+            operation: &rendered,
         };
         self.api.api.begin_api_call(identity);
         self.api_calls = self.api_calls.saturating_add(1);
@@ -181,18 +165,6 @@ impl<A: ToolApi> MembraneState<A> {
     pub(super) fn api(&mut self, recording: Recording) -> &mut A {
         self.api.get(recording)
     }
-}
-
-/// One operation's id as the record spells it — `files.read_file` — or `None` where there is no
-/// operation to spell.
-///
-/// Rendered per call rather than held on the [table](crate::sandbox::operations::OPERATIONS) as a
-/// third `&'static str`, because the id is deliberately stored as its two halves: both are read
-/// separately, and a single string would have to be split at a dot to recover either — which is
-/// wrong the day a key contains one. A short allocation on a path that already allocates two owned
-/// names for the event is the cheaper end of that trade.
-fn rendered(operation: Option<&'static Operation>) -> Option<String> {
-    operation.map(|operation| operation.id.to_string())
 }
 
 #[cfg(test)]

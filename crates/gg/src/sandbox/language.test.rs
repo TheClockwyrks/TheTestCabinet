@@ -11,6 +11,7 @@ use test_cabinet_core::gg::{
 
 use super::fixture::fixture_language;
 use super::*;
+use crate::sandbox::operations::VIEWS_OPEN_DOCS_VIEW;
 
 /// TypeScript, named explicitly wherever an assertion is about **TypeScript's** own answers rather
 /// than about whichever language happens to be the default.
@@ -152,7 +153,7 @@ fn every_language_writes_the_program_that_opens_a_documentation_view() {
 
     for language in all_languages().chain(crate::sandbox::fixture_languages()) {
         let program = language.open_docs_views_statement(&NAMES);
-        let call = spell(language, VIEW_OPEN_DOCS_VIEW);
+        let call = spell(language, VIEWS_OPEN_DOCS_VIEW);
         assert!(
             program.contains(&call),
             "{}: the generated program does not call `{call}`:\n{program}",
@@ -243,13 +244,13 @@ fn an_unreadable_language_falls_back_and_says_so() {
 ///
 /// The table is read for two things. gg quotes the model's own surface in its own sentences — the
 /// ending section of the system prompt, the context-pressure notice, the account of the message
-/// kinds an agent receives — naming those calls by [`SurfaceCall`], which carries the object and the
+/// kinds an agent receives — naming those calls by their [operation](crate::sandbox::OperationId), which carries the
 /// language-independent *key* and no spelling at all, so [`spell`](crate::sandbox::spell) resolves
 /// the spelling out of the language's own catalogue and there is no authored second copy to drift.
 /// And the [membrane](crate::sandbox) records every call under the same pair, which is what a
 /// console joins a bound function's count on.
 ///
-/// What remains possible is a `SurfaceCall` naming a key **no** catalogue carries — a key renamed on
+/// What remains possible is an `OperationId` naming a key **no** catalogue carries — a key renamed on
 /// one side of the guest build and not the other. Quoted, that degrades to the bare key and gg tells
 /// a model to call something its scope does not bind; recorded, it produces a count that joins to no
 /// row of the agent's own reported surface. So every call is resolved here, against every registered
@@ -258,35 +259,32 @@ fn an_unreadable_language_falls_back_and_says_so() {
 fn every_model_facing_call_resolves_in_every_language() {
     for language in all_languages() {
         let functions = crate::sandbox::catalogue_functions(language);
-        for call in crate::sandbox::OPERATIONS
+        for id in crate::sandbox::OPERATIONS
             .iter()
-            .map(|operation| operation.call)
+            .map(|operation| operation.id)
         {
             // Resolved through the operation, which is the identity both schemas answer: an arm
-            // that groups its surface into modules carries gg's own `(object, key)` pair nowhere,
-            // and looking for it there would report every one of gg's calls missing. The canonical
-            // binding is what gg quotes, so an alias is skipped here exactly as `spell` skips it.
+            // that groups its surface into modules carries gg's own key nowhere, and looking for it
+            // there would report every one of gg's calls missing. The canonical binding is what gg
+            // quotes, so an alias is skipped here exactly as `spell` skips it.
             let entry = functions
                 .iter()
                 .find(|function| {
                     function.alias_of.is_none()
-                        && crate::sandbox::operation_of(function).is_some_and(|resolved| {
-                            resolved.call.object == call.object && resolved.call.key == call.key
-                        })
+                        && crate::sandbox::operation_of(function)
+                            .is_some_and(|resolved| resolved.id == id)
                 })
                 .unwrap_or_else(|| {
                     panic!(
-                        "{}: gg names `{}.{}`, which its catalogue does not carry",
+                        "{}: gg names `{id}`, which its catalogue does not carry",
                         language.id(),
-                        call.object,
-                        call.key
                     )
                 });
             // Both halves of the quoted spelling are the ARM's: the grouping a program writes
             // before the separator, and the name after it. The grouping is the module path, which
             // is the only form a program could compile.
             assert_eq!(
-                crate::sandbox::spell(language, call),
+                crate::sandbox::spell(language, id),
                 format!(
                     "{}{}{}",
                     entry.object,
@@ -688,8 +686,8 @@ fn no_language_serves_another_languages_artifacts() {
         fixture.prompt().system_template,
     );
     assert_ne!(
-        crate::sandbox::spell(ts, crate::sandbox::REVIEW_REQUEST_CHANGES),
-        crate::sandbox::spell(fixture, crate::sandbox::REVIEW_REQUEST_CHANGES),
+        crate::sandbox::spell(ts, crate::sandbox::SESSION_REQUEST_CHANGES),
+        crate::sandbox::spell(fixture, crate::sandbox::SESSION_REQUEST_CHANGES),
     );
 
     assert_ne!(
@@ -710,9 +708,9 @@ fn no_language_serves_another_languages_artifacts() {
 fn the_fixture_quotes_only_functions_its_own_catalogue_carries() {
     let fixture = fixture_language();
     let functions = crate::sandbox::catalogue_functions(fixture);
-    for call in crate::sandbox::OPERATIONS
+    for id in crate::sandbox::OPERATIONS
         .iter()
-        .map(|operation| operation.call)
+        .map(|operation| operation.id)
     {
         // Resolved through the operation and quoted with the entry's OWN grouping, because the
         // fixture's grouping is deliberately not gg's: it renames one module, invents another, and
@@ -720,11 +718,9 @@ fn the_fixture_quotes_only_functions_its_own_catalogue_carries() {
         // this a lookup rather than a guess at where the arm filed the call.
         let entry = functions.iter().find(|function| {
             function.alias_of.is_none()
-                && crate::sandbox::operation_of(function).is_some_and(|resolved| {
-                    resolved.call.object == call.object && resolved.call.key == call.key
-                })
+                && crate::sandbox::operation_of(function).is_some_and(|resolved| resolved.id == id)
         });
-        let qualified = crate::sandbox::spell(fixture, call);
+        let qualified = crate::sandbox::spell(fixture, id);
         assert_eq!(
             Some(qualified.as_str()),
             entry

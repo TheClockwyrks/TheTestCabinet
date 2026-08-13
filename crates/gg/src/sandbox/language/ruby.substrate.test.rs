@@ -33,7 +33,12 @@ use wasmtime::component::Component;
 use super::COMPONENT;
 use super::compile::{compile_module, compile_program};
 use crate::ending::EndingRole;
-use crate::sandbox::fake::{CallLog, FakeToolApi, all_tools, canned_outcome, typescript};
+use test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE;
+
+use crate::sandbox::fake::{
+    CallLog, FakeToolApi, all_capabilities, all_operations, all_operations_without, canned_outcome,
+    granted_operations, typescript,
+};
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{ProgramError, ProgramErrorKind, SandboxError, SandboxOutcome};
 use crate::sandbox::{
@@ -87,13 +92,20 @@ fn prepare_module(ruby: &str) -> String {
 /// refusal, and gg spells one in Ruby now that the arm is registered.
 fn run_as(
     ruby: &str,
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     modules: &[CodeModule],
     ending: RunEnding,
     library: bool,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    evaluate(&prepare(ruby), enabled, modules, ending, library, responder)
+    evaluate(
+        &prepare(ruby),
+        operations,
+        modules,
+        ending,
+        library,
+        responder,
+    )
 }
 
 /// Evaluate already-compiled JavaScript, so a measurement of what a *turn* costs is not a
@@ -122,7 +134,7 @@ fn run_as(
 /// is a turn, not a compiler.
 fn evaluate(
     program: &str,
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     modules: &[CodeModule],
     ending: RunEnding,
     library: bool,
@@ -134,13 +146,14 @@ fn evaluate(
     // Both of these before the store exists, for the reason this function's documentation gives.
     let component = component();
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let operations = granted_operations(operations, library);
     let scope = ProgramScope {
-        enabled,
+        capabilities: &all_capabilities(),
+        operations: &operations,
         modules,
         ending,
-        library,
-        docview_close: false,
     };
+    let granted: Vec<String> = operations.iter().map(ToString::to_string).collect();
     let mut store = bounded_store(MembraneState::new(api, ruby(), scope, limits, None), limits);
     let bound = match Sandbox::instantiate(&mut store, component, &linker) {
         Ok(bound) => bound,
@@ -154,7 +167,7 @@ fn evaluate(
             &mut store,
             program,
             modules,
-            enabled,
+            &granted,
             ending.into(),
             library,
         )
@@ -163,14 +176,14 @@ fn evaluate(
     (outcome, log)
 }
 
-/// Compile and run one Ruby `program` with `enabled`'s gg tools offered and no ending.
+/// Compile and run one Ruby `program` granting `operations` and no ending.
 fn run_with(
     ruby: &str,
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     modules: &[CodeModule],
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    run_as(ruby, enabled, modules, RunEnding::None, false, responder)
+    run_as(ruby, operations, modules, RunEnding::None, false, responder)
 }
 
 /// Compile and run `ruby` with no gg tool offered — the shape most of these cases want.
@@ -376,7 +389,7 @@ puts entries.first.kind.inspect
 out = GG::Shell.run("true")
 puts "#{out.exit_code} #{out.truncated?}"
 "##,
-        &all_tools(),
+        &all_operations(),
         &[],
         canned_outcome,
     );
@@ -417,7 +430,7 @@ rescue => failure
   puts failure.message
 end
 "##,
-        &all_tools(),
+        &all_operations(),
         &[],
         |name: &str, args: &Value| {
             if name == "read_file" && args["path"] == json!("missing.md") {
@@ -448,11 +461,8 @@ fn a_ruby_program_is_gated_by_the_host_and_told_what_it_does_have() {
     let error = program_error(&outcome);
     assert_eq!(error.kind, ProgramErrorKind::UnknownName);
     assert!(
-        error
-            .message
-            .contains("`GG::Shell.run` is not available to you")
-            && error.message.contains("the gg tool `shell`"),
-        "the refusal names the call and what is missing: {}",
+        error.message.ends_with("`GG::Shell.run` is not available."),
+        "the refusal names the call this program wrote: {}",
         error.message
     );
 
@@ -460,7 +470,7 @@ fn a_ruby_program_is_gated_by_the_host_and_told_what_it_does_have() {
     // run with reading is still refused a write, on the same terms and in the same words.
     let (outcome, _log) = run_with(
         "GG::Files.write_file(\"a\", \"b\")\n",
-        &["read_file".into()],
+        &[crate::sandbox::operations::FILES_READ_FILE],
         &[],
         canned_outcome,
     );
@@ -469,9 +479,8 @@ fn a_ruby_program_is_gated_by_the_host_and_told_what_it_does_have() {
     assert!(
         error
             .message
-            .contains("`GG::Files.write_file` is not available to you")
-            && error.message.contains("the gg tool `write_file`"),
-        "the refusal names the call and what is missing: {}",
+            .ends_with("`GG::Files.write_file` is not available."),
+        "the refusal names the call this program wrote: {}",
         error.message
     );
 
@@ -480,7 +489,7 @@ fn a_ruby_program_is_gated_by_the_host_and_told_what_it_does_have() {
     // of what gg declares there.
     let (outcome, _log) = run_with(
         "GG::Files.read_fil(\"notes.md\")\n",
-        &["read_file".into()],
+        &[crate::sandbox::operations::FILES_READ_FILE],
         &[],
         canned_outcome,
     );
@@ -499,7 +508,7 @@ fn a_ruby_program_is_gated_by_the_host_and_told_what_it_does_have() {
     // — which is the property the whole gate exists for.
     let (outcome, log) = run_with(
         "GG::Files.read_file(\"notes.md\")\n",
-        &["write_file".to_string()],
+        &[crate::sandbox::operations::FILES_WRITE_FILE],
         &[],
         canned_outcome,
     );
@@ -519,7 +528,7 @@ fn a_ruby_program_is_gated_by_the_host_and_told_what_it_does_have() {
     // on. That is what a `NoMethodError` could never be.
     let (outcome, _log) = run_with(
         "begin\n  GG::Files.read_file(\"notes.md\")\nrescue GG::Core::ToolError => failure\n           puts \"#{failure.tool} #{failure.code}\"\nend\n",
-        &["write_file".to_string()],
+        &[crate::sandbox::operations::FILES_WRITE_FILE],
         &[],
         canned_outcome,
     );
@@ -576,7 +585,7 @@ end
     // gg classifies the turn from the code rather than from what this guest made of the raise.
     let (outcome, _log) = run_with(
         "GG::Files.read_file(\"gone.md\")\n",
-        &all_tools(),
+        &all_operations(),
         &[],
         |name: &str, args: &Value| {
             if name == "read_file" {
@@ -610,7 +619,7 @@ puts lib.helpers.double(21)
 puts lib.helpers.greeting
 puts lib.helpers.first_line("notes.md")
 "##,
-        &["read_file".to_string()],
+        &[crate::sandbox::operations::FILES_READ_FILE],
         &[CodeModule {
             name: "helpers".to_string(),
             source: prepare_module(
@@ -910,10 +919,10 @@ fn crossings() -> Vec<Crossing> {
 #[test]
 fn every_tool_crosses_the_membrane_from_its_ruby_spelling() {
     let crossings = crossings();
-    let enabled = all_tools();
+    let operations = all_operations();
 
     for crossing in &crossings {
-        let (outcome, log) = run_with(crossing.program, &enabled, &[], canned_outcome);
+        let (outcome, log) = run_with(crossing.program, &operations, &[], canned_outcome);
         assert!(
             matches!(&outcome.result, Ok(result) if result.error.is_none()),
             "`{}` did not run cleanly: {:?}",
@@ -968,7 +977,7 @@ whole = GG::Views.open_file("notes.md")
 puts "#{whole.class} #{GG::Views.current.select { |v| v.kind == GG::Views::ViewKind::FILE }.map(&:region).inspect}"
 GG::Session.finish("done")
 "##,
-        &all_tools(),
+        &all_operations(),
         &[],
         RunEnding::Role(EndingRole::Standard),
         true,
@@ -1010,7 +1019,7 @@ GG::Session.request_changes("widen the test", "name the file")
     // right call and does not parse — or parses and opens nothing — would fail on the first read of
     // a built-in skill, in a turn that has nothing to do with what the model wrote.
     let generated = ruby().open_docs_views_statement(&["read_file", "write_file", "list_dir"]);
-    let (outcome, _log) = run_with(&generated, &all_tools(), &[], canned_outcome);
+    let (outcome, _log) = run_with(&generated, &all_operations(), &[], canned_outcome);
     assert!(
         matches!(&outcome.result, Ok(result) if result.error.is_none()),
         "gg's own generated documentation program did not run: {:?}",
@@ -1041,12 +1050,13 @@ GG::Session.request_changes("widen the test", "name the file")
     let api = FakeToolApi::new(&log);
     let component = component();
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let capabilities = vec![CAPABILITY_DOCVIEW_CLOSE.to_string()];
+    let operations = crate::sandbox::capability_operations([CAPABILITY_DOCVIEW_CLOSE]);
     let scope = ProgramScope {
-        enabled: &[],
+        capabilities: &capabilities,
+        operations: &operations,
         modules: &[],
         ending: RunEnding::None,
-        library: false,
-        docview_close: true,
     };
     let mut store = bounded_store(MembraneState::new(api, ruby(), scope, limits, None), limits);
     let bound = Sandbox::instantiate(&mut store, component, &linker).expect("instantiates");
@@ -1092,7 +1102,7 @@ rescue GG::Core::ToolError => failure
   puts "#{failure.tool} #{failure.code == GG::Core::ToolErrorCode::UNAVAILABLE}"
 end
 "##,
-        &all_tools(),
+        &all_operations_without(CAPABILITY_DOCVIEW_CLOSE),
         &[],
         canned_outcome,
     );
@@ -1118,7 +1128,7 @@ fn the_baked_runtime_and_sdk_are_what_make_a_turn_affordable() {
     //
     // The control is the same program's language, removed: plain JavaScript through the same
     // `evaluate`, on the same component, in the same process, with the same thirty-five tools
-    // enabled — so instantiating a 21 MB guest and building this SDK's surface are paid by both
+    // operations — so instantiating a 21 MB guest and building this SDK's surface are paid by both
     // readings and cancel, and what is left is exactly the thing this artifact exists to have made
     // free, the Opal runtime the compiled program requires. The two are interleaved rather than
     // measured in blocks, so a bad scheduling window lands on both. This is the idiom the PureScript
@@ -1130,13 +1140,13 @@ fn the_baked_runtime_and_sdk_are_what_make_a_turn_affordable() {
     // Not a compiled Ruby program: a line of JavaScript that reaches the same `console.log` the
     // compiled one reaches, which is what makes it the same turn minus the runtime.
     let javascript = "console.log(210)";
-    let enabled = all_tools();
+    let operations = all_operations();
     // One run first, so the component compile and the first instantiation are not in the reading.
     assert_eq!(
         logs(
             &evaluate(
                 &program,
-                &enabled,
+                &operations,
                 &[],
                 RunEnding::None,
                 false,
@@ -1153,7 +1163,7 @@ fn the_baked_runtime_and_sdk_are_what_make_a_turn_affordable() {
         let started = Instant::now();
         let outcome = evaluate(
             &program,
-            &enabled,
+            &operations,
             &[],
             RunEnding::None,
             false,
@@ -1166,7 +1176,7 @@ fn the_baked_runtime_and_sdk_are_what_make_a_turn_affordable() {
         let started = Instant::now();
         let outcome = evaluate(
             javascript,
-            &enabled,
+            &operations,
             &[],
             RunEnding::None,
             false,
@@ -1190,7 +1200,7 @@ fn the_baked_runtime_and_sdk_are_what_make_a_turn_affordable() {
     assert!(
         ruby < plain * 2,
         "a Ruby turn on this component took {ruby:?} against plain JavaScript's {plain:?} on the \
-         same component and the same enabled set; Opal's runtime is being built or prepended per \
+         same component and the same operations set; Opal's runtime is being built or prepended per \
          turn rather than coming out of the component's pre-initialised snapshot",
     );
 
@@ -1332,11 +1342,10 @@ end
     let log = CallLog::default();
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
     let scope = ProgramScope {
-        enabled: &[],
+        capabilities: &[],
+        operations: &[],
         modules: &[],
         ending: RunEnding::None,
-        library: false,
-        docview_close: false,
     };
     let started = Instant::now();
     let mut store = bounded_store(
@@ -1376,7 +1385,7 @@ end
 #[test]
 fn the_embedded_guest_imports_the_membrane_and_the_wasi_it_was_baked_with() {
     // This guest is the ECMAScript guest's engine plus a Ruby runtime, so its imports must be that
-    // guest's exactly: a capability enabled here and not there would be a difference between two
+    // guest's exactly: a capability operations here and not there would be a difference between two
     // arms of a study that nobody chose. `wasi:filesystem` and `wasi:sockets` are absent because the
     // component is baked without them, not because the host withholds them — gg's linker defines the
     // whole surface for every guest.
@@ -1425,11 +1434,10 @@ fn the_embedded_guest_imports_the_membrane_and_the_wasi_it_was_baked_with() {
     let limits = SandboxLimits::default();
     let log = CallLog::default();
     let scope = ProgramScope {
-        enabled: &[],
+        capabilities: &[],
+        operations: &[],
         modules: &[],
         ending: RunEnding::None,
-        library: false,
-        docview_close: false,
     };
     let mut store = bounded_store(
         MembraneState::new(FakeToolApi::new(&log), ruby(), scope, limits, None),
@@ -1525,7 +1533,7 @@ fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
     );
     let (outcome, _log) = run_as(
         &program,
-        &all_tools(),
+        &all_operations(),
         &[],
         RunEnding::Role(EndingRole::Standard),
         true,
@@ -1677,7 +1685,7 @@ why { GG::Files.write_file("a.rb", "b", "c") }
 why { GG::Tasks.set_blocked_by }
 why { GG::Files.edit_file("a.rb", "old") }
 "##,
-        &all_tools(),
+        &all_operations(),
         &[],
         canned_outcome,
     );
@@ -1720,7 +1728,7 @@ why { GG::Files.read_file("a.rb", start: 3) }
 why { GG::Files.list_dir("src", deep: true) }
 why { GG::Views.current(deep: true) }
 "##,
-        &all_tools(),
+        &all_operations(),
         &[],
         canned_outcome,
     );
@@ -1764,7 +1772,7 @@ GG::Tasks.add_task("t1", "title", description: "d", blocked_by: ["t0"])
 GG::Tasks.set_blocked_by("t1", "t0", "t2")
 puts "clean"
 "##,
-        &all_tools(),
+        &all_operations(),
         &[],
         canned_outcome,
     );

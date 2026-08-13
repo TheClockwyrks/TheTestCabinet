@@ -56,9 +56,9 @@ this section. Every capability is:
 
 - Toggleable. With a capability off, gg behaves as though the feature does not
   exist: no tools for it are offered to the model, no [prompt
-  text](/gg/prompts/) describes it, and it consumes no context. This is the
-  basis for ablation studies. Run the same model on the same test case with a
-  capability on and off, and the difference is attributable to it.
+  text](/gg/prompts/) describes it, and it consumes no context. This is what
+  makes two configurations comparable. Run the same model on the same test case
+  with a capability on and off, and the difference is attributable to it.
 - Configurable. A capability that is on can be parameterized, for example the
   compaction trigger threshold, the subagent parallelism cap, or the memory
   budget.
@@ -86,7 +86,7 @@ harness becomes a laboratory. It must be:
 The set carries two things that are not capabilities. The first is the run's
 [execution limits](/gg/execution-limits/), the ceilings on turns, wall clock,
 consecutive errors, recent error rate, and cost that stop a run and record which
-one stopped it. A capability is a feature under ablation; a ceiling is an
+one stopped it. A capability is a feature a study varies; a ceiling is an
 operator's guardrail over all of them. Because the set is what a run records, a
 run stopped by a ceiling carries both the breach and the ceiling that produced
 it.
@@ -122,8 +122,9 @@ given tool, reconfigures behaviour without a combinatorial explosion of
 pluggable subsystems. So "swap the compaction strategy" or "swap the memory
 strategy" is, in practice, "offer a different tool or tool implementation for
 it" rather than a bespoke plugin interface per capability. The agent loop is the
-only coarse-grained plug point. Treating the toolset itself as an experimental
-variable is [toolset ablation](/gg/toolset-ablation/).
+only coarse-grained plug point. The offered set of calls is itself an
+experimental variable, since each agent profile names the calls it is granted
+(see [Configurations](/gg/configurations/#granting-calls)).
 
 What every one of those tools, and every responses-as-code function, says to a
 model is the [Reference](/gg/reference/). It is projected from gg's own
@@ -273,8 +274,6 @@ the console is [Configurations](/gg/configurations/).
   output-offloading mode that keeps a chatty build out of the context window.
 - [Filesystem tools](/gg/filesystem/) — read, write, edit, and list files; one
   capability per tool, and `read_file`'s read modes.
-- [Toolset ablation](/gg/toolset-ablation/) — treat the offered toolset as an
-  experimental variable.
 - [Responses as code](/gg/responses-as-code/overview/) — agents emit code run in
   a wasmtime sandbox instead of discrete tool calls.
 - [Languages](/gg/languages/overview/) — which language a program is written in,

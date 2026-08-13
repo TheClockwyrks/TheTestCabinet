@@ -34,12 +34,41 @@ fn skills_modules(library: &Arc<SkillLibrary>) -> CapabilityModules {
     ))))
 }
 
-/// An agent profile with the given capability configs and no model binding.
+/// An agent profile with the given capability configs and no model binding, granted **every tool
+/// those capabilities offer**.
+///
+/// The allowlist is seeded rather than left empty because these tests are about the *capability*
+/// gate: a fixture that named no tools would be withheld everything for a second reason, and every
+/// assertion below would pass for the wrong one. Seeding it from [`capability_tools`] rather than by
+/// hand keeps the fixture correct as tools are added — the tests that are about the allowlist itself
+/// narrow this list explicitly.
 fn set_with(capabilities: Vec<GgCapabilityConfig>) -> GgAgentConfig {
-    GgAgentConfig {
+    granting(GgAgentConfig {
         capabilities,
         ..GgAgentConfig::root()
-    }
+    })
+}
+
+/// The default Root profile, granted every tool its default capabilities offer — the shape the
+/// console's editor writes when an operator switches those capabilities on.
+fn root() -> GgAgentConfig {
+    granting(GgAgentConfig::root())
+}
+
+/// `profile` with its [tool allowlist](GgAgentConfig::tools) set to everything its enabled
+/// capabilities offer.
+fn granting(profile: GgAgentConfig) -> GgAgentConfig {
+    let enabled: Vec<&str> = profile
+        .capabilities
+        .iter()
+        .filter(|capability| capability.enabled)
+        .map(|capability| capability.id.as_str())
+        .collect();
+    let tools = capability_tools(enabled)
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+    GgAgentConfig { tools, ..profile }
 }
 
 /// The four per-tool filesystem capabilities, all enabled — every filesystem primitive on.
@@ -58,7 +87,7 @@ fn offers(registry: &ToolRegistry, name: &str) -> bool {
 /// The default Phase 0 set (shell + filesystem enabled) offers the full toolset.
 #[test]
 fn registry_offers_all_phase0_tools_when_both_capabilities_enabled() {
-    let registry = ToolRegistry::from_capabilities(&GgAgentConfig::root());
+    let registry = ToolRegistry::from_capabilities(&root());
 
     // shell + read_file + write_file + edit_file + list_dir
     assert_eq!(registry.len(), 5);
@@ -75,8 +104,8 @@ fn registry_offers_all_phase0_tools_when_both_capabilities_enabled() {
     assert_eq!(names.len(), 5);
 }
 
-/// Disabling the shell capability withholds *only* the shell tool — the filesystem
-/// tools remain. This is the concrete toolset-ablation behavior.
+/// Disabling the shell capability withholds *only* the shell tool — the filesystem tools remain.
+/// A capability is switched off one at a time, and takes only its own tools with it.
 #[test]
 fn registry_excludes_shell_tool_when_shell_capability_disabled() {
     let mut capabilities = vec![GgCapabilityConfig::disabled(CAPABILITY_SHELL)];
@@ -258,7 +287,7 @@ fn registry_is_empty_when_no_capabilities_present() {
 #[tokio::test]
 async fn dispatch_unknown_tool_returns_error_outcome() {
     let dir = TempDir::new().unwrap();
-    let registry = ToolRegistry::from_capabilities(&GgAgentConfig::root());
+    let registry = ToolRegistry::from_capabilities(&root());
     let ctx = ToolContext::new(dir.path());
 
     let call = ToolCall {
@@ -302,7 +331,7 @@ async fn dispatch_withheld_tool_returns_error_outcome() {
 #[tokio::test]
 async fn dispatch_routes_to_the_named_tool() {
     let dir = TempDir::new().unwrap();
-    let registry = ToolRegistry::from_capabilities(&GgAgentConfig::root());
+    let registry = ToolRegistry::from_capabilities(&root());
     let ctx = ToolContext::new(dir.path());
 
     let call = ToolCall {
@@ -346,7 +375,7 @@ fn registry_gates_read_skill_on_capability_and_a_non_empty_library() {
         "read_skill"
     ));
 
-    // Disabled capability => no tool even with a populated library (the ablation off arm).
+    // Disabled capability => no tool even with a populated library (the capability-off arm).
     let off = set_with(vec![GgCapabilityConfig::disabled(CAPABILITY_SKILLS)]);
     assert!(!offers(
         &ToolRegistry::from_run(&off, &skills_modules(&library), &AgentFacts::default()),
@@ -384,7 +413,7 @@ fn registry_gates_memory_tools_on_capability_and_a_bound_store() {
         );
     }
 
-    // Disabled capability => no memory tools even with a bound store (the ablation off arm).
+    // Disabled capability => no memory tools even with a bound store (the capability-off arm).
     let off = set_with(vec![GgCapabilityConfig::disabled(CAPABILITY_MEMORIES)]);
     let registry = ToolRegistry::from_run(&off, &modules(), &AgentFacts::default());
     for name in names {
@@ -484,7 +513,7 @@ fn registry_gates_task_tools_on_capability_and_a_bound_store() {
         );
     }
 
-    // Disabled capability => no task tools even with a bound store (the ablation off arm).
+    // Disabled capability => no task tools even with a bound store (the capability-off arm).
     let off = set_with(vec![GgCapabilityConfig::disabled(CAPABILITY_TASKS)]);
     let registry = ToolRegistry::from_run(&off, &modules(), &AgentFacts::default());
     for name in names {
@@ -533,7 +562,7 @@ fn registry_gates_board_tools_on_capability_and_a_bound_store() {
         );
     }
 
-    // Disabled capability => no board tools even with a bound store (the ablation off arm).
+    // Disabled capability => no board tools even with a bound store (the capability-off arm).
     let off = set_with(vec![GgCapabilityConfig::disabled(
         CAPABILITY_PROJECT_MANAGEMENT,
     )]);
@@ -586,21 +615,20 @@ fn an_assigned_issue_earns_no_board_tools_without_the_board_capability() {
     );
 }
 
-/// A per-tool override withholds exactly the named tool while its capability stays on: the rest of
-/// the capability's tools remain offered. This is the finest-grained toolset-ablation lever — one
-/// notch below toggling a whole capability (the `apply-patch` vs `write-file` study).
+/// An allowlist that omits one of a capability's tools offers the rest of that capability — the
+/// finest-grained lever there is, one notch below switching the whole capability off.
 #[test]
-fn per_tool_override_withholds_only_the_named_tool() {
-    // Every filesystem capability on, but `edit_file` individually disabled.
+fn an_allowlist_that_omits_one_tool_offers_the_rest() {
+    // Every filesystem capability on, and every tool granted except `edit_file`.
     let mut capabilities = vec![GgCapabilityConfig::enabled(CAPABILITY_SHELL)];
     capabilities.extend(filesystem_enabled());
     let mut set = set_with(capabilities);
-    set.disabled_tools = vec!["edit_file".to_string()];
+    set.tools.retain(|name| name != "edit_file");
     let registry = ToolRegistry::from_capabilities(&set);
 
     assert!(
         !offers(&registry, "edit_file"),
-        "the individually disabled tool is withheld"
+        "the tool the allowlist does not name is withheld"
     );
     // Its capability stays on, so the rest of the filesystem tools (and shell) remain.
     for name in ["shell", "read_file", "write_file", "list_dir"] {
@@ -614,15 +642,13 @@ fn per_tool_override_withholds_only_the_named_tool() {
     assert_eq!(registry.len(), 4);
 }
 
-/// A per-tool-disabled tool is genuinely undispatchable — a model that calls it anyway gets the
-/// unknown-tool error, exactly as if its capability were off (no schema, not dispatchable).
+/// A tool the allowlist does not name is genuinely undispatchable — a model that calls it anyway
+/// gets the unknown-tool error, exactly as if its capability were off (no schema, not dispatchable).
 #[tokio::test]
-async fn dispatch_per_tool_disabled_tool_returns_error_outcome() {
+async fn dispatch_of_an_ungranted_tool_returns_error_outcome() {
     let dir = TempDir::new().unwrap();
-    let set = GgAgentConfig {
-        disabled_tools: vec!["edit_file".to_string()],
-        ..GgAgentConfig::root()
-    };
+    let mut set = root();
+    set.tools.retain(|name| name != "edit_file");
     let registry = ToolRegistry::from_capabilities(&set);
     let ctx = ToolContext::new(dir.path());
 
@@ -636,15 +662,67 @@ async fn dispatch_per_tool_disabled_tool_returns_error_outcome() {
     assert!(outcome.output.contains("unknown tool"));
 }
 
+/// An empty allowlist grants nothing, however many capabilities are on: the list *is* the grant,
+/// and there is no configuration that means "everything".
+#[test]
+fn an_empty_allowlist_grants_nothing() {
+    let registry = ToolRegistry::from_capabilities(&GgAgentConfig {
+        tools: Vec::new(),
+        ..GgAgentConfig::root()
+    });
+    assert!(
+        registry.is_empty(),
+        "the default capabilities are on, and no tool is named"
+    );
+}
+
+/// **The default profile grants exactly what its default capabilities offer**, on both surfaces.
+///
+/// [`GgAgentConfig::root`] authors its two allowlists as literals, because the vocabularies belong
+/// to this crate and the contract belongs to `core`. That is the right split and it is the kind of
+/// split that rots: a tool added to an existing capability, or an operation renamed, leaves the
+/// default profile a call short and nothing about it reads as wrong — a narrower allowlist is a
+/// legitimate configuration, so there is no shape to notice. This is the only thing that notices.
+///
+/// Held to **equality** rather than containment in both directions at once. A default profile
+/// missing a call is an agent quietly weaker than the capabilities it declares; one naming a call
+/// its capabilities do not offer is an entry that grants nothing and that the launch reports as an
+/// error on every run that starts from the default.
+#[test]
+fn the_default_profile_grants_what_its_capabilities_offer() {
+    let profile = GgAgentConfig::root();
+    let enabled: Vec<&str> = profile
+        .capabilities
+        .iter()
+        .filter(|capability| capability.enabled)
+        .map(|capability| capability.id.as_str())
+        .collect();
+
+    assert_eq!(
+        profile.tools,
+        capability_tools(enabled.iter().copied())
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>(),
+        "the default profile's tool allowlist is not what its capabilities offer"
+    );
+    assert_eq!(
+        profile.operations,
+        crate::sandbox::capability_operations(enabled)
+            .into_iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>(),
+        "the default profile's operation allowlist is not what its capabilities offer"
+    );
+}
+
 /// `tool_names` reports the effective toolset in registration order, after **both** capability
-/// gating and per-tool overrides — the exact list recorded on the session summary.
+/// gating and the allowlist — the exact list recorded on the session summary.
 #[test]
 fn tool_names_reports_the_effective_toolset() {
     // The default set is shell + filesystem.
-    let set = GgAgentConfig {
-        disabled_tools: vec!["write_file".to_string()],
-        ..GgAgentConfig::root()
-    };
+    let mut set = root();
+    set.tools.retain(|name| name != "write_file");
     let registry = ToolRegistry::from_capabilities(&set);
     assert_eq!(
         registry.tool_names(),
@@ -657,21 +735,27 @@ fn tool_names_reports_the_effective_toolset() {
     );
 }
 
-/// `unknown_disabled_tools` flags only names no gg tool bears (a typo or removed tool), not a real
-/// tool that this run's capabilities simply do not offer — that withholds nothing but is not a
-/// mistake (a sweep may name a tool only some arms offer).
+/// `ungranted_tools` flags only names no gg tool bears (a typo, a removed tool, or an operation id
+/// from the other surface's vocabulary), not a real tool that this run's capabilities simply do not
+/// offer — that grants nothing but is not a mistake, since one configuration document describes
+/// agents whose capabilities differ.
 #[test]
-fn unknown_disabled_tools_flags_only_typos() {
+fn ungranted_tools_flags_only_names_no_tool_bears() {
     let mut set = set_with(Vec::new());
-    set.disabled_tools = vec![
+    set.tools = vec![
         "edit_file".to_string(), // a real tool (not offered here, but valid) — not flagged
         "fork".to_string(),      // a real tool — not flagged
         "edti_file".to_string(), // a typo — flagged
         "frobnicate".to_string(), // not a tool at all — flagged
+        "files.edit_file".to_string(), // the other surface's spelling — flagged
     ];
     assert_eq!(
-        unknown_disabled_tools(&set),
-        vec!["edti_file".to_string(), "frobnicate".to_string()]
+        ungranted_tools(&set),
+        vec![
+            "edti_file".to_string(),
+            "frobnicate".to_string(),
+            "files.edit_file".to_string()
+        ]
     );
 }
 
@@ -803,12 +887,10 @@ fn the_agent_transition_tools_are_offered_on_their_own_terms() {
     assert_eq!(offered(&with_roster, None), (true, false));
 
     let mut with_delegation = bare.clone();
-    with_delegation
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
+    crate::tools::grant(&mut with_delegation, CAPABILITY_SUBAGENTS);
     assert_eq!(offered(&with_delegation, None), (false, true));
 
-    // **The two are independent capabilities, not one with a per-tool ablation.** Enabling either
+    // **The two are independent capabilities, not one capability with two halves.** Enabling either
     // alone, with everything each needs beside it, offers that call and not the other — which is
     // the arm the split exists to make expressible.
     let mut exec_only = set_with(vec![

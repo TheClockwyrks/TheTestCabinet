@@ -32,19 +32,19 @@
 //!   the forcing function: a capability added to gg with calls behind it fails this file until
 //!   somebody writes down the words a model would look for it by.
 
+use super::*;
+use crate::ending::EndingRole;
+use crate::sandbox::{
+    OperationId, all_languages, capability_operations, catalogue_functions, gating_capabilities,
+    instance_operations,
+};
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_DOCVIEW_CLOSE,
-    CAPABILITY_EDIT_FILE, CAPABILITY_EXEC, CAPABILITY_FORK, CAPABILITY_FSM, CAPABILITY_LIST_DIR,
+    CAPABILITY_EDIT_FILE, CAPABILITY_EXEC, CAPABILITY_FORK, CAPABILITY_LIST_DIR,
     CAPABILITY_MEMORIES, CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_PROJECT_MANAGEMENT,
     CAPABILITY_READ_FILE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS,
     CAPABILITY_TASKS, CAPABILITY_WRITE_FILE,
 };
-use test_cabinet_core::gg_query::GG_CAPABILITY_CATALOG;
-
-use super::*;
-use crate::ending::EndingRole;
-use crate::reference::conditions::derive;
-use crate::sandbox::{Binding, OPERATIONS, all_languages, catalogue_functions};
 
 /// **The natural words a model reaches for when it wants a capability.**
 ///
@@ -71,107 +71,71 @@ const CAPABILITY_KEYWORDS: &[(&str, &[&str])] = &[
     (CAPABILITY_COMPACTION, &["compact", "summar"]),
     (CAPABILITY_EXEC, &["take over", "different agent"]),
     (CAPABILITY_FORK, &["fork", "copy", "parallel"]),
-    (CAPABILITY_FSM, &["state", "transition"]),
 ];
 
-/// Which gg tools a capability contributes, from the
-/// [derivation](crate::reference::conditions) that measures it against `ToolRegistry::from_run`
-/// itself.
+/// The natural words for the one operation **no capability buys** — the transition an agent holds
+/// because of where it stands in a machine.
 ///
-/// Read from there rather than restated here, because a second copy of "what buys this tool" is
-/// exactly the drift the reference stopped authoring.
-///
-/// One capability cannot be answered that way, and it is worth saying which and why.
-/// [`fsm`](CAPABILITY_FSM) is declared on the **shell profile driving a machine**, never on the
-/// profile of the agent standing in one — so no ablation of *this* agent's capabilities can find
-/// `transition_state`, and the derivation records it against the machine axis instead. The join
-/// from that axis back to the capability that declares a machine is stated here, once, because it
-/// is a fact about how a run is assembled rather than about what a registry offers.
-fn tools_of(capability: &str) -> Vec<String> {
-    derive()
-        .iter()
-        .filter(|conditions| {
-            conditions
-                .capabilities()
-                .iter()
-                .any(|held| held == capability)
-                || (capability == CAPABILITY_FSM
-                    && conditions
-                        .requires()
-                        .iter()
-                        .any(|condition| condition.axes.iter().any(|axis| axis == "machine")))
-        })
-        .map(|conditions| conditions.tool.to_string())
-        .collect()
-}
+/// Kept apart from [`CAPABILITY_KEYWORDS`] rather than folded into it under the
+/// [`fsm`](test_cabinet_core::gg::CAPABILITY_FSM) capability, because that capability is declared on
+/// the *shell* driving a machine and never on the agent running a state: a row filed under it would
+/// build a grant no real agent has and assert discoverability against a surface nobody is offered.
+/// The assertion itself is the same one, and [`the_positional_call_is_findable_by_its_natural_words`]
+/// makes it.
+const POSITIONAL_KEYWORDS: &[&str] = &["state", "transition"];
 
-/// The [operations](OPERATIONS) a capability grants: everything bound by a tool it contributes, plus
-/// everything bound by the capability itself.
-///
-/// The two arms of [`Binding`] a capability can reach. An operation bound to an
-/// [ending role](Binding::Ending) belongs to a role rather than a capability, and one that is
-/// [`Always`](Binding::Always) belongs to everybody — neither is a thing a capability can make
-/// undiscoverable, so neither is this gate's business.
-fn operations_of(capability: &str) -> Vec<(&'static str, &'static str)> {
-    let tools = tools_of(capability);
-    OPERATIONS
-        .iter()
-        .filter(|operation| match operation.binding {
-            Binding::Tool(tool) => tools.iter().any(|enabled| enabled == tool),
-            Binding::Capability(id) => id == capability,
-            Binding::Ending(_) | Binding::Always => false,
-        })
-        .map(|operation| (operation.call.object, operation.call.key))
-        .collect()
-}
-
-/// The names `language` spells a capability's operations under — the keys a hit must carry to count
+/// The names `language` spells `capability`'s operations under — the keys a hit must carry to count
 /// as having found that capability.
+///
+/// The operations themselves come off the [table](crate::sandbox::OPERATIONS) rather than from a
+/// list here: a
+/// capability's grant *is* the rows bound to it, so a second statement of which those are would be
+/// a copy of the very thing this gate is checking the discoverability of. Operations bound to an
+/// ending role or to everybody belong to no capability, and so are nothing a capability can make
+/// undiscoverable.
 fn spellings(
     language: &'static dyn crate::sandbox::ProgramLanguage,
     capability: &str,
 ) -> Vec<&'static str> {
-    let operations = operations_of(capability);
+    spellings_of(language, &capability_operations([capability]))
+}
+
+/// The names `language` spells `operations` under — [`spellings`] over a stated set rather than over
+/// a capability's, for the one grant a capability cannot express.
+fn spellings_of(
+    language: &'static dyn crate::sandbox::ProgramLanguage,
+    operations: &[OperationId],
+) -> Vec<&'static str> {
     catalogue_functions(language)
         .into_iter()
         .filter(|function| {
             // Matched on the operation each entry resolves to rather than on the grouping it was
-            // filed under: gg's `(object, key)` pair is gg's own identity, and an arm carries
-            // neither half of it — it groups by module and names the operation.
-            crate::sandbox::operation_of(function).is_some_and(|resolved| {
-                operations.iter().any(|(object, key)| {
-                    *object == resolved.call.object && *key == resolved.call.key
-                })
-            })
+            // filed under: an operation id is gg's own identity, and an arm carries neither half of
+            // it — it groups by module and names the operation.
+            crate::sandbox::operation_of(function)
+                .is_some_and(|resolved| operations.contains(&resolved.id))
         })
         // The key a hit is filed under, which is the fully-qualified name where the arm emits one.
         .map(|function| function.fqn)
         .collect()
 }
 
-/// A runtime for an agent granted **exactly** `capability` and nothing else.
+/// A runtime for an agent granted **exactly** `capability` and nothing else — the capability on,
+/// and every operation it offers in the allowlist.
 fn granted(
     language: &'static dyn crate::sandbox::ProgramLanguage,
     capability: &str,
 ) -> DocsRuntime {
-    // The capability id is carried whether or not anything is bound by it, exactly as the loop
-    // carries an agent's resolved set: a capability that buys tools buys nothing here, and one that
-    // buys a family directly is the whole of what this agent holds.
-    let held: Vec<&'static str> = GG_CAPABILITY_CATALOG
-        .iter()
-        .copied()
-        .filter(|id| *id == capability)
-        .collect();
     DocsRuntime::new(
-        tools_of(capability),
+        vec![capability.to_string()],
         EndingRole::Standard,
-        &held,
+        &capability_operations([capability]),
         language.id(),
     )
 }
 
-/// A runtime for an agent granted **everything** — every tool gg has and every capability in the
-/// catalogue.
+/// A runtime for an agent granted **everything** — every capability that gates a call, and every
+/// operation those capabilities offer.
 ///
 /// The counterpart of [`granted`], and the one where **rank** is a real question. A lone-capability
 /// agent's whole visible surface is six to twelve functions, so a page of
@@ -179,13 +143,16 @@ fn granted(
 /// the top* are the same assertion. Against the full surface — forty-odd functions and twenty-odd
 /// types — they are not.
 fn fully_granted(language: &'static dyn crate::sandbox::ProgramLanguage) -> DocsRuntime {
+    let capabilities = gating_capabilities();
+    // Joined to the operations a *position* buys, which no capability can be switched on to reach:
+    // an agent holding everything gg can be configured to grant still stands somewhere, and a
+    // maximal surface that omitted the transition would rank against a page no run produces.
+    let mut operations = capability_operations(capabilities.iter().copied());
+    operations.extend(instance_operations());
     DocsRuntime::new(
-        crate::tools::ALL_TOOL_NAMES
-            .iter()
-            .map(|tool| tool.to_string())
-            .collect(),
+        capabilities.into_iter().map(str::to_string).collect(),
         EndingRole::Standard,
-        GG_CAPABILITY_CATALOG,
+        &operations,
         language.id(),
     )
 }
@@ -327,27 +294,81 @@ fn a_withheld_capability_is_not_findable_by_the_same_words() {
     }
 }
 
+/// **The positional call is findable by the words a model would look for it by**, and is offered to
+/// nobody who does not hold it.
+///
+/// The same assertion [`a_granted_capability_is_findable_by_its_natural_words`] makes, over the one
+/// grant that is not a capability's: an agent standing in a machine state holds
+/// `delegation.transition_state` and nothing on its own profile says so, so the grant is built from
+/// [`instance_operations`] rather than from a capability id. Both halves are here — an agent that
+/// holds it finds it, an agent that does not is never offered it — because between them they are
+/// what proves the hit came through the permission filter rather than past it.
+#[test]
+fn the_positional_call_is_findable_by_its_natural_words() {
+    for language in all_languages() {
+        let name = language.display_name();
+        let expected = spellings_of(language, &instance_operations());
+        assert!(
+            !expected.is_empty(),
+            "{name}: no catalogued function names a positional operation, so this test is dead"
+        );
+        let standing = DocsRuntime::new(
+            Vec::new(),
+            EndingRole::Standard,
+            &instance_operations(),
+            language.id(),
+        );
+        let elsewhere = DocsRuntime::new(Vec::new(), EndingRole::Standard, &[], language.id());
+        for keyword in POSITIONAL_KEYWORDS {
+            let query = |docs: &DocsRuntime| {
+                docs.search(DocQuery {
+                    query: keyword,
+                    limit: Some(MAX_SEARCH_LIMIT),
+                    ..DocQuery::default()
+                })
+                .expect("a usable query")
+            };
+            let hits: Vec<String> = query(&standing)
+                .hits
+                .into_iter()
+                .map(|hit| hit.key)
+                .collect();
+            assert!(
+                hits.iter().any(|key| expected.contains(&key.as_str())),
+                "{name}: an agent standing in a machine searched `{keyword}` and found none of \
+                 {expected:?}. Fix the wording of that arm's briefs, or the ranking — never this \
+                 keyword.\nWhat it did find: {hits:?}"
+            );
+            for hit in query(&elsewhere).hits {
+                assert!(
+                    !expected.contains(&hit.key.as_str()),
+                    "{name}: an agent outside a machine searching `{keyword}` was offered `{}`",
+                    hit.key
+                );
+            }
+        }
+    }
+}
+
 /// **Every capability with a model-facing call has a row here.**
 ///
 /// The forcing function. A capability added to gg with functions behind it makes this fail until the
 /// words a model would look for it by are written down — which is the only thing standing between a
 /// new capability and one that exists, is granted, and is never found.
 ///
-/// A capability with **no** operation is skipped rather than exempted, and needs no waiver: there is
-/// nothing to discover, so there is nothing to be undiscoverable. There is none today.
-/// [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE) was the live example for as
-/// long as the two calls it buys were gated inline at the membrane and in no row of
-/// [`OPERATIONS`] — which is exactly the shape of gap this file exists to make impossible, and it
-/// survived here only because a capability that grants nothing grants nothing to find. Enrolling
-/// those calls is what made this test demand its row.
+/// The subjects are the capabilities that [gate an operation](gating_capabilities) rather than gg's
+/// whole catalogue: a capability with no row in the table has nothing to discover, so there is
+/// nothing about it to be undiscoverable, and demanding keywords for it would be demanding words for
+/// a surface that does not exist. [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE)
+/// was the live example for as long as the two calls it buys were gated inline at the membrane and
+/// in no row of the table — which is exactly the shape of gap this file exists to make impossible,
+/// and it escaped this test only because a capability that grants nothing grants nothing to find.
+/// Enrolling those calls is what made this test demand its row.
 #[test]
 fn every_capability_with_a_call_has_natural_words_written_down() {
-    for capability in GG_CAPABILITY_CATALOG {
-        if operations_of(capability).is_empty() {
-            continue;
-        }
+    for capability in gating_capabilities() {
         assert!(
-            CAPABILITY_KEYWORDS.iter().any(|(id, _)| *id == *capability),
+            CAPABILITY_KEYWORDS.iter().any(|(id, _)| *id == capability),
             "`{capability}` grants a model-facing call and has no keywords in \
              CAPABILITY_KEYWORDS, so nothing checks that an agent granted it can find it"
         );

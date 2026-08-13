@@ -1088,21 +1088,20 @@ function AgentCallsPanel({
 // was given — or, for an agent that answers its turns as code, every function bound on
 // the API objects its programs run against — each carrying its own call count.
 //
-// The contrast is the reason the file exists. A tool listed here that the model never
-// reached for was offered and ignored, which is a fact about the model; a tool that is
-// missing was never on the table, which is a fact about the run — a capability off, a
-// module unbound, an FSM state that gates it, or a deliberate ablation. Those are
-// opposite findings, and no other read-out of a run can tell them apart, because a call
-// count on its own cannot say what the agent had to choose from.
+// The contrast is the reason the file exists. A call listed here that the model never
+// reached for was offered and ignored, which is a fact about the model; a call that is
+// missing was never on the table, which is a fact about the run — a capability off, a name
+// the agent's allowlist never granted, a module unbound, or an FSM state that gates it.
+// Those are opposite findings, and no other read-out of a run can tell them apart, because
+// a call count on its own cannot say what the agent had to choose from.
 //
 // Both halves come off the instance's own reported surface rather than being re-derived
 // from the configuration: gg resolves it per incarnation, and a re-derivation here could
 // not know which modules bound, which state of a machine the instance sat in, or which
-// tools its role's ending calls added. Its ablated tools are shown beside the offered set
-// and marked as withheld rather than dropped — "the model ignored it" and "the harness
-// never gave it" are precisely the two answers this file keeps apart, so the second one
-// has to be on the page, and it has to be the ablation that actually applied rather than
-// the one the configuration asked for.
+// calls its role's ending added. What is NOT on the page is a roster of the calls the
+// configuration held back, and its absence is the same decision: the offered set is what gg
+// resolved, and the calls outside it are outside it for reasons this file cannot rank — a
+// capability left off and a name left out of an allowlist are one absence, said twice.
 function SurfaceFile({
   node,
   state,
@@ -1111,10 +1110,9 @@ function SurfaceFile({
   state: DerivedGgState;
 }) {
   // This instance's own tool calls — its partition of the stream, keyed by gg tool name.
-  // This is the EXECUTION record and it is what a tool-calling instance's surface is read
-  // against, so it is asked for explicitly rather than through `callRecordSurface`: the
-  // question this file asks is "what became of each tool I was offered", and a code
-  // instance is read against its API objects a few lines below instead.
+  // Asked for explicitly rather than through `callRecordSurface`: the question this file
+  // asks is "what became of each tool I was offered", and a code instance is read against
+  // its API modules a few lines below instead.
   const toolCalls = useMemo(() => new Map(state.toolCalls), [state.toolCalls]);
   const surface = node.surface;
   if (!surface) {
@@ -1127,18 +1125,17 @@ function SurfaceFile({
       </p>
     );
   }
-  // A code agent is read through its objects; a tool-calling one through the flat list —
+  // A code agent is read through its modules; a tool-calling one through the flat list —
   // decided by the same predicate that named the row, so the file always opens what its
-  // name promised. The objects have to actually be there: a code instance that bound
-  // none still reads as the tools it holds rather than as an empty page.
+  // name promised. The modules have to actually be there: an instance that bound none is
+  // read on the other surface, which for a code instance is empty and says so.
   const asCode = answersAsCode(surface) && surface.apis.length > 0;
   return (
     <div className={panels.surfaceFile}>
       {asCode ? (
         // A code instance is read against what its programs CALLED — one figure per
-        // function, on the function's own identity — never against the tools those calls
-        // happened to run through. The two are different layers and only one of them is
-        // the model's own vocabulary.
+        // function, on the function's own identity. There is no tool record to read it
+        // against: a program's calls are streamed on this surface and on no other.
         <ApiSurface
           apis={surface.apis}
           calls={state.apiCalls}
@@ -1146,9 +1143,6 @@ function SurfaceFile({
         />
       ) : (
         <ToolSurface tools={surface.tools} calls={toolCalls} />
-      )}
-      {surface.withheld.length > 0 && (
-        <WithheldTools tools={surface.withheld} />
       )}
     </div>
   );
@@ -1174,8 +1168,8 @@ function ToolSurface({
         <span
           className={panels.toolsRate}
           title={
-            "Every tool this instance was offered, after its capabilities, the modules it " +
-            "bound and any ablation were resolved. A tool it did not use reads a real 0× " +
+            "Every tool this instance was offered, after its capabilities, its allowlist " +
+            "and the modules it bound were resolved. A tool it did not use reads a real 0× " +
             "and is dimmed, not dropped — offered and unused is a different finding from " +
             "never offered."
           }
@@ -1271,51 +1265,6 @@ function ApiSurface({
                 />
               ))}
             </ul>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-// The tools this instance's profile ablated away — named in its `disabledTools`, which
-// strikes a tool from the registry after every capability that would have offered it is
-// on. They are the run's own control arm, so they are listed rather than merely absent:
-// without them, "this agent has no `read_file`" and "this agent was never given
-// `read_file`" are the same empty space on the page.
-//
-// gg reports these, and it reports only the names that ARE gg tools: a `disabledTools`
-// entry gg does not recognise withholds nothing at all — gg warns about it at startup and
-// offers the agent exactly the surface it would have had — so it never reaches this list.
-// Asserting a typo as an applied ablation would be the one lie this file cannot afford,
-// on the one page whose purpose is telling an ablation apart from a model's own restraint.
-function WithheldTools({ tools }: { tools: readonly string[] }) {
-  return (
-    <section className={panels.agentSection} aria-label="withheld tools">
-      <div className={panels.toolsHead}>
-        <span className={panels.subPanelLabel}>Withheld</span>
-        <span className={panels.toolsRate}>
-          ablated by this agent&rsquo;s configuration
-        </span>
-      </div>
-      <ul className={panels.toolList}>
-        {tools.map((tool) => (
-          <li
-            key={tool}
-            className={`${panels.toolRow} ${panels.surfaceRow}`}
-            data-withheld=""
-          >
-            {/* The count column, held open with a dash: these rows sit under the offered
-                ones in the same file, and a name that starts where the counts do above it
-                would read as a fourth column rather than as the same list continued. The
-                dash is the honest figure — there is no count, because there was nothing to
-                call — and it is hidden from assistive tech, which gets the struck name and
-                the word after it instead. */}
-            <span className={panels.toolCallCount} aria-hidden="true">
-              —
-            </span>
-            <span className={panels.toolName}>{tool}</span>
-            <span className={panels.toolCalls}>withheld</span>
           </li>
         ))}
       </ul>

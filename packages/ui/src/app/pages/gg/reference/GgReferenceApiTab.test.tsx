@@ -143,7 +143,6 @@ const TYPESCRIPT: GgReferenceApi = {
       brief: "Read a file, as either text or a picture.",
       body: TS_READ_FILE_BODY,
       operation: "files.read_file",
-      gate: "read_file",
       // The transitive closure, of which the two "opens" sets are one-level subsets — the
       // discrepancy the page used to explain in a paragraph and now marks per row.
       types: ["gg.files.ReadOptions", "gg.files.FileRead", "gg.core.ToolError"],
@@ -223,7 +222,6 @@ const RUST: GgReferenceApi = {
         "Read a file, as either a `FileRead::Text` or a `FileRead::Image`.",
       body: RUST_READ_FILE_BODY,
       operation: "files.read_file",
-      gate: "read_file",
       types: ["gg::files::FileRead"],
       returns: ["gg::files::FileRead"],
       opensUnderReturn: ["gg::files::FileRead"],
@@ -358,15 +356,17 @@ describe("GgReferenceApiTab", () => {
     expect(body.textContent).toBe(TS_READ_FILE_BODY);
   });
 
-  it("addresses an entry by the name a lookup takes, and shows what binds it", async () => {
+  it("addresses an entry by the name a lookup takes, and names the operation it is", async () => {
     renderAt("/gg/reference/api?fn=gg.files.readFile");
     expect(
       await screen.findByRole("heading", { name: "gg.files.readFile" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("bound by read_file")).toBeInTheDocument();
     // gg's own name for what the call does — the one identity that is the same in all
     // eleven arms, and the string a run's records name it by.
     expect(screen.getByText("files.read_file")).toBeInTheDocument();
+    // And nothing on the page names a TOOL. Tool calling is a separate surface with its
+    // own vocabulary, and no name on it gates anything documented here.
+    expect(screen.queryByText(/^bound by /)).toBeNull();
   });
 
   it("links each declaration a signature reaches, saying which of them opens with it", async () => {
@@ -605,7 +605,9 @@ describe("GgReferenceApiTab", () => {
       screen.queryByText(/Nothing on this arm matches/),
     ).not.toBeInTheDocument();
     // And no sentence about a name the reader never typed.
-    expect(screen.queryByText(/carries nothing called/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/carries nothing called/),
+    ).not.toBeInTheDocument();
   });
 
   it("does not take the pane away from a reader who is filtering", async () => {

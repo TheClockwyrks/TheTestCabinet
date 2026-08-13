@@ -339,9 +339,7 @@ async fn the_root_opens_with_an_empty_archive_snapshot() {
         model_id: "mock/primary".to_string(),
         ..GgAgentConfig::root()
     };
-    root.capabilities.push(GgCapabilityConfig::enabled(
-        CAPABILITY_AGENT_MANAGED_CONTEXT,
-    ));
+    crate::tools::grant(&mut root, CAPABILITY_AGENT_MANAGED_CONTEXT);
     let set = GgCapabilitySet {
         agents: vec![root],
         ..GgCapabilitySet::default()

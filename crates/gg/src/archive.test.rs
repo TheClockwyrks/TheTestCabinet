@@ -145,7 +145,7 @@ fn the_snapshot_reports_metadata_and_a_bounded_preview() {
     );
 }
 
-/// A disabled archive reports nothing at all — an ablation's off arm has no store to snapshot — and
+/// A disabled archive reports nothing at all — a run with the capability off has no store to snapshot — and
 /// an enabled one reports itself the moment its agent opens, empty, so the module has something to
 /// render before anything has been archived.
 #[test]

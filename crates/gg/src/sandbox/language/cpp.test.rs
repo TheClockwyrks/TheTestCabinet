@@ -49,11 +49,11 @@ fn this_arm_commits_no_component_and_compiles_one_instead() {
 fn a_capability_module_is_a_namespace() {
     assert_eq!(cpp().member_separator(), "::");
     assert_eq!(
-        crate::sandbox::spell(cpp(), crate::sandbox::VIEW_OPEN_TEXT),
+        crate::sandbox::spell(cpp(), crate::sandbox::VIEWS_OPEN_TEXT),
         "gg::views::open_text"
     );
     assert_eq!(
-        crate::sandbox::spell(cpp(), crate::sandbox::REVIEW_REQUEST_CHANGES),
+        crate::sandbox::spell(cpp(), crate::sandbox::SESSION_REQUEST_CHANGES),
         "gg::session::request_changes"
     );
 }
@@ -319,7 +319,7 @@ fn the_generated_catalogue_is_this_languages() {
     let functions = crate::sandbox::catalogue_functions(cpp());
     for operation in crate::sandbox::OPERATIONS {
         let id = operation.id.to_string();
-        let spelled = crate::sandbox::spell(cpp(), operation.call);
+        let spelled = crate::sandbox::spell(cpp(), operation.id);
         let canonical = functions
             .iter()
             .find(|function| function.operation == id && function.alias_of.is_none())

@@ -28,53 +28,14 @@ use super::test_cabinet::gg::tasks::{
 use super::test_cabinet::gg::types::{TextEdit, ToolError};
 use super::{MembraneState, ToolApi};
 use crate::memories::MemoryCode;
-use crate::sandbox::language::{
-    MEMORY_CREATE_MEMORY, MEMORY_DELETE_MEMORY, MEMORY_EDIT_MEMORY, MEMORY_READ_MEMORY,
-    MEMORY_SEARCH_MEMORIES, MEMORY_UPDATE_MEMORY, MEMORY_WRITE_MEMORY, PROJECT_CREATE_EPIC,
-    PROJECT_CREATE_ISSUE, PROJECT_REMOVE_EPIC, PROJECT_REMOVE_ISSUE, PROJECT_SET_ISSUE_BLOCKED_BY,
-    PROJECT_UPDATE_ISSUE, PROJECT_WAIT_FOR_ISSUE, SKILLS_READ_SKILL, TASKS_ADD_TASK,
+use crate::sandbox::operations::{
+    BOARD_CREATE_EPIC, BOARD_CREATE_ISSUE, BOARD_REMOVE_EPIC, BOARD_REMOVE_ISSUE,
+    BOARD_SET_ISSUE_BLOCKED_BY, BOARD_UPDATE_ISSUE, BOARD_WAIT_FOR_ISSUE, MEMORIES_CREATE_MEMORY,
+    MEMORIES_DELETE_MEMORY, MEMORIES_EDIT_MEMORY, MEMORIES_READ_MEMORY, MEMORIES_SEARCH_MEMORIES,
+    MEMORIES_UPDATE_MEMORY, MEMORIES_WRITE_MEMORY, OperationId, SKILLS_READ_SKILL, TASKS_ADD_TASK,
     TASKS_COMPLETE_TASK, TASKS_REMOVE_TASK, TASKS_SET_BLOCKED_BY, TASKS_UPDATE_TASK,
 };
-use crate::tools::{BoardUsageData, READ_SKILL_TOOL, ToolData};
-
-/// The `write_memory` tool name.
-const WRITE_MEMORY_TOOL: &str = "write_memory";
-/// The `update_memory` tool name.
-const UPDATE_MEMORY_TOOL: &str = "update_memory";
-/// The `delete_memory` tool name.
-const DELETE_MEMORY_TOOL: &str = "delete_memory";
-/// The `create_memory` tool name.
-const CREATE_MEMORY_TOOL: &str = "create_memory";
-/// The `read_memory` tool name.
-const READ_MEMORY_TOOL: &str = "read_memory";
-/// The `edit_memory` tool name.
-const EDIT_MEMORY_TOOL: &str = "edit_memory";
-/// The `search_memories` tool name.
-const SEARCH_MEMORIES_TOOL: &str = "search_memories";
-/// The `add_task` tool name.
-const ADD_TASK_TOOL: &str = "add_task";
-/// The `update_task` tool name.
-const UPDATE_TASK_TOOL: &str = "update_task";
-/// The `set_blocked_by` tool name.
-const SET_BLOCKED_BY_TOOL: &str = "set_blocked_by";
-/// The `complete_task` tool name.
-const COMPLETE_TASK_TOOL: &str = "complete_task";
-/// The `remove_task` tool name.
-const REMOVE_TASK_TOOL: &str = "remove_task";
-/// The `create_epic` tool name.
-const CREATE_EPIC_TOOL: &str = "create_epic";
-/// The `create_issue` tool name.
-const CREATE_ISSUE_TOOL: &str = "create_issue";
-/// The `update_issue` tool name.
-const UPDATE_ISSUE_TOOL: &str = "update_issue";
-/// The `set_issue_blocked_by` tool name.
-const SET_ISSUE_BLOCKED_BY_TOOL: &str = "set_issue_blocked_by";
-/// The `remove_epic` tool name.
-const REMOVE_EPIC_TOOL: &str = "remove_epic";
-/// The `remove_issue` tool name.
-const REMOVE_ISSUE_TOOL: &str = "remove_issue";
-/// The `wait_for_issue` tool name.
-const WAIT_FOR_ISSUE_TOOL: &str = "wait_for_issue";
+use crate::tools::{BoardUsageData, ToolData};
 
 impl<A: ToolApi> SkillsHost for MembraneState<A> {
     fn read_skill(&mut self, name: String) -> Result<String, ToolError> {
@@ -82,7 +43,7 @@ impl<A: ToolApi> SkillsHost for MembraneState<A> {
         // does not already say — so this is the one tool whose typed result is `outcome.output`
         // itself rather than a sidecar.
         self.recorded(SKILLS_READ_SKILL, |state, rec| {
-            let outcome = state.call(rec, READ_SKILL_TOOL, |api| api.read_skill(name))?;
+            let outcome = state.call(rec, SKILLS_READ_SKILL, |api| api.read_skill(name))?;
             Ok(outcome.output)
         })
     }
@@ -90,7 +51,7 @@ impl<A: ToolApi> SkillsHost for MembraneState<A> {
 
 impl<A: ToolApi> MemoriesHost for MembraneState<A> {
     fn write_memory(&mut self, memory: MemoryInput) -> Result<MemoryUsage, ToolError> {
-        self.recorded(MEMORY_WRITE_MEMORY, |state, rec| {
+        self.recorded(MEMORIES_WRITE_MEMORY, |state, rec| {
             let MemoryInput {
                 name,
                 description,
@@ -99,15 +60,15 @@ impl<A: ToolApi> MemoriesHost for MembraneState<A> {
                 on_use,
             } = memory;
             let code = MemoryCode { code, on_use };
-            let outcome = state.call(rec, WRITE_MEMORY_TOOL, |api| {
+            let outcome = state.call(rec, MEMORIES_WRITE_MEMORY, |api| {
                 api.write_memory(name, description, body, code)
             })?;
-            memory_usage(state, WRITE_MEMORY_TOOL, outcome.data)
+            memory_usage(state, MEMORIES_WRITE_MEMORY, outcome.data)
         })
     }
 
     fn update_memory(&mut self, memory: MemoryInput) -> Result<MemoryUsage, ToolError> {
-        self.recorded(MEMORY_UPDATE_MEMORY, |state, rec| {
+        self.recorded(MEMORIES_UPDATE_MEMORY, |state, rec| {
             let MemoryInput {
                 name,
                 description,
@@ -116,15 +77,15 @@ impl<A: ToolApi> MemoriesHost for MembraneState<A> {
                 on_use,
             } = memory;
             let code = MemoryCode { code, on_use };
-            let outcome = state.call(rec, UPDATE_MEMORY_TOOL, |api| {
+            let outcome = state.call(rec, MEMORIES_UPDATE_MEMORY, |api| {
                 api.update_memory(name, description, body, code)
             })?;
-            memory_usage(state, UPDATE_MEMORY_TOOL, outcome.data)
+            memory_usage(state, MEMORIES_UPDATE_MEMORY, outcome.data)
         })
     }
 
     fn create_memory(&mut self, memory: MemoryInput) -> Result<MemoryUsage, ToolError> {
-        self.recorded(MEMORY_CREATE_MEMORY, |state, rec| {
+        self.recorded(MEMORIES_CREATE_MEMORY, |state, rec| {
             let MemoryInput {
                 name,
                 description,
@@ -133,10 +94,10 @@ impl<A: ToolApi> MemoriesHost for MembraneState<A> {
                 on_use,
             } = memory;
             let code = MemoryCode { code, on_use };
-            let outcome = state.call(rec, CREATE_MEMORY_TOOL, |api| {
+            let outcome = state.call(rec, MEMORIES_CREATE_MEMORY, |api| {
                 api.create_memory(name, description, body, code)
             })?;
-            memory_usage(state, CREATE_MEMORY_TOOL, outcome.data)
+            memory_usage(state, MEMORIES_CREATE_MEMORY, outcome.data)
         })
     }
 
@@ -144,29 +105,29 @@ impl<A: ToolApi> MemoriesHost for MembraneState<A> {
         // Like a skill's body, a memory's contents *are* the result: there is nothing to describe
         // that the text does not already say, so this is the second tool whose typed result is
         // `outcome.output` itself rather than a sidecar.
-        self.recorded(MEMORY_READ_MEMORY, |state, rec| {
-            let outcome = state.call(rec, READ_MEMORY_TOOL, |api| api.read_memory(name))?;
+        self.recorded(MEMORIES_READ_MEMORY, |state, rec| {
+            let outcome = state.call(rec, MEMORIES_READ_MEMORY, |api| api.read_memory(name))?;
             Ok(outcome.output)
         })
     }
 
     fn edit_memory(&mut self, edit: MemoryEdit) -> Result<MemoryUsage, ToolError> {
-        self.recorded(MEMORY_EDIT_MEMORY, |state, rec| {
+        self.recorded(MEMORIES_EDIT_MEMORY, |state, rec| {
             let MemoryEdit {
                 name,
                 search,
                 replace,
             } = edit;
-            let outcome = state.call(rec, EDIT_MEMORY_TOOL, |api| {
+            let outcome = state.call(rec, MEMORIES_EDIT_MEMORY, |api| {
                 api.edit_memory(name, search, replace)
             })?;
-            memory_usage(state, EDIT_MEMORY_TOOL, outcome.data)
+            memory_usage(state, MEMORIES_EDIT_MEMORY, outcome.data)
         })
     }
 
     fn search_memories(&mut self, keywords: Vec<String>) -> Result<Vec<MemoryHit>, ToolError> {
-        self.recorded(MEMORY_SEARCH_MEMORIES, |state, rec| {
-            let outcome = state.call(rec, SEARCH_MEMORIES_TOOL, |api| {
+        self.recorded(MEMORIES_SEARCH_MEMORIES, |state, rec| {
+            let outcome = state.call(rec, MEMORIES_SEARCH_MEMORIES, |api| {
                 api.search_memories(keywords)
             })?;
             match outcome.data {
@@ -180,15 +141,15 @@ impl<A: ToolApi> MemoriesHost for MembraneState<A> {
                         excerpt: hit.excerpt,
                     })
                     .collect()),
-                other => Err(state.missing_data(SEARCH_MEMORIES_TOOL, other.as_ref())),
+                other => Err(state.missing_data(MEMORIES_SEARCH_MEMORIES, other.as_ref())),
             }
         })
     }
 
     fn delete_memory(&mut self, name: String) -> Result<MemoryUsage, ToolError> {
-        self.recorded(MEMORY_DELETE_MEMORY, |state, rec| {
-            let outcome = state.call(rec, DELETE_MEMORY_TOOL, |api| api.delete_memory(name))?;
-            memory_usage(state, DELETE_MEMORY_TOOL, outcome.data)
+        self.recorded(MEMORIES_DELETE_MEMORY, |state, rec| {
+            let outcome = state.call(rec, MEMORIES_DELETE_MEMORY, |api| api.delete_memory(name))?;
+            memory_usage(state, MEMORIES_DELETE_MEMORY, outcome.data)
         })
     }
 }
@@ -202,10 +163,10 @@ impl<A: ToolApi> TasksHost for MembraneState<A> {
                 description,
                 blocked_by,
             } = task;
-            let outcome = state.call(rec, ADD_TASK_TOOL, |api| {
+            let outcome = state.call(rec, TASKS_ADD_TASK, |api| {
                 api.add_task(id, title, description, blocked_by)
             })?;
-            task_usage(state, ADD_TASK_TOOL, outcome.data)
+            task_usage(state, TASKS_ADD_TASK, outcome.data)
         })
     }
 
@@ -213,7 +174,7 @@ impl<A: ToolApi> TasksHost for MembraneState<A> {
         self.recorded(TASKS_UPDATE_TASK, |state, rec| {
             let description = text_edit(patch.description);
             let status = patch.status.map(task_status);
-            state.call(rec, UPDATE_TASK_TOOL, |api| {
+            state.call(rec, TASKS_UPDATE_TASK, |api| {
                 api.update_task(id, patch.title, description, status)
             })?;
             Ok(())
@@ -222,7 +183,7 @@ impl<A: ToolApi> TasksHost for MembraneState<A> {
 
     fn set_blocked_by(&mut self, id: String, blocked_by: Vec<String>) -> Result<(), ToolError> {
         self.recorded(TASKS_SET_BLOCKED_BY, |state, rec| {
-            state.call(rec, SET_BLOCKED_BY_TOOL, |api| {
+            state.call(rec, TASKS_SET_BLOCKED_BY, |api| {
                 api.set_blocked_by(id, blocked_by)
             })?;
             Ok(())
@@ -231,37 +192,37 @@ impl<A: ToolApi> TasksHost for MembraneState<A> {
 
     fn complete_task(&mut self, id: String) -> Result<(), ToolError> {
         self.recorded(TASKS_COMPLETE_TASK, |state, rec| {
-            state.call(rec, COMPLETE_TASK_TOOL, |api| api.complete_task(id))?;
+            state.call(rec, TASKS_COMPLETE_TASK, |api| api.complete_task(id))?;
             Ok(())
         })
     }
 
     fn remove_task(&mut self, id: String) -> Result<TaskUsage, ToolError> {
         self.recorded(TASKS_REMOVE_TASK, |state, rec| {
-            let outcome = state.call(rec, REMOVE_TASK_TOOL, |api| api.remove_task(id))?;
-            task_usage(state, REMOVE_TASK_TOOL, outcome.data)
+            let outcome = state.call(rec, TASKS_REMOVE_TASK, |api| api.remove_task(id))?;
+            task_usage(state, TASKS_REMOVE_TASK, outcome.data)
         })
     }
 }
 
 impl<A: ToolApi> BoardHost for MembraneState<A> {
     fn create_epic(&mut self, epic: EpicInput) -> Result<EpicCreated, ToolError> {
-        self.recorded(PROJECT_CREATE_EPIC, |state, rec| {
+        self.recorded(BOARD_CREATE_EPIC, |state, rec| {
             let EpicInput {
                 prefix,
                 title,
                 description,
             } = epic;
-            let outcome = state.call(rec, CREATE_EPIC_TOOL, |api| {
+            let outcome = state.call(rec, BOARD_CREATE_EPIC, |api| {
                 api.create_epic(prefix, title, description)
             })?;
-            let (id, board) = board_node(state, CREATE_EPIC_TOOL, outcome.data)?;
+            let (id, board) = board_node(state, BOARD_CREATE_EPIC, outcome.data)?;
             Ok(EpicCreated { id, board })
         })
     }
 
     fn create_issue(&mut self, issue: IssueInput) -> Result<IssueCreated, ToolError> {
-        self.recorded(PROJECT_CREATE_ISSUE, |state, rec| {
+        self.recorded(BOARD_CREATE_ISSUE, |state, rec| {
             let IssueInput {
                 title,
                 description,
@@ -273,7 +234,7 @@ impl<A: ToolApi> BoardHost for MembraneState<A> {
                 agent,
                 reviewers,
             } = issue;
-            let outcome = state.call(rec, CREATE_ISSUE_TOOL, |api| {
+            let outcome = state.call(rec, BOARD_CREATE_ISSUE, |api| {
                 api.create_issue(
                     title,
                     description,
@@ -286,13 +247,13 @@ impl<A: ToolApi> BoardHost for MembraneState<A> {
                     reviewers,
                 )
             })?;
-            let (id, board) = board_node(state, CREATE_ISSUE_TOOL, outcome.data)?;
+            let (id, board) = board_node(state, BOARD_CREATE_ISSUE, outcome.data)?;
             Ok(IssueCreated { id, board })
         })
     }
 
     fn update_issue(&mut self, id: String, patch: IssuePatch) -> Result<(), ToolError> {
-        self.recorded(PROJECT_UPDATE_ISSUE, |state, rec| {
+        self.recorded(BOARD_UPDATE_ISSUE, |state, rec| {
             let IssuePatch {
                 title,
                 description,
@@ -305,7 +266,7 @@ impl<A: ToolApi> BoardHost for MembraneState<A> {
             let description = text_edit(description);
             let status = status.map(issue_status);
             let epic_id = epic_assignment(epic);
-            state.call(rec, UPDATE_ISSUE_TOOL, |api| {
+            state.call(rec, BOARD_UPDATE_ISSUE, |api| {
                 api.update_issue(
                     id,
                     title,
@@ -326,8 +287,8 @@ impl<A: ToolApi> BoardHost for MembraneState<A> {
         id: String,
         blocked_by: Vec<String>,
     ) -> Result<(), ToolError> {
-        self.recorded(PROJECT_SET_ISSUE_BLOCKED_BY, |state, rec| {
-            state.call(rec, SET_ISSUE_BLOCKED_BY_TOOL, |api| {
+        self.recorded(BOARD_SET_ISSUE_BLOCKED_BY, |state, rec| {
+            state.call(rec, BOARD_SET_ISSUE_BLOCKED_BY, |api| {
                 api.set_issue_blocked_by(id, blocked_by)
             })?;
             Ok(())
@@ -335,16 +296,16 @@ impl<A: ToolApi> BoardHost for MembraneState<A> {
     }
 
     fn remove_epic(&mut self, id: String) -> Result<BoardUsage, ToolError> {
-        self.recorded(PROJECT_REMOVE_EPIC, |state, rec| {
-            let outcome = state.call(rec, REMOVE_EPIC_TOOL, |api| api.remove_epic(id))?;
-            board_usage(state, REMOVE_EPIC_TOOL, outcome.data)
+        self.recorded(BOARD_REMOVE_EPIC, |state, rec| {
+            let outcome = state.call(rec, BOARD_REMOVE_EPIC, |api| api.remove_epic(id))?;
+            board_usage(state, BOARD_REMOVE_EPIC, outcome.data)
         })
     }
 
     fn remove_issue(&mut self, id: String) -> Result<BoardUsage, ToolError> {
-        self.recorded(PROJECT_REMOVE_ISSUE, |state, rec| {
-            let outcome = state.call(rec, REMOVE_ISSUE_TOOL, |api| api.remove_issue(id))?;
-            board_usage(state, REMOVE_ISSUE_TOOL, outcome.data)
+        self.recorded(BOARD_REMOVE_ISSUE, |state, rec| {
+            let outcome = state.call(rec, BOARD_REMOVE_ISSUE, |api| api.remove_issue(id))?;
+            board_usage(state, BOARD_REMOVE_ISSUE, outcome.data)
         })
     }
 
@@ -353,8 +314,8 @@ impl<A: ToolApi> BoardHost for MembraneState<A> {
         // at once, and the loop suspends the agent after the program ends. So this is a plain
         // string-returning call — the acknowledgement is `outcome.output`, exactly as `read_skill`'s
         // body is — not a blocking one like `wait_for_subagents`.
-        self.recorded(PROJECT_WAIT_FOR_ISSUE, |state, rec| {
-            let outcome = state.call(rec, WAIT_FOR_ISSUE_TOOL, |api| api.wait_for_issue(id))?;
+        self.recorded(BOARD_WAIT_FOR_ISSUE, |state, rec| {
+            let outcome = state.call(rec, BOARD_WAIT_FOR_ISSUE, |api| api.wait_for_issue(id))?;
             Ok(outcome.output)
         })
     }
@@ -366,7 +327,7 @@ impl<A: ToolApi> BoardHost for MembraneState<A> {
 /// already wrote, which until this point says the call succeeded.
 fn memory_usage<A: ToolApi>(
     state: &mut MembraneState<A>,
-    tool: &'static str,
+    id: OperationId,
     data: Option<ToolData>,
 ) -> Result<MemoryUsage, ToolError> {
     match data {
@@ -378,7 +339,7 @@ fn memory_usage<A: ToolApi>(
             index_chars: usage.index_chars,
             max_index_chars: usage.max_index_chars,
         }),
-        other => Err(state.missing_data(tool, other.as_ref())),
+        other => Err(state.missing_data(id, other.as_ref())),
     }
 }
 
@@ -386,7 +347,7 @@ fn memory_usage<A: ToolApi>(
 /// same roster correction [`memory_usage`] makes.
 fn task_usage<A: ToolApi>(
     state: &mut MembraneState<A>,
-    tool: &'static str,
+    id: OperationId,
     data: Option<ToolData>,
 ) -> Result<TaskUsage, ToolError> {
     match data {
@@ -394,7 +355,7 @@ fn task_usage<A: ToolApi>(
             count: usage.count,
             max_tasks: usage.max,
         }),
-        other => Err(state.missing_data(tool, other.as_ref())),
+        other => Err(state.missing_data(id, other.as_ref())),
     }
 }
 
@@ -402,12 +363,12 @@ fn task_usage<A: ToolApi>(
 /// same roster correction [`memory_usage`] makes.
 fn board_usage<A: ToolApi>(
     state: &mut MembraneState<A>,
-    tool: &'static str,
+    id: OperationId,
     data: Option<ToolData>,
 ) -> Result<BoardUsage, ToolError> {
     match data {
         Some(ToolData::BoardUsage(usage)) => Ok(usage_record(usage)),
-        other => Err(state.missing_data(tool, other.as_ref())),
+        other => Err(state.missing_data(id, other.as_ref())),
     }
 }
 
@@ -416,12 +377,12 @@ fn board_usage<A: ToolApi>(
 /// they filed.
 fn board_node<A: ToolApi>(
     state: &mut MembraneState<A>,
-    tool: &'static str,
+    id: OperationId,
     data: Option<ToolData>,
 ) -> Result<(String, BoardUsage), ToolError> {
     match data {
         Some(ToolData::BoardNode(node)) => Ok((node.id, usage_record(node.board))),
-        other => Err(state.missing_data(tool, other.as_ref())),
+        other => Err(state.missing_data(id, other.as_ref())),
     }
 }
 

@@ -48,17 +48,19 @@
 use std::sync::OnceLock;
 use std::time::Instant;
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 use wasmtime::component::Component;
 
 use super::GUEST_COMPONENT;
 use super::compile::{self, compile_program};
-use crate::sandbox::fake::{CallLog, FakeToolApi, canned_outcome};
+use crate::sandbox::fake::{
+    CallLog, FakeToolApi, all_capabilities, canned_outcome, granted_operations,
+};
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{SandboxError, SandboxOutcome};
 use crate::sandbox::{
     PrepareContext, PrepareError, PrepareFailure, ProgramScope, SandboxLimits, bounded_store,
-    engine, keep_reported_error, linker, reclaim,
+    capability_operations, engine, keep_reported_error, linker, reclaim,
 };
 use crate::tools::ToolOutcome;
 
@@ -94,7 +96,7 @@ fn component() -> &'static Component {
     })
 }
 
-/// Evaluate an already-prepared program through the real membrane, with `enabled`'s gg tools
+/// Evaluate an already-prepared program through the real membrane, with `operations`
 /// offered.
 ///
 /// A near-copy of [`run_program`](crate::sandbox::run_program) with one thing left out, because it
@@ -129,30 +131,32 @@ fn component() -> &'static Component {
 /// is that order.
 pub(super) fn evaluate(
     program: &str,
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     ending: RunEnding,
     library: bool,
     responder: impl FnMut(&str, &serde_json::Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    evaluate_granting(program, enabled, ending, library, false, |log| {
+    evaluate_granting(program, operations, ending, library, |log| {
         FakeToolApi::with(log, responder)
     })
 }
 
-/// [`evaluate`] for an agent that also holds `docview-close`.
+/// [`evaluate`] for a program with no ending group, granted every call.
 ///
-/// Its own function rather than a sixth argument on the one above, because every other caller here
-/// wants the default and a second bare `false` at the end of an argument list says nothing about
-/// which flag it is. What it buys is the only way to drive
-/// [`docs.close`](crate::sandbox::DOCS_CLOSE) to a *success*: without the capability the membrane
-/// refuses the call before this arm's bridge is ever reached, so the two C functions behind it would
-/// be lowered by nothing.
+/// Its own function because what the documentation-close cases drive is this arm's lowering of the
+/// answer, which needs the call to *succeed* — and an agent granted the two closes and no ending is
+/// the shortest scope that reaches it.
 pub(super) fn evaluate_closing_docviews(
     program: &str,
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     responder: impl FnMut(&str, &serde_json::Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    evaluate_granting(program, enabled, RunEnding::None, false, true, |log| {
+    let granted: Vec<crate::sandbox::operations::OperationId> = operations
+        .iter()
+        .copied()
+        .chain(capability_operations([CAPABILITY_DOCVIEW_CLOSE]))
+        .collect();
+    evaluate_granting(program, &granted, RunEnding::None, false, |log| {
         FakeToolApi::with(log, responder)
     })
 }
@@ -168,12 +172,12 @@ pub(super) fn evaluate_with_program(
     source: &str,
     responder: impl FnMut(&str, &serde_json::Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    evaluate_granting(program, &[], RunEnding::None, true, false, |log| {
+    evaluate_granting(program, &[], RunEnding::None, true, |log| {
         FakeToolApi::with(log, responder).with_program(turn, source)
     })
 }
 
-/// What both of the above are: one evaluation, with every flag the scope carries stated.
+/// What both of the above are: one evaluation, with everything the scope carries stated.
 ///
 /// It is also where the component-before-store ordering [`evaluate`]'s documentation explains
 /// actually happens, since that is a property of this body rather than of any wrapper.
@@ -184,10 +188,9 @@ pub(super) fn evaluate_with_program(
 /// every thing a caller might seed.
 fn evaluate_granting(
     program: &str,
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     ending: RunEnding,
     library: bool,
-    docview_close: bool,
     build: impl FnOnce(&CallLog) -> FakeToolApi,
 ) -> (SandboxOutcome, CallLog) {
     let limits = SandboxLimits::default();
@@ -196,13 +199,14 @@ fn evaluate_granting(
     // Both of these before the store exists, for the reason this function's documentation gives.
     let component = component();
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let operations = granted_operations(operations, library);
     let scope = ProgramScope {
-        enabled,
+        capabilities: &all_capabilities(),
+        operations: &operations,
         modules: &[],
         ending,
-        library,
-        docview_close,
     };
+    let granted: Vec<String> = operations.iter().map(ToString::to_string).collect();
     let mut store = bounded_store(
         MembraneState::new(
             api,
@@ -221,7 +225,7 @@ fn evaluate_granting(
         ),
     };
     let returned = bound
-        .call_run(&mut store, program, &[], enabled, ending.into(), library)
+        .call_run(&mut store, program, &[], &granted, ending.into(), library)
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
     if returned.is_err() {
         store.data_mut().revoke_completion();
@@ -367,7 +371,7 @@ public static class Program {
 }
 "#,
         )),
-        &["read_file".to_string()],
+        &[crate::sandbox::operations::FILES_READ_TEXT_FILE],
         RunEnding::None,
         false,
         canned_outcome,

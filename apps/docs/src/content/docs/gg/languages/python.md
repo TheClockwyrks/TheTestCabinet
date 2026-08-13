@@ -77,8 +77,8 @@ A program starts with every capability module bound under its bare id, the same
 modules under `gg`, and every type the SDK declares bound bare.
 `files.read_file` and `gg.files.read_file` are one object, and the qualified
 name is what documentation views and search are keyed by. The scope is static:
-every function is bound whatever the run enabled, and a withheld call is refused
-by the host. The rules every arm's surface obeys are on
+every function is bound whatever the run enabled, and a call the agent was not
+granted is refused by the host. The rules every arm's surface obeys are on
 [the agent surface](/gg/languages/agent-surface/).
 
 The shim points `sys.stdout` and `sys.stderr` at gg's feedback log, one call per

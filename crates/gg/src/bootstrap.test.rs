@@ -14,9 +14,8 @@ use std::sync::Arc;
 use super::*;
 use crate::context::{ContextModel, HeuristicTokenEstimator};
 use crate::ending::EndingRole;
-use crate::sandbox::{OPERATIONS, all_languages};
+use crate::sandbox::{all_languages, capability_operations, gating_capabilities, operation};
 use test_cabinet_core::gg::{GgContextSource, GgProgramLanguage};
-use test_cabinet_core::gg_query::GG_CAPABILITY_CATALOG;
 
 /// A window in [code mode](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) — the only mode the
 /// bootstrap fires in, since the tool-calling arm has no program to synthesize.
@@ -31,13 +30,12 @@ fn code_model() -> ContextModel {
 /// A documentation runtime for an agent granted **everything**, which is the ordinary case and the
 /// one that must work; the bootstrap calls are ungated, so nothing here turns on the grant.
 fn docs(language: GgProgramLanguage) -> DocsRuntime {
+    let capabilities = gating_capabilities();
+    let operations = capability_operations(capabilities.iter().copied());
     DocsRuntime::new(
-        crate::tools::ALL_TOOL_NAMES
-            .iter()
-            .map(|tool| tool.to_string())
-            .collect(),
+        capabilities.into_iter().map(str::to_string).collect(),
         EndingRole::Standard,
-        GG_CAPABILITY_CATALOG,
+        &operations,
         language,
     )
 }
@@ -178,19 +176,15 @@ fn a_tool_calling_window_is_not_seeded() {
 
 /// **Every bootstrap call is one gg has an operation for.**
 ///
-/// The list is written by hand, and a [`SurfaceCall`] naming a pair no row carries would be seeded
-/// as a key [`bootstrap_keys`] can never resolve — so the bootstrap would quietly shrink to whatever
-/// was left, which is the failure the whole turn exists to prevent.
+/// The list is written by hand, and an [`OperationId`] naming a row the table does not carry would
+/// be seeded as a key [`bootstrap_keys`] can never resolve — so the bootstrap would quietly shrink to
+/// whatever was left, which is the failure the whole turn exists to prevent.
 #[test]
 fn every_bootstrap_call_is_an_operation_gg_has() {
     for call in BOOTSTRAP_CALLS {
         assert!(
-            OPERATIONS.iter().any(|operation| {
-                operation.call.object == call.object && operation.call.key == call.key
-            }),
-            "the bootstrap opens `{}.{}`, which gg has no operation for",
-            call.object,
-            call.key
+            operation(*call).is_some(),
+            "the bootstrap opens `{call}`, which gg has no operation for"
         );
     }
 }

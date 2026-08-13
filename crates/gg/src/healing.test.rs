@@ -472,7 +472,7 @@ fn every_language_heals_by_deletion_alone() {
 /// for a second pass to find.
 ///
 /// Asserted over every configuration because a fixpoint that only holds with everything armed is not
-/// a fixpoint — an ablation arm that oscillated would produce a different program every turn.
+/// a fixpoint — a configuration that oscillated would produce a different program every turn.
 #[test]
 fn healing_is_idempotent() {
     for fixture in CORPUS {
@@ -725,7 +725,7 @@ fn the_committed_round_one_replies_all_reach_the_type_strip() {
 // Configuration
 // ---------------------------------------------------------------------------------------------
 
-/// With everything disarmed, healing changes nothing at all — the ablation's off arm.
+/// With everything disarmed, healing changes nothing at all — the off arm of the comparison.
 #[test]
 fn healing_off_is_a_no_op() {
     let result = heal(EVERY_STRATEGY, &HealingConfig::OFF, dialect());
@@ -734,7 +734,7 @@ fn healing_off_is_a_no_op() {
 }
 
 /// Each strategy can be turned off on its own, and turning one off leaves the others working —
-/// which is what makes a single-strategy ablation mean what it says.
+/// which is what makes a single-strategy configuration mean what it says.
 #[test]
 fn each_strategy_can_be_disabled_on_its_own() {
     let cases = [
@@ -890,7 +890,7 @@ fn a_named_strategy_can_be_disarmed() {
 
 /// A key that names nothing gg knows is **reported**, never guessed at.
 ///
-/// A typo in an ablation's configuration is the one failure this subsystem cannot survive:
+/// A typo in a healing configuration is the one failure this subsystem cannot survive:
 /// `stripFences` silently running the default arm under the disabled arm's name would make every
 /// number the study produced a measurement of the wrong thing.
 #[test]

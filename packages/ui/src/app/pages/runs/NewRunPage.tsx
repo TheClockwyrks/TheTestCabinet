@@ -43,8 +43,9 @@ import styles from "./RunExec.module.scss";
 // A gg run varies the same way, except the configuration stands where the harness
 // does: `ggConfig` names the saved (or built-in) capability set the row launches,
 // and the row supplies a model for each *model slot* that configuration declares —
-// so the same fan-out spans configurations × models, which is exactly an ablation
-// sweep. A role the configuration pinned to a model itself is not asked about here.
+// so the same fan-out spans configurations × models, which is exactly the sweep a study
+// comparing two configurations runs. A role the configuration pinned to a model itself is
+// not asked about here.
 interface Combination {
   /** A stable client-side key so React and per-row edits track the right row. */
   id: string;

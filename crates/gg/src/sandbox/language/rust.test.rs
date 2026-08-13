@@ -69,7 +69,7 @@ fn this_arm_commits_no_component_and_compiles_one_instead() {
 fn this_is_the_arm_whose_groupings_are_modules() {
     assert_eq!(rust().member_separator(), "::");
     assert_eq!(
-        crate::sandbox::spell(rust(), crate::sandbox::VIEW_OPEN_TEXT),
+        crate::sandbox::spell(rust(), crate::sandbox::VIEWS_OPEN_TEXT),
         "gg::views::open_text"
     );
     for language in crate::sandbox::all_languages() {
@@ -313,7 +313,7 @@ fn the_generated_catalogue_is_this_languages() {
             _ => format!("gg::{}::{}", operation.id.namespace, operation.id.key),
         };
         assert_eq!(
-            crate::sandbox::spell(rust(), operation.call),
+            crate::sandbox::spell(rust(), operation.id),
             expected,
             "this arm writes a call under the module that documents it, in gg's own `snake_case`"
         );

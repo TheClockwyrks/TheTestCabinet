@@ -41,23 +41,23 @@ use super::test_cabinet::gg::session::Host as SessionHost;
 use super::test_cabinet::gg::types::ToolError;
 use super::{MembraneState, ToolApi};
 use crate::ending::Ending;
-use crate::sandbox::language::{HARNESS_FINISH, REVIEW_APPROVE, REVIEW_REQUEST_CHANGES};
+use crate::sandbox::operations::{SESSION_APPROVE, SESSION_FINISH, SESSION_REQUEST_CHANGES};
 
 impl<A: ToolApi> SessionHost for MembraneState<A> {
     /// Declare the work complete. See [`MembraneState::declare`] for what setting the flag does and
     /// does not do, and for the role check every one of these three passes through first.
     fn finish(&mut self, summary: String) -> Result<(), ToolError> {
-        self.recorded(HARNESS_FINISH, |state, rec| {
-            let ending = Ending::finished(summary, &state.spelled(HARNESS_FINISH));
-            state.declare(rec, ending, HARNESS_FINISH)
+        self.recorded(SESSION_FINISH, |state, rec| {
+            let ending = Ending::finished(summary, &state.spelled(SESSION_FINISH));
+            state.declare(rec, ending, SESSION_FINISH)
         })
     }
 
     /// Declare the work under review acceptable. Takes nothing, so the only thing that can refuse it
     /// is the role check: an agent that was not dispatched to review has no verdict to give.
     fn approve(&mut self) -> Result<(), ToolError> {
-        self.recorded(REVIEW_APPROVE, |state, rec| {
-            state.declare(rec, Ok(Ending::Approved), REVIEW_APPROVE)
+        self.recorded(SESSION_APPROVE, |state, rec| {
+            state.declare(rec, Ok(Ending::Approved), SESSION_APPROVE)
         })
     }
 
@@ -65,13 +65,13 @@ impl<A: ToolApi> SessionHost for MembraneState<A> {
     /// here rather than accepted and papered over downstream: it is dispatched verbatim to the agent
     /// that has to fix the work, and an empty one would give it nothing to do.
     fn request_changes(&mut self, items: Vec<String>) -> Result<(), ToolError> {
-        self.recorded(REVIEW_REQUEST_CHANGES, |state, rec| {
+        self.recorded(SESSION_REQUEST_CHANGES, |state, rec| {
             let ending = Ending::changes_requested(
                 items,
-                &state.spelled(REVIEW_REQUEST_CHANGES),
-                &state.spelled(REVIEW_APPROVE),
+                &state.spelled(SESSION_REQUEST_CHANGES),
+                &state.spelled(SESSION_APPROVE),
             );
-            state.declare(rec, ending, REVIEW_REQUEST_CHANGES)
+            state.declare(rec, ending, SESSION_REQUEST_CHANGES)
         })
     }
 }

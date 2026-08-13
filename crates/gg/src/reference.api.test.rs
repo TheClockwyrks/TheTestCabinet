@@ -116,7 +116,7 @@ fn every_declared_type_is_documented() {
                 entry.fqn
             );
             assert!(
-                entry.operation.is_none() && entry.gate.is_none() && entry.returns.is_empty(),
+                entry.operation.is_none() && entry.returns.is_empty(),
                 "{}'s `{}` is a type and must carry none of a call's fields",
                 id.id(),
                 entry.fqn
@@ -188,17 +188,17 @@ fn both_ending_roles_reach_the_page_and_agree_about_every_type() {
             id.id()
         );
 
-        let mut per_role = EndingRole::ALL.into_iter().map(|role| {
-            DocsRuntime::new(
-                ALL_TOOL_NAMES
-                    .iter()
-                    .map(|name| (*name).to_string())
-                    .collect(),
-                role,
-                &surface_capabilities(true, true),
-                id,
-            )
-        });
+        // The same maximal grant the page itself is rendered through — every capability that gates
+        // a call, and every operation those capabilities offer — so what is compared between the two
+        // roles is the role and nothing else.
+        let capabilities: Vec<String> = gating_capabilities()
+            .into_iter()
+            .map(str::to_string)
+            .collect();
+        let operations = capability_operations(capabilities.iter().map(String::as_str));
+        let mut per_role = EndingRole::ALL
+            .into_iter()
+            .map(|role| DocsRuntime::new(capabilities.clone(), role, &operations, id));
         let (first, second) = (
             per_role.next().expect("a first role"),
             per_role.next().expect("a second role"),

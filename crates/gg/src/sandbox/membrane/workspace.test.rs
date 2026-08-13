@@ -6,7 +6,7 @@ use serde_json::json;
 
 use super::super::ErrorCode;
 use super::*;
-use crate::sandbox::fake::{CallLog, all_tools, canned_outcome, membrane, membrane_with};
+use crate::sandbox::fake::{CallLog, all_operations, canned_outcome, membrane, membrane_with};
 use crate::tools::{ToolFailure, ToolOutcome};
 
 /// **The single most important behavioural test in this suite.** A non-zero exit is a SUCCESS of
@@ -66,7 +66,7 @@ fn a_non_zero_shell_exit_is_recorded_as_a_completed_call() {
 #[test]
 fn a_shell_timeout_is_a_limit_exceeded_error() {
     let log = CallLog::default();
-    let mut state = membrane_with(&log, &all_tools(), None, |_, _| {
+    let mut state = membrane_with(&log, &all_operations(), None, |_, _| {
         ToolOutcome::failed(
             ToolFailure::LimitExceeded,
             "shell: command timed out after 120s and was killed",
@@ -117,7 +117,7 @@ fn an_absurd_shell_timeout_is_clamped_rather_than_overflowing_a_duration() {
 fn the_remaining_budget_still_wins_when_it_is_tighter_than_the_ceiling() {
     let log = CallLog::default();
     let deadline = Instant::now() + Duration::from_secs(5);
-    let mut state = membrane_with(&log, &all_tools(), Some(deadline), canned_outcome);
+    let mut state = membrane_with(&log, &all_operations(), Some(deadline), canned_outcome);
 
     state.shell("ls".to_string(), Some(1e300)).expect("ran");
 
@@ -152,7 +152,7 @@ fn a_shell_call_defaults_to_ggs_own_timeout() {
 fn a_shell_timeout_is_clamped_to_the_remaining_run_budget() {
     let log = CallLog::default();
     let deadline = Instant::now() + Duration::from_secs(5);
-    let mut state = membrane_with(&log, &all_tools(), Some(deadline), canned_outcome);
+    let mut state = membrane_with(&log, &all_operations(), Some(deadline), canned_outcome);
 
     state
         .shell("sleep 600".to_string(), Some(600.0))
@@ -298,7 +298,7 @@ fn write_file_returns_the_byte_count() {
 #[test]
 fn edit_file_reports_ambiguity_as_a_conflict() {
     let log = CallLog::default();
-    let mut state = membrane_with(&log, &all_tools(), None, |_, _| {
+    let mut state = membrane_with(&log, &all_operations(), None, |_, _| {
         ToolOutcome::failed(
             ToolFailure::Conflict,
             "edit_file: `old_string` is not unique (3 occurrences)",
@@ -339,7 +339,7 @@ fn list_dir_returns_typed_entries() {
 #[test]
 fn an_empty_directory_is_an_empty_list_not_an_error() {
     let log = CallLog::default();
-    let mut state = membrane_with(&log, &all_tools(), None, |_, _| {
+    let mut state = membrane_with(&log, &all_operations(), None, |_, _| {
         ToolOutcome::ok("(empty directory)", "0 entries")
             .with_data(crate::tools::ToolData::DirEntries(Vec::new()))
     });

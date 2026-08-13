@@ -21,19 +21,12 @@ use super::test_cabinet::gg::helpers::Host as HelpersHost;
 use super::test_cabinet::gg::shell::{Host as ShellHost, ShellOutput};
 use super::test_cabinet::gg::types::{ErrorCode, ToolError};
 use super::{MembraneState, ToolApi};
-use crate::sandbox::language::{
-    FS_EDIT_FILE, FS_LIST_DIR, FS_READ_FILE, FS_READ_TEXT_FILE, FS_WRITE_FILE, SYSTEM_SHELL,
+use crate::sandbox::operations::OperationId;
+use crate::sandbox::operations::{
+    FILES_EDIT_FILE, FILES_LIST_DIR, FILES_READ_FILE, FILES_READ_TEXT_FILE, FILES_WRITE_FILE,
+    SHELL_SHELL,
 };
-use crate::tools::{DirEntryData, DirEntryKind, READ_FILE_TOOL, ToolData};
-
-/// The `shell` tool name.
-const SHELL_TOOL: &str = "shell";
-/// The `write_file` tool name.
-const WRITE_FILE_TOOL: &str = "write_file";
-/// The `edit_file` tool name.
-const EDIT_FILE_TOOL: &str = "edit_file";
-/// The `list_dir` tool name.
-const LIST_DIR_TOOL: &str = "list_dir";
+use crate::tools::{DirEntryData, DirEntryKind, ToolData};
 
 /// gg's own default `shell` timeout, restated here because the membrane must clamp a value *before*
 /// the tool sees it — and a call that arrived at the tool with no timeout at all would be clamped
@@ -67,10 +60,11 @@ impl<A: ToolApi> ShellHost for MembraneState<A> {
         command: String,
         timeout_secs: Option<f64>,
     ) -> Result<ShellOutput, ToolError> {
-        self.recorded(SYSTEM_SHELL, |state, rec| {
+        self.recorded(SHELL_SHELL, |state, rec| {
             let timeout =
                 Duration::from_secs_f64(clamp_timeout(timeout_secs, state.remaining_budget()));
-            let mut outcome = state.call_raw(rec, SHELL_TOOL, |api| api.shell(command, timeout))?;
+            let mut outcome =
+                state.call_raw(rec, SHELL_SHELL, |api| api.shell(command, timeout))?;
             let data = outcome.data.take();
             match data {
                 // The process ran. Whatever it exited with, that is a completed call, and the
@@ -83,9 +77,9 @@ impl<A: ToolApi> ShellHost for MembraneState<A> {
                 // No `shell` sidecar means no process ran: it could not be launched, or the timeout
                 // killed it. That is a genuine failure of the call, and it throws.
                 other => Err(if outcome.ok {
-                    state.missing_data(SHELL_TOOL, other.as_ref())
+                    state.missing_data(SHELL_SHELL, other.as_ref())
                 } else {
-                    state.tool_error(SHELL_TOOL, &outcome)
+                    state.tool_error(SHELL_SHELL, &outcome)
                 }),
             }
         })
@@ -99,21 +93,22 @@ impl<A: ToolApi> FilesHost for MembraneState<A> {
         offset: Option<u32>,
         limit: Option<u32>,
     ) -> Result<FileRead, ToolError> {
-        self.recorded(FS_READ_FILE, |state, rec| {
+        self.recorded(FILES_READ_FILE, |state, rec| {
             let (offset, limit) = read_window(offset, limit);
-            let outcome = state.call(rec, READ_FILE_TOOL, |api| {
+            let outcome = state.call(rec, FILES_READ_FILE, |api| {
                 api.read_file(path, offset, limit)
             })?;
-            file_read(state, outcome.data)
+            file_read(state, FILES_READ_FILE, outcome.data)
         })
     }
 
     fn write_file(&mut self, path: String, contents: String) -> Result<u64, ToolError> {
-        self.recorded(FS_WRITE_FILE, |state, rec| {
-            let outcome = state.call(rec, WRITE_FILE_TOOL, |api| api.write_file(path, contents))?;
+        self.recorded(FILES_WRITE_FILE, |state, rec| {
+            let outcome =
+                state.call(rec, FILES_WRITE_FILE, |api| api.write_file(path, contents))?;
             match outcome.data {
                 Some(ToolData::BytesWritten(bytes)) => Ok(bytes),
-                other => Err(state.missing_data(WRITE_FILE_TOOL, other.as_ref())),
+                other => Err(state.missing_data(FILES_WRITE_FILE, other.as_ref())),
             }
         })
     }
@@ -126,8 +121,8 @@ impl<A: ToolApi> FilesHost for MembraneState<A> {
     ) -> Result<(), ToolError> {
         // A successful edit has nothing structured to say, which is why it declares
         // `result<_, tool-error>`: reaching here at all means the replacement landed.
-        self.recorded(FS_EDIT_FILE, |state, rec| {
-            state.call(rec, EDIT_FILE_TOOL, |api| {
+        self.recorded(FILES_EDIT_FILE, |state, rec| {
+            state.call(rec, FILES_EDIT_FILE, |api| {
                 api.edit_file(path, old_string, new_string)
             })?;
             Ok(())
@@ -135,11 +130,11 @@ impl<A: ToolApi> FilesHost for MembraneState<A> {
     }
 
     fn list_dir(&mut self, path: Option<String>) -> Result<Vec<DirEntry>, ToolError> {
-        self.recorded(FS_LIST_DIR, |state, rec| {
-            let outcome = state.call(rec, LIST_DIR_TOOL, |api| api.list_dir(path))?;
+        self.recorded(FILES_LIST_DIR, |state, rec| {
+            let outcome = state.call(rec, FILES_LIST_DIR, |api| api.list_dir(path))?;
             match outcome.data {
                 Some(ToolData::DirEntries(entries)) => Ok(entries.into_iter().map(entry).collect()),
-                other => Err(state.missing_data(LIST_DIR_TOOL, other.as_ref())),
+                other => Err(state.missing_data(FILES_LIST_DIR, other.as_ref())),
             }
         })
     }
@@ -164,16 +159,16 @@ impl<A: ToolApi> HelpersHost for MembraneState<A> {
         offset: Option<u32>,
         limit: Option<u32>,
     ) -> Result<String, ToolError> {
-        self.recorded(FS_READ_TEXT_FILE, |state, rec| {
+        self.recorded(FILES_READ_TEXT_FILE, |state, rec| {
             let (offset, limit) = read_window(offset, limit);
-            let outcome = state.call(rec, READ_FILE_TOOL, |api| {
+            let outcome = state.call(rec, FILES_READ_TEXT_FILE, |api| {
                 api.read_file(path.clone(), offset, limit)
             })?;
-            match file_read(state, outcome.data)? {
+            match file_read(state, FILES_READ_TEXT_FILE, outcome.data)? {
                 FileRead::Text(text) => Ok(text.contents),
                 FileRead::Image(image) => Err(ToolError {
                     code: ErrorCode::InvalidArgument,
-                    tool: READ_FILE_TOOL.to_string(),
+                    tool: FILES_READ_TEXT_FILE.key.to_string(),
                     message: format!("`{path}` is a {} image, not text", image.label),
                 }),
             }
@@ -202,10 +197,13 @@ pub(super) fn read_window(
 /// What a read returned, as the membrane's `file-read` variant — or the defect diagnostic if the
 /// tool answered `ok` with no [structured sidecar](ToolData).
 ///
-/// Shared by `read-file` and [`open-file-view`](super::views), which differ in what gg does with the
-/// result and not at all in what the program is handed back.
+/// Shared by `read-file`, `read-text-file` and [`open-file-view`](super::views), which differ in
+/// what gg does with the result and not at all in what the program is handed back — so `id` is the
+/// caller's own [operation](OperationId), and a defect diagnostic names the call the model wrote
+/// rather than the one of the three that happens to hold the helper.
 pub(super) fn file_read<A: ToolApi>(
     state: &mut MembraneState<A>,
+    id: OperationId,
     data: Option<ToolData>,
 ) -> Result<FileRead, ToolError> {
     match data {
@@ -229,7 +227,7 @@ pub(super) fn file_read<A: ToolApi>(
             shown: image.shown,
             not_shown_reason: image.not_shown_reason,
         })),
-        other => Err(state.missing_data(READ_FILE_TOOL, other.as_ref())),
+        other => Err(state.missing_data(id, other.as_ref())),
     }
 }
 

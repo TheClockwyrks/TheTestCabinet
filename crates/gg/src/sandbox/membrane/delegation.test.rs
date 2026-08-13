@@ -5,7 +5,7 @@ use serde_json::json;
 use test_cabinet_core::gg::ROOT_AGENT;
 
 use super::*;
-use crate::sandbox::fake::{CallLog, all_tools, membrane, membrane_with};
+use crate::sandbox::fake::{CallLog, all_operations, membrane, membrane_with};
 use crate::tools::ToolOutcome;
 
 /// A brief is exactly one of a prompt or an issue — the variant makes "neither" unrepresentable,
@@ -90,7 +90,7 @@ fn waiting_for_every_child_sends_no_ids() {
 #[test]
 fn a_child_with_no_ending_reports_no_status() {
     let log = CallLog::default();
-    let mut state = membrane_with(&log, &all_tools(), None, |_, _| {
+    let mut state = membrane_with(&log, &all_operations(), None, |_, _| {
         ToolOutcome::ok("collected", "collected").with_data(
             crate::tools::ToolData::SubagentResults(vec![crate::tools::SubagentResultData {
                 id: "agent-9".to_string(),

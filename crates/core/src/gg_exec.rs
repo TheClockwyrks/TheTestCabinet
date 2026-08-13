@@ -512,11 +512,23 @@ pub(crate) async fn run_gg(
 
     // 5. Classify the result.
     //    - The idle watchdog firing means gg stopped responding: it is hung, not failed.
-    //    - A non-zero exit means no session ran against a working model: a launch fatal
-    //      (a missing credential on a live binding, a malformed config —
-    //      SessionEnded{status:"error"}), or a credential the provider *rejected*
-    //      mid-flight (SessionEnded{status:"auth_error"}). Both are our fault, not the
-    //      model's, so both are a harness error rather than a scoreable run.
+    //    - A non-zero exit means the session produced nothing there is any point scoring,
+    //      for one of three reasons, all of them ours rather than the model's — which is
+    //      why each is a harness error rather than a scoreable run:
+    //        * a launch fatal, so no session ran at all: a malformed config, a bound model
+    //          with no context window, a root client that would not resolve (a missing
+    //          credential on a live binding), or gg refusing to build a run it had just
+    //          validated — SessionEnded{status:"error"};
+    //        * a credential the provider *rejected* mid-flight, so nothing about the model
+    //          was exercised either — SessionEnded{status:"auth_error"};
+    //        * a defect in gg itself — SessionEnded{status:"internal_error"}. Unlike the
+    //          two above, this session *did* run against a working model: the key was
+    //          accepted and turns were taken. What disqualifies it is that gg stopped it on
+    //          its own mistake, so whatever tree it left describes a run the model never
+    //          got to finish, and scoring it would blame the model for our bug.
+    //      The status is the *root's*: a subagent that ended `internal_error` is a failed
+    //      agent inside a session that still ends `completed` and exits 0, and such a run is
+    //      collected and scored like any other (see gg's `STATUS_INTERNAL_ERROR`).
     //    - Exit 0 means a session ran, *including* a mid-session `model_error` (carried
     //      in the stream, exit 0). Such a run is **not** a clean success — the failure is
     //      surfaced as an Error event and the produced (likely empty) tree fails

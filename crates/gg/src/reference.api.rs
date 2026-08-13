@@ -17,12 +17,17 @@
 //!
 //! # The maximal scope
 //!
-//! The runtime is built from a grant that holds **everything**: every gg tool enabled, both
-//! [surface capabilities](crate::sandbox::surface_capabilities), and — because
+//! The runtime is built from a grant that holds **everything**: every
+//! [gating capability](crate::sandbox::gating_capabilities), every operation those capabilities
+//! [offer](crate::sandbox::capability_operations), every operation an agent's
+//! [position](crate::sandbox::instance_operations) rather than its configuration buys, and — because
 //! [`Binding::Ending`](crate::sandbox::Binding) is exact equality and no single grant can be both —
 //! one runtime per [ending role](EndingRole), searched in order. That is what makes this the pool
 //! rather than a view: a reviewer's `approve` and a worker's `finish` are both on the page, and no
 //! run has both.
+//!
+//! No tool is named anywhere in it, and that is the point rather than an omission. This is the
+//! **API** surface's reference; the tool surface has its own half, and neither gates the other.
 //!
 //! Exactly **one byte** of a body depends on the grant, and it is worth knowing which: `assemble`
 //! is ungated, and a type's rendering filters only its member-function block by
@@ -40,10 +45,10 @@ use test_cabinet_core::gg_reference::{
 use crate::docs::{DocViewTypes, DocsRuntime};
 use crate::ending::EndingRole;
 use crate::sandbox::{
-    CatalogueFunction, ProgramLanguage, TypeDeclaration, catalogue_functions, catalogue_modules,
-    family_of_module, language, operation_of, surface_capabilities, type_declaration,
+    CatalogueFunction, ProgramLanguage, TypeDeclaration, capability_operations,
+    catalogue_functions, catalogue_modules, family_of_module, gating_capabilities,
+    instance_operations, language, operation_of, type_declaration,
 };
-use crate::tools::ALL_TOOL_NAMES;
 
 /// One [program language](GgProgramLanguage)'s whole surface: the modules it is divided into, and a
 /// documentation view of every function and type in it.
@@ -105,15 +110,26 @@ fn modules(arm: &'static dyn ProgramLanguage) -> Vec<GgReferenceModule> {
 /// them is identical, so a lookup takes the first that answers and the second exists only for the
 /// three ending calls.
 fn views(id: GgProgramLanguage) -> Vec<DocsRuntime> {
-    let enabled: Vec<String> = ALL_TOOL_NAMES
-        .iter()
-        .map(|name| (*name).to_string())
+    // The **maximal** grant: every capability that buys any part of the surface, every operation
+    // those capabilities offer, and every operation a position buys. This page is the pool rather
+    // than any run's view of it, and a capability nobody switched on — or an allowlist nobody
+    // wrote — would withhold part of it.
+    //
+    // Derived from the operations table rather than listed here, so a call gg grows is documented
+    // the moment it has a row: a list written out here would be a second copy of the table, and a
+    // reference missing an entry looks exactly like a call that does not exist.
+    let capabilities: Vec<String> = gating_capabilities()
+        .into_iter()
+        .map(str::to_string)
         .collect();
-    // Both, resolved on: this is the pool, and a capability nobody granted withholds part of it.
-    let capabilities = surface_capabilities(true, true);
+    // Joined to the calls no capability can be switched on to reach: `delegation.transition_state`
+    // is bought by an agent's position in a machine, so a grant assembled from capabilities alone
+    // would leave the one call a state's agent most needs off the page entirely.
+    let mut operations = capability_operations(capabilities.iter().map(String::as_str));
+    operations.extend(instance_operations());
     EndingRole::ALL
         .into_iter()
-        .map(|role| DocsRuntime::new(enabled.clone(), role, &capabilities, id))
+        .map(|role| DocsRuntime::new(capabilities.clone(), role, &operations, id))
         .collect()
 }
 
@@ -143,7 +159,6 @@ fn documented_function(
         operation: Some(function.operation.to_string()),
         alias_of: function.alias_of.map(str::to_string),
         receiver: function.receiver.map(str::to_string),
-        gate: function.gate.map(str::to_string),
         ending: function.ending.map(str::to_string),
         capability: function.capability.map(str::to_string),
         types: declared(arm, function.types.iter().map(|kind| kind.fqn())),
@@ -180,7 +195,6 @@ fn documented_type(
         operation: None,
         alias_of: None,
         receiver: None,
-        gate: None,
         ending: None,
         capability: None,
         types: Vec::new(),

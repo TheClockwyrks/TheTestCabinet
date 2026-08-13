@@ -37,7 +37,7 @@ triggers only at 100% full.
 
 With compaction off nothing is reserved and the agent is measured against the
 model's whole window. A run configured that way overflows rather than
-compacting, which is the off arm of the ablation.
+compacting.
 
 ## What crosses a boundary
 

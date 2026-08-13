@@ -27,7 +27,7 @@ fn healing_set(params: serde_json::Value) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal("mock/primary");
     let mut capability = GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE);
     capability.params = params;
-    set.agents[0].capabilities.push(capability);
+    crate::tools::grant_configured(&mut set.agents[0], capability);
     set
 }
 
@@ -296,12 +296,12 @@ async fn a_prose_reply_is_answered_by_the_type_strip() {
 }
 
 // ---------------------------------------------------------------------------
-// The ablation lever
+// The healing lever
 // ---------------------------------------------------------------------------
 
 /// **Turning a strategy off changes only what healing returns.**
 ///
-/// The ablation has to be honest to be worth running: with `strip-fences` disarmed the same fenced
+/// The comparison has to be honest to be worth running: with `strip-fences` disarmed the same fenced
 /// reply is compiled exactly as the model sent it, fails, and is reported as a compile failure with
 /// no repair claimed. That is precisely the cost the strategy exists to measure.
 #[tokio::test]
@@ -348,7 +348,7 @@ async fn disarming_a_strategy_changes_only_what_healing_returns() {
 
 /// **An unreadable `healing` key is reported rather than guessed at.**
 ///
-/// A typo in an ablation's configuration is the one failure this subsystem cannot survive:
+/// A typo in a healing configuration is the one failure this subsystem cannot survive:
 /// `{"stripFences": false}` would otherwise run the default arm silently, under the disabled arm's
 /// name, and every number the study produced would be a measurement of the wrong thing.
 #[tokio::test]

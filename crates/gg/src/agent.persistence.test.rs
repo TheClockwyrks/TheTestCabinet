@@ -428,9 +428,7 @@ async fn an_ignored_offset_records_no_region() {
 /// [`persistent_profile`] running its turns as programs.
 fn persistent_code_profile() -> GgAgentConfig {
     let mut profile = persistent_profile();
-    profile
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+    crate::tools::grant(&mut profile, CAPABILITY_RESPONSES_AS_CODE);
     profile
 }
 

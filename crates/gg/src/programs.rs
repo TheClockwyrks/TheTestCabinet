@@ -221,7 +221,7 @@ impl ProgramLibrary {
 /// `program-library` param gg could not act on.
 ///
 /// The unknown params are carried out rather than dropped for the reason
-/// [`ResolvedHealing`](crate::healing::ResolvedHealing) carries its own: a typo in an ablation's
+/// [`ResolvedHealing`](crate::healing::ResolvedHealing) carries its own: a typo in a configuration's
 /// configuration that silently runs the default arm is a study measuring the wrong thing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedProgramLibrary {

@@ -1,21 +1,7 @@
-use std::sync::Arc;
-
-use test_cabinet_core::gg::{
-    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_EDIT_FILE, CAPABILITY_EXEC, CAPABILITY_FORK,
-    CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE,
-    CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS,
-    CAPABILITY_WRITE_FILE, GgAgentConfig, GgCapabilityConfig, GgProgramLanguage, GgSubagentRef,
-};
+use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::*;
-use crate::archive::ArchiveRuntime;
-use crate::board::{BoardCaps, BoardRuntime};
 use crate::ending::EndingRole;
-use crate::memories::{MemoriesRuntime, MemoryCaps, MemoryStrategy};
-use crate::modules::{CapabilityModules, ModuleHandle};
-use crate::skills::{SkillLibrary, SkillsRuntime, parse_skill};
-use crate::tasks::{TaskMode, TasksRuntime};
-use crate::tools::{AgentFacts, ToolRegistry};
 
 /// A rendered prompt with every run of whitespace collapsed to one space.
 ///
@@ -340,7 +326,7 @@ fn code_mode_teaches_views_rather_than_logging() {
         "blank-line run:\n{with_reads}"
     );
 
-    // A run that withholds `read_file` is not taught the file view — the same ablation discipline
+    // A run that withholds `read_file` is not taught the file view — the same discipline
     // every other section follows — but keeps the text view, which nothing gates.
     let no_reads = render_system(
         &SystemContext {
@@ -1802,7 +1788,7 @@ pub(super) fn every_code_section_on_for(
     language: &dyn crate::sandbox::ProgramLanguage,
 ) -> SystemContext {
     let mut context = every_code_section_on(GgProgramLanguage::TypeScript);
-    context.ending.finish = crate::sandbox::spell(language, crate::sandbox::HARNESS_FINISH);
+    context.ending.finish = crate::sandbox::spell(language, crate::sandbox::SESSION_FINISH);
     context
 }
 
@@ -2095,17 +2081,6 @@ fn every_language() -> impl Iterator<Item = &'static dyn crate::sandbox::Program
     all_languages().chain(crate::sandbox::fixture_languages())
 }
 
-/// The [`SurfaceCall`](crate::sandbox::SurfaceCall) `object.key` names, from gg's own enumeration
-/// of its model-facing surface — so a call renamed there is a failure here rather than a lookup
-/// that silently finds nothing.
-fn surface_call((object, key): (&str, &str)) -> crate::sandbox::SurfaceCall {
-    crate::sandbox::OPERATIONS
-        .iter()
-        .map(|operation| operation.call)
-        .find(|call| call.object == object && call.key == key)
-        .unwrap_or_else(|| panic!("`{object}.{key}` is part of gg's model-facing surface"))
-}
-
 /// The statements every registered language's responses-as-code prompt must still make about the
 /// run it was rendered for, each paired with the label that says which one went missing.
 ///
@@ -2180,7 +2155,7 @@ fn every_language_prompt_states_what_the_run_configured() {
         }
         // The ending, spelled by this arm rather than written down: a session that cannot be ended
         // deliberately is the failure, and `harness.finish` is only one language's way of saying it.
-        let finish = crate::sandbox::spell(language, crate::sandbox::HARNESS_FINISH);
+        let finish = crate::sandbox::spell(language, crate::sandbox::SESSION_FINISH);
         assert!(
             rendered.contains(&finish),
             "{name}: the prompt no longer states the ending call (`{finish}`):\n{rendered}"
@@ -2281,34 +2256,33 @@ fn every_language_prompt_states_the_rules_a_program_runs_under() {
 /// fixture's, because everything else is a template's own words and the fixture renders every
 /// section of them.
 ///
-/// Two capability configurations, because one is not enough in either direction. A **granted** agent
-/// binds every module its arm declares — nothing gated can hide a leak from the scan — and an
-/// **ablated** one binds only what nothing gates, which is where an unconditional leak lives and
-/// where a leak that rides on a granted capability must not appear at all. The module-coverage
-/// assertion below is what keeps the first claim honest as the surface grows.
+/// Two grants, because one is not enough in either direction. A **granted** agent binds every module
+/// its arm declares — nothing gated can hide a leak from the scan — and a **withheld** one binds
+/// only what nothing gates, which is where an unconditional leak lives and where a leak that rides
+/// on a granted capability must not appear at all. The module-coverage assertion below is what keeps
+/// the first claim honest as the surface grows.
 #[test]
 fn a_rendered_prompt_names_no_function_but_the_one_that_ends_the_session() {
-    let granted = maximal_agent();
-    let modules = maximal_modules();
-    let full = ToolRegistry::from_run(&granted, &modules, &AgentFacts::default());
-    let bare = ToolRegistry::from_run(
-        &GgAgentConfig {
-            capabilities: Vec::new(),
-            ..GgAgentConfig::root()
-        },
-        &CapabilityModules::inert(),
-        &AgentFacts::default(),
-    );
+    // Every capability that gates a call, with every operation those capabilities offer — the grant
+    // under which every module an arm declares binds, so nothing gated can hide a leak from the
+    // scan.
+    let capabilities: Vec<String> = crate::sandbox::gating_capabilities()
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+    let operations = crate::sandbox::capability_operations(capabilities.iter().map(String::as_str));
 
-    for (what, registry, extras) in [("granted", &full, true), ("ablated", &bare, false)] {
+    for (what, held, granted) in [
+        ("granted", capabilities.as_slice(), operations.as_slice()),
+        ("withheld", &[][..], &[][..]),
+    ] {
         for &id in GgProgramLanguage::ALL {
             let language = crate::sandbox::language(id);
             let name = language.display_name();
             // The fixture supplies the sections; the loop's own projections supply the two fields
             // whose text is the catalogue's rather than a template's.
             let mut context = every_code_section_on_for(language);
-            context.modules =
-                crate::agent::module_views(registry, EndingRole::Standard, extras, extras, id);
+            context.modules = crate::agent::module_views(held, granted, EndingRole::Standard, id);
             context.code_headings = crate::agent::code_heading_views(true, true, true, true);
 
             // Every module this arm declares a function in is one this scan has read, or the
@@ -2364,74 +2338,6 @@ fn a_rendered_prompt_names_no_function_but_the_one_that_ends_the_session() {
         }
     }
 }
-
-/// A profile with **every capability that contributes a tool** switched on, so the surface it binds
-/// is every module its arm declares a function in.
-///
-/// A maximal profile rather than an enumerated one: the point of the gate above is that no module's
-/// line escapes the scan, and a hand-listed set would quietly stop covering a capability added after
-/// it was written. `gg reference` builds the same shape for the same reason.
-fn maximal_agent() -> GgAgentConfig {
-    GgAgentConfig {
-        capabilities: [
-            CAPABILITY_SHELL,
-            CAPABILITY_READ_FILE,
-            CAPABILITY_WRITE_FILE,
-            CAPABILITY_EDIT_FILE,
-            CAPABILITY_LIST_DIR,
-            CAPABILITY_SKILLS,
-            CAPABILITY_MEMORIES,
-            CAPABILITY_TASKS,
-            CAPABILITY_PROJECT_MANAGEMENT,
-            CAPABILITY_AGENT_MANAGED_CONTEXT,
-            CAPABILITY_SUBAGENTS,
-            CAPABILITY_EXEC,
-            CAPABILITY_FORK,
-        ]
-        .into_iter()
-        .map(GgCapabilityConfig::enabled)
-        .collect(),
-        // The delegation tools are gated on there being somewhere to delegate *to*, so a roster of
-        // one — carrying every scope — is what makes that module bind at all.
-        subagents: vec![GgSubagentRef::any(PLACEHOLDER_AGENT)],
-        ..GgAgentConfig::root()
-    }
-}
-
-/// The module set [`maximal_agent`]'s registry is assembled against: every stateful capability's
-/// store bound, since a capability whose module is disabled offers no tools and so contributes no
-/// module to the surface.
-///
-/// The skill library holds one skill rather than none, because an empty one withholds `read_skill`
-/// entirely — there would be nothing to read — and the skills module would vanish with it.
-fn maximal_modules() -> CapabilityModules {
-    let library = Arc::new(SkillLibrary::empty().with_builtins(vec![parse_skill(
-        &format!("---\nname: {PLACEHOLDER_SKILL}\ndescription: A skill.\n---\n"),
-        PLACEHOLDER_SKILL,
-    )]));
-    CapabilityModules::inert()
-        .with(ModuleHandle::Skills(SkillsRuntime::new(library)))
-        .with(ModuleHandle::Memories(MemoriesRuntime::new(
-            MemoryStrategy::Scratchpad,
-            MemoryCaps::for_strategy(MemoryStrategy::Scratchpad),
-        )))
-        .with(ModuleHandle::Tasks(TasksRuntime::with_mode(
-            MAXIMAL_TASK_CEILING,
-            TaskMode::Simple,
-        )))
-        .with(ModuleHandle::Board(BoardRuntime::new(BoardCaps::default())))
-        .with(ModuleHandle::Archive(ArchiveRuntime::new()))
-}
-
-/// The one agent [`maximal_agent`]'s roster names, and the one skill [`maximal_modules`]'s library
-/// holds. Neither is ever reached: they exist so the capability that would otherwise withhold its
-/// tools has something to point at.
-const PLACEHOLDER_AGENT: &str = "helper";
-const PLACEHOLDER_SKILL: &str = "a-skill";
-
-/// The ceiling [`maximal_modules`]'s task list carries. Any positive number does — no task tool's
-/// definition mentions it, and nothing here ever adds a task.
-const MAXIMAL_TASK_CEILING: usize = 100;
 
 /// **A read-only memory holder's section is written for a reader, not a curator.**
 ///
@@ -2528,18 +2434,17 @@ fn a_run_that_requires_reviewers_tells_the_model_it_must_name_one() {
 #[test]
 fn a_capability_the_run_withheld_is_absent_from_its_prompt() {
     let withheld = [
-        ("agents", "spawn_subagent"),
-        ("tasks", "add_task"),
-        ("project", "create_issue"),
-        ("skills", "read_skill"),
-        ("memory", "read_memory"),
-        ("programs", "rerun"),
+        crate::sandbox::DELEGATION_SPAWN_SUBAGENT,
+        crate::sandbox::TASKS_ADD_TASK,
+        crate::sandbox::BOARD_CREATE_ISSUE,
+        crate::sandbox::SKILLS_READ_SKILL,
+        crate::sandbox::MEMORIES_READ_MEMORY,
+        crate::sandbox::PROGRAMS_RERUN,
         // The two capabilities that render a line rather than a heading, and so are the two a
         // heading check could never have covered.
-        ("view", "open_file"),
-        ("system", "shell"),
-    ]
-    .map(surface_call);
+        crate::sandbox::VIEWS_OPEN_FILE,
+        crate::sandbox::SHELL_SHELL,
+    ];
     for language in every_language() {
         let name = language.display_name();
         // Every section off, and only the ending — which every agent has — left on.

@@ -64,14 +64,14 @@ gg states for the operation. The documentation runtime filters a search with the
 same predicate over the same grant, so what a model can be shown and what a
 model can call cannot disagree.
 
-A refused call returns the `unavailable` error class. Its message is an
-instruction, naming what is missing and what to call instead, spelled in the
-language this program is written in. Its `tool` field is gg's own identity for
-the call, so a catch site branches on what failed rather than on prose. Every
-refusal is opened and closed as an API call and lands on the turn's refusal
-roster under gg's own `object.key` identity, caught or uncaught, which is the
-record a cross-arm count joins on. A new SDK exposes the whole surface, so that
-every arm offers the same one.
+A refused call returns the `unavailable` error class. Its message says the call
+is not available and, where the agent has one, which call to make instead,
+spelled in the language this program is written in. Its `tool` field carries the
+operation's key, so a catch site branches on what failed rather than on prose.
+Every refusal is opened and closed as an API call and lands on the turn's refusal
+roster under gg's own operation id, caught or uncaught, which is the record a
+cross-arm count joins on. A new SDK exposes the whole surface, so that every arm
+offers the same one.
 
 ## WASI and the guest context
 
@@ -190,8 +190,8 @@ the rendering.
   ending is revoked.
 
 A fifth is read the other way, off a context with every capability off: a
-capability the run withheld appears nowhere. An arm's template fixtures need
-both contexts, because the maximal one alone cannot show that a withheld
+capability the agent was not granted appears nowhere. An arm's template fixtures
+need both contexts, because the maximal one alone cannot show that an ungranted
 capability stays out.
 
 An arm that declares a library set renders it group by group, each group's
@@ -210,11 +210,17 @@ run. Each arm is held, one at a time, to gg's own operations table: every
 model-facing operation gg has, what buys each one, and whether a program passes
 it anything. Nothing is compared between arms.
 
-- Gating, over the table alone. Every tool-bound operation names a real gg tool
-  and every gg tool buys something; the ending operations are gg's three under
-  the [roles](/gg/ending-a-session/) that own them; a view is gated exactly
-  where it reads the workspace; the documentation search is bound to every
-  program. This runs once rather than per arm.
+- Gating, over the table alone. Every capability-bound operation names a real gg
+  capability, paired with that operation's family; the ending operations are
+  gg's three under the [roles](/gg/ending-a-session/) that own them; a view is
+  gated exactly where it reads the workspace; the documentation search is bound
+  to every program. This runs once rather than per arm.
+
+  Nothing here is checked against gg's tool vocabulary. The two surfaces are
+  independent and an agent has exactly one of them, so a rule holding the two
+  name sets in bijection would assert a symmetry gg does not have: this surface
+  is the strictly richer one, and a tool added for a tool-calling agent has no
+  bearing on this table.
 - Capability coverage, per arm. Every operation gg offers has exactly one
   canonical binding on every arm that is not excused; every operation an arm
   names is one gg has; every alias names an operation that arm canonically

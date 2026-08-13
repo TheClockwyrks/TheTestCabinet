@@ -28,7 +28,7 @@
 //!
 //! The tools are contributed to the registry only when the
 //! [`memories`](test_cabinet_core::gg::CAPABILITY_MEMORIES) capability is enabled; when it
-//! is off, none are offered (ablation).
+//! is off, none are offered.
 
 use async_trait::async_trait;
 use serde_json::{Value, json};

@@ -174,11 +174,11 @@ fn the_generated_catalogue_is_this_languages() {
 fn a_module_is_a_class_and_a_call_is_qualified_by_it() {
     assert_eq!(java().member_separator(), ".");
     assert_eq!(
-        crate::sandbox::spell(java(), crate::sandbox::VIEW_OPEN_TEXT),
+        crate::sandbox::spell(java(), crate::sandbox::VIEWS_OPEN_TEXT),
         "gg.views.Views.openText"
     );
     assert_eq!(
-        crate::sandbox::spell(java(), crate::sandbox::REVIEW_REQUEST_CHANGES),
+        crate::sandbox::spell(java(), crate::sandbox::SESSION_REQUEST_CHANGES),
         "gg.session.Session.requestChanges"
     );
 }

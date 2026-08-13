@@ -14,6 +14,10 @@ use super::super::*;
 use crate::context::{ContextModel, HeuristicTokenEstimator, Retention};
 use crate::memories::MemoryStrategy;
 use crate::model::{Message, ToolCall};
+use crate::sandbox::{
+    CONTEXT_COMPACT, MEMORIES_DELETE_MEMORY, MEMORIES_UPDATE_MEMORY, MEMORIES_WRITE_MEMORY,
+    SHELL_SHELL,
+};
 
 /// A rendered prompt with every run of whitespace collapsed to one space.
 ///
@@ -31,12 +35,15 @@ fn set_with(
     memories: bool,
 ) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal("mock/x");
-    set.agents[0].capabilities.push(GgCapabilityConfig {
-        id: CAPABILITY_COMPACTION.to_string(),
-        enabled: true,
-        implementation: implementation.map(str::to_string),
-        params,
-    });
+    crate::tools::grant_configured(
+        &mut set.agents[0],
+        GgCapabilityConfig {
+            id: CAPABILITY_COMPACTION.to_string(),
+            enabled: true,
+            implementation: implementation.map(str::to_string),
+            params,
+        },
+    );
     // Memories are on by default, so the off arm has to *replace* the default rather than simply
     // not adding one.
     set.agents[0]
@@ -234,12 +241,15 @@ fn the_handoff_model_is_read_only_for_a_handoff_strategy() {
 
     // A disabled capability names nothing at all.
     let mut disabled = GgCapabilitySet::minimal("mock/x");
-    disabled.agents[0].capabilities.push(GgCapabilityConfig {
-        id: CAPABILITY_COMPACTION.to_string(),
-        enabled: false,
-        implementation: Some("handoff-summarization".to_string()),
-        params: json!({ "model": "openrouter/cheap" }),
-    });
+    crate::tools::grant_configured(
+        &mut disabled.agents[0],
+        GgCapabilityConfig {
+            id: CAPABILITY_COMPACTION.to_string(),
+            enabled: false,
+            implementation: Some("handoff-summarization".to_string()),
+            params: json!({ "model": "openrouter/cheap" }),
+        },
+    );
     assert_eq!(handoff_model_id(disabled.root()), None);
 }
 
@@ -284,27 +294,42 @@ fn an_unbound_model_slot_is_reported_rather_than_resolved() {
 /// The narrowing is total: while a compaction is in flight only the family that satisfies it is
 /// admitted, and everything else — including `finish`, `shell`, and the other context tools — is
 /// refused.
+///
+/// Asked of **both** surfaces, in each one's own vocabulary, because they are two predicates rather
+/// than one spelled twice: the tool path admits nothing at all for a
+/// [`Summary`](PendingCompaction::Summary), where the code path admits the `context.compact` call
+/// the summary arrives inside.
 #[test]
 fn a_pending_compaction_admits_only_what_satisfies_it() {
-    for code_mode in [false, true] {
-        assert!(PendingCompaction::CompactCall.admits("compact", code_mode));
-        assert!(!PendingCompaction::CompactCall.admits("shell", code_mode));
-        assert!(!PendingCompaction::CompactCall.admits("write_memory", code_mode));
+    assert!(PendingCompaction::CompactCall.admits("compact"));
+    assert!(!PendingCompaction::CompactCall.admits("shell"));
+    assert!(!PendingCompaction::CompactCall.admits("write_memory"));
 
-        assert!(PendingCompaction::MemoryWrites.admits("write_memory", code_mode));
-        assert!(PendingCompaction::MemoryWrites.admits("update_memory", code_mode));
-        assert!(PendingCompaction::MemoryWrites.admits("delete_memory", code_mode));
-        assert!(!PendingCompaction::MemoryWrites.admits("compact", code_mode));
-        assert!(!PendingCompaction::MemoryWrites.admits("shell", code_mode));
+    assert!(PendingCompaction::MemoryWrites.admits("write_memory"));
+    assert!(PendingCompaction::MemoryWrites.admits("update_memory"));
+    assert!(PendingCompaction::MemoryWrites.admits("delete_memory"));
+    assert!(!PendingCompaction::MemoryWrites.admits("compact"));
+    assert!(!PendingCompaction::MemoryWrites.admits("shell"));
 
-        assert!(!PendingCompaction::Summary.admits("shell", code_mode));
-    }
+    assert!(!PendingCompaction::Summary.admits("shell"));
+
+    assert!(PendingCompaction::CompactCall.admits_operation(CONTEXT_COMPACT));
+    assert!(!PendingCompaction::CompactCall.admits_operation(SHELL_SHELL));
+    assert!(!PendingCompaction::CompactCall.admits_operation(MEMORIES_WRITE_MEMORY));
+
+    assert!(PendingCompaction::MemoryWrites.admits_operation(MEMORIES_WRITE_MEMORY));
+    assert!(PendingCompaction::MemoryWrites.admits_operation(MEMORIES_UPDATE_MEMORY));
+    assert!(PendingCompaction::MemoryWrites.admits_operation(MEMORIES_DELETE_MEMORY));
+    assert!(!PendingCompaction::MemoryWrites.admits_operation(CONTEXT_COMPACT));
+    assert!(!PendingCompaction::MemoryWrites.admits_operation(SHELL_SHELL));
+
+    assert!(!PendingCompaction::Summary.admits_operation(SHELL_SHELL));
 
     // On the tool-calling path a summarization turn is not a working turn at all — the loop takes
-    // it whole and never dispatches from it, so this only ever answers the defensive case. In code
-    // mode there is no such turn: the summary *is* a `compact` call, so that call is admitted.
-    assert!(!PendingCompaction::Summary.admits("compact", false));
-    assert!(PendingCompaction::Summary.admits("compact", true));
+    // it whole and never dispatches from it, so this only ever answers the defensive case. A
+    // program has no such turn: the summary *is* a `context.compact` call, so that call is admitted.
+    assert!(!PendingCompaction::Summary.admits("compact"));
+    assert!(PendingCompaction::Summary.admits_operation(CONTEXT_COMPACT));
 }
 
 /// A memory compaction is satisfied by **one reply whose calls all succeeded**, and by nothing else

@@ -34,7 +34,9 @@ use serde_json::{Value, json};
 
 use super::substrate::{evaluate, evaluate_closing_docviews, logs, prepare};
 use crate::ending::{Ending, EndingRole};
-use crate::sandbox::fake::{CallLog, all_tools, canned_outcome};
+use test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE;
+
+use crate::sandbox::fake::{CallLog, all_operations, all_operations_without, canned_outcome};
 use crate::sandbox::membrane::RunEnding;
 use crate::sandbox::outcome::SandboxOutcome;
 use crate::tools::{ToolFailure, ToolOutcome};
@@ -81,12 +83,12 @@ fn program(body: &str) -> String {
 /// Compile and run one C++ program with `enabled`'s tools offered and no ending group.
 fn run_with(
     body: &str,
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
     evaluate(
         &prepare(&program(body)),
-        enabled,
+        operations,
         RunEnding::None,
         false,
         responder,
@@ -368,7 +370,7 @@ fn every_tool_crosses_the_membrane_from_its_cpp_spelling() {
         .iter()
         .map(|crossing| format!("  {}\n", crossing.statement))
         .collect::<String>();
-    let (outcome, log) = run_with(&body, &all_tools(), canned_outcome);
+    let (outcome, log) = run_with(&body, &all_operations(), canned_outcome);
     assert!(
         matches!(&outcome.result, Ok(result) if result.error.is_none()),
         "the program did not run cleanly: {:?}",
@@ -439,7 +441,7 @@ fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_cpp_too() {
   session::finish("read the file and showed myself the result");
 "####,
         )),
-        &all_tools(),
+        &all_operations_without(CAPABILITY_DOCVIEW_CLOSE),
         RunEnding::Role(EndingRole::Standard),
         false,
         canned_outcome,
@@ -577,12 +579,15 @@ fn a_failure_is_thrown_whether_it_is_caught_or_let_out() {
   }
   log("carried on");
 "####,
-        &all_tools(),
+        &all_operations(),
         |_name: &str, _args: &Value| {
             ToolOutcome::failed(ToolFailure::NotFound, "no such file: gone.cpp".to_string())
         },
     );
-    assert_eq!(logs(&outcome), ["not-found on read_file", "carried on"]);
+    assert_eq!(
+        logs(&outcome),
+        ["not-found on read_text_file", "carried on"]
+    );
 
     // Let out: gg's shell catches what escapes `main`, so an uncaught failure is a reported,
     // RECOVERABLE program error rather than a trap — and it carries the failed call's own gg code,
@@ -595,7 +600,7 @@ fn a_failure_is_thrown_whether_it_is_caught_or_let_out() {
   files::read_text_file("gone.cpp");
   log("after");
 "####,
-        &all_tools(),
+        &all_operations(),
         |_name: &str, _args: &Value| {
             ToolOutcome::failed(ToolFailure::NotFound, "no such file: gone.cpp".to_string())
         },
@@ -604,7 +609,7 @@ fn a_failure_is_thrown_whether_it_is_caught_or_let_out() {
     assert!(
         error
             .message
-            .contains("`read_file` failed (not-found): no such file: gone.cpp"),
+            .contains("`read_text_file` failed (not-found): no such file: gone.cpp"),
         "the model reads gg's own sentence rather than a C++ type name: {}",
         error.message
     );
@@ -635,7 +640,7 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
   }
   log("carried on");
 "####,
-        &["read_file".to_string()],
+        &[crate::sandbox::operations::FILES_READ_FILE],
         canned_outcome,
     );
     assert_eq!(logs(&outcome), ["unavailable on write_file", "carried on"]);

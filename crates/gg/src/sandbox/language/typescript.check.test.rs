@@ -102,7 +102,7 @@ fn every_line_of_a_multi_part_diagnostic_survives_the_shift() {
 #[test]
 fn the_whole_surface_is_declared_whatever_a_run_offers() {
     // A withheld tool has to stay reachable as a withheld NAME: the guest leaves it out of scope and
-    // the turn records `program_unknown_name`, which is the measurement a toolset ablation takes. If
+    // the turn records `program_unknown_name`, which is what a comparison of two configurations reads. If
     // the checker refused these programs the same event would be recorded as a compile error in a
     // checked language and as a missing name in an unchecked one.
     let across_every_module = r#"

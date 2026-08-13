@@ -12,8 +12,8 @@ denominator for every healing rate. A run with the capability off emits none.
 | Field | What it carries |
 | --- | --- |
 | `ok` | Whether the program returned normally. A failed code turn is a turn outcome fed back to the model rather than a crash of the run, and it is independent of `finished`: a program that finished the run and then threw is `ok: false` with `finished` present. |
-| `toolCalls` | How many calls the program composed that reached the turn loop, which is exactly the number of `tool_call`/`tool_result` pairs the turn produced. |
-| `apiCalls` | The turn's total of [model-facing calls](/gg/telemetry/agent-surface/#model-facing-calls). Omitted when zero. |
+| `toolCalls` | How many of the program's calls reached the turn loop and were dispatched against gg's real machinery, rather than being answered inside the sandbox or refused before dispatch. A program streams no `tool_call`/`tool_result` pair; the events bracketing each of these are its own `api_call`/`api_result` pair. |
+| `apiCalls` | The turn's total of [model-facing calls](/gg/telemetry/agent-surface/#model-facing-calls), and the complete count. It exceeds `toolCalls` by the calls that dispatch nothing and the calls the membrane refused. Omitted when zero. |
 | `durationMs` | How long the program's own execution took, excluding time parked in a bridged call. Reported on every path that reached the engine, including a fault, a trap, or an execution-timeout stop, where it is the time burned up to the stop rather than the ceiling. |
 | `error` | The failure message when `ok` is `false`. Absent on a clean execution. |
 | `finished` | The summary a program passed to `finish`, present on exactly the turn that ended the run. |

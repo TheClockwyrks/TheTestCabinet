@@ -29,7 +29,7 @@ model output.
 | `case`, `caseVersion`, `variant`, `testType` | what was run |
 | `model`, `orchestrator`, `harnessVersion`, `preset`, `agents`, `agent.<name>.model` | how it was configured |
 | `cap.<id>`, `cap.<id>.impl`, `cap.<id>.<param>`, `agent.<name>.cap.<id>` | the capability set, flattened and typed |
-| `tool.<name>` | the effective toolset |
+| `tool.<name>` | the root agent's effective toolset |
 | `status`, `mode`, `limit` | how it ended |
 | `summary.<path>` | the whole session summary, flattened |
 | `model.<id>.tokens`, `model.<id>.cost` | the per-(slot, model) spend rollup |
@@ -77,7 +77,9 @@ These semantics are identical in both implementations of the evaluator.
 
 `tool.<name>` stays sparse, because the tool universe is per-run rather than a
 closed catalog. The field sidebar reports each field's document count, so a
-sparse field is visible before a query is run.
+sparse field is visible before a query is run. A run whose root answers with
+[programs](/gg/responses-as-code/overview/) writes none of these fields, since it
+is offered no tools and its surface is its granted operations.
 
 ## Grammar
 

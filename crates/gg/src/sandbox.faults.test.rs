@@ -40,7 +40,7 @@ fn program_faults_are_reported_not_trapped() {
             "const text = fs.readTextFile(\"missing.ts\");\n",
             "return text.length + entries.length;",
         ),
-        &all_tools(),
+        &all_operations(),
         SandboxLimits::default(),
         missing,
     );
@@ -48,13 +48,15 @@ fn program_faults_are_reported_not_trapped() {
     let error = program_error(&outcome);
     assert_eq!(error.kind, ProgramErrorKind::ToolFailure);
     assert!(
-        error.message.contains("`read_file` failed (not-found)"),
-        "the throw must name the tool and its class: {}",
+        error
+            .message
+            .contains("`read_text_file` failed (not-found)"),
+        "the throw must name the call the program wrote and its class: {}",
         error.message
     );
     assert!(
         error.message.contains("missing.ts"),
-        "the throw must carry the tool's own guidance: {}",
+        "the throw must carry the failure's own guidance: {}",
         error.message
     );
 
@@ -73,13 +75,13 @@ fn program_faults_are_reported_not_trapped() {
             "  console.log(JSON.stringify({ code: failure.code, tool: failure.tool, caught: true }));\n",
             "}\n",
         ),
-        &all_tools(),
+        &all_operations(),
         SandboxLimits::default(),
         missing,
     );
     assert_eq!(
         logged_json(&outcome),
-        json!({ "code": "not-found", "tool": "read_file", "caught": true })
+        json!({ "code": "not-found", "tool": "read_text_file", "caught": true })
     );
 
     // A caught failure is still on the record, so the feedback can say a call failed even when the
@@ -98,7 +100,7 @@ fn program_faults_are_reported_not_trapped() {
             "  console.log(JSON.stringify({ direct: JSON.parse(JSON.stringify(e)), inArray: [e] }));\n",
             "}\n",
         ),
-        &all_tools(),
+        &all_operations(),
         SandboxLimits::default(),
         |name, args| {
             if name == "edit_file" {
@@ -127,13 +129,13 @@ fn program_faults_are_reported_not_trapped() {
         "and it must survive nested inside a logged structure"
     );
 
-    // A capability this run WITHHELD is bound like every other — the SDK is static — so the call
-    // travels to the host and is refused there, with a sentence naming the gg capability that buys
-    // it. It is `UnknownName` all the same, because that is what the host makes of an `unavailable`
-    // code: reaching for something the run does not offer is one event on all eleven arms.
+    // A call this agent was NOT granted is bound like every other — the SDK is static — so it
+    // travels to the host and is refused there. It is `UnknownName` all the same, because that is
+    // what the host makes of an `unavailable` code: reaching for something the agent does not hold
+    // is one event on all eleven arms.
     let (outcome, log) = run_with(
         "return fs.listDir(\"src\");",
-        &["shell".to_string()],
+        &[crate::sandbox::operations::SHELL_SHELL],
         SandboxLimits::default(),
         canned_outcome,
     );
@@ -143,13 +145,9 @@ fn program_faults_are_reported_not_trapped() {
     assert!(
         error
             .message
-            .contains("`gg.files.listDir` is not available to you"),
-        "{}",
-        error.message
-    );
-    assert!(
-        error.message.contains("the gg tool `list_dir`"),
-        "the refusal names what is missing: {}",
+            .ends_with("`gg.files.listDir` is not available."),
+        "the refusal names the call the way this program wrote it, and stops there — what would \
+         have to change to unlock it is not something this agent can change: {}",
         error.message
     );
     assert!(
@@ -166,7 +164,7 @@ fn program_faults_are_reported_not_trapped() {
     // JavaScript arm, and on Python and Ruby.
     let (outcome, log) = run_with(
         "return whatever.listDir(\"src\");",
-        &["shell".to_string()],
+        &[crate::sandbox::operations::SHELL_SHELL],
         SandboxLimits::default(),
         canned_outcome,
     );

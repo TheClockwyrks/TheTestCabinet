@@ -167,11 +167,11 @@ const FILE_ICONS: Record<
   compaction: CompactionIcon,
 };
 
-// Whether an instance reaches its tools as *code* rather than by naming them — the one
-// bit of a surface that decides how its file is named, marked and read. Anything else,
-// an unrecognised mode from a newer gg included, reads as tool calling: `tools` is
-// populated in both modes and is what the file then lists, so that is the honest
-// fallback rather than a guess at a third shape.
+// Whether an instance answers its turns by writing *code* rather than by naming a tool —
+// the one bit of a surface that decides how its file is named, marked and read. Anything
+// else, an unrecognised mode from a newer gg included, reads as tool calling: `tools` is
+// what such a file lists, and reading a mode nothing here understands as the surface with
+// the flat list is the honest fallback rather than a guess at a third shape.
 //
 // Exported so the file's content and the row that opens it decide by one predicate:
 // a folder offering `apis` over a list of bare tool names would be the label lying about
@@ -182,8 +182,8 @@ export function answersAsCode(surface: GgAgentSurface | undefined): boolean {
 
 // How one file is named in an instance's folder. Constant for every kind but the
 // surface, which is called `tools` for an agent that answers in tool calls and `apis`
-// for one that answers in code — the same underlying set reached two different ways,
-// and one name for both would misname whichever agent it was not written for.
+// for one that answers in code — two independent surfaces, one per agent, and one name
+// for both would misname whichever agent it was not written for.
 //
 // A resolver rather than a second table because the name depends on the *instance*,
 // which no per-kind table can see; the tables stay the source of truth for everything

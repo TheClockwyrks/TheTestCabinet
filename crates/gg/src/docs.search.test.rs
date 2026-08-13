@@ -1,32 +1,46 @@
 //! Tests for the [documentation search](super) — the matching, the tiers, the filters, the page,
 //! and the permission filter that decides what a search may even see.
 
-use test_cabinet_core::gg::{CAPABILITY_PROGRAM_LIBRARY, GgProgramLanguage};
+use test_cabinet_core::gg::{
+    CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_READ_FILE, CAPABILITY_SHELL, GgProgramLanguage,
+};
 
 use super::*;
 use crate::docs::DocsRuntime;
 use crate::ending::EndingRole;
+use crate::sandbox::{capability_operations, gating_capabilities};
 
-/// A runtime for an agent whose run enabled `tools`, in TypeScript's spellings.
-fn runtime(tools: &[&str]) -> DocsRuntime {
+/// A runtime for an agent holding `capabilities`, granted every operation they offer, answering in
+/// TypeScript's spellings.
+fn runtime(capabilities: &[&str]) -> DocsRuntime {
+    in_role(capabilities, EndingRole::Standard)
+}
+
+/// [`runtime`], dispatched in `role`.
+fn in_role(capabilities: &[&str], role: EndingRole) -> DocsRuntime {
+    let operations = capability_operations(capabilities.iter().copied());
     DocsRuntime::new(
-        tools.iter().map(|tool| tool.to_string()).collect(),
-        EndingRole::Standard,
-        &[],
+        capabilities.iter().map(|id| id.to_string()).collect(),
+        role,
+        &operations,
         GgProgramLanguage::TypeScript,
     )
 }
 
-/// A runtime for a fully-tooled agent — enough to see the whole surface at once.
+/// A runtime for an agent granted **everything** — enough to see the whole surface at once.
 fn full() -> DocsRuntime {
+    on(GgProgramLanguage::TypeScript)
+}
+
+/// [`full`], answering in `language`.
+fn on(language: GgProgramLanguage) -> DocsRuntime {
+    let capabilities = gating_capabilities();
+    let operations = capability_operations(capabilities.iter().copied());
     DocsRuntime::new(
-        crate::tools::ALL_TOOL_NAMES
-            .iter()
-            .map(|tool| tool.to_string())
-            .collect(),
+        capabilities.into_iter().map(str::to_string).collect(),
         EndingRole::Standard,
-        &[CAPABILITY_PROGRAM_LIBRARY],
-        GgProgramLanguage::TypeScript,
+        &operations,
+        language,
     )
 }
 
@@ -184,14 +198,14 @@ fn an_identical_query_answers_in_an_identical_order() {
 /// which is the whole reason search may be the only way a model finds its surface.
 #[test]
 fn a_withheld_function_is_not_findable() {
-    let docs = runtime(&["read_file"]);
+    let docs = runtime(&[CAPABILITY_READ_FILE]);
     let found = docs.search(ask("file")).expect("a usable query");
     let keys = keys(&found);
     assert!(keys.contains(&key_of("readFile").as_str()), "{keys:?}");
     assert!(
         !keys.contains(&key_of("writeFile").as_str())
             && !keys.contains(&key_of("editFile").as_str()),
-        "a run that enabled only `read_file` must not advertise the others: {keys:?}"
+        "an agent granted only the read-file capability must not advertise the others: {keys:?}"
     );
 }
 
@@ -206,12 +220,7 @@ fn a_capability_family_is_filtered_by_the_same_predicate() {
         "an agent with no program library must not find its calls: {:?}",
         keys(&found)
     );
-    let with = DocsRuntime::new(
-        Vec::new(),
-        EndingRole::Standard,
-        &[CAPABILITY_PROGRAM_LIBRARY],
-        GgProgramLanguage::TypeScript,
-    );
+    let with = runtime(&[CAPABILITY_PROGRAM_LIBRARY]);
     let found = with.search(ask("program")).expect("a usable query");
     assert!(
         keys(&found).contains(&key_of("rerun").as_str()),
@@ -228,12 +237,7 @@ fn an_ending_call_is_findable_only_by_the_role_that_has_it() {
         keys(&standard.search(ask("approve")).expect("a usable query")).is_empty(),
         "a standard agent has no `approve`"
     );
-    let reviewer = DocsRuntime::new(
-        Vec::new(),
-        EndingRole::Review,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
+    let reviewer = in_role(&[], EndingRole::Review);
     let found = reviewer.search(ask("approve")).expect("a usable query");
     assert!(
         keys(&found).contains(&key_of("approve").as_str()),
@@ -247,7 +251,7 @@ fn an_ending_call_is_findable_only_by_the_role_that_has_it() {
 /// use.
 #[test]
 fn a_type_is_visible_through_the_functions_that_use_it() {
-    let with_shell = runtime(&["shell"]);
+    let with_shell = runtime(&[CAPABILITY_SHELL]);
     let found = with_shell
         .search(ask("ShellOutput"))
         .expect("a usable query");
@@ -257,7 +261,7 @@ fn a_type_is_visible_through_the_functions_that_use_it() {
         keys(&found)
     );
 
-    let without_shell = runtime(&["read_file"]);
+    let without_shell = runtime(&[CAPABILITY_READ_FILE]);
     let found = without_shell
         .search(ask("ShellOutput"))
         .expect("a usable query");
@@ -278,16 +282,17 @@ fn a_type_is_visible_through_the_functions_that_use_it() {
 /// cannot tell from *nothing matched*. The filter is narrowed with the report so the two cannot
 /// disagree about where an entry lives.
 /// Asserted on the **Rust** arm rather than TypeScript's, because TypeScript's catalogue has exactly
-/// one type referenced from two objects and both are gated on the same tool, so the narrowing has
-/// nothing to bite on there. Rust's `gg::core::ToolError` is referenced from every module that binds
-/// anything.
+/// one type referenced from two modules and both are gated on the same capability, so the narrowing
+/// has nothing to bite on there. Rust's `gg::core::ToolError` is referenced from every module that
+/// binds anything.
 #[test]
 fn a_types_modules_are_narrowed_to_what_this_agent_binds() {
-    let rust = |tools: &[&str]| {
+    let rust = |capabilities: &[&str]| {
+        let operations = capability_operations(capabilities.iter().copied());
         DocsRuntime::new(
-            tools.iter().map(|tool| tool.to_string()).collect(),
+            capabilities.iter().map(|id| id.to_string()).collect(),
             EndingRole::Standard,
-            &[],
+            &operations,
             GgProgramLanguage::Rust,
         )
     };
@@ -306,7 +311,7 @@ fn a_types_modules_are_narrowed_to_what_this_agent_binds() {
     // The key is the type's fully-qualified name, because this arm is written in the normalized doc
     // model and a name is what a documentation view is keyed by.
     const TOOL_ERROR: &str = "gg::core::ToolError";
-    let reader = rust(&["read_file"]);
+    let reader = rust(&[CAPABILITY_READ_FILE]);
     let narrowed = modules_of(&reader, TOOL_ERROR);
     assert!(
         narrowed.contains("gg::files"),
@@ -335,7 +340,7 @@ fn a_types_modules_are_narrowed_to_what_this_agent_binds() {
     }
 
     // An agent that holds the surface is told the whole union, because for it the union is true.
-    let whole = modules_of(&rust(crate::tools::ALL_TOOL_NAMES), TOOL_ERROR);
+    let whole = modules_of(&rust(&gating_capabilities()), TOOL_ERROR);
     for present in ["files", "memories", "skills", "tasks"] {
         assert!(
             whole.contains(&format!("gg::{present}")),
@@ -621,15 +626,7 @@ fn a_hit_carries_a_brief_and_not_the_documentation() {
 #[test]
 fn every_hit_is_openable_on_every_language() {
     for language in crate::sandbox::all_languages() {
-        let docs = DocsRuntime::new(
-            crate::tools::ALL_TOOL_NAMES
-                .iter()
-                .map(|tool| tool.to_string())
-                .collect(),
-            EndingRole::Standard,
-            &[CAPABILITY_PROGRAM_LIBRARY],
-            language.id(),
-        );
+        let docs = on(language.id());
         let found = docs
             .search(DocQuery {
                 query: "e",
@@ -658,10 +655,11 @@ fn every_hit_is_openable_on_every_language() {
 #[test]
 fn every_language_answers_only_with_what_its_agent_binds() {
     for language in crate::sandbox::all_languages() {
+        let operations = capability_operations([CAPABILITY_READ_FILE]);
         let docs = DocsRuntime::new(
-            vec!["read_file".to_string()],
+            vec![CAPABILITY_READ_FILE.to_string()],
             EndingRole::Standard,
-            &[],
+            &operations,
             language.id(),
         );
         let found = docs

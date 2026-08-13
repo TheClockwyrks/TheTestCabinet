@@ -23,7 +23,7 @@ pub struct Model {
     /// The owning account's id (from the auth service, via the verified bearer
     /// token).
     pub user_id: String,
-    /// The operator-chosen display name (e.g. `compaction ablation`).
+    /// The operator-chosen display name (e.g. `compaction comparison`).
     pub name: String,
     /// A one-line note on what the board is for. Empty when unset.
     pub description: String,

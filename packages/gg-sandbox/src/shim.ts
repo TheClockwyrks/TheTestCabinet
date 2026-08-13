@@ -525,8 +525,10 @@ function buildLib(
  * underscored because they are what the WIT calls them. They used to build the scope; the scope is
  * now static and every capability question is answered at the membrane, which is the one place that
  * can answer it the same way for all eleven language arms. gg still sends them — the world is shared
- * with ten sibling guests and the `bound-tools` bijection is checked against this artifact — so they
- * arrive and are ignored.
+ * with ten sibling guests, and removing a parameter reshapes every one of them — so they arrive and
+ * are ignored. (`enabled` carries gg's rendered operation ids, not tool names; the separate
+ * `bound-tools` export is about the tool interfaces this artifact imports, which is a different
+ * vocabulary and a different check.)
  *
  * A **returned value is discarded**, and {@link feedback.noteReturn} is how the model learns that
  * rather than by noticing an absence. Discarding it is what makes the rule one sentence — open a

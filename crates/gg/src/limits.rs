@@ -236,8 +236,9 @@ pub enum TurnErrorKind {
     /// Named here so the definition of a turn error stays whole, **not** because a ceiling ever
     /// gets to observe two of them: a `ModelError` reaching the loop means the provider failed
     /// every attempt within one turn, the fatal kinds recur identically, and a rejected credential
-    /// must stay the process's one non-zero exit. Making model-API errors survivable is a change to
-    /// gg's model-error policy and would be designed as one.
+    /// ends the agent that hit it — it is one of the two non-launch statuses (the other being a gg
+    /// defect) that exit the process non-zero off the root's ending. Making model-API errors
+    /// survivable is a change to gg's model-error policy and would be designed as one.
     ModelApi,
     /// The program could not be prepared for its guest — a syntax error, a module feature the
     /// [sandbox](crate::sandbox) has no implementation of, or a program past the size/nesting
@@ -621,9 +622,8 @@ impl RunLimits {
 /// operator-facing warning for every declaration that cannot bound anything.
 ///
 /// **Total**: an unset, zero, negative or nonsensical declaration becomes `None` (the ceiling is
-/// off) plus a warning, never an error, so a sweep's one shared configuration document stays
-/// interpretable by every arm — the same terms an unknown name in
-/// `disabled_tools` is read on. No warning ever fails a launch.
+/// off) plus a warning, never an error, so one shared configuration document stays interpretable by
+/// every configuration it describes. No warning ever fails a launch.
 ///
 /// | Declaration | Resolves to | Warning |
 /// | --- | --- | --- |

@@ -15,13 +15,16 @@ use std::time::Instant;
 
 use serde_json::{Value, json};
 
-use test_cabinet_core::gg::{GgProgramLanguage, GgToolFailure};
+use test_cabinet_core::gg::{
+    CAPABILITY_DOCVIEW_CLOSE, CAPABILITY_PROGRAM_LIBRARY, GgProgramLanguage, GgToolFailure,
+};
 
 use super::invoker::{
     ApiIdentity, DocSearchQuery, DocSearchResult, SandboxViewOpened, ViewOpenOutcome, ViewRefusal,
 };
 use super::language::ProgramLanguage;
 use super::membrane::{MembraneState, RunEnding};
+use super::operations::{OperationId, capability_operations, gating_capabilities};
 use super::{ProgramScope, SandboxLimits, ToolApi};
 use crate::board::IssueStatus;
 use crate::context::{FileRegion, OpenViewInfo, SEARCH_RESULTS_VIEW, ViewKind};
@@ -148,9 +151,9 @@ pub(crate) struct FakeToolApi {
     ///
     /// Kept apart from [`log`](Self::log) because they record different layers: `log` is what
     /// *ran* (a tool, with the exact JSON the membrane composed), this is what the *model wrote*
-    /// (an object and a function key, whether or not a tool backs it). A test that asserted the
-    /// two together could not tell `view.openFile` from `fs.readFile`, which is the whole
-    /// distinction they exist to keep.
+    /// (an operation, whether or not a tool backs it). A test that asserted the two together could
+    /// not tell `views.open_file` from `files.read_file`, which is the whole distinction they exist
+    /// to keep.
     api: ApiLog,
 }
 
@@ -162,14 +165,10 @@ pub(crate) struct ApiLog(Arc<Mutex<Vec<RecordedApiCall>>>);
 /// One bracketed API call, as [`ApiLog`] records it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RecordedApiCall {
-    /// The legacy grouping gg files the call under — `fs`, `view`, `docs`. Not a module id; see
+    /// gg's [operation](crate::sandbox::operations::OperationId) id for the call, rendered —
+    /// `files.read_file`. The whole identity; see
     /// [`ApiIdentity`](crate::sandbox::invoker::ApiIdentity).
-    pub(crate) object: String,
-    /// gg's own key for the function — `read_file`, `open_file`, `finish`.
-    pub(crate) function: String,
-    /// gg's [operation](crate::sandbox::operations::OperationId) id for it — `files.read_file` —
-    /// or `None` for a carve-out no operations row covers.
-    pub(crate) operation: Option<String>,
+    pub(crate) operation: String,
     /// `None` until the call closed; `Some(ok)` once it did. A call still open when the program
     /// ended — impossible today, since the bracket is synchronous — would be visible as `None`.
     pub(crate) ok: Option<bool>,
@@ -189,22 +188,12 @@ impl ApiLog {
             .clone()
     }
 
-    /// The calls as `object.function`, in order — the cheapest assertion for "what did the model
-    /// write?".
-    pub(crate) fn names(&self) -> Vec<String> {
-        self.calls()
-            .into_iter()
-            .map(|call| format!("{}.{}", call.object, call.function))
-            .collect()
-    }
-
-    /// Every call under gg's own identity for it, in order, skipping the carve-outs that have
-    /// none — the assertion for "what operations did the model reach for?", which is the question
-    /// that means the same thing in every arm.
+    /// Every call under gg's own identity for it, in order — the assertion for "what operations did
+    /// the model reach for?", which is the question that means the same thing in every arm.
     pub(crate) fn operations(&self) -> Vec<String> {
         self.calls()
             .into_iter()
-            .filter_map(|call| call.operation)
+            .map(|call| call.operation)
             .collect()
     }
 
@@ -214,22 +203,20 @@ impl ApiLog {
             .lock()
             .expect("the api log is never poisoned")
             .push(RecordedApiCall {
-                object: call.object.to_string(),
-                function: call.function.to_string(),
-                operation: call.operation.map(str::to_string),
+                operation: call.operation.to_string(),
                 ok: None,
                 failure: None,
             });
     }
 
-    /// Close the most recent open record for `object.function` — the innermost one, so a call
-    /// nested inside another closes its own bracket rather than its parent's.
-    fn end(&self, object: &str, function: &str, failure: Option<GgToolFailure>) {
+    /// Close the most recent open record for `operation` — the innermost one, so a call nested
+    /// inside another closes its own bracket rather than its parent's.
+    fn end(&self, operation: &str, failure: Option<GgToolFailure>) {
         let mut calls = self.0.lock().expect("the api log is never poisoned");
         if let Some(call) = calls
             .iter_mut()
             .rev()
-            .find(|call| call.ok.is_none() && call.object == object && call.function == function)
+            .find(|call| call.ok.is_none() && call.operation == operation)
         {
             call.ok = Some(failure.is_none());
             call.failure = failure;
@@ -322,7 +309,7 @@ impl ToolApi for FakeToolApi {
     }
 
     fn end_api_call(&mut self, call: ApiIdentity<'_>, failure: Option<GgToolFailure>) {
-        self.api.end(call.object, call.function, failure);
+        self.api.end(call.operation, failure);
     }
 
     fn shell(&mut self, command: String, timeout: std::time::Duration) -> ToolOutcome {
@@ -943,7 +930,11 @@ pub(crate) fn membrane_in(
     MembraneState::new(
         FakeToolApi::new(log),
         language,
-        scope_of(&all_tools(), RunEnding::Role(role), true),
+        scope_of(
+            &all_capabilities(),
+            &all_operations(),
+            RunEnding::Role(role),
+        ),
         SandboxLimits::default(),
         None,
     )
@@ -955,23 +946,31 @@ pub(crate) fn membrane_ending(log: &CallLog, ending: RunEnding) -> MembraneState
     MembraneState::new(
         FakeToolApi::new(log),
         typescript(),
-        scope_of(&all_tools(), ending, true),
+        scope_of(&all_capabilities(), &all_operations(), ending),
         SandboxLimits::default(),
         None,
     )
 }
 
-/// A membrane state offering `enabled`'s tools, expiring at `deadline`, answering with `responder`.
+/// A membrane state granting `operations` alone, expiring at `deadline`, answering with `responder`.
+///
+/// Every capability is held, so what the grant turns on is the allowlist — which is the axis a test
+/// asserting on a refusal wants: an agent with the memories capability and no `memories.update_memory`
+/// in its list is a configuration a run can really have.
 pub(crate) fn membrane_with(
     log: &CallLog,
-    enabled: &[String],
+    operations: &[OperationId],
     deadline: Option<Instant>,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> MembraneState<FakeToolApi> {
     MembraneState::new(
         FakeToolApi::with(log, responder),
         typescript(),
-        scope_of(enabled, RunEnding::Role(EndingRole::Standard), true),
+        scope_of(
+            &all_capabilities(),
+            operations,
+            RunEnding::Role(EndingRole::Standard),
+        ),
         SandboxLimits::default(),
         deadline,
     )
@@ -996,10 +995,18 @@ pub(crate) fn membrane_from_scope_in(
     api: FakeToolApi,
     library: bool,
 ) -> MembraneState<FakeToolApi> {
+    let capabilities: Vec<String> = all_capabilities()
+        .into_iter()
+        .filter(|id| library || id != CAPABILITY_PROGRAM_LIBRARY)
+        .collect();
     MembraneState::new(
         api,
         language,
-        scope_of(&all_tools(), RunEnding::Role(EndingRole::Standard), library),
+        scope_of(
+            &capabilities,
+            &all_operations(),
+            RunEnding::Role(EndingRole::Standard),
+        ),
         SandboxLimits::default(),
         None,
     )
@@ -1013,16 +1020,18 @@ pub(crate) fn membrane_closing_docs(
     log: &CallLog,
     docview_close: bool,
 ) -> MembraneState<FakeToolApi> {
+    let capabilities: Vec<String> = all_capabilities()
+        .into_iter()
+        .filter(|id| docview_close || id != CAPABILITY_DOCVIEW_CLOSE)
+        .collect();
     MembraneState::new(
         FakeToolApi::new(log),
         typescript(),
-        ProgramScope {
-            enabled: &all_tools(),
-            modules: &[],
-            ending: RunEnding::Role(EndingRole::Standard),
-            library: true,
-            docview_close,
-        },
+        scope_of(
+            &capabilities,
+            &all_operations(),
+            RunEnding::Role(EndingRole::Standard),
+        ),
         SandboxLimits::default(),
         None,
     )
@@ -1031,16 +1040,19 @@ pub(crate) fn membrane_closing_docs(
 /// The scope a test's membrane is built from. Modules are always empty: what a program has loaded is
 /// the guest's business, and no host function reads it.
 ///
-/// `docview_close` is on, so the two documentation-close calls reach the api like every other call
-/// here — the tests that assert on the *withheld* arm use [`membrane_closing_docs`], exactly as the
-/// program-library ones use their own scope helper.
-fn scope_of(enabled: &[String], ending: RunEnding, library: bool) -> ProgramScope<'_> {
+/// The two halves of a grant are both parameters, because they are the two axes a refusal test turns
+/// on: a capability the agent does not hold, and a call its allowlist does not name. The helpers
+/// above vary one each.
+fn scope_of<'a>(
+    capabilities: &'a [String],
+    operations: &'a [OperationId],
+    ending: RunEnding,
+) -> ProgramScope<'a> {
     ProgramScope {
-        enabled,
+        capabilities,
+        operations,
         modules: &[],
         ending,
-        library,
-        docview_close: true,
     }
 }
 
@@ -1054,10 +1066,60 @@ fn fake_board_usage() -> BoardUsageData {
     }
 }
 
-/// The tool names a fully-capable run binds into a program's scope.
-pub(crate) fn all_tools() -> Vec<String> {
-    super::signatures::sandbox_tool_names()
+/// Every gg capability that buys part of the model-facing surface — a fully-capable agent's set.
+pub(crate) fn all_capabilities() -> Vec<String> {
+    gating_capabilities()
         .into_iter()
         .map(str::to_string)
+        .collect()
+}
+
+/// Every operation a maximal agent holds — what those capabilities offer, plus what a position
+/// buys.
+///
+/// The capability half is derived through the one helper the console's editor seeds a grant with, so
+/// a fixture and a real configuration are the same set arrived at the same way. The positional half
+/// is joined on because no capability can be switched on to reach it: a fixture assembled from
+/// capabilities alone would withhold `delegation.transition_state` from an agent that is supposed to
+/// hold everything, and every arm's surface test would find one call missing.
+pub(crate) fn all_operations() -> Vec<OperationId> {
+    let mut operations = capability_operations(gating_capabilities());
+    operations.extend(super::operations::instance_operations());
+    operations
+}
+
+/// The allowlist a per-arm fixture's `operations` and its `library` flag together name.
+///
+/// The `library` flag is a *scope* flag — it decides whether the guest binds the program-library
+/// object at all — and a run that keeps a library is a run whose agent was granted its calls: the
+/// capability and the allowlist are not two settings an operator turns on separately, they are the
+/// capability being switched on and the editor seeding what it offers. Folding the two together
+/// here rather than at eleven call sites keeps `&[]` meaning the same thing on every arm: nothing
+/// but what nothing gates.
+pub(crate) fn granted_operations(operations: &[OperationId], library: bool) -> Vec<OperationId> {
+    let mut granted = operations.to_vec();
+    if library {
+        for id in capability_operations([test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY]) {
+            if !granted.contains(&id) {
+                granted.push(id);
+            }
+        }
+    }
+    granted
+}
+
+/// [`all_operations`] less everything `capability` buys — the allowlist of an agent granted the
+/// whole surface *except* one family.
+///
+/// The arms' surface cases need exactly this and cannot get it any other way: they drive one
+/// program through the whole SDK and assert that the one part of it a run *buys* separately comes
+/// back refused, so a fixture that granted everything would prove the opposite of what the case is
+/// about. It is expressed as a subtraction rather than as a list, because the list is the surface
+/// and the surface grows.
+pub(crate) fn all_operations_without(capability: &str) -> Vec<OperationId> {
+    let withheld = capability_operations([capability]);
+    all_operations()
+        .into_iter()
+        .filter(|id| !withheld.contains(id))
         .collect()
 }

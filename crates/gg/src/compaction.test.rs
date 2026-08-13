@@ -107,12 +107,15 @@ fn setup_resolves_from_the_capability_set() {
 
     // Present + enabled with a param: enabled, headroom read (and the trigger derived from it).
     let mut set = GgCapabilitySet::minimal("mock/x");
-    set.agents[0].capabilities.push(GgCapabilityConfig {
-        id: CAPABILITY_COMPACTION.to_string(),
-        enabled: true,
-        implementation: None,
-        params: json!({ "summaryHeadroom": 0.3 }),
-    });
+    crate::tools::grant_configured(
+        &mut set.agents[0],
+        GgCapabilityConfig {
+            id: CAPABILITY_COMPACTION.to_string(),
+            enabled: true,
+            implementation: None,
+            params: json!({ "summaryHeadroom": 0.3 }),
+        },
+    );
     let on = CompactionSetup::resolve(set.root(), true);
     assert!(on.enabled);
     assert_eq!(on.policy.summary_headroom, 0.3);
@@ -175,29 +178,33 @@ fn working_window_only_reserves_when_compaction_is_on() {
     assert_eq!(working_window(&off, 200_000), 200_000);
 
     let mut on = GgCapabilitySet::minimal("mock/x");
-    on.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_COMPACTION));
+    crate::tools::grant(&mut on.agents[0], CAPABILITY_COMPACTION);
     assert_eq!(working_window(&on, 200_000), 160_000);
 
     // A disabled compaction capability that carries params is still an off arm.
     let mut disabled = GgCapabilitySet::minimal("mock/x");
-    disabled.agents[0].capabilities.push(GgCapabilityConfig {
-        id: CAPABILITY_COMPACTION.to_string(),
-        enabled: false,
-        implementation: None,
-        params: json!({ "summaryHeadroom": 0.5 }),
-    });
+    crate::tools::grant_configured(
+        &mut disabled.agents[0],
+        GgCapabilityConfig {
+            id: CAPABILITY_COMPACTION.to_string(),
+            enabled: false,
+            implementation: None,
+            params: json!({ "summaryHeadroom": 0.5 }),
+        },
+    );
     assert_eq!(working_window(&disabled, 200_000), 200_000);
 
     // The headroom param is honored on the enabled arm.
     let mut tuned = GgCapabilitySet::minimal("mock/x");
-    tuned.agents[0].capabilities.push(GgCapabilityConfig {
-        id: CAPABILITY_COMPACTION.to_string(),
-        enabled: true,
-        implementation: None,
-        params: json!({ "summaryHeadroom": 0.5 }),
-    });
+    crate::tools::grant_configured(
+        &mut tuned.agents[0],
+        GgCapabilityConfig {
+            id: CAPABILITY_COMPACTION.to_string(),
+            enabled: true,
+            implementation: None,
+            params: json!({ "summaryHeadroom": 0.5 }),
+        },
+    );
     assert_eq!(working_window(&tuned, 200_000), 100_000);
 }
 
@@ -588,9 +595,9 @@ fn the_documentation_an_agent_had_open_crosses_the_boundary() {
     ctx.push_assistant(Some("ephemeral chatter ".repeat(10)), Vec::new());
 
     let docs = DocsRuntime::new(
-        vec!["read_file".to_string()],
+        vec![test_cabinet_core::gg::CAPABILITY_READ_FILE.to_string()],
         crate::ending::EndingRole::Standard,
-        &[],
+        &crate::sandbox::capability_operations([test_cabinet_core::gg::CAPABILITY_READ_FILE]),
         test_cabinet_core::gg::GgProgramLanguage::TypeScript,
     );
     ctx.open_docview(

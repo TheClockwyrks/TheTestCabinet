@@ -334,7 +334,7 @@ fn a_program_with_one_statement_among_its_comments_is_a_program() {
     assert!(result.applied.is_empty(), "{:?}", result.applied);
 }
 
-/// A reply still wrapped in a fence — because `strip-fences` is disarmed for an ablation — reaches
+/// A reply still wrapped in a fence — because `strip-fences` is disarmed for this configuration — reaches
 /// the type-strip with its fence on, which is the whole cost that arm exists to measure.
 #[test]
 fn a_fenced_program_is_untouched_when_fences_are_disarmed() {

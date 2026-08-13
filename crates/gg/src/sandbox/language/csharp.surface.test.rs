@@ -33,7 +33,7 @@ use super::substrate::{
     evaluate, evaluate_closing_docviews, evaluate_with_program, logs, prepare, program_error,
 };
 use crate::ending::{Ending, EndingRole};
-use crate::sandbox::fake::{CallLog, FakeToolApi, all_tools, canned_outcome};
+use crate::sandbox::fake::{CallLog, FakeToolApi, all_operations, canned_outcome};
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::SandboxOutcome;
 use crate::sandbox::{ProgramScope, SandboxLimits, bounded_store, engine, linker};
@@ -70,10 +70,16 @@ fn text<'a>(entry: &'a Value, field: &str) -> &'a str {
 /// Compile and run one C# program with `enabled`'s tools offered and no ending group.
 fn run_with(
     source: &str,
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    evaluate(&prepare(source), enabled, RunEnding::None, false, responder)
+    evaluate(
+        &prepare(source),
+        operations,
+        RunEnding::None,
+        false,
+        responder,
+    )
 }
 
 /// One tool, called through the C# spelling of it, and the JSON gg's dispatch must have seen.
@@ -338,7 +344,7 @@ fn every_tool_crosses_the_membrane_from_its_csharp_spelling() {
         .iter()
         .map(|crossing| format!("{}\n", crossing.statement))
         .collect::<String>();
-    let (outcome, log) = run_with(&program, &all_tools(), canned_outcome);
+    let (outcome, log) = run_with(&program, &all_operations(), canned_outcome);
     assert!(
         matches!(&outcome.result, Ok(result) if result.error.is_none()),
         "the program did not run cleanly: {:?}",
@@ -393,7 +399,7 @@ Console.WriteLine(read is Files.TextFile file ? file.Contents.Split('\n')[0] : (
 Session.Finish("read the file and showed myself the result");
 "####,
         ),
-        &all_tools(),
+        &all_operations(),
         RunEnding::Role(EndingRole::Standard),
         false,
         canned_outcome,
@@ -606,7 +612,7 @@ Views.OpenText("summary", "eight files, two failing");
 Console.WriteLine($"{Views.Current()[0].Close()} {Views.Current().Count}");
 "####,
         ),
-        &all_tools(),
+        &all_operations(),
         RunEnding::Role(EndingRole::Standard),
         false,
         canned_outcome,
@@ -684,12 +690,12 @@ catch (ToolException failure) when (failure.Code == ToolErrorCode.NotFound)
 }
 Console.WriteLine("carried on");
 "####,
-        &all_tools(),
+        &all_operations(),
         |_name: &str, _args: &Value| {
             ToolOutcome::failed(ToolFailure::NotFound, "no such file: gone.cs".to_string())
         },
     );
-    assert_eq!(logs(&outcome), ["NotFound on read_file", "carried on"]);
+    assert_eq!(logs(&outcome), ["NotFound on read_text_file", "carried on"]);
 
     // Let out: reported as a recoverable model-facing error carrying the exception's own
     // `ToString()` — the type, gg's own sentence, AND the managed frames. This arm is the only
@@ -702,7 +708,7 @@ Console.WriteLine("before");
 Files.ReadTextFile("gone.cs");
 Console.WriteLine("after");
 "####,
-        &all_tools(),
+        &all_operations(),
         |_name: &str, _args: &Value| {
             ToolOutcome::failed(ToolFailure::NotFound, "no such file: gone.cs".to_string())
         },
@@ -771,7 +777,7 @@ catch (ToolException failure)
             .iter()
             .map(|refusal| refusal.name.as_str())
             .collect::<Vec<_>>(),
-        ["system.shell"],
+        ["shell.shell"],
         "the refusal is recorded under gg's own identity for the call: {:?}",
         outcome.refusals
     );
@@ -923,17 +929,15 @@ fn the_artifact_binds_exactly_the_tools_gg_offers() {
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
     let component =
         engine::compile_bytes(GUEST_COMPONENT).expect("the embedded C# guest is a component");
-    let enabled: Vec<String> = Vec::new();
     let mut store = bounded_store(
         MembraneState::new(
             FakeToolApi::with(&CallLog::default(), canned_outcome),
             crate::sandbox::language(GgProgramLanguage::TypeScript),
             ProgramScope {
-                enabled: &enabled,
+                capabilities: &[],
+                operations: &[],
                 modules: &[],
                 ending: RunEnding::None,
-                library: false,
-                docview_close: false,
             },
             limits,
             None,

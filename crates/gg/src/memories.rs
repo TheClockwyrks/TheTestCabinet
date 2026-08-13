@@ -49,7 +49,7 @@
 //!   [`MemoryState`](test_cabinet_core::gg::GgTelemetryKind::MemoryState) telemetry, and the pinned
 //!   context block, if the strategy has one).
 //!
-//! The capability is **ablatable**: when it is off the loop builds a
+//! The capability is **switchable**: when it is off the loop builds a
 //! [`disabled`](MemoriesRuntime::disabled) runtime, so there are no memory tools, no prompt text,
 //! no context block, and no telemetry — the feature vanishes.
 
@@ -73,8 +73,8 @@ use crate::prompts::{
     self, MemoriesBlockContext, MemoryIndexContext, MemoryItemView, MemoryNoticeContext,
 };
 use crate::sandbox::{
-    MEMORY_CREATE_MEMORY, MEMORY_DELETE_MEMORY, MEMORY_EDIT_MEMORY, MEMORY_READ_MEMORY,
-    MEMORY_UPDATE_MEMORY, MEMORY_WRITE_MEMORY, ProgramLanguage, SurfaceCall, spell,
+    MEMORIES_CREATE_MEMORY, MEMORIES_DELETE_MEMORY, MEMORIES_EDIT_MEMORY, MEMORIES_READ_MEMORY,
+    MEMORIES_UPDATE_MEMORY, MEMORIES_WRITE_MEMORY, OperationId, ProgramLanguage, spell,
 };
 use crate::tools::{
     CREATE_MEMORY_TOOL, DELETE_MEMORY_TOOL, EDIT_MEMORY_TOOL, READ_MEMORY_TOOL, UPDATE_MEMORY_TOOL,
@@ -140,6 +140,25 @@ pub const DEFAULT_MAX_LEN_INDEX: usize = 16_384;
 /// [`search_memories`](MemoryStore::search) call under the
 /// [keyword-search](MemoryStrategy::KeywordSearch) strategy.
 pub const DEFAULT_MAX_RESULTS: usize = 25;
+
+/// The memory **operations** that mutate the store — the ones whose success owes a revision record
+/// and a fresh state event, and the ones a [read-only](MemoryScope::ReadOnly) holder may not make.
+///
+/// `memories.read_memory` and `memories.search_memories` are deliberately absent: they change
+/// nothing, so there is no revision to record, the state event after one would be identical to the
+/// last, and a read-only holder is entitled to make them.
+///
+/// It is the responses-as-code surface's list, and the tool-calling surface's is
+/// [`is_memory_tool`](crate::tools::is_memory_tool). The two answer the same question about the same
+/// store, and each is written in the vocabulary of the surface that asks it — an agent has exactly
+/// one of the two, so neither is derived from the other and neither is the other's fallback.
+pub const MEMORY_MUTATIONS: &[OperationId] = &[
+    MEMORIES_WRITE_MEMORY,
+    MEMORIES_UPDATE_MEMORY,
+    MEMORIES_CREATE_MEMORY,
+    MEMORIES_EDIT_MEMORY,
+    MEMORIES_DELETE_MEMORY,
+];
 
 /// The memories capability param naming the [maximum count](MemoryCaps::max_count).
 const PARAM_MAX_COUNT: &str = "maxCount";
@@ -240,25 +259,25 @@ impl MemoryStrategy {
     /// by [`spell`], so an SDK that renamed `editMemory` renames it in these sentences too, and a
     /// second language spells them its own way without this function learning about it.
     pub fn calls(self, language: Option<&dyn ProgramLanguage>) -> MemoryCalls {
-        let named = |call: SurfaceCall, tool: &str| match language {
+        let named = |call: OperationId, tool: &str| match language {
             Some(language) => format!("`{}`", spell(language, call)),
             None => format!("`{tool}`"),
         };
         let (create, revise) = match self {
             Self::Scratchpad => (
-                named(MEMORY_WRITE_MEMORY, WRITE_MEMORY_TOOL),
-                named(MEMORY_UPDATE_MEMORY, UPDATE_MEMORY_TOOL),
+                named(MEMORIES_WRITE_MEMORY, WRITE_MEMORY_TOOL),
+                named(MEMORIES_UPDATE_MEMORY, UPDATE_MEMORY_TOOL),
             ),
             _ => (
-                named(MEMORY_CREATE_MEMORY, CREATE_MEMORY_TOOL),
-                named(MEMORY_EDIT_MEMORY, EDIT_MEMORY_TOOL),
+                named(MEMORIES_CREATE_MEMORY, CREATE_MEMORY_TOOL),
+                named(MEMORIES_EDIT_MEMORY, EDIT_MEMORY_TOOL),
             ),
         };
         MemoryCalls {
             create,
             revise,
-            delete: named(MEMORY_DELETE_MEMORY, DELETE_MEMORY_TOOL),
-            read: named(MEMORY_READ_MEMORY, READ_MEMORY_TOOL),
+            delete: named(MEMORIES_DELETE_MEMORY, DELETE_MEMORY_TOOL),
+            read: named(MEMORIES_READ_MEMORY, READ_MEMORY_TOOL),
         }
     }
 }
@@ -1637,7 +1656,8 @@ struct HolderCursors {
 /// [strategy](MemoryStrategy) it runs, the [`MemoryStore`] it holds, and **how** it holds it.
 ///
 /// Constructed [enabled](Self::new) with a strategy and resolved limits, or
-/// [disabled](Self::disabled) (an ablation's off arm). It hands a [binding](Self::binding) to the
+/// [disabled](Self::disabled) (a configuration with the capability off). It hands a
+/// [binding](Self::binding) to the
 /// memory tools, produces the [strategy](Self::strategy) and [limits](Self::caps) the
 /// [system prompt](crate::prompts::SystemContext::memories) states, the
 /// [`MemoryState`](GgTelemetryKind::MemoryState) [telemetry](Self::state_event), and the pinned
@@ -1783,7 +1803,7 @@ impl MemoriesRuntime {
     /// A holder that ends up with a fresh instance under `read-only` may **write** it: the scope
     /// restricts an inherited handle, and only an inherited handle.
     ///
-    /// A profile with the capability off gets a [disabled](Self::disabled) module (an ablation's
+    /// A profile with the capability off gets a [disabled](Self::disabled) module (a
     /// off arm).
     pub fn resolve(profile: &GgAgentConfig, ctx: &ModuleResolveCtx<'_>) -> Self {
         if !profile.is_enabled(CAPABILITY_MEMORIES) {

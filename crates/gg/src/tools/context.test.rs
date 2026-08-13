@@ -84,15 +84,6 @@ fn parse_archive_ranges_refuses_malformed_calls() {
     assert!(parse_archive_ranges(&json!({ "ranges": many })).is_err());
 }
 
-#[test]
-fn is_context_reclaim_tool_covers_only_the_live_window_tools() {
-    assert!(is_context_reclaim_tool(EVICT_FILE_VIEW_TOOL));
-    assert!(is_context_reclaim_tool(ARCHIVE_THREAD_TOOL));
-    // search_archive reads the archive; it is not a live-window reclaim.
-    assert!(!is_context_reclaim_tool(SEARCH_ARCHIVE_TOOL));
-    assert!(!is_context_reclaim_tool("read_file"));
-}
-
 // ---------------------------------------------------------------------------
 // The reclaim tools only validate (the loop applies the effect)
 // ---------------------------------------------------------------------------

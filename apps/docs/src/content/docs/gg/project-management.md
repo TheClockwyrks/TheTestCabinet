@@ -93,6 +93,12 @@ the issue up to `maxRetries` times and then marks it failed. A failed issue is
 terminal without being done, so its dependents stay blocked and the board
 surfaces the stall.
 
+An issue gg cannot dispatch at all is marked failed immediately, without
+spending a retry. That covers an assignee whose model cannot be resolved and an
+assignee the run does not declare as an agent profile. gg dispatches an issue
+under the profile it was assigned to and under no other, so a stalled board
+states the problem instead of hiding it behind an agent nobody asked for.
+
 ## Issue worktrees
 
 Issues run concurrently, so each one is isolated. gg makes the run's workspace a
@@ -174,9 +180,11 @@ baseline for the change itself. What the brief carries is the map of which files
 changed and by how much.
 
 Review rounds have no cycle limit, and a review round leaves the issue's retry
-budget untouched, since rework a reviewer asked for is not a failed attempt. A
-review gg could not conduct, because a reviewer would not dispatch or ended
-without a verdict, marks the issue failed. Work no reviewer approved is never
+budget untouched, since rework a reviewer asked for is not a failed attempt.
+
+A review gg could not conduct marks the issue failed. That covers a reviewer the
+run does not declare as an agent profile, a reviewer whose dispatch failed, and
+a reviewer that ended without a verdict. Work no reviewer approved is never
 accepted.
 
 The lifecycle is streamed as `issue_review` telemetry carrying who said what:
@@ -225,6 +233,5 @@ Board tools: `create_epic`, `create_issue`, `update_issue`,
 | `reviewers` | off | The Reviewers required feature above. |
 | `ownership` | `owned` | `unowned` keeps the board tools and drops the pinned block and the prompt section. |
 
-Like every capability this one is ablatable. Switched off, there are no board
-tools, no prompt text, no context block, no board telemetry, and no
-auto-dispatch.
+Switched off, there are no board tools, no prompt text, no context block, no
+board telemetry, and no auto-dispatch.

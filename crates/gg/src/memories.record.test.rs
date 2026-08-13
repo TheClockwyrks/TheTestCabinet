@@ -372,7 +372,7 @@ fn the_runtime_drains_a_whole_batch() {
     );
 }
 
-/// A disabled runtime records nothing, like every other part of the ablated capability — there are
+/// A disabled runtime records nothing, like every other part of a switched-off capability — there are
 /// no memory tools to produce a revision in the first place.
 #[test]
 fn a_disabled_runtime_reports_no_revisions() {

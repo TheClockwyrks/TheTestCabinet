@@ -437,7 +437,7 @@ fn a_param_the_strategy_does_not_use_is_ignored() {
 }
 
 // ---------------------------------------------------------------------------
-// The runtime: ablation, prompt, telemetry, context block
+// The runtime: the capability switch, prompt, telemetry, context block
 // ---------------------------------------------------------------------------
 
 #[test]

@@ -54,7 +54,11 @@ function bucketed(count: number): GgQueryResponse {
     truncated: false,
     columns: [{ name: "count", func: "count" }],
     buckets: [
-      { key: [{ field: "model", value: "mock/echo" }], n: count, values: [{ kind: "number", value: count }] },
+      {
+        key: [{ field: "model", value: "mock/echo" }],
+        n: count,
+        values: [{ kind: "number", value: count }],
+      },
     ],
   } as unknown as GgQueryResponse;
 }
@@ -76,7 +80,8 @@ function renderAt(path: string) {
 
 /** The last batch body that went out. */
 function lastBatch(): GgQueryBatch {
-  const call = runGgQueryBatch.mock.calls[runGgQueryBatch.mock.calls.length - 1];
+  const call =
+    runGgQueryBatch.mock.calls[runGgQueryBatch.mock.calls.length - 1];
   return call?.[0] as GgQueryBatch;
 }
 
@@ -85,7 +90,9 @@ describe("GgDashboardViewPage", () => {
     runGgQueryBatch.mockReset();
     getGgDashboard.mockReset();
     runGgQueryBatch.mockImplementation((batch: GgQueryBatch) =>
-      Promise.resolve({ results: batch.queries.map((_, i) => bucketed(i + 1)) }),
+      Promise.resolve({
+        results: batch.queries.map((_, i) => bucketed(i + 1)),
+      }),
     );
   });
 
@@ -133,13 +140,15 @@ describe("GgDashboardViewPage", () => {
     }
     // And the histogram panel was retuned to the range's hourly interval rather than
     // keeping the `1d` its text spells.
-    expect(JSON.stringify(queries[0]?.stats?.groupBy)).toContain('"unit":"hour"');
+    expect(JSON.stringify(queries[0]?.stats?.groupBy)).toContain(
+      '"unit":"hour"',
+    );
   });
 
   it("loads a stored board by id and batches its panels too", async () => {
     getGgDashboard.mockResolvedValue({
       id: "d1",
-      name: "ablation",
+      name: "capability sweep",
       description: "",
       rangeId: "all",
       updatedAt: "2026-08-01T00:00:00Z",

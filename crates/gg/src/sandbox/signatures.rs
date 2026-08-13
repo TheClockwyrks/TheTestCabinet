@@ -64,8 +64,8 @@ use std::borrow::Cow;
 use serde::Deserialize;
 use test_cabinet_core::gg::GgProgramLanguage;
 
-use super::language::{ProgramLanguage, SurfaceCall};
-use super::operations::{Binding, operation_by_id};
+use super::language::ProgramLanguage;
+use super::operations::{Binding, OperationId, operation_by_id};
 
 // The whole vocabulary backs [`sandbox_tool_names`], which is a drift gate rather than a
 // run-time need — so, like it, the names it is built from are only reachable under test.
@@ -601,28 +601,26 @@ impl SignatureCatalogue {
     }
 }
 
-/// The gg tool names the sandbox binds into a program's scope: **all** of [`ALL_TOOL_NAMES`].
-/// Responses-as-code is the richer interface, and there is no class of gg tool a program is denied.
+/// Every gg tool name, as the drift gate over a **guest artifact** needs it.
 ///
-/// Derived rather than listed, so a tool added to gg is bound (or its absence from the guest is a
-/// test failure) without anyone remembering to edit a second list.
+/// It is the tool vocabulary and decides nothing about the API surface an operation names; its one
+/// use is the WIT's `bound-tools` export, which is how a test asks a committed component what it was
+/// built against and catches a stale `.wasm` that no compiler and no source-level test can.
 ///
-/// `#[cfg(test)]` because a run never needs the whole vocabulary — it binds *its own* enabled set,
-/// which the loop derives from the registry. The set-equality drift gates
-/// (`the_component_binds_exactly_the_tools_gg_offers`, `every_bound_tool_has_a_host_function`) are
-/// its only callers.
+/// `#[cfg(test)]` because a run never asks: what a program may call is its [grant](super::Grants),
+/// which is stated in operations.
 #[cfg(test)]
 pub(crate) fn sandbox_tool_names() -> Vec<&'static str> {
     ALL_TOOL_NAMES.to_vec()
 }
 
-/// One documented function as the [docs carve-out](crate::docs) sees it: the object it lives on, the
-/// name a program calls it by, the gg tool whose being enabled gates it, and everything a doc lookup
-/// renders.
+/// One documented function as the [docs carve-out](crate::docs) sees it: the module it lives in, the
+/// name a program calls it by, what buys it, and everything a doc lookup renders.
 ///
 /// It is the catalogue projected for a purpose the prompt does not serve: the model asks for one
-/// function's documentation on demand (`view.openDocsView(fs.readFile)`), rather than being shown every
-/// signature up front. The prose is the SDK's own JSDoc, reflected here exactly as the prompt's was.
+/// function's documentation on demand (`views.openDocsView(files.readFile)`), rather than being shown
+/// every signature up front. The prose is the SDK's own JSDoc, reflected here exactly as the prompt's
+/// was.
 pub struct CatalogueFunction {
     /// What it is **grouped under**: this arm's own [module path](ModuleDoc::path) (`gg::fs`) — the
     /// heading the call is listed under, in the arm's own words.
@@ -630,27 +628,26 @@ pub struct CatalogueFunction {
     /// The cross-arm join is [`operation`](Self::operation) and never this, because eleven arms
     /// spell one module eleven ways.
     pub object: &'static str,
-    /// This function's language-independent identity: a gg tool's own name (`read_file`) when it has
-    /// one, and the catalogue entry's `key` (`request_changes`, `open_text`) when it does not.
+    /// This function's language-independent identity: the key of the
+    /// [operation](super::operations::OperationId) it binds (`read_file`, `request_changes`), and
+    /// the catalogue entry's own name for an entry naming an operation gg does not have.
     ///
-    /// It is how gg names a function in its **own** sentences, through [`spelling`] and the
-    /// [`SurfaceCall`] constants, so a prompt quoting `review.requestChanges` is quoting the
-    /// catalogue rather than a second copy of it. It is *not* the cross-arm join — that is
-    /// [`operation`](Self::operation), which every entry states rather than being resolved to.
+    /// It is how gg names a function in its **own** sentences, through [`spelling`], so a prompt
+    /// quoting `session.requestChanges` is quoting the catalogue rather than a second copy of it. It
+    /// is *not* the cross-arm join — that is [`operation`](Self::operation), which every entry states
+    /// rather than being resolved to.
     pub key: &'static str,
     /// The name a program calls it by, in this language (`readFile`) — the **fallback** key
-    /// `view.openDocsView` accepts. The key gg advertises is [`fqn`](Self::fqn).
+    /// `views.openDocsView` accepts. The key gg advertises is [`fqn`](Self::fqn).
     pub name: &'static str,
-    /// The gg tool whose being enabled gates this function; `None` for a carve-out the enabled set
-    /// does not decide — an ending call, which the agent's [role](Self::ending) decides, or a view
-    /// function that is bound unconditionally.
-    pub gate: Option<&'static str>,
     /// For an ending call, the [role](crate::ending::EndingRole) whose programs bind it; `None` for
-    /// a tool or helper, which every role's programs reach the same way.
+    /// everything else, which no role decides.
     pub ending: Option<&'static str>,
-    /// The gg **capability id** that buys this function, for the families neither
-    /// [`gate`](Self::gate) nor [`ending`](Self::ending) can express — `None` for everything a tool
-    /// or a role decides.
+    /// The gg **capability id** that buys this function — `None` for an ending call, which the
+    /// agent's [role](Self::ending) decides, for the handful bound to every program whatever a
+    /// run enables, and for the one bought by an agent's
+    /// [position in a machine](crate::sandbox::Binding::Machine) rather than by anything on its own
+    /// profile.
     ///
     /// It is [read off gg's own operations table](catalogue_functions) rather than out of the
     /// artifact, and that is the point rather than an implementation detail: a capability id is a
@@ -659,8 +656,9 @@ pub struct CatalogueFunction {
     /// catalogue ever learns one. The [operation](Self::operation) an entry names is the most an arm
     /// has to get right.
     ///
-    /// Today the [program library](crate::programs) is the only one: its whole family is bound or
-    /// absent together, from a capability rather than from a tool or a role.
+    /// It is not the whole gate. A capability says the machinery exists for this agent; whether
+    /// *this* call was granted within it is the agent's allowlist, which is per agent and therefore
+    /// nothing a catalogue projection can carry — see [`Grants::permits`](super::Grants::permits).
     pub capability: Option<&'static str>,
     /// The gg [operation](super::operations::OperationId) this entry binds, as its catalogue names
     /// it — `files.read_file`. **The cross-arm join key.**
@@ -796,14 +794,17 @@ pub(crate) fn functions_of(catalogue: &'static SignatureCatalogue) -> Vec<Catalo
         .iter()
         .map(|function| {
             let operation = operation_by_id(&function.operation);
-            // gg's own binding, decomposed into the three fields the projection has always carried.
-            // The arm does not get a vote: it named an operation, and what buys that operation is
-            // stated once, on gg's side, in `OPERATIONS`.
-            let (gate, ending, capability) = match operation.map(|operation| operation.binding) {
-                Some(Binding::Tool(tool)) => (Some(tool), None, None),
-                Some(Binding::Ending(role)) => (None, Some(role.id()), None),
-                Some(Binding::Capability(id)) => (None, None, Some(id)),
-                Some(Binding::Always) | None => (None, None, None),
+            // gg's own binding, decomposed into the two fields the projection carries. The arm does
+            // not get a vote: it named an operation, and what buys that operation is stated once, on
+            // gg's side, in `OPERATIONS`.
+            let (ending, capability) = match operation.map(|operation| operation.binding) {
+                Some(Binding::Ending(role)) => (Some(role.id()), None),
+                Some(Binding::Capability(id)) => (None, Some(id)),
+                // A [positional](Binding::Machine) row carries neither: no role dispatches it and
+                // no capability of the agent's own buys it, so the two fields a projection has to
+                // offer are both honestly empty. What decides it is the run, and the run is not
+                // something a catalogue entry can carry.
+                Some(Binding::Machine) | Some(Binding::Always) | None => (None, None),
             };
             CatalogueFunction {
                 // The module *path* is this schema's model-facing grouping: it is what a
@@ -813,7 +814,6 @@ pub(crate) fn functions_of(catalogue: &'static SignatureCatalogue) -> Vec<Catalo
                 object: module_path(catalogue, &function.module),
                 key: operation.map_or(function.name.as_str(), |operation| operation.id.key),
                 name: function.name.as_str(),
-                gate,
                 ending,
                 capability,
                 operation: function.operation.as_str(),
@@ -846,33 +846,30 @@ fn module_path(catalogue: &'static SignatureCatalogue, id: &'static str) -> &'st
         .map_or(id, |module| module.path.as_str())
 }
 
-/// How `language`'s SDK writes the function `call` identifies: **the grouping it is reached
+/// How `language`'s SDK writes the [operation](OperationId) `id`: **the grouping it is reached
 /// through, and the name it is called by**. `None` when its catalogue carries no such function.
 ///
 /// # Why two strings, and why the grouping is the arm's rather than gg's
 ///
 /// Because the caller ([`spell`](super::spell)) has to write a qualified call site a program could
 /// compile, and what qualifies one is the arm's own [module path](ModuleDoc::path): the pair reads
-/// `Gg.Views.OpenFile` on the arm that spells it that way, which `view.OpenFile` would not be.
+/// `Gg.Views.OpenFile` on the arm that spells it that way, which `views.OpenFile` would not be.
 ///
 /// # Why the lookup goes through the operation
 ///
-/// The pair a [`SurfaceCall`] names is gg's own identity, and neither half of it appears in a
-/// catalogue: the grouping is the arm's module and the key belongs to the
-/// [operation](super::operations). So the match is made on the **operation** each entry names, which
-/// is identity rather than spelling — the property that makes the lookup correct on eleven arms that
-/// agree about nothing else.
+/// Because an [`OperationId`] is gg's identity for a call and neither half of it is a spelling a
+/// catalogue carries: the grouping is the arm's module and the key is gg's word. So the match is
+/// made on the **operation** each entry names, which is identity rather than spelling — the property
+/// that makes the lookup correct on eleven arms that agree about nothing else.
 ///
 /// A [canonical binding](FunctionSignature::alias_of) is preferred over an alias, because gg naming
 /// a call back at a model should name the one every arm has rather than the one this arm added.
 pub(crate) fn spelling(
     language: &dyn ProgramLanguage,
-    call: SurfaceCall,
+    id: OperationId,
 ) -> Option<(&'static str, &'static str)> {
     let matches = |function: &CatalogueFunction| {
-        super::operations::operation_of(function).is_some_and(|operation| {
-            operation.call.object == call.object && operation.call.key == call.key
-        })
+        super::operations::operation_of(function).is_some_and(|operation| operation.id == id)
     };
     let functions = catalogue_functions(language);
     functions

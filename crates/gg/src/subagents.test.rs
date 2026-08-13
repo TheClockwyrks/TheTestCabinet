@@ -121,7 +121,7 @@ fn config_reads_the_depth_param() {
     let mut set = GgCapabilitySet::minimal("mock/x");
     let mut cap = GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS);
     cap.params = serde_json::json!({ "maxDepth": 5 });
-    set.agents[0].capabilities.push(cap);
+    crate::tools::grant_configured(&mut set.agents[0], cap);
     let config = SubagentConfig::resolve(&set);
     assert_eq!(config.max_depth, 5);
     assert_eq!(
@@ -132,7 +132,7 @@ fn config_reads_the_depth_param() {
     let mut set = GgCapabilitySet::minimal("mock/x");
     let mut cap = GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS);
     cap.params = serde_json::json!({ "maxDepth": 0 });
-    set.agents[0].capabilities.push(cap);
+    crate::tools::grant_configured(&mut set.agents[0], cap);
     assert_eq!(SubagentConfig::resolve(&set).max_depth, DEFAULT_MAX_DEPTH);
 }
 

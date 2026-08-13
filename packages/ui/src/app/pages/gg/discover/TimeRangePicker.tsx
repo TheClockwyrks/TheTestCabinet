@@ -33,21 +33,51 @@ export interface TimeRange {
  * into a smear. "All time" keeps a weekly bucket because the corpus only grows.
  */
 export const TIME_RANGES: readonly TimeRange[] = [
-  { id: "24h", label: "Last 24 hours", spanMs: 86_400_000, interval: { count: 1, unit: "hour" } },
-  { id: "7d", label: "Last 7 days", spanMs: 604_800_000, interval: { count: 6, unit: "hour" } },
-  { id: "30d", label: "Last 30 days", spanMs: 2_592_000_000, interval: { count: 1, unit: "day" } },
-  { id: "90d", label: "Last 90 days", spanMs: 7_776_000_000, interval: { count: 1, unit: "day" } },
-  { id: "1y", label: "Last year", spanMs: 31_536_000_000, interval: { count: 1, unit: "week" } },
-  { id: "all", label: "All time", spanMs: null, interval: { count: 1, unit: "week" } },
+  {
+    id: "24h",
+    label: "Last 24 hours",
+    spanMs: 86_400_000,
+    interval: { count: 1, unit: "hour" },
+  },
+  {
+    id: "7d",
+    label: "Last 7 days",
+    spanMs: 604_800_000,
+    interval: { count: 6, unit: "hour" },
+  },
+  {
+    id: "30d",
+    label: "Last 30 days",
+    spanMs: 2_592_000_000,
+    interval: { count: 1, unit: "day" },
+  },
+  {
+    id: "90d",
+    label: "Last 90 days",
+    spanMs: 7_776_000_000,
+    interval: { count: 1, unit: "day" },
+  },
+  {
+    id: "1y",
+    label: "Last year",
+    spanMs: 31_536_000_000,
+    interval: { count: 1, unit: "week" },
+  },
+  {
+    id: "all",
+    label: "All time",
+    spanMs: null,
+    interval: { count: 1, unit: "week" },
+  },
 ];
 
 /**
  * The range Discover opens on.
  *
  * All time, not a recent window. gg runs are experiment material recorded in bursts —
- * a week of ablations, then nothing for a month — so a surface that opened on "last 7
- * days" would greet most operators with an empty result and no clue that the corpus is
- * fine.
+ * a week of comparing configurations, then nothing for a month — so a surface that opened
+ * on "last 7 days" would greet most operators with an empty result and no clue that the
+ * corpus is fine.
  */
 export const DEFAULT_RANGE = TIME_RANGES[TIME_RANGES.length - 1]!;
 

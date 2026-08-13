@@ -1,11 +1,11 @@
 {
   "$defs": {
     "GgAgentConfig": {
-      "description": "A single **agent profile** within a [`GgCapabilitySet`] — the per-agent unit that\nmakes gg's capabilities configurable independently for each agent in a run.\n\nEvery profile has a unique [`name`](Self::name) (the first is always the\n[Root](ROOT_AGENT)), its own enabled [capabilities](Self::capabilities) and per-tool\n[ablation](Self::disabled_tools), its own model (pinned via [`model_id`](Self::model_id)\nor [deferred](Self::model_slot) to a launch-time [model slot](GgModelSlot)), an optional\n[custom prompt](Self::custom_instructions) / [full template override](Self::system_prompt_template),\nand the set of other agents it may spawn as [subagents](Self::subagents).\n\nAn agent is put to work **by name**: `spawn_subagent` and `exec`\nall name the target agent, which must appear in the caller's [roster](Self::subagents) with the\n[`subagent`](GgSubagentScope::Subagent) scope — as must an [issue](GgBoardIssue)'s implementer\n(the [`implementer`](GgSubagentScope::Implementer) scope) and its reviewers (the\n[`reviewer`](GgSubagentScope::Reviewer) scope). A profile may list itself, allowing recursion.",
+      "description": "A single **agent profile** within a [`GgCapabilitySet`] — the per-agent unit that\nmakes gg's capabilities configurable independently for each agent in a run.\n\nEvery profile has a unique [`name`](Self::name) (the first is always the\n[Root](ROOT_AGENT)), its own enabled [capabilities](Self::capabilities) and the\n[tool](Self::tools) or [operation](Self::operations) allowlist that narrows them, its own model\n(pinned via [`model_id`](Self::model_id) or [deferred](Self::model_slot) to a launch-time\n[model slot](GgModelSlot)), an optional\n[custom prompt](Self::custom_instructions) / [full template override](Self::system_prompt_template),\nand the set of other agents it may spawn as [subagents](Self::subagents).\n\nAn agent is put to work **by name**: `spawn_subagent` and `exec`\nall name the target agent, which must appear in the caller's [roster](Self::subagents) with the\n[`subagent`](GgSubagentScope::Subagent) scope — as must an [issue](GgBoardIssue)'s implementer\n(the [`implementer`](GgSubagentScope::Implementer) scope) and its reviewers (the\n[`reviewer`](GgSubagentScope::Reviewer) scope). A profile may list itself, allowing recursion.",
       "properties": {
         "capabilities": {
           "default": [],
-          "description": "The capabilities this agent is configured with, each identified by a stable id.\nA capability absent from this list is off *and* unconfigured; one present but\n[disabled](GgCapabilityConfig::enabled) is off but records the configuration it\nwould have used, which keeps an ablation's on/off arms symmetric.",
+          "description": "The capabilities this agent is configured with, each identified by a stable id.\nA capability absent from this list is off *and* unconfigured; one present but\n[disabled](GgCapabilityConfig::enabled) is off but records the configuration it\nwould have used, which keeps two configurations differing only in that switch comparable.",
           "items": {
             "$ref": "#/$defs/GgCapabilityConfig"
           },
@@ -14,13 +14,6 @@
         "customInstructions": {
           "description": "Operator-authored instructions inserted into this agent's system prompt. `None`\n(or empty) leaves the stock prompt. This is the field an operator edits normally;\n[`system_prompt_template`](Self::system_prompt_template) is the escape hatch for\nrewriting the whole prompt.",
           "type": ["string", "null"]
-        },
-        "disabledTools": {
-          "description": "Individual tool names to **withhold** from this agent even when the capability\nthat offers them is on — the finest-grained ablation lever, one notch below\ntoggling a whole [capability](GgCapabilityConfig::enabled). A named tool is not\noffered to the model and not dispatchable, exactly as if its capability were off.",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
         },
         "hooks": {
           "description": "The **hooks** this agent is held to — the operator-authored commands and scripts gg runs\naround what *this* agent does: its writes, its shell commands, its compactions, and its own\nstart and stop ([`AGENT_HOOK_EVENTS`]).\n\nPer agent because the agents of a run are not interchangeable, and the gates they should be\nheld to are the clearest case of it: \"the build must pass before you may stop\" is right for\nan implementer, pointless for a planner, and actively wrong for a reviewer whose whole job\nis to report that the build does *not* pass. See [`GgHook`] for the full rule.\n\nThe run's own two ends are not here — they belong to the run\n([`GgCapabilitySet::hooks`]). A [session event](SESSION_HOOK_EVENTS) in this list is a\nconfiguration error: it would have to fire either once from a profile picked arbitrarily or\nonce per profile, and neither is \"once per run\".\n\nAn agent that declares none omits the key entirely.",
@@ -46,6 +39,13 @@
           "description": "The profile's name, unique within a set. `\"Root\"` ([`ROOT_AGENT`]) for the\nfirst profile.",
           "type": "string"
         },
+        "operations": {
+          "description": "The **operation ids** — `files.read_file`, `memories.update_memory` — that this agent's\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) programs may call. Meaningful for an agent\nthat writes programs; inert for a tool-calling one, whose surface is\n[`tools`](Self::tools).\n\nThe allowlist semantics, the launch-time validation and the editor's seeding are exactly\n[`tools`](Self::tools)'. What differs is the vocabulary, and the two are **scoped**: the API\nsurface is strictly the larger of the two — every tool has an operation behind it, and\noperations exist that no tool does — but a name is granted on precisely the surface it\nbelongs to. A tool name here, or an operation id there, is a mistake gg reports rather than\na spelling it accepts.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "promptCacheTtl": {
           "$ref": "#/$defs/GgPromptCacheTtl",
           "description": "How long this agent asks the provider to keep the **stable** entries of its\n[prompt cache](GgPromptCacheTtl) — the knob that decides whether its opening context is\nstill cached when a slow turn comes back. Standard (the provider's five minutes) unless an\noperator opts this profile into the extended lifetime, because the extended one is charged\na higher write premium and is only worth it for an agent whose turns are long enough, or\nspread far enough apart, to outlive five minutes."
@@ -60,6 +60,13 @@
         "systemPromptTemplate": {
           "description": "A full Handlebars override of this agent's system-prompt template. `None` uses\ngg's built-in template (into which [`custom_instructions`](Self::custom_instructions)\nare inserted). Set only when an operator deliberately rewrites the whole prompt.",
           "type": ["string", "null"]
+        },
+        "tools": {
+          "description": "The gg **tool names** this agent may call — the allowlist that decides which of the tools\nits enabled capabilities offer it actually gets. Meaningful for an agent that answers with\ntool calls; inert for one that writes programs, which is offered no tools at all and takes\nits surface from [`operations`](Self::operations) instead.\n\n**The list is the grant.** Absent or empty grants *nothing*: a capability being on says which\ntools exist to be given out, and this says which of them this agent is given. There is no\nimplicit \"everything\" to fall back to, because a blocklist cannot express the setting an\noperator most often wants — *this agent gets these three calls* — without enumerating every\ntool it does not get and re-enumerating them each time gg grows one. The console's editor\nfills in a capability's full set of tools the moment that capability is switched on, so\nswitching one on still yields a working agent; that is the editor being helpful, not a\nruntime default.\n\nEvery name is checked against gg's tool vocabulary at launch, and one that is not a gg tool\n— a typo, a tool since removed, or an [operation id](Self::operations) from the other surface\n— is an error, not a silently inert entry. An allowlist entry that grants nothing looks\nexactly like a deliberate narrowing, so nothing but a launch-time complaint can tell an\noperator that the call they meant to hand over never arrived.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         }
       },
       "required": ["name"],
@@ -69,7 +76,7 @@
       "description": "The configuration of a single capability within a [`GgCapabilitySet`].\n\nA capability is identified by a stable [`id`](Self::id) (an open string, not a\nclosed enum, so later phases add capabilities freely), can be toggled\n[on or off](Self::enabled), can select among alternate\n[implementations](Self::implementation) for A/B comparisons, and carries\nfree-form [`params`](Self::params) for tuning.",
       "properties": {
         "enabled": {
-          "description": "Whether the capability is on. Off means gg behaves as if the feature does not\nexist — no tools for it are exposed and it consumes no context — which is the\nbasis for ablation studies.",
+          "description": "Whether the capability is on. Off means gg behaves as if the feature does not\nexist — nothing it offers is exposed and it consumes no context — which is what makes two\nconfigurations differing in one capability worth comparing.",
           "type": "boolean"
         },
         "id": {
@@ -297,7 +304,7 @@
       ]
     },
     "GgRunLimits": {
-      "description": "The **run-level guardrails** a gg run is bounded by: the [execution ceilings](GgLimitKind) that\nstop a session and record which one stopped it, plus the\n[parallelism cap](Self::max_parallel) that bounds how much of the run happens at once.\n\nDeliberately **not** a [capability](GgCapabilityConfig): a capability is a feature under\nablation, with tools and an on/off arm a study varies; a ceiling is an operator's guardrail\nthat applies to every capability and to both execution modes at once. They live on the\n[capability set](GgCapabilitySet) rather than on the [launch envelope](GgInvocation) because\nthe set is what a run **records**, so a run stopped by a ceiling carries both the\n[breach](GgSessionSummary::limit_hit) and the [ceilings](GgSessionSummary::limits) that\nproduced it — where limits on the invocation would let a run record *which* ceiling was hit\nwhile making *what the ceiling was* unrecoverable.\n\n**The defaults catch a stuck run without capping a productive one.** gg's host (The Test\nCabinet) already enforces a wall-clock cap on every run, so a turn ceiling would mostly just cut\na run short before it is done, and the turn ceiling is therefore **unbounded** when unset. What\nis armed by default instead are the two error\nceilings that end a run which is *failing* rather than merely *long*: **5 consecutive errors**,\nand an **error rate above 0.4 over the last 50 turns**. Runtime and cost stay off when unset —\nthe host owns the clock, and gg will not invent a spend ceiling nobody asked for. A field set to\na value that cannot bound anything — a zero window, a negative rate, a rate above `1.0` — is a\nstartup warning and is ignored, never an error, on the same terms as an unknown name in\n[`disabled_tools`](GgAgentConfig::disabled_tools); a **partially** declared error rate (a rate\nwithout a window, or a window without a rate) is likewise a warning and no ceiling, and does not\nfall back to the default. The run records the ceilings that were actually in force on\n[`GgSessionSummary::limits`], so a default is a recorded fact rather than a hidden one.\n\nSee the [execution-limits](https://docs.testcabinet.ai/gg/execution-limits/) page for how each\nceiling is accounted (per agent or run-wide) and what breaching it does to the run.",
+      "description": "The **run-level guardrails** a gg run is bounded by: the [execution ceilings](GgLimitKind) that\nstop a session and record which one stopped it, plus the\n[parallelism cap](Self::max_parallel) that bounds how much of the run happens at once.\n\nDeliberately **not** a [capability](GgCapabilityConfig): a capability is a feature a\nconfiguration switches on or off, with calls behind it; a ceiling is an operator's guardrail\nthat applies to every capability and to both execution modes at once. They live on the\n[capability set](GgCapabilitySet) rather than on the [launch envelope](GgInvocation) because\nthe set is what a run **records**, so a run stopped by a ceiling carries both the\n[breach](GgSessionSummary::limit_hit) and the [ceilings](GgSessionSummary::limits) that\nproduced it — where limits on the invocation would let a run record *which* ceiling was hit\nwhile making *what the ceiling was* unrecoverable.\n\n**The defaults catch a stuck run without capping a productive one.** gg's host (The Test\nCabinet) already enforces a wall-clock cap on every run, so a turn ceiling would mostly just cut\na run short before it is done, and the turn ceiling is therefore **unbounded** when unset. What\nis armed by default instead are the two error\nceilings that end a run which is *failing* rather than merely *long*: **5 consecutive errors**,\nand an **error rate above 0.4 over the last 50 turns**. Runtime and cost stay off when unset —\nthe host owns the clock, and gg will not invent a spend ceiling nobody asked for. A field set to\na value that cannot bound anything — a zero window, a negative rate, a rate above `1.0` — is a\nstartup warning and is ignored, never an error, because a ceiling that cannot bind still leaves\nthe run the operator asked for runnable; a **partially** declared error rate (a rate without a\nwindow, or a window without a rate) is likewise a warning and no ceiling, and does not\nfall back to the default. The run records the ceilings that were actually in force on\n[`GgSessionSummary::limits`], so a default is a recorded fact rather than a hidden one.\n\nSee the [execution-limits](https://docs.testcabinet.ai/gg/execution-limits/) page for how each\nceiling is accounted (per agent or run-wide) and what breaching it does to the run.",
       "properties": {
         "errorRateWindow": {
           "description": "How many of an agent's most recent turns [`max_error_rate`](Self::max_error_rate) is\nmeasured over — and, deliberately, the minimum sample: the ceiling cannot fire until the\nagent has taken this many turns, so one number does both jobs. The earliest turn this\nceiling can stop a run on is therefore turn `error_rate_window` — at `1` it says \"stop on\nany error\", which is a legitimate declaration rather than an accident. Absent (together with\n[`max_error_rate`](Self::max_error_rate)) means gg's default window of **50**.",
@@ -443,7 +450,49 @@
             }
           ],
           "modelId": "",
-          "name": "Root"
+          "name": "Root",
+          "operations": [
+            "shell.shell",
+            "files.read_file",
+            "files.read_text_file",
+            "files.write_file",
+            "files.edit_file",
+            "files.list_dir",
+            "skills.read_skill",
+            "memories.write_memory",
+            "memories.update_memory",
+            "memories.create_memory",
+            "memories.read_memory",
+            "memories.edit_memory",
+            "memories.search_memories",
+            "memories.delete_memory",
+            "tasks.add_task",
+            "tasks.update_task",
+            "tasks.set_blocked_by",
+            "tasks.complete_task",
+            "tasks.remove_task",
+            "views.open_file"
+          ],
+          "tools": [
+            "shell",
+            "read_file",
+            "write_file",
+            "edit_file",
+            "list_dir",
+            "read_skill",
+            "write_memory",
+            "update_memory",
+            "create_memory",
+            "read_memory",
+            "edit_memory",
+            "search_memories",
+            "delete_memory",
+            "add_task",
+            "update_task",
+            "set_blocked_by",
+            "complete_task",
+            "remove_task"
+          ]
         }
       ],
       "description": "The agent profiles this run is configured with, each with its own capabilities,\nmodel binding, and delegation graph. **The first is the [root](Self::root)** — it\ndrives the top-level session and is the default profile for issue dispatch and\nhelper agents — whatever it happens to be *called*: the root is a position, not a\nname, so a configuration may rename it or promote another profile to it. A set\nthat names the key at all must list at least one profile: an empty list is a\nconfiguration with no root, and a launch rejects it by name.",
@@ -453,7 +502,7 @@
       "type": "array"
     },
     "hooks": {
-      "description": "The **session hooks** this run is scripted with — the operator-authored commands and\nscripts gg runs at the run's two [ends](SESSION_HOOK_EVENTS), before the root agent's first\nturn and after its last.\n\nOnly the session events live here. The other eight ([`AGENT_HOOK_EVENTS`]) fire because a\nparticular agent did something and are declared on that agent\n([`GgAgentConfig::hooks`]) — see [`GgHook`] for why the split falls where it does. A\nnon-session event in this list is a configuration error, not a run-wide shorthand.\n\nDeliberately not a [capability](GgCapabilityConfig), for the same reason the\n[ceilings](Self::limits) are not: a capability is a feature the *model* is given and a study\nablates, while a hook is the operator reaching into the run from outside it.\n\nA set that declares none omits the key entirely.",
+      "description": "The **session hooks** this run is scripted with — the operator-authored commands and\nscripts gg runs at the run's two [ends](SESSION_HOOK_EVENTS), before the root agent's first\nturn and after its last.\n\nOnly the session events live here. The other eight ([`AGENT_HOOK_EVENTS`]) fire because a\nparticular agent did something and are declared on that agent\n([`GgAgentConfig::hooks`]) — see [`GgHook`] for why the split falls where it does. A\nnon-session event in this list is a configuration error, not a run-wide shorthand.\n\nDeliberately not a [capability](GgCapabilityConfig), for the same reason the\n[ceilings](Self::limits) are not: a capability is a feature the *model* is given and one\nconfiguration switches off where another leaves it on, while a hook is the operator\nreaching into the run from outside it.\n\nA set that declares none omits the key entirely.",
       "items": {
         "$ref": "#/$defs/GgHook"
       },
@@ -461,7 +510,7 @@
     },
     "limits": {
       "$ref": "#/$defs/GgRunLimits",
-      "description": "The **run-level guardrails** this run is bounded by — the turn, runtime, error and\ncost ceilings that stop a session and record which one stopped it, plus the\n[parallelism cap](GgRunLimits::max_parallel) that bounds how many of its agents run\nat once.\n\nThey ride on the capability set rather than on the [launch envelope](GgInvocation)\nbecause the set is what a run *records*: a ceiling that stopped a run is only\ninterpretable beside the value it was set to. They are deliberately not a\ncapability — a capability is a feature under ablation, a ceiling is an operator's\nguardrail over every capability at once — so they never appear in the\n[`cap.*`](crate::gg_query) document namespace.\nA set that declares none omits the key entirely."
+      "description": "The **run-level guardrails** this run is bounded by — the turn, runtime, error and\ncost ceilings that stop a session and record which one stopped it, plus the\n[parallelism cap](GgRunLimits::max_parallel) that bounds how many of its agents run\nat once.\n\nThey ride on the capability set rather than on the [launch envelope](GgInvocation)\nbecause the set is what a run *records*: a ceiling that stopped a run is only\ninterpretable beside the value it was set to. They are deliberately not a\ncapability — a capability is a feature a configuration switches on or off, a ceiling is an\noperator's guardrail over every capability at once — so they never appear in the\n[`cap.*`](crate::gg_query) document namespace.\nA set that declares none omits the key entirely."
     },
     "modelSlots": {
       "description": "The [launch-time model parameters](GgModelSlot) this set declares, for the\n[agent bindings](GgAgentConfig::model_slot) that defer to one instead of pinning\na model. Empty for a fully pinned set — and empty on the set a run *records*,\nbecause launching resolves every deferred binding first.",

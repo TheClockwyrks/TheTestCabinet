@@ -141,7 +141,7 @@ fn capability_set_round_trips_through_json() {
                     },
                 ],
                 model_id: "anthropic/claude-opus-4.8".to_string(),
-                disabled_tools: vec!["edit_file".to_string()],
+                tools: vec!["shell".to_string()],
                 ..GgAgentConfig::root()
             },
             GgAgentConfig {
@@ -628,11 +628,76 @@ fn a_machine_is_neither_bound_to_a_model_nor_waiting_for_one() {
     assert_eq!(set.root().fsm_entry_agent(), Some("judge"));
     assert_eq!(
         set.dispatched_agent(ROOT_AGENT).map(|a| a.name.as_str()),
-        Some("judge")
+        Ok("judge")
     );
     assert_eq!(
         set.dispatched_agent("judge").map(|a| a.name.as_str()),
-        Some("judge")
+        Ok("judge")
+    );
+}
+
+/// A dispatch that cannot be resolved names **the profile that is missing**, and never answers
+/// with another one.
+///
+/// Answering with the shell is the expensive way to be wrong here: a machine carries no model on
+/// purpose, so it hands every caller the one agent whose empty binding is correct to report — and a
+/// shell left holding a stray `modelId` resolves clean, launching a run whose every recorded turn
+/// is attributed to a model nothing asked that agent to run.
+#[test]
+fn an_unresolvable_dispatch_names_the_missing_profile() {
+    let machine = |entry: &str| GgAgentConfig {
+        capabilities: vec![GgCapabilityConfig {
+            params: json!({ FSM_PARAM_STATES: [{ "name": "explore", "agent": entry }] }),
+            ..GgCapabilityConfig::enabled(CAPABILITY_FSM)
+        }],
+        model_id: String::new(),
+        ..GgAgentConfig::root()
+    };
+    let set_of = |root: GgAgentConfig| GgCapabilitySet {
+        preset: None,
+        agents: vec![root],
+        model_slots: Vec::new(),
+        limits: GgRunLimits::default(),
+        hooks: Vec::new(),
+    };
+
+    // A name nothing declares is reported as itself, not as the root.
+    let plain = GgCapabilitySet::minimal("mock/echo");
+    assert_eq!(
+        plain.dispatched_agent("ghost"),
+        Err(GgDispatchError::UndeclaredProfile("ghost"))
+    );
+
+    // A machine entering an agent the set does not declare names *that* agent, with the machine
+    // it came from for context — not the machine as the thing missing a model.
+    let dangling = set_of(machine("judge"));
+    assert_eq!(
+        dangling.dispatched_agent(ROOT_AGENT),
+        Err(GgDispatchError::UndeclaredEntryAgent {
+            shell: ROOT_AGENT,
+            entry: "judge",
+        })
+    );
+    assert!(
+        dangling
+            .dispatched_agent(ROOT_AGENT)
+            .unwrap_err()
+            .to_string()
+            .contains("`judge`")
+    );
+
+    // A stray model on the shell buys it no clean resolution: that is the arm that would launch a
+    // run and record every turn of it against the wrong model, with nothing said anywhere.
+    let mut stray = machine("judge");
+    stray.model_id = "mock/echo".to_string();
+    assert!(set_of(stray).dispatched_agent(ROOT_AGENT).is_err());
+
+    // A machine with no readable entry state at all is a different fact from one naming an agent
+    // that is missing, and reads as one.
+    let empty = set_of(machine(""));
+    assert_eq!(
+        empty.dispatched_agent(ROOT_AGENT),
+        Err(GgDispatchError::UnreadableMachine { shell: ROOT_AGENT })
     );
 }
 
@@ -1827,14 +1892,12 @@ fn a_failed_call_carries_its_class_on_both_of_its_records() {
         "a success carries no class"
     );
 
-    // The model-facing half. It exists for the calls that have no tool record at all — a carve-out,
-    // and a call the membrane refused before dispatch — which is why the class rides here too, and
-    // why the operation rides beside it: *how often did this operation fail* is a question about
+    // The model-facing half — the only record a responses-as-code agent's calls have, including the
+    // call the membrane refused before dispatch, which is why the class rides here too. The
+    // operation rides beside it because *how often did this operation fail* is a question about
     // results, and it must not require pairing each result back to its own call.
     let refused = GgTelemetryKind::ApiResult {
-        object: "files".to_string(),
-        function: "read_file".to_string(),
-        operation: Some("files.read_file".to_string()),
+        operation: "files.read_file".to_string(),
         ok: false,
         failure: Some(GgToolFailure::LimitExceeded),
     };
@@ -1850,46 +1913,43 @@ fn a_failed_call_carries_its_class_on_both_of_its_records() {
 /// **A call names gg's own operation, not one arm's spelling of it** — the join a cross-language
 /// study is made of, and the one thing about a call that means the same in all eleven arms.
 ///
-/// The carve-outs are the exception the shape has to carry: the documentation calls belong to no
-/// arm's catalogue, so there is no operation row to name, and they say so by omitting the field
-/// rather than by inventing an id. What they are recorded under is already gg's own vocabulary, so
-/// `object`.`function` reads exactly as an operation id would — which is what lets one consumer key
-/// both populations the same way.
+/// It is the *only* thing the event carries, which is the point of the assertion: the operation id
+/// is the whole identity of a model-facing call, and there is no second vocabulary beside it for a
+/// consumer to key on by mistake. Every call has one — the documentation family included — because
+/// the operations table is the API surface's single vocabulary, so a call with no row in it is a
+/// call the surface could not have offered.
 #[test]
 fn an_api_call_carries_the_operation_it_resolved_to() {
     let call = GgTelemetryKind::ApiCall {
-        object: "files".to_string(),
-        function: "read_file".to_string(),
-        operation: Some("files.read_file".to_string()),
+        operation: "files.read_file".to_string(),
     };
     let value = serde_json::to_value(&call).expect("serialize");
     assert_eq!(value["type"], json!("api_call"));
     assert_eq!(value["operation"], json!("files.read_file"));
+    assert!(
+        value.get("object").is_none() && value.get("function").is_none(),
+        "a call is identified by its operation and by nothing else: {value}"
+    );
     assert_eq!(
         serde_json::from_value::<GgTelemetryKind>(value).expect("deserialize"),
         call
     );
 
-    let carveout = GgTelemetryKind::ApiCall {
-        object: "docs".to_string(),
-        function: "search".to_string(),
-        operation: None,
+    let docs = GgTelemetryKind::ApiCall {
+        operation: "docs.search".to_string(),
     };
-    let value = serde_json::to_value(&carveout).expect("serialize");
-    assert!(
-        value.get("operation").is_none(),
-        "a call gg has no operation for omits the field rather than guessing one: {value}"
-    );
+    let value = serde_json::to_value(&docs).expect("serialize");
+    assert_eq!(value["operation"], json!("docs.search"));
     assert_eq!(
         serde_json::from_value::<GgTelemetryKind>(value).expect("deserialize"),
-        carveout
+        docs
     );
 }
 
-/// **The healing-off arm has to be visible on the wire**, and the assertion has to be made *on the
-/// wire* to prove it.
+/// **A run with healing off has to be visible on the wire**, and the assertion has to be made *on
+/// the wire* to prove it.
 ///
-/// [`enabled`](GgHealingSummary::enabled) exists to tell an ablation's two arms apart, and the arm
+/// [`enabled`](GgHealingSummary::enabled) exists to tell two such configurations apart, and the one
 /// it exists for is the empty one: every counter reads `0` whether the strategies were all armed and
 /// never needed or all switched off. A `skip_serializing_if` here therefore deleted the field in
 /// exactly the case it was added for, and — because a struct-level `enabled.is_empty()` passes
@@ -2046,7 +2106,7 @@ fn agent_modules_serializes_a_roster_with_ids_ownership_and_origin() {
                 scope: Some(GgMemoryScope::ReadOnly),
                 writable: false,
             },
-            // An ablation's off arm still occupies its row, with no store to identify.
+            // A capability switched off still occupies its row, with no store to identify.
             GgAgentModule {
                 kind: GgModuleKind::Tasks,
                 module_id: String::new(),
@@ -2072,28 +2132,30 @@ fn agent_modules_serializes_a_roster_with_ids_ownership_and_origin() {
 }
 
 /// The surface is what makes *"never offered"* and *"offered and never called"* different findings,
-/// so what has to survive the wire is exactly the join a consumer draws that distinction with: the
-/// tool names, and — in code mode — each bound function beside its own
-/// [`operation`](GgAgentApiFunction::operation), gg's identity for what it does and the string its
-/// calls are recorded under. The join is that one string, which is why a function no tool backs —
-/// the ending call asserted below — carries a figure on exactly the terms a tool-backed read does.
+/// so what has to survive the wire is exactly the join a consumer draws that distinction with: each
+/// bound function beside its own [`operation`](GgAgentApiFunction::operation), gg's identity for
+/// what it does and the string its calls are recorded under. The join is that one string, which is
+/// why a function no tool backs — the ending call asserted below — carries a figure on exactly the
+/// terms a tool-backed read does.
 ///
 /// The three per-agent settings ride here too, and the [mode](GgTelemetryKind::AgentSurface) is the
 /// one this asserts by name: it is the arm of a within-run comparison, and a run that recorded it
 /// nowhere would leave every measurement of it unattributable.
 ///
-/// The absences are as load-bearing as the values. A tool-calling agent sends no `apis` at all
-/// rather than an empty list, because it has no such surface; an agent that ablates nothing sends no
-/// `withheld` for the same reason; and no gg tool name is sent anywhere on the API surface, because
-/// under the tool-keyed join it replaced, the one `read_file` behind three functions counted three
-/// calls where the model had written one.
+/// **Exactly one of the two surfaces is populated**, and that is the load-bearing assertion here: an
+/// agent has one execution mode, so a responses-as-code instance is offered no tools at all and a
+/// tool-calling one binds no modules. No gg tool name appears anywhere on the API surface — the two
+/// vocabularies are scoped, and under the tool-keyed join this replaced, the one `read_file` behind
+/// three functions counted three calls where the model had written one.
 #[test]
-fn agent_surface_serializes_the_offered_tools_and_the_bound_api_functions() {
+fn agent_surface_populates_exactly_the_one_surface_its_mode_uses() {
     let kind = GgTelemetryKind::AgentSurface {
         execution_mode: "responses_as_code".to_string(),
         program_language: Some(GgProgramLanguage::TypeScript),
         doc_view_types: Some("return-and-parameters".to_string()),
-        tools: vec!["read_file".to_string(), "finish".to_string()],
+        // Offered no tools: this agent answers with programs, and the tool vocabulary is not one it
+        // can reach.
+        tools: Vec::new(),
         apis: vec![
             GgAgentApi {
                 module: "files".to_string(),
@@ -2104,8 +2166,8 @@ fn agent_surface_serializes_the_offered_tools_and_the_bound_api_functions() {
                     operation: "files.read_file".to_string(),
                 }],
             },
-            // The ending call: bound by the agent's dispatched role rather than by a tool, and
-            // counted exactly as a tool-backed function is — its own operation, its own figure.
+            // The ending call: bound by the agent's dispatched role rather than by a capability, and
+            // counted exactly as any other function is — its own operation, its own figure.
             GgAgentApi {
                 module: "session".to_string(),
                 path: "gg.session".to_string(),
@@ -2116,24 +2178,19 @@ fn agent_surface_serializes_the_offered_tools_and_the_bound_api_functions() {
                 }],
             },
         ],
-        // The ablation this agent's configuration applied, which is why `write_file` is missing
-        // from `tools` above: without it a reader cannot tell a withheld tool from one no enabled
-        // capability was ever going to contribute.
-        withheld: vec!["write_file".to_string()],
     };
     let value = serde_json::to_value(&kind).expect("serialize");
     assert_eq!(value["type"], json!("agent_surface"));
     assert_eq!(value["executionMode"], json!("responses_as_code"));
     assert_eq!(value["programLanguage"], json!("typescript"));
     assert_eq!(value["docViewTypes"], json!("return-and-parameters"));
-    assert_eq!(value["tools"], json!(["read_file", "finish"]));
-    assert_eq!(value["withheld"], json!(["write_file"]));
+    assert_eq!(value["tools"], json!([]));
     // A module is named twice: once as gg knows it, and once as this arm spells it. A study
     // grouping eleven arms reads the first; a reader quoting the model reads the second.
     assert_eq!(value["apis"][0]["module"], json!("files"));
     assert_eq!(value["apis"][0]["path"], json!("gg.files"));
-    // Every function carries its own operation — the ending call as much as the tool-backed read —
-    // and no gg tool name appears anywhere on the surface.
+    // Every function carries its own operation — the ending call as much as the read — and no gg
+    // tool name appears anywhere on the surface.
     assert_eq!(
         value["apis"][0]["functions"][0]["operation"],
         json!("files.read_file")
@@ -2146,22 +2203,20 @@ fn agent_surface_serializes_the_offered_tools_and_the_bound_api_functions() {
     let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
     assert_eq!(back, kind);
 
-    // A tool-calling agent's surface omits `apis` entirely, and an agent that ablates nothing omits
-    // `withheld` — both absences rather than empty arrays a consumer would have to interpret. Its
-    // `programLanguage` and `docViewTypes` are absent on the same terms: it writes no programs and
-    // opens no documentation, so naming either would be reporting a fact about a surface it does
-    // not have.
+    // A tool-calling agent's surface omits `apis` entirely rather than sending an empty list a
+    // consumer would have to interpret, because it has no such surface. Its `programLanguage` and
+    // `docViewTypes` are absent on the same terms: it writes no programs and opens no documentation,
+    // so naming either would be reporting a fact about a surface it does not have.
     let tool_calling = GgTelemetryKind::AgentSurface {
         execution_mode: "tool_calling".to_string(),
         program_language: None,
         doc_view_types: None,
         tools: vec!["shell".to_string()],
         apis: Vec::new(),
-        withheld: Vec::new(),
     };
     let value = serde_json::to_value(&tool_calling).expect("serialize");
+    assert_eq!(value["tools"], json!(["shell"]));
     assert!(value.get("apis").is_none());
-    assert!(value.get("withheld").is_none());
     assert!(value.get("programLanguage").is_none());
     assert!(value.get("docViewTypes").is_none());
     let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");

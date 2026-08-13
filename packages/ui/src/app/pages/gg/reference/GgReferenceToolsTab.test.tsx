@@ -249,7 +249,7 @@ describe("GgReferenceToolsTab", () => {
   it("states the conditions beyond the capabilities, in gg's own words", async () => {
     renderAt("/gg/reference/tools?tool=spawn_subagent");
     await screen.findByRole("heading", { name: "spawn_subagent" });
-    // The sentence is gg's, composed from the ablation it ran against its own registry.
+    // The sentence is gg's, composed against its own tool registry rather than restated here.
     // The console renders a string it never wrote, which is what makes it checkable.
     expect(
       screen.getByText(

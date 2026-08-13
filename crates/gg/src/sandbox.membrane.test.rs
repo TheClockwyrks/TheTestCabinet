@@ -283,14 +283,14 @@ fn every_tool_crosses_the_membrane_with_its_typed_arguments() {
     // Every enabled name is bound as a **function** — the capability model in one assertion. A name
     // that is merely defined, or defined as something other than a function, would fail a model in a
     // way no error message could explain.
-    // Every call a *tool* buys, reached the way a program reaches it: through its module rather
+    // Every call a *capability* buys, reached the way a program reaches it: through its module rather
     // than as a bare identifier. A member function is left out because it is reached through a
     // value the module hands back rather than off the module itself, and there is no value to hold
     // here.
     let names: Vec<String> =
         crate::sandbox::catalogue_functions(crate::sandbox::fake::typescript())
             .into_iter()
-            .filter(|function| function.gate.is_some() && function.receiver.is_none())
+            .filter(|function| function.capability.is_some() && function.receiver.is_none())
             .map(|function| format!("{}.{}", function.object, function.name))
             .collect();
 

@@ -41,9 +41,12 @@ public final class ToolError extends RuntimeException {
     }
 
     /**
-     * The gg tool that failed — {@code read_file}, {@code spawn_subagent}.
+     * The call that failed, by the key of the operation this program reached for.
      *
-     * @return gg's own name for the call
+     * <p>{@code read_file} for {@code Files.readFile}, {@code read_text_file} for
+     * {@code Files.readTextFile}.
+     *
+     * @return gg's own key for the call
      */
     public String tool() {
         return tool;

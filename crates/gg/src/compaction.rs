@@ -296,23 +296,36 @@ pub enum PendingCompaction {
 }
 
 impl PendingCompaction {
-    /// Whether a call named `name` is one this pending compaction accepts.
+    /// Whether the **tool** named `name` is one this pending compaction accepts.
     ///
     /// The narrowing is total rather than advisory, and it has to be: the window is full, so a call
     /// that is allowed through is a call that makes the problem worse.
     ///
-    /// [`Summary`](Self::Summary) admits nothing on the **tool-calling** path, where the summary is
-    /// the reply's own text and the loop takes that turn whole without dispatching from it. Under
-    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) there is no such
-    /// reply — every reply is a program — so the summary arrives as a `compact` call carrying it,
-    /// and that call is what this must admit. `code_mode` is therefore a parameter rather than a
-    /// property of the requirement: the same pending compaction is satisfied differently in the two
-    /// modes because the two modes give a model different ways to say anything at all.
-    pub fn admits(self, name: &str, code_mode: bool) -> bool {
+    /// [`Summary`](Self::Summary) admits nothing here, because on the tool-calling path the summary
+    /// *is* the reply's own text and the loop takes that turn whole without dispatching from it.
+    /// A program has no such reply; see [`admits_operation`](Self::admits_operation).
+    pub fn admits(self, name: &str) -> bool {
         match self {
-            Self::Summary => code_mode && name == COMPACT_TOOL,
+            Self::Summary => false,
             Self::CompactCall => name == COMPACT_TOOL,
             Self::MemoryWrites => crate::tools::is_memory_tool(name),
+        }
+    }
+
+    /// Whether the **operation** `id` is one this pending compaction accepts — [`admits`](Self::admits)
+    /// asked of the responses-as-code surface, in that surface's own vocabulary.
+    ///
+    /// The two are separate rather than one function over a shared name for the reason the two
+    /// surfaces are separate everywhere else, and for one that is specific to this gate:
+    /// [`Summary`](Self::Summary) is satisfied *differently* here. A code agent has no prose reply
+    /// to summarize in — every reply is a program — so its summary arrives as a `context.compact`
+    /// call carrying it, and that call is what this must admit where the tool path admits nothing at
+    /// all. That is not a spelling difference; it is the same requirement met by a different act,
+    /// which is exactly what a single predicate parameterised by a `bool` was obscuring.
+    pub fn admits_operation(self, id: crate::sandbox::OperationId) -> bool {
+        match self {
+            Self::Summary | Self::CompactCall => id == crate::sandbox::CONTEXT_COMPACT,
+            Self::MemoryWrites => crate::memories::MEMORY_MUTATIONS.contains(&id),
         }
     }
 
@@ -755,7 +768,7 @@ pub fn working_window(set: &GgCapabilitySet, window: u64) -> u64 {
 /// model's client.
 pub struct CompactionSetup {
     /// Whether the compaction capability is enabled for this run. When `false` the loop
-    /// never compacts (an ablation's off arm).
+    /// never compacts (a configuration with the capability off).
     pub enabled: bool,
     /// The resolved trigger policy.
     pub policy: CompactionPolicy,

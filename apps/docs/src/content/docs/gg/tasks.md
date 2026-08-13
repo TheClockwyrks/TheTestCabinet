@@ -41,6 +41,15 @@ A `mode` param sets how much structure a task carries.
 Both modes are otherwise the same list: an agent-scoped, compaction-surviving
 blocked-by DAG.
 
+## Features
+
+Two sliders sit in the capability's Features box, and each is per agent.
+
+| Feature | Default | What switching it changes |
+| --- | --- | --- |
+| Task dependencies | on | Off withholds `set_blocked_by`, so the list is flat. |
+| Revise tasks | on | Off withholds `update_task` and `remove_task`, so the list is append-and-complete only. |
+
 ## Tasks and the board
 
 Tasks are the lightweight tier of work tracking, and the

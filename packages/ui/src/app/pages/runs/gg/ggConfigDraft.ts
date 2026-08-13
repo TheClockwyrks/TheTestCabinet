@@ -123,7 +123,7 @@ export interface GgSubagentDraft {
 
 // One **agent profile** as the editor holds it: its name, its per-capability drafts
 // (keyed by capability id), its single model binding (deferred to a declared model
-// slot, or pinned here), its per-tool ablation, its custom prompt bits, and the
+// slot, or pinned here), its two call allowlists, its custom prompt bits, and the
 // agents its roster names (and what each may be used for).
 //
 // `systemPromptTemplate` is empty when this agent uses gg's built-in template; a
@@ -160,7 +160,21 @@ export interface GgAgentDraft {
   // it defers to none (a pinned binding, or a slot that was deleted out from under it).
   modelSlotId: string;
   modelId: string;
-  disabledTools: string[];
+  // The two call allowlists, in the two independent vocabularies gg's surfaces are
+  // written in: gg tool names, and gg operation ids. **Each list is the grant** — a
+  // capability being on says which calls exist to be handed over, and these say which of
+  // them this agent gets, with absent meaning none.
+  //
+  // The draft holds *both* even though an agent reads exactly one, for the reason it
+  // holds every type's capability drafts: switching type and back inside one editing
+  // session must lose nothing, and only one of these can be re-derived from the other —
+  // neither, in fact, since the two vocabularies are not in bijection. So every editor
+  // operation that grants or revokes (a capability toggle, a feature slider) writes both
+  // halves, which keeps them agreeing about *which feature* is granted while saying it in
+  // two languages, and [agentConfigFromDraft] records only the half this agent's type
+  // reads.
+  tools: string[];
+  operations: string[];
   customInstructions: string;
   systemPromptTemplate: string;
   // How long this agent asks the provider to keep its stable prompt-cache entries. Held
@@ -442,7 +456,8 @@ export function resetAgentForMode(agent: GgAgentDraft): GgAgentDraft {
         modelId: "",
         promptCacheTtl: "standard" as const,
         loopDetection: blankLoopDetection(),
-        disabledTools: [],
+        tools: [],
+        operations: [],
         customInstructions: "",
         systemPromptTemplate: "",
         subagents: [],
@@ -508,7 +523,11 @@ export function blankAgentDraft(
     modelSource: "model-slot",
     modelSlotId,
     modelId: "",
-    disabledTools: [],
+    // A fresh profile is granted everything its capabilities offer, in both vocabularies
+    // — the same seeding switching a capability on does, applied to the set it is born
+    // with. Without it a "fresh agent, defaults on" would be an agent with eight
+    // capabilities and not one call.
+    ...grantsOf(enabledIds),
     customInstructions: "",
     systemPromptTemplate: "",
     promptCacheTtl: "standard",
@@ -572,11 +591,7 @@ export function unusedAgentName(agents: ReadonlyArray<GgAgentDraft>): string {
 // file issues with no implementer to assign them to. A single-agent configuration has
 // exactly one profile it can name, which is itself — a shape the contract explicitly
 // allows, and the only one under which "one agent, everything on" means anything.
-const ROSTER_CAP_IDS = [
-  "subagents",
-  "project-management",
-  "exec",
-] as const;
+const ROSTER_CAP_IDS = ["subagents", "project-management", "exec"] as const;
 
 /**
  * A whole draft around one agent: it is the root, it defers to a freshly declared
@@ -629,7 +644,8 @@ function cloneAgentDraft(agent: GgAgentDraft): GgAgentDraft {
         },
       ]),
     ),
-    disabledTools: [...agent.disabledTools],
+    tools: [...agent.tools],
+    operations: [...agent.operations],
     subagents: agent.subagents.map((s) => ({ ...s })),
     hooks: agent.hooks.map((h) => ({ ...h })),
   };
@@ -1160,18 +1176,35 @@ function agentDraftFromConfig(
       extraParams,
     };
   }
+  const mode = agentModeOf(agent.capabilities ?? []);
+  // The allowlist the stored configuration wrote, and — for the vocabulary it did not
+  // write, because gg reads only one — the seeding the editor would have applied to the
+  // capabilities it has on.
+  //
+  // Both halves have to be populated because the type selector is live: an operator who
+  // switches a stored Tools agent to RaC and saves must get the same capabilities in the
+  // other surface's vocabulary, not an agent granted nothing. Seeding it from the enabled
+  // capabilities is the same answer switching each of them on would have given, and it is
+  // scratch until the type actually changes — [agentConfigFromDraft] records only the half
+  // the agent's type reads, so a round-trip through the editor writes back exactly what
+  // was loaded.
+  const seeded = grantsOf(
+    (agent.capabilities ?? []).filter((c) => c.enabled).map((c) => c.id),
+  );
   // The type first, then the capabilities its type does not read wound back to the
   // catalog's defaults: a stored agent carries one type's configuration and no other, so
   // there is nothing for the rest of them to be loaded *from*.
   return resetAgentForMode({
     id: localId("agent"),
     name: agent.name,
-    mode: agentModeOf(agent.capabilities ?? []),
+    mode,
     capabilities,
     modelSource: agent.modelSlot ? "model-slot" : "model",
     modelSlotId: slotIdByName.get(agent.modelSlot?.trim() ?? "") ?? "",
     modelId: agent.modelId ?? "",
-    disabledTools: [...(agent.disabledTools ?? [])],
+    tools: mode === "tools" ? [...(agent.tools ?? [])] : seeded.tools,
+    operations:
+      mode === "rac" ? [...(agent.operations ?? [])] : seeded.operations,
     customInstructions: agent.customInstructions ?? "",
     systemPromptTemplate: agent.systemPromptTemplate ?? "",
     // A configuration that names no lifetime reads as the standard one, which is the
@@ -1409,13 +1442,21 @@ function hooksFromDraft(hooks: GgHookDraft[]): GgHook[] {
       const script = hook.script.trim();
       if (!script) return [];
       return [
-        { ...base, event: hook.event, action: { type: "built-in" as const, script } },
+        {
+          ...base,
+          event: hook.event,
+          action: { type: "built-in" as const, script },
+        },
       ];
     }
     const source = hook.source.trim();
     if (!source) return [];
     return [
-      { ...base, event: hook.event, action: { type: "custom" as const, source } },
+      {
+        ...base,
+        event: hook.event,
+        action: { type: "custom" as const, source },
+      },
     ];
   });
 }
@@ -1516,32 +1557,184 @@ export function capabilityParams(
   return { ok: true, value: out };
 }
 
-// --- Tool-ablation bundles ------------------------------------------------------
+// --- The call allowlists --------------------------------------------------------
 //
-// A capability's per-feature sliders (`CapSpec.toolAblation`) each stand for a whole
-// bundle of tools that move together; the wire format stays per-tool
-// (`disabledTools`), so these fold a bundle on/off across every tool it names.
+// gg grants an agent its calls by **allowlist**, in two independent vocabularies
+// ([GgAgentDraft.tools] and [GgAgentDraft.operations]), and an absent name is a call the
+// agent does not have. The editor never shows an operator a list of raw call names,
+// because a list of forty is not a control anybody uses; it shows the two granularities
+// that mean something — the capability, and the coherent sub-feature — and writes the
+// allowlist entries behind them.
+//
+// So the allowlist an operator ends up with is composed here rather than typed: switching
+// a capability on grants everything it offers, switching it off takes all of that back,
+// and a feature slider moves its own bundle within that. What looks from the outside like
+// "everything is on by default" is exactly this seeding — there is no runtime default
+// that means everything, and gg supplies none.
 
-/** Whether a tool bundle is available — none of its tools is withheld. */
-export function toolBundleOn(
-  disabledTools: ReadonlyArray<string>,
-  tools: ReadonlyArray<string>,
-): boolean {
-  return !tools.some((t) => disabledTools.includes(t));
+/** The two allowlists, as every operation below hands them back. */
+export interface GgCallGrants {
+  tools: string[];
+  operations: string[];
 }
 
-/** `disabledTools` with a whole bundle restored (`on`) or withheld (`!on`). */
-export function setToolBundle(
-  disabledTools: ReadonlyArray<string>,
-  tools: ReadonlyArray<string>,
+// `names` with `add`ed or removed, keeping the order the list is already in and appending
+// what is new — so a granted set reads in the order it was granted rather than being
+// re-sorted under the operator on every toggle.
+function withNames(
+  names: ReadonlyArray<string>,
+  change: ReadonlyArray<string>,
   on: boolean,
 ): string[] {
-  const next = new Set(disabledTools);
-  for (const tool of tools) {
-    if (on) next.delete(tool);
-    else next.add(tool);
-  }
-  return [...next];
+  if (!on) return names.filter((name) => !change.includes(name));
+  const next = [...names];
+  for (const name of change) if (!next.includes(name)) next.push(name);
+  return next;
+}
+
+/**
+ * Everything the capabilities `enabledIds` names offer, in both vocabularies and catalog
+ * order — the grant a freshly-made profile is born with, and the whole of what switching
+ * those capabilities on would have seeded.
+ *
+ * A [mode marker](isModeCapability) seeds nothing, whatever names it declares, because it
+ * is not a capability an agent holds — it is the [agent type](GgAgentMode) itself, and
+ * `enabledIds` carries it for exactly that reason: the type is read off the same list. The
+ * one marker with a surface is `fsm`, which names `transition_state` so the analyze page
+ * can file the call under the machine that buys it; gg offers that call from wherever an
+ * instance *stands*, never from the shell's own grant, so seeding it here would write an
+ * allowlist entry no run has ever read. Filtered at the source rather than trusted to be
+ * cleared downstream: [resetAgentForMode] does empty a machine's allowlists on commit, but
+ * that is a rule about machines, and a marker that stopped implying one — or a worker type
+ * that gained a marker — would quietly start shipping the entry to the wire.
+ */
+export function grantsOf(enabledIds: ReadonlyArray<string>): GgCallGrants {
+  const on = CAPABILITIES.filter(
+    (cap) => enabledIds.includes(cap.id) && !isModeCapability(cap.id),
+  );
+  return {
+    tools: on.flatMap((cap) => [...(cap.tools ?? [])]),
+    operations: on.flatMap((cap) => [...(cap.operations ?? [])]),
+  };
+}
+
+/**
+ * `agent`'s allowlists with one capability's whole offering granted (`on`) or taken back.
+ *
+ * This is what a capability toggle writes beside `enabled`, and the pairing is the point:
+ * a capability that is on but grants nothing is an agent with a memory store and no way
+ * to read it, which is not a state any operator means to configure. Turning it off again
+ * clears its entries rather than leaving them behind, so a capability's own sliders start
+ * from the full set the next time it is switched on — which is also the only way back
+ * from a stored configuration that named none of a capability's calls.
+ */
+export function withCapabilityGrants(
+  agent: GgAgentDraft,
+  cap: CapSpec,
+  on: boolean,
+): GgCallGrants {
+  return {
+    tools: withNames(agent.tools, cap.tools ?? [], on),
+    operations: withNames(agent.operations, cap.operations ?? [], on),
+  };
+}
+
+/**
+ * What `offer` — a capability, or one of its feature bundles — names in the vocabulary
+ * this agent's [type](GgAgentMode) reads, paired with the half of the agent's own
+ * allowlist written in that same vocabulary.
+ *
+ * Every question about what an agent actually *holds* is asked of one vocabulary: the one
+ * its run will be conducted in. The other half agrees by construction — every grant
+ * operation above writes both — so the choice only matters for a draft loaded from a
+ * configuration written by hand, where the half nobody stored is the half that was
+ * seeded. Pairing the two here rather than at each call site is what keeps a reader from
+ * having to check, question by question, that the right allowlist was matched against the
+ * right names: the two are not the same names, and nothing but the pairing says so.
+ */
+function inAgentVocabulary(
+  agent: GgAgentDraft,
+  offer: { tools?: ReadonlyArray<string>; operations?: ReadonlyArray<string> },
+): [granted: ReadonlyArray<string>, offered: ReadonlyArray<string>] {
+  return agent.mode === "rac"
+    ? [agent.operations, offer.operations ?? []]
+    : [agent.tools, offer.tools ?? []];
+}
+
+/**
+ * Whether one of a capability's [feature](CapSpec.features) sliders reads as on: every
+ * call the bundle names is granted, in the vocabulary this agent answers on.
+ */
+export function featureBundleOn(
+  agent: GgAgentDraft,
+  bundle: { tools: ReadonlyArray<string>; operations: ReadonlyArray<string> },
+): boolean {
+  const [granted, names] = inAgentVocabulary(agent, bundle);
+  return names.every((name) => granted.includes(name));
+}
+
+/**
+ * Why a capability that is switched on can call nothing, or `null` when it can.
+ *
+ * This is the failure the allowlist makes silent. A capability whose every call has been
+ * switched off is still *on*: the switch reads as configured, the params are all there,
+ * and the agent runs with a surface it can never reach. Nothing downstream says so
+ * either — the run record shows a model that called none of it, which is exactly what a
+ * model that simply chose not to use it looks like. So it is said here, on the card, while
+ * it is still an edit and not yet a run.
+ *
+ * A warning and not a save error: gg launches such a configuration perfectly happily, and
+ * the editor cannot tell a slip from an operator deliberately parking a capability's whole
+ * surface between the arms of a study while its params stay authored. So it says so, and
+ * gets out of the way.
+ *
+ * Nothing is said about a capability that is off, and nothing about one that offers no
+ * calls *in this agent's vocabulary* — a great many are pure settings with no surface at
+ * all (`autoload-specs`, `context-window-override`), and a capability whose whole surface
+ * is in the other vocabulary (`docview-close` buys operations and no tool) offers this
+ * type nothing to grant either. Every one of those is working exactly as configured, and
+ * a warning that fires on them is how an operator learns to read past the one that means
+ * something.
+ *
+ * And nothing at all about a [mode marker](isModeCapability), whatever names it declares.
+ * A marker is the [agent type](GgAgentMode) itself rather than a feature of one: no
+ * allowlist is ever seeded from what it names ([grantsOf] skips it), and an FSM shell's two
+ * allowlists are emptied outright when it is committed
+ * ([resetAgentForMode]). `fsm` declares `transition_state` only so the analyze page can
+ * name the call under the machine that buys it — gg offers that call from where an
+ * instance stands, not from the shell's grant — so "on, and holding none of what it
+ * offers" is true of every machine there has ever been, and the advice below is
+ * unfollowable on one: a marker has no feature slider to turn back on, and no switch to
+ * turn off but the type selector. Asked of the marker rather than of `fsm` by name so
+ * that a second one cannot bring the warning back.
+ */
+export function capabilityGrantWarning(
+  agent: GgAgentDraft,
+  cap: CapSpec,
+): string | null {
+  if (isModeCapability(cap.id)) return null;
+  if (!capabilityActive(agent, cap)) return null;
+  const [granted, offered] = inAgentVocabulary(agent, cap);
+  if (!offered.length) return null;
+  if (offered.some((name) => granted.includes(name))) return null;
+  // Named in the vocabulary the operator is looking at: a Tools agent's card is a list of
+  // tools and a code agent's is a list of operations, and the warning has to be about the
+  // thing on the screen.
+  const [all, one] =
+    agent.mode === "rac" ? ["operations", "operation"] : ["tools", "tool"];
+  return `All ${all} disabled — this capability is on, but every ${one} it offers has been withheld, so the agent can never use it. Turn a feature back on, or turn the capability off.`;
+}
+
+/** `agent`'s allowlists with a whole feature bundle granted (`on`) or taken back. */
+export function setFeatureBundle(
+  agent: GgAgentDraft,
+  bundle: { tools: ReadonlyArray<string>; operations: ReadonlyArray<string> },
+  on: boolean,
+): GgCallGrants {
+  return {
+    tools: withNames(agent.tools, bundle.tools, on),
+    operations: withNames(agent.operations, bundle.operations, on),
+  };
 }
 
 // --- Run limits -----------------------------------------------------------------
@@ -1805,22 +1998,25 @@ export function referencedModelSlots(draft: GgConfigDraft): Set<string> {
 }
 
 /**
- * The gg capability id and tool name behind the "an issue filer needs someone to
- * assign to" rule below. Spelled once so the rule and the catalog cannot drift.
+ * The gg capability behind the "an issue filer needs someone to assign to" rule below,
+ * and the one call that files an issue — in both vocabularies, because which of the two
+ * decides depends on the agent's [type](GgAgentMode). Spelled once so the rule and the
+ * catalog cannot drift.
  */
 const PROJECT_MANAGEMENT_CAP_ID = "project-management";
 const CREATE_ISSUE_TOOL = "create_issue";
+const CREATE_ISSUE_OPERATION = "board.create_issue";
 
 /**
- * Whether `agent` can file board issues: the project-management capability is on and
- * its issue-creation feature has not been switched off.
+ * Whether `agent` can file board issues: the project-management capability is on and its
+ * allowlist grants the call that files one, asked of the surface this agent answers on.
  */
 function filesIssues(agent: GgAgentDraft): boolean {
   const board = capabilitySpec(PROJECT_MANAGEMENT_CAP_ID);
-  return (
-    Boolean(board && capabilityActive(agent, board)) &&
-    !agent.disabledTools.includes(CREATE_ISSUE_TOOL)
-  );
+  if (!board || !capabilityActive(agent, board)) return false;
+  return agent.mode === "rac"
+    ? agent.operations.includes(CREATE_ISSUE_OPERATION)
+    : agent.tools.includes(CREATE_ISSUE_TOOL);
 }
 
 /**
@@ -1956,8 +2152,8 @@ function agentConfigFromDraft(
       // type *is* this one, which is what the flag records.
       enabled: isModeCapability(cap.id) || Boolean(capDraft.enabled),
       ...(impl ? { implementation: impl } : {}),
-      // Record the config even for a disabled capability, so an ablation's on/off arms
-      // stay symmetric.
+      // Record the config even for a disabled capability, so the on and off arms of two
+      // configurations being compared stay symmetric.
       params: parsed.ok ? parsed.value : {},
     };
   });
@@ -1991,9 +2187,20 @@ function agentConfigFromDraft(
     ...(agent.modelSource === "model-slot"
       ? { modelSlot: slotName(agent.modelSlotId) }
       : {}),
-    ...(agent.disabledTools.length
-      ? { disabledTools: agent.disabledTools }
-      : {}),
+    // The allowlist, in the one vocabulary this agent's type is conducted in. The other
+    // half of the draft is the editing session's scratch — the same convenience the other
+    // types' capability drafts are — and recording it would claim a surface gg never
+    // offered this agent.
+    // An empty list is left out rather than written, because absent and empty are the same
+    // grant — nothing — and the shorter of two spellings of nothing is the one a
+    // round-trip should settle on.
+    ...(agent.mode === "rac"
+      ? agent.operations.length
+        ? { operations: [...agent.operations] }
+        : {}
+      : agent.tools.length
+        ? { tools: [...agent.tools] }
+        : {}),
     ...(custom ? { customInstructions: custom } : {}),
     ...(template.trim() ? { systemPromptTemplate: template } : {}),
     // The standard lifetime is the default, so an agent left on it writes no key — which is

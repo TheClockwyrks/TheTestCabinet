@@ -292,8 +292,8 @@ loop detection: armed — a reply is abandoned after 3000 consecutive words duri
 
 A run that armed nothing logs no line. The detector lives on the agent profile,
 and the profile is part of the [capability set the run records](/gg/configurations/),
-so the two arms of a loop-detection ablation are distinguishable in the durable
-data whether or not anything was ever discarded.
+so the two arms of a loop-detection comparison are distinguishable in the
+durable data whether or not anything was ever discarded.
 
 Per turn, on the [`turn_outcome`](/gg/telemetry/turn-outcomes/) event:
 

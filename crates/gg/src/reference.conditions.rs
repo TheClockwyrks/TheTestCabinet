@@ -7,10 +7,11 @@
 //! Reference section who cannot tell *what buys this tool* is left with the question the page was
 //! built to answer.
 //!
-//! This module answers it by **ablation**. From the [maximal configuration](super::tools) it
+//! This module answers it by **withholding**. From the [maximal configuration](super::tools) it
 //! withholds one thing at a time and records what disappears; where nothing disappears one at a
 //! time it withholds two, which is what finds a condition either half of which is enough on its own
-//! (`wait_for_subagents` wants a non-empty roster *or* the `fork` capability, and neither ablation
+//! (`wait_for_subagents` wants a non-empty roster *or* the `fork` capability, and neither
+//! withholding
 //! alone reveals that). What comes out is a small conjunctive normal form per tool, over axes gg can
 //! really move, computed from `from_run` itself.
 //!
@@ -26,7 +27,7 @@
 //! and a note can. Configuration advice, remarks about *when within a run* a tool is offered, and
 //! implementation notes about interception are not gates and live on the documentation site.
 //!
-//! # What ablation cannot see
+//! # What withholding one thing at a time cannot see
 //!
 //! A condition that only reveals itself when **three** things are withheld together is not found
 //! here. That is a real limit rather than an assumption, which is why the derivation is not trusted:
@@ -396,7 +397,7 @@ struct Atom {
 ///
 /// Most are a single atom. A disjunction appears where either of two things is enough on its own —
 /// an agent may have children by spawning them from a roster *or* by forking itself — which is a
-/// shape no single-axis ablation can see and the reason the derivation looks at pairs.
+/// shape no single-axis probe can see and the reason the derivation looks at pairs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Conjunct {
     /// The alternatives, in axis order. Never empty.
@@ -494,7 +495,7 @@ impl ToolConditions {
     }
 }
 
-/// **Derive what buys every tool**, by ablation from the maximal point.
+/// **Derive what buys every tool**, by withholding one axis at a time from the maximal point.
 ///
 /// One pass per tool, each starting from the first [base configuration](base_configurations) that
 /// offers it — its *witness*. A witness is needed rather than one global maximum because two axes

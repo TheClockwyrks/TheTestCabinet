@@ -60,7 +60,9 @@ use std::time::Instant;
 use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::compile::{self, compile_program};
-use crate::sandbox::fake::{CallLog, FakeToolApi, canned_outcome};
+use crate::sandbox::fake::{
+    CallLog, FakeToolApi, all_capabilities, all_operations, canned_outcome, granted_operations,
+};
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{SandboxError, SandboxOutcome};
 use crate::sandbox::{
@@ -85,7 +87,7 @@ pub(super) fn prepare(source: &str) -> Vec<u8> {
     }
 }
 
-/// Evaluate an already-compiled component through the real membrane, with `enabled`'s gg tools
+/// Evaluate an already-compiled component through the real membrane, with `operations`
 /// offered.
 ///
 /// A near-copy of [`run_program`](crate::sandbox::run_program) with one thing left out, because it
@@ -99,35 +101,38 @@ pub(super) fn prepare(source: &str) -> Vec<u8> {
 /// back at the model, and no program here is refused one.
 pub(super) fn evaluate(
     component: &[u8],
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     ending: RunEnding,
     library: bool,
     responder: impl FnMut(&str, &serde_json::Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    evaluate_granting(component, enabled, ending, library, false, responder)
+    evaluate_granting(component, operations, ending, library, responder)
 }
 
-/// [`evaluate`] for an agent that also holds `docview-close`.
+/// [`evaluate`] for a program with no ending group, granted every call.
 ///
-/// Its own function rather than a sixth argument on the one above, because every other caller here
-/// wants the default and a second bare `false` at the end of an argument list says nothing about
-/// which flag it is. What it buys is the only way to drive
-/// [`docs.close`](crate::sandbox::DOCS_CLOSE) to a *success*: without the capability the membrane
-/// refuses the call before this arm's lifting of the answer is ever reached.
+/// Its own function because what the documentation-close cases drive is this arm's lifting of the
+/// answer, which needs the call to *succeed* — and an agent granted the two closes and no ending is
+/// the shortest scope that reaches it.
 pub(super) fn evaluate_closing_docviews(
     component: &[u8],
     responder: impl FnMut(&str, &serde_json::Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    evaluate_granting(component, &[], RunEnding::None, false, true, responder)
+    evaluate_granting(
+        component,
+        &all_operations(),
+        RunEnding::None,
+        false,
+        responder,
+    )
 }
 
-/// What both of the above are: one evaluation, with every flag the scope carries stated.
+/// What both of the above are: one evaluation, with everything the scope carries stated.
 fn evaluate_granting(
     component: &[u8],
-    enabled: &[String],
+    operations: &[crate::sandbox::operations::OperationId],
     ending: RunEnding,
     library: bool,
-    docview_close: bool,
     responder: impl FnMut(&str, &serde_json::Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
     let limits = SandboxLimits::default();
@@ -136,13 +141,14 @@ fn evaluate_granting(
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
     let compiled =
         engine::compile_bytes(component).expect("a freshly compiled Swift program is a component");
+    let operations = granted_operations(operations, library);
     let scope = ProgramScope {
-        enabled,
+        capabilities: &all_capabilities(),
+        operations: &operations,
         modules: &[],
         ending,
-        library,
-        docview_close,
     };
+    let granted: Vec<String> = operations.iter().map(ToString::to_string).collect();
     let mut store = bounded_store(
         MembraneState::new(
             api,
@@ -161,7 +167,7 @@ fn evaluate_granting(
         ),
     };
     let returned = bound
-        .call_run(&mut store, "", &[], enabled, ending.into(), library)
+        .call_run(&mut store, "", &[], &granted, ending.into(), library)
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
     if returned.is_err() {
         store.data_mut().revoke_completion();
@@ -293,7 +299,7 @@ fn a_swift_program_dispatches_a_real_call_through_the_membrane() {
 "#;
     let (outcome, calls) = evaluate(
         &prepare(program),
-        &["read_file".to_string()],
+        &[crate::sandbox::operations::FILES_READ_TEXT_FILE],
         RunEnding::None,
         false,
         canned_outcome,

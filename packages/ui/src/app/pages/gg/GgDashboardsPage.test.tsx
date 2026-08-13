@@ -65,11 +65,13 @@ const lastCreate = (): GgDashboardInput =>
 /** A stored board, so the "your dashboards" half has something in it. */
 const STORED = {
   id: "d1",
-  name: "compaction ablation",
+  name: "compaction comparison",
   description: "",
   rangeId: "90d",
   updatedAt: "2026-08-01T00:00:00Z",
-  panels: [{ title: "By preset", query: "| stats count() by preset", width: 6 }],
+  panels: [
+    { title: "By preset", query: "| stats count() by preset", width: 6 },
+  ],
 };
 
 describe("GgDashboardsPage", () => {
@@ -97,7 +99,9 @@ describe("GgDashboardsPage", () => {
 
     // A copy is a create: the built-in has no row to update, and the label says so.
     const create = screen.getByRole("button", { name: "Create dashboard" });
-    expect(screen.getByDisplayValue(`${OVERVIEW_DASHBOARD.name} (copy)`)).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue(`${OVERVIEW_DASHBOARD.name} (copy)`),
+    ).toBeInTheDocument();
     fireEvent.click(create);
 
     await waitFor(() => expect(createGgDashboard).toHaveBeenCalled());

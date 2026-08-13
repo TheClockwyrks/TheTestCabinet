@@ -21,32 +21,15 @@
 //! and whether an operation takes input at all are all asserted there, against fixtures built to
 //! fail them.
 //!
-//! The tool bijection is deliberately **still** a `const` assertion in the module itself, and is
-//! *also* a gating rule next door. There it fails a `cargo build` — which is the right failure for a
-//! tool added to gg, before anything has a chance to run and quietly not document it — and here it
-//! can be watched failing.
+//! What is left in the module itself is one `const` assertion, over the written reason every
+//! [exemption](Applicability::UniversalExcept) carries — there because a `const` block fails a
+//! `cargo check`, before there is a green suite to be reassured by — and it is *also* a gating rule
+//! next door, where it can be watched failing.
 
 use super::*;
 
 use crate::sandbox::catalogue_functions;
 use crate::sandbox::language::all_languages;
-
-/// The id's key is the key gg names the operation by in its own sentences.
-///
-/// [`Operation::id`] is what a catalogue joins on and [`Operation::call`] is what a prompt or a
-/// refusal writes. An id whose key said one thing and whose surface call said another would be two
-/// names for one operation with nothing choosing between them, and a model would read gg naming a
-/// call it cannot find.
-#[test]
-fn an_ids_key_is_the_key_gg_names_it_by() {
-    for operation in OPERATIONS {
-        assert_eq!(
-            operation.id.key, operation.call.key,
-            "`{}` is catalogued under the key `{}`",
-            operation.id, operation.call.key
-        );
-    }
-}
 
 /// **Every function every registered arm catalogues resolves to an operation** — through
 /// [`operation_of`], which is the lookup a *run* uses.
@@ -55,18 +38,18 @@ fn an_ids_key_is_the_key_gg_names_it_by() {
 /// is what makes it able to fail on demand. This asserts it against the real table through the real
 /// entry point, which is what makes it a statement about what a run does: a function with no row is
 /// one [`bound`](crate::docs::DocsRuntime::bound) answers `false` for, so the model would never be
-/// shown a call its own scope binds, and the [membrane](crate::sandbox) would record its calls under
-/// a pair nothing joins to.
+/// shown a call its own scope binds.
 #[test]
 fn every_catalogued_function_has_an_operation() {
     for language in all_languages() {
         for function in catalogue_functions(language) {
             assert!(
                 operation_of(&function).is_some(),
-                "{}: the catalogue binds `{}.{}` (spelled `{}`), which gg has no operation for",
+                "{}: the catalogue binds `{}` under `{}` (spelled `{}`), which gg has no \
+                 operation for",
                 language.display_name(),
-                function.object,
                 function.key,
+                function.object,
                 function.name
             );
         }

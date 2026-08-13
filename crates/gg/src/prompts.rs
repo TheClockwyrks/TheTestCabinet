@@ -454,7 +454,8 @@ fn tidy(rendered: &str) -> String {
 ///
 /// An `Option` field is `null` when the capability is off, which is what the template's
 /// `{{#if …}}` gate tests: a disabled capability contributes **no prompt text at all**, which is
-/// the property [toolset ablation](https://docs.testcabinet.ai/gg/toolset-ablation/) depends on.
+/// what makes two capability sets differing in one switch comparable — the prompt of the one that
+/// switched it off says nothing about it at all.
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SystemContext {

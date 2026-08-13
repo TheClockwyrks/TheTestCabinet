@@ -232,18 +232,14 @@ function roster(
 }
 
 // What one incarnation reports it was OFFERED as it opens: gg's own resolved answer to
-// "could this agent have called that?", after its capabilities, the modules it bound and
-// any ablation. Passing `apis` makes it a responses-as-code instance, which reaches the
-// same tools through namespaced objects instead of naming them. `withheld` is the other
-// arm gg resolves: the profile's `disabledTools` entries that actually name a gg tool, so
-// a name gg does not know is already gone by the time it reaches the console. Nearly every
-// fixture in this file reports none at all — which is what an instance read before its own
-// `agent_surface` arrived looks like, and it has to keep rendering.
+// "could this agent have called that?", after its capabilities, its own allowlist and the
+// modules it bound. Passing `apis` makes it a responses-as-code instance, whose whole
+// surface is those modules — the two surfaces are independent, so such an instance is
+// offered no tool at all.
 function surface(
   agentId: string,
   tools: string[],
   apis: GgAgentApi[] = [],
-  withheld: string[] = [],
   docViewTypes?: string,
 ): HarnessEvent {
   return ggFrom(agentId, undefined, {
@@ -251,19 +247,18 @@ function surface(
     executionMode: apis.length > 0 ? "responses_as_code" : "tool_calling",
     tools,
     apis,
-    withheld,
     // Omitted by a tool-calling instance, which opens no documentation at all.
     ...(docViewTypes ? { docViewTypes } : {}),
   } as GgTelemetryKind);
 }
 
-// The announcement for a run that ABLATES a tool: `disabledTools` strikes a tool from a
-// profile whose capability is otherwise on, so it is the "never offered" arm of the very
-// distinction the surface file exists to draw.
-function sessionStartedAblating(
+// The announcement for a run whose profile grants only some of what its capabilities
+// offer: the allowlist is the grant, so a call left out of it is a call the agent never
+// had — the "never offered" arm of the very distinction the surface file exists to draw.
+function sessionStartedGranting(
   profile: string,
   capabilities: ReadonlyArray<string>,
-  disabledTools: string[],
+  tools: string[],
 ): HarnessEvent {
   return gg({
     type: "session_started",
@@ -277,46 +272,44 @@ function sessionStartedAblating(
             params: {},
           })),
           modelId: "mock/scripted-builder",
-          disabledTools,
+          tools,
         },
       ],
     },
   });
 }
 
-// The row one offered thing reads on, found by its name inside the section it belongs to.
-// Its state is carried on data attributes rather than on a class, because the test
-// environment stubs CSS modules away — and "offered but not used" is a state, not a
-// look.
 // One model-facing call, as a responses-as-code program's turn streams it. The opening
-// half is emitted before the work, so anything the call runs — a bridged tool, a whole
-// delegated sub-run — arrives between it and its result.
-function apiCall(module: string, fn: string, agentId = "root"): HarnessEvent {
+// half is emitted before the work, so a call that spawns a whole delegated sub-run has
+// that sub-run's own stream arriving between it and its result. Nothing of the tool
+// vocabulary appears in between: the two surfaces are independent, and a program's call
+// is recorded as this pair and as nothing else.
+function apiCall(operation: string, agentId = "root"): HarnessEvent {
   return ggFrom(agentId, undefined, {
+    // gg's own operation id is the whole of what the wire carries, and what every
+    // row's count joins on.
     type: "api_call",
-    object: module,
-    function: fn,
-    // gg's own identity for the call: what every row's count joins on.
-    operation: `${module}.${fn}`,
+    operation,
   } as GgTelemetryKind);
 }
 
 // …and the closing half, carrying the verdict.
 function apiResult(
-  module: string,
-  fn: string,
+  operation: string,
   ok = true,
   agentId = "root",
 ): HarnessEvent {
   return ggFrom(agentId, undefined, {
     type: "api_result",
-    object: module,
-    function: fn,
-    operation: `${module}.${fn}`,
+    operation,
     ok,
   } as GgTelemetryKind);
 }
 
+// The row one offered thing reads on, found by its name inside the section it belongs to.
+// Its state is carried on data attributes rather than on a class, because the test
+// environment stubs CSS modules away — and "offered but not used" is a state, not a
+// look.
 function surfaceRow(section: string, name: string): HTMLElement {
   const region = screen.getByRole("region", { name: section });
   return within(region).getByText(name).closest("li")!;
@@ -1248,7 +1241,11 @@ describe("GgRunMonitorPage", () => {
     // reached for? A call count alone cannot tell those apart, and they are opposite
     // findings — one is the harness, the other is the model.
     renderMonitor([
-      sessionStartedAblating("Root", ["shell", "filesystem"], ["run_shell"]),
+      sessionStartedGranting(
+        "Root",
+        ["shell", "filesystem"],
+        ["read_file", "write_file", "grep"],
+      ),
       gg({
         type: "agent_spawned",
         cwd: "/work",
@@ -1256,7 +1253,7 @@ describe("GgRunMonitorPage", () => {
         modelId: "mock/scripted-builder",
         depth: 0,
       }),
-      surface("root", ["read_file", "write_file", "grep"], [], ["run_shell"]),
+      surface("root", ["read_file", "write_file", "grep"]),
       gg({ type: "tool_call", name: "read_file", args: {} }),
       gg({ type: "tool_call", name: "read_file", args: {} }),
     ]);
@@ -1281,50 +1278,13 @@ describe("GgRunMonitorPage", () => {
     );
     expect(screen.getByText("1 of 3 called")).toBeInTheDocument();
 
-    // And the ablation beside it, as gg reported it applied: a tool this profile was
-    // denied is listed as withheld rather than being an absence indistinguishable from a
-    // tool nobody called.
-    const withheld = surfaceRow("withheld tools", "run_shell");
-    expect(withheld).toHaveTextContent("withheld");
-    expect(withheld).toHaveAttribute("data-withheld");
+    // The tool the run granted no agent is not on the file at all — its absence is the
+    // "never offered" finding, said by there being no row rather than by a struck one.
     expect(
       within(screen.getByRole("region", { name: "offered tools" })).queryByText(
         "run_shell",
       ),
     ).toBeNull();
-  });
-
-  it("says nothing was withheld when the ablation named no gg tool", () => {
-    // The validity hazard this closes. A configuration may disable a name gg does not
-    // know — a typo, a tool since removed — and gg treats it as inert: it warns at
-    // startup and offers the agent exactly the surface it would have had. So gg leaves it
-    // out of the surface's `withheld`, and the console must not resurrect it from the
-    // configuration: asserting an ablation that never applied, on the one page that
-    // exists to separate "the harness never gave it" from "the model ignored it", would
-    // make an unrun arm of a sweep read as a run one.
-    renderMonitor([
-      sessionStartedAblating("Root", ["filesystem"], ["read_files"]),
-      gg({
-        type: "agent_spawned",
-        cwd: "/work",
-        slot: "Root",
-        modelId: "mock/scripted-builder",
-        depth: 0,
-      }),
-      // gg resolved the ablation to nothing, so it reports none — with the offered set
-      // untouched, `read_file` and all.
-      surface("root", ["read_file", "write_file"]),
-    ]);
-    openTab("Instances");
-    openFile("root tools");
-
-    // No section at all rather than an empty one: there is nothing to say. Between that
-    // and the offered set, the typo has nowhere left on the file to appear.
-    expect(screen.queryByRole("region", { name: "withheld tools" })).toBeNull();
-    const offered = screen.getByRole("region", { name: "offered tools" });
-    expect(within(offered).queryByText("read_files")).toBeNull();
-    // And the real tool the typo was reaching for is still offered, undimmed by it.
-    expect(within(offered).getByText("read_file")).toBeInTheDocument();
   });
 
   it("names a code agent's surface APIs, and counts each function as itself", () => {
@@ -1370,9 +1330,9 @@ describe("GgRunMonitorPage", () => {
         ],
       ),
       // What the model wrote, and what that ran. Only the first is what a row counts.
-      apiCall("files", "read_file"),
+      apiCall("files.read_file"),
       gg({ type: "tool_call", name: "read_file", args: {} }),
-      apiCall("views", "open_file"),
+      apiCall("views.open_file"),
       gg({ type: "tool_call", name: "read_file", args: {} }),
     ]);
     openTab("Instances");
@@ -1456,7 +1416,7 @@ describe("GgRunMonitorPage", () => {
       ),
       // One call, written as `view.openFile` — and the `read_file` it ran through, which
       // belongs to the execution record and not to any of these rows.
-      apiCall("views", "open_file"),
+      apiCall("views.open_file"),
       gg({ type: "tool_call", name: "read_file", args: {} }),
     ]);
     openTab("Instances");
@@ -1502,7 +1462,6 @@ describe("GgRunMonitorPage", () => {
             functions: [{ name: "readFile", operation: "files.read_file" }],
           },
         ],
-        [],
         "return-and-parameters",
       ),
     ]);
@@ -1552,7 +1511,8 @@ describe("GgRunMonitorPage", () => {
   });
 
   it("counts a function offered and not used as a real zero", () => {
-    // The unused half of the contrast, which is the half an ablation is read for: it
+    // The unused half of the contrast, which is the half two compared configurations are
+    // read for: it
     // has to be a real finding about the model rather than an absence of measurement. So it
     // is stated as the measurement it is — `0×`, in the same column as every other figure —
     // rather than in prose that cannot be compared against the row above it, with the
@@ -2594,8 +2554,13 @@ describe("GgRunMonitorPage", () => {
         { name: "Root", capabilities: ["subagents"] },
         { name: "reviewer", capabilities: ["filesystem"] },
       ]),
-      gg({ type: "agent_spawned",
- cwd: "/work", slot: "Root", modelId: "mock/x", depth: 0 }),
+      gg({
+        type: "agent_spawned",
+        cwd: "/work",
+        slot: "Root",
+        modelId: "mock/x",
+        depth: 0,
+      }),
       ...["agent-0", "agent-1"].flatMap((id, index) => [
         ggFrom(id, "root", {
           type: "agent_spawned",
@@ -2727,7 +2692,8 @@ describe("GgRunMonitorPage", () => {
   });
 
   it("says an isolated profile has no agent-scoped state rather than showing nothing", () => {
-    // The ablation's off arm. Two Reviewer instances, `isolated` memories, two stores: any
+    // The `isolated` configuration. Two Reviewer instances, `isolated` memories, two
+    // stores: any
     // rendering of either one as "the reviewer's memories" would be a lie about the other,
     // so the row states that, states how much of the capability went unused, and hands the
     // reader to the surface where N stores are compared.
@@ -2967,8 +2933,13 @@ describe("GgRunMonitorPage", () => {
         { name: "Root", capabilities: ["subagents"] },
         { name: "reviewer", capabilities: ["filesystem"] },
       ]),
-      gg({ type: "agent_spawned",
- cwd: "/work", slot: "Root", modelId: "mock/x", depth: 0 }),
+      gg({
+        type: "agent_spawned",
+        cwd: "/work",
+        slot: "Root",
+        modelId: "mock/x",
+        depth: 0,
+      }),
       ...instance("agent-0", 2000),
       ...instance("agent-1", 8000),
     ]);
@@ -2993,8 +2964,13 @@ describe("GgRunMonitorPage", () => {
   it("folds an opened agent row back away when it is clicked again", () => {
     renderMonitor([
       sessionStarted(),
-      gg({ type: "agent_spawned",
- cwd: "/work", slot: "Root", modelId: "mock/x", depth: 0 }),
+      gg({
+        type: "agent_spawned",
+        cwd: "/work",
+        slot: "Root",
+        modelId: "mock/x",
+        depth: 0,
+      }),
       gg({ type: "turn_started" }),
     ]);
     openTab("Agents");
@@ -3300,13 +3276,11 @@ describe("GgRunMonitorPage", () => {
   // --- What a responses-as-code agent is reported to have DONE --------------------
   //
   // Every surface that answers "what did this agent call" reads the record the agent
-  // actually called on. For a code agent that is the API layer: its program wrote
-  // `fs.readFile`, and the `read_file` underneath is an implementation detail of the
-  // harness, not something the model did. Reading a code agent on the tool layer put
-  // three surfaces into a vocabulary the model never used — and dropped, entirely, every
-  // call no tool backs.
+  // actually called on, and for a code agent there is only one: its calls stream as
+  // `api_call`/`api_result` and as nothing else. So every row reads in the model's own
+  // spelling, and a call no gg tool backs is on the page exactly as a file read is.
 
-  it("folds a code agent's bridged call into one row, in the vocabulary its program wrote", () => {
+  it("reads a code agent's calls in the vocabulary its program wrote", () => {
     renderMonitor([
       sessionStarted(["filesystem"]),
       gg({
@@ -3338,46 +3312,29 @@ describe("GgRunMonitorPage", () => {
         ],
       ),
       gg({ type: "turn_started" }),
-      // A bridged call: the program wrote `gg.files.readFile`, and gg dispatched `read_file`
-      // inside the bracket to serve it. ONE action ⇒ one row.
-      apiCall("files", "read_file"),
-      gg({
-        type: "tool_call",
-        name: "read_file",
-        args: { path: "level.json" },
-      }),
-      gg({
-        type: "tool_result",
-        name: "read_file",
-        ok: true,
-        summary: "412 B",
-      }),
-      apiResult("files", "read_file"),
-      // A call no tool backs at all — invisible in the feed until the feed started
-      // reading the layer the model calls on.
-      apiCall("context", "list"),
-      apiResult("context", "list"),
+      // A call a gg tool serves underneath. It is still ONE action and one pair: a program
+      // emits no `tool_call`, so there is no second row to reconcile.
+      apiCall("files.read_file"),
+      apiResult("files.read_file"),
+      // A call no tool backs at all — on the page exactly as the one above it.
+      apiCall("context.list"),
+      apiResult("context.list"),
       // …and one that failed, which reads the way a failed tool result always has.
-      apiCall("files", "list"),
-      apiResult("files", "list", false),
+      apiCall("files.list"),
+      apiResult("files.list", false),
     ]);
     openTab("Instances");
     openFile("root activity");
 
     // The model's own spelling, resolved off the surface it reported — never the
     // snake_case identity the wire records the call under.
-    expect(screen.getByText("gg.files.readFile")).toBeInTheDocument();
-    // The bridged tool's args survive on the API row: `api_call` carries none, so
-    // absorbing them is the only way the path stays on the page at all.
-    expect(screen.getByText('{"path":"level.json"}')).toBeInTheDocument();
-    // …as does the result's summary.
-    expect(screen.getByText("gg.files.readFile: 412 B")).toBeInTheDocument();
-    // And the tool underneath appears NOWHERE: one action, one row.
+    expect(screen.getAllByText("gg.files.readFile").length).toBeGreaterThan(0);
+    // And the tool the read ran through appears NOWHERE: it is on the other surface, and
+    // this agent never touched it.
     expect(screen.queryByText("read_file")).toBeNull();
-    expect(screen.queryByText(/^read_file: /)).toBeNull();
 
     // The tool-less call is in the feed, both halves — under this arm's spelling of it,
-    // resolved off the surface exactly as the bridged call above was.
+    // resolved off the surface exactly as the call above was.
     expect(screen.getAllByText("gg.context.list").length).toBeGreaterThan(0);
     // A failed call reads as a failed result, in the same words a tool failure does.
     expect(screen.getAllByText("RESULT ✗")).toHaveLength(1);
@@ -3448,7 +3405,7 @@ describe("GgRunMonitorPage", () => {
         depth: 1,
       } as GgTelemetryKind),
       surface("agent-0", ["read_file"]),
-      apiCall("delegation", "spawn"),
+      apiCall("delegation.spawn"),
       // The child's whole sub-run nests inside the parent's open bracket.
       ggFrom("agent-0", "root", {
         type: "tool_call",
@@ -3461,7 +3418,7 @@ describe("GgRunMonitorPage", () => {
         ok: true,
         summary: "1 kB",
       } as GgTelemetryKind),
-      apiResult("delegation", "spawn"),
+      apiResult("delegation.spawn"),
     ]);
     openTab("Instances");
     openFolder("agent agent-0");
@@ -3473,13 +3430,12 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("read_file: 1 kB")).toBeInTheDocument();
   });
 
-  it("closes a bracket at the turn boundary rather than absorbing the next turn", () => {
-    // A run killed mid-call leaves an opening half with no result. A bracket cannot
-    // outlive the turn it was opened in — a program runs inside one turn — so the damage
-    // is bounded to that turn instead of one unclosed bracket eating the rest of the
-    // agent's feed. The stranded call is a documentation carve-out, which no arm's
-    // catalogue spells and which therefore names no operation: the row falls back to the
-    // identity the call was RECORDED under rather than guessing at a spelling.
+  it("reads a call its surface never spelled under the operation id itself", () => {
+    // A surface names the arm's spelling of every function it bound, and the feed reads a
+    // row by that spelling. A call whose operation the surface never mentioned — an arm
+    // that bound the module and not this function, or a surface that arrived truncated —
+    // has no spelling to read by, and the row falls back to the identity the call was
+    // RECORDED under rather than guessing at one or showing a blank.
     renderMonitor([
       sessionStarted(["filesystem"]),
       gg({
@@ -3491,7 +3447,7 @@ describe("GgRunMonitorPage", () => {
       }),
       surface(
         "root",
-        ["read_file"],
+        [],
         [
           {
             module: "files",
@@ -3502,22 +3458,12 @@ describe("GgRunMonitorPage", () => {
         ],
       ),
       gg({ type: "turn_started" }),
-      gg({
-        type: "api_call",
-        object: "docs",
-        function: "search",
-      } as GgTelemetryKind),
-      gg({ type: "turn_started" }),
-      gg({ type: "tool_call", name: "read_file", args: { path: "c.ts" } }),
+      apiCall("docs.search"),
     ]);
     openTab("Instances");
     openFile("root activity");
 
-    // The unresolvable spelling reads as the wire's, never as a blank and never as a guess.
     expect(screen.getByText("docs.search")).toBeInTheDocument();
-    // The next turn's tool row is its own row, not swallowed into the stranded bracket.
-    expect(screen.getByText("read_file")).toBeInTheDocument();
-    expect(screen.getByText('{"path":"c.ts"}')).toBeInTheDocument();
   });
 
   it("heads each agent's Overview with the surface it actually called on", () => {
@@ -3546,9 +3492,9 @@ describe("GgRunMonitorPage", () => {
         ],
       ),
       gg({ type: "turn_started" }),
-      apiCall("files", "read_file"),
+      apiCall("files.read_file"),
       gg({ type: "tool_call", name: "read_file", args: {} }),
-      apiResult("files", "read_file"),
+      apiResult("files.read_file"),
       // A tool-calling sibling on the same run, to prove the choice is per instance.
       ggFrom("agent-0", "root", {
         type: "agent_spawned",
@@ -3601,9 +3547,9 @@ describe("GgRunMonitorPage", () => {
           },
         ],
       ),
-      apiCall("files", "read_file"),
+      apiCall("files.read_file"),
       gg({ type: "tool_call", name: "read_file", args: {} }),
-      apiResult("files", "read_file"),
+      apiResult("files.read_file"),
     ]);
     // The Dashboard is the default tab.
     expect(screen.getByText("gg.files.readFile")).toBeInTheDocument();

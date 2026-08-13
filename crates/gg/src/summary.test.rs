@@ -181,7 +181,7 @@ fn empty_tracker_finalizes_to_a_zeroed_summary() {
 
 /// The effective toolset is recorded directly (not folded in from the stream), so it survives on
 /// the finalized summary in the exact order the registry offered it — the durable, slice-by
-/// ablation variable a query reads.
+/// configuration variable a query reads.
 #[test]
 fn records_the_effective_toolset_verbatim() {
     let tracker = SessionSummaryTracker::new();

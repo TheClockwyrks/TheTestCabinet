@@ -19,19 +19,19 @@ use super::test_cabinet::gg::context::{
 use super::test_cabinet::gg::types::ToolError;
 use super::{MembraneState, ToolApi};
 use crate::model::Role;
-use crate::sandbox::language::{
+use crate::sandbox::operations::{
     CONTEXT_ARCHIVE_THREAD, CONTEXT_COMPACT, CONTEXT_EVICT_FILE_VIEW, CONTEXT_SEARCH_ARCHIVE,
+    OperationId,
 };
-use crate::tools::{
-    ARCHIVE_THREAD_TOOL, COMPACT_TOOL, EVICT_FILE_VIEW_TOOL, ReclaimData, SEARCH_ARCHIVE_TOOL,
-    ToolData,
-};
+use crate::tools::{ReclaimData, ToolData};
 
 impl<A: ToolApi> ContextHost for MembraneState<A> {
     fn evict_file_view(&mut self, path: Option<String>) -> Result<ReclaimReport, ToolError> {
         self.recorded(CONTEXT_EVICT_FILE_VIEW, |state, rec| {
-            let outcome = state.call(rec, EVICT_FILE_VIEW_TOOL, |api| api.evict_file_view(path))?;
-            reclaim(state, EVICT_FILE_VIEW_TOOL, outcome.data)
+            let outcome = state.call(rec, CONTEXT_EVICT_FILE_VIEW, |api| {
+                api.evict_file_view(path)
+            })?;
+            reclaim(state, CONTEXT_EVICT_FILE_VIEW, outcome.data)
         })
     }
 
@@ -46,10 +46,10 @@ impl<A: ToolApi> ContextHost for MembraneState<A> {
                     to: u64::from(range.end),
                 })
                 .collect();
-            let outcome = state.call(rec, ARCHIVE_THREAD_TOOL, |api| {
+            let outcome = state.call(rec, CONTEXT_ARCHIVE_THREAD, |api| {
                 api.archive_thread(ranges.clone())
             })?;
-            reclaim(state, ARCHIVE_THREAD_TOOL, outcome.data)
+            reclaim(state, CONTEXT_ARCHIVE_THREAD, outcome.data)
         })
     }
 
@@ -62,14 +62,15 @@ impl<A: ToolApi> ContextHost for MembraneState<A> {
     /// to the model on its next turn, in the window it wakes up in.
     fn compact(&mut self, summary: String, files: Vec<String>) -> Result<(), ToolError> {
         self.recorded(CONTEXT_COMPACT, |state, rec| {
-            state.call(rec, COMPACT_TOOL, |api| api.compact(summary, files))?;
+            state.call(rec, CONTEXT_COMPACT, |api| api.compact(summary, files))?;
             Ok(())
         })
     }
 
     fn search_archive(&mut self, query: String) -> Result<ArchiveSearch, ToolError> {
         self.recorded(CONTEXT_SEARCH_ARCHIVE, |state, rec| {
-            let outcome = state.call(rec, SEARCH_ARCHIVE_TOOL, |api| api.search_archive(query))?;
+            let outcome =
+                state.call(rec, CONTEXT_SEARCH_ARCHIVE, |api| api.search_archive(query))?;
             match outcome.data {
                 Some(ToolData::ArchiveSearch(search)) => Ok(ArchiveSearch {
                     // "Nothing has been archived yet" and "the search ran and matched nothing" are
@@ -87,7 +88,7 @@ impl<A: ToolApi> ContextHost for MembraneState<A> {
                         })
                         .collect(),
                 }),
-                other => Err(state.missing_data(SEARCH_ARCHIVE_TOOL, other.as_ref())),
+                other => Err(state.missing_data(CONTEXT_SEARCH_ARCHIVE, other.as_ref())),
             }
         })
     }
@@ -103,7 +104,7 @@ impl<A: ToolApi> ContextHost for MembraneState<A> {
 /// the roster entry the dispatch already wrote, which until this point says the call succeeded.
 fn reclaim<A: ToolApi>(
     state: &mut MembraneState<A>,
-    tool: &'static str,
+    id: OperationId,
     data: Option<ToolData>,
 ) -> Result<ReclaimReport, ToolError> {
     match data {
@@ -118,7 +119,7 @@ fn reclaim<A: ToolApi>(
             paths,
             detail,
         }),
-        other => Err(state.missing_data(tool, other.as_ref())),
+        other => Err(state.missing_data(id, other.as_ref())),
     }
 }
 

@@ -54,7 +54,6 @@ function surface(
   agentId: string,
   tools: string[],
   apis?: GgAgentApi[],
-  withheld?: string[],
   docViewTypes?: string,
 ): HarnessEvent {
   return gg(agentId, {
@@ -62,11 +61,9 @@ function surface(
     executionMode: apis ? "responses_as_code" : "tool_calling",
     tools,
     // Omitted rather than empty for tool calling, exactly as gg writes it, so the reducer's
-    // normalization is what these exercise. `withheld` is omitted the same way by an agent
-    // that ablated nothing — or whose ablation named nothing gg knows, and `docViewTypes`
-    // by an agent that opens no documentation at all.
+    // normalization is what these exercise. `docViewTypes` is omitted the same way by an
+    // agent that opens no documentation at all.
     ...(apis ? { apis } : {}),
-    ...(withheld ? { withheld } : {}),
     ...(docViewTypes ? { docViewTypes } : {}),
   } as GgTelemetryKind);
 }
@@ -122,23 +119,6 @@ describe("agent surface reduction", () => {
     expect(state.agents.get("root")?.surface?.apis).toEqual([]);
   });
 
-  it("carries the ablation gg resolved, and normalizes its absence", () => {
-    // `withheld` is gg's own answer to what the profile's `disabledTools` actually took
-    // away — the entries that name a gg tool. It has to reach the node, because a console
-    // re-deriving it from the configuration would assert an ablation gg found inert (a
-    // typo, a tool since removed) as one that applied. gg simply leaves such a name out,
-    // so an agent whose whole ablation was inert reports the key omitted, exactly like one
-    // that ablated nothing — and both settle to empty here.
-    const state = reduceGgEvents([
-      spawn("root", "Root"),
-      surface("root", ["read_file"], undefined, ["run_shell"]),
-      spawn("agent-1", "reviewer", "root"),
-      surface("agent-1", ["read_file"]),
-    ]);
-    expect(state.agents.get("root")?.surface?.withheld).toEqual(["run_shell"]);
-    expect(state.agents.get("agent-1")?.surface?.withheld).toEqual([]);
-  });
-
   it("keeps a responses-as-code agent's modules and each function's own operation", () => {
     const state = reduceGgEvents([
       spawn("root", "Root"),
@@ -190,7 +170,6 @@ describe("agent surface reduction", () => {
             functions: [{ name: "readFile", operation: "files.read_file" }],
           },
         ],
-        undefined,
         "return-and-parameters",
       ),
       spawn("agent-1", "reviewer", "root"),
@@ -205,48 +184,35 @@ describe("agent surface reduction", () => {
   });
 
   it("counts each api call under the operation it resolved to", () => {
-    // The complaint this accounting exists to answer: `views.openFile` runs a `read_file`
-    // and a documentation search runs nothing at all, and both are calls the model made.
-    //
     // The key is the OPERATION, so the same count is produced by an arm that spelled the
-    // call `readFile` and one that spelled it `read_file`. A carve-out has no operation and
-    // is counted under the pair gg records it as, which is the same shape.
+    // call `readFile` and one that spelled it `read_file`. Every model-facing call a
+    // program makes has one — the documentation family included — so there is nothing here
+    // that has to be counted under something else.
     const state = reduceGgEvents([
       spawn("root", "Root"),
       gg("root", {
         type: "api_call",
-        object: "views",
-        function: "open_file",
         operation: "views.open_file",
       } as GgTelemetryKind),
       gg("root", {
-        type: "tool_call",
-        name: "read_file",
-        args: {},
-      } as GgTelemetryKind),
-      gg("root", {
         type: "api_result",
-        object: "views",
-        function: "open_file",
         operation: "views.open_file",
         ok: true,
       } as GgTelemetryKind),
       gg("root", {
         type: "api_call",
-        object: "docs",
-        function: "search",
+        operation: "docs.search",
       } as GgTelemetryKind),
       gg("root", {
         type: "api_call",
-        object: "docs",
-        function: "search",
+        operation: "docs.search",
       } as GgTelemetryKind),
     ]);
 
     expect(state.apiCalls.get("views.open_file")).toBe(1);
     expect(state.apiCalls.get("docs.search")).toBe(2);
-    // The tool layer records what ran, and is not where a call's count comes from.
-    expect(state.apiCalls.get("files.read_file")).toBeUndefined();
+    // The other surface's record stays empty: a program emits no `tool_call` at all.
+    expect(state.toolCalls.size).toBe(0);
   });
 
   it("leaves a stream that never reported one with no surface", () => {

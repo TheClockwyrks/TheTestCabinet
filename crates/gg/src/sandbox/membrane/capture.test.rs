@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use serde_json::json;
 
 use super::*;
-use crate::sandbox::fake::{CallLog, all_tools, canned_outcome, membrane, membrane_with};
+use crate::sandbox::fake::{CallLog, all_operations, canned_outcome, membrane, membrane_with};
 use crate::sandbox::membrane::test_cabinet::gg::feedback::{ErrorKind, Host as FeedbackHost};
 use crate::sandbox::membrane::test_cabinet::gg::files::{FileRead, Host as FilesHost};
 use crate::tools::{FileImageData, ToolFailure};
@@ -140,7 +140,7 @@ fn the_roster_is_capped_and_what_it_dropped_is_counted() {
 fn a_suppressed_record_does_not_corrupt_the_last_kept_one() {
     let log = CallLog::default();
     // Every call succeeds except the sidecar-less one at the end.
-    let mut state = membrane_with(&log, &all_tools(), None, |name, args| {
+    let mut state = membrane_with(&log, &all_operations(), None, |name, args| {
         if name == "read_file" {
             ToolOutcome::ok("listed", "listed")
         } else {
@@ -158,7 +158,7 @@ fn a_suppressed_record_does_not_corrupt_the_last_kept_one() {
     let parts = state.into_parts();
     assert_eq!(parts.calls_suppressed, 1);
     let last = parts.calls.last().expect("the roster is not empty");
-    assert_eq!(last.name, "list_dir");
+    assert_eq!(last.name, "files.list_dir");
     assert!(
         last.ok,
         "a suppressed failure was blamed on an earlier call"
@@ -177,7 +177,7 @@ fn refusals_are_capped_so_a_spent_budget_cannot_grow_them_without_bound() {
     let expired = Instant::now()
         .checked_sub(Duration::from_secs(1))
         .expect("a one-second-old instant exists");
-    let mut state = membrane_with(&log, &all_tools(), Some(expired), canned_outcome);
+    let mut state = membrane_with(&log, &all_operations(), Some(expired), canned_outcome);
 
     let attempts = MAX_RECORDED_REFUSALS + 40;
     for _ in 0..attempts {
@@ -198,7 +198,7 @@ fn refusals_are_capped_so_a_spent_budget_cannot_grow_them_without_bound() {
 #[test]
 fn a_long_failure_message_is_capped_on_the_record() {
     let log = CallLog::default();
-    let mut state = membrane_with(&log, &all_tools(), None, |_, _| {
+    let mut state = membrane_with(&log, &all_operations(), None, |_, _| {
         ToolOutcome::failed(ToolFailure::IoError, "z".repeat(64 * 1024))
     });
 

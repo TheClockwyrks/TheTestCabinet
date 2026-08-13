@@ -32,6 +32,7 @@ use crate::skills::{SkillLibrary, SkillsRuntime, parse_skill};
 use crate::tasks::{TaskMode, TasksRuntime};
 use crate::tools::{
     ALL_TOOL_NAMES, AgentFacts, READ_MODE_DEFAULT_CAP, READ_MODE_UNLIMITED, ToolRegistry,
+    capability_tools,
 };
 
 /// Every tool gg can offer, in [`ALL_TOOL_NAMES`] order, each carrying its default rendering, what
@@ -381,7 +382,7 @@ pub(crate) const MAXIMAL_CONFIGURATION: Configuration = Configuration {
     // from a self-summarization witness, withholding `responses-as-code` withholds the tool, so the
     // capability is recorded as required outright and a non-code self-compaction run — which really
     // is offered `compact` — is predicted to be denied it. Measured from here, both axes survive
-    // their own ablation and the pair scan finds the real sentence.
+    // their own withholding and the pair scan finds the real sentence.
     //
     // Measured, not reasoned: moving this field to the default makes
     // `the_derived_conditions_predict_every_registry` fail on exactly that configuration and
@@ -417,20 +418,33 @@ pub(crate) fn registry_definitions(configuration: &Configuration) -> Vec<ToolDef
 }
 
 /// The profile `configuration` describes: each held capability, configured by the policies that
-/// belong to it, and the roster the delegation tools point at.
+/// belong to it, the [allowlist](GgAgentConfig::tools) that grants every tool those capabilities
+/// offer, and the roster the delegation tools point at.
+///
+/// The allowlist is **maximal** rather than narrowed, and it has to be: this profile exists to ask
+/// *what does this capability contribute*, and an agent's allowlist answers a different question —
+/// which of what a capability contributes that one agent was handed. Narrowing it here would make
+/// the reference document one operator's configuration instead of gg. It is derived from
+/// [`capability_tools`] rather than written out, so a tool gg grows is in the reference the moment
+/// its capability offers it.
 ///
 /// The roster entry carries **every** [scope](GgSubagentRef::any), because the three scopes gate
 /// three different tools — general spawning, an issue's implementer, an issue's reviewer — and a
 /// reference that showed only one of them would silently drop the other two.
 fn agent(configuration: &Configuration) -> GgAgentConfig {
-    let capabilities = CAPABILITY_AXES
+    let capabilities: Vec<GgCapabilityConfig> = CAPABILITY_AXES
         .iter()
         .enumerate()
         .filter(|(axis, _)| configuration.holds(*axis))
         .map(|(_, id)| capability(id, configuration))
         .collect();
+    let tools = capability_tools(capabilities.iter().map(|capability| capability.id.as_str()))
+        .into_iter()
+        .map(str::to_string)
+        .collect();
     GgAgentConfig {
         capabilities,
+        tools,
         subagents: if configuration.roster {
             vec![GgSubagentRef::any(PLACEHOLDER_AGENT)]
         } else {

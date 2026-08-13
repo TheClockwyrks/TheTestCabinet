@@ -201,12 +201,12 @@ export const CONTEXT_SOURCE_COLORS: Record<GgContextSource, string> = {
 };
 
 // The capabilities each context source is the product of — a source whose
-// capabilities are all ablated off cannot fill the window, so listing it is noise.
+// capabilities are all switched off cannot fill the window, so listing it is noise.
 // Sources with no entry are unconditional: system/user prompt/assistant/tool output
 // are what any run is made of, history accrues in every run (a superseded block is
 // retagged as history whether or not compaction ever fires), and agent views are
 // ungated by design — `view.openText` is bound whatever the capability set says, so
-// that a run with every tool withheld can still show its model something.
+// that a run granting nothing at all can still show its model something.
 //
 // The two error bands are the sharpest case for the filter: they exist only where a reply is a
 // *program*, so a tool-calling run can never produce either one, and drawing an empty Compiler

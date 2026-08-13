@@ -84,8 +84,8 @@ limit = 5)`, `gg.shell.run("npm test", timeoutSecs = 30)`. A type is written
 under the module that produces it (`gg.files.FileRead`, `gg.tasks.TaskStatus`).
 Bridge declarations are `internal`, which is module visibility, and a program is
 its own module, so a program cannot name the crossing. Every function is bound
-on every turn: a call to a capability this run withheld compiles and fails when
-it runs, which is the rule the
+on every turn: a call the agent was not granted compiles and fails when it runs,
+which is the rule the
 [agent surface](/gg/languages/agent-surface/) states for every arm.
 
 The surface is idiomatic Kotlin:
