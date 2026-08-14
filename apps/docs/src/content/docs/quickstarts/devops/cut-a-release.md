@@ -75,12 +75,15 @@ so this is the only macOS check before the artifacts are built).
 Merge `nightly` into `staging` as a `vX.Y.Z-rcN` PR, then wait for its images:
 
 ```sh
-gh run list --workflow=build-service-images.yml --branch staging --limit 5 \
-  --json headSha,conclusion,createdAt     # wait for the sha to publish
+for wf in build-service-images build-containers; do                 # both run on
+  gh run list --workflow=$wf.yml --branch staging --limit 5 \       # every push;
+    --json headSha,conclusion,createdAt                             # wait for both
+done
 ```
 
 Re-pin `deployments/k8s/overlays/azure-staging` to that sha (the `images:` block +
-`patch-dispatcher-driver-image.yaml` + `patch-dispatcher-publisher.yaml`), apply
+`patch-dispatcher-driver-image.yaml`, including its `TCAB_CONTAINER_TAG`, +
+`patch-dispatcher-publisher.yaml`), apply
 it the way [Roll Production Service
 Images](/quickstarts/devops/roll-prod-service-images/) does but against the staging
 cluster, then:
@@ -99,11 +102,12 @@ back onto `nightly` and return as the next rc — never straight onto `staging`.
 # the release workflows live on GitHub.
 git push gh master
 
-# The desktop app bakes TCAB_DESKTOP_IMAGE_TAG=<sha>, so images MUST exist at it.
-# build-service-images is path-filtered — a docs/test-case-only merge builds NOTHING.
+# Both image workflows run on EVERY master push, so the merge always publishes a
+# complete `:<sha>` set — just wait for them (the release gates on it either way).
 gh run list --workflow=build-service-images.yml --branch master --limit 5 \
   --json headSha,conclusion,createdAt
-gh workflow run build-service-images.yml --ref master   # only if that sha has no images
+gh run list --workflow=build-containers.yml --branch master --limit 5 \
+  --json headSha,conclusion,createdAt
 
 gh workflow run release.yml --ref master -f version=vX.Y.Z   # builds + PRERELEASE + tag
 # ... download every platform's artifacts and exercise them (this is the only gate
@@ -114,8 +118,8 @@ gh workflow run release-promote.yml -f tag=vX.Y.Z            # flips to latest, 
 ## 4. Land it in production
 
 ```sh
-# Roll the service images to the release sha (leave TCAB_CONTAINER_TAG alone unless
-# build-containers published at that sha): see the roll-prod quickstart.
+# Roll the service images AND TCAB_CONTAINER_TAG to the release sha — every master
+# sha now carries both image sets: see the roll-prod quickstart.
 # Then publish the release's catalog work — cases, errata, reference-build URLs:
 scripts/reingest-cluster.sh --env prod
 ```

@@ -103,17 +103,16 @@ patches:
 #
 # The RUN-CONTAINER images (test-cabinet-base/-base-wasm/-sprite/-sprite-sheet/-adversarial/
 # -performance, plus the voxel/mesh/skin/ui/material/particle/audio kinds) are pinned
-# SEPARATELY via TCAB_CONTAINER_TAG in patch-dispatcher-driver-image.yaml and are NOT
-# generally in lockstep with the service images — they only rebuild when
-# `build-containers` runs. At v0.6.1-rc5 they remain OUT of lockstep, and the gap has
-# widened: every `staging` build since v0.6.0-beta4 — v0.6.0-rc1, rc2 and v0.6.1-rc1,
-# rc4, rc4.1, rc5 — ran only `build-service-images`, NOT `build-containers`, so
-# TCAB_CONTAINER_TAG stays at the v0.6.0-beta4 build `e6afbee6` (the latest sha at which
-# `build-containers` published). It stays benign for the same reason it does on staging:
-# nothing under containers/ has changed on the branch since `e6afbee6`, so the beta4 run
-# images are still content-current. Still re-pin TCAB_CONTAINER_TAG only to a sha at
-# which `build-containers` actually published. Roll the service images — staging before
-# prod — when promoting a build.
+# SEPARATELY via TCAB_CONTAINER_TAG in patch-dispatcher-driver-image.yaml, because that
+# tag decides the image every future RUN executes inside: it advances with a rehearsed
+# release, not with every service roll. It currently sits at the v0.6.0-beta4 build
+# `e6afbee6` while the service images are at v0.6.1-rc5 — a leftover of
+# `build-containers` having been path-filtered, which left every build since beta4
+# (v0.6.0-rc1, rc2 and v0.6.1-rc1, rc4, rc4.1, rc5) with no run images to pin to. It
+# stayed benign only because nothing under containers/ changed in that window. Both
+# image workflows now run unfiltered on every master/staging push, so run images exist
+# at EVERY sha and the two pins should be brought back together at the next release.
+# Roll the service images — staging before prod — when promoting a build.
 images:
   - name: REPLACE_REGISTRY/tcab-backend
     newName: ghcr.io/theclockwyrks/tcab-backend
