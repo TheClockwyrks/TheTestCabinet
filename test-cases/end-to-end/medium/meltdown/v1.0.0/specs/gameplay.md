@@ -20,8 +20,8 @@ and pathing are reproducible and independent of the render frame rate. The rate 
 fixed at 60 Hz rather than chosen by the build: the debug API of
 `specs/instrumentation.md` advances the simulation in whole steps, and a step is only
 a unit of time if its length is fixed. State advances by stepping this fixed-timestep
-update, and rendering only reads the state, so the core makes progress without a
-canvas or the wall clock. Any randomness the game uses (which vent each unit enters
+update, so the core makes progress without a canvas, without the wall clock, and
+without the renderer. Any randomness the game uses (which vent each unit enters
 from, spawn timing jitter, and any variation the special modes introduce) runs off a
 seedable generator, so reseeding and replaying the same inputs reproduces the same
 result exactly. The game-speed control (`specs/controls.md`) changes how many

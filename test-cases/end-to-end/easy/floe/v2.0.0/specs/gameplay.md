@@ -32,7 +32,8 @@ rendering:
   can count in (`specs/instrumentation.md`).
 - Render-free core. Game state advances by stepping the simulation and does not
   depend on a canvas, on `requestAnimationFrame`, or on wall-clock time to make
-  progress. Rendering reads the state, never the other way around.
+  progress. The dependency runs one way: the simulation never reads from, waits
+  on, or is driven by the renderer.
 - Seeded randomness. Any randomness the game uses, such as which open bay the
   bonus-catch fish appears in (below) and the lanes' spawn phases, runs off a
   seedable generator, so reseeding and replaying the same inputs reproduces the same

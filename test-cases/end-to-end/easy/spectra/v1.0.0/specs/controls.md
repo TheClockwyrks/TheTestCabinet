@@ -12,9 +12,8 @@ drones' paths are reproducible; do not tie the simulation to the render frame
 rate. The rate is fixed rather than a suggestion: the debugging and automation
 surface in `specs/instrumentation.md` advances the game in whole simulation
 steps, and a step is only a meaningful unit if its length is the same in every
-build. The core advances by integrating whole
-fixed steps and does not depend on a canvas or on wall-clock time to make
-progress: rendering reads the state, never the other way around. Any randomness
+build. The core advances by integrating whole fixed steps and does not depend on
+a canvas, on wall-clock time, or on the renderer to make progress. Any randomness
 the game uses, such as which drone dives next or a Flux's starting phase, runs off
 a seedable generator, so the same seed and the same sequence of inputs reproduce
 the same game exactly. This deterministic, steppable core is also what the

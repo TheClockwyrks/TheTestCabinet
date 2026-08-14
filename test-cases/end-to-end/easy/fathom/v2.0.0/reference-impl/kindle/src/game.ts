@@ -51,7 +51,14 @@ import {
   VISION_GAIN,
   VISION_MIN,
 } from "./constants";
-import { advance, Drifter, Forager, Predator, wanderDir } from "./entities";
+import {
+  advance,
+  Drifter,
+  Forager,
+  Mover,
+  Predator,
+  wanderDir,
+} from "./entities";
 import { Effects } from "./effects";
 import { Input } from "./input";
 import { Maze } from "./maze";
@@ -465,7 +472,38 @@ export class Game {
   }
 
   // ---- fixed-step simulation -------------------------------------------
+
+  // ---- Render interpolation ---------------------------------------------
+  // The simulation advances in whole FIXED_STEP ticks, but a frame is presented
+  // whenever the display asks for one, and the two rates do not divide evenly.
+  // `fixedStep` stamps where the movers stood when the step began, and the
+  // animation loop sets `renderAlpha` to the fraction of the next step the wall
+  // clock has already covered; render.ts draws between the two (Mover.viewX /
+  // Mover.viewY, SonarWave.viewFront). Nothing here feeds back into the
+  // simulation — these are written by the step and read by the renderer, never
+  // the other way about, so the same tick sequence produces the same state
+  // whatever the frame rate.
+  renderAlpha = 0;
+
+  // Every mover the renderer interpolates: the forager, the predators, and the
+  // drifters.
+  private movers(): Mover[] {
+    return [this.forager, ...this.predators, ...this.drifters];
+  }
+
+  // Collapse the interpolation window onto the current state, so anything that
+  // was repositioned rather than moved is not drawn smearing across the jump.
+  syncView(): void {
+    for (const m of this.movers()) m.syncView();
+    for (const w of this.waves) w.prevFront = w.front;
+  }
+
+
   fixedStep(dt: number): void {
+    // Where everything stood before this step, for the renderer to interpolate
+    // from (see the render-interpolation block above).
+    this.syncView();
+
     this.time += dt;
     switch (this.state) {
       case GameState.Dive:

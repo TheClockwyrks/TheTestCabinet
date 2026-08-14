@@ -21,7 +21,7 @@ import {
   FIELD_W,
   P2_X0,
 } from "./constants";
-import { Ball, Paddle } from "./entities";
+import { Ball, lerp, Paddle } from "./entities";
 import {
   Input,
   KEY,
@@ -70,6 +70,41 @@ export class Game {
   // Seedable generator behind every random launch angle, so the debug API's
   // reset({ seed }) replays a match identically (see specs/instrumentation.md).
   private readonly rng = new Rng();
+
+  // ---- Render interpolation ---------------------------------------------
+  // The simulation advances in whole FIXED_STEP ticks, but a frame is presented
+  // whenever the display asks for one, and the two rates do not divide evenly.
+  // `fixedStep` stamps where the moving objects stood when the step began, and
+  // the animation loop sets `renderAlpha` to the fraction of the next step the
+  // wall clock has already covered; the `view*` reads below are what the
+  // renderer draws. Nothing here feeds back into the simulation — these are
+  // written by the step and read by the renderer, never the other way about, so
+  // the same tick sequence produces the same state whatever the frame rate.
+  // Each ball carries its own previous position (see Ball.viewX / Ball.viewY).
+  renderAlpha = 0;
+  private prevLeftCy = 360;
+  private prevRightCy = 360;
+  private prevSimTime = 0;
+
+  get viewLeftCy(): number {
+    return lerp(this.prevLeftCy, this.left.cy, this.renderAlpha);
+  }
+  get viewRightCy(): number {
+    return lerp(this.prevRightCy, this.right.cy, this.renderAlpha);
+  }
+  get viewSimTime(): number {
+    return lerp(this.prevSimTime, this.simTime, this.renderAlpha);
+  }
+
+  // Collapse the interpolation window onto the current state, for the paddles,
+  // every ball, and the clock. Called wherever the game repositions something
+  // instead of integrating it.
+  syncView(): void {
+    this.prevLeftCy = this.left.cy;
+    this.prevRightCy = this.right.cy;
+    this.prevSimTime = this.simTime;
+    for (const b of this.balls) b.syncView();
+  }
 
   // ---- Debug / automation state (see debug.ts; inert in normal play) ----
   // Who advances the simulation clock. True (the default) means the animation
@@ -120,6 +155,7 @@ export class Game {
       b.held = false;
       this.trails[i].reset();
     }
+    this.syncView();
   }
 
   private startMatch(mode: Mode): void {
@@ -140,6 +176,7 @@ export class Game {
     }
     this.holdTimer = HOLD_TIME;
     this.state = "countdown";
+    this.syncView();
   }
 
   // A uniformly random launch angle over the full 360deg, drawn from the seedable
@@ -241,6 +278,13 @@ export class Game {
   // ---- Fixed-timestep update --------------------------------------------
 
   fixedStep(dt: number): void {
+    // Where everything stood before this step, for the renderer to interpolate
+    // from (see the render-interpolation block above).
+    this.prevLeftCy = this.left.cy;
+    this.prevRightCy = this.right.cy;
+    this.prevSimTime = this.simTime;
+    for (const b of this.balls) b.syncView();
+
     if (this.state === "playing" || this.state === "countdown") {
       this.updatePaddles(dt);
     }
@@ -482,6 +526,7 @@ export class Game {
     const p = side === "left" ? this.left : this.right;
     if (cy !== undefined) p.cy = cy;
     if (vy !== undefined) this.driverVel![side] = vy;
+    this.syncView();
   }
 
   // The number of balls the driver can address (three in this variant).
@@ -506,6 +551,7 @@ export class Game {
     if (state.spin !== undefined) b.spin = state.spin;
     b.held = false;
     b.holdTimer = 0;
+    b.syncView();
   }
 
   // A read of the full observable state, shared by the debug API's snapshot() and

@@ -256,65 +256,83 @@ function drawGlyph(
 
 function drawDrone(ctx: CanvasRenderingContext2D, game: Game, d: Drone): void {
   const a = game.assetSet();
+  const dx = d.prevX + (d.x - d.prevX) * game.renderAlpha;
+  const dy = d.prevY + (d.y - d.prevY) * game.renderAlpha;
   if (d.kind === "shard") {
     const b = game.effBand(d.band);
-    drawSprite(ctx, a.shard[b], d.x, d.y, SHARD_SIZE, bandColor(b));
+    drawSprite(ctx, a.shard[b], dx, dy, SHARD_SIZE, bandColor(b));
     // The band glyph frames the crystal at full footprint, so a cyan Shard reads
     // as a RING and a magenta Shard as a DIAMOND — never a cyan diamond.
-    drawGlyph(ctx, b, d.x, d.y, SHARD_SIZE * 0.46);
+    drawGlyph(ctx, b, dx, dy, SHARD_SIZE * 0.46);
   } else if (d.kind === "flux") {
     if (d.shimmer) {
       // Settled on neither band: the provided mid-shimmer art, both glyphs faint.
-      drawSprite(ctx, a.fluxShimmer, d.x, d.y, FLUX_SIZE, "#ffffff");
+      drawSprite(ctx, a.fluxShimmer, dx, dy, FLUX_SIZE, "#ffffff");
       ctx.globalAlpha = 0.85;
-      drawGlyph(ctx, CYAN, d.x - 7, d.y, FLUX_SIZE * 0.28);
-      drawGlyph(ctx, MAGENTA, d.x + 7, d.y, FLUX_SIZE * 0.28);
+      drawGlyph(ctx, CYAN, dx - 7, dy, FLUX_SIZE * 0.28);
+      drawGlyph(ctx, MAGENTA, dx + 7, dy, FLUX_SIZE * 0.28);
       ctx.globalAlpha = 1;
     } else {
       const b = game.effBand(d.band);
-      drawSprite(ctx, a.fluxHeld[b], d.x, d.y, FLUX_SIZE, bandColor(b));
-      drawGlyph(ctx, b, d.x, d.y, FLUX_SIZE * 0.44);
+      drawSprite(ctx, a.fluxHeld[b], dx, dy, FLUX_SIZE, bandColor(b));
+      drawGlyph(ctx, b, dx, dy, FLUX_SIZE * 0.44);
     }
   } else {
     // Prism.
     if (d.shellAlive) {
       const shell = game.effBand(d.shellBand);
       const core = game.effBand(d.coreBand);
-      drawSprite(ctx, a.prismFull[shell], d.x, d.y, PRISM_SIZE, bandColor(shell));
-      drawGlyph(ctx, shell, d.x, d.y, PRISM_SIZE * 0.44); // outer shell glyph
-      drawGlyph(ctx, core, d.x, d.y, PRISM_SIZE * 0.2, true); // core glyph
+      drawSprite(ctx, a.prismFull[shell], dx, dy, PRISM_SIZE, bandColor(shell));
+      drawGlyph(ctx, shell, dx, dy, PRISM_SIZE * 0.44); // outer shell glyph
+      drawGlyph(ctx, core, dx, dy, PRISM_SIZE * 0.2, true); // core glyph
     } else {
       const core = game.effBand(d.coreBand);
-      drawSprite(ctx, a.prismCore[core], d.x, d.y, PRISM_SIZE * 0.5, bandColor(core));
-      drawGlyph(ctx, core, d.x, d.y, PRISM_SIZE * 0.22, true);
+      drawSprite(ctx, a.prismCore[core], dx, dy, PRISM_SIZE * 0.5, bandColor(core));
+      drawGlyph(ctx, core, dx, dy, PRISM_SIZE * 0.22, true);
     }
   }
 }
 
 function drawShip(ctx: CanvasRenderingContext2D, game: Game): void {
   const a = game.assetSet();
-  drawSprite(ctx, a.fighter[game.shipBand], game.shipX, SHIP_Y, 44, bandColor(game.shipBand));
-  drawGlyph(ctx, game.shipBand, game.shipX, SHIP_Y - 1, 6, true);
+  drawSprite(
+    ctx,
+    a.fighter[game.shipBand],
+    game.viewShipX,
+    SHIP_Y,
+    44,
+    bandColor(game.shipBand),
+  );
+  drawGlyph(ctx, game.shipBand, game.viewShipX, SHIP_Y - 1, 6, true);
 }
 
 function drawBullet(
   ctx: CanvasRenderingContext2D,
   game: Game,
-  b: { x: number; y: number; friendly: boolean; band: Band },
+  b: {
+    x: number;
+    y: number;
+    prevX: number;
+    prevY: number;
+    friendly: boolean;
+    band: Band;
+  },
 ): void {
   const band = b.friendly ? b.band : game.effBand(b.band);
   const col = bandColor(band);
+  const bx = b.prevX + (b.x - b.prevX) * game.renderAlpha;
+  const by = b.prevY + (b.y - b.prevY) * game.renderAlpha;
   ctx.save();
   ctx.shadowColor = col;
   ctx.shadowBlur = 10;
   if (b.friendly) {
     ctx.fillStyle = col;
-    roundRect(ctx, b.x - 2, b.y - 8, 4, 16, 2);
+    roundRect(ctx, bx - 2, by - 8, 4, 16, 2);
     ctx.fill();
-    drawGlyph(ctx, band, b.x, b.y - 8, 3, true);
+    drawGlyph(ctx, band, bx, by - 8, 3, true);
   } else {
     // Enemy bullets read by glyph shape too.
-    drawGlyph(ctx, band, b.x, b.y, 5, true);
+    drawGlyph(ctx, band, bx, by, 5, true);
   }
   ctx.restore();
 }

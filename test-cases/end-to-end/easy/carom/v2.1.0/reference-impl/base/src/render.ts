@@ -144,7 +144,7 @@ function drawPaddles(ctx: Ctx, game: Game): void {
   glowRect(
     ctx,
     game.left.x0,
-    game.left.cy - PADDLE_HALF,
+    game.viewLeftCy - PADDLE_HALF,
     PADDLE_W,
     PADDLE_HALF * 2,
     8,
@@ -155,7 +155,7 @@ function drawPaddles(ctx: Ctx, game: Game): void {
   glowRect(
     ctx,
     game.right.x0,
-    game.right.cy - PADDLE_HALF,
+    game.viewRightCy - PADDLE_HALF,
     PADDLE_W,
     PADDLE_HALF * 2,
     8,
@@ -171,8 +171,13 @@ function drawPaddles(ctx: Ctx, game: Game): void {
 // streak rather than discrete dots. Length is proportional to speed because the
 // samples span a fixed slice of time.
 function drawTrail(ctx: Ctx, game: Game): void {
-  const pts = game.trail.ribbon(game.simTime);
+  const pts = game.trail.ribbon(game.viewSimTime);
   if (pts.length < 2) return;
+
+  // The head rides the ball the renderer is actually drawing rather than the
+  // position the last completed step left it at, so the comet stays attached to
+  // the ball between steps.
+  pts[0] = { x: game.viewBallX, y: game.viewBallY, t: game.viewSimTime };
 
   const head = pts[0];
   const tail = pts[pts.length - 1];
@@ -222,8 +227,8 @@ function drawTrail(ctx: Ctx, game: Game): void {
 function drawBall(
   ctx: Ctx,
   game: Game,
-  x = game.ball.x,
-  y = game.ball.y,
+  x = game.viewBallX,
+  y = game.viewBallY,
 ): void {
   ctx.save();
   ctx.shadowColor = "rgba(242, 245, 247, 0.8)";

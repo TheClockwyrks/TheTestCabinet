@@ -206,8 +206,8 @@ function drawWorm(
 // ---- Foes ------------------------------------------------------------------
 function drawFoes(ctx: Ctx, g: Game): void {
   for (const foe of g.foes) {
-    const x = foe.x - TILE / 2;
-    const y = foe.y - TILE / 2;
+    const x = foe.prevX + (foe.x - foe.prevX) * g.renderAlpha - TILE / 2;
+    const y = foe.prevY + (foe.y - foe.prevY) * g.renderAlpha - TILE / 2;
     if (foe.kind === "glitch") {
       const f = Math.floor(g.time * 10) % 4;
       ctx.drawImage(frame("glitch", f), x, y, TILE, TILE);
@@ -225,8 +225,8 @@ function drawCursor(ctx: Ctx, g: Game): void {
   if (g.state === "playing" && g.invulnFlicker) return; // blink while invulnerable
   ctx.drawImage(
     frame("cursor", 0),
-    g.cursor.x - TILE / 2,
-    g.cursor.y - TILE / 2,
+    g.viewCursorX - TILE / 2,
+    g.viewCursorY - TILE / 2,
     TILE,
     TILE,
   );
@@ -238,7 +238,9 @@ function drawBolts(ctx: Ctx, g: Game): void {
   ctx.shadowColor = COLORS.cursorCore;
   ctx.shadowBlur = 8;
   for (const b of g.bolts) {
-    roundRect(ctx, b.x - 1.5, b.y - 7, 3, 14, 1.5);
+    const bx = b.prevX + (b.x - b.prevX) * g.renderAlpha;
+    const by = b.prevY + (b.y - b.prevY) * g.renderAlpha;
+    roundRect(ctx, bx - 1.5, by - 7, 3, 14, 1.5);
     ctx.fill();
   }
   ctx.restore();

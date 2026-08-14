@@ -16,7 +16,7 @@ import {
   BALL_R,
   FIELD_W,
 } from "./constants";
-import { Ball, Paddle } from "./entities";
+import { Ball, lerp, Paddle } from "./entities";
 import {
   Input,
   KEY,
@@ -58,6 +58,50 @@ export class Game {
   private resumeState: AppState = "playing"; // state to return to from pause
 
   simTime = 0; // accumulated simulation time (seconds)
+
+  // ---- Render interpolation ---------------------------------------------
+  // The simulation advances in whole FIXED_STEP ticks, but a frame is presented
+  // whenever the display asks for one, and the two rates do not divide evenly.
+  // `fixedStep` stamps where the moving objects stood when the step began, and
+  // the animation loop sets `renderAlpha` to the fraction of the next step the
+  // wall clock has already covered; the `view*` reads below are what the
+  // renderer draws. Nothing here feeds back into the simulation — these are
+  // written by the step and read by the renderer, never the other way about, so
+  // the same tick sequence produces the same state whatever the frame rate.
+  renderAlpha = 0;
+  private prevLeftCy = 360;
+  private prevRightCy = 360;
+  private prevBallX = 640;
+  private prevBallY = 360;
+  private prevSimTime = 0;
+
+  get viewLeftCy(): number {
+    return lerp(this.prevLeftCy, this.left.cy, this.renderAlpha);
+  }
+  get viewRightCy(): number {
+    return lerp(this.prevRightCy, this.right.cy, this.renderAlpha);
+  }
+  get viewBallX(): number {
+    return lerp(this.prevBallX, this.ball.x, this.renderAlpha);
+  }
+  get viewBallY(): number {
+    return lerp(this.prevBallY, this.ball.y, this.renderAlpha);
+  }
+  get viewSimTime(): number {
+    return lerp(this.prevSimTime, this.simTime, this.renderAlpha);
+  }
+
+  // Collapse the interpolation window onto the current state. Called wherever
+  // the game repositions something instead of integrating it — the pre-serve
+  // respawn, a serve, the title pose, and the debug driver's setters — so the
+  // renderer does not draw a smear across the jump.
+  syncView(): void {
+    this.prevLeftCy = this.left.cy;
+    this.prevRightCy = this.right.cy;
+    this.prevBallX = this.ball.x;
+    this.prevBallY = this.ball.y;
+    this.prevSimTime = this.simTime;
+  }
 
   // ---- Debug / automation state (see debug.ts; inert in normal play) ----
   // Who advances the simulation clock. True (the default) means the animation
@@ -103,6 +147,7 @@ export class Game {
     this.ball.vy = 0;
     this.ball.spin = 0;
     this.trail.reset();
+    this.syncView();
   }
 
   private startMatch(mode: Mode): void {
@@ -128,6 +173,7 @@ export class Game {
     this.trail.reset();
     this.holdTimer = HOLD_TIME;
     this.state = "countdown";
+    this.syncView();
   }
 
   private serve(): void {
@@ -140,6 +186,7 @@ export class Game {
     this.serveSign = -this.serveSign;
     this.trail.reset();
     this.state = "playing";
+    this.syncView();
   }
 
   private pause(): void {
@@ -225,6 +272,14 @@ export class Game {
   // ---- Fixed-timestep update --------------------------------------------
 
   fixedStep(dt: number): void {
+    // Where everything stood before this step, for the renderer to interpolate
+    // from (see the render-interpolation block above).
+    this.prevLeftCy = this.left.cy;
+    this.prevRightCy = this.right.cy;
+    this.prevBallX = this.ball.x;
+    this.prevBallY = this.ball.y;
+    this.prevSimTime = this.simTime;
+
     if (this.state === "playing" || this.state === "countdown") {
       this.updatePaddles(dt);
     }
@@ -386,6 +441,7 @@ export class Game {
     const p = side === "left" ? this.left : this.right;
     if (cy !== undefined) p.cy = cy;
     if (vy !== undefined) this.driverVel![side] = vy;
+    this.syncView();
   }
 
   // The number of balls the driver can address (one in this variant).
@@ -405,6 +461,7 @@ export class Game {
     if (state.vx !== undefined) b.vx = state.vx;
     if (state.vy !== undefined) b.vy = state.vy;
     if (state.spin !== undefined) b.spin = state.spin;
+    this.syncView();
   }
 
   // A read of the full observable state, shared by the debug API's snapshot()

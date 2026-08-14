@@ -20,7 +20,8 @@ unit this API measures time in. Two more properties make it driveable from code:
 
 - Render-free core. Game state advances by ticking the simulation and must not
   depend on a canvas, on `requestAnimationFrame`, or on wall-clock time to make
-  progress. Rendering reads the state, never the other way around.
+  progress. The dependency runs one way: the simulation never reads from, waits
+  on, or is driven by the renderer.
 - Seeded randomness. The pellet placement (`specs/board.md`) runs off a seedable
   generator, so reseeding and replaying the same calls reproduces the same pellet
   sequence exactly.
