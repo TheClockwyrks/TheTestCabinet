@@ -50,3 +50,24 @@ self-contained game.
 - `specs/overview.md` drops the "inspired by classic patience card games" framing.
 - Touchscreen support is now a hard requirement: the game must be fully playable
   with a mouse and on a touchscreen alike (v1 listed touch as out of scope).
+
+## The render-decoupling requirement no longer contradicts itself
+
+`specs/victory.md` and `specs/instrumentation.md` require the simulation to run
+on a fixed timestep **decoupled from rendering**, and then described that
+decoupling as "Rendering reads the state, never the other way around." Read as a
+constraint on the renderer, the second sentence says the opposite of the first:
+it pins what is drawn to whatever the last completed step left behind, tying the
+picture to the tick boundary rather than freeing it from one.
+
+The wording now states the requirement only as the one-way dependency it is —
+the simulation never reads from, waits on, or is driven by the renderer — and
+says nothing about how the renderer presents that state. Nothing was added to
+what a build must do: the decoupling requirement is the one that was already
+there, and the sentence that could be read against it is gone.
+
+The reference implementation needed no matching change. The victory cascade is
+the only thing in the game that moves under the clock, and each in-flight card
+is stamped onto a persistent trail layer once per simulation step rather than
+redrawn at a live position — one mark per step, however many steps a frame
+happens to run. What is drawn is already independent of the frame rate.

@@ -26,6 +26,9 @@ export class SonarWave {
   readonly maxDist: number; // furthest distance the flood reached
 
   front = 0; // wavefront distance (tiles), advancing at SONAR_WAVE_SPEED
+  // The front at the start of the current step, so the renderer can draw the
+  // band between the two rather than snapping it forward once per step.
+  prevFront = 0;
   surfacedTo = -1; // highest bucket already handed to the caller
 
   // Bookkeeping so a wave applies each effect exactly once as its front sweeps by.
@@ -79,12 +82,17 @@ export class SonarWave {
   // the last step, nearest first — so the caller reveals terrain and marks movers
   // exactly as the front reaches them, not all at once.
   advance(dt: number): Cell[][] {
+    this.prevFront = this.front;
     this.front += SONAR_WAVE_SPEED * dt;
     const reachTo = Math.min(this.maxDist, Math.floor(this.front));
     const crossed: Cell[][] = [];
     for (let d = this.surfacedTo + 1; d <= reachTo; d++) crossed.push(this.buckets[d]);
     this.surfacedTo = Math.max(this.surfacedTo, reachTo);
     return crossed;
+  }
+
+  viewFront(alpha: number): number {
+    return this.prevFront + (this.front - this.prevFront) * alpha;
   }
 
   // Has the wavefront swept past this tile yet? Undefined distance = the pulse

@@ -4,7 +4,16 @@
 // The worm's per-step motion is in worm.ts and foe motion is in foes.ts; the
 // signature charge/discharge rules live here because they touch every subsystem.
 
-import type { Arc, Flash, Foe, GameState, PlayPhase, Tile, Worm } from "./types";
+import type {
+  Arc,
+  Bolt,
+  Flash,
+  Foe,
+  GameState,
+  PlayPhase,
+  Tile,
+  Worm,
+} from "./types";
 import { Input } from "./input";
 import { Audio } from "./audio";
 import { Rng, randomSeed } from "./rng";
@@ -103,7 +112,7 @@ export class Game {
   field: Int8Array = emptyField();
   worms: Worm[] = [];
   foes: Foe[] = [];
-  bolts: { x: number; y: number }[] = [];
+  bolts: Bolt[] = [];
   arcs: Arc[] = [];
   flashes: Flash[] = [];
   cursor: Cursor = { x: STAGE_W / 2, y: (BAND_TOP_Y + STAGE_H) / 2, invuln: 0 };
@@ -259,6 +268,7 @@ export class Game {
     this.cursor.x = STAGE_W / 2;
     this.cursor.y = (BAND_TOP_Y + STAGE_H) / 2;
     this.cursor.invuln = RESPAWN_INVULN;
+    this.syncView();
   }
 
   private levelClear(): void {
@@ -365,7 +375,48 @@ export class Game {
   }
 
   // ---- Fixed-step simulation ----------------------------------------------
+  // ---- Render interpolation ---------------------------------------------
+  // The simulation advances in whole FIXED_STEP ticks, but a frame is presented
+  // whenever the display asks for one, and the two rates do not divide evenly.
+  // Each step stamps where the cursor, the foes, and the bolts stood when it
+  // began, and the animation loop sets `renderAlpha` to the fraction of the next
+  // step the wall clock has already covered; render.ts draws between the two.
+  // The worm is not interpolated: it advances a whole tile at a time and is
+  // drawn on the grid, as specs/worm.md describes. Nothing here feeds back into
+  // the simulation — these are written by the step and read by the renderer,
+  // never the other way about, so the same tick sequence produces the same state
+  // whatever the frame rate.
+  renderAlpha = 0;
+  private prevCursorX = STAGE_W / 2;
+  private prevCursorY = (BAND_TOP_Y + STAGE_H) / 2;
+
+  get viewCursorX(): number {
+    return this.prevCursorX + (this.cursor.x - this.prevCursorX) * this.renderAlpha;
+  }
+  get viewCursorY(): number {
+    return this.prevCursorY + (this.cursor.y - this.prevCursorY) * this.renderAlpha;
+  }
+
+  // Collapse the interpolation window onto the current state, so anything that
+  // was repositioned rather than moved is not drawn smearing across the jump.
+  syncView(): void {
+    this.prevCursorX = this.cursor.x;
+    this.prevCursorY = this.cursor.y;
+    for (const f of this.foes) {
+      f.prevX = f.x;
+      f.prevY = f.y;
+    }
+    for (const b of this.bolts) {
+      b.prevX = b.x;
+      b.prevY = b.y;
+    }
+  }
+
   fixedStep(dt: number): void {
+    // Where the cursor stood before this step, for the renderer to interpolate
+    // from (foes and bolts stamp their own; see the block above).
+    this.prevCursorX = this.cursor.x;
+    this.prevCursorY = this.cursor.y;
     this.time += dt;
     this.decayEffects(dt);
 
@@ -437,15 +488,22 @@ export class Game {
   private updateFiring(dt: number): void {
     this.fireCooldown -= dt;
     if (this.input.firing && this.fireCooldown <= 0 && this.bolts.length < MAX_BOLTS) {
-      this.bolts.push({ x: this.cursor.x, y: this.cursor.y - TILE / 2 });
+      this.bolts.push({
+        x: this.cursor.x,
+        y: this.cursor.y - TILE / 2,
+        prevX: this.cursor.x,
+        prevY: this.cursor.y - TILE / 2,
+      });
       this.fireCooldown = FIRE_COOLDOWN;
       this.audio.play("fire");
     }
   }
 
   private updateBolts(dt: number): void {
-    const survivors: { x: number; y: number }[] = [];
+    const survivors: Bolt[] = [];
     for (const b of this.bolts) {
+      b.prevX = b.x;
+      b.prevY = b.y;
       b.y -= BOLT_SPEED * dt;
       if (b.y < BOARD_Y) continue; // vanished at the top of the board
       if (this.resolveBolt(b)) continue; // consumed by a hit
@@ -455,7 +513,7 @@ export class Game {
   }
 
   // Returns true if the bolt hit something (and is consumed).
-  private resolveBolt(b: { x: number; y: number }): boolean {
+  private resolveBolt(b: Bolt): boolean {
     // Foe first (foes move in pixel space, between tiles).
     const fi = this.foes.findIndex(
       (f) => Math.abs(f.x - b.x) <= 15 && Math.abs(f.y - b.y) <= 15,
@@ -801,6 +859,7 @@ export class Game {
     this.ensureRun();
     this.cursor.x = x;
     this.cursor.y = y;
+    this.syncView();
     this.clampCursor();
   }
 
@@ -860,6 +919,8 @@ export class Game {
     if (options.x !== undefined) f.x = options.x;
     if (options.y !== undefined && kind !== "corruptor") f.y = options.y;
     if (options.vx !== undefined) f.vx = options.vx;
+    f.prevX = f.x;
+    f.prevY = f.y;
     this.foes.push(f);
   }
 
@@ -867,7 +928,12 @@ export class Game {
   // bolt travels and resolves its hit through the real shot code as the sim steps.
   debugFire(): void {
     this.ensureRun();
-    this.bolts.push({ x: this.cursor.x, y: this.cursor.y - TILE / 2 });
+    this.bolts.push({
+      x: this.cursor.x,
+      y: this.cursor.y - TILE / 2,
+      prevX: this.cursor.x,
+      prevY: this.cursor.y - TILE / 2,
+    });
     this.audio.play("fire");
   }
 

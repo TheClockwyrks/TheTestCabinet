@@ -21,6 +21,10 @@ export class Critter {
   facing: Dir = "up";
   rx = this.x; // eased render px
   ry = rowToY(ROW_NEAR);
+  // rx/ry at the start of the current step, so the renderer can draw between
+  // that and the current value (see Game.renderAlpha).
+  prevRx = this.x;
+  prevRy = rowToY(ROW_NEAR);
   hopT = 0; // seconds left of the leap frame / hop arc
 
   centerX(): number {
@@ -35,6 +39,7 @@ export class Critter {
     this.row = row;
     this.rx = this.x;
     this.ry = rowToY(row);
+    this.syncView();
     this.hopT = 0;
     this.facing = "up";
   }
@@ -45,7 +50,23 @@ export class Critter {
   }
 
   // Ease the render position toward the logical tile; advance the hop timer.
+  viewRx(alpha: number): number {
+    return this.prevRx + (this.rx - this.prevRx) * alpha;
+  }
+  viewRy(alpha: number): number {
+    return this.prevRy + (this.ry - this.prevRy) * alpha;
+  }
+
+  // Collapse the interpolation window onto the current position, for a critter
+  // that was placed rather than eased.
+  syncView(): void {
+    this.prevRx = this.rx;
+    this.prevRy = this.ry;
+  }
+
   advance(dt: number): void {
+    this.prevRx = this.rx;
+    this.prevRy = this.ry;
     const k = 1 - Math.exp(-dt * 26);
     this.rx += (this.x - this.rx) * k;
     this.ry += (rowToY(this.row) - this.ry) * k;
@@ -74,6 +95,9 @@ export class Bear {
   targetRow: number;
   rx: number; // continuous strait-local top-left px (also the render position)
   ry: number;
+  // rx/ry at the start of the current step (see Game.renderAlpha).
+  prevRx: number;
+  prevRy: number;
   speed = 0; // px/second of the current glide
   facing: Dir = "up";
   swimming = false;
@@ -86,6 +110,20 @@ export class Bear {
     this.targetRow = row;
     this.rx = colToX(col);
     this.ry = rowToY(row);
+    this.prevRx = this.rx;
+    this.prevRy = this.ry;
+  }
+
+  viewRx(alpha: number): number {
+    return this.prevRx + (this.rx - this.prevRx) * alpha;
+  }
+  viewRy(alpha: number): number {
+    return this.prevRy + (this.ry - this.prevRy) * alpha;
+  }
+
+  syncView(): void {
+    this.prevRx = this.rx;
+    this.prevRy = this.ry;
   }
 
   centerX(): number {
@@ -113,6 +151,8 @@ export class Bear {
   // reached it and settled (col/row snap to the target) — the game then chooses
   // the next step. Motion is axis-aligned (one grid step at a time).
   advance(dt: number): boolean {
+    this.prevRx = this.rx;
+    this.prevRy = this.ry;
     if (this.lunge > 0) this.lunge = Math.max(0, this.lunge - dt);
     const toX = colToX(this.targetCol);
     const toY = rowToY(this.targetRow);

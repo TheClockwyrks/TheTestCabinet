@@ -312,6 +312,17 @@ async function main(): Promise<void> {
       acc = 0;
     }
 
+    // What is left in the accumulator is time the display is showing but the
+    // simulation has not stepped through yet. Hand it to the renderer as a
+    // fraction of a step so it can draw between the last two states: the tick rate
+    // and the refresh rate do not divide evenly, so the number of steps per frame
+    // varies, and drawing the raw state would move the miner — and with it the
+    // camera, and so the whole mine — by a different distance each frame. Zero
+    // outside the mine and while the debug API holds the clock, so a posed
+    // scenario is drawn exactly as it was stepped.
+    game.renderAlpha =
+      game.phase === "in-mine" && game.autoStep ? acc / TICK_DT : 0;
+
     // Drain audio cues + particle bursts produced by the sim.
     for (const cue of game.sndQueue) audio.play(cue);
     game.sndQueue.length = 0;
