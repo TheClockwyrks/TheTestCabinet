@@ -18,6 +18,7 @@ use crate::config::Config;
 use crate::db::Db;
 use crate::publish_relay::PublishRelay;
 use crate::publisher::Publisher;
+use crate::readiness::Readiness;
 use crate::relay::Relay;
 use crate::store::DefinitionStore;
 
@@ -55,6 +56,9 @@ pub struct AppState {
     pub db: Arc<Db>,
     /// The on-disk definition store.
     pub store: DefinitionStore,
+    /// Whether the definition store is populated enough to resolve test-case
+    /// versions — the signal `GET /readyz` reports (see [`crate::readiness`]).
+    pub ready: Readiness,
     /// The coalescing snapshot publisher.
     pub publisher: Publisher,
     /// Verifies bearer tokens against the standalone auth service. The mutating
@@ -98,6 +102,11 @@ const MAX_RUN_UPLOAD_BYTES: usize = 512 * 1024 * 1024;
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(health))
+        // Readiness, split from liveness above: the process is alive and correct
+        // from the moment it binds, but cannot resolve anything until its
+        // definition store is populated. Point a readinessProbe here and a
+        // livenessProbe at /healthz — never both at one endpoint (see `ready`).
+        .route("/readyz", get(ready))
         // The console's client configuration: today just the data-plane artifact
         // service base URL, so the console can resolve a pre-publish run's build
         // and media links against it (the control-plane backend never serves the
@@ -368,13 +377,49 @@ async fn trace_and_measure(
 /// crate's `version` (the workspace pins all crates at a placeholder `0.0.0`).
 const CONTRACT_VERSION: &str = "0.2.0";
 
-/// `GET /healthz` — liveness/readiness probe (§1.1).
-async fn health() -> axum::Json<serde_json::Value> {
+/// `GET /healthz` — **liveness** probe and service identity (§1.1).
+///
+/// Always `200` while the process is serving: a backend whose definition store is
+/// still filling is alive and must not be restarted (see [`ready`] for why the two
+/// probes are separate). `storeReady` reports whether that store can resolve
+/// test-case versions yet — the same signal `/readyz` gates on, surfaced here so a
+/// console can *show* the state without a probe's semantics.
+async fn health(
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> axum::Json<serde_json::Value> {
     axum::Json(serde_json::json!({
         "status": "ok",
         "version": CONTRACT_VERSION,
-        "store": "ready",
+        "storeReady": state.ready.is_ready(),
     }))
+}
+
+/// `GET /readyz` — **readiness** probe: whether this backend can resolve test-case
+/// versions yet.
+///
+/// `200` once the definition store holds versions, `503` while it is still empty.
+/// Kept apart from the `/healthz` liveness probe because the unready state is
+/// *long*: a deployment with an ephemeral `/state` re-ingests the whole catalog on
+/// start, which runs for minutes. Pointing a liveness probe at this signal would
+/// kill the pod mid-ingest and never converge; pointing readiness at `/healthz`
+/// (which is what let this backend serve an empty store) admits traffic that can
+/// only fail with a spurious "is not ingested" 404.
+async fn ready(
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> (axum::http::StatusCode, axum::Json<serde_json::Value>) {
+    let ready = state.ready.is_ready();
+    let status = if ready {
+        axum::http::StatusCode::OK
+    } else {
+        axum::http::StatusCode::SERVICE_UNAVAILABLE
+    };
+    (
+        status,
+        axum::Json(serde_json::json!({
+            "status": if ready { "ready" } else { "ingesting" },
+            "storeReady": ready,
+        })),
+    )
 }
 
 /// `GET /config` — the console's client configuration.

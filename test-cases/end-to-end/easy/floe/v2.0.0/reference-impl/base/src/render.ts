@@ -150,11 +150,11 @@ function drawStrait(ctx: CanvasRenderingContext2D, game: Game, s: Sprites): void
 
   drawBands(ctx);
   drawBays(ctx, game, s);
-  drawFloes(ctx, game.lanes.water, s);
+  drawFloes(ctx, game.lanes.water, s, game.renderAlpha);
   drawCritter(ctx, game.critter, s, game);
   // Bears draw after the floes, so a bear on the water renders over them.
   for (const h of game.hunters) if (h.bear) drawBear(ctx, h.bear, s, game);
-  drawVehicles(ctx, game.lanes.ice, s);
+  drawVehicles(ctx, game.lanes.ice, s, game.renderAlpha);
   drawSplashes(ctx, game);
 
   ctx.restore();
@@ -299,12 +299,18 @@ function drawXs(x: number, w: number, trackLen: number): number[] {
   return xs;
 }
 
-function drawFloes(ctx: CanvasRenderingContext2D, lanes: Lane<Floe>[], s: Sprites): void {
+function drawFloes(
+  ctx: CanvasRenderingContext2D,
+  lanes: Lane<Floe>[],
+  s: Sprites,
+  alpha: number,
+): void {
   for (const lane of lanes) {
     const y = lane.row * TILE;
     for (const f of lane.items) {
       const w = f.len * TILE;
-      for (const dx of drawXs(f.x, w, lane.trackLen)) {
+      const fx = f.prevX + (f.x - f.prevX) * alpha;
+      for (const dx of drawXs(fx, w, lane.trackLen)) {
         if (f.kind === "pan") {
           ctx.drawImage(s.pan, dx, y, TILE, TILE);
         } else if (f.kind === "raft3") {
@@ -317,14 +323,20 @@ function drawFloes(ctx: CanvasRenderingContext2D, lanes: Lane<Floe>[], s: Sprite
   }
 }
 
-function drawVehicles(ctx: CanvasRenderingContext2D, lanes: Lane<Vehicle>[], s: Sprites): void {
+function drawVehicles(
+  ctx: CanvasRenderingContext2D,
+  lanes: Lane<Vehicle>[],
+  s: Sprites,
+  alpha: number,
+): void {
   for (const lane of lanes) {
     const y = lane.row * TILE;
     const mirror = lane.dir === -1; // sprites face right; mirror a left-moving lane
     for (const v of lane.items) {
       const w = v.len * TILE;
       const img = v.kind === "plow" ? s.plow : v.kind === "dogsled" ? s.dogsled : s.car;
-      for (const dx of drawXs(v.x, w, lane.trackLen)) {
+      const vx = v.prevX + (v.x - v.prevX) * alpha;
+      for (const dx of drawXs(vx, w, lane.trackLen)) {
         if (mirror) {
           ctx.save();
           ctx.translate(dx + w, y);
@@ -344,12 +356,18 @@ function drawCritter(ctx: CanvasRenderingContext2D, c: Critter, s: Sprites, game
   const base = CROSSER_BASE[c.facing];
   const leap = c.hopT > 0 ? 1 : 0;
   const img = s.crosser[base + leap];
-  ctx.drawImage(img, Math.round(c.rx), Math.round(c.ry + c.hopArc()), TILE, TILE);
+  ctx.drawImage(
+    img,
+    Math.round(c.viewRx(game.renderAlpha)),
+    Math.round(c.viewRy(game.renderAlpha) + c.hopArc()),
+    TILE,
+    TILE,
+  );
 }
 
 function drawBear(ctx: CanvasRenderingContext2D, b: Bear, s: Sprites, game: Game): void {
-  const x = Math.round(b.rx);
-  const y = Math.round(b.ry);
+  const x = Math.round(b.viewRx(game.renderAlpha));
+  const y = Math.round(b.viewRy(game.renderAlpha));
   const cycle = Math.floor(game.simTime * 6) % 2;
 
   if (b.swimming) {

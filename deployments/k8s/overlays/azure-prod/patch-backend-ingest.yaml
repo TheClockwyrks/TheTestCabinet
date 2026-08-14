@@ -6,14 +6,19 @@
 #      its POST /ingest times out; and
 #   2. it clones into its OWN emptyDir, but POST /ingest makes the backend read its
 #      OWN /state/checkout — a different pod's volume — so nothing is ingested.
-# Additionally /state is an emptyDir here (the postgres component swaps the backend
-# StatefulSet+PVC for a Deployment+emptyDir), so the def store is wiped on restart.
 #
 # This co-locates ingest INSIDE the backend pod as a sidecar instead: it shares the
 # `state` volume (writing the /state/checkout the backend ingests) and calls
 # POST /ingest over localhost — intra-pod traffic, so the NetworkPolicy never applies
 # and no service token / extra route is needed. It runs a ONE-SHOT ingest on backend
-# start to self-heal the ephemeral (emptyDir) store after a reschedule, then idles.
+# start, then idles.
+#
+# /state is a PVC (see components/postgres/deployment-backend.yaml), so the store
+# normally SURVIVES a reschedule and this one-shot is a cheap refresh: the sidecar
+# takes its `git fetch` path over an existing checkout and the scan skips versions
+# already present. It still matters on a genuinely cold volume — a first deploy or a
+# replaced disk — where it is what fills the store at all, and the backend stays out
+# of its Service (/readyz) until it lands.
 # It deliberately does NOT re-ingest on a schedule: a periodic force re-ingest
 # rewrites every version and briefly leaves each one manifest-less, 404-ing any run
 # that resolves its version mid-cycle. Catalog changes are published on demand with
@@ -55,8 +60,9 @@ spec:
               REPO=https://github.com/TheClockwyrks/TheTestCabinet.git
               CHECKOUT=/state/checkout
               # One-shot: check out the catalog branch tip, then trigger a single ingest.
-              # No periodic loop — see the header. Refresh the live checkout if one
-              # survives a lone sidecar restart, else clone the branch fresh.
+              # No periodic loop — see the header. Refresh the live checkout when one is
+              # already on the /state PVC (the normal case, including across a
+              # reschedule), else clone the branch fresh onto a cold volume.
               if [ -d "$CHECKOUT/.git" ]; then
                 echo "ingest: refreshing checkout ($BRANCH)"
                 git -C "$CHECKOUT" fetch --depth 1 origin "$BRANCH" \
@@ -68,12 +74,15 @@ spec:
                   && git clone --depth 1 --branch "$BRANCH" "$REPO" "$CHECKOUT" \
                   || echo "ingest: clone failed"
               fi
+              # Wait on /healthz (LIVENESS), never /readyz: readiness is 503 until the
+              # store is populated, which is what the POST below is about to do, so
+              # gating on it would deadlock the sidecar against itself.
               echo "ingest: waiting for backend healthz"
               until curl -fsS -o /dev/null http://127.0.0.1:8787/healthz; do sleep 3; done
-              # A bare scan (no force): a fresh emptyDir store ingests everything, while
-              # a store that survived a lone sidecar restart skips already-ingested
-              # versions instead of re-rendering them. Retry a stuck POST a few times so
-              # a slow-to-ready backend does not leave the store empty.
+              # A bare scan (no force): a cold volume ingests everything, while a store
+              # carried over on the PVC skips already-ingested versions instead of
+              # re-rendering them. Retry a stuck POST a few times so a slow-to-ready
+              # backend does not leave the store empty.
               n=0
               until curl -fsS -X POST http://127.0.0.1:8787/ingest \
                      -H 'content-type: application/json' -d '{}' >/dev/null; do

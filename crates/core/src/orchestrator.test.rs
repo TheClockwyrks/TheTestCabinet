@@ -189,13 +189,69 @@ fn the_session_wrapper_brackets_the_command_with_sentinels() {
         "%s\n".to_string(),
         PROMPT_SENTINEL.to_string(),
     ];
-    let wrapper = render_session_wrapper(&argv, PROMPT_SENTINEL);
+    let dir = tempfile::tempdir().expect("temp dir");
+    let log = dir.path().join("sessions.log");
+    let wrapper = render_session_wrapper(&argv, PROMPT_SENTINEL, &log.display().to_string());
     assert!(wrapper.starts_with("#!/bin/sh"));
     assert!(wrapper.contains(SESSION_BEGIN));
     assert!(wrapper.contains(SESSION_END));
     assert!(wrapper.contains("\"$1\""));
     // Running it prints the sentinels around the substituted prompt.
+    let path = dir.path().join("tcab-session");
+    std::fs::write(&path, &wrapper).expect("write wrapper");
+    let output = Command::new("sh")
+        .arg(&path)
+        .arg("hello world")
+        .output()
+        .expect("sh runs");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("utf8");
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(lines, vec![SESSION_BEGIN, "hello world", SESSION_END]);
+    // ...and the same bracketed stdout lands in the session log, which is what the
+    // run's usage is actually read from.
+    let logged = std::fs::read_to_string(&log).expect("session log written");
+    let logged: Vec<&str> = logged.lines().collect();
+    assert_eq!(logged, vec![SESSION_BEGIN, "hello world", SESSION_END]);
+}
+
+#[test]
+fn the_session_wrapper_preserves_the_harness_exit_status_through_the_tee() {
+    // The harness's status has to survive a pipeline, which discards it in POSIX
+    // sh — a run's terminal state is decided by this number, so getting it wrong
+    // would report every failing harness as a success.
     let dir = tempfile::tempdir().expect("temp dir");
+    let log = dir.path().join("sessions.log");
+    let argv = vec!["sh".to_string(), "-c".to_string(), "exit 3".to_string()];
+    let wrapper = render_session_wrapper(&argv, PROMPT_SENTINEL, &log.display().to_string());
+    let path = dir.path().join("tcab-session");
+    std::fs::write(&path, &wrapper).expect("write wrapper");
+    let output = Command::new("sh")
+        .arg(&path)
+        .arg("unused")
+        .output()
+        .expect("sh runs");
+    assert_eq!(output.status.code(), Some(3));
+}
+
+#[test]
+fn the_session_wrapper_still_runs_when_the_log_cannot_be_written() {
+    // Losing usage is bad; losing the run is worse. An unwritable log path must
+    // degrade to the plain invocation rather than fail the session.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let argv = vec![
+        "printf".to_string(),
+        "%s\n".to_string(),
+        PROMPT_SENTINEL.to_string(),
+    ];
+    // A path under a non-directory: `mkdir -p` cannot create it.
+    let blocker = dir.path().join("blocker");
+    std::fs::write(&blocker, "not a directory").expect("write blocker");
+    let wrapper = render_session_wrapper(
+        &argv,
+        PROMPT_SENTINEL,
+        &blocker.join("sessions.log").display().to_string(),
+    );
     let path = dir.path().join("tcab-session");
     std::fs::write(&path, &wrapper).expect("write wrapper");
     let output = Command::new("sh")
@@ -254,6 +310,50 @@ fn a_single_session_segment_recovers_the_harness_stdout_exactly() {
     let segments = segment_sessions(&lines);
     assert_eq!(segments.len(), 1);
     assert_eq!(segments[0].stdout.trim_end(), body);
+    assert!(segments[0].terminated);
+}
+
+#[test]
+fn a_session_cut_off_before_its_end_sentinel_keeps_what_arrived() {
+    // An exec stream can be truncated as the process exits, taking the harness's
+    // last lines — and the wrapper's closing sentinel — with it. The partial
+    // session must still be returned, flagged unterminated: dropping it discarded
+    // the whole session's usage and recorded the run as having cost nothing.
+    let lines = vec![
+        raw(OutputStream::Stdout, SESSION_BEGIN),
+        raw(OutputStream::Stdout, r#"{"usage":{"input_tokens":1}}"#),
+        raw(OutputStream::Stderr, "diagnostic"),
+    ];
+    let segments = segment_sessions(&lines);
+    assert_eq!(segments.len(), 1);
+    assert_eq!(segments[0].stdout, "{\"usage\":{\"input_tokens\":1}}\n");
+    assert_eq!(segments[0].stderr, "diagnostic\n");
+    assert!(!segments[0].terminated);
+}
+
+#[test]
+fn a_truncated_session_does_not_swallow_the_sessions_around_it() {
+    // A multi-session run whose middle session lost its END: the unterminated
+    // slice is closed by the next BEGIN, so neither it nor the sessions on either
+    // side of it are lost.
+    let lines = vec![
+        raw(OutputStream::Stdout, SESSION_BEGIN),
+        raw(OutputStream::Stdout, "one"),
+        raw(OutputStream::Stdout, SESSION_END),
+        raw(OutputStream::Stdout, SESSION_BEGIN),
+        raw(OutputStream::Stdout, "two"),
+        raw(OutputStream::Stdout, SESSION_BEGIN),
+        raw(OutputStream::Stdout, "three"),
+        raw(OutputStream::Stdout, SESSION_END),
+    ];
+    let segments = segment_sessions(&lines);
+    assert_eq!(segments.len(), 3);
+    assert_eq!(segments[0].stdout.trim_end(), "one");
+    assert!(segments[0].terminated);
+    assert_eq!(segments[1].stdout.trim_end(), "two");
+    assert!(!segments[1].terminated);
+    assert_eq!(segments[2].stdout.trim_end(), "three");
+    assert!(segments[2].terminated);
 }
 
 // --- token summing ----------------------------------------------------------
@@ -323,6 +423,11 @@ struct HostShellRuntime {
     /// When set, a streamed exec reports that the idle watchdog killed it instead
     /// of running the command — standing in for a harness that went silent.
     hangs_when_streamed: bool,
+    /// How many lines to withhold from the *end* of the streamed output, standing
+    /// in for an exec stream that closes as the runner exits and loses its tail.
+    /// The command still runs and still exits zero — only the stream is short,
+    /// which is exactly the shape of the failure this guards against.
+    stream_tail_dropped: usize,
 }
 
 impl HostShellRuntime {
@@ -333,6 +438,15 @@ impl HostShellRuntime {
             home,
             path,
             hangs_when_streamed: false,
+            stream_tail_dropped: 0,
+        }
+    }
+
+    /// A runtime whose streamed exec drops the last `lines` lines on the floor.
+    fn losing_stream_tail(home: PathBuf, lines: usize) -> Self {
+        Self {
+            stream_tail_dropped: lines,
+            ..Self::new(home)
         }
     }
 
@@ -376,7 +490,9 @@ impl ContainerRuntime for HostShellRuntime {
     ) -> Result<ExecOutput> {
         if !self.hangs_when_streamed {
             let output = self.exec(container, command).await?;
-            for line in output.stdout.lines() {
+            let lines: Vec<&str> = output.stdout.lines().collect();
+            let delivered = lines.len().saturating_sub(self.stream_tail_dropped);
+            for line in &lines[..delivered] {
                 sink.on_line(OutputStream::Stdout, line);
             }
             return Ok(output);
@@ -510,6 +626,18 @@ async fn drive(
     sessions_before_marker: u32,
     deadline_epoch: u64,
 ) -> DriveResult {
+    drive_with_stream_tail_dropped(slug, goal, sessions_before_marker, deadline_epoch, 0).await
+}
+
+/// As [`drive`], but the streamed copy of the runner's output loses its last
+/// `stream_tail_dropped` lines.
+async fn drive_with_stream_tail_dropped(
+    slug: &str,
+    goal: &str,
+    sessions_before_marker: u32,
+    deadline_epoch: u64,
+    stream_tail_dropped: usize,
+) -> DriveResult {
     let root = tempfile::tempdir().expect("temp dir");
     let home = root.path().join("home");
     let workspace = root.path().join("work");
@@ -539,7 +667,7 @@ async fn drive(
         marker_file: marker_file.to_string_lossy().into_owned(),
         sessions_before_marker,
     };
-    let runtime = HostShellRuntime::new(home);
+    let runtime = HostShellRuntime::losing_stream_tail(home, stream_tail_dropped);
     let container = ContainerHandle {
         id: "fake".to_string(),
     };
@@ -647,6 +775,36 @@ async fn one_shot_runs_a_single_unwrapped_session() {
     assert_eq!(result.prompts, vec![goal.to_string()]);
     assert_eq!(result.outcome.usage.tokens.uncached_input, Some(10));
     assert_eq!(result.outcome.usage.tokens.output, Some(5));
+}
+
+#[tokio::test]
+async fn usage_survives_a_stream_that_loses_its_tail() {
+    // The failure this guards against: the exec stream closes as the runner exits
+    // and never delivers the harness's last lines — its usage report and the
+    // wrapper's closing sentinel. The run still exits zero and is recorded as a
+    // clean completion, so nothing else notices; the usage simply vanished, and
+    // the run was priced at $0.00. Reading the totals from the log the wrapper
+    // wrote inside the container makes them independent of the stream.
+    let goal = "Draw the sprite.";
+    // Drop the usage line, the closing sentinel, and one more for good measure.
+    let result = drive_with_stream_tail_dropped(ONE_SHOT_SLUG, goal, 99, NO_DEADLINE, 3).await;
+
+    assert_eq!(result.session_count, 1);
+    assert_eq!(result.outcome.usage.tokens.uncached_input, Some(10));
+    assert_eq!(result.outcome.usage.tokens.output, Some(5));
+}
+
+#[tokio::test]
+async fn every_session_of_a_multi_session_run_survives_a_lost_stream_tail() {
+    // The same guard across a ralph loop, with the stream gutted rather than just
+    // clipped: every session's usage still comes back, because it comes from the
+    // log rather than the stream.
+    let result =
+        drive_with_stream_tail_dropped(RALPH_SLUG, "Build it.", 2, NO_DEADLINE, 1_000).await;
+
+    assert_eq!(result.session_count, 2);
+    assert_eq!(result.outcome.usage.tokens.uncached_input, Some(20));
+    assert_eq!(result.outcome.usage.tokens.output, Some(10));
 }
 
 #[tokio::test]

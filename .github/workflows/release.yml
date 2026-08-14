@@ -107,8 +107,64 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  # Gate the desktop build on the service images actually existing at this commit.
+  #
+  # The desktop job below bakes TCAB_DESKTOP_IMAGE_TAG=<github.sha> into the app, and
+  # the bundled `overlays/app` pins all six services to that tag — so if no images
+  # were published at this sha, the build still succeeds and produces installers that
+  # cannot pull a single image, failing only in a user's hands at first launch.
+  # build-service-images.yml is unfiltered on master/staging precisely so this can
+  # never be a missing build, but it can still be an in-flight or failed one, and a
+  # release can be dispatched at any ref. Ten seconds of manifest lookups turn a
+  # ship-broken installer into a fast, legible CI failure.
+  images:
+    name: Verify service images exist at this commit
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      # Public GHCR packages resolve unauthenticated, but a private (or not-yet-made-
+      # public) package would 404 identically to a missing tag, so authenticate and
+      # keep the failure meaning exactly one thing.
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      # The six images `overlays/app` pins — the exact set the app's k3d cluster
+      # pulls. Check them all before failing, so one dispatch reports every gap
+      # rather than only the first.
+      - name: Inspect ${{ github.sha }} manifests
+        env:
+          OWNER: ${{ github.repository_owner }}
+          SHA: ${{ github.sha }}
+        run: |
+          registry="ghcr.io/$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
+          missing=()
+          for image in tcab-backend tcab-auth-service tcab-dispatcher \
+                       tcab-driver tcab-artifacts tcab-arena; do
+            if docker buildx imagetools inspect "$registry/$image:$SHA" >/dev/null 2>&1; then
+              echo "ok      $image:$SHA"
+            else
+              echo "MISSING $image:$SHA"
+              missing+=("$image")
+            fi
+          done
+          if (( ${#missing[@]} )); then
+            echo
+            echo "::error::No service images at $SHA for: ${missing[*]}."
+            echo "::error::The desktop app would ship pinned to tags that do not exist."
+            echo "::error::Run build-service-images.yml at this ref, then re-dispatch."
+            exit 1
+          fi
+
   desktop:
     name: Desktop app (${{ matrix.name }})
+    needs: [images]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

@@ -71,6 +71,11 @@ Comparable cost is derived from the recorded token classes and the listed prices
 for uncached input, cached input, and output tokens, with reasoning tokens
 priced at the output rate.
 
+Both figures are `null` when the cost cannot be determined — including when *no*
+token class was reported at all. A run whose usage never reached us is not a free
+run, so it is never recorded as `$0.00`: the same unknown-versus-zero distinction
+the token classes draw applies to the cost derived from them.
+
 The OpenRouter per-token prices are fetched by the **backend**, not the CLI. The
 backend records a model's price **when a run completes** — capturing the rate in
 effect at that moment, so a promotional price such as a launch-week discount is

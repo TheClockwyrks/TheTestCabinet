@@ -1,0 +1,204 @@
+# Carom — Balls, serving, and physics
+{{#if (eq variant.slug "multi")}}
+
+This file defines how the balls move and interact with the field — the physics
+loop, collision, and the paddle bounce and spin mechanic — and, for this variant,
+the three independent balls and how each is served. It builds on the geometry in
+`specs/playfield.md` and the coordinate system in `specs/overview.md`.
+
+## The balls
+
+Three balls are in play at once. Each is the ball from `specs/playfield.md`, a
+circle of radius 11 with serve speed 520 and a 1.04 speed multiplier per paddle
+hit up to the 980 cap, and each carries its own velocity and its own spin scalar.
+The physics below — stepping, collision, and the spin mechanic — apply to every
+ball independently.
+
+The three balls do not start, reset, or score as a group. Each ball is its own
+independent contest: when one ball leaves the field it resets and relaunches on
+its own while the other two keep playing without interruption.
+{{else}}
+
+This file defines how many balls are in play and how they are served, and how a
+ball moves and interacts with the field: the physics loop, collision, and the
+paddle bounce and spin mechanic. It builds on the geometry in
+`specs/playfield.md` and the coordinate system in `specs/overview.md`.
+
+## The ball
+
+One ball is in play, the ball from `specs/playfield.md`: radius 11, serve speed
+520, a 1.04 speed multiplier per paddle hit up to the 980 cap, and the spin
+mechanic below.
+{{/if}}
+
+## Physics
+
+Run the simulation on a fixed timestep of 120 Hz — a step of exactly 1/120 of a
+second — decoupled from rendering and integrating positions each step. The rate
+is fixed rather than a suggestion, because `specs/instrumentation.md` advances the
+simulation in whole ticks of it. The core is render-free: state advances purely by
+stepping the simulation, with no dependence on the canvas, on wall-clock time, or
+on the renderer. Any randomness runs off a seedable generator. These properties
+let the game be stepped and reproduced from code, which `specs/instrumentation.md`
+relies on to drive and inspect it.
+
+Each step, for {{#if (eq variant.slug "multi")}}each ball{{else}}the ball{{/if}}:
+
+1. Apply the spin acceleration (below) to the velocity.
+2. Advance position by `velocity * dt`.
+3. Resolve collisions with walls, paddles,{{#if (eq variant.slug "multi")}} obstacles, and the other balls{{else}} and obstacles{{/if}}.
+
+## Collision
+
+Resolve {{#if (eq variant.slug "multi")}}each ball{{else}}the ball{{/if}} against the top and bottom walls, the two paddles, and the two
+obstacles. Treat {{#if (eq variant.slug "multi")}}each ball{{else}}the ball{{/if}} as a circle and each paddle as an axis-aligned
+rectangle.
+
+- Top and bottom wall: reflect the vertical velocity (`vy -> -vy`) and push the
+  ball back inside the field. Speed is unchanged.
+- Obstacle: resolve {{#if (eq variant.slug "multi")}}each ball{{else}}the ball{{/if}} against the two obstacles as `specs/playfield.md`
+  defines. An obstacle bounce leaves speed unchanged and preserves spin, so the
+  spin keeps curving the ball after the bounce.
+- Paddle: see the next section. A paddle hit is the only collision that changes
+  speed and imparts spin.
+{{#if (eq variant.slug "multi")}}
+- Ball-to-ball: the balls also collide with each other, defined under
+  Ball-to-ball collision below.
+
+No ball ever passes through a paddle, wall, obstacle, or another ball, even at
+high speed.
+{{else}}
+
+The ball never passes through a paddle, wall, or obstacle, even at high speed.
+{{/if}}
+
+## Paddle bounce and spin
+
+When {{#if (eq variant.slug "multi")}}a ball{{else}}the ball{{/if}} strikes a paddle:
+
+1. Reflection angle from contact point. Let
+   `offset = (ballCenterY - paddleCenterY) / 55`, clamped to `[-1, 1]` (55 is the
+   paddle half-height). The outgoing angle from horizontal is
+   `theta = offset * 55deg`. Hitting the paddle center sends the ball straight
+   across; hitting the top or bottom edge sends it off at up to 55deg.
+
+2. Speed. `speed = min(speed * 1.04, 980)`. The horizontal direction flips to
+   point toward the opposing goal, giving new velocity
+   `vx = +/- speed * cos(theta)` (sign toward the opponent) and
+   `vy = speed * sin(theta)`.
+
+3. Spin from paddle motion. The paddle's vertical velocity at contact adds spin:
+   `spin += paddleVy * 0.85`, then clamp `spin` to `[-900, 900]`. A paddle moving
+   downward as it strikes curves the ball one way, a paddle moving upward curves
+   it the other, and a stationary paddle imparts no new spin.
+{{#if (eq variant.slug "multi")}}
+
+Spin is a signed scalar carried by each ball. Each physics step it applies a
+lateral acceleration perpendicular to that ball's direction of travel, of
+magnitude `|spin|` (in px/s^2), curving the path toward the side determined by
+the sign of `spin`. Spin decays toward zero exponentially, losing about half its
+magnitude every `0.8 s` (`spin *= 0.5 ^ (dt / 0.8)` per step). It persists across
+wall, obstacle, and ball-to-ball bounces and changes only through paddle hits and
+decay. Each ball's spin is independent of the others'.
+
+A paddle swiped at the moment of contact bends a ball's flight, letting a player
+curve shots around the obstacles or wrong-foot the opponent.
+
+## Spawn points
+
+Each ball has a fixed home point on the centerline (`x = 640`), spaced down the
+field, and always returns to its own home point:
+
+- Ball 1: `(640, 180)`, 25% of the field height.
+- Ball 2: `(640, 360)`, 50% (the field center).
+- Ball 3: `(640, 540)`, 75%.
+
+## The per-ball countdown and serving
+
+Each ball has its own countdown timer, independent of the others.
+
+- At the start of the match, all three balls sit at their home points and each
+  begins a `1.0 s` countdown; when a ball's countdown reaches `0`, that ball
+  launches. Because they start together, all three launch together at match
+  start.
+- While a ball is counting down it is held motionless at its home point, but it is
+  solid: it behaves as an immovable round body, so any moving ball that reaches it
+  bounces off (see Ball-to-ball collision) while it waits. It does not move and it
+  does not launch early from being struck; it launches only when its own countdown
+  elapses.
+- When a ball launches it is shot out at a uniformly random angle over the full
+  360deg, at the 520 px/s serve speed. The launch angle is random every time and
+  does not depend on where the ball was, which side scored, or the other balls;
+  the two obstacles and the walls turn any launch direction into live play. This
+  applies to the initial serve and to every relaunch alike.
+
+## Scoring and independent respawn
+
+- A point is scored the moment a ball fully passes a goal edge (`x < 0` or
+  `x > 1280`), exactly as `specs/ui.md` describes: the point goes to the player
+  on the opposite side and increments their score.
+- Only the ball that crossed is affected. It is removed from play, returned to its
+  own home point, and begins a fresh `1.0 s` countdown (held solid, as above);
+  when that countdown elapses it relaunches at a new random 360deg angle. The other
+  two balls carry on uninterrupted, and the field is not frozen.
+- The match ends as `specs/ui.md` describes, first to 11 points and winning by at
+  least 2. Points from all three balls accumulate into the same two scores.
+
+## Ball-to-ball collision
+
+In addition to the wall, paddle, and obstacle collisions above, the balls collide
+with each other as elastic circles of equal mass:
+
+- Two balls collide when the distance between their centers is less than 22, the
+  sum of their radii. Resolve every colliding pair each physics step, including a
+  moving ball against a ball held at its home point during its countdown.
+- On contact between two moving balls, exchange the velocity components along the
+  line connecting the two centers (the collision normal), leaving the tangential
+  components unchanged, then push the two balls apart along the normal so they no
+  longer overlap.
+- A ball held for its countdown is immovable: a moving ball that reaches it
+  reflects its own velocity about the contact normal and is pushed clear, while
+  the held ball stays put and its countdown is unaffected.
+- Ball-to-ball collisions do not change spin, and they do not change speed beyond
+  redistributing the existing velocities (only paddle hits change speed, as above).
+  Each ball keeps its own spin scalar across the collision.
+- Fast balls never tunnel through each other, consistent with the physics above.
+
+## The AI with three balls
+
+In Solo the AI (`specs/modes/single-player.md`) faces three balls at once. It
+defends the ball that most immediately threatens its goal, such as the nearest
+ball currently moving toward it, rather than trying to cover all three, and it
+stays as beatable as `specs/modes/single-player.md` requires. Balls getting past
+it are a fair way for the player to score.
+{{else}}
+
+Spin is a signed scalar carried by the ball. Each physics step it applies a
+lateral acceleration perpendicular to the ball's direction of travel, of
+magnitude `|spin|` (in px/s^2), curving the path toward the side determined by
+the sign of `spin`. Spin decays toward zero exponentially, losing about half its
+magnitude every `0.8 s` (`spin *= 0.5 ^ (dt / 0.8)` per step). It persists across
+wall and obstacle bounces and changes only through paddle hits and decay.
+
+A paddle swiped at the moment of contact bends the ball's flight, letting a
+player curve shots around the obstacles or wrong-foot the opponent.
+
+## Serving
+
+At the start of the match and after each point, the ball spawns at the field
+center `(640, 360)` and holds there for a `1.0 s` countdown (the Countdown state
+in `specs/ui.md`, rendered over the field), then serves at the 520 px/s serve
+speed:
+
+- After a point, the serve travels toward the receiver, the player who was just
+  scored on. The first serve of a match always travels toward player one, so the
+  match opens consistently.
+- The serve direction is within `+/-30deg` of horizontal, with a small vertical
+  component so the volley is never perfectly flat.
+
+## After a point
+
+When a point is scored (a ball crosses a goal edge, per `specs/ui.md`), the rally
+ends. The field holds through the countdown at the center, then the ball is
+re-served toward the player who was just scored on.
+{{/if}}

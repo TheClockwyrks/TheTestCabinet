@@ -96,6 +96,7 @@ export function buildLevelLanes(level: number): LevelLanes {
   const ice = ICE_SPECS.map((spec, i) =>
     buildLane<Vehicle>(ICE_TOP + i, i, spec, level, (x, len) => ({
       x,
+      prevX: x,
       len,
       kind: spec.kind as VehicleKind,
     })),
@@ -103,6 +104,7 @@ export function buildLevelLanes(level: number): LevelLanes {
   const water = WATER_SPECS.map((spec, i) =>
     buildLane<Floe>(WATER_TOP + i, i, spec, level, (x, len) => ({
       x,
+      prevX: x,
       len,
       kind: spec.kind as FloeKind,
     })),
@@ -115,9 +117,17 @@ export function buildLevelLanes(level: number): LevelLanes {
 export function updateLane<T extends Item>(lane: Lane<T>, dt: number): void {
   const vx = lane.dir * lane.speed * TILE * dt;
   for (const it of lane.items) {
+    it.prevX = it.x;
     it.x += vx;
-    if (it.x >= lane.trackLen) it.x -= lane.trackLen;
-    else if (it.x < 0) it.x += lane.trackLen;
+    // The seam wrap is a jump, not travel: re-anchor the interpolation window on
+    // the far side so the item is not drawn streaking back across the track.
+    if (it.x >= lane.trackLen) {
+      it.x -= lane.trackLen;
+      it.prevX = it.x;
+    } else if (it.x < 0) {
+      it.x += lane.trackLen;
+      it.prevX = it.x;
+    }
   }
 }
 

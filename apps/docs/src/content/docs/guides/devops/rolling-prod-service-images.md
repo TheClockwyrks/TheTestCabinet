@@ -109,8 +109,9 @@ sed -i "s/$OLD/$NEW/g" \
 
 Then **read the diff** and confirm the only changes are the eight `newTag`s, the
 `TCAB_DRIVER_IMAGE` value, and the `TCAB_PUBLISHER_IMAGE` value — and that
-`TCAB_CONTAINER_TAG` is **untouched** (it pins the run-container images, on a
-separate cadence; see below). Update the explanatory comment block at the top of
+`TCAB_CONTAINER_TAG` is **untouched** (it pins the run-container images and moves
+with a rehearsed release, not with a service roll; see below). Update the
+explanatory comment block at the top of
 `kustomization.yaml` to name the new sha and what it carries, so the next operator
 knows what's deployed.
 
@@ -176,13 +177,19 @@ The run-container images (`test-cabinet-base`, `-sprite`, `-sprite-sheet`,
 [driver](/components/driver/overview/) resolves them at run time and the
 dispatcher forwards the tag into every driver Job. They are pinned by
 `TCAB_CONTAINER_TAG` in `patch-dispatcher-driver-image.yaml`, and they roll on
-their **own** cadence: they only rebuild when the
+their **own** cadence — by choice now, not by availability.
 [`build-containers.yml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/.github/workflows/build-containers.yml)
-workflow runs (a service-only change to `master` does not rebuild them), so
-`TCAB_CONTAINER_TAG` tracks the latest sha at which `build-containers` actually
-published multi-arch — which is usually **behind** the service-image sha. Leave it
-alone during a service roll; only advance it to a sha where `build-containers`
-published. The general pinning model is in
+runs unfiltered on every `master` push, so multi-arch run images exist at **every**
+sha the service images do and `TCAB_CONTAINER_TAG` can always be advanced to the
+same sha you are rolling the services to. It historically trailed by a lot (the
+workflow used to be path-filtered, so most shas had no run images and the pin sat
+wherever it last published); if you find prod still on such a sha, moving it
+forward is safe and worth doing.
+
+Keep it a **separate** decision from the service roll all the same: this tag
+changes the image every future run executes inside, so it belongs to a release
+that was rehearsed on staging, not to a service hotfix. The general pinning model
+is in
 [Kubernetes → Prerequisites](/deployment/kubernetes/#prerequisites).
 
 ## Rolling back

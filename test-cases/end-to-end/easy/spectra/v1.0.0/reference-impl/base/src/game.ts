@@ -294,7 +294,41 @@ export class Game {
   }
 
   // ---- Fixed-step simulation ----------------------------------------------
+  // ---- Render interpolation ---------------------------------------------
+  // The simulation advances in whole FIXED_STEP ticks, but a frame is presented
+  // whenever the display asks for one, and the two rates do not divide evenly.
+  // Each step stamps where the ship, the drones, and the bullets stood when it
+  // began, and the animation loop sets `renderAlpha` to the fraction of the next
+  // step the wall clock has already covered; render.ts draws between the two.
+  // Nothing here feeds back into the simulation — these are written by the step
+  // and read by the renderer, never the other way about, so the same tick
+  // sequence produces the same state whatever the frame rate.
+  renderAlpha = 0;
+  private prevShipX = 640;
+
+  get viewShipX(): number {
+    return this.prevShipX + (this.shipX - this.prevShipX) * this.renderAlpha;
+  }
+
+  // Collapse the interpolation window onto the current state, so anything that
+  // was repositioned rather than moved is not drawn smearing across the jump.
+  syncView(): void {
+    this.prevShipX = this.shipX;
+    for (const d of this.drones) {
+      d.prevX = d.x;
+      d.prevY = d.y;
+    }
+    for (const b of this.bullets) {
+      b.prevX = b.x;
+      b.prevY = b.y;
+    }
+  }
+
   fixedStep(dt: number): void {
+    // Where everything stood before this step, for the renderer to interpolate
+    // from (see the render-interpolation block above).
+    this.syncView();
+
     switch (this.state) {
       case "stageIntro":
         this.stateTimer -= dt;
@@ -380,6 +414,8 @@ export class Game {
         this.bullets.push({
           x: this.shipX,
           y: SHIP_Y - 16,
+          prevX: this.shipX,
+          prevY: SHIP_Y - 16,
           vx: 0,
           vy: -PBULLET_SPEED,
           band: this.shipBand,
@@ -466,6 +502,10 @@ export class Game {
             } else {
               d.x = this.wrapX(d.x);
               d.y = PLAY_TOP - 40;
+              // A jump, not travel — re-anchor so it is not drawn streaking
+              // back up the field.
+              d.prevX = d.x;
+              d.prevY = d.y;
               this.startReturn(d, sway);
             }
           } else if (d.pathDist >= d.path!.length) {
@@ -558,6 +598,8 @@ export class Game {
     this.bullets.push({
       x,
       y,
+      prevX: x,
+      prevY: y,
       vx: aim * spd,
       vy: spd,
       band,
@@ -1002,6 +1044,8 @@ export class Game {
       band: spec.kind === "prism" ? shellBand : band,
       x: spec.x,
       y: spec.y,
+      prevX: spec.x,
+      prevY: spec.y,
       col: 0,
       row: 0,
       slotX,
@@ -1046,6 +1090,8 @@ export class Game {
     this.bullets.push({
       x: spec.x,
       y: spec.y,
+      prevX: spec.x,
+      prevY: spec.y,
       vx: spec.vx ?? 0,
       vy: spec.vy ?? -PBULLET_SPEED,
       band: parseBand(spec.band),
@@ -1058,6 +1104,8 @@ export class Game {
     this.bullets.push({
       x: spec.x,
       y: spec.y,
+      prevX: spec.x,
+      prevY: spec.y,
       vx: spec.vx ?? 0,
       vy: spec.vy ?? EBULLET_SPEED * enemyBulletMult(this.stage),
       band: parseBand(spec.band),

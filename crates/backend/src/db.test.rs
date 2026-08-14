@@ -1515,6 +1515,178 @@ async fn set_publish_job_state_records_a_failure_detail() {
 }
 
 #[tokio::test]
+async fn active_publish_job_for_run_finds_a_queued_job() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_publish_job(new_publish_job("p1", "r1", "2026-06-27T00:00:00Z"))
+        .await
+        .unwrap();
+
+    let active = db
+        .active_publish_job_for_run("r1", "2026-06-27T00:00:05Z")
+        .await
+        .unwrap()
+        .expect("a queued publish job is a release already under way");
+    assert_eq!(active.id, "p1");
+    assert_eq!(active.state, "queued");
+
+    // Another run's publishing is unaffected.
+    assert!(
+        db.active_publish_job_for_run("r2", "2026-06-27T00:00:05Z")
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn active_publish_job_for_run_finds_a_recently_dispatched_job() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_publish_job(new_publish_job("p1", "r1", "2026-06-27T00:00:00Z"))
+        .await
+        .unwrap();
+    db.claim_next_publish_job("2026-06-27T00:00:10Z")
+        .await
+        .unwrap()
+        .expect("the queued job is claimable");
+
+    // A publisher is carrying this one out right now: a second publish must not be
+    // enqueued alongside it, or the run gets two Pages deployments.
+    let active = db
+        .active_publish_job_for_run("r1", "2026-06-27T00:05:00Z")
+        .await
+        .unwrap()
+        .expect("a freshly dispatched publish job is still under way");
+    assert_eq!(active.id, "p1");
+    assert_eq!(active.state, "dispatched");
+}
+
+#[tokio::test]
+async fn active_publish_job_for_run_ignores_a_dispatched_job_gone_stale() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_publish_job(new_publish_job("p1", "r1", "2026-06-27T00:00:00Z"))
+        .await
+        .unwrap();
+    db.claim_next_publish_job("2026-06-27T00:00:10Z")
+        .await
+        .unwrap()
+        .unwrap();
+
+    // Nothing reaps a publish job whose publisher died before reporting, so past the
+    // staleness cutoff it must stop blocking — otherwise the run could never be
+    // published again.
+    assert!(
+        db.active_publish_job_for_run("r1", "2026-06-27T02:00:00Z")
+            .await
+            .unwrap()
+            .is_none(),
+        "a dispatched job quiet for hours is abandoned, not active"
+    );
+
+    // Just inside the window it still blocks.
+    assert!(
+        db.active_publish_job_for_run("r1", "2026-06-27T00:59:00Z")
+            .await
+            .unwrap()
+            .is_some(),
+        "a dispatched job within the window is still under way"
+    );
+}
+
+#[tokio::test]
+async fn active_publish_job_for_run_ignores_terminal_jobs() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_publish_job(new_publish_job("p1", "r1", "2026-06-27T00:00:00Z"))
+        .await
+        .unwrap();
+    db.set_publish_job_state(
+        "p1",
+        "failed",
+        "2026-06-27T00:01:00Z",
+        Some("wrangler died"),
+    )
+    .await
+    .unwrap();
+
+    // A failed publish must stay retryable — it cannot block the next attempt.
+    assert!(
+        db.active_publish_job_for_run("r1", "2026-06-27T00:02:00Z")
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    db.enqueue_publish_job(new_publish_job("p2", "r1", "2026-06-27T00:03:00Z"))
+        .await
+        .unwrap();
+    db.set_publish_job_state("p2", "succeeded", "2026-06-27T00:04:00Z", None)
+        .await
+        .unwrap();
+    assert!(
+        db.active_publish_job_for_run("r1", "2026-06-27T00:05:00Z")
+            .await
+            .unwrap()
+            .is_none(),
+        "a completed publish is not a release under way"
+    );
+}
+
+#[tokio::test]
+async fn active_publish_job_for_run_returns_the_oldest_live_job() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Two live jobs can only coexist across states (the unique index forbids two
+    // queued ones): claim the first so it is dispatched, then queue another.
+    db.enqueue_publish_job(new_publish_job("p1", "r1", "2026-06-27T00:00:00Z"))
+        .await
+        .unwrap();
+    db.claim_next_publish_job("2026-06-27T00:00:10Z")
+        .await
+        .unwrap()
+        .unwrap();
+    db.enqueue_publish_job(new_publish_job("p2", "r1", "2026-06-27T00:01:00Z"))
+        .await
+        .unwrap();
+
+    let active = db
+        .active_publish_job_for_run("r1", "2026-06-27T00:02:00Z")
+        .await
+        .unwrap()
+        .expect("a live job");
+    assert_eq!(
+        active.id, "p1",
+        "the caller re-attaches to the publish that started first"
+    );
+}
+
+#[tokio::test]
+async fn a_second_queued_publish_job_for_one_run_is_refused_by_the_database() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_publish_job(new_publish_job("p1", "r1", "2026-06-27T00:00:00Z"))
+        .await
+        .unwrap();
+
+    // The partial unique index is the backstop under the application-level check:
+    // two concurrent enqueues that both pass `active_publish_job_for_run` cannot both
+    // land a queued job for the same run.
+    assert!(
+        db.enqueue_publish_job(new_publish_job("p2", "r1", "2026-06-27T00:00:01Z"))
+            .await
+            .is_err(),
+        "a second queued publish job for the same run must be refused"
+    );
+
+    // A different run is unaffected, and so is a re-publish once the first is done.
+    db.enqueue_publish_job(new_publish_job("p3", "r2", "2026-06-27T00:00:02Z"))
+        .await
+        .unwrap();
+    db.set_publish_job_state("p1", "failed", "2026-06-27T00:01:00Z", None)
+        .await
+        .unwrap();
+    db.enqueue_publish_job(new_publish_job("p4", "r1", "2026-06-27T00:02:00Z"))
+        .await
+        .expect("a retry after a failed publish is allowed");
+}
+
+#[tokio::test]
 async fn referenced_cases_returns_distinct_pairs_including_pending_runs() {
     let db = Db::connect_in_memory().await.unwrap();
 

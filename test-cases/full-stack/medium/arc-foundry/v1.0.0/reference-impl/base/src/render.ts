@@ -1018,21 +1018,24 @@ function drawCandidate(ctx: CanvasRenderingContext2D, game: Game, c: Candidate, 
 // (Capacitor / Emitter / Discharge) carry a produced sprite; the Coil and Arc-Node bolts
 // (whose payloads are the chain / ring particle effects) draw a code bolt in their accent.
 function drawProjectiles(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
+  const alpha = game.renderAlpha;
   for (const pr of game.projectiles) {
+    const prx = pr.prevX + (pr.x - pr.prevX) * alpha;
+    const pry = pr.prevY + (pr.y - pr.prevY) * alpha;
     const c = COMPONENT_COLOR[pr.type];
     const spr = A.projectile(pr.type);
     ctx.save();
     ctx.shadowColor = c;
     ctx.shadowBlur = 8;
     if (spr) {
-      blit(ctx, spr, pr.x, pr.y, 16, 16, pr.angle);
+      blit(ctx, spr, prx, pry, 16, 16, pr.angle);
     } else {
       ctx.globalCompositeOperation = "lighter";
       ctx.strokeStyle = hexA(c, 0.95);
       ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.moveTo(pr.x - Math.cos(pr.angle) * 7, pr.y - Math.sin(pr.angle) * 7);
-      ctx.lineTo(pr.x + Math.cos(pr.angle) * 7, pr.y + Math.sin(pr.angle) * 7);
+      ctx.moveTo(prx - Math.cos(pr.angle) * 7, pry - Math.sin(pr.angle) * 7);
+      ctx.lineTo(prx + Math.cos(pr.angle) * 7, pry + Math.sin(pr.angle) * 7);
       ctx.stroke();
     }
     ctx.restore();
@@ -1044,12 +1047,19 @@ function drawProjectiles(ctx: CanvasRenderingContext2D, game: Game, A: Assets): 
 function drawUnits(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
   for (const u of game.units) {
     if (u.dead) continue;
-    drawUnit(ctx, u, A);
-    drawHealthBar(ctx, u);
+    drawUnit(ctx, u, A, game.renderAlpha);
+    drawHealthBar(ctx, u, game.renderAlpha);
   }
 }
 
-function drawUnit(ctx: CanvasRenderingContext2D, u: Unit, A: Assets): void {
+function drawUnit(
+  ctx: CanvasRenderingContext2D,
+  u: Unit,
+  A: Assets,
+  alpha: number,
+): void {
+  const ux = u.prevX + (u.x - u.prevX) * alpha;
+  const uy = u.prevY + (u.y - u.prevY) * alpha;
   const frames = A.loadFrames[u.type];
   const size = u.radius * 2.4;
   const boss = u.type === "dynamo";
@@ -1060,27 +1070,27 @@ function drawUnit(ctx: CanvasRenderingContext2D, u: Unit, A: Assets): void {
     ctx.globalAlpha = 0.25;
     ctx.fillStyle = "#000000";
     ctx.beginPath();
-    ctx.ellipse(u.x, u.y + 8, u.radius, u.radius * 0.4, 0, 0, Math.PI * 2);
+    ctx.ellipse(ux, uy + 8, u.radius, u.radius * 0.4, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
 
   const seethe = boss ? 1 + (u.invincible ? 0.1 : 0.06) * Math.sin(time * 9 + u.id) : 1;
-  glow(ctx, u.x, u.y, u.radius + (boss ? 12 : 4), boss ? COL.boss : COL.arc, boss ? 0.3 : 0.14);
+  glow(ctx, ux, uy, u.radius + (boss ? 12 : 4), boss ? COL.boss : COL.arc, boss ? 0.3 : 0.14);
   // The post-final invincible Overload Dynamo: an outsized, roiling overload halo + arcing ring
   // so it reads instantly as the maze-rating boss, not a normal Dynamo (specs/enemies.md).
   if (u.invincible) {
-    glow(ctx, u.x, u.y, u.radius + 22 + 6 * Math.sin(time * 5), COL.boss, 0.22);
-    ring(ctx, u.x, u.y, u.radius + 10 + 3 * Math.sin(time * 4), COL.spark, 0.5, 2);
+    glow(ctx, ux, uy, u.radius + 22 + 6 * Math.sin(time * 5), COL.boss, 0.22);
+    ring(ctx, ux, uy, u.radius + 10 + 3 * Math.sin(time * 4), COL.spark, 0.5, 2);
   }
 
   if (frames.length) {
     const idx = Math.floor((u.animT * 10 + u.id) % frames.length);
-    blit(ctx, frames[idx]!, u.x, u.y, size * seethe, size * seethe, 0);
+    blit(ctx, frames[idx]!, ux, uy, size * seethe, size * seethe, 0);
   } else {
     ctx.fillStyle = boss ? COL.boss : COL.text2;
     ctx.beginPath();
-    ctx.arc(u.x, u.y, u.radius, 0, Math.PI * 2);
+    ctx.arc(ux, uy, u.radius, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -1088,31 +1098,37 @@ function drawUnit(ctx: CanvasRenderingContext2D, u: Unit, A: Assets): void {
   // Slowed: a thin icy ring + faint cyan wash (Choke's EM-drag). Burning: an ember flicker
   // (Rectifier's overcurrent DoT). Both read at 2× speed without clutter.
   if (u.slowFactor < 1) {
-    ring(ctx, u.x, u.y, u.radius + 3, COL.choke, 0.75, 1.5);
-    glow(ctx, u.x, u.y, u.radius + 2, COL.choke, 0.16);
+    ring(ctx, ux, uy, u.radius + 3, COL.choke, 0.75, 1.5);
+    glow(ctx, ux, uy, u.radius + 2, COL.choke, 0.16);
   }
   if (u.burnDps > 0) {
     const fl = 0.22 + 0.18 * (0.5 + 0.5 * Math.sin(time * 22 + u.id));
-    glow(ctx, u.x, u.y, u.radius + 4, COL.rectifier, fl);
+    glow(ctx, ux, uy, u.radius + 4, COL.rectifier, fl);
   }
 
   // Hit flash.
-  if (u.hitFlash < 0.09) glow(ctx, u.x, u.y, u.radius + 6, COL.spark, 0.5 * (1 - u.hitFlash / 0.09));
+  if (u.hitFlash < 0.09) glow(ctx, ux, uy, u.radius + 6, COL.spark, 0.5 * (1 - u.hitFlash / 0.09));
 }
 
-function drawHealthBar(ctx: CanvasRenderingContext2D, u: Unit): void {
+function drawHealthBar(
+  ctx: CanvasRenderingContext2D,
+  u: Unit,
+  alpha: number,
+): void {
+  const ux = u.prevX + (u.x - u.prevX) * alpha;
+  const uy = u.prevY + (u.y - u.prevY) * alpha;
   // The invincible finale boss has no depleting health — it shows an OVERLOAD banner instead of a
   // bar, since the point is the damage dealt to it, not killing it (specs/enemies.md).
   if (u.invincible) {
-    const y = u.y - u.radius - 14;
-    text(ctx, "OVERLOAD DYNAMO", u.x, y, 10, COL.boss, "center", "800", 0.5);
+    const y = uy - u.radius - 14;
+    text(ctx, "OVERLOAD DYNAMO", ux, y, 10, COL.boss, "center", "800", 0.5);
     return;
   }
   const frac = u.maxHp > 0 ? Math.max(0, u.hp) / u.maxHp : 0;
   const w = Math.max(16, u.radius * 2.2);
   const h = u.type === "dynamo" ? 5 : 3;
-  const x = u.x - w / 2;
-  const y = u.y - u.radius - (u.flies ? 12 : 8);
+  const x = ux - w / 2;
+  const y = uy - u.radius - (u.flies ? 12 : 8);
   ctx.fillStyle = "rgba(0,0,0,0.6)";
   ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
   ctx.fillStyle = frac > 0.5 ? COL.legal : frac > 0.25 ? COL.charge : COL.alert;

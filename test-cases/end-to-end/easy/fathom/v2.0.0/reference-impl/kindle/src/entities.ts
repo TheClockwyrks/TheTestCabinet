@@ -21,6 +21,12 @@ export type WantFn = () => Dir;
 export abstract class Mover {
   x: number;
   y: number;
+  // Where this mover stood when the current step began. The renderer draws
+  // between that and the current position (see Game.renderAlpha), so motion is
+  // smooth even though the simulation moves in whole fixed steps. Written by
+  // the step, read by the renderer, never the other way about.
+  prevX: number;
+  prevY: number;
   dir: Dir = Dir.None;
   facing: Dir = Dir.Up;
   speed: number;
@@ -32,7 +38,23 @@ export abstract class Mover {
   constructor(col: number, row: number, speed: number) {
     this.x = Maze.cx(col);
     this.y = Maze.cy(row);
+    this.prevX = this.x;
+    this.prevY = this.y;
     this.speed = speed;
+  }
+
+  viewX(alpha: number): number {
+    return this.prevX + (this.x - this.prevX) * alpha;
+  }
+  viewY(alpha: number): number {
+    return this.prevY + (this.y - this.prevY) * alpha;
+  }
+
+  // Collapse the interpolation window onto the current position, for a mover
+  // that was repositioned rather than moved — crossing the wrap tunnel.
+  syncView(): void {
+    this.prevX = this.x;
+    this.prevY = this.y;
   }
 
   get col(): number {
@@ -59,8 +81,15 @@ function moveBy(m: Mover, d: Dir, dist: number): void {
       break;
   }
   // Horizontal wrap tunnel (only reachable at WRAP_ROW).
-  if (m.x < MAZE_LEFT) m.x += MAZE_W;
-  else if (m.x >= MAZE_LEFT + MAZE_W) m.x -= MAZE_W;
+  // The wrap tunnel is a jump, not travel: re-anchor the interpolation window
+  // on the far side so the mover is not drawn streaking back across the maze.
+  if (m.x < MAZE_LEFT) {
+    m.x += MAZE_W;
+    m.syncView();
+  } else if (m.x >= MAZE_LEFT + MAZE_W) {
+    m.x -= MAZE_W;
+    m.syncView();
+  }
 }
 
 // Distance along the current dir to the next tile center ahead.

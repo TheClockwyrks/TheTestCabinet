@@ -233,6 +233,30 @@ export class Game {
   }
 
   // ---- Fixed simulation step (specs/controls.md) ------------------------------
+  // ---- Render interpolation ---------------------------------------------
+  // The simulation advances in whole FIXED_STEP ticks, but a frame is presented
+  // whenever the display asks for one, and the two rates do not divide evenly.
+  // `syncView` stamps where the units and projectiles stood when the step
+  // began, and the animation loop sets `renderAlpha` to the fraction of the next
+  // step the wall clock has already covered; render.ts draws between the two.
+  // The board, the components, and the walls are static and need none of it.
+  // Nothing here feeds back into the simulation — these are written by the step
+  // and read by the renderer, never the other way about, so the same tick
+  // sequence produces the same state whatever the frame rate.
+  renderAlpha = 0;
+
+  // Stamp the interpolation window, once per simulation step.
+  syncView(): void {
+    for (const u of this.units) {
+      u.prevX = u.x;
+      u.prevY = u.y;
+    }
+    for (const pr of this.projectiles) {
+      pr.prevX = pr.x;
+      pr.prevY = pr.y;
+    }
+  }
+
   fixedStep(dt: number): void {
     if (this.state !== "playing" || this.paused) return;
 
@@ -282,6 +306,8 @@ export class Game {
       radius: def.radius,
       x: c.x,
       y: c.y,
+      prevX: c.x,
+      prevY: c.y,
       wpIndex: 1, // heading to chain[1] = WP1 (chain[0] is the Entry it spawns on)
       route: [],
       routeStep: 0,
@@ -442,6 +468,8 @@ export class Game {
       dmg,
       x: mx,
       y: my,
+      prevX: mx,
+      prevY: my,
       angle: c.aimAngle,
       speed: c.combo ? COMBO_PROJECTILE_SPEED : PROJECTILE_SPEED[c.type],
       targetId: target.id,

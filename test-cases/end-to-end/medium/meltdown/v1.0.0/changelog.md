@@ -263,3 +263,66 @@ sealing placement being refused, a build-zone boundary, a tower held against the
 showed the preview parked wherever the real cursor sat, which under an automated driver is
 the top-left corner of the stage. It now drives the pointer, which also brings the debug
 path under the same keep-it-on-the-grid clamp the mouse already had.
+
+## The pause freeze is measured on the clock a player is on
+
+`pause.freezes` paused the match and then advanced, on the reasoning that a paused
+simulation ignores the advance. But an advance is the debug API's `step`, and where a build
+puts its pause gate is its own business: the reference closes it inside the simulation's
+own update, while a build that holds the pause in the shell that drives the clock — feeding
+its simulation no time at all while the menu is up — freezes the floor just as completely
+for the player and steps right through the check. `specs/instrumentation.md` does not
+settle it ("stepping only advances the live game; it has no effect on a menu screen", and
+the pause menu is a required menu over a screen that is not the live one), so the item was
+scoring a free choice. One such build walked its Mote 180 px through the pause while the
+clip filmed for the same item — in real time, where the freeze is real — showed it stopping
+dead behind the menu. The verdict contradicted its own evidence.
+
+It was the weaker check in the other direction too, and that matters more: a build whose
+pause menu opens over a floor that keeps running passes the old check outright, so long as
+its `step` is gated. The one thing the item exists to catch was the one thing it could not
+see.
+
+The freeze is now watched in real time, with the clock in the build's hands and nothing
+stepping it, over two windows of the same length: the Mote must genuinely walk in the
+first, and hold its position — with the simulation clock stopped alongside it — through the
+second. The running window is what keeps the freeze from passing vacuously, since a dead
+floor is also a still one, and it is the contrast the item's clip was always named for.
+Proved with three mutants: a reference that simulates through its pause fails, one that
+simulates through its pause only when a player is driving (and so passed the old check)
+fails, and one whose floor never advances at all fails the running window instead.
+
+## The render-decoupling requirement no longer contradicts itself
+
+`specs/gameplay.md` and `specs/instrumentation.md` require the simulation to run
+on a fixed timestep **decoupled from rendering**, and then described that
+decoupling as "Rendering reads the state, never the other way around." Read as a
+constraint on the renderer, the second sentence says the opposite of the first:
+it pins what is drawn to whatever the last completed step left behind, tying the
+picture to the tick boundary rather than freeing it from one.
+
+The wording now states the requirement only as the one-way dependency it is —
+the simulation never reads from, waits on, or is driven by the renderer — and
+says nothing about how the renderer presents that state. Nothing was added to
+what a build must do: the decoupling requirement is the one that was already
+there, and the sentence that could be read against it is gone.
+
+## The reference implementation draws between simulation steps
+
+The simulation runs at 60 Hz and a frame is presented whenever the display asks
+for one. The two rates do not divide evenly, so the number of steps that run
+between two frames varies, and drawing the raw state moved every surge unit
+crossing the floor a different distance each frame — about half a step of
+position error, arriving metronomically at the beat frequency between the tick
+rate and the refresh rate. At 60 Hz on a 60 Hz display one step per frame is the
+nominal rate, so a single missed step freezes the picture outright for that
+frame. The window is stamped once per displayed step, so it still spans the
+whole group when the player is running at 2x.
+
+Each step now stamps where the moving objects stood when it began, and the loop
+hands the renderer the fraction of the next step the wall clock has already
+covered, so it draws between the two. The simulation itself is untouched — the
+interpolation state is written by the step and read only by the renderer, never
+the other way about — so a given seed and sequence of `step` calls reaches
+exactly the state it reached before, and a posed scenario is drawn exactly as it
+was stepped.

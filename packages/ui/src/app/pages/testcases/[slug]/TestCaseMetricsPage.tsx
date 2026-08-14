@@ -1,14 +1,17 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import {
   canonicalModelId,
   MetricChartWidget,
   Panel,
   RatingsChartWidget,
-  SegmentedControl,
   type RatingCounts,
-  type SegmentedOption,
 } from "@test-cabinet/ui";
+import {
+  useVersionScope,
+  versionInScope,
+  VersionScopeControl,
+} from "../../../components/VersionScope";
 import { useCaseRunSummaries } from "../../../data/useRuns";
 import { useFindModel } from "../../../data/useModels";
 import { useFindReview } from "../../../data/writeups";
@@ -30,62 +33,6 @@ const MIN_RUNS = 2;
 // and aren't clipped by the chart's left margin. Cost values are small enough to
 // render in full, so they keep the default axis formatting.
 const TOKEN_TICKS = "~s";
-
-// Which versions of the case a chart draws from, all relative to the case's
-// latest version:
-// - `current`: the same major AND minor as the latest (the revision may differ).
-// - `major`: the same major as the latest (minor and revision may differ).
-// - `specific`: one exact version the visitor picks.
-// - `all`: every version.
-type VersionScope = "current" | "major" | "specific" | "all";
-
-const SCOPE_OPTIONS: ReadonlyArray<SegmentedOption<VersionScope>> = [
-  { value: "current", label: "Current version" },
-  { value: "major", label: "Current major" },
-  { value: "specific", label: "Specific" },
-  { value: "all", label: "All" },
-];
-
-// A version's numeric parts. Versions are `v<major>.<minor>.<revision>` strings
-// (e.g. `v1.2.0`); there is no shared semver parser, so the scopes parse the two
-// they compare on the fly.
-interface Semver {
-  major: number;
-  minor: number;
-  revision: number;
-}
-
-// Parse a `v1.2.0`-style version into its numeric parts, or null when it doesn't
-// match (a scope then falls back to an exact string compare rather than silently
-// matching nothing).
-function parseVersion(version: string): Semver | null {
-  const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(version);
-  if (!match) return null;
-  return {
-    major: Number(match[1]),
-    minor: Number(match[2]),
-    revision: Number(match[3]),
-  };
-}
-
-// Whether a run's `testCaseVersion` falls within the selected scope, measured
-// against the case's latest version (or, for `specific`, the picked version).
-// Unparseable versions fall back to an exact string match so a malformed value
-// only ever matches its own kind.
-function versionInScope(
-  runVersion: string,
-  scope: VersionScope,
-  latestVersion: string,
-  specificVersion: string,
-): boolean {
-  if (scope === "all") return true;
-  if (scope === "specific") return runVersion === specificVersion;
-  const run = parseVersion(runVersion);
-  const base = parseVersion(latestVersion);
-  if (!run || !base) return runVersion === latestVersion;
-  if (scope === "major") return run.major === base.major;
-  return run.major === base.major && run.minor === base.minor;
-}
 
 // Value accessors for the two metric widgets. Module-level so their identity is
 // stable across renders (the widgets memoize their chart data on them).
@@ -127,15 +74,11 @@ export function MetricsContent({
   const findModel = useFindModel();
   const findReview = useFindReview();
 
-  // The version scope the visitor has chosen, and — for the `specific` scope —
-  // which exact version, defaulting to the latest. A single-version case has
-  // nothing to scope, so the control is hidden and the default `current` scope
-  // simply keeps every (identically-versioned) run.
-  const [scope, setScope] = useState<VersionScope>("current");
-  const [specificVersion, setSpecificVersion] = useState(
-    testCase.latestVersion,
-  );
-  const showScope = testCase.versions.length > 1;
+  // The version scope the visitor has chosen — the same control, and the same
+  // `current` default, the Leaderboard tab carries, so the charts and the board
+  // describe the same cohort of runs unless the visitor scopes one of them.
+  const versionScope = useVersionScope(testCase);
+  const { scope, specificVersion } = versionScope;
 
   // Colors each model's bar by its provider's brand color, so a glance groups the
   // roster by provider. A provider we have no color for (or a model missing from
@@ -219,30 +162,7 @@ export function MetricsContent({
 
   return (
     <section className={styles.section}>
-      {showScope && (
-        <div className={styles.controls}>
-          <SegmentedControl
-            options={SCOPE_OPTIONS}
-            value={scope}
-            onChange={setScope}
-            ariaLabel="Version scope"
-          />
-          {scope === "specific" && (
-            <select
-              className={styles.versionSelect}
-              value={specificVersion}
-              onChange={(event) => setSpecificVersion(event.target.value)}
-              aria-label="Version"
-            >
-              {testCase.versions.map((version) => (
-                <option key={version} value={version}>
-                  {version}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
-      )}
+      <VersionScopeControl state={versionScope} />
 
       {scopedRuns.length < MIN_RUNS ? (
         <Panel>

@@ -113,9 +113,11 @@ first, confirm the flow, then repeat for prod with prod's own secrets and a
   and the run-container images by
   [`build-containers.yml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/.github/workflows/build-containers.yml),
   all published **multi-arch** (`linux/amd64` + `linux/arm64`, so they run on either
-  node architecture) and each tagged `:latest` and an immutable `:<git-sha>`. These
-  are pinned in **two different places**, because the two image sets reach the
-  cluster differently:
+  node architecture) and each tagged `:latest` and an immutable `:<git-sha>`. Both
+  workflows run on **every** push to `master`/`staging`, unfiltered, so any sha on
+  those branches has a complete image set — both halves are always pinnable to the
+  same one. These are pinned in **two different places**, because the two image sets
+  reach the cluster differently:
   - **Service images** are Kubernetes `image:` fields, so the overlays' kustomize
     `images:` transformer pins them — set `newTag` to a `:<git-sha>`. For the
     routine "promote the latest CI build to prod" loop — finding the built sha,

@@ -31,6 +31,10 @@ export type FloeKind = "pan" | "raft3" | "raft4";
 export interface Item {
   // Strait-local left-edge x (px) of the sprite.
   x: number;
+  // Where this item stood when the current step began, so the renderer can draw
+  // between that and `x` (see Game.renderAlpha). Written by the step and read by
+  // the renderer, never the other way about.
+  prevX: number;
   // Length in tiles (plow 3, dogsled/car/raft vary, pan 1).
   len: number;
 }

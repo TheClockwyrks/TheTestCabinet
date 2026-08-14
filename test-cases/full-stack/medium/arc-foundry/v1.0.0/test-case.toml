@@ -665,7 +665,7 @@ validation = { script = "validation/enemies/roster-stats.mjs", outputs = [{ id =
 id = "hp-scales-by-wave"
 title = "Only HP scales across waves"
 description = "As the waves deepen only HP scales (per the pinned formula); speed, bounty, and leak are unchanged wave to wave."
-validation = { script = "validation/enemies/hp-scales-by-wave.mjs", outputs = [{ id = "scale", name = "The same tower killing a Wave-1 Mote while a Wave-10 one soaks it", kind = "video" }] }
+validation = { script = "validation/enemies/hp-scales-by-wave.mjs", outputs = [{ id = "scale", name = "Two Motes walked side by side into one tower — the one carrying Wave-1 HP pops, the one carrying Wave-10 HP soaks it", kind = "video" }] }
 [[review.categories.items]]
 id = "filament-every-fourth"
 title = "The Filament flyer appears only every fourth wave"
@@ -925,6 +925,13 @@ title = "Produced industrial-electro music bed"
 description = "A tense, driving industrial-electro reactor music bed the build produced with the music tool loops under play, once the player first interacts."
 validation = { script = "validation/audio/music.mjs", outputs = [
   { id = "music", name = "The arming whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "cues-survive-stepping"
+title = "Cues play on whichever clock drives the tick"
+description = "The cues sound on the same events however the simulation is being advanced: a cue that plays while the game runs itself still plays when the tick is supplied externally, because the audio (and the produced VFX alongside it) is driven by the events the simulation raises rather than by which clock raised them."
+validation = { script = "validation/audio/cues-survive-stepping.mjs", outputs = [
+  { id = "stepped-shot", name = "The stepped shot whose cue is checked", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "no-autostart-mute"
