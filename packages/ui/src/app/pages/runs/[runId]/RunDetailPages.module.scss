@@ -553,8 +553,31 @@ $verdict-gutter: 3.5rem;
   vertical-align: middle;
 }
 
+// A reviewer's note on a point. It sits directly beneath the point's description,
+// which comes from the case definition — so styling the two alike (both plain
+// muted text) left no way to tell authored review text from the rubric's own
+// prose. The note reads as a quoted annotation instead: an accent rule and tinted
+// ground mark it as something a person wrote, and full-strength text keeps it
+// from receding behind the muted description above it.
 .verdictNote {
-  color: t.$color-text-muted;
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  color: t.$color-text;
+  background: t.$color-surface-2;
+  border-left: 2px solid t.$color-accent;
+  border-radius: 0 t.$radius-sm t.$radius-sm 0;
+  padding: t.$space-xs t.$space-sm;
+}
+
+// Names the note's author role, so the block is legible as review text even at a
+// glance or for a reader who cannot pick up the accent rule by color alone.
+.verdictNoteLabel {
+  flex: none;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: t.$color-accent;
 }
 
 .verdictPass {
