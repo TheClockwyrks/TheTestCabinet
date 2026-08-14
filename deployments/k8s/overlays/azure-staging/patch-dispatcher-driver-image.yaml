@@ -5,18 +5,21 @@
 # TCAB_CONTAINER_TAG pins the RUN-CONTAINER images the driver resolves per sandbox pod.
 # Like TCAB_DRIVER_IMAGE it is an env value the driver reads at run time and the
 # dispatcher forwards into every driver Job. It is pinned SEPARATELY from the service
-# images (the run images only rebuild when `build-containers` runs), so this tracks the
-# latest sha at which `build-containers` published multi-arch run images. The
-# v0.6.0-beta2.1 (5171a923) and beta3 (ae3859f7) builds ran only `build-service-images`,
-# NOT `build-containers`, so the run-container tag stayed pinned at beta2 (8c80dd94) while
-# the driver SERVICE image moved ahead. The v0.6.0-beta4 build ran `build-containers`
-# again, so both RE-CONVERGED onto `e6afbee6`. Every `staging` build since — v0.6.0-rc1,
-# rc2 and v0.6.1-rc1, rc4, rc4.1 and rc5 — ran only `build-service-images`, so the driver
-# SERVICE image moves ahead to v0.6.1-rc5 (e376e0fa) while the run-container tag stays
-# pinned at beta4 (e6afbee6). The widening divergence is benign: nothing under containers/
-# has changed on `staging` since e6afbee6, so the beta4 run images still match what the
-# branch would build today. (`build-containers` did run once on `master`, for the v0.6.0
-# release merge 3e460a2d, but containers/ is byte-identical there — nothing new to pin.)
+# images because it decides the image every future RUN executes inside — it advances
+# with a rehearsed release, not with every service roll.
+#
+# It is now CONVERGED with the driver SERVICE image at `31568780` (v0.6.2-rc1), closing a
+# gap that had been open since beta4. That gap was a leftover of `build-containers` having
+# been path-filtered: it published at beta2 (8c80dd94), skipped beta2.1/beta3, re-converged
+# at beta4 (e6afbee6), then skipped every build since — so there was simply no newer sha
+# carrying run images to pin to. It stayed benign only because containers/ happened not to
+# change in that window; a change there would have shipped silently stale run images.
+# Both image workflows now run unfiltered on every master/staging push (5ef86c1d), and
+# v0.6.2-rc1 is the first build under that rule: it published all 27 run images at the same
+# sha as the services, so both pins move together here. containers/ did not change between
+# e6afbee6 and this sha, so the run images are rebuilds of the same Dockerfiles rather than
+# new content of ours — only upstream base layers moved. Keep the two pins in lockstep from
+# here rather than letting this drift again.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -30,6 +33,6 @@ spec:
         - name: dispatcher
           env:
             - name: TCAB_DRIVER_IMAGE
-              value: "ghcr.io/theclockwyrks/tcab-driver:e376e0fa9e228b62d60e60a60cdfbd27549d686b"
+              value: "ghcr.io/theclockwyrks/tcab-driver:31568780009adf70ba3369feb05cb6313048286f"
             - name: TCAB_CONTAINER_TAG
-              value: "e6afbee63a8093a7c717b5195cd8dcae85d77fdf"
+              value: "31568780009adf70ba3369feb05cb6313048286f"

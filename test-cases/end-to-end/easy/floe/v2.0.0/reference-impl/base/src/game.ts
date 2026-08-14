@@ -495,6 +495,28 @@ export class Game implements WorldView {
 
   // ---- Fixed-timestep update --------------------------------------------
 
+  // ---- Render interpolation ---------------------------------------------
+  // The simulation advances in whole FIXED_STEP ticks, but a frame is presented
+  // whenever the display asks for one, and the two rates do not divide evenly.
+  // Each moving thing stamps where it stood when the step began (Critter, Bear,
+  // and every lane Item), and the animation loop sets `renderAlpha` to the
+  // fraction of the next step the wall clock has already covered; render.ts
+  // draws between the two. Nothing here feeds back into the simulation — these
+  // are written by the step and read by the renderer, never the other way
+  // about, so the same tick sequence produces the same state whatever the frame
+  // rate.
+  renderAlpha = 0;
+
+  // Collapse the interpolation window onto the current state, so anything that
+  // was repositioned rather than moved is not drawn smearing across the jump.
+  syncView(): void {
+    this.critter.syncView();
+    for (const h of this.hunters) h.bear?.syncView();
+    for (const lane of [...this.lanes.ice, ...this.lanes.water]) {
+      for (const it of lane.items) it.prevX = it.x;
+    }
+  }
+
   fixedStep(dt: number): void {
     this.simTime += dt;
     if (this.muteFlash > 0) this.muteFlash = Math.max(0, this.muteFlash - dt);
@@ -906,19 +928,31 @@ export class Game implements WorldView {
     if (iceLane) {
       const k = kind as VehicleKind;
       const len = laneItemLen(k);
-      iceLane.items = cols.map((c) => ({ x: c * TILE, len, kind: k }));
+      iceLane.items = cols.map((c) => ({
+        x: c * TILE,
+        prevX: c * TILE,
+        len,
+        kind: k,
+      }));
       if (spec.speed !== undefined) iceLane.speed = spec.speed;
       if (spec.dir !== undefined) iceLane.dir = spec.dir;
+      this.syncView();
       return;
     }
     const waterLane = this.lanes.water.find((l) => l.row === row);
     if (waterLane) {
       const k = kind as FloeKind;
       const len = laneItemLen(k);
-      waterLane.items = cols.map((c) => ({ x: c * TILE, len, kind: k }));
+      waterLane.items = cols.map((c) => ({
+        x: c * TILE,
+        prevX: c * TILE,
+        len,
+        kind: k,
+      }));
       if (spec.speed !== undefined) waterLane.speed = spec.speed;
       if (spec.dir !== undefined) waterLane.dir = spec.dir;
     }
+    this.syncView();
   }
 
   // Change how a lane is moving without disturbing what is in it: the items keep

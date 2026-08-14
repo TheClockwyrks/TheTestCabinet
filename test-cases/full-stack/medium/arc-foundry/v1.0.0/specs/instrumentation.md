@@ -20,8 +20,9 @@ properties make it driveable from code:
 - Render-free core. Game state advances by stepping the simulation and must not
   depend on a canvas, on `requestAnimationFrame`, or on wall-clock time to make
   progress. Unit movement, pathfinding, component fire, projectile travel, the
-  status effects, and the economy all advance in the tick. Rendering reads the
-  state, never the other way around.
+  status effects, and the economy all advance in the tick. The dependency runs
+  one way: the simulation never reads from, waits on, or is driven by the
+  renderer.
 - Seeded randomness. Every random draw the game makes runs off a seedable
   generator: the scrap-press type and quality roll, per-wave composition and
   spawn order, and the crit roll. Reseeding and replaying the same calls and

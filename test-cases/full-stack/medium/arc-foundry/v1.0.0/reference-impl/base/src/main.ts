@@ -430,6 +430,7 @@ async function main(): Promise<void> {
       acc += dt * game.speed;
       let steps = 0;
       while (acc >= FIXED_STEP && steps < 600) {
+        game.syncView();
         game.fixedStep(FIXED_STEP);
         acc -= FIXED_STEP;
         steps++;
@@ -439,6 +440,18 @@ async function main(): Promise<void> {
       // Drop the accumulator so no burst of ticks fires on resume.
       acc = 0;
     }
+
+    // What is left in the accumulator is simulation time the display is showing but
+    // the simulation has not stepped through yet. Hand it to the renderer as a
+    // fraction of a step so it can draw between the last two states: the tick rate
+    // and the refresh rate do not divide evenly, so the number of steps per frame
+    // varies, and drawing the raw state would move every unit and projectile by a
+    // different distance each frame. Zero while frozen or while the debug API holds
+    // the clock, so a posed scenario is drawn exactly as it was stepped.
+    game.renderAlpha =
+      clock.autoStep && game.state === "playing" && !game.paused
+        ? acc / FIXED_STEP
+        : 0;
 
     for (const cue of game.sndQueue) audio.play(cue);
     game.sndQueue.length = 0;

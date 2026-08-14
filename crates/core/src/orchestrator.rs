@@ -296,25 +296,53 @@ fn render_session_command(argv: &[String], sentinel: &str) -> String {
 /// sentinel line before and after the harness invocation so the run can segment
 /// the combined runner stream into per-session slices, and preserves the
 /// harness's exit status.
-fn render_session_wrapper(argv: &[String], sentinel: &str) -> String {
+///
+/// It also **copies** the harness's stdout, sentinels and all, into `log_path`
+/// inside the container. The streamed copy is what produces live events, but it
+/// is not a reliable place to read a session's *totals* from: the exec stream can
+/// close as the process exits and lose its last lines, and most harnesses report
+/// the session's token usage on the very last line they write. The log is written
+/// by the shell to the container's own disk, so it does not depend on the stream
+/// surviving; [`read_session_log`] reads it back once the runner is done and it,
+/// not the stream, is what the run's usage is extracted from.
+///
+/// The tee is best-effort: if the log cannot be opened the wrapper runs the
+/// harness exactly as it used to, because losing usage is far better than losing
+/// the run.
+fn render_session_wrapper(argv: &[String], sentinel: &str, log_path: &str) -> String {
     let command = render_session_command(argv, sentinel);
+    let log = shell_quote(log_path);
     format!(
         "#!/bin/sh\n\
          # tcab-session: invoke the selected harness's CLI with the given prompt.\n\
          # Written into the run container by the orchestrator layer; see\n\
          # docs/components/core/orchestrators.md.\n\
+         __tcab_log={log}\n\
+         if ! {{ mkdir -p \"$(dirname \"$__tcab_log\")\" && : >> \"$__tcab_log\"; }} 2>/dev/null; then\n\
+         \x20 __tcab_log=\n\
+         fi\n\
          printf '%s\\n' '{SESSION_BEGIN}'\n\
-         {command}\n\
-         __tcab_status=$?\n\
+         if [ -n \"$__tcab_log\" ]; then\n\
+         \x20 printf '%s\\n' '{SESSION_BEGIN}' >> \"$__tcab_log\"\n\
+         \x20 # A pipeline discards the harness's exit status, so it is written to a\n\
+         \x20 # file inside the pipeline and read back out.\n\
+         \x20 {{ {command}; printf '%s\\n' \"$?\" > \"$__tcab_log.status\"; }} | tee -a \"$__tcab_log\"\n\
+         \x20 __tcab_status=$(cat \"$__tcab_log.status\" 2>/dev/null || printf '%s' 1)\n\
+         \x20 printf '%s\\n' '{SESSION_END}' >> \"$__tcab_log\"\n\
+         else\n\
+         \x20 {command}\n\
+         \x20 __tcab_status=$?\n\
+         fi\n\
          printf '%s\\n' '{SESSION_END}'\n\
          exit \"$__tcab_status\"\n"
     )
 }
 
-/// The `tcab-session` wrapper script for a harness and model.
-fn tcab_session_wrapper(harness: &dyn AgentHarness, model_id: &str) -> String {
+/// The `tcab-session` wrapper script for a harness and model, copying each
+/// session's stdout to `log_path` inside the container.
+fn tcab_session_wrapper(harness: &dyn AgentHarness, model_id: &str, log_path: &str) -> String {
     let argv = harness.session_argv(model_id, PROMPT_SENTINEL);
-    render_session_wrapper(&argv, PROMPT_SENTINEL)
+    render_session_wrapper(&argv, PROMPT_SENTINEL, log_path)
 }
 
 /// One per-session slice of a runner's combined output, reconstructed from the
@@ -323,6 +351,10 @@ fn tcab_session_wrapper(harness: &dyn AgentHarness, model_id: &str) -> String {
 struct SessionSegment {
     stdout: String,
     stderr: String,
+    /// Whether the slice was closed by a [`SESSION_END`] line. `false` means the
+    /// stream ended while the session was still open, so the slice holds only the
+    /// part of the session's output that arrived — see [`segment_sessions`].
+    terminated: bool,
 }
 
 impl SessionSegment {
@@ -346,19 +378,31 @@ impl SessionSegment {
 /// [`SESSION_END`] lines. Lines between them are accumulated into the current
 /// slice (per stream); lines outside any session (the runner's own output) are
 /// ignored — only a harness session reports usage.
+///
+/// A slice still open when the stream ends is kept, flagged
+/// [`terminated`](SessionSegment::terminated)`= false`. The wrapper always pairs
+/// its sentinels, so an unpaired `BEGIN` means the tail of the harness's output
+/// was lost before it reached us — an exec stream can be truncated at the moment
+/// the process exits, taking the last lines (for several harnesses, the very
+/// event that carries the session's token usage) with it. Keeping the partial
+/// slice is what lets a harness that reports usage incrementally still contribute
+/// everything that *did* arrive; dropping it silently discarded a whole session's
+/// usage and recorded the run as having cost nothing.
 fn segment_sessions(raw: &[crate::execution::RawOutputLine]) -> Vec<SessionSegment> {
     let mut segments = Vec::new();
     let mut current: Option<SessionSegment> = None;
     for line in raw {
         if line.stream == OutputStream::Stdout && line.line == SESSION_BEGIN {
-            // A new BEGIN opens a fresh slice. A stray BEGIN without an END would
-            // discard the partial slice rather than merge it; the wrapper always
-            // pairs them, so this is only defensive.
-            current = Some(SessionSegment::default());
+            // A new BEGIN opens a fresh slice, closing any slice still open as
+            // unterminated rather than discarding it.
+            if let Some(segment) = current.replace(SessionSegment::default()) {
+                segments.push(segment);
+            }
             continue;
         }
         if line.stream == OutputStream::Stdout && line.line == SESSION_END {
-            if let Some(segment) = current.take() {
+            if let Some(mut segment) = current.take() {
+                segment.terminated = true;
                 segments.push(segment);
             }
             continue;
@@ -372,7 +416,55 @@ fn segment_sessions(raw: &[crate::execution::RawOutputLine]) -> Vec<SessionSegme
             buffer.push('\n');
         }
     }
+    // The stream ended mid-session: keep what arrived.
+    if let Some(segment) = current.take() {
+        segments.push(segment);
+    }
     segments
+}
+
+/// Segment the session log the wrapper wrote inside the container.
+///
+/// The log holds the same sentinel-bracketed stdout as the stream, so it
+/// segments identically — it is simply read from the container's disk after the
+/// runner is done rather than assembled from a stream that may have been cut
+/// short. A log whose last session carries no closing sentinel is reported the
+/// same way a truncated stream is: as an unterminated segment.
+fn segment_session_log(log: &str) -> Vec<SessionSegment> {
+    let lines: Vec<crate::execution::RawOutputLine> = log
+        .lines()
+        .map(|line| crate::execution::RawOutputLine {
+            stream: OutputStream::Stdout,
+            line: line.to_string(),
+        })
+        .collect();
+    segment_sessions(&lines)
+}
+
+/// Read the session log back out of the container, or `None` when it cannot be
+/// read (the wrapper's tee was skipped, or the read itself failed).
+///
+/// The log is the authoritative source for a run's usage, so a failure here is
+/// reported rather than swallowed: the caller falls back to the streamed copy and
+/// says so on the run's event stream.
+async fn read_session_log(
+    runtime: &dyn ContainerRuntime,
+    container: &ContainerHandle,
+    log_path: &str,
+) -> Option<String> {
+    let command = vec![
+        "sh".to_string(),
+        "-c".to_string(),
+        format!("cat {}", shell_quote(log_path)),
+    ];
+    match runtime.exec(container, &command).await {
+        Ok(output) if output.exit_code == 0 && !output.stdout.is_empty() => Some(output.stdout),
+        Ok(_) => None,
+        Err(err) => {
+            tracing::warn!(%err, log_path, "reading the session log failed");
+            None
+        }
+    }
 }
 
 /// Sum two optional token counts the way the run's totals must combine across
@@ -480,9 +572,18 @@ fn runner_env(
 /// environment file into the container; runs the runner through the shared
 /// streaming-translation seam (so the harness's output flowing through it is
 /// translated into events exactly as a direct session is); then segments the
-/// recorded output by the wrapper's sentinels and runs the harness's existing
+/// sessions' stdout by the wrapper's sentinels and runs the harness's existing
 /// usage extraction on each session, summing the per-session usage and cost into
 /// one aggregate [`HarnessOutcome`].
+///
+/// Usage is extracted from the session log the wrapper wrote **inside the
+/// container**, not from the streamed copy. The two carry the same bytes, but the
+/// stream can lose its tail when the exec closes as the runner exits — and the
+/// last line is exactly where most harnesses report the session's totals, so a
+/// lost tail costs the run every token it used and prices it at nothing. Reading
+/// the totals off the container's own disk removes that dependency; the stream is
+/// still used to translate events live, and as the fallback if the log cannot be
+/// read.
 ///
 /// The caller bounds this whole future by the run's maximum runtime, exactly as a
 /// single invocation is bounded.
@@ -509,11 +610,13 @@ pub(crate) async fn drive_orchestrator(
     // of the collected implementation.
     let runner_path = format!("{home}/.tcab/runner.sh");
     let env_path = format!("{home}/.tcab/runner.env");
+    let session_log_path = format!("{home}/.tcab/sessions.log");
 
     // The `tcab-session` wrapper: invokes the harness's CLI with the runner's
-    // prompt substituted, sentinel-bracketed for segmentation. Mode 0755 — it is
-    // executed off the PATH.
-    let wrapper = tcab_session_wrapper(harness, model_id);
+    // prompt substituted, sentinel-bracketed for segmentation, and copied to the
+    // session log the run's usage is read from. Mode 0755 — it is executed off the
+    // PATH.
+    let wrapper = tcab_session_wrapper(harness, model_id, &session_log_path);
     write_container_file(runtime, container, &wrapper_path, wrapper.as_bytes(), 0o755).await?;
 
     // The runner script the orchestrator ships, and its environment.
@@ -613,10 +716,21 @@ pub(crate) async fn drive_orchestrator(
         });
     }
 
-    // Segment the combined runner output back into sessions and sum each
-    // session's usage. For a single session (one-shot) there is exactly one
-    // segment, whose extracted usage equals what a direct `invoke` produces.
-    let segments = segment_sessions(&streamed.raw_output);
+    // Segment the sessions back out and sum each session's usage. For a single
+    // session (one-shot) there is exactly one segment, whose extracted usage
+    // equals what a direct `invoke` produces.
+    //
+    // Prefer the log the wrapper wrote inside the container: it is not subject to
+    // the exec stream losing its tail as the runner exits, which is what silently
+    // costs a run its whole usage. The streamed copy stands in when the log could
+    // not be read at all.
+    let streamed_segments = segment_sessions(&streamed.raw_output);
+    let streamed_complete = streamed_segments.iter().filter(|s| s.terminated).count();
+    let (segments, source) = match read_session_log(runtime, container, &session_log_path).await {
+        Some(log) => (segment_session_log(&log), "container session log"),
+        None => (streamed_segments, "streamed harness output"),
+    };
+
     let mut tokens = TokenCounts::default();
     let mut reported_cost: Option<f64> = None;
     for segment in &segments {
@@ -625,6 +739,40 @@ pub(crate) async fn drive_orchestrator(
         if let Some(cost) = cost {
             reported_cost = Some(reported_cost.unwrap_or(0.0) + cost);
         }
+    }
+
+    // A session with no closing sentinel in the source we read lost the tail of
+    // its output, and with it whatever usage the harness reports at the end of a
+    // session. The run itself is sound — the harness exited cleanly and its work is
+    // on disk — so this is not a failure, but the metrics are incomplete and must
+    // not be mistaken for a run that genuinely used nothing. Say so on the run's own
+    // event stream, where a reviewer looking at the run will see it, and in the
+    // logs, naming which source was read so the gap is diagnosable after the fact.
+    let truncated = segments.iter().filter(|s| !s.terminated).count();
+    if truncated > 0 || segments.is_empty() {
+        let message = format!(
+            "the token usage recorded for this run is incomplete: {truncated} of {} \
+             harness session(s) read from the {source} ended without their closing \
+             marker, so the harness's final usage report did not survive",
+            segments.len()
+        );
+        tracing::warn!(
+            harness = slug.as_str(),
+            orchestrator = orchestrator.slug(),
+            truncated_sessions = truncated,
+            total_sessions = segments.len(),
+            usage_source = source,
+            complete_sessions_in_stream = streamed_complete,
+            "harness session output was truncated; recorded usage is incomplete"
+        );
+        events.emit(&crate::event::HarnessEvent {
+            timestamp: now_timestamp(),
+            session_id: None,
+            kind: crate::event::EventKind::Warning {
+                message,
+                code: None,
+            },
+        });
     }
 
     Ok(HarnessOutcome {

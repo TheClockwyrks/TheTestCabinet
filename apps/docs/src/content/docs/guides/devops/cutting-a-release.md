@@ -176,12 +176,15 @@ prod — same manifests, differing only in namespace, `TCAB_ENV`, secrets, and i
 tags — so it is a real rehearsal of everything Phase 4 will do to production, and
 its tip is what gets promoted in Phase 3.
 
-1. **Let CI build the images.** `build-service-images.yml` runs on pushes to
-   `staging`, tagging `:latest` and `:<git-sha>`. `build-containers.yml` runs only
-   when `containers/**` or the crates baked into the run images changed — usually
-   it does not, and the run-container tag simply stays where it is.
+1. **Let CI build the images.** Both `build-service-images.yml` and
+   `build-containers.yml` run on **every** push to `staging`, unfiltered, each
+   tagging `:latest` and `:<git-sha>`. So every rc sha carries a complete set —
+   services *and* run containers — and the sha you rehearse on is one you can pin
+   everything to. (`build-containers` is the slow one; it recompiles Rust and wasm
+   uncached, so give it time before re-pinning.)
 2. **Re-pin `overlays/azure-staging`** to the new sha (the `images:` block plus
-   the two env-value image refs), apply it, and confirm the rollout. The mechanics
+   the two env-value image refs, `TCAB_CONTAINER_TAG` among them), apply it, and
+   confirm the rollout. The mechanics
    are identical to
    [rolling prod](/guides/devops/rolling-prod-service-images/), with the staging
    cluster and namespace.
@@ -215,16 +218,15 @@ git push gh master
 
 Then, in order:
 
-1. **Wait for `build-service-images` to publish at the master sha.** This is not
-   optional bookkeeping — the Release workflow bakes
-   `TCAB_DESKTOP_IMAGE_TAG=<sha>` into the desktop app, which is how the
-   self-contained cluster the app stands up pins the images it pulls. If no images
-   exist at that sha the shipped app cannot pull anything. The workflow is
-   path-filtered (`crates/**`, `apps/web/**`, the workspace manifests, and the
-   image Dockerfiles), so **a release whose merge touched only `test-cases/` and
-   `apps/docs/` builds no images at all.** When that happens, dispatch
-   `build-service-images.yml` manually on `master` before cutting, so the tag
-   exists.
+1. **Wait for the image workflows to publish at the master sha.** The Release
+   workflow bakes `TCAB_DESKTOP_IMAGE_TAG=<sha>` into the desktop app, which is how
+   the self-contained cluster the app stands up pins the images it pulls; if no
+   images exist at that sha, the shipped app cannot pull anything. Both workflows
+   run **unfiltered** on every `master` push, so the merge always publishes at this
+   sha regardless of what it touched — there is nothing to dispatch by hand, only
+   a run to wait for. Release also refuses to build the desktop app until those
+   images resolve (its `images` job), so a premature dispatch fails in CI in
+   seconds rather than in a user's hands at first launch.
 2. **Dispatch the Release workflow** on `master` with `version = vX.Y.Z`. It
    builds the five headless binaries for Linux (static musl), Windows, and macOS,
    smoke-tests every platform's `tcab`, builds the desktop installers, and
@@ -248,8 +250,9 @@ previous catalog until you move it.
 1. **Roll the prod service images** to the release sha — re-pin the three files in
    `overlays/azure-prod`, preview, apply, verify, commit. Full walkthrough:
    [Rolling Production Service Images](/guides/devops/rolling-prod-service-images/).
-   Advance `TCAB_CONTAINER_TAG` **only** if `build-containers` actually published
-   at that sha; it runs on its own cadence and normally trails.
+   Advance `TCAB_CONTAINER_TAG` to the same sha: `build-containers` runs on every
+   `master` push too, so the release sha carries run images as well and the two
+   pins move together.
 2. **Re-ingest the catalog:** `scripts/reingest-cluster.sh --env prod`. This is
    the step that publishes the release's test-case work — new versions, graduated
    cases, errata, and the reference-build URLs from the committed lockfile. A
@@ -296,7 +299,7 @@ previous catalog until you move it.
 | Symptom | Cause |
 | --- | --- |
 | The changelog is live but nothing links to it | Not added to the `Changelogs` sidebar group in `apps/docs/astro.config.mjs`. |
-| The desktop app cannot pull its service images | Cut at a sha where `build-service-images` never ran (path filters). Dispatch it manually, then re-cut. |
+| The Release workflow fails at `Verify service images exist at this commit` | Dispatched before `build-service-images` finished at that sha, or that run failed. Wait for it (or fix and re-run it), then re-dispatch — never work around the gate; it is the only thing between a bad sha and an installer that dies at first launch. |
 | A graduated case is missing its **Reference** tab | The lockfile has no `prod` entry for that variant, or prod has not re-ingested since it gained one. |
 | The gallery still shows the old catalog | The re-ingest was a no-op (nothing changed), so no snapshot refresh and no deploy hook. |
 | Reviewers see baselines that disagree with the current scripts | Scripts changed without a `publish-reference` / `tcab capture-baselines` pass on that case. |

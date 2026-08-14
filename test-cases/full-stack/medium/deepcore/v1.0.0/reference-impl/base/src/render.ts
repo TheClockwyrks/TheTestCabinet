@@ -329,8 +329,8 @@ function drawMine(
   view: View,
   cl: Clickable[],
 ): void {
-  const cam = game.cameraY;
-  let offX = -game.cameraX; // world x → screen x (the mine scrolls horizontally, specs/world.md)
+  const cam = game.viewCameraY;
+  let offX = -game.viewCameraX; // world x → screen x (the mine scrolls horizontally, specs/world.md)
   let offY = VIEWPORT_Y - cam;
   // Screen shake (specs/hazards.md): jitter the whole mine — tiles, miner, and VFX all read
   // through offX/offY, so they shake together. Fades out over the shake's final 0.3s.
@@ -360,8 +360,8 @@ function drawMine(
   // exposes an undrawn row/column at the edge.
   const rowTop = Math.max(1, Math.floor(cam / TILE_SIZE) - 1);
   const rowBot = Math.min(WORLD.rows - 1, Math.floor((cam + VIEWPORT_HEIGHT) / TILE_SIZE) + 1);
-  const colLeft = Math.max(0, Math.floor(game.cameraX / TILE_SIZE) - 1);
-  const colRight = Math.min(WORLD_COLS - 1, Math.floor((game.cameraX + STAGE_WIDTH) / TILE_SIZE) + 1);
+  const colLeft = Math.max(0, Math.floor(game.viewCameraX / TILE_SIZE) - 1);
+  const colRight = Math.min(WORLD_COLS - 1, Math.floor((game.viewCameraX + STAGE_WIDTH) / TILE_SIZE) + 1);
 
   for (let r = rowTop; r <= rowBot; r++) {
     for (let c = colLeft; c <= colRight; c++) {
@@ -1006,8 +1006,10 @@ function drawMiner(
   const m = game.miner;
   const drawW = TILE_SIZE; // the miner sprite is authored to fill an 80px tile (with headroom)
   const drawH = TILE_SIZE;
-  const sx = m.x + MINER_W / 2 - drawW / 2 + offX;
-  const sy = m.y + MINER_H - drawH;
+  const mx = m.prevX + (m.x - m.prevX) * game.renderAlpha;
+  const my = m.prevY + (m.y - m.prevY) * game.renderAlpha;
+  const sx = mx + MINER_W / 2 - drawW / 2 + offX;
+  const sy = my + MINER_H - drawH;
   const screenY = sy + offY;
 
   const frames = assets.miner[m.state];

@@ -5,6 +5,8 @@ slug = "valence"
 # reference views are rendered and seeded as visual targets, and which validation
 # checks run. The testing harness reads this file to resolve a `TestCaseVersion`.
 
+experimental = true
+
 # Human-readable display name for this test case.
 name = "Valence"
 

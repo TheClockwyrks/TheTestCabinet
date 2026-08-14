@@ -50,8 +50,34 @@ this contract.
 
 ### `GET /healthz`
 
-Liveness and readiness probe. Returns the service status, its version, and
-whether its store is ready.
+**Liveness** probe and service identity. Always `200` while the process is
+serving. Returns the service status, its contract version, and `storeReady` —
+whether the definition store can resolve test-case versions yet.
+
+`storeReady` is reported here for display (the console's Connections page shows
+it); it is deliberately *not* what makes this endpoint `200`, because a backend
+whose store is still filling is alive and must not be restarted.
+
+### `GET /readyz`
+
+**Readiness** probe: `200` once the definition store holds versions, `503` while
+it is still empty.
+
+Keep this separate from the `/healthz` liveness probe in every deployment. A
+backend whose definition store lives on an ephemeral volume starts with an empty
+store and re-ingests the whole catalog on boot, which takes minutes:
+
+- A **liveness** probe on this signal would kill the pod mid-ingest, and it would
+  never converge.
+- A **readiness** probe on `/healthz` admits traffic to an empty store, so every
+  run launched in that window fails with a spurious
+  `test-case version ... is not ingested` 404.
+
+The signal latches: once the store is populated the backend stays ready, and a
+later re-ingest does not withdraw it. Re-ingest swaps each version into place
+atomically, so resolution keeps working throughout one — and since the backend
+runs at a single replica, going unready would empty its Service and fail every
+caller outright rather than 404 one case.
 
 ### `POST /ingest`
 
@@ -308,6 +334,23 @@ snapshot and the gallery. **Refuses a run that has no review** (`422`). The rele
 `202 Accepted` with the publish-job id and the live URL to observe the release on
 (the run flips public when the Job reports a terminal success). Requires a bearer
 token.
+
+It is **idempotent while a release is under way**: if the run already has a live
+publish job, this returns *that* job's id and live URL instead of enqueuing a second
+one, so a double-click, a second console tab, or a retry after the live stream
+dropped re-attaches to the publish already running. This matters because a publish
+is **not** idempotent externally — every publish job runs `wrangler pages deploy`,
+which mints a brand-new Cloudflare Pages deployment, while the `gh` side reuses an
+existing repository. Two jobs for one run therefore leave an orphaned public build
+behind, visible only on the Pages side. A partial unique index on the publish queue
+backs the check so two concurrent requests cannot both enqueue.
+
+A publish job whose publisher died before reporting stops blocking after an hour
+(nothing reaps it, so it would otherwise wedge the run's publishing forever), and a
+**failed** publish never blocks — it stays immediately retryable. As a second layer,
+the publisher itself re-checks the run's publication state before doing any external
+work and skips the release (reporting the links the run already carries) if the run
+is already published.
 
 ### `DELETE /runs/{id}` — delete
 

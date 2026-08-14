@@ -158,6 +158,8 @@ export class Game {
   miner: Miner = {
     x: 0,
     y: 0,
+    prevX: 0,
+    prevY: 0,
     vx: 0,
     vy: 0,
     facing: "east",
@@ -441,7 +443,40 @@ export class Game {
   }
 
   // ---- The fixed-step simulation ----
+  // ---- Render interpolation ---------------------------------------------
+  // The simulation advances in whole TICK_DT ticks, but a frame is presented
+  // whenever the display asks for one, and the two rates do not divide evenly.
+  // `syncView` stamps where the miner and the camera stood when the step began,
+  // and the animation loop sets `renderAlpha` to the fraction of the next step
+  // the wall clock has already covered; render.ts draws between the two. The
+  // camera matters as much as the miner: the whole mine is drawn relative to it,
+  // so a camera that snapped step to step would judder everything at once.
+  // Nothing here feeds back into the simulation — these are written by the step
+  // and read by the renderer, never the other way about, so the same tick
+  // sequence produces the same state whatever the frame rate.
+  renderAlpha = 0;
+  prevCameraX = 0;
+  prevCameraY = 0;
+
+  get viewCameraX(): number {
+    return this.prevCameraX + (this.cameraX - this.prevCameraX) * this.renderAlpha;
+  }
+  get viewCameraY(): number {
+    return this.prevCameraY + (this.cameraY - this.prevCameraY) * this.renderAlpha;
+  }
+
+  /** Collapse the interpolation window onto the current state. */
+  syncView(): void {
+    this.miner.prevX = this.miner.x;
+    this.miner.prevY = this.miner.y;
+    this.prevCameraX = this.cameraX;
+    this.prevCameraY = this.cameraY;
+  }
+
   fixedStep(dt: number): void {
+    // Where the miner and camera stood before this step, for the renderer to
+    // interpolate from (see the render-interpolation block above).
+    this.syncView();
     if (this.phase !== "in-mine") return;
     this.elapsedSeconds += dt;
     this.decayNotes(dt);

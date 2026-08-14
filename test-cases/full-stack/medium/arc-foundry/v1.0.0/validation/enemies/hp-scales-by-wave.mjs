@@ -26,6 +26,7 @@ import {
   skipToApproach,
   unitById,
   snap,
+  ROUNDING_SLACK,
   LOAD,
   scaledHp,
   SECOND,
@@ -62,8 +63,21 @@ export default function item() {
     },
 
     async assert(api, check) {
-      check.expectEq("Wave-1 HP matches the formula", w1.maxHp, scaledHp(LOAD.mote.baseHp, 1, "medium"));
-      check.expectEq("Wave-10 HP scales up by the formula", w10.maxHp, scaledHp(LOAD.mote.baseHp, 10, "medium"));
+      // Compared against the formula with one rounding of slack (`ROUNDING_SLACK`): the spec's
+      // figure is a real number (a Wave-1 Mote is 44 x 0.22 = 9.68) and whether a build carries
+      // it as that or as an integer is its own affair.
+      check.expectClose(
+        "Wave-1 HP matches the formula",
+        w1.maxHp,
+        scaledHp(LOAD.mote.baseHp, 1, "medium"),
+        ROUNDING_SLACK,
+      );
+      check.expectClose(
+        "Wave-10 HP scales up by the formula",
+        w10.maxHp,
+        scaledHp(LOAD.mote.baseHp, 10, "medium"),
+        ROUNDING_SLACK,
+      );
       check.expectGt("later-wave HP is higher", w10.maxHp, w1.maxHp);
       check.expectEq("speed is unchanged across waves", w10.baseSpeed, w1.baseSpeed);
 
