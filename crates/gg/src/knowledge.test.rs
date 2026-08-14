@@ -437,6 +437,38 @@ fn a_crashed_compiler_is_the_operators_problem_not_the_authors() {
     );
 }
 
+/// **A module gg accepted and then could not prepare is not the author's either.**
+///
+/// The third arm of the prepare seam, and the one this predicate is easiest to get wrong on: unlike
+/// a crashed compiler it *has* a diagnostic, and a diagnostic looks like something the author should
+/// be shown. It is not — it is a bug report about gg, written about a source this language read and
+/// accepted. Counting it as the author's would hand the model gg's internals under a heading that
+/// says its code was rejected, on a load where nothing of its code was rejected at all.
+#[test]
+fn a_module_gg_could_not_lower_is_not_the_authors_source() {
+    let error = refused_load(&format!("def parse(text)\n  {}\n", fixture::UNLOWERABLE));
+
+    assert!(!error.is_authors_source());
+    let told = error.to_string();
+    assert!(
+        told.contains("was not compiled") && told.contains("Nothing about it was rejected"),
+        "the model must be told its source was never judged: {told}"
+    );
+    assert!(
+        !told.contains("lowering pass"),
+        "gg's own diagnostic is not the author's to read, and least of all under a heading that \
+         says their code failed: {told}"
+    );
+
+    let operator = error
+        .operator_detail()
+        .expect("a bug report about gg must reach somebody");
+    assert!(
+        operator.contains("lowering pass") && operator.contains("csv-tools"),
+        "the operator gets the detail, and which load produced it: {operator}"
+    );
+}
+
 /// Both halves of a load carry the split, not just the module half.
 ///
 /// An on-use script is prepared by the same step through the same seam, and it is the half that is

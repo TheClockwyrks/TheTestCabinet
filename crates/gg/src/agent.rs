@@ -195,7 +195,8 @@ use crate::sandbox::{
 };
 use crate::skills::{DEFAULT_SKILLS_DIR, ReadRecord, SkillLibrary, SkillsRuntime};
 use crate::subagents::{
-    AgentCtx, AgentReturn, ChildHandle, ParentWait, Scheduler, SubagentConfig, WaiterToken,
+    AgentCtx, AgentReturn, ChildHandle, ParentWait, Scheduler, SlotHold, SubagentConfig,
+    WaiterToken,
 };
 use crate::tasks::TasksRuntime;
 use crate::telemetry::Emitter;
@@ -1210,34 +1211,7 @@ pub(crate) async fn run_with_seams(
         }
     }
 
-    // Join every subagent the run spawned (transitively). The root released its slot inside
-    // `run_agent`, so cap-limited children that were waiting can now finish; a completed task has
-    // already registered any children it spawned, so draining to empty joins the whole tree.
-    loop {
-        let task = orch.tasks.lock().expect("subagent tasks lock").pop();
-        match task {
-            Some(task) => {
-                // A task that did not complete panicked somewhere [`run_agent`]'s own
-                // [teardown](AgentTeardown) does not cover — outside the driving frame entirely —
-                // so nothing has latched it and nothing has said which agent it was. Latching it
-                // here is the backstop: it cannot wake anybody (the join is the last thing the
-                // session does), but it is what stops a run gg's machinery broke in from being
-                // reported as one the model produced. A run that already faulted keeps its first
-                // diagnostic, which is the cause rather than this consequence.
-                if let Err(join) = task.handle.await {
-                    let detail = match join.try_into_panic() {
-                        Ok(payload) => format!(
-                            "its task panicked outside its turn loop: {}",
-                            panic_message(&*payload)
-                        ),
-                        Err(join) => format!("its task never ran the agent to an ending: {join}"),
-                    };
-                    orch.fault.in_agent(&task.id, &task.slot, detail);
-                }
-            }
-            None => break,
-        }
-    }
+    join_spawned_agents(&orch).await;
 
     // The session's terminal status. It is the **root's** ending — the root is the session, and
     // every other agent was working for it — unless gg broke somewhere in the tree, which
@@ -1370,6 +1344,45 @@ pub(crate) async fn run_with_seams(
         return SessionOutcome::HarnessError;
     }
     SessionOutcome::Ran
+}
+
+/// Join every agent task the run spawned (transitively), and **latch** any of them that did not come
+/// back.
+///
+/// The root released its slot inside [`run_agent`], so cap-limited children that were waiting can
+/// now finish; a completed task has already registered any children it spawned, so draining the
+/// registry to empty joins the whole tree.
+///
+/// A task that did not complete panicked somewhere [`run_agent`]'s own [teardown](AgentTeardown)
+/// does not cover — outside the driving frame entirely, which is the sliver before the teardown
+/// exists and the teardown itself — so nothing latched it and nothing said which agent it was. That
+/// is what this is the backstop for. It can wake nobody, since the join is the last thing the
+/// session does; what it does is stop a run gg's machinery broke in from being reported as one the
+/// model produced, which is decided by the [latch](crate::fault) read immediately after it. A run
+/// that already faulted keeps its first diagnostic — the cause, rather than this consequence.
+///
+/// A join error that is *not* a panic is a task the runtime cancelled or dropped, which gg never
+/// does to an agent; it is latched too, and said in its own words, because an agent whose work is
+/// missing from the tree disqualifies the run however it went missing.
+async fn join_spawned_agents(orch: &Orchestrator) {
+    loop {
+        let task = orch.tasks.lock().expect("subagent tasks lock").pop();
+        match task {
+            Some(task) => {
+                if let Err(join) = task.handle.await {
+                    let detail = match join.try_into_panic() {
+                        Ok(payload) => format!(
+                            "its task panicked outside its turn loop: {}",
+                            panic_message(&*payload)
+                        ),
+                        Err(join) => format!("its task never ran the agent to an ending: {join}"),
+                    };
+                    orch.fault.in_agent(&task.id, &task.slot, detail);
+                }
+            }
+            None => break,
+        }
+    }
 }
 
 /// Start [session capture](crate::capture) for this run, opening the
@@ -1666,14 +1679,14 @@ struct Orchestrator {
     machines: BTreeMap<String, Arc<FsmSpec>>,
     /// The agents blocked in a [`wait_for_issue`](Self::begin_issue_wait), keyed by the issue id
     /// each awaits. Each entry is the [scheduler waiter tokens](WaiterToken) of the agents waiting
-    /// on that issue; when the issue reaches a terminal state they are all
-    /// [marked ready](Scheduler::mark_ready). Guarded so a completing agent and a fresh waiter can
-    /// touch it concurrently.
+    /// on that issue; when the issue settles they are all [marked ready](Scheduler::mark_ready).
+    /// Guarded so a completing agent and a fresh waiter can touch it concurrently.
     ///
     /// **Ordered**, and that is load-bearing rather than tidy:
-    /// [`wake_ready_issue_waiters`](Self::wake_ready_issue_waiters) walks the whole table on every
-    /// board change, so under a hash map the order blocked agents were woken in was reseeded every
-    /// process — a per-run coin flip in a harness whose product is a *comparable* recorded run.
+    /// [`wake_settled_issue_waiters`](Self::wake_settled_issue_waiters) walks the whole table on
+    /// every board change, so under a hash map the order blocked agents were woken in was reseeded
+    /// every process — a per-run coin flip in a harness whose product is a *comparable* recorded
+    /// run.
     issue_waits: Mutex<BTreeMap<String, Vec<WaiterToken>>>,
     /// Serializes every **single-step** git operation on the shared repository (worktree
     /// add/remove, a review's diff), since concurrently-finishing agents would otherwise race on
@@ -2509,7 +2522,7 @@ impl Orchestrator {
     /// the caller does that after (in the loop, [`record_tool_result`] already re-emits it), so the
     /// snapshot reflects the assignments this made.
     fn pump_and_wake(self: &Arc<Self>, emitter: &Emitter) {
-        self.wake_ready_issue_waiters();
+        self.wake_settled_issue_waiters();
         self.pump_dispatch(emitter);
     }
 
@@ -2784,20 +2797,31 @@ impl Orchestrator {
         self.on_issue_progress(emitter);
     }
 
-    /// Wake every agent whose awaited issue has reached a terminal state. Called on any board
-    /// change; idempotent (an already-woken issue has no waiters left).
+    /// Wake every agent whose awaited issue has **settled** — reached a terminal state, or become
+    /// one that can never reach one. Called on any board change; idempotent (an already-woken issue
+    /// has no waiters left).
+    ///
+    /// The second half is the board change nothing else answers. Failing an issue does not
+    /// [cascade](board::BoardStore::fail_issue), so an issue behind it stays open and stops being
+    /// dispatchable for the rest of the run: it will never be done, and it will never be failed
+    /// either, so a wait that resolves only on a terminal state resolves never. That is a hang on
+    /// an otherwise healthy run — the awaited work simply is not going to happen — and the waiting
+    /// agent is told exactly that instead, which is an answer it can act on and a board it can
+    /// still repair.
     ///
     /// The walk is in issue-id order, because [`issue_waits`](Self::issue_waits) is ordered — see
     /// the note there. This is the one place gg's own state was walked rather than looked up, and
     /// so the one place a hasher's seed reached a run's behaviour.
-    fn wake_ready_issue_waiters(&self) {
+    fn wake_settled_issue_waiters(&self) {
         // Snapshot the awaited ids without holding the waits lock across the board lock.
         let awaited: Vec<String> = {
             let waits = self.issue_waits.lock().expect("issue waits lock");
             waits.keys().cloned().collect()
         };
         for issue_id in awaited {
-            if self.board.issue_is_terminal(&issue_id) {
+            if self.board.issue_is_terminal(&issue_id)
+                || self.board.unsatisfiable_blocker(&issue_id).is_some()
+            {
                 self.wake_issue_waiters(&issue_id);
             }
         }
@@ -2825,11 +2849,20 @@ impl Orchestrator {
     /// waiter on the issue, returning the resume channel it awaits. The post-registration
     /// re-check closes the race where the issue goes terminal between the first check and the
     /// registration (the caller would otherwise never be woken).
-    fn begin_issue_wait(self: &Arc<Self>, issue_id: &str, key: Option<&str>) -> IssueWaitOutcome {
+    ///
+    /// `hold` is the caller's [record of holding that slot](SlotHold), given up with it and taken
+    /// again on the resume — so an agent that [panics](AgentTeardown) while suspended here does not
+    /// give back a slot the agent it is waiting for is running on.
+    fn begin_issue_wait(
+        self: &Arc<Self>,
+        issue_id: &str,
+        key: Option<&str>,
+        hold: &SlotHold,
+    ) -> IssueWaitOutcome {
         if self.board.issue_is_terminal(issue_id) {
             return IssueWaitOutcome::AlreadyTerminal;
         }
-        let (token, rx) = self.scheduler.block_and_release(key);
+        let (token, rx) = self.scheduler.block_and_release(key, hold);
         self.issue_waits
             .lock()
             .expect("issue waits lock")
@@ -2841,7 +2874,24 @@ impl Orchestrator {
         if self.board.issue_is_terminal(issue_id) {
             self.wake_issue_waiters(issue_id);
         }
-        IssueWaitOutcome::Blocked(rx)
+        IssueWaitOutcome::Blocked { token, rx }
+    }
+
+    /// Release a waiter that the run [breaking](crate::fault) has stranded: its awaited issue is
+    /// never going to move, because a faulted run dispatches nothing further, so the agent is made
+    /// ready on the terms a woken one is and resumes on the next free slot.
+    ///
+    /// Marking it ready rather than handing it its slot back outright is what keeps the
+    /// [parallelism cap](SubagentConfig::max_parallel) honest through the wind-down: every agent
+    /// holding a slot is winding down too and gives it up within a turn, so the released waiter is
+    /// granted one and reaches the turn boundary where it reads the latch — the same one-turn bound
+    /// every other agent winds down under.
+    ///
+    /// Its registration in [`issue_waits`](Self::issue_waits) is left where it is. A token that no
+    /// longer names a waiter is a no-op to [`mark_ready`](Scheduler::mark_ready), and the run is
+    /// ending, so tidying the table would buy nothing a reader of it could see.
+    fn release_issue_wait_on_fault(&self, token: WaiterToken) {
+        self.scheduler.mark_ready(token);
     }
 }
 
@@ -2851,8 +2901,15 @@ enum IssueWaitOutcome {
     /// and does not block.
     AlreadyTerminal,
     /// The caller freed its running slot and must await this channel; it resolves once the awaited
-    /// issue reaches a terminal state **and** a slot is free to resume on.
-    Blocked(oneshot::Receiver<()>),
+    /// issue [settles](Orchestrator::wake_settled_issue_waiters) **and** a slot is free to resume
+    /// on. The token comes back with it so the caller can
+    /// [release itself](Orchestrator::release_issue_wait_on_fault) if the run breaks first.
+    Blocked {
+        /// This waiter's registration with the scheduler.
+        token: WaiterToken,
+        /// The resume channel.
+        rx: oneshot::Receiver<()>,
+    },
 }
 
 /// Handle `wait_for_issue`: suspend this agent until the named [board issue](crate::board) reaches
@@ -2865,6 +2922,12 @@ enum IssueWaitOutcome {
 /// issue's assigned agent completes or fails it, then reports which. gg refuses to submit a
 /// [cyclic dependency](crate::board), so waiting can never deadlock on a cycle; a failed issue is
 /// terminal, so a wait on one that ultimately fails resolves rather than hanging.
+///
+/// Two things end the wait without the issue ever becoming terminal, and each is
+/// [refused](ToolFailure) rather than dressed up as a resolution — the awaited work did not happen,
+/// and a caller that cannot tell the difference will go on to report as done work nobody did. The
+/// issue [can never get past a blocker](BoardRuntime::unsatisfiable_blocker) of its own, or gg
+/// [broke](crate::fault) and the run is ending.
 async fn handle_wait_for_issue(
     project: &ProjectContext,
     agent: &Agent,
@@ -2884,15 +2947,16 @@ async fn handle_wait_for_issue(
     wait_for_issue_by_id(project, agent, board, emitter, &issue_id).await
 }
 
-/// Suspend this agent until `issue_id` is terminal, then report which — the core of
-/// [`handle_wait_for_issue`] once the id is in hand.
+/// Suspend this agent until `issue_id` is terminal, then report which — or say why that is never
+/// going to happen. The core of [`handle_wait_for_issue`] once the id is in hand.
 ///
 /// It is a function of its own because two paths reach the same wait: the native tool-calling loop,
 /// which parses the id off a `wait_for_issue` [`ToolCall`] and calls it through
 /// [`handle_wait_for_issue`]; and the responses-as-code loop, which performs the *deferred* waits a
 /// program [registered](code::LoopToolApi::register_issue_wait) once that program has ended, calling this
 /// directly for each recorded id. Both share the self-issue guard, the not-found check, the
-/// already-terminal short-circuit, and the slot-freeing block, so neither can drift from the other.
+/// already-terminal short-circuit, the two refusals that answer a wait nothing can satisfy, and the
+/// slot-freeing block, so neither can drift from the other.
 async fn wait_for_issue_by_id(
     project: &ProjectContext,
     agent: &Agent,
@@ -2917,29 +2981,105 @@ async fn wait_for_issue_by_id(
     if status.is_terminal() {
         return issue_wait_result(issue_id, status);
     }
+    // Neither of the two conditions that end a wait without resolving it is worth suspending for.
+    // The unsatisfiable one is checked here as well as on the wake-up because a blocker can already
+    // have failed when the call is made, and the fault one because a run that has broken will never
+    // move this issue: an agent that blocked anyway would have to be released again immediately,
+    // having freed and re-taken its slot for nothing.
+    if let Some(blocker) = board.unsatisfiable_blocker(issue_id) {
+        return unsatisfiable_wait_result(issue_id, &blocker);
+    }
+    if let Some(fault) = project.orch.fault.raised() {
+        return faulted_wait_result(issue_id, fault);
+    }
     let key = project.orch.exclusive_key(&agent.slot);
-    match project.orch.begin_issue_wait(issue_id, key.as_deref()) {
+    match project
+        .orch
+        .begin_issue_wait(issue_id, key.as_deref(), &project.hold)
+    {
         IssueWaitOutcome::AlreadyTerminal => {}
-        IssueWaitOutcome::Blocked(rx) => {
+        IssueWaitOutcome::Blocked { token, mut rx } => {
             if project.orch.multi_agent() {
                 emitter.emit(agent_blocked_on(format!("issue `{issue_id}`")));
             }
-            // The sender is held by the scheduler until this agent is granted a slot after its
-            // issue goes terminal; a dropped sender (impossible here) would also end the wait.
-            let _ = rx.await;
+            // Two things can end this suspension, and the agent has to survive both. The sender is
+            // held by the scheduler until this agent is granted a slot after its issue settles (a
+            // dropped sender, impossible here, would also end the wait) — and the run's fault latch
+            // fires if gg breaks meanwhile, which is the only other way out: a faulted run stops
+            // dispatching, so the issue this is suspended on may never move again, and an agent
+            // inside a tool call reaches no turn boundary to read the latch at.
+            let faulted = tokio::select! {
+                // Biased, and the fault first, for the reason the latch keeps the *first* fault: a
+                // run that broke and then settled this issue settled it as a consequence of the
+                // break, and both arms are ready at once every time a wind-down fails the very
+                // issue somebody was waiting on. An unbiased pick would report the cause on some
+                // runs and the consequence on others, from one recorded run to the next.
+                biased;
+                () = project.orch.fault.until_raised() => {
+                    project.orch.release_issue_wait_on_fault(token);
+                    // Still awaited, because the release goes through the scheduler: this agent
+                    // resumes when it is granted a slot, exactly as a woken one does, rather than
+                    // running on beside the agents that hold them.
+                    let _ = rx.await;
+                    project.orch.fault.raised().map(str::to_string)
+                }
+                _ = &mut rx => None,
+            };
             if project.orch.multi_agent() {
                 emitter.emit(agent_status(GgAgentStatus::Running));
             }
+            if let Some(fault) = faulted {
+                return faulted_wait_result(issue_id, &fault);
+            }
         }
     }
-    // Report the issue's final state (it is terminal now, unless it was removed while we waited).
+    // Report what the wait settled on: a terminal state, an issue that left the board, or one that
+    // can no longer reach either.
     match board.issue_status(issue_id) {
-        Some(status) => issue_wait_result(issue_id, status),
+        Some(status) if status.is_terminal() => issue_wait_result(issue_id, status),
+        Some(status) => match board.unsatisfiable_blocker(issue_id) {
+            Some(blocker) => unsatisfiable_wait_result(issue_id, &blocker),
+            None => issue_wait_result(issue_id, status),
+        },
         None => ToolOutcome::ok(
             format!("issue `{issue_id}` is no longer on the board."),
             format!("waited for issue `{issue_id}` (removed)"),
         ),
     }
+}
+
+/// The refusal a wait on an issue that can never become terminal returns: `issue_id` sits behind
+/// `blocker`, which will never be [`Done`](IssueStatus::Done), so nothing will ever dispatch it.
+///
+/// A refusal rather than a resolution, because the wait did not complete — the issue is still open,
+/// and reporting it as anything else would have the caller act on work that is not going to happen.
+/// The blocker is named because it is the thing to act on: the agent can drop the dependency, refile
+/// the blocked work, or give up on it and say so, and it can do none of those from "still waiting".
+fn unsatisfiable_wait_result(issue_id: &str, blocker: &str) -> ToolOutcome {
+    ToolOutcome::failed(
+        ToolFailure::Conflict,
+        format!(
+            "issue `{issue_id}` can never be finished: it is blocked by `{blocker}`, which is \
+             failed or gone and will never be done, so no agent will be dispatched to it. Nothing \
+             will complete it — drop the dependency or refile the work if it still matters."
+        ),
+    )
+}
+
+/// The refusal a wait released by the run [breaking](crate::fault) returns.
+///
+/// It never reaches a model: the agent it is handed to reads the same latch at the turn boundary it
+/// is now free to reach, and stops there. It is written for the record and the operator — the wait
+/// is the last thing that agent did, and "waited for issue `X`" with no outcome behind it is the
+/// shape of exactly the hang this replaces.
+fn faulted_wait_result(issue_id: &str, fault: &str) -> ToolOutcome {
+    ToolOutcome::failed(
+        ToolFailure::Refused,
+        format!(
+            "the wait on issue `{issue_id}` was released without an answer: {fault}. The run is \
+             ending, and nothing further will be dispatched to that issue."
+        ),
+    )
 }
 
 /// The [`ToolOutcome`] `wait_for_issue` returns once its awaited issue is terminal (or was found
@@ -2980,10 +3120,10 @@ fn status_word(status: IssueStatus) -> &'static str {
 
 /// One spawned agent task, kept with the identity of the agent it is running.
 ///
-/// The identity travels with the handle because of what a [join](run_with_seams) can find: a task
-/// that did not complete panicked *outside* [`run_agent`]'s own teardown, and a diagnostic for that
-/// has nothing else to name the agent by. A bare `JoinHandle` made the one thing an operator needs
-/// — which agent — the one thing the join could not say.
+/// The identity travels with the handle because of what a [join](join_spawned_agents) can find: a
+/// task that did not complete panicked *outside* [`run_agent`]'s own teardown, and a diagnostic for
+/// that has nothing else to name the agent by. A bare `JoinHandle` made the one thing an operator
+/// needs — which agent — the one thing the join could not say.
 struct AgentTask {
     /// The agent this task is running.
     id: String,
@@ -3137,6 +3277,11 @@ struct ProjectContext {
     /// expected to finish. `None` for the root and for a subagent that was not
     /// issue-dispatched.
     assigned_issue: Option<String>,
+    /// This agent's [hold](SlotHold) on its running slot, which a `wait_for_issue` gives up for the
+    /// length of the wait. Carried here for the reason [`AgentCtx::hold`] is carried on the
+    /// delegation context: the wait is made from a tool call, and the
+    /// [teardown](AgentTeardown) that would return the slot on a panic is nowhere near it.
+    hold: SlotHold,
 }
 
 /// Build and drive one agent to completion: acquire a running slot, resolve its stream and
@@ -3241,8 +3386,9 @@ async fn drive_agent(
     // scheduler grants one (the root's is granted immediately). This is the parallelism cap. It is
     // taken **once for the whole succession**: a transition is the continuation of work already in
     // progress, and making it queue behind unrelated agents would stall a machine mid-stride.
-    orch.scheduler.acquire_start(teardown.exclusive()).await;
-    teardown.acquired();
+    orch.scheduler
+        .acquire_start(teardown.exclusive(), teardown.hold())
+        .await;
 
     let is_root = matches!(role, AgentRole::Root);
     let issue_id = match &role {
@@ -3808,6 +3954,7 @@ async fn drive_agent(
                         ctx: AgentCtx::new(
                             inbox_rx.take().expect("the inbox is taken exactly once"),
                             teardown.exclusive_owned(),
+                            teardown.hold().clone(),
                         ),
                         // Taken from this agent's own modules, so a child that inherits binds the
                         // very store this agent is curating rather than a snapshot of it.
@@ -3825,6 +3972,7 @@ async fn drive_agent(
         let project = orch.project_management_enabled.then(|| ProjectContext {
             orch: Arc::clone(&orch),
             assigned_issue: assigned_issue.clone(),
+            hold: teardown.hold().clone(),
         });
 
         // The build prompt this incarnation is driven by. A successor that was handed a window keeps
@@ -4057,7 +4205,11 @@ async fn drive_agent(
         // already holds, unless the key is held by somebody else.
         let successor_exclusive = orch.exclusive_key(&successor_slot);
         orch.scheduler
-            .rekey(teardown.exclusive(), successor_exclusive.as_deref())
+            .rekey(
+                teardown.exclusive(),
+                successor_exclusive.as_deref(),
+                teardown.hold(),
+            )
             .await;
 
         succession = Some(Succession {
@@ -4968,11 +5120,12 @@ async fn await_children(
     // there is nothing to block on.
     let awaited: BTreeSet<String> = awaited_ids.iter().cloned().collect();
     let exclusive = sub.ctx.exclusive.clone();
-    if let Some(rx) = sub
-        .ctx
-        .wait
-        .begin_wait(&sub.orch.scheduler, &awaited, exclusive.as_deref())
-    {
+    if let Some(rx) = sub.ctx.wait.begin_wait(
+        &sub.orch.scheduler,
+        &awaited,
+        exclusive.as_deref(),
+        &sub.ctx.hold,
+    ) {
         emitter.emit(agent_blocked_on(waited_subagents_condition(awaited_ids)));
         let _ = rx.await;
         emitter.emit(agent_status(GgAgentStatus::Running));
@@ -5176,9 +5329,10 @@ async fn reconcile_issue(
 /// the waits. On this board `failed` means terminal without being done, so an issue whose
 /// implementer was cut short by the fault is failed for the obvious reason, and one whose
 /// implementer finished is failed because its work was never gated by its reviewers or merged back.
-/// Leaving either `in_progress` would strand every agent suspended in a `wait_for_issue` on it until
-/// the run's wall-clock deadline, and the caller's [pump](Orchestrator::on_issue_progress) wakes
-/// them precisely because this made the issue terminal.
+/// Leaving either `in_progress` would leave the board claiming work is under way that nothing will
+/// take up. What it does *not* have to do is release the agents suspended on it: the
+/// [latch](crate::fault) released every wait in the run when the fault was raised, this issue's
+/// among them, because a fault leaves plenty of waits that no board move of any kind could settle.
 ///
 /// The worktree is **kept**. A run winding down under a fault is evidence for the defect that
 /// stopped it, and the branch this issue's agent was working on is part of that evidence; the
@@ -6744,6 +6898,7 @@ impl Agent {
                     let _ = self.record_turn(
                         &mut agent_limits,
                         emitter,
+                        &limits.fault,
                         TurnOutcome::Error(error_type),
                         match &err {
                             ModelError::ResponseLoop { attempts, .. } => *attempts,
@@ -6965,6 +7120,7 @@ impl Agent {
                 if let Some(breach) = self.record_turn(
                     &mut agent_limits,
                     emitter,
+                    &limits.fault,
                     TurnOutcome::Progressed,
                     loop_aborts,
                 ) {
@@ -7011,6 +7167,7 @@ impl Agent {
                     tasks: caps.tasks(),
                     amc: &amc,
                     emitter,
+                    fault: &limits.fault,
                     replay: replay.as_ref(),
                     pending_compaction,
                     ending_role,
@@ -7099,6 +7256,7 @@ impl Agent {
                 let breach = self.record_turn(
                     &mut agent_limits,
                     emitter,
+                    &limits.fault,
                     decision.turn_outcome(),
                     loop_aborts,
                 );
@@ -7406,6 +7564,7 @@ impl Agent {
                 let breach = self.record_turn(
                     &mut agent_limits,
                     emitter,
+                    &limits.fault,
                     TurnOutcome::Error(TurnErrorType::MissingCompletionCompaction),
                     loop_aborts,
                 );
@@ -7439,6 +7598,7 @@ impl Agent {
                 let breach = self.record_turn(
                     &mut agent_limits,
                     emitter,
+                    &limits.fault,
                     TurnOutcome::Error(TurnErrorType::MissingCompletionNoCall),
                     loop_aborts,
                 );
@@ -7745,6 +7905,7 @@ impl Agent {
                 let _ = self.record_turn(
                     &mut agent_limits,
                     emitter,
+                    &limits.fault,
                     TurnOutcome::Finished,
                     loop_aborts,
                 );
@@ -7790,6 +7951,7 @@ impl Agent {
                 let _ = self.record_turn(
                     &mut agent_limits,
                     emitter,
+                    &limits.fault,
                     TurnOutcome::Finished,
                     loop_aborts,
                 );
@@ -7874,6 +8036,7 @@ impl Agent {
                 let _ = self.record_turn(
                     &mut agent_limits,
                     emitter,
+                    &limits.fault,
                     TurnOutcome::Progressed,
                     loop_aborts,
                 );
@@ -7899,6 +8062,7 @@ impl Agent {
             if let Some(breach) = self.record_turn(
                 &mut agent_limits,
                 emitter,
+                &limits.fault,
                 TurnOutcome::Progressed,
                 loop_aborts,
             ) {
@@ -7943,16 +8107,19 @@ impl Agent {
     /// Record one turn's [outcome](TurnOutcome) — the **one** seam every turn of this loop passes
     /// through, in both execution modes and on every path out of the loop.
     ///
-    /// It does three things, in this order and for these reasons:
+    /// It does four things, in this order and for these reasons:
     ///
-    /// 1. **folds the outcome into this agent's [ceilings](AgentLimits)**, which is what makes the
+    /// 1. **judges the outcome against the run's [fault latch](crate::fault)**, so that a turn
+    ///    which failed while gg was already broken is recorded as gg's — see
+    ///    [`attributed`](Self::attributed);
+    /// 2. **folds the outcome into this agent's [ceilings](AgentLimits)**, which is what makes the
     ///    consecutive count and the rate window statements about a complete turn sequence;
-    /// 2. **publishes it** as a [`TurnOutcome`](GgTelemetryKind::TurnOutcome) event, so the judgement
+    /// 3. **publishes it** as a [`TurnOutcome`](GgTelemetryKind::TurnOutcome) event, so the judgement
     ///    the ceilings act on is the judgement a reader sees. That is the whole reason this helper
     ///    exists: folding the outcome in at scattered call sites without emitting it would leave a
     ///    run that failed a third of its turns and finished anyway indistinguishable, from the
     ///    outside, from one that never failed a turn;
-    /// 3. **returns the breach** the fold produced, so every caller keeps its existing
+    /// 4. **returns the breach** the fold produced, so every caller keeps its existing
     ///    "record, then stop if that was the one" shape and nothing had to move.
     ///
     /// The event carries the agent's state **after** the fold — its consecutive-error run and its
@@ -7969,9 +8136,11 @@ impl Agent {
         &self,
         agent_limits: &mut AgentLimits,
         emitter: &Emitter,
+        fault: &FaultLatch,
         outcome: TurnOutcome,
         loop_aborts: u32,
     ) -> Option<GgLimitBreach> {
+        let outcome = Self::attributed(outcome, fault);
         let breach = agent_limits.record(outcome, &self.id);
         let (wire_outcome, error, error_type) = outcome.wire();
         emitter.emit(GgTelemetryKind::TurnOutcome {
@@ -7996,6 +8165,38 @@ impl Agent {
             loop_aborts: u64::from(loop_aborts),
         });
         breach
+    }
+
+    /// Whose failure this turn's outcome really is, read once against the run's
+    /// [fault latch](crate::fault).
+    ///
+    /// A gg defect does not only *end* a turn, it can also **fail** one. A call gg refuses because
+    /// gg is broken — a subagent it validated and then could not stand up, a skill's code it
+    /// accepted and could not prepare — throws into the program that made it, and an uncaught throw
+    /// is a [`ProgramToolError`](TurnErrorType::ProgramToolError). Recorded as it stands, that turn
+    /// enters the published record as a `program_fault` the model committed and spends the model's
+    /// [error ceilings](RunLimits), so gg's defect could end the run under `limit_exceeded` with
+    /// the model's name on it. The refusal's *class* is chosen carefully at each of those sites;
+    /// what none of them can fix from where they stand is the turn one layer up.
+    ///
+    /// So an [`Error`](TurnOutcome::Error) raised while the latch is up is recorded as
+    /// [`RunBroken`](FatalFault::RunBroken) instead. Every other outcome passes through: a turn that
+    /// progressed or finished attributes nothing to anybody, and a turn that was already fatal
+    /// names the fault it met, which is sharper than this one.
+    ///
+    /// It is deliberately the run's latch and not "did *this* call fault", because no error site
+    /// can know: the throw reaches this loop as a message. The cost of reading it this way is a
+    /// turn the model really did fail, on an agent elsewhere in a run that broke while it ran,
+    /// being recorded as gg's. That run is disqualified either way and will never be scored, so the
+    /// figure is one nobody reads — where the failure in the other direction is a defect of ours
+    /// counted as the model's on a run somebody does.
+    fn attributed(outcome: TurnOutcome, fault: &FaultLatch) -> TurnOutcome {
+        match outcome {
+            TurnOutcome::Error(_) if fault.raised().is_some() => {
+                TurnOutcome::Fatal(FatalFault::RunBroken)
+            }
+            outcome => outcome,
+        }
     }
 
     /// End this agent's loop on a breached [ceiling](RunLimits) — the **one** place any of the five

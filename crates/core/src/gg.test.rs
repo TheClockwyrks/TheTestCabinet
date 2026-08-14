@@ -1649,7 +1649,6 @@ fn the_error_rollup_carries_its_own_denominator_and_no_percentage() {
         transpile: 3,
         program_fault: 3,
         sandbox_limit: 1,
-        toolchain: 0,
         missing_completion: 0,
         loop_aborts: 6,
         by_type: BTreeMap::from([
@@ -1667,7 +1666,6 @@ fn the_error_rollup_carries_its_own_denominator_and_no_percentage() {
             + errors.transpile
             + errors.program_fault
             + errors.sandbox_limit
-            + errors.toolchain
             + errors.missing_completion,
         errors.errors,
         "the per-kind counters must account for every error turn"
@@ -1713,7 +1711,6 @@ fn regrouping_the_per_type_breakdown_by_base_reproduces_the_per_kind_counters() 
         transpile: 4,
         program_fault: 3,
         sandbox_limit: 3,
-        toolchain: 1,
         missing_completion: 2,
         loop_aborts: 0,
         by_type,
@@ -1741,7 +1738,6 @@ fn regrouping_the_per_type_breakdown_by_base_reproduces_the_per_kind_counters() 
             ("transpile", errors.transpile),
             ("program_fault", errors.program_fault),
             ("sandbox_limit", errors.sandbox_limit),
-            ("toolchain", errors.toolchain),
             ("missing_completion", errors.missing_completion),
         ])
     );
@@ -1769,7 +1765,6 @@ fn the_open_breakdowns_are_omitted_when_empty_and_tolerate_an_unknown_key() {
         "transpile": 0,
         "programFault": 0,
         "sandboxLimit": 0,
-        "toolchain": 0,
         "missingCompletion": 1,
         "loopAborts": 0,
         "byType": { "missing_completion_something_new": 1 },
@@ -1813,7 +1808,6 @@ fn every_error_type_has_a_stable_id_a_label_and_exactly_one_base() {
                 GgTurnErrorKind::Transpile => "transpile_",
                 GgTurnErrorKind::ProgramFault => "program_",
                 GgTurnErrorKind::SandboxLimit => "sandbox_",
-                GgTurnErrorKind::Toolchain => "toolchain_",
                 GgTurnErrorKind::MissingCompletion => "missing_completion_",
             }),
             "{error:?}: a type's id names its base, because a ranking shows it without one"

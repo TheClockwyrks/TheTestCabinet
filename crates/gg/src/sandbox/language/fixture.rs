@@ -122,6 +122,17 @@ pub(crate) const MISTYPED: &str = "mistyped";
 /// that is not in the image. Nothing is decided about the program.
 pub(crate) const NO_COMPILER: &str = "nocompiler";
 
+/// The word that makes this language accept a source and then fail to carry it any further — the
+/// fixture's stand-in for a transform of gg's own falling over, or gg's generated surface being
+/// rejected by the very checker gg wrote it for.
+///
+/// Held apart from [`NO_COMPILER`] because the two are read by different people: a compiler missing
+/// from the image is the operator's to fix, and this is a bug report about gg. What they share is
+/// the half that matters to a model — its source was **not** judged — which is exactly the
+/// distinction a consumer of the seam is liable to lose, since the diagnostic this carries *looks*
+/// like a compiler's.
+pub(crate) const UNLOWERABLE: &str = "unlowerable";
+
 // ---------------------------------------------------------------------------------------------
 // The language
 // ---------------------------------------------------------------------------------------------
@@ -169,13 +180,16 @@ impl ProgramLanguage for FixtureLanguage {
     /// is a syntax error there, while a type annotation is erased there and passed through
     /// untouched here. That asymmetry is what the "preparation is the language's" assertions read.
     ///
-    /// The last two checks are the fixture's whole reason for declaring that it
+    /// The last three checks are the fixture's whole reason for declaring that it
     /// [compiles](Self::prepare_compiles). A source mentioning [`MISTYPED`] is a program this
     /// language's checker read and rejected — a [`PrepareError::Compile`], which the model is shown
     /// and can fix. A source mentioning [`NO_COMPILER`] is the compiler itself falling over — a
-    /// [`PrepareFailure::Toolchain`], which the model is *not* blamed for. No registered language
-    /// produces either yet, so without a fixture that does, the split between them would be a
-    /// taxonomy nothing had ever exercised.
+    /// [`PrepareFailure::Toolchain`], which the model is *not* blamed for. A source mentioning
+    /// [`UNLOWERABLE`] is gg's own side of the seam falling over on a source this language had
+    /// already accepted — a [`PrepareFailure::Lowering`], which the model is not blamed for either
+    /// and which is nevertheless a different person's bug. No registered language produces any of
+    /// them yet, so without a fixture that does, the split between them would be a taxonomy nothing
+    /// had ever exercised.
     ///
     /// The checked instance also does what a compiled language really does with its
     /// [context](PrepareContext): it writes the source into its own private
@@ -205,6 +219,11 @@ impl ProgramLanguage for FixtureLanguage {
         if source.contains(NO_COMPILER) {
             return Err(PrepareFailure::Toolchain(
                 "`fixturec` exited with signal 11 (SIGSEGV)".to_string(),
+            ));
+        }
+        if source.contains(UNLOWERABLE) {
+            return Err(PrepareFailure::Lowering(
+                "the fixture's lowering pass could not rewrite an accepted source".to_string(),
             ));
         }
         if source.contains(MISTYPED) {

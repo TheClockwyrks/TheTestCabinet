@@ -26,7 +26,10 @@
 //! [seam](crate::sandbox::force_next_program_fault) that exists for exactly this, and no test here
 //! pays a component compile.
 
+use std::any::Any;
+
 use super::*;
+use test_cabinet_core::gg::{CAPABILITY_AGENT_PERSISTENCE, GgTurnErrorType, GgTurnOutcome};
 
 /// Responses-as-code on, over the [tool-calling default](no_code): these tests need a turn that
 /// reaches the sandbox, and nothing else about the mode.
@@ -598,12 +601,15 @@ const PANIC_SITE: &str = "the agent roster lock is poisoned";
 /// simply the one gg would actually meet, since it reads every one of its own with `.expect`. What
 /// makes it the right injection point is where it lands: inside the frame that drives the agent,
 /// which is the frame that can never reach another turn boundary to read the run's fault latch.
-struct PanickingClient {
+///
+/// Shared with the [wait tests](super::wait_tests), which need the same defect under a *suspended*
+/// agent rather than a running one. There is one way to raise a real fault in a test and this is it.
+pub(super) struct PanickingClient {
     model_id: String,
 }
 
 impl PanickingClient {
-    fn new(model_id: impl Into<String>) -> Self {
+    pub(super) fn new(model_id: impl Into<String>) -> Self {
         Self {
             model_id: model_id.into(),
         }
@@ -795,8 +801,13 @@ async fn timeout(
 /// The board's version of the wait above, and the one with no handle behind it: nobody holds an
 /// issue agent, so nothing but the board says whether its work happened. A panicked implementer
 /// left its issue `InProgress` for ever, and every agent suspended in a `wait_for_issue` on it
-/// waited out the run's ceiling. The teardown fails the issue instead, which is both the honest
-/// board state and what resolves those waits.
+/// waited out the run's ceiling. The teardown fails the issue instead, which is the honest board
+/// state.
+///
+/// What releases the wait is the fault the teardown latched a moment earlier, and that is what the
+/// call reports — not the issue's failure, which is a consequence of the panic rather than the
+/// cause. The waits nothing on the board could reach are covered by
+/// [their own file](super::wait_tests).
 #[tokio::test]
 async fn an_agent_waiting_on_a_panicking_issue_agent_is_woken() {
     let dir = TempDir::new().unwrap();
@@ -843,5 +854,430 @@ async fn an_agent_waiting_on_a_panicking_issue_agent_is_woken() {
         terminal_status(&events).as_deref(),
         Some(STATUS_INTERNAL_ERROR),
         "a failed issue is the board's account of it; the run's is that gg broke"
+    );
+}
+
+/// **An issue whose worktree checkout panicked is failed, and takes the run with it.**
+///
+/// The one piece of an agent's task that runs *before* its [teardown](AgentTeardown) exists: an
+/// issue's isolated checkout is made inside the spawned task, so that an `npm install`-sized tree is
+/// paid for by the agent about to use it rather than by whichever agent's tool call made the issue
+/// actionable. A panic there has no teardown to catch it, and the issue it was preparing stays
+/// `InProgress` for the rest of the run — the board claiming work is under way that nobody is doing,
+/// with every `wait_for_issue` on it suspended behind the claim.
+///
+/// The panic is a **poisoned lock**, which is not a stand-in: gg reads every one of its own with
+/// `.expect`, so one panic anywhere leaves the next reader of that lock panicking, and the map of
+/// issue worktrees is read on the first line of the checkout. Poisoning it here is the same defect
+/// this catch exists for, arriving the way it really arrives.
+#[tokio::test]
+async fn an_issue_whose_worktree_checkout_panicked_fails_rather_than_hanging() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(
+        Some("run-worktree-panic".to_string()),
+        Box::new(sink.clone()),
+    );
+    let mut warnings = Vec::new();
+    let orch = Arc::new(
+        Orchestrator::build(
+            &invocation(dir.path(), split_project_set()),
+            &emitter,
+            Arc::new(ScriptedFactory::new()),
+            crate::tools::real_shell(),
+            WorktreesSetup {
+                baseline_commit: None,
+                root: None,
+            },
+            &mut warnings,
+        )
+        .expect("a board set builds an orchestrator"),
+    );
+    let issue_id = orch
+        .board
+        .store()
+        .lock()
+        .expect("board store lock")
+        .create_issue(crate::board::NewIssue {
+            title: "Add the widget",
+            description: None,
+            in_scope: "Implement the widget.",
+            out_of_scope: "Nothing else.",
+            completion_criteria: "The widget works.",
+            blocked_by: &[],
+            epic_id: None,
+            agent: CODER_AGENT,
+            reviewers: &[],
+        })
+        .expect("the store files the issue");
+
+    // Some earlier agent panicked holding this lock. Every reader of it panics from here on.
+    let poisoner = Arc::clone(&orch);
+    std::thread::spawn(move || {
+        let _guard = poisoner
+            .issue_worktrees
+            .lock()
+            .expect("issue worktrees lock");
+        panic!("{PANIC_SITE}");
+    })
+    .join()
+    .expect_err("the helper thread panics on purpose, which is what poisons the lock");
+
+    orch.spawn_issue_agent(
+        "agent-0".to_string(),
+        issue_id.clone(),
+        "Implement it.".to_string(),
+        0,
+        &emitter,
+    );
+    let task = orch
+        .tasks
+        .lock()
+        .expect("subagent tasks lock")
+        .pop()
+        .expect("the dispatch spawned the issue's task");
+    task.handle
+        .await
+        .expect("the checkout's panic is caught inside the task rather than escaping it");
+
+    assert_eq!(
+        orch.board.issue_status(&issue_id),
+        Some(crate::board::IssueStatus::Failed),
+        "an issue nobody could stand an agent up for is failed, not left claiming to be under way"
+    );
+    let fault = orch
+        .fault
+        .raised()
+        .expect("a checkout gg could not make is gg's defect and ends the run");
+    assert!(
+        fault.contains(&issue_id) && fault.contains("preparing its worktree panicked"),
+        "the run-level diagnostic must name the issue and what happened to it: {fault}"
+    );
+    assert!(
+        fault.contains("issue worktrees lock"),
+        "and carry what the panic said, which for a poisoned lock is the only thing naming it — \
+         the message of the panic that poisoned it is long gone: {fault}"
+    );
+}
+
+/// **A task that panicked where no teardown could see it is caught by the join.**
+///
+/// [`AgentTeardown`] covers the frame that drives an agent, which is nearly all of an agent's life
+/// and not the whole of it: the sliver before the teardown exists, and the teardown's own work, are
+/// outside it. A panic there leaves a task that never returned, no fault, no diagnostic — and the
+/// session goes on to read the latch, find nothing, and report whatever the root's own loop said.
+/// The root usually said `completed`, so the shape this closes is a scored run with an agent missing
+/// from its tree.
+///
+/// Driven against the join directly, with a task that panics immediately, because there is no way to
+/// *aim* a panic at that sliver from a model script — which is the same reason the sliver had no
+/// test.
+#[tokio::test]
+async fn a_task_that_panicked_outside_its_loop_is_caught_by_the_join() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-join-panic".to_string()), Box::new(sink.clone()));
+    let mut warnings = Vec::new();
+    let orch = Arc::new(
+        Orchestrator::build(
+            &invocation(dir.path(), subagent_set(2, 3, &["subagent"])),
+            &emitter,
+            Arc::new(ScriptedFactory::new()),
+            crate::tools::real_shell(),
+            WorktreesSetup {
+                baseline_commit: None,
+                root: None,
+            },
+            &mut warnings,
+        )
+        .expect("a set with no machines builds an orchestrator"),
+    );
+    orch.tasks
+        .lock()
+        .expect("subagent tasks lock")
+        .push(AgentTask::spawned("agent-0", "subagent", async {
+            panic!("{PANIC_SITE}");
+        }));
+
+    join_spawned_agents(&orch).await;
+
+    let fault = orch
+        .fault
+        .raised()
+        .expect("a task that never came back is a run that cannot be scored");
+    assert!(
+        fault.contains("`agent-0`") && fault.contains("`subagent`"),
+        "the join is the only thing left that knows which agent it was: {fault}"
+    );
+    assert!(
+        fault.contains("outside its turn loop") && fault.contains(PANIC_SITE),
+        "and it must say what it was, or the operator has a disqualified run and no bug report: \
+         {fault}"
+    );
+}
+
+/// The profile the slot case below runs as: [persistent](CAPABILITY_AGENT_PERSISTENCE), so its
+/// instances hold their running slot under an
+/// [exclusivity key](crate::subagents::ExclusiveKey) and a release of one instance's slot is
+/// visible as a release of the *profile*.
+const PERSISTENT: &str = "Owner";
+
+/// A run whose second profile is persistent, capped at two running agents.
+fn persistent_subagent_set() -> GgCapabilitySet {
+    let mut set = subagent_set(2, 3, &[PERSISTENT]);
+    let profile = set
+        .agents
+        .iter_mut()
+        .find(|agent| agent.name == PERSISTENT)
+        .expect("the set declares the profile it was built with");
+    crate::tools::grant_configured(
+        profile,
+        GgCapabilityConfig::enabled(CAPABILITY_AGENT_PERSISTENCE),
+    );
+    set
+}
+
+/// **An agent that panics while suspended gives back nothing, because it was holding nothing.**
+///
+/// The teardown returns the running slot of the agent it is ending, which is right for an agent that
+/// was *running*. An agent gg has suspended is not: a `wait_for_subagents` and a `wait_for_issue`
+/// both hand the slot back for the length of the wait, and the agent that took it is somebody else.
+/// Returning it again decrements the run's running count on that agent's behalf — letting the run
+/// exceed the parallelism cap it declared — and frees the [exclusivity key](crate::persistence) a
+/// second instance of a persistent profile is running under, which is the one thing that key exists
+/// to prevent. It can only happen on a run that has already faulted, so it fails no healthy run; it
+/// corrupts the wind-down of a broken one, which is the run somebody is trying to read.
+///
+/// Driven against the teardown rather than through a session because the panic has to land in the
+/// window between the release and the resume — a few instructions inside a suspended agent — and a
+/// session that raced for it would be a test that usually proves nothing.
+#[tokio::test]
+async fn a_panic_during_a_wait_gives_back_no_slot() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-wait-slot".to_string()), Box::new(sink.clone()));
+    let mut warnings = Vec::new();
+    let orch = Arc::new(
+        Orchestrator::build(
+            &invocation(dir.path(), persistent_subagent_set()),
+            &emitter,
+            Arc::new(ScriptedFactory::new()),
+            crate::tools::real_shell(),
+            WorktreesSetup {
+                baseline_commit: None,
+                root: None,
+            },
+            &mut warnings,
+        )
+        .expect("a set with no machines builds an orchestrator"),
+    );
+
+    // One instance of the persistent profile, spawned and running.
+    let agent = Agent {
+        id: "agent-0".to_string(),
+        parent_id: Some(ROOT_AGENT_ID.to_string()),
+        depth: 1,
+        slot: PERSISTENT.to_string(),
+        fsm: None,
+    };
+    let (result_tx, _result_rx) = oneshot::channel();
+    let mut role = AgentRole::Sub {
+        brief: "Do the work.".to_string(),
+        issue_id: None,
+        worktree: None,
+        ending: EndingRole::Standard,
+        inherited: InheritedModules::default(),
+        seed: None,
+        link: Some(SpawnerLink {
+            parent_wait: Arc::new(ParentWait::new()),
+            result: result_tx,
+            finished: Arc::new(AtomicBool::new(false)),
+        }),
+    };
+    let origin = GgSessionAgentOrigin::Spawn {
+        parent: ROOT_AGENT_ID.to_string(),
+        ordinal: 0,
+    };
+    let mut teardown = AgentTeardown::new(&orch, &agent, &origin, &mut role);
+    assert_eq!(
+        teardown.exclusive(),
+        Some(PERSISTENT),
+        "a persistent profile's slot is held under its own name, which is what makes the second \
+         release observable"
+    );
+    orch.scheduler
+        .acquire_start(teardown.exclusive(), teardown.hold())
+        .await;
+
+    // It suspends. Which wait it is does not matter and the teardown cannot tell: every one of them
+    // goes through this single release.
+    let (_token, _rx) = orch
+        .scheduler
+        .block_and_release(teardown.exclusive(), teardown.hold());
+
+    // Which is what lets the next instance of the profile run — the whole point of releasing the key
+    // with the slot.
+    let successor = SlotHold::default();
+    orch.scheduler
+        .acquire_start(Some(PERSISTENT), &successor)
+        .await;
+    assert!(orch.scheduler.holds(PERSISTENT));
+
+    // Now the suspended agent's task panics.
+    let payload: Box<dyn Any + Send> = Box::new(PANIC_SITE);
+    let end = teardown.panicked(payload.as_ref());
+
+    assert_eq!(
+        end.status, STATUS_INTERNAL_ERROR,
+        "the panic is still gg's defect and still ends the agent"
+    );
+    assert!(
+        orch.fault.raised().is_some(),
+        "and still ends the run: what the slot is about is what happens around that"
+    );
+    assert_eq!(
+        orch.scheduler.running(),
+        1,
+        "the run has exactly one agent running, and a second release would say it has none — \
+         which is a slot the wind-down hands to an agent the cap should have held back"
+    );
+    assert!(
+        orch.scheduler.holds(PERSISTENT),
+        "the profile belongs to the instance that is running it; freeing it here would let a third \
+         instance start beside that one"
+    );
+    assert!(
+        successor.held(),
+        "and the instance that holds the slot must still believe it does"
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// The turn a gg defect *failed*, as opposed to the turn it ended
+// ---------------------------------------------------------------------------------------------
+
+/// A factory that refuses one slot's client with a failure that is **not** a refused credential.
+///
+/// The one honest way to make [`dispatch_child`] meet a defect: launch validation has already
+/// accepted the profile, the spawner's roster already names it, and the provider then cannot be
+/// built for it. A refused credential takes the other branch on purpose — a key is supplied rather
+/// than fixed — so the status here is a `500`, which [`ModelError::is_auth_failure`] declines.
+struct RefusingFactory {
+    /// The profile whose client will not build.
+    slot: String,
+}
+
+impl ClientFactory for RefusingFactory {
+    fn client_for(&self, binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, ModelError> {
+        if binding.slot == self.slot {
+            return Err(ModelError::Fatal {
+                status: 500,
+                message: "the provider could not be built for this profile".to_string(),
+            });
+        }
+        Ok(Box::new(MockClient::new(
+            &binding.model_id,
+            vec![
+                // Uncaught on purpose: a program is expected to anticipate a call failing, and the
+                // point of this test is the turn where one does not.
+                code_reply(
+                    "agents.spawnSubagent({ agent: \"subagent\", prompt: \"Do the work.\" });",
+                ),
+                code_reply(FINISHING_PROGRAM),
+            ],
+        )))
+    }
+}
+
+/// Every turn outcome on `agent`'s stream, as the pair this section reads: how it ended, and the
+/// specific error type it was recorded under.
+fn outcomes_for(
+    events: &[GgTelemetryEvent],
+    agent: &str,
+) -> Vec<(GgTurnOutcome, Option<GgTurnErrorType>)> {
+    events
+        .iter()
+        .filter(|event| event.agent_id.as_deref() == Some(agent))
+        .filter_map(|event| match &event.kind {
+            GgTelemetryKind::TurnOutcome {
+                outcome,
+                error_type,
+                ..
+            } => Some((*outcome, *error_type)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// **A turn that failed because gg broke under it is not recorded against the model.**
+///
+/// The defect does not only end a turn, it fails one. gg refused a spawn it had already validated,
+/// the refusal threw into the program that made it, and an uncaught throw is a `program_tool_error`
+/// — so gg's own defect entered the published record as a fault the model committed, spent the
+/// model's error ceilings, and showed up in a console's failed-call panels under this agent's name.
+///
+/// The class of the refusal is chosen carefully at the spawn site and is right; what that site
+/// cannot fix from where it stands is the turn one layer up. So the assertion here is on the
+/// record: this run's root must publish no error turn and no error type at all.
+#[tokio::test]
+async fn a_turn_gg_broke_under_is_recorded_as_ggs_rather_than_the_models() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-spawn-defect".to_string()), Box::new(sink.clone()));
+    let mut set = subagent_set(2, 3, &["subagent"]);
+    code_mode(&mut set, ROOT_AGENT);
+    // The tightest error ceiling there is, so a turn charged to the model would stop the run under
+    // `limit_exceeded` — the status this defect used to be able to produce.
+    set.limits.max_consecutive_errors = Some(1);
+    let inv = invocation(dir.path(), set);
+
+    assert_eq!(
+        run_with_factory(
+            &inv,
+            &emitter,
+            Arc::new(RefusingFactory {
+                slot: "subagent".to_string(),
+            }),
+        )
+        .await,
+        SessionOutcome::HarnessError,
+        "a spawn gg could not carry out leaves the tree missing what that agent was for"
+    );
+
+    let events = sink.events();
+    assert_eq!(
+        terminal_status(&events).as_deref(),
+        Some(STATUS_INTERNAL_ERROR),
+        "the run ends under gg's status rather than a ceiling's"
+    );
+    assert_eq!(
+        outcomes_for(&events, ROOT_AGENT_ID),
+        vec![(GgTurnOutcome::Fatal, None)],
+        "the turn is counted, and it is counted as gg's"
+    );
+    // The other half of the same rule, and the half the spawn family had only ever been proved to
+    // *latch*: the epilogue reads the latch and says on the record which profile gg could not stand
+    // up. A status with no attribution is barely better than a run that lied — an operator reading
+    // it has a disqualified run and nothing to fix.
+    let errors = errors_by_agent(&events);
+    assert!(
+        errors.iter().any(|(agent, message)| {
+            agent.as_deref() == Some(ROOT_AGENT_ID)
+                && message.contains("`subagent`")
+                && message.contains("exits non-zero")
+        }),
+        "the run-level diagnostic must name the profile gg could not spawn: {errors:?}"
+    );
+    let summary = session_summary(&events).expect("the session summary is emitted");
+    assert_eq!(
+        (summary.errors.errors, summary.errors.program_fault),
+        (0, 0),
+        "gg's defect must not appear in the model's error rollup: {:?}",
+        summary.errors
+    );
+    assert!(
+        summary.errors.turns > 0,
+        "the turn is still counted in the denominator so the accounting stays whole: {:?}",
+        summary.errors
     );
 }

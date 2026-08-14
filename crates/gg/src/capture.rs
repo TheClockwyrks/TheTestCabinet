@@ -981,6 +981,16 @@ impl GgRecorder {
         // never got to say what it had written, so the journal is short by an unknown amount — the
         // one state a report of `None` would describe as a clean recording, which is the single
         // most misleading thing this module could do (see the module docs).
+        //
+        // It is reported and **not** latched as a [gg fault](crate::fault), which is the one place
+        // in gg a panic of ours does not disqualify the run. That is a decision rather than an
+        // omission, and it follows from what the journal is: a sidecar for *debugging* a run, not
+        // part of the tree the run is scored on. A panicked writer costs the operator some replay
+        // and costs the model's result nothing, so ending the run over it would throw away a real
+        // result to protect a debugging aid — the opposite of the trade every other fault makes,
+        // where the result itself is what cannot be trusted. What the ruling does require is that
+        // the loss is *stated*, which is what the report above is for; a short journal that claimed
+        // to be whole would be the misattribution, and it is the thing this closes.
         let write_error = handle.and_then(|handle| match handle.join() {
             Ok(report) => report.error,
             Err(payload) => Some(format!(
@@ -1029,6 +1039,26 @@ struct WriterReport {
     error: Option<String>,
 }
 
+/// The text a test plants in a captured body to make the writer thread **panic** on the batch that
+/// carries it.
+///
+/// # Why the seam exists
+///
+/// A writer thread that dies mid-run is the one capture failure with no I/O error behind it, and the
+/// one whose report is most easily wrong: the thread never reports anything, so the *absence* of an
+/// error is what [`finish`](GgRecorder::finish) would otherwise see, and it would describe a journal
+/// missing an unknown number of lines as a clean recording. Nothing a test can write makes a
+/// `write_all` to a temp file panic, so without a seam that arm has no proof, and it is precisely
+/// the arm where a regression is silent.
+///
+/// # What keeps it honest
+///
+/// It is `#[cfg(test)]`, so it does not exist in a released binary, and it is *data* rather than a
+/// flag: the panic happens on the real writer thread, on a real batch, in the middle of the real
+/// loop — which is the shape of the failure it stands in for.
+#[cfg(test)]
+pub(crate) const WRITER_PANIC_MARKER: &str = "gg-capture-writer-panic-fixture";
+
 /// The writer thread's loop: append each queued batch to the journal until the recorder closes the
 /// channel.
 ///
@@ -1039,6 +1069,13 @@ struct WriterReport {
 /// would be unreachable from a journal whose earlier bytes are missing.
 fn write_journal(mut file: File, lines: &std::sync::mpsc::Receiver<String>) -> WriterReport {
     for batch in lines {
+        // A test may have planted the marker that makes this thread die where no I/O error can; see
+        // [`WRITER_PANIC_MARKER`].
+        #[cfg(test)]
+        assert!(
+            !batch.contains(WRITER_PANIC_MARKER),
+            "the journal writer met the test fixture's panic marker"
+        );
         if let Err(err) = file.write_all(batch.as_bytes()) {
             return WriterReport {
                 error: Some(err.to_string()),

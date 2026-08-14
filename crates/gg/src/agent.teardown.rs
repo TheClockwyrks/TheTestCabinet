@@ -30,6 +30,11 @@
 //! returned to the [scheduler](Scheduler) so the rest of the tree is not capped out by an agent
 //! that no longer exists.
 //!
+//! *If it was holding one.* An agent parked behind the parallelism cap never took a slot, and one gg
+//! has **suspended** gave its own back for the length of the wait — so the teardown asks the
+//! scheduler ([`SlotHold`]) rather than assuming, and a panic in either state returns nothing. What
+//! it would otherwise return is a slot another agent is running on.
+//!
 //! That is why the teardown **owns** those wires rather than borrowing them for the panic path: the
 //! exclusivity key, the spawner's [wait condition](ParentWait), the result channel and the
 //! `finished` flag are read here on both paths — the ordinary return calls
@@ -93,10 +98,18 @@ pub(super) struct AgentTeardown {
     /// a slot returned under the wrong key leaves a [persistent](crate::persistence) profile
     /// pinned for the rest of the run.
     exclusive: Option<String>,
-    /// Whether the running slot is still held. Cleared by whichever path releases it, so a panic
-    /// *after* an ordinary release — in an issue's reconciliation, say — cannot hand the scheduler
-    /// a second release of one slot.
-    slot_held: bool,
+    /// Whether the running slot is still held — the agent's half of a bit the
+    /// [scheduler](Scheduler) owns.
+    ///
+    /// A panic *after* an ordinary release — in an issue's reconciliation, say — must not hand the
+    /// scheduler a second release of one slot, and neither must a panic *during* a wait: a
+    /// `wait_for_subagents`, a `wait_for_issue` and a [succession](Handoff) under a contended key
+    /// all give the slot back for the length of the wait, and while one is outstanding the slot
+    /// this teardown would return is being run on by somebody else. Which is why the bit is
+    /// [shared](SlotHold) rather than tracked here: it is flipped inside the scheduler lock that
+    /// makes each release and each grant, so it cannot be reading one thing while the scheduler
+    /// believes another.
+    hold: SlotHold,
     /// What this agent owes on its way out, by role.
     role: TeardownRole,
 }
@@ -143,18 +156,20 @@ impl AgentTeardown {
             origin: origin.clone(),
             emitter: None,
             exclusive: orch.exclusive_key(&agent.slot),
-            slot_held: false,
+            hold: SlotHold::default(),
             role: teardown_role,
         }
     }
 
-    /// Record that the agent now holds a running slot, so a panic gives it back.
+    /// The agent's [hold](SlotHold) on its running slot, handed to the scheduler at every acquire
+    /// and every wait so the teardown's answer is the scheduler's answer.
     ///
-    /// Separate from construction because an agent parked behind the parallelism cap holds nothing:
-    /// a release it never earned would hand the scheduler a slot that was not this agent's and free
-    /// an [exclusivity key](crate::subagents::ExclusiveKey) another instance of the profile may be running under.
-    pub(super) fn acquired(&mut self) {
-        self.slot_held = true;
+    /// Unset at construction, because an agent parked behind the parallelism cap holds nothing: a
+    /// release it never earned would hand the scheduler a slot that was not this agent's and free
+    /// an [exclusivity key](crate::subagents::ExclusiveKey) another instance of the profile may be
+    /// running under.
+    pub(super) fn hold(&self) -> &SlotHold {
+        &self.hold
     }
 
     /// The [exclusivity key](crate::subagents::ExclusiveKey) the slot is held under — every release in the loop reads
@@ -192,8 +207,7 @@ impl AgentTeardown {
     /// The ordinary ending for an agent nobody collects a return value from — the root, and an
     /// issue agent whose reconciliation runs after this: give the running slot back.
     pub(super) fn released(&mut self) {
-        if self.slot_held {
-            self.slot_held = false;
+        if self.hold.take() {
             self.orch.scheduler.release(self.exclusive.as_deref());
         }
     }
@@ -216,7 +230,10 @@ impl AgentTeardown {
         };
         link.finished.store(true, Ordering::SeqCst);
         let _ = link.result.send(returned);
-        self.slot_held = false;
+        // An agent that returns a value was running to produce it, so the hold is taken rather than
+        // consulted: the signal below carries the release, and a return is the one ending that
+        // cannot have happened while the agent was suspended.
+        self.hold.take();
         link.parent_wait.child_completed(
             &self.orch.scheduler,
             &self.agent.id,
@@ -291,9 +308,10 @@ impl AgentTeardown {
                     drop(link.result);
                     // Both paths wake a spawner blocked on this child; they differ only in whether
                     // there is a slot to give back with the wake. An agent that panicked while still
-                    // queued behind the parallelism cap never held one.
-                    if self.slot_held {
-                        self.slot_held = false;
+                    // queued behind the parallelism cap never held one — and neither does one that
+                    // panicked while suspended in a wait of its own, which gave its slot up to the
+                    // agent it was waiting for.
+                    if self.hold.take() {
                         link.parent_wait.child_completed(
                             &self.orch.scheduler,
                             &self.agent.id,
@@ -316,9 +334,16 @@ impl AgentTeardown {
     /// waiting on it.
     ///
     /// Nobody holds a handle to an issue agent, so the board is the only account of whether its work
-    /// happened — and agents suspended in a `wait_for_issue` resume only when the issue they are
-    /// waiting on is terminal. Failing it is therefore both the honest state and the thing that
-    /// stops those agents waiting out the run's deadline.
+    /// happened, and an issue left `in_progress` by an agent that will never take another turn reads
+    /// as work still under way. Failing it is the honest state, and that is the whole of what this
+    /// is for.
+    ///
+    /// It is not what releases the agents suspended in a `wait_for_issue` on it. The fault latched
+    /// at the top of this teardown did that, for every suspended wait in the run rather than only
+    /// this issue's, because an agent suspended on an issue a faulted run will never dispatch cannot
+    /// be freed by a board move at all. The wake below is kept because failing an issue and waking
+    /// its waiters are one operation everywhere else on the board, and a path that did half of it
+    /// would be the odd one out; it is idempotent, so it costs nothing here.
     ///
     /// An issue that is **already** terminal is left as it is: the panic then struck after the work
     /// was reconciled, and re-failing a merged issue would rewrite the board's account of work that

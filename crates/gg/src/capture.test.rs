@@ -208,6 +208,41 @@ fn a_completed_capture_terminates_with_a_mandatory_end_line() {
     assert_eq!(report.write_error, None);
 }
 
+/// **A writer thread that died mid-run is reported as a write failure, not as a clean recording.**
+///
+/// The one capture failure with no I/O error behind it: the thread is simply gone, so nothing it was
+/// carrying was written and nothing it was carrying was reported. A report of `None` here is not a
+/// missing detail, it is a *wrong* one — it says the journal is whole, and assembly reads it that
+/// way, so a record short by an unknown number of entries is served as the session. The panic is
+/// gg's own defect and it is reported rather than latched, for the reason on
+/// [`finish`](GgRecorder::finish): the journal is a debugging sidecar and the run around it is still
+/// a run somebody can score.
+#[test]
+fn a_panicked_writer_is_reported_as_a_write_failure() {
+    let (_dir, recorder) = recorder_in(None);
+    recorder.record_model_io(
+        RecordedCall {
+            agent_id: "root",
+            role: GgClientRole::Agent,
+            shape: GgSessionRequestShape::Complete,
+            messages: &[Message::user(WRITER_PANIC_MARKER)],
+            tools: &[],
+            duration_ms: None,
+        },
+        &stop_response("done"),
+    );
+
+    let report = recorder.finish();
+
+    let error = report
+        .write_error
+        .expect("a writer that died owes the operator an account of what is missing");
+    assert!(
+        error.contains("panicked") && error.contains("missing from the record"),
+        "the report must say the journal is short and why, since nothing else can: {error}"
+    );
+}
+
 #[test]
 fn finishing_twice_writes_one_end_line() {
     let (dir, recorder) = recorder_in(None);

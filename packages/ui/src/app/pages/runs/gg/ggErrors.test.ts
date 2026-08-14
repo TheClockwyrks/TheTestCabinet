@@ -130,7 +130,6 @@ describe("the error fold", () => {
       transpile: 1,
       program_fault: 0,
       sandbox_limit: 0,
-      toolchain: 0,
       missing_completion: 0,
     });
     // The split is exactly the failures, so the two can never disagree.

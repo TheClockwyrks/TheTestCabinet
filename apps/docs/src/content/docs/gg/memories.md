@@ -181,12 +181,13 @@ on which moment that is.
 - A read that loads (the two file-shaped strategies') returns the memory, with
   the diagnostic appended to the body. The body is what the model asked for.
 
-A compiler that could not finish is a different failure and is reported as one.
-The model is told the module was not compiled and that nothing about it was
-rejected, with no diagnostic, and the compiler's crash detail goes to the run's
-operator. A write is still refused, since under the scratchpad the write is the
-only moment the code loads, but the refusal is recorded as an `io-error` rather
-than an `invalid-argument`: the model's argument was never the thing that failed.
+A compiler that could not finish is gg's own defect and ends the run under
+`internal_error`, on the terms in
+[gg's own defects](/gg/execution-limits/#a-compiler-that-could-not-finish). The
+compiler's crash detail goes to the run's operator. The call that met it is
+refused as an `io-error` rather than an `invalid-argument`, since the model's
+argument was never the thing that failed, and the turn that refusal fails is
+recorded against gg rather than against the model.
 
 ## Scoping
 

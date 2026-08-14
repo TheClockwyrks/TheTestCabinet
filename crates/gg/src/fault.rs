@@ -28,11 +28,28 @@
 //! defect from. Killing the tree outright would destroy the evidence for the bug the run just
 //! found.
 //!
+//! There is one agent a boundary cannot reach: one gg has **suspended**. An agent
+//! blocked in a `wait_for_issue` is inside a tool call, and the only thing that ends that call is
+//! the awaited issue reaching a terminal state — which a faulted run has stopped bringing about,
+//! since it dispatches nothing further. So the latch is also **awaitable**
+//! ([`FaultLatch::until_raised`]), and every suspended wait is armed with it: the wait ends on
+//! whichever comes first, its own condition or the run breaking. A released agent then rejoins the
+//! scheduler's queue exactly as a woken one does and winds down at the boundary it finally reaches,
+//! which is what keeps the bound at one turn per agent for suspended and running agents alike.
+//!
 //! One defect cannot be met that way, and it is the reason [`crate::agent`] has a teardown: an
 //! agent whose task **panicked** never reaches another boundary to read this from, because the
 //! frame that would read it is the one being unwound. That fault is raised on the agent's behalf by
 //! the seam above its loop, which also has to do the waking and the slot release the agent itself
 //! would have done — so a latch nobody is left running to read still ends the run.
+//!
+//! One defect of gg's is deliberately **not** raised here, and it is worth naming so the rule reads
+//! as a rule rather than as wherever somebody remembered to latch: a panicked
+//! [capture](crate::capture) writer thread. The journal it was filling is a sidecar for debugging a
+//! run, not part of the tree the run is scored on — so what that panic costs is some replay, and
+//! ending the run over it would throw a real result away to protect a debugging aid. It is reported
+//! as a write failure instead, on the report the operator reads, which is the half that must not be
+//! lost: a short journal claiming to be whole would be this module's own kind of lie.
 //!
 //! It is **not** recorded as a cancellation. Nobody stopped this run: `canceled` is the one status
 //! that says a human intervened and says nothing about the model, and reporting our own defect as
@@ -55,6 +72,8 @@ mod tests;
 
 use std::any::Any;
 use std::sync::{Arc, OnceLock};
+
+use tokio::sync::Notify;
 
 /// What a panic said, as far as its payload knows.
 ///
@@ -92,6 +111,18 @@ pub struct FaultLatch {
     /// The first diagnostic raised, or unset. `OnceLock` is the type of the rule: **first fault
     /// wins**, and a later one cannot overwrite it.
     fault: Arc<OnceLock<String>>,
+    /// Fired once, when the first fault is latched, to release every agent that is
+    /// [awaiting the latch](FaultLatch::until_raised) rather than reading it at a turn boundary.
+    ///
+    /// A turn boundary is where an agent that is *running* meets the fault, and it is enough for
+    /// every agent that is running. It is not enough for an agent gg has **suspended**: an agent
+    /// blocked in a `wait_for_issue` is inside a tool call, so it reaches no boundary until its
+    /// wait resolves, and the thing its wait resolves on — a board issue reaching a terminal state
+    /// — is exactly what a faulted run stops making happen. Without a wake-up of its own such an
+    /// agent is parked for the rest of the run: its session future never returns, no session
+    /// ending is ever emitted, and the host eventually records the run as hung, which is neither
+    /// gg's status nor a run anybody can debug.
+    wake: Arc<Notify>,
 }
 
 impl FaultLatch {
@@ -131,6 +162,25 @@ impl FaultLatch {
         self.fault.get().map(String::as_str)
     }
 
+    /// Resolve once a fault has been raised — **immediately** if one already has, otherwise the
+    /// moment the first one is.
+    ///
+    /// This is the half of the latch a **suspended** agent reads: something that is awaited beside
+    /// whatever else it is waiting for, so that a wait gg's own defect has made unsatisfiable ends
+    /// anyway. See [`wake`](Self::wake) for why a turn boundary cannot serve that agent.
+    pub async fn until_raised(&self) {
+        // Registered *before* the latch is read: `Notify::notify_waiters` wakes only the waiters
+        // registered at the instant it fires, so a fault raised between the read and the
+        // registration would be missed and this would go on waiting for a second fault that a
+        // one-shot latch can never produce.
+        let mut waiting = std::pin::pin!(self.wake.notified());
+        waiting.as_mut().enable();
+        if self.raised().is_some() {
+            return;
+        }
+        waiting.await;
+    }
+
     /// Latch one composed diagnostic.
     ///
     /// **The first fault wins and later ones are dropped.** Once a run is winding down, everything
@@ -143,7 +193,14 @@ impl FaultLatch {
     /// every fault reaches the operator naming **where** gg was as well as what it met. A detail
     /// alone is not enough to debug from: it says a profile could not be resolved without saying
     /// which node of the tree, or which issue, was waiting on it.
+    ///
+    /// The wake-up rides on the *winning* set, which is the one moment the run's answer changes
+    /// from "healthy" to a diagnostic. Every [awaiting agent](Self::until_raised) is released here,
+    /// wherever in the run it is suspended, rather than by each fault site remembering to release
+    /// the agents its own defect stranded.
     fn latch(&self, sentence: String) {
-        let _ = self.fault.set(sentence);
+        if self.fault.set(sentence).is_ok() {
+            self.wake.notify_waiters();
+        }
     }
 }

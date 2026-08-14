@@ -3002,8 +3002,8 @@ pub enum GgTurnOutcome {
 /// the same event and derivable back to this by [`GgTurnErrorType::kind`]. Read this to compare
 /// runs at a glance and to reason about ceilings; read the type to say what actually went wrong.
 ///
-/// Four of the six — [`Transpile`](Self::Transpile), [`ProgramFault`](Self::ProgramFault),
-/// [`SandboxLimit`](Self::SandboxLimit) and [`Toolchain`](Self::Toolchain) — are
+/// Three of the five — [`Transpile`](Self::Transpile), [`ProgramFault`](Self::ProgramFault) and
+/// [`SandboxLimit`](Self::SandboxLimit) — are
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) shapes, and that
 /// asymmetry is real rather than an oversight: a tool-calling turn whose requested calls are all
 /// dispatched and answered cannot declare work that is then cut short.
@@ -3047,21 +3047,6 @@ pub enum GgTurnErrorKind {
     /// The sandbox stopped the program at a ceiling — its execution timeout or memory — or the guest
     /// trapped. The program ran and its landed calls stand, but the work it declared was cut short.
     SandboxLimit,
-    /// The [program language](GgProgramLanguage)'s **compiler could not finish** — it crashed, was
-    /// killed by its own timeout, or is not installed in the run's image. Nothing was decided about
-    /// the model's program: there was no diagnostic to show it, and it is not what failed.
-    ///
-    /// The one base kind that is not attributable to the model, and it is a base kind for exactly
-    /// that reason. The turn is still an error and still counts against the run's
-    /// [error ceilings](GgRunLimits) — a run whose compiler is broken must stop rather than burn to
-    /// its deadline — but folded under [`Transpile`](Self::Transpile) it would be indistinguishable
-    /// from a model whose programs kept failing to type-check, and the arm with the flakier
-    /// toolchain would read as the arm with the worse model. That is precisely the confound a
-    /// cross-language comparison cannot carry.
-    ///
-    /// Only a language whose preparation invokes a compiler can produce it, so it is `0` for every
-    /// run of a language that does not.
-    Toolchain,
     /// A tool-calling turn ended with no tool call. How an agent declares it is done is not
     /// configurable: every agent ends its session with an explicit, typed call, so a text-only
     /// reply is not a completion but a failure to end the run the one way gg allows. Counted as an
@@ -3074,12 +3059,11 @@ impl GgTurnErrorKind {
     /// Every kind, in declaration order — the order a console shows the split in, which is
     /// deliberately the contract's own rather than a frequency sort (rows that move as a run
     /// progresses cannot be read at a glance).
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 5] = [
         Self::ModelApi,
         Self::Transpile,
         Self::ProgramFault,
         Self::SandboxLimit,
-        Self::Toolchain,
         Self::MissingCompletion,
     ];
 
@@ -3094,7 +3078,6 @@ impl GgTurnErrorKind {
             Self::Transpile => "transpile",
             Self::ProgramFault => "program_fault",
             Self::SandboxLimit => "sandbox_limit",
-            Self::Toolchain => "toolchain",
             Self::MissingCompletion => "missing_completion",
         }
     }
@@ -3111,7 +3094,6 @@ impl GgTurnErrorKind {
             Self::Transpile => "transpile",
             Self::ProgramFault => "program fault",
             Self::SandboxLimit => "sandbox limit",
-            Self::Toolchain => "toolchain",
             Self::MissingCompletion => "no work declared",
         }
     }
@@ -3136,14 +3118,14 @@ impl GgTurnErrorKind {
 ///
 /// A bucket that is permanently zero in every console is a defect, so each variant below documents
 /// the exact site that raises it. The set is exactly the distinctions gg makes internally: six
-/// shapes of `ModelError`, five of `PrepareError`, three of the sandbox's own ceilings, the three
+/// shapes of `ModelError`, four of `PrepareError`, three of the sandbox's own ceilings, the three
 /// classes the guest types an uncaught throw with over WIT, and the two structurally different ways
 /// a turn can end without declaring work.
 ///
 /// # Names carry their base
 ///
 /// Every variant is prefixed with its base's noun (`model_`, `transpile_`, `program_`, `sandbox_`,
-/// `toolchain_`, `missing_completion_`) because these are ranked in one flat list, one row per type,
+/// `missing_completion_`) because these are ranked in one flat list, one row per type,
 /// where a bare `syntax` or `timeout` would not say which layer it came from.
 ///
 /// [`ModelRejected`](Self::ModelRejected) is deliberately *not* named `fatal`, even though gg's
@@ -3231,15 +3213,6 @@ pub enum GgTurnErrorType {
     SandboxOutOfMemory,
     /// The guest trapped for some other reason. The program ran and its landed calls stand.
     SandboxTrap,
-    /// The language's **compiler could not finish**: it crashed, was killed by its own timeout, or
-    /// is not installed in the run's image. The model's program was never judged, so it is told only
-    /// that its program did not run — never that it did not compile, because nothing said so.
-    ///
-    /// The only type under [`Toolchain`](GgTurnErrorKind::Toolchain), which exists so that this
-    /// stays separable from every failure the model owns. It is recoverable: a compiler that fell
-    /// over on one program may compile the next, so the run carries on and the ceilings decide when
-    /// it has had enough.
-    ToolchainFailed,
     /// A tool-calling turn ended with **no tool call** — the model replied in prose where the one
     /// way to end a session is an explicit, typed call.
     MissingCompletionNoCall,
@@ -3256,7 +3229,7 @@ impl GgTurnErrorType {
     ///
     /// The grouping is the reading order a console ranks and labels from, and it is what makes
     /// "every type has a base, and every base has at least one type" checkable rather than asserted.
-    pub const ALL: [Self; 19] = [
+    pub const ALL: [Self; 18] = [
         Self::ModelAuth,
         Self::ModelRejected,
         Self::ModelRetryExhausted,
@@ -3273,7 +3246,6 @@ impl GgTurnErrorType {
         Self::SandboxTimeout,
         Self::SandboxOutOfMemory,
         Self::SandboxTrap,
-        Self::ToolchainFailed,
         Self::MissingCompletionNoCall,
         Self::MissingCompletionCompaction,
     ];
@@ -3302,7 +3274,6 @@ impl GgTurnErrorType {
             Self::SandboxTimeout | Self::SandboxOutOfMemory | Self::SandboxTrap => {
                 GgTurnErrorKind::SandboxLimit
             }
-            Self::ToolchainFailed => GgTurnErrorKind::Toolchain,
             Self::MissingCompletionNoCall | Self::MissingCompletionCompaction => {
                 GgTurnErrorKind::MissingCompletion
             }
@@ -3333,7 +3304,6 @@ impl GgTurnErrorType {
             Self::SandboxTimeout => "sandbox_timeout",
             Self::SandboxOutOfMemory => "sandbox_out_of_memory",
             Self::SandboxTrap => "sandbox_trap",
-            Self::ToolchainFailed => "toolchain_failed",
             Self::MissingCompletionNoCall => "missing_completion_no_call",
             Self::MissingCompletionCompaction => "missing_completion_compaction",
         }
@@ -3362,7 +3332,6 @@ impl GgTurnErrorType {
             Self::SandboxTimeout => "execution timeout",
             Self::SandboxOutOfMemory => "out of memory",
             Self::SandboxTrap => "sandbox trap",
-            Self::ToolchainFailed => "compiler could not run",
             Self::MissingCompletionNoCall => "no work declared",
             Self::MissingCompletionCompaction => "compaction ignored",
         }
@@ -4876,16 +4845,6 @@ pub struct GgErrorSummary {
     pub program_fault: u64,
     /// Errors of kind [`sandbox_limit`](GgTurnErrorKind::SandboxLimit).
     pub sandbox_limit: u64,
-    /// Errors of kind [`toolchain`](GgTurnErrorKind::Toolchain) — turns lost because the language's
-    /// **compiler** could not finish, rather than because the model wrote anything wrong.
-    ///
-    /// The one per-kind counter that is not a count of the model's failures, which is why it is a
-    /// counter of its own: an arm whose image is missing a compiler and an arm whose model cannot
-    /// satisfy a type checker are different findings, and pooled they are one bad number.
-    ///
-    /// `0` for every run of a language whose preparation invokes no compiler — stated rather than
-    /// omitted, so the per-kind counters still sum to [`errors`](Self::errors).
-    pub toolchain: u64,
     /// Errors of kind [`missing_completion`](GgTurnErrorKind::MissingCompletion).
     pub missing_completion: u64,
     /// Responses discarded mid-stream by [loop detection](GgLoopDetection). **Not** an error turn —
@@ -4900,7 +4859,7 @@ pub struct GgErrorSummary {
     /// [`GgTurnErrorType::wire_id`].
     ///
     /// Two invariants hold: it sums to [`errors`](Self::errors), and regrouping it by
-    /// [`GgTurnErrorType::kind`] reproduces the six named counters above exactly.
+    /// [`GgTurnErrorType::kind`] reproduces the five named counters above exactly.
     /// The named counters stay because persisted records, stored queries and the console's
     /// side-by-side split all read them; this joins them rather than replacing them.
     ///

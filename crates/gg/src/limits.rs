@@ -217,8 +217,8 @@ impl TurnOutcome {
 /// distinguishing kinds, because a run that alternates between six ways of failing is not
 /// healthier than one that fails the same way six times.
 ///
-/// Four of the six — [`Transpile`](Self::Transpile), [`ProgramFault`](Self::ProgramFault),
-/// [`SandboxLimit`](Self::SandboxLimit) and [`Toolchain`](Self::Toolchain) — are
+/// Three of the five — [`Transpile`](Self::Transpile), [`ProgramFault`](Self::ProgramFault) and
+/// [`SandboxLimit`](Self::SandboxLimit) — are
 /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE)
 /// shapes, and that asymmetry is largely real rather than an oversight: a tool-calling turn whose
 /// requested calls are all dispatched and answered cannot declare work that is cut short. The one
@@ -258,20 +258,6 @@ pub enum TurnErrorKind {
     /// mostly working and occasionally too big — is exactly what [`error_rate`](RunLimits::error_rate)
     /// expresses and a consecutive counter cannot, which is *why* it needed an exemption at all.
     SandboxLimit,
-    /// The language's **compiler could not finish** — it crashed, was killed by its timeout, or is
-    /// not installed in this image. Nothing was decided about the program.
-    ///
-    /// The one base kind that is not the model's, and it is a base kind precisely so that stays
-    /// legible. The turn is still an error and is still counted against the run's
-    /// [ceilings](RunLimits) — a run whose compiler is broken must stop rather than burn to its
-    /// deadline — but a study reading the run back can tell it apart from a model that kept writing
-    /// programs its language rejected. Folded under [`Transpile`](Self::Transpile) the two would be
-    /// one indistinguishable rate, and the arm with the flakier toolchain would read as the arm with
-    /// the worse model.
-    ///
-    /// Unreachable for a language whose prepare step invokes no compiler, which is every language
-    /// registered as this is written; the first compiled arm is what produces it.
-    Toolchain,
     /// A tool-calling turn ended with no tool call. [Ending a session](crate::completion) is always
     /// an explicit call, so a text-only reply is not a completion but a failure to end the run the
     /// one way gg allows. Counted as an error so a model that keeps replying in prose instead of calling
@@ -284,7 +270,7 @@ impl TurnErrorKind {
     /// This kind as the contract publishes it — written out by hand, for the reason
     /// [`TurnOutcome::wire`] gives.
     ///
-    /// The two base taxonomies are one-to-one today, and the contract carries no seventh kind for a
+    /// The two base taxonomies are one-to-one today, and the contract carries no sixth kind for a
     /// reply abandoned by [loop detection](crate::loopguard): a discarded attempt is retried rather
     /// than counted, and a loop that survives every attempt reaches the turn loop as a model-client
     /// failure after that client exhausted its own retry budget, which is a
@@ -299,7 +285,6 @@ impl TurnErrorKind {
             Self::Transpile => GgTurnErrorKind::Transpile,
             Self::ProgramFault => GgTurnErrorKind::ProgramFault,
             Self::SandboxLimit => GgTurnErrorKind::SandboxLimit,
-            Self::Toolchain => GgTurnErrorKind::Toolchain,
             Self::MissingCompletion => GgTurnErrorKind::MissingCompletion,
         }
     }
@@ -354,9 +339,6 @@ pub enum TurnErrorType {
     SandboxOutOfMemory,
     /// The guest trapped for some other reason.
     SandboxTrap,
-    /// The language's compiler could not finish: it crashed, was killed by its timeout, or is not
-    /// installed. The program was never judged.
-    ToolchainFailed,
     /// A tool-calling turn ended with no call under an explicit-call completion signal.
     MissingCompletionNoCall,
     /// A turn replied with no call while a compaction was pending.
@@ -387,7 +369,6 @@ impl TurnErrorType {
             Self::SandboxTimeout | Self::SandboxOutOfMemory | Self::SandboxTrap => {
                 TurnErrorKind::SandboxLimit
             }
-            Self::ToolchainFailed => TurnErrorKind::Toolchain,
             Self::MissingCompletionNoCall | Self::MissingCompletionCompaction => {
                 TurnErrorKind::MissingCompletion
             }
@@ -414,7 +395,6 @@ impl TurnErrorType {
             Self::SandboxTimeout => GgTurnErrorType::SandboxTimeout,
             Self::SandboxOutOfMemory => GgTurnErrorType::SandboxOutOfMemory,
             Self::SandboxTrap => GgTurnErrorType::SandboxTrap,
-            Self::ToolchainFailed => GgTurnErrorType::ToolchainFailed,
             Self::MissingCompletionNoCall => GgTurnErrorType::MissingCompletionNoCall,
             Self::MissingCompletionCompaction => GgTurnErrorType::MissingCompletionCompaction,
         }
@@ -433,11 +413,9 @@ impl TurnErrorType {
 
 /// A failure of gg's own machinery, which ends the **run** rather than costing the model a turn.
 ///
-/// Both are unreachable in a healthy released build, and both would recur identically on every
-/// further turn, so the run ends loudly on the first occurrence instead of burning to its deadline.
-/// gg's defect is kept off the model in both of the places a run is read from: neither is ever
-/// counted against an [error ceiling](RunLimits), and the terminal status the loop ends on is gg's
-/// own `internal_error` rather than `model_error`. Filing it as the model's would be the same
+/// gg's defect is kept off the model in both of the places a run is read from: none of these is
+/// ever counted against an [error ceiling](RunLimits), and the terminal status the loop ends on is
+/// gg's own `internal_error` rather than `model_error`. Filing it as the model's would be the same
 /// misattribution the `auth_error` status exists to prevent, and this one is worse for being
 /// invisible: a run recorded as a model error is scored as one.
 ///
@@ -464,6 +442,36 @@ pub enum FatalFault {
     /// bug in the model's error record, counted it against the model's ceilings, and handed the
     /// model gg's diagnostic to rewrite a correct program against.
     Lowering,
+    /// The [program language](crate::sandbox::ProgramLanguage)'s **compiler could not finish**: it
+    /// crashed, its own timeout killed it, or the binary is not installed in the run's image. See
+    /// [`SandboxError::Toolchain`](crate::sandbox::SandboxError::Toolchain).
+    ///
+    /// **The widest-reaching reading of "a defect of gg's is gg's", and the one to revisit first.**
+    /// A compiler that fell over on one program may well compile the next, so this ends runs a
+    /// retried turn would have rescued. It is gg's nonetheless: from the model's side a compiler
+    /// gg's image never installed and a compiler it installed that then crashed are one event —
+    /// the model answered and nothing read the answer. Feeding that back asks a model to fix an
+    /// environment it cannot see, and counting it against the ceilings lets gg's own image end a
+    /// run under `limit_exceeded` with the model's name on it.
+    ///
+    /// The same failure reaches gg through a second door, the code a [skill](crate::skills) or
+    /// [memory](crate::memories) carries, and is fatal there for the same reason.
+    Toolchain,
+    /// gg had **already** broken when this turn's failure was judged: the run's
+    /// [fault latch](crate::fault) was raised while the turn was in flight, so what the turn
+    /// recorded is a consequence of a defect gg had already met rather than a fault of the model's.
+    ///
+    /// The other four name *what* broke; this one names *when*, and it exists because a gg defect
+    /// does not only end a turn — it can also **fail** one. A call gg refuses because gg is broken
+    /// throws into the program that made it, and an uncaught throw is a `program_fault` turn error
+    /// unless the latch is read before the outcome is recorded. Every turn is judged against the
+    /// latch at the single seam that records it, so no error site has to remember to do it.
+    ///
+    /// A turn that would have failed anyway is recorded under this too, when the two coincide. That
+    /// is the right way round: a run gg broke in is not a measurement, so the fact that
+    /// disqualifies it is the fact to record, and over-attributing on a run that is already
+    /// discarded costs nothing while under-attributing puts gg's defect in the model's column.
+    RunBroken,
 }
 
 // ---------------------------------------------------------------------------------------------

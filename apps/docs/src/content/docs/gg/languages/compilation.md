@@ -102,7 +102,7 @@ from there to the run record.
 | | What happened | What the model is told | How the turn is recorded |
 | --- | --- | --- | --- |
 | The compiler rejected the program | It read the reply whole and found a type error, a borrow error, a name that does not resolve | a `Compiler error` band carrying the compiler's own diagnostics and nothing else | one of the `transpile` error types, under the `transpile` base kind: the model's to fix |
-| The compiler could not finish | It crashed, its own timeout killed it, or the binary is missing from the image | a fixed `System` notice saying the program was not run, that this is the environment, and that nothing about the program was rejected | `toolchain_failed`, under the `toolchain` base kind |
+| The compiler could not finish | It crashed, its own timeout killed it, or the binary is missing from the image | nothing | a fatal turn, and the run ends under `internal_error` |
 
 Routing a compiler's crash into the `Compiler error` band is the failure this
 split exists to prevent. The model would read that its program did not compile
@@ -111,25 +111,25 @@ was never wrong.
 
 A rejected program arrives as one of four bands, each with its own error type:
 `transpile_syntax`, `transpile_semantic`, `transpile_compile` and
-`transpile_unsupported`. Both failures are recoverable, and the next turn's
-program may compile. Both are error turns and count against the run's
-[error ceilings](/gg/execution-limits/), so a run whose compiler is broken stops
-rather than burning to its deadline. The separate base kind keeps the
-attribution through that counting. Neither is the prebuilt interpreter component
-failing to compile, which is an artifact defect that ends the session.
+`transpile_unsupported`. It is recoverable, and the next turn's program may
+compile. It is an error turn and counts against the run's
+[error ceilings](/gg/execution-limits/). It is not the prebuilt interpreter
+component failing to compile, which is an artifact defect that ends the session.
 
-A third failure is gg's own. A source a language parsed and accepted, and then
-could not lower into what the guest runs, is a lowering failure: the transform
-over the accepted tree failed, or the surface gg generated for the model to write
-against was itself rejected. It is not fed back to the model in any band, is
-charged to no ceiling, and ends the run under `internal_error`, on the terms in
-[gg's own defects](/gg/execution-limits/#ggs-own-defects). A model is never asked
-to rewrite a program gg accepted.
+A compiler that could not finish is gg's, so the model reads nothing, no ceiling
+counts it, and the run ends on the terms in
+[gg's own defects](/gg/execution-limits/#a-compiler-that-could-not-finish).
+
+A third failure is gg's own too. A source a language parsed and accepted, and
+then could not lower into what the guest runs, is a lowering failure: the
+transform over the accepted tree failed, or the surface gg generated for the
+model to write against was itself rejected. It ends the run on the same terms. A
+model is never asked to rewrite a program gg accepted.
 
 The same split holds on the other thing gg compiles. A code skill or code memory
 goes through the same prepare step: a rejection hands the author's diagnostic
-back on the read, and a compiler that could not finish tells the model only that
-the module was not compiled, with the crash detail on the operator's stream.
+back on the read, and a compiler that could not finish ends the run with the
+crash detail on the operator's stream.
 
 ## Per-agent compiler isolation
 

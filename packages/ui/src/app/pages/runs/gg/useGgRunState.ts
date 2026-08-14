@@ -548,7 +548,6 @@ export function emptyErrorTally(): GgErrorTally {
       transpile: 0,
       program_fault: 0,
       sandbox_limit: 0,
-      toolchain: 0,
       missing_completion: 0,
     },
     byType: {},

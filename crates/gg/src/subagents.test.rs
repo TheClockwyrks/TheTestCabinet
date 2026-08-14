@@ -15,6 +15,16 @@ fn held(keys: &[&str]) -> BTreeSet<String> {
     keys.iter().map(|key| key.to_string()).collect()
 }
 
+/// A fresh [hold](SlotHold) for one agent, for the cases that are about the scheduler's own count
+/// rather than about the bit.
+///
+/// Every acquire in the cases below stands for a *different* agent, so each is given its own rather
+/// than sharing one: a shared hold would read as one agent holding the slots of several, which is
+/// the state [`the_hold_follows_the_slot`] exists to say is impossible.
+fn fresh_hold() -> SlotHold {
+    SlotHold::default()
+}
+
 // ---------------------------------------------------------------------------
 // The grant policy: select_grant_index (pure, exhaustive)
 // ---------------------------------------------------------------------------
@@ -160,10 +170,10 @@ fn config_reads_the_run_level_parallelism_cap() {
 #[tokio::test]
 async fn acquire_start_grants_immediately_when_a_slot_is_free() {
     let scheduler = Scheduler::new(2);
-    scheduler.acquire_start(None).await;
+    scheduler.acquire_start(None, &fresh_hold()).await;
     assert_eq!(scheduler.running(), 1);
     assert_eq!(scheduler.waiter_count(), 0);
-    scheduler.acquire_start(None).await;
+    scheduler.acquire_start(None, &fresh_hold()).await;
     assert_eq!(scheduler.running(), 2);
 }
 
@@ -172,7 +182,7 @@ async fn acquire_start_grants_immediately_when_a_slot_is_free() {
 #[tokio::test]
 async fn cap_of_one_serializes_a_second_acquire() {
     let scheduler = Scheduler::new(1);
-    scheduler.acquire_start(None).await;
+    scheduler.acquire_start(None, &fresh_hold()).await;
     assert_eq!(scheduler.running(), 1);
 
     // A second acquirer must block — the cap is full.
@@ -180,7 +190,7 @@ async fn cap_of_one_serializes_a_second_acquire() {
     let started_task = Arc::clone(&started);
     let scheduler_task = Arc::clone(&scheduler);
     let handle = tokio::spawn(async move {
-        scheduler_task.acquire_start(None).await;
+        scheduler_task.acquire_start(None, &fresh_hold()).await;
         started_task.store(true, Ordering::SeqCst);
     });
 
@@ -210,11 +220,11 @@ async fn cap_of_one_serializes_a_second_acquire() {
 #[tokio::test]
 async fn block_and_release_frees_the_slot_then_resumes_when_ready() {
     let scheduler = Scheduler::new(1);
-    scheduler.acquire_start(None).await; // the "parent" holds the only slot.
+    scheduler.acquire_start(None, &fresh_hold()).await; // the "parent" holds the only slot.
     assert_eq!(scheduler.running(), 1);
 
     // The parent blocks on a child: it frees its slot and registers a not-yet-ready waiter.
-    let (token, rx) = scheduler.block_and_release(None);
+    let (token, rx) = scheduler.block_and_release(None, &fresh_hold());
     assert_eq!(scheduler.running(), 0, "blocking frees the slot");
     assert_eq!(scheduler.waiter_count(), 1);
 
@@ -233,7 +243,7 @@ async fn block_and_release_frees_the_slot_then_resumes_when_ready() {
 
     // The child finishes: it releases (a notional) slot and marks the parent ready together.
     // (Model the child having held the freed slot by re-acquiring it first.)
-    scheduler.acquire_start(None).await; // child takes the free slot (running -> 1).
+    scheduler.acquire_start(None, &fresh_hold()).await; // child takes the free slot (running -> 1).
     scheduler.finish_and_ready(token, None); // child done + parent ready, in one step.
     handle.await.unwrap();
     assert!(
@@ -243,13 +253,112 @@ async fn block_and_release_frees_the_slot_then_resumes_when_ready() {
     assert_eq!(scheduler.running(), 1, "the resumed parent holds a slot");
 }
 
+/// **The hold follows the slot**, through an acquire, a wait, and the grant that ends it.
+///
+/// The bit exists for a reader that is not the scheduler: an agent's [teardown](crate::agent), which
+/// on a [panic](crate::fault) has to decide whether to give a slot back and cannot ask the agent,
+/// because the agent is the thing that died. Every wrong answer it can be given is a real defect —
+/// `false` while running leaks the slot for the rest of the run, and `true` while suspended returns
+/// a slot the agent it is waiting for is running on, over-filling the pool and freeing an
+/// [exclusivity key](ExclusiveKey) a second instance of a persistent profile holds.
+///
+/// So the assertions here are about the *instants*: the hold must be set by the grant and cleared by
+/// the release, never by the waiting task noticing afterwards.
+#[tokio::test]
+async fn the_hold_follows_the_slot() {
+    let scheduler = Scheduler::new(1);
+    let parent = fresh_hold();
+    assert!(
+        !parent.held(),
+        "an agent that has not acquired holds nothing"
+    );
+
+    scheduler.acquire_start(None, &parent).await;
+    assert!(parent.held(), "the grant is what sets it");
+
+    // The parent suspends on a child. Its slot is gone the moment the scheduler takes it, not when
+    // the parent's task next runs — so the bit is read here, before anything awaits.
+    let (token, rx) = scheduler.block_and_release(None, &parent);
+    assert!(
+        !parent.held(),
+        "a suspended agent holds nothing: the slot it gave up is the one the child is about to run \
+         on"
+    );
+
+    // The child runs on that slot and finishes, which readies the parent and hands the slot back.
+    let child = fresh_hold();
+    scheduler.acquire_start(None, &child).await;
+    assert!(child.held() && !parent.held(), "one slot, one holder");
+    scheduler.finish_and_ready(token, None);
+    assert!(
+        parent.held(),
+        "the resumed agent holds its slot from the grant, not from the wake it has yet to read"
+    );
+    let _ = rx.await;
+    assert!(parent.held());
+}
+
+/// A **succession** onto a contended profile gives the slot up like any other wait, and the hold
+/// with it.
+///
+/// The case the bit is least obviously needed for and most easily got wrong: the agent is running
+/// throughout, its turn loop never blocks, and it is nevertheless queued behind another instance of
+/// its own profile with no slot of its own. A teardown that believed otherwise would return the slot
+/// the instance ahead of it is using.
+#[tokio::test]
+async fn a_rekey_that_queues_gives_up_the_hold_until_it_is_granted_again() {
+    let scheduler = Arc::new(Scheduler::new(4));
+    scheduler.acquire_start(Some("Owner"), &fresh_hold()).await;
+    let successor = fresh_hold();
+    scheduler.acquire_start(Some("Explorer"), &successor).await;
+    assert!(successor.held());
+
+    let handle = tokio::spawn({
+        let scheduler = Arc::clone(&scheduler);
+        let successor = successor.clone();
+        async move {
+            scheduler
+                .rekey(Some("Explorer"), Some("Owner"), &successor)
+                .await;
+        }
+    });
+    tokio::task::yield_now().await;
+    assert!(
+        !successor.held(),
+        "a succession waiting for its profile is not running on a slot"
+    );
+
+    scheduler.release(Some("Owner"));
+    handle.await.unwrap();
+    assert!(successor.held(), "and holds one again once it is granted");
+}
+
+/// A succession that does **not** contend keeps its slot throughout, so it keeps its hold.
+///
+/// The negative half: the same call, one condition different, and a bit that flipped here would
+/// leak the slot of every FSM transition in every run.
+#[tokio::test]
+async fn a_rekey_that_does_not_queue_never_lets_go() {
+    let scheduler = Scheduler::new(2);
+    let agent = fresh_hold();
+    scheduler.acquire_start(Some("Explorer"), &agent).await;
+
+    scheduler
+        .rekey(Some("Explorer"), Some("Builder"), &agent)
+        .await;
+    assert!(agent.held(), "the slot never moved, so neither did the bit");
+
+    scheduler.rekey(Some("Builder"), None, &agent).await;
+    assert!(agent.held());
+}
+
 /// An exclusivity key serializes two agents that share it **even with slots to spare** — the whole
 /// mechanism behind a persistent profile's cap of one — while an agent holding a different key (or
 /// none) runs alongside them.
 #[tokio::test]
 async fn an_exclusivity_key_serializes_its_holders_within_a_roomy_pool() {
     let scheduler = Scheduler::new(4);
-    scheduler.acquire_start(Some("Owner")).await;
+    scheduler.acquire_start(Some("Owner"), &fresh_hold()).await;
     assert_eq!(scheduler.running(), 1);
     assert!(scheduler.holds("Owner"));
 
@@ -258,7 +367,9 @@ async fn an_exclusivity_key_serializes_its_holders_within_a_roomy_pool() {
     let started_task = Arc::clone(&started);
     let scheduler_task = Arc::clone(&scheduler);
     let handle = tokio::spawn(async move {
-        scheduler_task.acquire_start(Some("Owner")).await;
+        scheduler_task
+            .acquire_start(Some("Owner"), &fresh_hold())
+            .await;
         started_task.store(true, Ordering::SeqCst);
     });
     tokio::task::yield_now().await;
@@ -270,9 +381,11 @@ async fn an_exclusivity_key_serializes_its_holders_within_a_roomy_pool() {
 
     // Meanwhile an agent under a different profile runs immediately: the key contends with its own
     // holders and nothing else.
-    scheduler.acquire_start(Some("Reviewer")).await;
+    scheduler
+        .acquire_start(Some("Reviewer"), &fresh_hold())
+        .await;
     assert_eq!(scheduler.running(), 2);
-    scheduler.acquire_start(None).await;
+    scheduler.acquire_start(None, &fresh_hold()).await;
     assert_eq!(scheduler.running(), 3);
     assert!(!started.load(Ordering::SeqCst));
 
@@ -290,10 +403,10 @@ async fn an_exclusivity_key_serializes_its_holders_within_a_roomy_pool() {
 #[tokio::test]
 async fn suspending_releases_the_exclusivity_key_and_resuming_re_takes_it() {
     let scheduler = Scheduler::new(4);
-    scheduler.acquire_start(Some("Owner")).await;
+    scheduler.acquire_start(Some("Owner"), &fresh_hold()).await;
 
     // The instance blocks on a child: slot and key are both freed.
-    let (token, rx) = scheduler.block_and_release(Some("Owner"));
+    let (token, rx) = scheduler.block_and_release(Some("Owner"), &fresh_hold());
     assert_eq!(scheduler.running(), 0);
     assert!(
         !scheduler.holds("Owner"),
@@ -301,7 +414,7 @@ async fn suspending_releases_the_exclusivity_key_and_resuming_re_takes_it() {
     );
 
     // Which is exactly what lets another instance of the same profile — its own child, say — run.
-    scheduler.acquire_start(Some("Owner")).await;
+    scheduler.acquire_start(Some("Owner"), &fresh_hold()).await;
     assert!(scheduler.holds("Owner"));
 
     // That child finishing frees the key and marks the parent ready, so the parent resumes under it.
@@ -317,16 +430,20 @@ async fn suspending_releases_the_exclusivity_key_and_resuming_re_takes_it() {
 #[tokio::test]
 async fn a_rekey_exchanges_the_profile_without_giving_up_the_slot() {
     let scheduler = Scheduler::new(2);
-    scheduler.acquire_start(Some("Explorer")).await;
+    scheduler
+        .acquire_start(Some("Explorer"), &fresh_hold())
+        .await;
     assert_eq!(scheduler.running(), 1);
 
-    scheduler.rekey(Some("Explorer"), Some("Builder")).await;
+    scheduler
+        .rekey(Some("Explorer"), Some("Builder"), &fresh_hold())
+        .await;
     assert!(!scheduler.holds("Explorer"), "the old profile is freed");
     assert!(scheduler.holds("Builder"), "and the new one taken");
     assert_eq!(scheduler.running(), 1, "the slot never moved");
 
     // A successor whose profile is not persistent contends with nothing and simply drops the key.
-    scheduler.rekey(Some("Builder"), None).await;
+    scheduler.rekey(Some("Builder"), None, &fresh_hold()).await;
     assert!(!scheduler.holds("Builder"));
     assert_eq!(scheduler.running(), 1);
 }
@@ -338,9 +455,11 @@ async fn a_rekey_exchanges_the_profile_without_giving_up_the_slot() {
 async fn a_rekey_onto_a_held_profile_queues_rather_than_deadlocking() {
     let scheduler = Arc::new(Scheduler::new(4));
     // Somebody else is running as `Owner`.
-    scheduler.acquire_start(Some("Owner")).await;
+    scheduler.acquire_start(Some("Owner"), &fresh_hold()).await;
     // Our agent is running as something else, and is about to become an `Owner`.
-    scheduler.acquire_start(Some("Explorer")).await;
+    scheduler
+        .acquire_start(Some("Explorer"), &fresh_hold())
+        .await;
     assert_eq!(scheduler.running(), 2);
 
     let moved = Arc::new(AtomicBool::new(false));
@@ -348,7 +467,9 @@ async fn a_rekey_onto_a_held_profile_queues_rather_than_deadlocking() {
         let scheduler = Arc::clone(&scheduler);
         let moved = Arc::clone(&moved);
         async move {
-            scheduler.rekey(Some("Explorer"), Some("Owner")).await;
+            scheduler
+                .rekey(Some("Explorer"), Some("Owner"), &fresh_hold())
+                .await;
             moved.store(true, Ordering::SeqCst);
         }
     });

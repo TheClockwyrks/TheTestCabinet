@@ -250,7 +250,6 @@ impl SummaryState {
             GgTurnErrorKind::Transpile => &mut rollup.transpile,
             GgTurnErrorKind::ProgramFault => &mut rollup.program_fault,
             GgTurnErrorKind::SandboxLimit => &mut rollup.sandbox_limit,
-            GgTurnErrorKind::Toolchain => &mut rollup.toolchain,
             GgTurnErrorKind::MissingCompletion => &mut rollup.missing_completion,
         };
         *count += 1;

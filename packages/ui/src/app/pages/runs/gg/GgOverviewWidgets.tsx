@@ -512,7 +512,7 @@ export function errorRatePhrase(errors: GgErrorTally): string {
  * A scope's errored turns ranked by specific type, most common first — or, where there is
  * no ranking to draw, which of the two nothings it is.
  *
- * The ranking is over the SPECIFIC types (`byType`), not the six base kinds: "top error
+ * The ranking is over the SPECIFIC types (`byType`), not the base kinds: "top error
  * types" over six buckets is barely a narrowing, and the base each type rolls up into
  * rides along on every row as a badge, so nothing the per-kind split said is lost.
  *
@@ -545,13 +545,10 @@ export function ErrorTypeRanking({ errors }: { errors: GgErrorTally }) {
 //
 // The base kind rides as a badge because a specific type does not always name its own
 // family — "syntax error" and "unknown name" say nothing about being a transpile failure
-// and a program fault respectively, and that grouping is what the six error ceilings are
+// and a program fault respectively, and that grouping is what the error ceilings are
 // written against. It is withheld where the base's label and the row's label are the same
-// string, since a badge that restates its row word for word is noise. (A base with a single
-// type under it does not automatically get that treatment: `toolchain` has exactly one type
-// and the two are worded differently — "toolchain" the family, "compiler could not run" the
-// failure — so both are shown.) It is withheld too on a type from a newer gg than this
-// console, which has no base to claim.
+// string, since a badge that restates its row word for word is noise, and on a type from a
+// newer gg than this console, which has no base to claim.
 function ErrorTypeRow({ row }: { row: GgRankedError }) {
   const base = row.kind == null ? null : TURN_ERROR_LABELS[row.kind];
   return (

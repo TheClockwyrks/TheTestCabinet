@@ -100,7 +100,7 @@
 //! [`disabled`](BoardRuntime::disabled) runtime, so there are no board tools, no prompt
 //! text, no context block, no telemetry, and no auto-dispatch — the feature vanishes.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
@@ -1064,6 +1064,53 @@ impl BoardStore {
         self.issue_status_of(id)
     }
 
+    /// The id of a blocker that issue `id` can never get past — one somewhere in its transitive
+    /// blocked-by set that will never be [`Done`](IssueStatus::Done) — or `None` while every
+    /// blocker can still be finished.
+    ///
+    /// This is the question a [wait](crate::agent) has to ask that
+    /// [`is_ready`](Self::is_ready) does not: an issue behind a [`Failed`](IssueStatus::Failed)
+    /// blocker is not merely un-dispatchable *now*, it is un-dispatchable for the rest of the run,
+    /// so it never reaches a terminal state either and an agent suspended on it would wait out the
+    /// run's wall clock. [`fail_issue`](Self::fail_issue) deliberately does not cascade, so this is
+    /// where the consequence of that is read rather than written into the board.
+    ///
+    /// A blocker that is not on the board at all is reported the same way, because
+    /// [`is_ready`](Self::is_ready) treats it the same way: only a `Done` blocker clears an edge.
+    ///
+    /// The walk is depth-first in each issue's declared blocker order, and reports the first such
+    /// blocker it meets — the answer must not depend on a traversal order that varies per process,
+    /// since it becomes a tool result the model reads. A visited set bounds it whether or not the
+    /// board is acyclic.
+    pub fn unsatisfiable_blocker(&self, id: &str) -> Option<String> {
+        let mut seen: BTreeSet<String> = BTreeSet::new();
+        let mut pending = self.blockers_of(id);
+        while let Some(blocker) = pending.pop() {
+            if !seen.insert(blocker.clone()) {
+                continue;
+            }
+            match self.issue_status_of(&blocker) {
+                Some(IssueStatus::Failed) | None => return Some(blocker),
+                Some(_) => pending.extend(self.blockers_of(&blocker)),
+            }
+        }
+        None
+    }
+
+    /// The blockers of issue `id` as a **stack** — reversed, so popping yields them in the order
+    /// the issue declares them — or empty when there is no such issue.
+    fn blockers_of(&self, id: &str) -> Vec<String> {
+        let Some(index) = self.issue_position(id) else {
+            return Vec::new();
+        };
+        self.issues[index]
+            .blocked_by
+            .iter()
+            .rev()
+            .cloned()
+            .collect()
+    }
+
     /// The ids of every issue that is **dispatchable right now**: [`Open`](IssueStatus::Open),
     /// not yet [assigned](Issue::assigned_agent), and with every blocker
     /// [`Done`](IssueStatus::Done). These are the issues the [dispatcher](crate::agent) spawns an
@@ -1143,6 +1190,13 @@ impl BoardStore {
     /// Mark the issue `id` [`Failed`](IssueStatus::Failed) — its retries are exhausted. Returns
     /// `false` (untouched) if no such issue exists or it is already terminal. The assignment is
     /// left in place as the last agent that worked it.
+    ///
+    /// Failure does **not** cascade to the issues this one blocks. A dependent stays exactly as it
+    /// was filed, so the board shows one red issue and the work stalled behind it rather than a
+    /// column of failures with no cause among them, and an agent that clears the blocker (with
+    /// [`set_issue_blocked_by`](Self::set_issue_blocked_by), or by refiling the work) unblocks a
+    /// dependent that is still open. The consequence for anything *waiting* on a dependent is what
+    /// [`unsatisfiable_blocker`](Self::unsatisfiable_blocker) answers.
     pub fn fail_issue(&mut self, id: &str) -> bool {
         let Some(index) = self.issue_position(id) else {
             return false;
@@ -1246,7 +1300,8 @@ impl BoardStore {
 
     /// Whether an issue is actionable: not [terminal](IssueStatus::is_terminal), and every issue
     /// it is blocked by is [`Done`](IssueStatus::Done). A [`Failed`](IssueStatus::Failed) blocker
-    /// is terminal but not done, so it never satisfies this.
+    /// is terminal but not done, so it never satisfies this — and never will, which is what
+    /// [`unsatisfiable_blocker`](Self::unsatisfiable_blocker) exists to say.
     fn is_ready(&self, issue: &Issue) -> bool {
         !issue.status.is_terminal()
             && issue
@@ -1710,6 +1765,18 @@ impl BoardRuntime {
             Some(status) => status.is_terminal(),
             None => true,
         }
+    }
+
+    /// The [blocker issue `id` can never get past](BoardStore::unsatisfiable_blocker), or `None`
+    /// when the capability is off, no such issue exists, or the issue can still be finished.
+    pub fn unsatisfiable_blocker(&self, id: &str) -> Option<String> {
+        if !self.enabled {
+            return None;
+        }
+        self.store
+            .lock()
+            .expect("board store lock")
+            .unsatisfiable_blocker(id)
     }
 
     /// The [retry count](Issue::retries) of the issue with id `id`, or `0` when the capability is

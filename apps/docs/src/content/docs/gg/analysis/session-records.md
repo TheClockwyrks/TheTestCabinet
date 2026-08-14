@@ -170,6 +170,14 @@ contiguous prefix and no entry can reference a body that was never written.
 Every stop is a recorded fact and the run is untouched. Capture degrades; it
 never fails the run it observes.
 
+That holds even when the failure is gg's own: a journal writer that *panics* is
+reported as a write failure — never as no failure, which would describe a
+journal missing an unknown number of lines as a clean recording — and it does
+not end the run, which is the one gg defect that does not. The journal is a
+sidecar for debugging a run rather than part of the tree the run is scored on,
+so a lost journal costs the operator some replay and costs the result nothing.
+Ending the run over it would discard a real result to protect a debugging aid.
+
 ### The terminating line
 
 Capture writes a terminating line on the normal exit path, carrying how many

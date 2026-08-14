@@ -116,7 +116,7 @@ and one that could not start both exit non-zero.
 | 0 | compiled | the JavaScript, from the workspace |
 | 20 | Opal refused the Ruby | a syntax error, with Opal's own message and, where the parser located it, the model's own line |
 | 21 | Opal raised something that is not a refusal of the Ruby | a compile error, still the model's to answer |
-| anything else | the compiler could not finish | a toolchain failure, which the model is never shown as its own |
+| anything else | the compiler could not finish | gg's own defect, which the model is never shown and which ends the run |
 
 A rejection is structurally one diagnostic, since the driver catches a single
 thrown `SyntaxError`, so this arm declares no diagnostic cap. Both refusals a

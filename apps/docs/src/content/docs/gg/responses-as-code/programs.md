@@ -114,24 +114,20 @@ owner:
 | --- | --- | --- |
 | The prebuilt artifact could not be run, or gg's own plumbing failed | nothing | the run ends |
 | gg accepted the program and could not prepare it | nothing | the run ends |
+| The language's compiler could not finish | nothing | the run ends |
 | The language read the program and rejected it | the language's diagnostic verbatim, under `Compiler error` | continues |
-| The language's compiler could not finish | a `Notice` saying the program was not run, that this is the run's environment, and that nothing about the program was rejected | continues |
 | A sandbox ceiling stopped the program | the ceiling's own words, under `Runtime error` | continues |
 
-The fatal failures are fed back to nobody and charged to no ceiling, because
-every further turn would fail identically. The model answered and gg could not
-run the answer, so the failure is gg's and is recorded as gg's: the run ends
-under `internal_error` whichever agent was taking the turn, on the terms in
-[gg's own defects](/gg/execution-limits/#ggs-own-defects). A compiler that could
-not finish is recorded under its own `toolchain` base kind, and still counts
-against the run's error ceilings.
+The fatal failures are fed back to nobody and charged to no ceiling. The model
+answered and gg could not run the answer, so the failure is gg's and is recorded
+as gg's: the run ends under `internal_error` whichever agent was taking the turn,
+on the terms in [gg's own defects](/gg/execution-limits/#ggs-own-defects).
 
 A turn is an error when the work it declared could not be carried out as
 declared: a program that did not compile, one that threw uncaught, one a sandbox
-ceiling stopped, one whose compiler could not be made to run. A failure gg
-reported into a program that carried on is not one. A caught throw, a refused
-call, a non-zero `shell` exit and a call refused for a spent wall-clock budget
-all leave the turn an ordinary turn.
+ceiling stopped. A failure gg reported into a program that carried on is not one.
+A caught throw, a refused call, a non-zero `shell` exit and a call refused for a
+spent wall-clock budget all leave the turn an ordinary turn.
 
 ## Hand-over chains
 

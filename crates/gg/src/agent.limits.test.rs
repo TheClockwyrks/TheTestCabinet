@@ -642,17 +642,23 @@ async fn a_host_fault_ends_the_session_without_charging_the_model() {
     );
 }
 
-/// **A compiler that could not finish is an error turn the run carries straight on from.**
+/// **A compiler that could not finish ends the run and is charged to nobody.**
 ///
-/// The counterpart to the fatal test above, and the assertion that keeps the two apart. Both are "a
-/// compile failed"; only one of them recurs identically on every further turn. So this run must lose
-/// exactly one turn, record it under its own base kind so a study can tell it from a model whose
-/// programs would not type-check, and then finish — because the next program compiled.
+/// The reading of "a defect of gg's is gg's" that costs the most, so it is the one pinned end to
+/// end. The compiler crashed rather than judging the program: the model answered, nothing read the
+/// answer, and gg has no diagnostic to hand back and no honest instruction to give. The alternative
+/// this replaces — feed a notice back, count the turn, carry on — asks a model to fix an image it
+/// cannot see and lets a compiler missing from that image end a run under `limit_exceeded` with the
+/// model's name on it.
+///
+/// So the run must lose exactly one turn, take no further turn even though a compiling program was
+/// scripted next, credit no ceiling with the stop even under the tightest one there is, and end
+/// under gg's own status with the fault on the latch.
 ///
 /// Armed through the same [seam](crate::sandbox::force_next_program_fault) the host fault is: no
 /// registered language runs a compiler yet, so there is no honest way to make one fall over.
 #[tokio::test]
-async fn a_compiler_that_could_not_finish_costs_one_turn_and_not_the_run() {
+async fn a_compiler_that_could_not_finish_ends_the_run_and_is_charged_to_nobody() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
@@ -662,48 +668,59 @@ async fn a_compiler_that_could_not_finish_costs_one_turn_and_not_the_run() {
         "`swiftc` exited with signal 11 (SIGSEGV)".to_string(),
     ));
 
-    let end = drive_root(
-        &MockClient::new(
-            "mock/primary",
-            vec![
-                code_reply("fs.writeFile(\"a.txt\", \"hi\");"),
-                code_reply(FINISHING_PROGRAM),
-            ],
-        ),
-        dir.path(),
-        &registry,
-        &emitter,
-        setup_from(GgRunLimits {
-            max_turns: Some(10),
-            ..GgRunLimits::default()
-        }),
-        code_on(),
-    )
-    .await;
+    let mut setup = setup_from(GgRunLimits {
+        max_turns: Some(10),
+        // The tightest setting there is: one error turn would stop the run and be recorded as the
+        // reason it stopped. A compiler's crash must not be that error turn.
+        max_consecutive_errors: Some(1),
+        ..GgRunLimits::default()
+    });
+    let fault = FaultLatch::default();
+    setup.fault = fault.clone();
+
+    let client = MockClient::new(
+        "mock/primary",
+        vec![
+            code_reply("fs.writeFile(\"a.txt\", \"hi\");"),
+            code_reply(FINISHING_PROGRAM),
+        ],
+    );
+    let end = drive_root(&client, dir.path(), &registry, &emitter, setup, code_on()).await;
 
     assert_eq!(
-        end.status, "completed",
-        "a compiler that fell over once must not end the session: the next program compiled"
+        end.status, "internal_error",
+        "the run's environment failed, so the run ends under gg's status rather than the model's"
+    );
+    assert_eq!(
+        client.turns_taken(),
+        1,
+        "the model must not be asked to write the program again"
+    );
+    assert!(
+        end.limit.is_none(),
+        "no ceiling may be credited with stopping a run gg's own environment stopped"
     );
     let events = sink.events();
-    assert_eq!(
-        turn_outcomes(&events),
-        vec![
-            (
-                GgTurnOutcome::Error,
-                Some(GgTurnErrorKind::Toolchain),
-                1,
-                1,
-                0
-            ),
-            (GgTurnOutcome::Finished, None, 0, 2, 0),
-        ],
-        "one error turn under the toolchain kind, then the session ends normally"
+    assert!(
+        limit_breaches(&events).is_empty(),
+        "the model's error budget was charged for a compiler that never read its program"
     );
     assert_eq!(
-        turn_error_types(&events),
-        vec![GgTurnErrorType::ToolchainFailed],
-        "and the type says the compiler could not run, not that the program was rejected"
+        turn_outcomes(&events),
+        vec![(GgTurnOutcome::Fatal, None, 0, 1, 0)],
+        "the turn is counted so the accounting stays whole, and carries no error kind at all"
+    );
+    assert!(
+        turn_error_types(&events).is_empty(),
+        "a fatal turn carries no error type: {:?}",
+        turn_error_types(&events)
+    );
+    assert!(
+        fault
+            .raised()
+            .is_some_and(|raised| raised.contains("SIGSEGV")),
+        "the latch must carry the compiler's own words: {:?}",
+        fault.raised()
     );
 
     // The operator is told what actually happened, in the compiler's own terms — the detail the
@@ -1125,6 +1142,71 @@ async fn every_recognized_shell_output_mode_launches_without_a_warning() {
 // ---------------------------------------------------------------------------
 // The turn-outcome event
 // ---------------------------------------------------------------------------
+
+/// **The seam that records a turn reads the run's fault latch before it judges the turn.**
+///
+/// The pair, on one ceiling, from the one place every turn of both execution modes passes through.
+/// A failed call is an ordinary thing for a program to meet and an uncaught one is an ordinary way
+/// for a turn to fail, so the first half must keep working: an error on a healthy run is the
+/// model's, and it breaches. What changes is the second half. gg refuses calls of its own when gg
+/// is broken, and the turn that refusal fails would otherwise be recorded as a `program_fault` the
+/// model committed and could end the run under `limit_exceeded` with the model's name on it.
+///
+/// Read as a unit rather than driven through a session because the mutation this guards against is
+/// the *removal* of a single read: the two halves differ in nothing but the latch.
+#[test]
+fn an_error_turn_is_the_models_until_gg_breaks_under_it() {
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
+    let agent = Agent::root(ROOT_AGENT);
+    // Armed at one error, so the difference between the two halves is a stopped run.
+    let limits = setup_from(GgRunLimits {
+        max_consecutive_errors: Some(1),
+        ..GgRunLimits::default()
+    })
+    .limits;
+    let failed_call = TurnOutcome::Error(TurnErrorType::ProgramToolError);
+
+    let healthy = FaultLatch::default();
+    let breach = agent.record_turn(
+        &mut AgentLimits::new(limits),
+        &emitter,
+        &healthy,
+        failed_call,
+        0,
+    );
+    assert!(
+        breach.is_some(),
+        "a program that let a call throw on a healthy run failed its own turn"
+    );
+
+    let broken = FaultLatch::default();
+    broken.in_agent("agent-3", "worker", "the profile would not bind");
+    let breach = agent.record_turn(
+        &mut AgentLimits::new(limits),
+        &emitter,
+        &broken,
+        failed_call,
+        0,
+    );
+    assert!(
+        breach.is_none(),
+        "no ceiling may be spent on a call gg refused because gg is broken"
+    );
+
+    assert_eq!(
+        turn_outcomes(&sink.events())
+            .into_iter()
+            .map(|(outcome, kind, streak, _, _)| (outcome, kind, streak))
+            .collect::<Vec<_>>(),
+        vec![
+            (GgTurnOutcome::Error, Some(GgTurnErrorKind::ProgramFault), 1),
+            // Counted, so the denominator stays honest, and attributed to nobody's layer.
+            (GgTurnOutcome::Fatal, None, 0),
+        ],
+        "the published record must not carry gg's defect as the model's program faulting"
+    );
+}
 
 /// **An error turn says so on the stream, with the kind that made it one.**
 ///

@@ -486,26 +486,25 @@ fn sandbox_error_type(error: &SandboxError) -> TurnErrorType {
 /// are the ones the sandbox's own taxonomy names — see [`SandboxError`] — and each answers a
 /// different owner:
 ///
-/// * the committed **artifact**, gg's own **plumbing**, or gg's own **preparation** of a source it
-///   had already accepted: fatal, fed back to nobody, charged to nothing, because every further turn
-///   would fail identically;
+/// * the committed **artifact**, gg's own **plumbing**, gg's own **preparation** of a source it had
+///   already accepted, or the language's **compiler** failing to finish: fatal, fed back to nobody,
+///   charged to nothing;
 /// * the **model's program**: the language's diagnostic, verbatim, under `Compiler error`;
-/// * the **compiler**, which could not finish: a `System` notice, because there is no diagnostic and
-///   the model's program was never judged;
 /// * a sandbox **ceiling**: the ceiling's own words under `Runtime error`.
 ///
-/// Lifted out of [`run_code_turn`] rather than left inline because the third of those is the one
-/// that is silent when it regresses: routing a compiler's crash into the `Compiler error` band tells
-/// the model its program was rejected when nothing read it, produces no failure anywhere, and sends
-/// the model rewriting a program that was never wrong. A function is a thing a test can hold.
+/// Lifted out of [`run_code_turn`] rather than left inline because the split between the compiler
+/// rejecting a program and the compiler failing to run one is silent when it regresses: routing a
+/// compiler's crash into the `Compiler error` band tells the model its program was rejected when
+/// nothing read it, produces no failure anywhere, and sends the model rewriting a program that was
+/// never wrong. A function is a thing a test can hold.
 fn sandbox_failure_decision(
     error: &SandboxError,
     notices: &[CodeFeedback],
     emitter: &Emitter,
 ) -> CodeTurnOutcome {
     match error {
-        // gg's own machinery, in its two flavours. Both would fail identically on every further
-        // turn, so neither is fed back and neither is ever charged to the model's error budget.
+        // gg's own machinery, in its two flavours. Neither is fed back and neither is ever charged
+        // to the model's error budget; both would fail identically on every further turn.
         error if error.is_artifact_defect() => CodeTurnOutcome::Fatal {
             fault: FatalFault::ArtifactDefect,
             message: format!(
@@ -537,6 +536,20 @@ fn sandbox_failure_decision(
                  the model as one."
             ),
         },
+        // The compiler could not finish, so nothing was decided about the program. Fatal, and fed
+        // back to nobody: there is no diagnostic to show, and the one sentence gg could write in
+        // its place — "write it again" — asks the model to answer for the image it is running in.
+        // The variant covers a binary that is not installed as well as one that crashed, and on the
+        // first of those every turn fails identically while the model rewrites a program nothing
+        // ever read.
+        error if error.is_toolchain_defect() => CodeTurnOutcome::Fatal {
+            fault: FatalFault::Toolchain,
+            message: format!(
+                "the model's program was never read ({error}); this is a fault in the run's \
+                 environment rather than in the model's program, and the run ends here rather \
+                 than charging it to the model."
+            ),
+        },
         // The language's own diagnostic, with nothing wrapped around it. `SandboxError::Prepare`'s
         // `Display` prefixes it ("the program did not compile: …"), which the `Compiler error`
         // heading already says, so the inner error is what goes out.
@@ -551,24 +564,6 @@ fn sandbox_failure_decision(
             error: Some(sandbox_error_type(error)),
             report: "its last program did not compile".to_string(),
         },
-        // The compiler could not finish, so nothing was decided about the program. There is no
-        // diagnostic to show — which is exactly why this is not a `Compiler error`: that heading
-        // over a compiler's crash would tell the model its program was rejected when nothing read
-        // it. It goes in the `System` band instead, where gg speaks about the session rather than
-        // about the program, saying the one thing the model can act on — that the program did not
-        // run, and that writing it again is the whole of the fix.
-        //
-        // Logged at `error` rather than `warn` because it is the operator's problem, not the
-        // model's: an image whose compiler keeps falling over is a run that should be fixed rather
-        // than watched.
-        error @ SandboxError::Toolchain(_) => {
-            emitter.emit(log("error", format!("{error}")));
-            CodeTurnOutcome::Continue {
-                feedback: with_error(notices, CodeFeedback::notice(TOOLCHAIN_NOTICE.to_string())),
-                error: Some(sandbox_error_type(error)),
-                report: "its last program's compiler could not finish".to_string(),
-            }
-        }
         // A ceiling the sandbox enforced — a timeout, the memory cap, a trap. The program compiled
         // and started, so this is a runtime failure and reads as one; the variant's own `Display` is
         // the error, and gg adds no advice on top of it.
@@ -589,17 +584,6 @@ fn sandbox_failure_decision(
     }
 }
 
-/// What a model is told when its language's compiler could not finish.
-///
-/// Three sentences and no diagnostic, because there is none: the compiler never reported on the
-/// program. It says what happened, says explicitly that nothing about the program was rejected — the
-/// one thing a model reading a failed turn will otherwise assume — and names the only action there
-/// is. A `const` so the test that pins the band can pin the words too.
-const TOOLCHAIN_NOTICE: &str = "Your program was not run: this language's compiler could not \
-                                finish, which is a fault in the run's environment rather than in \
-                                what you wrote. Nothing about your program was rejected. Write it \
-                                again.";
-
 /// The class a refused [knowledge](crate::knowledge) load carries — the same split
 /// [`sandbox_failure_decision`] makes for a turn's own program, on the other consumer of the same
 /// seam.
@@ -619,18 +603,33 @@ fn knowledge_refusal_class(error: &KnowledgeError) -> ToolFailure {
     }
 }
 
-/// Tell the **operator** about a knowledge half that would not prepare, when there is something to
-/// tell them that the model was not already given.
+/// Record a knowledge half that would not prepare: raise the run's [fault latch](crate::fault) when
+/// the failure was gg's, and tell the **operator** whatever the model was not already given.
 ///
-/// Only a [compiler that could not finish](KnowledgeError::operator_detail) has one: a source the
-/// language read and rejected is the author's, and the whole of it already went out on the call.
-/// Logged at `error` for the reason [`sandbox_failure_decision`] logs the turn-loop half of the same
-/// failure at `error` — an image whose compiler keeps falling over is a run that should be fixed
-/// rather than watched, and this is the only stream the crash detail reaches at all.
-fn report_knowledge_failure(error: &KnowledgeError, emitter: &Emitter) {
-    if let Some(detail) = error.operator_detail() {
-        emitter.emit(log("error", detail));
+/// The two halves of this seam are owned by different people, so they are recorded differently.
+/// A source the language read and rejected is the author's: nothing is latched, the whole of the
+/// diagnostic already went out on the call, and there is nothing left to log. Anything else — a
+/// compiler that could not finish, or a source gg accepted and then could not prepare — is gg's, so
+/// the run ends for the reason every gg defect ends it: the tree a run leaves after gg denied an
+/// agent code it was told it had is not the tree that agent would have produced, and the record
+/// carries no sign that anything was withheld.
+///
+/// The operator's [detail](KnowledgeError::operator_detail) rides the same call rather than a
+/// second one, so a site that meets this failure cannot report it to one reader and not the other.
+/// It is logged at `error` because an image whose compiler keeps falling over is a run that should
+/// be fixed rather than watched, and because this is the only stream the crash detail reaches.
+fn record_knowledge_failure(
+    error: &KnowledgeError,
+    spawner: &Agent,
+    fault: &FaultLatch,
+    emitter: &Emitter,
+) {
+    if error.is_authors_source() {
+        return;
     }
+    let detail = error.operator_detail().unwrap_or_else(|| error.to_string());
+    fault.in_agent(&spawner.id, &spawner.slot, &detail);
+    emitter.emit(log("error", detail));
 }
 
 /// The one line a **spawner** is given for a turn whose program ran — what it said, or failed to, in
@@ -1019,6 +1018,11 @@ pub(super) struct CodeTurn<'a> {
     pub(super) amc: &'a AmcSetup,
     /// Where this turn's telemetry goes.
     pub(super) emitter: &'a Emitter,
+    /// The run's [fault latch](crate::fault), for the calls this turn services that can meet a
+    /// defect of gg's own. A [knowledge](crate::knowledge) half gg accepted and could not prepare,
+    /// or whose compiler could not finish, is one: the call is refused, and the run has to end for
+    /// the reason every other gg defect ends it.
+    pub(super) fault: &'a FaultLatch,
     /// The session recorder, when the capability is on.
     pub(super) replay: Option<&'a Arc<GgRecorder>>,
     /// The [compaction] the loop is waiting for this agent to perform, when one is in flight. While
@@ -1202,6 +1206,7 @@ async fn run_code_program(
         tasks_rt: turn.tasks.shared(),
         amc: turn.amc.clone(),
         emitter: turn.emitter.clone(),
+        fault: turn.fault.clone(),
         replay: turn.replay.cloned(),
         handle: Handle::current(),
         pending_compaction: turn.pending_compaction,
@@ -1842,6 +1847,8 @@ pub(super) struct LoopToolApi {
     tasks_rt: TasksRuntime,
     amc: AmcSetup,
     emitter: Emitter,
+    /// The run's [fault latch](crate::fault) — see [`CodeTurn::fault`].
+    fault: FaultLatch,
     replay: Option<Arc<GgRecorder>>,
     handle: Handle,
     pending_compaction: Option<PendingCompaction>,
@@ -1867,11 +1874,11 @@ impl LoopToolApi {
     /// hand over a mostly-prose skill because its helper has a syntax error would be the wrong
     /// trade. The diagnostic is appended instead, located in the author's own coordinates.
     ///
-    /// A **compiler that could not finish** is reported to both readers separately, exactly as
-    /// [`sandbox_failure_decision`] does it for a turn's own program: the model is told the module
-    /// was not compiled and that nothing about its source was rejected, and the compiler's crash
-    /// detail goes to the operator's stream, which is the only place it has a reader who can act on
-    /// it.
+    /// A **compiler that could not finish**, and a source gg accepted and could not prepare, are
+    /// gg's rather than the author's, and end the run
+    /// ([`record_knowledge_failure`]) exactly as [`sandbox_failure_decision`] ends it for a turn's
+    /// own program. The read still returns its body, since the run has one turn boundary left to
+    /// reach and an agent that is winding down is better off with the material than without it.
     fn bring_into_use(
         &mut self,
         origin: KnowledgeOrigin,
@@ -1893,7 +1900,7 @@ impl LoopToolApi {
                 }
             }
             Err(error) => {
-                report_knowledge_failure(&error, &self.emitter);
+                record_knowledge_failure(&error, &self.spawner, &self.fault, &self.emitter);
                 outcome.output.push_str(&format!("\n\n---\nNOTE: {error}"));
             }
         }
@@ -1914,14 +1921,16 @@ impl LoopToolApi {
     /// needs — and storing a module that can never be bound would be storing something that only
     /// fails later.
     ///
-    /// A write whose **compiler could not finish** is refused too, and for the same reason: under
-    /// this strategy the write is the only moment the code loads, so a memory stored here whose
-    /// module never bound would leave the model naming a `lib` key that does not exist, with nothing
-    /// left to say so. But it is refused as an [`IoError`](ToolFailure::IoError) rather than as an
+    /// A write whose **compiler could not finish** is gg's defect and ends the run
+    /// ([`record_knowledge_failure`]). The call is still refused, for the reason above: under this
+    /// strategy the write is the only moment the code loads, so a memory stored here whose module
+    /// never bound would leave the model naming a `lib` key that does not exist. It is refused as
+    /// an [`IoError`](ToolFailure::IoError) rather than as an
     /// [`InvalidArgument`](ToolFailure::InvalidArgument): the compiler is a process gg ran and the
     /// process failed, and classifying it as a bad argument would record the model's call as
     /// malformed on the strength of a crash nothing about its source caused. The class is what a
-    /// study slices by, so the misattribution would outlive the turn.
+    /// study slices by, so the misattribution would outlive the turn — and the turn that refusal
+    /// fails is charged to gg rather than to the model for the same reason.
     fn loaded_on_write(
         &mut self,
         name: &str,
@@ -1956,7 +1965,7 @@ impl LoopToolApi {
                 outcome
             }
             Err(error) => {
-                report_knowledge_failure(&error, &self.emitter);
+                record_knowledge_failure(&error, &self.spawner, &self.fault, &self.emitter);
                 ToolOutcome::failed(knowledge_refusal_class(&error), error.to_string())
             }
         }
@@ -2155,13 +2164,16 @@ impl LoopToolApi {
     /// Validate a `wait_for_issue` request and record it for the loop to honour after the program
     /// ends — the non-blocking near half of the deferred wait.
     ///
-    /// It runs the same checks the native [`handle_wait_for_issue`] runs before it blocks — a
-    /// non-empty id, the project capability, not the agent's own assigned issue, and an issue that
-    /// is actually on the board — so a program learns of a bad id *as a throw on the call*, in the
-    /// turn it made it, rather than at the between-turns suspension where it has no program to
-    /// catch it. What it does not do is block: it appends the id to
-    /// [`issue_waits_requested`](LoopToolApi::issue_waits_requested) (deduplicated) and returns an
-    /// acknowledgement, and the loop suspends on it once the whole program has run.
+    /// It runs the checks that are about the **request** rather than about the board's current
+    /// state — a non-empty id, the project capability, not the agent's own assigned issue, and an
+    /// issue that is actually on the board — so a program learns of a bad id *as a throw on the
+    /// call*, in the turn it made it, rather than at the between-turns suspension where it has no
+    /// program to catch it. Whether the wait can be satisfied at all is not among them: that is
+    /// board state, and it is read by the wait itself at the moment it suspends, which is the only
+    /// reading that can still be true when the agent blocks. What it does not do is block: it
+    /// appends the id to [`issue_waits_requested`](LoopToolApi::issue_waits_requested)
+    /// (deduplicated) and returns an acknowledgement, and the loop suspends on it once the whole
+    /// program has run.
     pub(super) fn register_issue_wait(&mut self, id: String) -> ToolOutcome {
         let issue_id = id.trim();
         if issue_id.is_empty() {

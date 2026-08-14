@@ -398,11 +398,11 @@ every healed reply then runs. The denominator for every rate is
 `codeExecutions`, one per code-shaped turn, including the turns whose reply did
 not compile.
 
-That denominator also includes the turns whose compiler could not finish, and
-those say nothing about healing. A `toolchain_failed` turn is one where the
-language's compiler crashed, hit its timeout, or was missing from the image, so
-nothing read the reply. When an arm's compiler is flaky, read its healing rates
-against `errors.toolchain` before reading them against each other.
+That denominator also includes the one turn whose compiler could not finish,
+which says nothing about healing: the compiler crashed, hit its timeout, or was
+missing from the image, so nothing read the reply. It is the last turn of the
+run, which ends under `internal_error`, so an arm whose compiler is flaky is
+read from the runs that got that far rather than from a rate.
 
 Read the per-strategy counts as what gg's pipeline did rather than as what the
 model wrote. The pipeline applies its strategies in a fixed order to a fixpoint,

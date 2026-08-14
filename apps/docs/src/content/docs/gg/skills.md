@@ -127,13 +127,14 @@ Its source is never shown to the model, on any path. If it fails, the model is
 told one sentence naming the skill and what went wrong, and the turn's own
 outcome is untouched: the model's program succeeded or failed on its own merits.
 
-Neither half can break a read. A skill whose module or on-use script does not
-compile is still read: the body is what the model asked for, and the diagnostic
-is appended to it. A skill whose compiler could not finish, through a crash, a
-timeout, or a toolchain missing from the image, is reported differently: the
-model is told the code was not compiled and that nothing about it was rejected,
-and the compiler's own crash detail goes to the operator. It is the same split
-[a turn's own program](/gg/languages/compilation/) gets.
+A source the language rejected cannot break a read. A skill whose module or
+on-use script does not compile is still read: the body is what the model asked
+for, and the diagnostic is appended to it.
+
+A skill whose compiler could not finish, through a crash, a timeout, or a
+toolchain missing from the image, is gg's own defect and ends the run under
+`internal_error`, with the compiler's crash detail on the operator's stream. It
+is the same split [a turn's own program](/gg/languages/compilation/) gets.
 
 ## The skills gg ships
 

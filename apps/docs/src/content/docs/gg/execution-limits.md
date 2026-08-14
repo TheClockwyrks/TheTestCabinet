@@ -46,10 +46,6 @@ Counts as an error:
 - The program did not compile: it did not parse, it broke an early error, or the
   language's compiler read it whole and rejected it. Nothing ran, and the model
   gets a `Compiler error` carrying the compiler's diagnostic and nothing else.
-- The language's compiler could not finish. Nothing ran and nothing was decided
-  about the program, so the model gets a `Notice` saying its program was not run
-  and that nothing about it was rejected. See
-  [toolchain failures](#toolchain-failures).
 - The program threw uncaught. Every statement after the throw never ran, so the
   model must re-declare the remainder; it gets a `Runtime error` carrying the
   throw and nothing else.
@@ -78,31 +74,11 @@ Does not count:
   otherwise end on the assistant's own message.
 - A tool-calling turn whose dispatched calls all failed. Every requested call
   was dispatched and answered, so nothing was cut short.
-- gg's own machinery failing. Recorded so the accounting stays exact, excluded
-  from every ceiling, and fatal on its first occurrence. The run ends under
-  `internal_error`, the status that says the fault was gg's. See
-  [gg's own defects](#ggs-own-defects).
-
-### Toolchain failures
-
-A language whose [preparation](/gg/languages/overview/) runs a real compiler has
-two ways to fail, and gg keeps them apart everywhere.
-
-- The compiler rejected the program: a type error, a borrow error, a name that
-  does not resolve. That is the model's. It is handed the compiler's own
-  diagnostics, and the turn is recorded as `transpile_compile` under the
-  `transpile` base kind.
-- The compiler could not finish: it crashed, its own timeout killed it, or the
-  binary is not in the run's image. Nothing read the program, so there is no
-  diagnostic and nothing to fix. The turn is recorded as `toolchain_failed`
-  under the `toolchain` base kind, which exists for this one distinction.
-
-The second is still an error turn and is still counted against
-`maxConsecutiveErrors` and the error rate. The ceilings count errors without
-distinguishing kinds, and a run whose compiler is broken must stop rather than
-run to its deadline. The separate base kind keeps the attribution readable:
-pooled under `transpile`, an arm with a flaky toolchain would read as an arm
-with a worse model.
+- gg's own machinery failing, which covers the language's compiler failing to
+  finish and any turn whose failure gg's own defect caused. Recorded so the
+  accounting stays exact, excluded from every ceiling, and fatal on its first
+  occurrence. The run ends under `internal_error`, the status that says the fault
+  was gg's. See [gg's own defects](#ggs-own-defects).
 
 ### One judgement per turn
 
@@ -293,10 +269,11 @@ building and driving an implementation the run was told to stop writing. See the
 ## gg's own defects
 
 A failure of gg's own machinery stops the whole run, whichever agent met it.
-Three failures are of that kind: a state gg's launch validation proves
+Four failures are of that kind: a state gg's launch validation proves
 unreachable, such as an agent whose profile the run does not declare; a
 [fatal sandbox fault](/gg/responses-as-code/programs/) under a turn the model
-answered; and an agent task that panics.
+answered; a [program language](/gg/languages/overview/)'s compiler failing to
+finish; and an agent task that panics.
 
 The run's output is attribution data: the tree it leaves is scored against the
 model that produced it and compared against the tree another configuration
@@ -314,6 +291,15 @@ per agent and the epilogue is emitted in full. What the run leaves behind is
 what a killed run leaves behind, which is the evidence an operator debugs the
 defect from.
 
+An agent gg has suspended reaches no turn boundary, so raising the latch also
+releases every suspended wait in the run. A
+[`wait_for_issue`](/gg/project-management/#waiting-on-an-issue) ends only when
+its issue reaches a terminal state, and a faulted run dispatches nothing further,
+so a wait left armed is a wait that outlasts the run: the session never returns,
+no session ending is emitted, and the host records a hung run under its own
+status rather than gg's. Each released agent rejoins the scheduler queue as a
+woken one does and winds down at the boundary it then reaches.
+
 A faulted run starts no new work. The board stops dispatching, so an issue it
 never reached stays open, and an issue whose attempt the fault stopped is
 recorded failed with its worktree left in place for the operator. Re-dispatching
@@ -330,11 +316,14 @@ A panicking agent is the one defect that reaches the latch from outside the
 agent, since the frame that reads the latch at a turn boundary is the frame the
 panic unwinds. gg catches it one frame above the agent's loop and finishes what
 the agent owed there: the fault is raised with the panic's message and the
-agent's name, its running slot returns to the scheduler, a spawner blocked on it
-is woken at once, and an issue it was implementing is marked failed so agents
-suspended on that issue resume. The panicked instance is recorded as a failed
-agent that ended under `internal_error`, and its spawner collects no return
-value from it.
+agent's name, its running slot returns to the scheduler if it was holding one, a
+spawner blocked on it is woken at once, and an issue it was implementing is
+marked failed rather than left claiming work is under way. An agent that panics
+while it is itself suspended returns nothing, because a suspended agent has
+already given its slot up — returning it again would put the run over its own
+parallelism cap and hand a persistent profile to a second instance. The
+panicked instance is recorded as a failed agent that ended under
+`internal_error`, and its spawner collects no return value from it.
 
 A dispatch gg could not carry out is the same defect one step earlier, before
 there is an agent to stop. A [board issue](/gg/project-management/) that names
@@ -352,6 +341,49 @@ fails alone, so the run around either is still a run the model produced. Its
 terminal status is `auth_error`. Every place gg resolves a model client draws
 this split, so a missing key never disqualifies a run and a defect never hides
 behind one.
+
+### A compiler that could not finish
+
+A language whose [preparation](/gg/languages/overview/) runs a real compiler
+fails in two ways, and gg attributes them to different owners.
+
+- The compiler rejected the program. That is the model's: a type error, a borrow
+  error, a name that does not resolve. It is handed the compiler's own
+  diagnostics, and the turn is recorded as `transpile_compile` under the
+  `transpile` base kind.
+- The compiler could not finish. It crashed, its own timeout killed it, or the
+  binary is missing from the run's image. Nothing read the program, so nothing
+  about it was rejected and there is no diagnostic to hand back.
+
+The second is gg's. The model is told nothing, no ceiling counts it, and the run
+ends under `internal_error`. A compiler gg's image never installed and a
+compiler it installed that then crashed are one defect from the model's side: it
+answered, and its answer was never read. Feeding the failure back asks a model to
+fix an environment it cannot see, and counting it lets gg's own image end a run
+under `limit_exceeded` with the model's name on it. The same holds for the code
+a [skill or memory](/gg/skills/) carries, which gg prepares through the same
+step.
+
+This trade is deliberate. A compiler that crashed once may well compile the next
+program, so a run a retry would have rescued now ends. A run whose environment
+interfered with it cannot be compared against a run whose environment did not,
+and an operator is better served re-running the case than reading a tree they
+cannot trust.
+
+### A turn gg's defect failed
+
+A defect raised while a turn is still running comes back to that turn as a
+refused call. Under [responses as code](/gg/responses-as-code/overview/) an
+uncaught throw from that call would otherwise be filed as a program fault, which
+puts gg's defect in the model's error record and counts it against the model's
+ceilings.
+
+Every turn is judged against the latch at the one seam that records it. A turn
+whose outcome is an error while the latch is raised is recorded as fatal
+instead, on the terms every other gg defect is recorded on: counted in `turns`
+so the accounting stays whole, charged to no ceiling, and attributed to gg. A
+run that both broke and failed a turn is recorded under the fault, since that is
+the fact which disqualifies it.
 
 ## What a stopped run leaves behind
 

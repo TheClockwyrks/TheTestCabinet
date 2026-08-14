@@ -18,7 +18,7 @@ A run emits exactly one per model call it made.
 | Field | What it carries |
 | --- | --- |
 | `outcome` | `progressed` (the turn did its declared work), `finished` (the turn ended the session, which is never an error), `error`, or `fatal` (gg's own machinery broke, recorded so the turn accounting stays whole and deliberately not charged to the model's error budget). |
-| `error` | Why, at the base level, on an `error` outcome, and absent on every other, so `error != null` and `outcome == "error"` are the same statement. One of `model_api`, `transpile`, `program_fault`, `sandbox_limit`, `toolchain`, `missing_completion`. |
+| `error` | Why, at the base level, on an `error` outcome, and absent on every other, so `error != null` and `outcome == "error"` are the same statement. One of `model_api`, `transpile`, `program_fault`, `sandbox_limit`, `missing_completion`. |
 | `errorType` | Why, specifically: the leaf of the two-level taxonomy. Present on exactly the turns `error` is, and its base is the `error` beside it, since gg holds one value and derives both halves when it emits the event. |
 | `consecutiveErrors` | This agent's failing streak after this turn. |
 | `turns` | How many turns this agent has recorded, including this one. It is this agent's own running total rather than the run's, and the same figure its turn ceiling is measured against. |
@@ -46,13 +46,13 @@ turn that ends with no tool call is reported here as `missing_completion`, since
 
 ## The error taxonomy
 
-The six `error` values are the base kinds: whose layer failed. They are what an
+The five `error` values are the base kinds: whose layer failed. They are what an
 execution ceiling acts on, what a cross-run comparison groups by, and what every
 stored run keys on, so they are stable. `transpile` in particular keeps a name
 wider than its meaning, because the value is what persisted records carry.
 
 Underneath each base kind sits an `errorType`, and that is where the failure is
-named. There are nineteen types, one per distinction gg makes.
+named. There are eighteen types, one per distinction gg makes.
 
 | Base kind | Types under it |
 | --- | --- |
@@ -60,7 +60,6 @@ named. There are nineteen types, one per distinction gg makes.
 | `transpile` | `transpile_syntax`, `transpile_semantic`, `transpile_compile` (the language's compiler read the whole program and rejected it), `transpile_unsupported` |
 | `program_fault` | `program_tool_error` (an uncaught failed call: the model is fighting the API rather than mis-writing it), `program_unknown_name` (it reached for something this run does not offer it, either a name that is not in scope or a call the host refused as `unavailable`), `program_throw` |
 | `sandbox_limit` | `sandbox_timeout`, `sandbox_out_of_memory`, `sandbox_trap` |
-| `toolchain` | `toolchain_failed` (the language's compiler crashed, was killed by its timeout, or is not installed, so nothing was decided about the program; see [execution limits](/gg/execution-limits/#toolchain-failures)) |
 | `missing_completion` | `missing_completion_no_call`, `missing_completion_compaction` (a prose reply where a compaction was pending, which is answered differently) |
 
 :::caution[`transpile` is empty by construction for an eval-in-guest arm]
@@ -92,7 +91,7 @@ denominator can never come from different mechanisms.
 ```jsonc
 "errors": { "turns": 96, "errors": 4, "maxConsecutive": 2,
             "modelApi": 1, "transpile": 2, "programFault": 1,
-            "sandboxLimit": 0, "toolchain": 0, "missingCompletion": 0,
+            "sandboxLimit": 0, "missingCompletion": 0,
             "loopAborts": 7,
             "byType": { "model_response_loop": 1, "transpile_syntax": 2,
                         "program_tool_error": 1 },
@@ -101,7 +100,7 @@ denominator can never come from different mechanisms.
 
 `turns` is the denominator and counts every turn whatever its outcome, a `fatal`
 one included, so the accounting stays whole even though no ceiling observes it.
-`errors` is exactly the sum of the six per-kind counters. `maxConsecutive` is the
+`errors` is exactly the sum of the five per-kind counters. `maxConsecutive` is the
 maximum over agents of the per-turn `consecutiveErrors` above, which is the only
 honest way to summarise a per-agent counter on a run-wide record, and the peak of
 the same counter `maxConsecutiveErrors` is enforced on.

@@ -419,6 +419,10 @@ impl KnowledgeError {
     /// same single reader for a stronger reason: it is a bug report about gg. Without this, either
     /// detail would have no reader at all — the model must not see it, so if the operator does not
     /// either, a compiler crashing in an agent's skill load is silent everywhere.
+    ///
+    /// It is also what the run's [fault latch](crate::fault) is raised with, since both failures end
+    /// the run: the sentence that explains the run's ending and the sentence on the operator's
+    /// stream are the same sentence rather than two accounts of one event.
     pub fn operator_detail(&self) -> Option<String> {
         match &self.error {
             PrepareFailure::Program(_) => None,

@@ -210,15 +210,14 @@ fn a_program_its_compiler_rejected_is_recoverable_and_the_models_to_fix() {
     );
 }
 
-/// **A compiler that could not finish is charged to the run, not to the model** — and does not end
-/// the session.
+/// **A compiler that could not finish is gg's, and it is charged to no ceiling at all.**
 ///
 /// Three claims, and each is a different way the failure could be got wrong. It is not the model's
 /// program, so it must not arrive as a `transpile` error beside genuine type errors and skew the one
-/// rate a checked language's arm is read on. It is not gg's plumbing and not the embedded artifact,
-/// so it must not end the session — a compiler that fell over on one program may well compile the
-/// next. And it is still an error turn, so a run whose image has no compiler at all stops on its
-/// error ceilings rather than burning to its deadline.
+/// rate a checked language's arm is read on. It carries no turn error type, so no ceiling can spend
+/// the model's error budget on an image that is missing a compiler. And it is its own predicate
+/// rather than pooled with gg's plumbing or the embedded artifact, because the person who fixes a
+/// run image is not the person who fixes gg.
 #[test]
 fn a_compiler_that_could_not_finish_is_its_own_kind_of_failure() {
     let outcome = refused(&format!("def f\n  {}\n", fixture::NO_COMPILER));
@@ -232,18 +231,17 @@ fn a_compiler_that_could_not_finish_is_its_own_kind_of_failure() {
         "the compiler falling over is not a prepare failure: {error:?}"
     );
     assert!(
-        !error.is_artifact_defect() && !error.is_host_fault(),
-        "neither predicate may claim it, because both of them end the session: {error:?}"
+        error.is_toolchain_defect(),
+        "the predicate the turn loop reads must claim it: {error:?}"
+    );
+    assert!(
+        !error.is_artifact_defect() && !error.is_host_fault() && !error.is_lowering_defect(),
+        "no other predicate may claim it: the four name different owners: {error:?}"
     );
     assert_eq!(
         error.turn_error_type(),
-        Some(TurnErrorType::ToolchainFailed),
-        "the turn is still an error, so the ceilings can stop a run with a broken compiler"
-    );
-    assert_eq!(
-        error.turn_error_type().map(TurnErrorType::kind),
-        Some(TurnErrorKind::Toolchain),
-        "under its own base kind, which is the whole mechanism by which the attribution survives"
+        None,
+        "a fault of the environment's has no turn error type, so no ceiling can count it"
     );
     assert!(
         outcome.compile.is_some(),
@@ -338,8 +336,8 @@ enum Disposition {
     ArtifactDefect,
     /// The reply was not runnable source in the run's program language. An error turn; nothing ran.
     ModelsPrepareError,
-    /// The language's compiler could not finish. An error turn the run carries on from, and the one
-    /// that is charged to the run rather than to the model: nothing was decided about the program.
+    /// The language's compiler could not finish. The session ends; the model's error budget is
+    /// untouched, and nothing about the failure is fed back, since nothing judged the program.
     ToolchainFailure,
     /// The sandbox stopped a program that *did* run. An error turn; the calls it landed stand.
     ModelsSandboxLimit,
@@ -358,10 +356,10 @@ fn derived_disposition(error: &SandboxError) -> Disposition {
         Disposition::GgsFault
     } else if error.is_lowering_defect() {
         Disposition::GgsLowering
+    } else if error.is_toolchain_defect() {
+        Disposition::ToolchainFailure
     } else if matches!(error, SandboxError::Prepare(_)) {
         Disposition::ModelsPrepareError
-    } else if matches!(error, SandboxError::Toolchain(_)) {
-        Disposition::ToolchainFailure
     } else {
         Disposition::ModelsSandboxLimit
     }
@@ -412,7 +410,7 @@ fn every_sandbox_error() -> Vec<SandboxError> {
     ]
 }
 
-/// **Every sandbox failure maps to exactly one turn disposition**, and the two predicates the loop
+/// **Every sandbox failure maps to exactly one turn disposition**, and the four predicates the loop
 /// reads agree with the hand-written classification on every one of them.
 ///
 /// Three properties in one, because they are one property: the mapping is *total* (every variant is
@@ -434,6 +432,7 @@ fn every_sandbox_failure_maps_to_exactly_one_turn_disposition() {
             error.is_artifact_defect(),
             error.is_host_fault(),
             error.is_lowering_defect(),
+            error.is_toolchain_defect(),
         ];
         assert!(
             owners.iter().filter(|claimed| **claimed).count() <= 1,
@@ -448,7 +447,7 @@ fn every_sandbox_failure_maps_to_exactly_one_turn_disposition() {
 }
 
 /// **The recorded turn error type is a partition of the same taxonomy**: exactly the failures the
-/// two predicates disclaim have one, and every one of those is distinct.
+/// four predicates disclaim have one, and every one of those is distinct.
 ///
 /// The distinctness is the fix. The turn loop used to reach the sandbox ceilings through an
 /// `Err(_)` arm that had already matched the error and then never looked at the variant, so a
@@ -460,8 +459,10 @@ fn exactly_the_failures_the_model_owns_carry_a_recorded_type() {
     let mut recorded = Vec::new();
     for error in every_sandbox_error() {
         let error_type = error.turn_error_type();
-        let owned_by_the_model =
-            !error.is_artifact_defect() && !error.is_host_fault() && !error.is_lowering_defect();
+        let owned_by_the_model = !error.is_artifact_defect()
+            && !error.is_host_fault()
+            && !error.is_lowering_defect()
+            && !error.is_toolchain_defect();
         assert_eq!(
             error_type.is_some(),
             owned_by_the_model,
@@ -471,7 +472,6 @@ fn exactly_the_failures_the_model_owns_carry_a_recorded_type() {
             // ...and under the base kind the disposition says it is.
             let expected = match declared_disposition(&error) {
                 Disposition::ModelsPrepareError => TurnErrorKind::Transpile,
-                Disposition::ToolchainFailure => TurnErrorKind::Toolchain,
                 Disposition::ModelsSandboxLimit => TurnErrorKind::SandboxLimit,
                 other => panic!("{error:?} is {other:?} and should carry no type"),
             };
@@ -487,7 +487,7 @@ fn exactly_the_failures_the_model_owns_carry_a_recorded_type() {
     assert_eq!(
         distinct.len(),
         recorded.len(),
-        "the five recordable failures must not share a type: {distinct:?}"
+        "the four recordable failures must not share a type: {distinct:?}"
     );
     assert!(
         distinct.is_superset(&std::collections::BTreeSet::from([
@@ -496,12 +496,6 @@ fn exactly_the_failures_the_model_owns_carry_a_recorded_type() {
             "sandbox_trap",
         ])),
         "the three ceilings are three types: {distinct:?}"
-    );
-    // ...and a compiler that could not finish is charged to its own base, not to the model's
-    // transpile rate. That separation is the whole reason the variant exists.
-    assert!(
-        distinct.contains("toolchain_failed"),
-        "a compiler that could not finish carries its own type: {distinct:?}"
     );
 }
 
@@ -649,8 +643,8 @@ fn only_the_engine_and_host_failures_are_ggs_own_fault() {
     assert!(
         !SandboxError::Toolchain("`swiftc` was killed".into()).is_host_fault()
             && !SandboxError::Toolchain("`swiftc` was killed".into()).is_artifact_defect(),
-        "a compiler that fell over is neither gg's plumbing nor the embedded artifact: both of \
-         those end the session, and the next program may well compile"
+        "a compiler that fell over is neither gg's plumbing nor the embedded artifact: all three \
+         end the session, and the person who fixes the run's image is not the person who fixes gg"
     );
     assert!(
         !SandboxError::Trap("wasm trap: unreachable".into()).is_host_fault(),

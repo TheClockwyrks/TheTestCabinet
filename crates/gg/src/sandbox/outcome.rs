@@ -333,15 +333,15 @@ impl ProgramErrorKind {
 /// Why the sandbox could not run a program to a result. An ordinary program fault — a throw — is
 /// **not** here: it is carried in [`ProgramResult::error`].
 ///
-/// The loop reads this taxonomy through the three predicates below rather than by matching variant
+/// The loop reads this taxonomy through the four predicates below rather than by matching variant
 /// by variant, because the question it has to answer is not "which failure was it?" but "**whose**
 /// failure was it?": gg's own machinery ([`is_host_fault`](Self::is_host_fault)), gg's own
 /// preparation of the program ([`is_lowering_defect`](Self::is_lowering_defect)), the committed
-/// artifact ([`is_artifact_defect`](Self::is_artifact_defect)), or the run's own turn (everything
-/// else). The first three end the run — every further turn would fail identically — and none of them
-/// is ever charged to the model's error budget. The rest are turn errors the run carries on from,
-/// and all but one of them are the model's to write its way out of; [`Toolchain`](Self::Toolchain)
-/// is the exception, and says so.
+/// artifact ([`is_artifact_defect`](Self::is_artifact_defect)), the language's compiler
+/// ([`is_toolchain_defect`](Self::is_toolchain_defect)), or the run's own turn (everything else).
+/// The first four end the run and none of them is ever charged to the model's error budget. The
+/// rest are turn errors the run carries on from, and every one of them is the model's to write its
+/// way out of.
 #[derive(Debug, thiserror::Error)]
 pub enum SandboxError {
     /// The program is not valid source in the run's [program language](super::ProgramLanguage), was
@@ -356,20 +356,16 @@ pub enum SandboxError {
     /// is not installed in this image. The program was never judged, so there is nothing to show the
     /// model and nothing for it to fix.
     ///
-    /// It belongs to neither of the two predicates below, and that is the point. It is not an
-    /// [artifact defect](Self::is_artifact_defect) and not a [host fault](Self::is_host_fault),
-    /// because both of those end the session on the first occurrence and a compiler that fell over
-    /// once may well compile the next program — a `swiftc` that crashed on one constant-folded
-    /// expression, a compile that outran its timeout under load. So the turn is an error the run
-    /// carries on from, recorded as [`ToolchainFailed`](crate::limits::TurnErrorType::ToolchainFailed)
-    /// under its own base kind.
+    /// **gg's**, and it ends the run: it is fed back to nobody, charged to no ceiling, and recorded
+    /// as [`FatalFault::Toolchain`](crate::limits::FatalFault::Toolchain). The variant's own two
+    /// halves are why. A binary that is not in the image is a packaging defect that fails every
+    /// turn identically, and a compiler that crashed once is no more the model's doing than one
+    /// that was never installed — in both the model answered and nothing read the answer.
     ///
-    /// **It is nonetheless counted against the run's error ceilings**, because the ceilings count
-    /// errors without distinguishing kinds — and that is the right answer rather than a compromise:
-    /// a run whose compiler is broken must stop rather than burn to its deadline. What the separate
-    /// base kind buys is that the *attribution* survives the counting, so a study reading the run
-    /// back can tell "this model kept writing programs that did not type-check" from "this image was
-    /// missing a compiler".
+    /// The trade is stated where it can be revisited, on
+    /// [`FatalFault::Toolchain`](crate::limits::FatalFault::Toolchain): a crash that would not have
+    /// recurred now ends the run, which is the price of never asking a model to rewrite a program
+    /// nothing rejected and never letting gg's image spend the model's error budget.
     #[error("the program's compiler could not finish: {0}")]
     Toolchain(String),
     /// **gg could not prepare a source it had already accepted**: the transform over a parsed and
@@ -383,9 +379,10 @@ pub enum SandboxError {
     /// bug to the model's [error ceilings](crate::limits::RunLimits), and record it in the
     /// `transpile` bucket a study reads as "this model kept writing programs that did not compile".
     ///
-    /// It ends the **run**, unlike [`Toolchain`](Self::Toolchain) beside it: a compiler that fell
-    /// over once may compile the next program, while gg's preparation of a program is the same
-    /// preparation next turn. See [`PrepareFailure::Lowering`] and [gg's fault latch](crate::fault).
+    /// It ends the **run**, as [`Toolchain`](Self::Toolchain) beside it does, and is held apart
+    /// from it because the two are fixed by different people: one is a bug in gg's pipeline, the
+    /// other a fault in the image gg runs in. See [`PrepareFailure::Lowering`] and
+    /// [gg's fault latch](crate::fault).
     #[error("the program was accepted and then could not be prepared: {0}")]
     Lowering(String),
     /// The wasm engine could not be configured or linked.
@@ -451,8 +448,9 @@ impl SandboxError {
     /// ends the session as a host fault instead of feeding the model advice about a program it
     /// wrote correctly.
     ///
-    /// Disjoint from [`is_artifact_defect`](Self::is_artifact_defect) and
-    /// [`is_lowering_defect`](Self::is_lowering_defect) by construction: the three answer "whose
+    /// Disjoint from [`is_artifact_defect`](Self::is_artifact_defect),
+    /// [`is_lowering_defect`](Self::is_lowering_defect) and
+    /// [`is_toolchain_defect`](Self::is_toolchain_defect) by construction: the four answer "whose
     /// failure was it?" for different owners, and a variant that answered two of them would leave
     /// the loop's classification ambiguous.
     /// `every_sandbox_failure_maps_to_exactly_one_turn_disposition` is what keeps that true as
@@ -473,27 +471,38 @@ impl SandboxError {
         matches!(self, Self::Lowering(_))
     }
 
+    /// Whether this failure is the language's **compiler** rather than anything the model did —
+    /// [`Toolchain`](Self::Toolchain), and nothing else.
+    ///
+    /// Held apart from the three predicates above it although all four are gg's and all four end
+    /// the run, because this is the only one an operator fixes without touching gg's source: it is
+    /// the run's image that is wrong, so a bug report about it goes somewhere else entirely.
+    pub fn is_toolchain_defect(&self) -> bool {
+        matches!(self, Self::Toolchain(_))
+    }
+
     /// The [turn error type](TurnErrorType) this failure is recorded as, for the variants the run
-    /// carries on from — everything the three predicates above do not claim.
+    /// carries on from — everything the four predicates above do not claim.
     ///
     /// `None` for [`Engine`](Self::Engine)/[`Host`](Self::Host),
-    /// [`Compile`](Self::Compile)/[`Instantiate`](Self::Instantiate) and
-    /// [`Lowering`](Self::Lowering), which end the run as fatal and are never charged to the model's
-    /// error budget, so they have no turn error type at all. `Some` for the other five, and
+    /// [`Compile`](Self::Compile)/[`Instantiate`](Self::Instantiate),
+    /// [`Lowering`](Self::Lowering) and [`Toolchain`](Self::Toolchain), which end the run as fatal
+    /// and are never charged to the model's error budget, so they have no turn error type at all.
+    /// `Some` for the other four, and
     /// exhaustive rather than a catch-all: the turn loop used to reach the sandbox ceilings through
     /// an `Err(_)` arm that never looked at the variant, so a timeout, an out-of-memory and a trap
     /// were one indistinguishable bucket. Adding a variant now has to say which it is.
     ///
-    /// `every_sandbox_failure_maps_to_exactly_one_turn_disposition` is what keeps this and the three
+    /// `every_sandbox_failure_maps_to_exactly_one_turn_disposition` is what keeps this and the four
     /// predicates a partition.
     pub fn turn_error_type(&self) -> Option<TurnErrorType> {
         match self {
             Self::Prepare(prepare) => Some(prepare.turn_error_type()),
-            Self::Toolchain(_) => Some(TurnErrorType::ToolchainFailed),
             Self::Timeout { .. } => Some(TurnErrorType::SandboxTimeout),
             Self::OutOfMemory { .. } => Some(TurnErrorType::SandboxOutOfMemory),
             Self::Trap(_) => Some(TurnErrorType::SandboxTrap),
-            Self::Lowering(_)
+            Self::Toolchain(_)
+            | Self::Lowering(_)
             | Self::Engine(_)
             | Self::Host(_)
             | Self::Compile(_)

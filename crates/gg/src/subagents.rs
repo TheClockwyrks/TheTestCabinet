@@ -39,6 +39,10 @@
 //!   key is held only while the agent is **running** — an agent that blocks releases it with its
 //!   slot and re-takes it when it resumes — so a persistent agent waiting on a child of its own
 //!   profile cannot deadlock against itself.
+//! - Every release and every grant flips the agent's [`SlotHold`], under the scheduler's own lock.
+//!   The bit is not for the scheduler, which knows what it has granted: it is for the agent's
+//!   [teardown](crate::agent), which has to decide from another thread whether a
+//!   [panicked](crate::fault) agent still had a slot to give back.
 //!
 //! The depth cap is **not** enforced here — it is a *structural* check made at spawn time (a spawn
 //! below [`max_depth`](SubagentConfig::max_depth) fails as a *limit*, not queued, because the
@@ -47,7 +51,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde_json::Value;
 
@@ -167,7 +171,7 @@ pub struct ChildHandle {
 impl ChildHandle {
     /// Whether the child's loop has ended.
     pub fn is_finished(&self) -> bool {
-        self.finished.load(std::sync::atomic::Ordering::SeqCst)
+        self.finished.load(Ordering::SeqCst)
     }
 }
 
@@ -189,17 +193,28 @@ pub struct AgentCtx {
     /// delegation code, which has this context in hand but not the agent's profile — and a slot
     /// released under the wrong key (or none) would leave a persistent profile held forever.
     pub exclusive: Option<String>,
+    /// Whether this agent is holding its running slot right now, shared with its
+    /// [teardown](crate::agent). Carried here for the same reason the key above is: the wait that
+    /// gives the slot up is made from inside the delegation code, and what a panic during that wait
+    /// must not do is give it up a second time.
+    pub hold: SlotHold,
 }
 
 impl AgentCtx {
     /// A fresh context owning `inbox`, with no children yet and a new [`ParentWait`], for an agent
-    /// whose slot is held under `exclusive` (`None` for every non-persistent agent).
-    pub fn new(inbox: mpsc::UnboundedReceiver<String>, exclusive: Option<String>) -> Self {
+    /// whose slot is held under `exclusive` (`None` for every non-persistent agent) and accounted
+    /// for by `hold`.
+    pub fn new(
+        inbox: mpsc::UnboundedReceiver<String>,
+        exclusive: Option<String>,
+        hold: SlotHold,
+    ) -> Self {
         Self {
             wait: Arc::new(ParentWait::new()),
             inbox,
             children: Vec::new(),
             exclusive,
+            hold,
         }
     }
 
@@ -227,6 +242,55 @@ pub type ExclusiveKey<'a> = Option<&'a str>;
 /// that waiter ready.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WaiterToken(u64);
+
+/// Whether one agent holds a running slot **at this instant** — the single bit the
+/// [`Scheduler`] and that agent's [teardown](crate::agent) have to agree on.
+///
+/// # Why it is shared rather than a local `bool`
+///
+/// An agent's slot is not held for the length of its task. A `wait_for_subagents` and a
+/// `wait_for_issue` both give it back ([`Scheduler::block_and_release`]) and take it again on the
+/// grant that ends the wait, and a [succession](crate::agent) under a contended
+/// [key](ExclusiveKey) does the same ([`Scheduler::rekey`]) — so for stretches of an agent's life
+/// the slot the agent's teardown would return on a panic is a slot somebody else is running on.
+/// Returning it then is not a bookkeeping slip: it decrements the running count on the *other*
+/// agent's behalf, letting the run exceed its own parallelism cap, and frees an
+/// [exclusivity key](ExclusiveKey) a second instance of a
+/// [persistent](test_cabinet_core::gg::CAPABILITY_AGENT_PERSISTENCE) profile is running under —
+/// which is the one thing that key exists to prevent.
+///
+/// So the bit is flipped **by the scheduler**, inside the same lock as the release or the grant it
+/// describes, rather than by the code around each wait. That is what makes it exact: there is no
+/// instant at which a slot has changed hands and this has not, so a panic anywhere in a wait finds
+/// the truth rather than a value somebody was about to update.
+#[derive(Debug, Clone, Default)]
+pub struct SlotHold(Arc<AtomicBool>);
+
+impl SlotHold {
+    /// Whether the agent holds a running slot right now (test-only introspection: production reads
+    /// it by [taking](Self::take) it, on the one path that acts on the answer).
+    #[cfg(test)]
+    pub fn held(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+
+    /// Give the slot up: report whether it was held and record that it no longer is, in one step.
+    ///
+    /// One step because the answer is *acted on* — the teardown releases the slot exactly when it
+    /// gets `true` — while the [scheduler](Scheduler) is writing the same bit from whatever thread
+    /// its next grant happens on. A read followed by a clear would be a decision made about a state
+    /// the agent might already have left, which is the shape of the defect this whole type exists to
+    /// close.
+    pub fn take(&self) -> bool {
+        self.0.swap(false, Ordering::SeqCst)
+    }
+
+    /// Record that the scheduler has granted this agent a slot. Called only from [`Scheduler::pump`],
+    /// which is the one place a grant happens.
+    fn granted(&self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+}
 
 /// The per-parent wait condition, coupling a parent's `wait_for_subagents` to its children's
 /// completions and to the [`Scheduler`].
@@ -311,11 +375,11 @@ impl ParentWait {
         inner.token.take()
     }
 
-    /// Begin waiting on `awaited`: register a blocked waiter (freeing the caller's slot, and the
-    /// [exclusivity key](ExclusiveKey) `key` it holds that slot under) if any of the awaited children
-    /// are still outstanding, and return the resume channel to await. Returns `None` when every
-    /// awaited child has already finished (the caller keeps its slot — and its key — and does not
-    /// block).
+    /// Begin waiting on `awaited`: register a blocked waiter (freeing the caller's slot, the
+    /// [exclusivity key](ExclusiveKey) `key` it holds that slot under, and the caller's
+    /// [hold](SlotHold) on it) if any of the awaited children are still outstanding, and return the
+    /// resume channel to await. Returns `None` when every awaited child has already finished (the
+    /// caller keeps its slot — and its key, and its hold — and does not block).
     ///
     /// The scheduler registration happens under this parent's lock so a child completing
     /// concurrently cannot slip between "compute outstanding" and "arm the wait".
@@ -324,6 +388,7 @@ impl ParentWait {
         scheduler: &Scheduler,
         awaited: &BTreeSet<String>,
         key: ExclusiveKey<'_>,
+        hold: &SlotHold,
     ) -> Option<oneshot::Receiver<()>> {
         let mut inner = self.inner.lock().expect("parent wait lock");
         let outstanding: BTreeSet<String> = awaited
@@ -334,7 +399,7 @@ impl ParentWait {
         if outstanding.is_empty() {
             return None;
         }
-        let (token, rx) = scheduler.block_and_release(key);
+        let (token, rx) = scheduler.block_and_release(key, hold);
         inner.waiting_on = Some(outstanding);
         inner.token = Some(token);
         Some(rx)
@@ -363,6 +428,10 @@ struct Waiter {
     /// A waiter whose key is already held by a running agent is ineligible, however old its ticket
     /// and whether or not it is blocked-and-ready.
     key: Option<String>,
+    /// The waiting agent's [hold](SlotHold), set when the grant below is made — so the agent's
+    /// [teardown](crate::agent) knows it is holding a slot from the instant the scheduler decided
+    /// it is, rather than from whenever the woken task next runs.
+    hold: SlotHold,
     /// Fired (with a slot granted) to wake the waiting task.
     wake: oneshot::Sender<()>,
 }
@@ -411,8 +480,9 @@ impl Scheduler {
 
     /// Acquire a running slot to **start** an agent, blocking until one is free — and, when `key` is
     /// `Some`, until no other running agent holds that [exclusivity key](ExclusiveKey). Enqueues the
-    /// caller as a fresh waiter (so it never jumps a blocked-ready waiter) and awaits the grant.
-    pub async fn acquire_start(&self, key: ExclusiveKey<'_>) {
+    /// caller as a fresh waiter (so it never jumps a blocked-ready waiter) and awaits the grant,
+    /// which is what sets `hold`.
+    pub async fn acquire_start(&self, key: ExclusiveKey<'_>, hold: &SlotHold) {
         let rx = {
             let mut state = self.state.lock().expect("scheduler lock");
             let (wake, rx) = oneshot::channel();
@@ -422,6 +492,7 @@ impl Scheduler {
                 blocked: false,
                 ready: true,
                 key: key.map(str::to_string),
+                hold: hold.clone(),
                 wake,
             });
             Self::pump(&mut state);
@@ -450,7 +521,15 @@ impl Scheduler {
     /// The key is released with the slot and re-taken when the waiter is granted a slot again: a
     /// suspended agent is not running, so holding a key across a wait would let a persistent agent
     /// blocked on a child of its own profile deadlock against itself.
-    pub fn block_and_release(&self, key: ExclusiveKey<'_>) -> (WaiterToken, oneshot::Receiver<()>) {
+    ///
+    /// `hold` is cleared under this same lock, so a caller that panics anywhere in the wait that
+    /// follows returns nothing: what it was holding is now somebody else's. It is set again by the
+    /// grant that ends the wait.
+    pub fn block_and_release(
+        &self,
+        key: ExclusiveKey<'_>,
+        hold: &SlotHold,
+    ) -> (WaiterToken, oneshot::Receiver<()>) {
         let mut state = self.state.lock().expect("scheduler lock");
         let (wake, rx) = oneshot::channel();
         let ticket = state.take_ticket();
@@ -459,8 +538,10 @@ impl Scheduler {
             blocked: true,
             ready: false,
             key: key.map(str::to_string),
+            hold: hold.clone(),
             wake,
         });
+        hold.take();
         state.running = state.running.saturating_sub(1);
         state.free_key(key);
         Self::pump(&mut state);
@@ -509,7 +590,11 @@ impl Scheduler {
     /// which is the same machinery a parent resuming from a `wait_for_subagents` goes through —
     /// so it outranks every not-yet-started agent and takes the first slot the key frees up, rather
     /// than spinning or deadlocking against the instance ahead of it.
-    pub async fn rekey(&self, old: ExclusiveKey<'_>, new: ExclusiveKey<'_>) {
+    ///
+    /// That branch is a wait like any other, so `hold` is given up with the slot and set again by
+    /// the grant: a succession that panics while queued behind its own profile must not hand back
+    /// the slot the instance ahead of it is running on.
+    pub async fn rekey(&self, old: ExclusiveKey<'_>, new: ExclusiveKey<'_>, hold: &SlotHold) {
         if old == new {
             return;
         }
@@ -538,8 +623,10 @@ impl Scheduler {
                         blocked: true,
                         ready: true,
                         key: Some(key.to_string()),
+                        hold: hold.clone(),
                         wake,
                     });
+                    hold.take();
                     state.running = state.running.saturating_sub(1);
                     Self::pump(&mut state);
                     rx
@@ -568,6 +655,11 @@ impl Scheduler {
                     if let Some(key) = waiter.key {
                         state.held.insert(key);
                     }
+                    // Recorded here rather than by the woken task, because a grant is made under
+                    // this lock and read by a [teardown](crate::agent) running on another one: an
+                    // agent that panics between the grant and the wake would otherwise be believed
+                    // to hold nothing and would leave a slot the scheduler has already spent.
+                    waiter.hold.granted();
                     // A dropped receiver (the waiting task went away) just means the slot is
                     // immediately spare; the next pump reclaims it. Ignore the send result.
                     let _ = waiter.wake.send(());

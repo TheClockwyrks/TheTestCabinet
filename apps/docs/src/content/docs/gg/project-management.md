@@ -214,6 +214,21 @@ scheduler capacity; see [scheduling](/gg/subagents/) for the slot discipline.
 The blocked-by DAG and `wait_for_issue` come with the capability and are
 available wherever it is.
 
+Two things end a wait without the issue ever reaching a terminal state, and each
+is an error on the call rather than a resolution, because the awaited work did
+not happen:
+
+- The issue can never be finished. Failure does not cascade, so an issue behind a
+  failed blocker stays open and stops being dispatchable for the rest of the run:
+  it will never be done, and it will never be failed either. gg names the blocker
+  and says nothing will complete the issue, which the agent can act on by
+  dropping the dependency or refiling the work. The check covers the whole
+  transitive blocked-by set and applies both when the call is made and when a
+  blocker fails while an agent is already suspended.
+- A [gg defect](/gg/execution-limits/#ggs-own-defects) ended the run. Every
+  suspended wait in the run is released, whatever it was waiting on, and each
+  agent then winds down at the turn boundary it reaches.
+
 ## Features
 
 Three sliders sit in the capability's Features box, and each is per agent.

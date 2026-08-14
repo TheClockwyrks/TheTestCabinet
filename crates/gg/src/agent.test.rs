@@ -8758,6 +8758,15 @@ mod surface_tests;
 #[path = "agent.faults.test.rs"]
 mod fault_tests;
 
+/// **A `wait_for_issue` whose answer is never coming**: the run breaking under a suspended agent,
+/// and a board that has stalled behind a failed issue.
+///
+/// Separate because these are the only tests in the family whose failure mode is a run that does not
+/// end — every one of them is bounded by a timeout, and what they guard is that an agent gg
+/// suspended is reachable at all.
+#[path = "agent.waits.test.rs"]
+mod wait_tests;
+
 /// **An agent profile the run does not declare**, at each of the sites that resolve one, plus the
 /// two other ways a succession's resolution can fail.
 ///

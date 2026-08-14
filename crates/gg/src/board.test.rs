@@ -654,6 +654,69 @@ fn a_failed_blocker_leaves_dependents_blocked() {
     );
 }
 
+/// Blocked forever is a different fact from blocked now, and only the store can tell them apart:
+/// nothing will ever dispatch `b`, so nothing will ever finish it, so an agent
+/// [waiting](crate::agent) on it is waiting on an event that is not coming.
+#[test]
+fn a_failed_blocker_makes_every_issue_behind_it_unsatisfiable() {
+    let mut store = store();
+    let a = add_issue(&mut store, "a", &[]);
+    let b = add_issue(&mut store, "b", &[&a]);
+    let c = add_issue(&mut store, "c", &[&b]);
+    let free = add_issue(&mut store, "free", &[]);
+
+    assert_eq!(
+        store.unsatisfiable_blocker(&b),
+        None,
+        "while the blocker can still be done, everything behind it can still be done"
+    );
+    store.assign_issue(&a);
+    assert!(store.fail_issue(&a));
+
+    assert_eq!(
+        store.unsatisfiable_blocker(&b).as_deref(),
+        Some(a.as_str()),
+        "the direct dependent names the issue that stalled it"
+    );
+    assert_eq!(
+        store.unsatisfiable_blocker(&c).as_deref(),
+        Some(a.as_str()),
+        "the walk is transitive: `c` is behind `b`, which is behind the failure"
+    );
+    assert_eq!(
+        store.unsatisfiable_blocker(&free),
+        None,
+        "an issue on the other side of the board is unaffected"
+    );
+    assert_eq!(
+        store.unsatisfiable_blocker(&a),
+        None,
+        "the failed issue is terminal, which is an answer of its own — this asks about the future \
+         of issues that still have one"
+    );
+    assert_eq!(
+        store.unsatisfiable_blocker("ISSUE-404"),
+        None,
+        "an id the board does not carry is a not-found, decided before this is asked"
+    );
+}
+
+/// A blocker that is merely slow is not a blocker that is finished with, and neither is one whose
+/// own attempt is still running: only a terminal-but-not-done blocker settles anything.
+#[test]
+fn an_unfinished_blocker_leaves_its_dependents_satisfiable() {
+    let mut store = store();
+    let a = add_issue(&mut store, "a", &[]);
+    let b = add_issue(&mut store, "b", &[&a]);
+
+    store.assign_issue(&a);
+    assert_eq!(store.unsatisfiable_blocker(&b), None, "in progress");
+    assert!(store.submit_issue_for_review(&a));
+    assert_eq!(store.unsatisfiable_blocker(&b), None, "in review");
+    assert!(store.accept_issue(&a));
+    assert_eq!(store.unsatisfiable_blocker(&b), None, "done");
+}
+
 #[test]
 fn redispatch_reassigns_and_records_the_retry_count() {
     let mut store = store();

@@ -19,10 +19,14 @@
 //!
 //! One of those two needs no defect at all — a provider that will not build for a profile launch
 //! validation accepted is a runtime failure, not a configuration one — so it is the single member of
-//! this family that a **whole session** can reach through the real entry point. Two tests take it
+//! this family that a **whole session** can reach through the real entry point. Three tests take it
 //! there, because the rest of the file can only observe half of what these sites owe: an agent's own
 //! ending, and the [fault](crate::fault) it latched. What the latch is *for* is spent in the session
-//! epilogue, and that is where the run stops being scored.
+//! epilogue, and that is where the run stops being scored. Two of the three are the succession's,
+//! either way round; the third is the **board's** dispatch, which is the site with nothing else
+//! watching it — no spawner holds a handle to an issue's agent, so a latch the epilogue stopped
+//! reading would leave every other test here green and still hand `core` a tree to score with an
+//! issue's whole work missing from it.
 //!
 //! What they guard is that gg then says so. The tempting alternative is to substitute the
 //! [root](GgCapabilitySet::root), and it is far worse than it sounds: the substitute is a different
@@ -563,7 +567,7 @@ fn dispatch_refusal(orch: &Arc<Orchestrator>, spawner_slot: &str, profile: &str)
     let (_inbox_tx, inbox_rx) = mpsc::unbounded_channel();
     let mut sub = SubagentContext {
         orch: Arc::clone(orch),
-        ctx: AgentCtx::new(inbox_rx, None),
+        ctx: AgentCtx::new(inbox_rx, None, SlotHold::default()),
         inherited: InheritedModules::default(),
     };
     let spawner = Agent {
@@ -847,6 +851,55 @@ async fn an_issues_unbindable_reviewer_ends_the_run() {
     );
 }
 
+/// **A reviewer gg can bind but cannot build a client for ends the run too.**
+///
+/// One step further along the same dispatch than the case above, and the step the spawn path is
+/// tested at but this one was not: the profile is declared *and* has a model, so the binding
+/// resolves, and building a provider for it is what fails. The three resolutions a
+/// [detached dispatch](run_detached_agent) makes — the name, the binding, the client — must all be
+/// gg's when they fail for gg's reasons, or the rule holds at whichever of them somebody happened to
+/// write a test for.
+///
+/// The consequence is what makes it worth the third test: the issue was filed with a review gate,
+/// the review never happened, and a run whose gate was silently skipped is not comparable with one
+/// where it was applied.
+#[tokio::test]
+async fn an_issues_reviewer_whose_client_cannot_be_built_ends_the_run() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(
+        Some("run-review-broken".to_string()),
+        Box::new(sink.clone()),
+    );
+    let mut set = modelless_reviewer_set();
+    // Bound to a model, so the failure is the *provider* rather than the binding — the arm the
+    // unbindable case above can never reach.
+    set.agents[1].model_id = "mock/secondary".to_string();
+    let orch = orchestrator_with(dir.path(), set, Arc::new(BrokenFactory), &emitter);
+    let issue_id = file_issue(&orch, ROOT_AGENT, &["Unbound".to_string()]);
+
+    reconcile_issue(&orch, &issue_id, 0, true, &emitter).await;
+
+    assert_eq!(
+        orch.board.issue_status(&issue_id),
+        Some(IssueStatus::Failed),
+        "work whose gate could not be dispatched is not work that passed its gate"
+    );
+    let fault = orch
+        .fault
+        .raised()
+        .expect("a review gg could not dispatch ends the run");
+    assert!(
+        fault.contains(&issue_id) && fault.contains("`Unbound`"),
+        "the run-level diagnostic must name the issue and the reviewer: {fault}"
+    );
+    assert!(
+        fault.contains("mock/secondary"),
+        "and the model it could not build a provider for, which is what tells this failure from a \
+         profile that had no model at all: {fault}"
+    );
+}
+
 /// **A reviewer whose credential is refused fails its issue and leaves the run alone.**
 ///
 /// The counterpart that keeps the reviewer split from collapsing into "any reviewer that did not
@@ -907,5 +960,92 @@ async fn an_issue_that_named_no_reviewers_is_accepted_without_review() {
         orch.fault.raised(),
         None,
         "and no defect means no fault: this run is still a run the model produced"
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// The board's dispatch, through the real entry point
+// ---------------------------------------------------------------------------------------------
+
+/// A factory that stands the **root** up on `script` and refuses every other profile with a failure
+/// that is not a credential.
+///
+/// The board's version of [`RefusingFactory`], and it exists for the same reason: the session
+/// resolves the root's client at launch, so a factory that refused everything would fail the launch
+/// instead of the dispatch the case is about. The script is cloned per resolution because a factory
+/// answers as many times as the run asks and [`ModelResponse`] carries no shared handle.
+struct RefusingBelowRoot {
+    /// What the root is driven by.
+    script: Vec<ModelResponse>,
+}
+
+impl ClientFactory for RefusingBelowRoot {
+    fn client_for(&self, binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, ModelError> {
+        if binding.slot == ROOT_AGENT {
+            return Ok(Box::new(MockClient::new(
+                &binding.model_id,
+                self.script.clone(),
+            )));
+        }
+        Err(ModelError::Parse("no provider could be built".to_string()))
+    }
+}
+
+/// **An issue gg could not stand an agent up for ends the whole session, and the record says so.**
+///
+/// The board dispatch is the one site in this family whose failure nobody is holding a handle to:
+/// there is no spawner to report to and no agent to end, only a red issue on a board. Every other
+/// test of it reads the [latch](crate::fault) directly, which proves the fault was *raised* and
+/// nothing about what the fault is **for** — and what it is for is spent in the session epilogue,
+/// hundreds of lines away, on a value read once. A raised latch that the epilogue stopped reading
+/// would leave every one of those tests green while gg handed `core` a tree to score with an issue's
+/// whole work missing from it.
+///
+/// So this drives the real entry point: the root files the issue, gg cannot build a provider for the
+/// assignee it validated, and the session must end under gg's own status with a run-level line
+/// naming the issue.
+#[tokio::test]
+async fn a_session_whose_issue_agent_cannot_be_built_ends_as_gg_s_defect() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-issue-broken".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), split_project_set());
+
+    let outcome = run_with_factory(
+        &inv,
+        &emitter,
+        Arc::new(RefusingBelowRoot {
+            // Files the work, then finishes — the shape that used to leave a session `completed`
+            // with the filed work never attempted.
+            script: vec![create_issue_for_coder(), stop_response()],
+        }),
+    )
+    .await;
+
+    assert_eq!(
+        outcome,
+        SessionOutcome::HarnessError,
+        "a run gg broke exits non-zero so `core` records a harness error instead of scoring it"
+    );
+    let events = sink.events();
+    assert_eq!(
+        terminal_status(&events).as_deref(),
+        Some(STATUS_INTERNAL_ERROR),
+        "the session's status comes from the latch, whatever the root's own loop went on to do"
+    );
+    assert_eq!(
+        last_issue_status(&events, UNGROUPED_ISSUE_ID),
+        Some(GgIssueStatus::Failed),
+        "the board says the work did not happen, which is the operator's half of the same fact"
+    );
+    let errors = error_messages(&events);
+    assert!(
+        errors
+            .iter()
+            .any(|message| message.contains(UNGROUPED_ISSUE_ID)
+                && message.contains(&format!("`{CODER_AGENT}`"))
+                && message.contains("exits non-zero")),
+        "the run-level diagnostic must name the issue and the assignee gg could not stand up: \
+         {errors:?}"
     );
 }

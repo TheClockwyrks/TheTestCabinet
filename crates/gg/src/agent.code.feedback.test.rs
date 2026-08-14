@@ -505,51 +505,44 @@ fn a_compilers_rejection_reaches_the_model_as_the_compilers_own_words() {
     );
 }
 
-/// **A compiler that could not finish is a `Notice`, never a `Compiler error`.**
+/// **A compiler that could not finish reaches the model in no band at all, and ends the session.**
 ///
-/// The failure this whole variant exists to keep separable, and the one that is silent when it
-/// regresses. Under a `Compiler error` heading the model reads "your program did not compile" over a
-/// program no compiler ever read, and spends its next turn rewriting something that was never wrong.
-/// So the band is `System` — gg speaking about the session — and the words say outright that nothing
-/// about the program was rejected.
+/// The failure this variant exists to keep separable, and the one that is silent when it regresses.
+/// Nothing read the program, so there is no diagnostic — and there is no honest sentence to put in
+/// its place either, because every instruction gg could write is an instruction to answer for an
+/// image the model cannot see. The `Compiler error` band would say the program was rejected, and a
+/// `System` notice saying "write it again" would send the model rewriting something that was never
+/// wrong on every turn of a run whose compiler is simply absent. So the model is told nothing, the
+/// fault is gg's, and the run ends.
 #[test]
-fn a_compiler_that_could_not_finish_is_a_notice_not_a_compiler_error() {
+fn a_compiler_that_could_not_finish_is_fatal_and_tells_the_model_nothing() {
     let decision = decision_for(SandboxError::Toolchain(
         "`swiftc` exited with signal 11 (SIGSEGV)".to_string(),
     ));
 
-    let messages = banded(&decision);
-    assert_eq!(messages.len(), 1, "{messages:?}");
-    let (source, body) = &messages[0];
+    let CodeTurnOutcome::Fatal { fault, message } = &decision else {
+        panic!("a compiler that could not finish must end the session");
+    };
     assert_eq!(
-        *source,
-        GgContextSource::System,
-        "a compiler's crash is a fact about the session, not a diagnosis of the program"
+        *fault,
+        FatalFault::Toolchain,
+        "and it is named as the environment's rather than pooled with gg's own plumbing"
     );
     assert!(
-        body.contains("was not run") && body.contains("Nothing about your program was rejected"),
-        "the model must be told its program was never judged: {body}"
-    );
-    assert!(
-        !body.contains("signal 11"),
-        "the compiler's own crash detail is the operator's, not the model's: {body}"
-    );
-    assert_eq!(
-        recorded_type(&decision),
-        Some(TurnErrorType::ToolchainFailed),
-        "and the record says whose failure it was"
+        message.contains("SIGSEGV"),
+        "the operator's line carries the compiler's own words: {message}"
     );
 }
 
-/// A compiler that could not finish does **not** end the session, unlike the two failures that do.
+/// A compiler that rejected a program is the only preparation failure the session survives.
 ///
-/// The three are one `match` away from each other, and the artifact-defect arm is the one it would
-/// be easiest to fall into: both are "a compile failed". Only one of them recurs identically on every
-/// further turn.
+/// The arms are one `match` away from each other and every one of them is "a compile failed", so
+/// what separates them is whose failure it was rather than what it looked like. Only a diagnostic
+/// about the model's own text is the model's to answer.
 #[test]
-fn only_the_artifact_and_the_host_end_the_session() {
+fn only_a_rejected_program_leaves_the_session_running() {
     for (error, ends) in [
-        (SandboxError::Toolchain("killed".to_string()), false),
+        (SandboxError::Toolchain("killed".to_string()), true),
         (
             SandboxError::Prepare(PrepareError::Compile("type error".to_string())),
             false,
@@ -560,6 +553,10 @@ fn only_the_artifact_and_the_host_end_the_session() {
             true,
         ),
         (SandboxError::Host("the task panicked".to_string()), true),
+        (
+            SandboxError::Lowering("the surface did not check".to_string()),
+            true,
+        ),
     ] {
         let named = error.to_string();
         let decision = decision_for(error);
@@ -590,20 +587,30 @@ fn knowledge_failure(source: &str) -> KnowledgeError {
         .expect_err("this source does not prepare")
 }
 
-/// **A skill whose compiler crashed reports the crash to the operator and not to the model.**
+/// **A skill whose compiler crashed reaches the operator, the run's fault latch, and not the model.**
 ///
 /// The prepare seam has two consumers — a turn's own program and a code skill or memory — and this
 /// is the second. The same failure through the same seam must be attributed the same way at both, or
 /// the doctrine holds only where somebody happened to write it down: nothing about the skill's
-/// source was judged, so the model is not told its code is wrong, and the compiler's crash detail
-/// goes where somebody can fix the image.
+/// source was judged, so the model is not told its code is wrong, the compiler's crash detail goes
+/// where somebody can fix the image, and the run ends rather than carrying on with an agent gg
+/// silently denied code it was told it had.
 #[test]
-fn a_knowledge_load_whose_compiler_crashed_reaches_the_operator() {
+fn a_knowledge_load_whose_compiler_crashed_reaches_the_operator_and_ends_the_run() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
+    let fault = FaultLatch::default();
     let error = knowledge_failure(&format!("def parse(text)\n  {}\n", fixture::NO_COMPILER));
 
-    report_knowledge_failure(&error, &emitter);
+    record_knowledge_failure(&error, &Agent::root(ROOT_AGENT_ID), &fault, &emitter);
+
+    assert!(
+        fault
+            .raised()
+            .is_some_and(|raised| raised.contains("SIGSEGV")),
+        "a compiler gg could not run is gg's defect and ends the run: {:?}",
+        fault.raised()
+    );
 
     let logged: Vec<(String, String)> = sink
         .events()
@@ -622,17 +629,75 @@ fn a_knowledge_load_whose_compiler_crashed_reaches_the_operator() {
     );
 }
 
-/// A skill the language read and **rejected** logs nothing: the model already has the whole of it,
-/// and a second copy on the operator's stream is noise that trains an operator to skim the band.
+/// **A skill gg accepted and could not prepare is charged to gg, not to whoever wrote it.**
+///
+/// The third arm of the same seam, and the one that reads most like the author's fault: it comes
+/// back carrying a diagnostic, so a consumer that split on "is there something to show?" would file
+/// it as a bad argument and hand the model gg's own internals under a heading saying its code was
+/// rejected. The split is on *whose source failed*, and this one is a bug in the harness about a
+/// source the language accepted — so the load is refused as an I/O failure, the detail goes to the
+/// operator who can act on a gg bug, and the run ends rather than carrying on with an agent silently
+/// denied code it was told it had.
+#[test]
+fn a_knowledge_load_gg_could_not_prepare_is_ggs_defect_and_not_a_bad_argument() {
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
+    let fault = FaultLatch::default();
+    let error = knowledge_failure(&format!("def parse(text)\n  {}\n", fixture::UNLOWERABLE));
+
+    assert_eq!(
+        knowledge_refusal_class(&error),
+        ToolFailure::IoError,
+        "nothing about the model's argument was judged, so it was not the argument that was wrong"
+    );
+
+    record_knowledge_failure(&error, &Agent::root(ROOT_AGENT_ID), &fault, &emitter);
+
+    assert!(
+        fault
+            .raised()
+            .is_some_and(|raised| raised.contains("lowering pass")),
+        "a source gg accepted and could not prepare is gg's defect and ends the run: {:?}",
+        fault.raised()
+    );
+    let logged: Vec<String> = sink
+        .events()
+        .into_iter()
+        .filter_map(|event| match event.kind {
+            GgTelemetryKind::Log { level, message } if level == "error" => Some(message),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        logged
+            .iter()
+            .any(|message| message.contains("lowering pass")),
+        "the operator is the only reader of a bug report about gg: {logged:?}"
+    );
+    assert!(
+        !error.to_string().contains("lowering pass"),
+        "and the model reads none of it: {error}"
+    );
+}
+
+/// A skill the language read and **rejected** logs nothing and breaks nothing: the model already has
+/// the whole of it, a second copy on the operator's stream is noise that trains an operator to skim
+/// the band, and the author's mistake is not a defect of gg's.
 #[test]
 fn a_knowledge_load_the_language_rejected_says_nothing_to_the_operator() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
+    let fault = FaultLatch::default();
     let error = knowledge_failure(&format!("def parse(text)\n  x = {}\n", fixture::MISTYPED));
 
-    report_knowledge_failure(&error, &emitter);
+    record_knowledge_failure(&error, &Agent::root(ROOT_AGENT_ID), &fault, &emitter);
 
     assert!(sink.events().is_empty(), "{:?}", sink.events());
+    assert!(
+        fault.raised().is_none(),
+        "a source the language read and rejected is the author's, not gg's: {:?}",
+        fault.raised()
+    );
 }
 
 /// **A memory write refused because the compiler crashed is not recorded as a bad argument.**

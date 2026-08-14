@@ -767,7 +767,7 @@ pub struct UnreachableTail {
 ///
 /// * a compiler that could not finish — a `swiftc` that crashed, a toolchain binary that is not
 ///   installed, a compile that outran its own timeout. There is no diagnostic to show, so it is
-///   [`PrepareFailure::Toolchain`] and the run carries on;
+///   [`PrepareFailure::Toolchain`] and the run ends on it;
 /// * a **lowering** failure, where the transform over a source the language already accepted fell
 ///   over, or the surface gg generated for the model to write against was itself rejected. That is
 ///   gg's own defect, so it is [`PrepareFailure::Lowering`] and the run ends on it.
@@ -833,9 +833,9 @@ impl PrepareError {
     ///
     /// It is total, and it can be: every variant of this enum is the model's, so every variant has
     /// an error type. The failures that have none are the ones that are not the model's, and they
-    /// are not in this enum — [`Toolchain`](PrepareFailure::Toolchain) is charged to the run rather
-    /// than to the model, and [`Lowering`](PrepareFailure::Lowering) is charged to nothing because
-    /// it ends the run.
+    /// are not in this enum — [`Toolchain`](PrepareFailure::Toolchain) and
+    /// [`Lowering`](PrepareFailure::Lowering) are charged to nothing at all, because each ends the
+    /// run.
     pub fn turn_error_type(&self) -> TurnErrorType {
         match self {
             Self::Syntax(_) => TurnErrorType::TranspileSyntax,
@@ -852,11 +852,10 @@ impl PrepareError {
 /// The three arms are not three flavours of one thing, and the split is the whole reason this type
 /// exists. A [`Program`](Self::Program) failure is the model's: its text was read and found wanting,
 /// there is a diagnostic to hand back, and the next turn's program may well be fine because the
-/// model changed it. A [`Toolchain`](Self::Toolchain) failure is the *compiler's*: nothing was
-/// decided about the program at all, there is no diagnostic, and the next turn's program may well be
-/// fine because nothing was ever wrong with this one. A [`Lowering`](Self::Lowering) failure is
-/// **gg's**: gg had already accepted the source and then could not turn it into something the guest
-/// runs, so there is nobody to hand it back to and no next turn worth taking.
+/// model changed it. A [`Toolchain`](Self::Toolchain) failure is the run **image's**: nothing was
+/// decided about the program at all and there is no diagnostic, so there is nobody to hand it back
+/// to. A [`Lowering`](Self::Lowering) failure is **gg's**, for the same reason one step further in.
+/// Only the first has a next turn worth taking.
 ///
 /// Before a language compiled, the distinction had no producer and the seam carried
 /// [`PrepareError`] directly. It does now: a compiler is a process, and a process that segfaults, is
@@ -881,10 +880,9 @@ pub enum PrepareFailure {
     /// program was rejected when the program was fine, files gg's bug in the model's `transpile`
     /// bucket, counts it against the model's error ceilings, and can end the session
     /// `limit_exceeded` with gg's defect recorded as the model's failure to write a compiling
-    /// program. It is not a [`Toolchain`](Self::Toolchain) failure either: a compiler that fell over
-    /// may well compile the next program, while gg's pipeline is the same pipeline next turn — the
-    /// generated surface is generated once per session, and a transform that cannot lower a legal
-    /// source is a bug that does not heal.
+    /// program. It is not a [`Toolchain`](Self::Toolchain) failure either: both end the run, and
+    /// they are held apart because a bug in gg's pipeline and a compiler missing from the run's
+    /// image are read, reported and fixed by different people.
     ///
     /// So it ends the run, at [`SandboxError::Lowering`](super::SandboxError::Lowering) and the
     /// [fault latch](crate::fault) behind it. The alternative is a turn the model paid for, told

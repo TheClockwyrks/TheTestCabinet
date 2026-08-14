@@ -55,7 +55,6 @@ const TURN_ERROR_REASONS: Record<GgTurnErrorKind, string> = {
   transpile: "the program did not compile",
   program_fault: "the program threw",
   sandbox_limit: "the program hit a sandbox ceiling",
-  toolchain: "the program's compiler could not run",
   missing_completion: "the turn declared no work",
 };
 

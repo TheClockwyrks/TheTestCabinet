@@ -5,6 +5,10 @@
 //! the live loop in `agent.faults.test.rs`. What is here is the property that escalation rests on:
 //! one raise is visible to every other agent, and the sentence it leaves behind is the cause
 //! rather than the consequence.
+//!
+//! The last two are about the *awaitable* half, which an agent gg has suspended reads instead of a
+//! turn boundary. The consequence of it failing is a run that never ends at all, so it is proved
+//! here as a property of the latch and again through the loop in `agent.waits.test.rs`.
 
 use super::*;
 
@@ -87,4 +91,37 @@ fn a_dispatch_fault_with_no_assignee_names_only_the_issue() {
         raised.contains("`ISSUE-2`") && !raised.contains("agent ``"),
         "an absent assignee leaves no empty slot behind: {raised}"
     );
+}
+
+/// A fault raised **before** anybody asks resolves the wait immediately. An agent that suspended
+/// itself while the run was healthy, and only reads the latch once released, would otherwise sit
+/// waiting for a second fault that a one-shot latch can never produce.
+#[tokio::test]
+async fn awaiting_an_already_raised_fault_resolves_at_once() {
+    let latch = FaultLatch::default();
+    latch.in_agent("agent-2", "Coder", "the wasm host would not start");
+
+    tokio::time::timeout(std::time::Duration::from_secs(5), latch.until_raised())
+        .await
+        .expect("a latch that already holds a fault answers without waiting");
+}
+
+/// A fault raised **while** an agent is awaiting the latch releases it, through a clone — which is
+/// the shape every real release has, since the agent that breaks is never the agent that is
+/// suspended.
+#[tokio::test]
+async fn awaiting_the_latch_is_released_by_a_later_fault() {
+    let latch = FaultLatch::default();
+    let waiter = latch.clone();
+    let awaiting = tokio::spawn(async move { waiter.until_raised().await });
+
+    // One yield is enough on the single-threaded test runtime to run the spawned task up to its
+    // await, so what follows releases a registered waiter rather than answering it on arrival.
+    tokio::task::yield_now().await;
+    latch.in_agent("agent-4", "Reviewer", "its task panicked");
+
+    tokio::time::timeout(std::time::Duration::from_secs(5), awaiting)
+        .await
+        .expect("the waiter is released by the fault rather than left for the run's deadline")
+        .expect("the awaiting task ran to completion");
 }

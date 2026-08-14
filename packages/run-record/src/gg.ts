@@ -1814,8 +1814,8 @@ export type GgTurnOutcome = "progressed" | "finished" | "error" | "fatal";
  * the same event and derivable back to this by [`GgTurnErrorType::kind`]. Read this to compare
  * runs at a glance and to reason about ceilings; read the type to say what actually went wrong.
  *
- * Four of the six — [`Transpile`](Self::Transpile), [`ProgramFault`](Self::ProgramFault),
- * [`SandboxLimit`](Self::SandboxLimit) and [`Toolchain`](Self::Toolchain) — are
+ * Three of the five — [`Transpile`](Self::Transpile), [`ProgramFault`](Self::ProgramFault) and
+ * [`SandboxLimit`](Self::SandboxLimit) — are
  * [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) shapes, and that
  * asymmetry is real rather than an oversight: a tool-calling turn whose requested calls are all
  * dispatched and answered cannot declare work that is then cut short.
@@ -1844,7 +1844,6 @@ export type GgTurnErrorKind =
   | "transpile"
   | "program_fault"
   | "sandbox_limit"
-  | "toolchain"
   | "missing_completion";
 
 /**
@@ -1867,14 +1866,14 @@ export type GgTurnErrorKind =
  *
  * A bucket that is permanently zero in every console is a defect, so each variant below documents
  * the exact site that raises it. The set is exactly the distinctions gg makes internally: six
- * shapes of `ModelError`, five of `PrepareError`, three of the sandbox's own ceilings, the three
+ * shapes of `ModelError`, four of `PrepareError`, three of the sandbox's own ceilings, the three
  * classes the guest types an uncaught throw with over WIT, and the two structurally different ways
  * a turn can end without declaring work.
  *
  * # Names carry their base
  *
  * Every variant is prefixed with its base's noun (`model_`, `transpile_`, `program_`, `sandbox_`,
- * `toolchain_`, `missing_completion_`) because these are ranked in one flat list, one row per type,
+ * `missing_completion_`) because these are ranked in one flat list, one row per type,
  * where a bare `syntax` or `timeout` would not say which layer it came from.
  *
  * [`ModelRejected`](Self::ModelRejected) is deliberately *not* named `fatal`, even though gg's
@@ -1899,7 +1898,6 @@ export type GgTurnErrorType =
   | "sandbox_timeout"
   | "sandbox_out_of_memory"
   | "sandbox_trap"
-  | "toolchain_failed"
   | "missing_completion_no_call"
   | "missing_completion_compaction";
 
@@ -2171,18 +2169,6 @@ export type GgErrorSummary = {
    */
   sandboxLimit: number;
   /**
-   * Errors of kind [`toolchain`](GgTurnErrorKind::Toolchain) — turns lost because the language's
-   * **compiler** could not finish, rather than because the model wrote anything wrong.
-   *
-   * The one per-kind counter that is not a count of the model's failures, which is why it is a
-   * counter of its own: an arm whose image is missing a compiler and an arm whose model cannot
-   * satisfy a type checker are different findings, and pooled they are one bad number.
-   *
-   * `0` for every run of a language whose preparation invokes no compiler — stated rather than
-   * omitted, so the per-kind counters still sum to [`errors`](Self::errors).
-   */
-  toolchain: number;
-  /**
    * Errors of kind [`missing_completion`](GgTurnErrorKind::MissingCompletion).
    */
   missingCompletion: number;
@@ -2201,7 +2187,7 @@ export type GgErrorSummary = {
    * [`GgTurnErrorType::wire_id`].
    *
    * Two invariants hold: it sums to [`errors`](Self::errors), and regrouping it by
-   * [`GgTurnErrorType::kind`] reproduces the six named counters above exactly.
+   * [`GgTurnErrorType::kind`] reproduces the five named counters above exactly.
    * The named counters stay because persisted records, stored queries and the console's
    * side-by-side split all read them; this joins them rather than replacing them.
    *
@@ -4709,7 +4695,6 @@ export const GG_TURN_ERROR_KIND_LABELS: Readonly<
   transpile: "transpile",
   program_fault: "program fault",
   sandbox_limit: "sandbox limit",
-  toolchain: "toolchain",
   missing_completion: "no work declared",
 };
 
@@ -4736,7 +4721,6 @@ export const GG_TURN_ERROR_TYPE_LABELS: Readonly<
   sandbox_timeout: "execution timeout",
   sandbox_out_of_memory: "out of memory",
   sandbox_trap: "sandbox trap",
-  toolchain_failed: "compiler could not run",
   missing_completion_no_call: "no work declared",
   missing_completion_compaction: "compaction ignored",
 };
@@ -4764,7 +4748,6 @@ export const GG_TURN_ERROR_TYPE_BASE: Readonly<
   sandbox_timeout: "sandbox_limit",
   sandbox_out_of_memory: "sandbox_limit",
   sandbox_trap: "sandbox_limit",
-  toolchain_failed: "toolchain",
   missing_completion_no_call: "missing_completion",
   missing_completion_compaction: "missing_completion",
 };
@@ -4791,7 +4774,6 @@ export const GG_TURN_ERROR_TYPES: readonly GgTurnErrorType[] = [
   "sandbox_timeout",
   "sandbox_out_of_memory",
   "sandbox_trap",
-  "toolchain_failed",
   "missing_completion_no_call",
   "missing_completion_compaction",
 ];
