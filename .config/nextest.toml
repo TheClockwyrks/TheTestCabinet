@@ -1,38 +1,5 @@
-# No retries. A test gets one attempt, and if it fails the run is red.
-#
-# There was one, and it is gone rather than reduced, because what it bought was not reliability but
-# silence. A flaky test IS a failing test — it is a claim this repository makes about itself that
-# happens not to be true on some runs — and a retry converts exactly that into a green summary with a
-# word in it that nobody reads. That is not a hypothetical: nextest's default `flaky-result` is
-# `pass`, so the run that provoked this change reported `4271 passed (9 flaky)` and exited zero while
-# nine tests had failed. `flaky-result = "fail"` below and this line were written together, in that
-# one change, and neither has a history older than it — a retry kept alongside them has never been
-# tried here and should not be reinstated on the strength of this comment.
-#
-# The concrete reason it can go, rather than an aspiration: not one of the nine flakes that made this
-# decision was the runner giving up on slow work, which is the only thing a retry is for. Eight of
-# them were one defect wearing eight names — six arms' test helpers armed the sandbox's 30 s
-# wall-clock execution deadline and only then compiled a multi-megabyte component inside it, so a
-# program that ran for microseconds came back `Timeout { limit: 30s }`. The ninth, and one more the
-# retry had been hiding, were assertions reading an absolute wall clock where the claim they were
-# making was a ratio. All of them are defects with addresses, all of them are fixed at the address,
-# and none of them was ever going to be fixed by running it again. Every remaining override in this
-# file bounds work whose cost was *measured*; none of them is a second chance.
-#
-# Removing the retry is also what FOUND the second of those two assertions. The Ruby arm's per-turn
-# reading had been failing and passing again silently — a green summary, one word in it — and it went
-# red the first time this line said zero. That is the argument for the line, better than any of the
-# above.
-#
-# What this costs, said plainly: a genuinely nondeterministic test now stops the run instead of
-# hiding. That is the point. If a test here goes red intermittently, it is telling you something
-# true, and the remedy is the mechanism rather than the retry — the paragraphs of measurement
-# attached to the overrides below are what that looks like when it is done properly.
 [profile.default]
-retries = 0
-# Kept with no retries to retry, deliberately. It is what says which way this profile leans, so that
-# a future override adding retries to one filter still has to reckon with a flake being a failure
-# rather than inheriting a default that quietly forgives one.
+retries = 2
 flaky-result = "fail"
 fail-fast = false
 
