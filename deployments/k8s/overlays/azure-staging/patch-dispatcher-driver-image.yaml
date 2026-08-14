@@ -8,15 +8,18 @@
 # images because it decides the image every future RUN executes inside — it advances
 # with a rehearsed release, not with every service roll.
 #
-# It sits at `e6afbee6` (v0.6.0-beta4) while the driver SERVICE image is at `e376e0fa`
-# (v0.6.1-rc5). That gap is a leftover of `build-containers` having been path-filtered:
-# it published at beta2 (8c80dd94), skipped beta2.1/beta3, re-converged at beta4, then
-# skipped every build since (v0.6.0-rc1, rc2 and v0.6.1-rc1, rc4, rc4.1, rc5) — so there
-# was simply no newer sha carrying run images to pin to. It stayed benign only because
-# containers/ happened not to change in that window; a change there would have shipped
-# silently stale run images. Both image workflows now run unfiltered on every
-# master/staging push, so run images exist at EVERY sha and this can be re-pinned
-# alongside the service images at the next rc. Do that rather than letting it drift.
+# It is now CONVERGED with the driver SERVICE image at `31568780` (v0.6.2-rc1), closing a
+# gap that had been open since beta4. That gap was a leftover of `build-containers` having
+# been path-filtered: it published at beta2 (8c80dd94), skipped beta2.1/beta3, re-converged
+# at beta4 (e6afbee6), then skipped every build since — so there was simply no newer sha
+# carrying run images to pin to. It stayed benign only because containers/ happened not to
+# change in that window; a change there would have shipped silently stale run images.
+# Both image workflows now run unfiltered on every master/staging push (5ef86c1d), and
+# v0.6.2-rc1 is the first build under that rule: it published all 27 run images at the same
+# sha as the services, so both pins move together here. containers/ did not change between
+# e6afbee6 and this sha, so the run images are rebuilds of the same Dockerfiles rather than
+# new content of ours — only upstream base layers moved. Keep the two pins in lockstep from
+# here rather than letting this drift again.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -30,6 +33,6 @@ spec:
         - name: dispatcher
           env:
             - name: TCAB_DRIVER_IMAGE
-              value: "ghcr.io/theclockwyrks/tcab-driver:e376e0fa9e228b62d60e60a60cdfbd27549d686b"
+              value: "ghcr.io/theclockwyrks/tcab-driver:31568780009adf70ba3369feb05cb6313048286f"
             - name: TCAB_CONTAINER_TAG
-              value: "e6afbee63a8093a7c717b5195cd8dcae85d77fdf"
+              value: "31568780009adf70ba3369feb05cb6313048286f"
