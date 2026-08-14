@@ -1022,6 +1022,12 @@ pub(super) struct CodeTurn<'a> {
     /// defect of gg's own. A [knowledge](crate::knowledge) half gg accepted and could not prepare,
     /// or whose compiler could not finish, is one: the call is refused, and the run has to end for
     /// the reason every other gg defect ends it.
+    ///
+    /// The **latch itself**, deliberately, where everything that *attributes* a turn or an ending
+    /// asks a [`FaultedRun`] instead. This is the raising side: it says a defect happened, which is
+    /// a statement only the site that met one can make and which no type can second-guess.
+    /// Attribution is the reading side, where the whole risk is being handed the wrong latch — so
+    /// the two are shaped differently on purpose.
     pub(super) fault: &'a FaultLatch,
     /// The session recorder, when the capability is on.
     pub(super) replay: Option<&'a Arc<GgRecorder>>,

@@ -12,11 +12,31 @@ use crate::agent::{
     STATUS_LIMIT_EXCEEDED, STATUS_MODEL_ERROR, STATUS_TIMED_OUT,
 };
 
-/// A latch with a fault already on it, as every agent of a broken run sees it.
-fn broken() -> FaultLatch {
-    let fault = FaultLatch::default();
-    fault.in_agent("agent-2", "reviewer", "its task panicked");
-    fault
+/// A run that is nothing but its [latch](FaultLatch) — which is the whole of what an attribution
+/// reads.
+///
+/// The real implementors of [`FaultedRun`] are the orchestrator and the loop's
+/// [ceilings](crate::agent::LimitsSetup), neither of which can be built in three lines and neither
+/// of which would change a single answer below. It is `#[cfg(test)]`, like everything in this file,
+/// so the seam production code has is still exactly the two run-scoped values.
+struct TestRun(FaultLatch);
+
+impl FaultedRun for TestRun {
+    fn fault(&self) -> &FaultLatch {
+        &self.0
+    }
+}
+
+/// A run nothing has broken, as almost every agent of almost every run sees it.
+fn healthy() -> TestRun {
+    TestRun(FaultLatch::default())
+}
+
+/// A run with a fault already latched, as every agent of a broken run sees it.
+fn broken() -> TestRun {
+    let run = healthy();
+    run.0.in_agent("agent-2", "reviewer", "its task panicked");
+    run
 }
 
 /// **On a healthy run every ending is its own.**
@@ -25,7 +45,7 @@ fn broken() -> FaultLatch {
 /// all, which is every ending of almost every run.
 #[test]
 fn a_healthy_run_leaves_every_ending_alone() {
-    let healthy = FaultLatch::default();
+    let healthy = healthy();
     for status in [
         STATUS_COMPLETED,
         STATUS_EXHAUSTED,

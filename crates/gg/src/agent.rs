@@ -3591,7 +3591,7 @@ async fn drive_agent(
             orch.fault.in_agent(&agent.id, &agent.slot, detail);
             break (
                 LoopEnd {
-                    status: TerminalStatus::attributed(STATUS_INTERNAL_ERROR, &orch.fault),
+                    status: TerminalStatus::attributed(STATUS_INTERNAL_ERROR, &orch),
                     turns: turns_taken,
                     tokens: TokenCounts::default(),
                     cost: None,
@@ -4179,7 +4179,7 @@ async fn drive_agent(
             orch.fault.in_agent(&agent.id, &agent.slot, detail);
             break (
                 LoopEnd {
-                    status: TerminalStatus::attributed(STATUS_INTERNAL_ERROR, &orch.fault),
+                    status: TerminalStatus::attributed(STATUS_INTERNAL_ERROR, &orch),
                     handoff: None,
                     ..end
                 },
@@ -4226,7 +4226,7 @@ async fn drive_agent(
                 }
                 break (
                     LoopEnd {
-                        status: TerminalStatus::attributed(unresolved.status, &orch.fault),
+                        status: TerminalStatus::attributed(unresolved.status, &orch),
                         handoff: None,
                         ..end
                     },
@@ -6488,7 +6488,7 @@ impl Agent {
                 {
                     Ok(run) => opening_notes.extend(run.insertion()),
                     Err(failure) => {
-                        return hook_failed(self, emitter, &limits.fault, failure, turn_base);
+                        return hook_failed(self, emitter, &limits, failure, turn_base);
                     }
                 }
             }
@@ -6507,7 +6507,7 @@ impl Agent {
                 {
                     Ok(run) => opening_notes.extend(run.insertion()),
                     Err(failure) => {
-                        return hook_failed(self, emitter, &limits.fault, failure, turn_base);
+                        return hook_failed(self, emitter, &limits, failure, turn_base);
                     }
                 }
             }
@@ -6667,7 +6667,7 @@ impl Agent {
             if let Some(diagnostic) = limits.fault.raised() {
                 return self.stop_on_fault(
                     emitter,
-                    &limits.fault,
+                    &limits,
                     diagnostic,
                     turn,
                     total_tokens,
@@ -6680,7 +6680,7 @@ impl Agent {
             if canceled {
                 return self.stop_on_cancel(
                     emitter,
-                    &limits.fault,
+                    &limits,
                     turn,
                     total_tokens,
                     total_cost,
@@ -6695,7 +6695,7 @@ impl Agent {
             if let Some(breach) = limits.check_deadline(&self.id, agent_limits.turns_recorded()) {
                 return self.stop_on_limit(
                     emitter,
-                    &limits.fault,
+                    &limits,
                     breach,
                     turn,
                     total_tokens,
@@ -6714,7 +6714,7 @@ impl Agent {
             if let Some(breach) = limits.check_cost(&self.id, agent_limits.turns_recorded()) {
                 return self.stop_on_limit(
                     emitter,
-                    &limits.fault,
+                    &limits,
                     breach,
                     turn,
                     total_tokens,
@@ -6811,7 +6811,7 @@ impl Agent {
                         )
                         .await
                         {
-                            return hook_failed(self, emitter, &limits.fault, failure, turn);
+                            return hook_failed(self, emitter, &limits, failure, turn);
                         }
                         let (request, fallback) =
                             compaction::condense_out_of_band(context, client, &compaction).await;
@@ -6841,7 +6841,7 @@ impl Agent {
                         )
                         .await
                         {
-                            return hook_failed(self, emitter, &limits.fault, failure, turn);
+                            return hook_failed(self, emitter, &limits, failure, turn);
                         }
                     }
                     Some(pending) => {
@@ -6957,9 +6957,35 @@ impl Agent {
                     // line's phrase is read back off it, so no aggregate can disagree with what the
                     // line says.
                     let error_type = err.turn_error_type();
+                    // Whose failure this ending is, decided before anything says so out loud —
+                    // because both the record and the sentence below are rendered from this one
+                    // value. A failed model call is the model's, or the operator's when it is the
+                    // credential that was refused…
+                    let status = TerminalStatus::attributed(
+                        if err.is_auth_failure() {
+                            // An auth failure is the run's credential being refused, not the model
+                            // failing at its work, so it ends the session under its own status —
+                            // which the session runner turns into a launch failure.
+                            STATUS_AUTH_ERROR
+                        } else {
+                            STATUS_MODEL_ERROR
+                        },
+                        // …unless gg broke under this call, which the turn recorded below is
+                        // attributed against too. Whose failure the far side of a request was is
+                        // not answerable from the error alone once the run itself is broken, and an
+                        // ending that answered it separately from the turn is how the two records of
+                        // one event came to disagree.
+                        &limits,
+                    );
+                    // Said to the operator as the *ending* was attributed, never as the error reads
+                    // on its own: this path is the one place an agent stops for a gg defect without
+                    // going through [`stop_on_fault`](Self::stop_on_fault), so a line rendered from
+                    // the error alone left an operator reading this agent's stream with a provider
+                    // failure and no hint that the run was already broken — the same disagreement
+                    // between two accounts of one event, in the record a human actually reads.
                     emitter.emit(log(
                         "error",
-                        format!("model turn {turn} failed — {}: {err}", error_type.phrase()),
+                        model_call_failed(turn, status, error_type, &err),
                     ));
                     // The turn is recorded before the loop leaves, so the accounting never drifts
                     // from the number of model calls the run made — and it can never breach a
@@ -6974,31 +7000,35 @@ impl Agent {
                     // published under its own type, `model_response_loop`; the replies it discarded
                     // on the way are carried on the event too, so the money spent on them is still
                     // counted — this is the one error path that can have any.
+                    //
+                    // It reads the run a **second** time, a few statements after the ending above
+                    // read it. The two are deliberately not folded into one: folding them would mean
+                    // this seam being *told* the answer rather than deriving it, which needs an
+                    // "already attributed" carrier for outcomes exactly as [`TerminalStatus`] is one
+                    // for statuses — and an entry point that accepted a pre-judged outcome would
+                    // reopen the "somebody forgot" hole both types exist to close, at the eight
+                    // other sites that have no ending beside them to borrow a judgement from.
+                    // Deriving the outcome from `status` here would not help either, since this seam
+                    // re-reads regardless, which is exactly what protects those eight.
+                    //
+                    // The window that leaves is empty today, and it is worth writing down rather
+                    // than trusting. The latch never clears and the ending read first, so the only
+                    // disagreement it could produce is a **stale ending** — `model_error` beside a
+                    // turn recorded as gg's — which is the harmful direction and not a harmless one.
+                    // What closes it is that there is no `.await` between the two reads and gg
+                    // drives every agent on a single current-thread runtime: no other agent can run
+                    // between these statements to raise the latch. It reopens the moment an await
+                    // is introduced between them, or a fault is raised from a thread outside the
+                    // runtime.
                     let _ = self.record_turn(
                         &mut agent_limits,
                         emitter,
-                        &limits.fault,
+                        &limits,
                         TurnOutcome::Error(error_type),
                         match &err {
                             ModelError::ResponseLoop { attempts, .. } => *attempts,
                             _ => 0,
                         },
-                    );
-                    let status = TerminalStatus::attributed(
-                        if err.is_auth_failure() {
-                            // An auth failure is the run's credential being refused, not the model
-                            // failing at its work, so it ends the session under its own status —
-                            // which the session runner turns into a launch failure.
-                            STATUS_AUTH_ERROR
-                        } else {
-                            STATUS_MODEL_ERROR
-                        },
-                        // …unless gg broke under this call, which the turn recorded a line above has
-                        // already been attributed to. Whose failure the far side of a request was is
-                        // not answerable from the error alone once the run itself is broken, and an
-                        // ending that answered it separately from the turn is how the two records of
-                        // one event came to disagree.
-                        &limits.fault,
                     );
                     return LoopEnd {
                         status,
@@ -7200,20 +7230,20 @@ impl Agent {
                 )
                 .await
                 {
-                    return hook_failed(self, emitter, &limits.fault, failure, turn + 1);
+                    return hook_failed(self, emitter, &limits, failure, turn + 1);
                 }
                 // The turn did exactly the work it was asked for, so it counts as progress — not as
                 // an error, and not as the completion a tool-less reply would otherwise be.
                 if let Some(breach) = self.record_turn(
                     &mut agent_limits,
                     emitter,
-                    &limits.fault,
+                    &limits,
                     TurnOutcome::Progressed,
                     loop_aborts,
                 ) {
                     return self.stop_on_limit(
                         emitter,
-                        &limits.fault,
+                        &limits,
                         breach,
                         turn + 1,
                         total_tokens,
@@ -7311,10 +7341,7 @@ impl Agent {
                             Err(failure) => {
                                 emitter.emit(log("error", failure.to_string()));
                                 return LoopEnd {
-                                    status: TerminalStatus::attributed(
-                                        STATUS_HOOK_ERROR,
-                                        &limits.fault,
-                                    ),
+                                    status: TerminalStatus::attributed(STATUS_HOOK_ERROR, &limits),
                                     turns: turn + 1,
                                     tokens: total_tokens,
                                     cost: total_cost,
@@ -7347,7 +7374,7 @@ impl Agent {
                 let breach = self.record_turn(
                     &mut agent_limits,
                     emitter,
-                    &limits.fault,
+                    &limits,
                     decision.turn_outcome(),
                     loop_aborts,
                 );
@@ -7387,7 +7414,7 @@ impl Agent {
                             }
                         }
                         return LoopEnd {
-                            status: TerminalStatus::attributed(STATUS_COMPLETED, &limits.fault),
+                            status: TerminalStatus::attributed(STATUS_COMPLETED, &limits),
                             turns: turn + 1,
                             tokens: total_tokens,
                             cost: total_cost,
@@ -7419,8 +7446,7 @@ impl Agent {
                         // — and the tree that came back from a run with a hole in it cannot be
                         // compared with one from a run without.
                         limits.fault.in_agent(&self.id, &self.slot, message);
-                        let status =
-                            TerminalStatus::attributed(STATUS_INTERNAL_ERROR, &limits.fault);
+                        let status = TerminalStatus::attributed(STATUS_INTERNAL_ERROR, &limits);
                         return LoopEnd {
                             status,
                             turns: turn + 1,
@@ -7502,7 +7528,7 @@ impl Agent {
                         if let Some(breach) = breach {
                             return self.stop_on_limit(
                                 emitter,
-                                &limits.fault,
+                                &limits,
                                 breach,
                                 turn + 1,
                                 total_tokens,
@@ -7585,13 +7611,7 @@ impl Agent {
                                 )
                                 .await
                                 {
-                                    return hook_failed(
-                                        self,
-                                        emitter,
-                                        &limits.fault,
-                                        failure,
-                                        turn + 1,
-                                    );
+                                    return hook_failed(self, emitter, &limits, failure, turn + 1);
                                 }
                             }
                             // Not satisfied: the compaction stays pending and the next program is
@@ -7615,7 +7635,7 @@ impl Agent {
                         // way round: the compaction was of work already done.
                         if let Some(handoff) = turn_handoff {
                             return LoopEnd {
-                                status: TerminalStatus::attributed(STATUS_COMPLETED, &limits.fault),
+                                status: TerminalStatus::attributed(STATUS_COMPLETED, &limits),
                                 turns: turn + 1,
                                 tokens: total_tokens,
                                 cost: total_cost,
@@ -7659,7 +7679,7 @@ impl Agent {
                 let breach = self.record_turn(
                     &mut agent_limits,
                     emitter,
-                    &limits.fault,
+                    &limits,
                     TurnOutcome::Error(TurnErrorType::MissingCompletionCompaction),
                     loop_aborts,
                 );
@@ -7671,7 +7691,7 @@ impl Agent {
                 if let Some(breach) = breach {
                     return self.stop_on_limit(
                         emitter,
-                        &limits.fault,
+                        &limits,
                         breach,
                         turn + 1,
                         total_tokens,
@@ -7694,7 +7714,7 @@ impl Agent {
                 let breach = self.record_turn(
                     &mut agent_limits,
                     emitter,
-                    &limits.fault,
+                    &limits,
                     TurnOutcome::Error(TurnErrorType::MissingCompletionNoCall),
                     loop_aborts,
                 );
@@ -7706,7 +7726,7 @@ impl Agent {
                 if let Some(breach) = breach {
                     return self.stop_on_limit(
                         emitter,
-                        &limits.fault,
+                        &limits,
                         breach,
                         turn + 1,
                         total_tokens,
@@ -8002,12 +8022,12 @@ impl Agent {
                 let _ = self.record_turn(
                     &mut agent_limits,
                     emitter,
-                    &limits.fault,
+                    &limits,
                     TurnOutcome::Finished,
                     loop_aborts,
                 );
                 return LoopEnd {
-                    status: TerminalStatus::attributed(STATUS_HOOK_ERROR, &limits.fault),
+                    status: TerminalStatus::attributed(STATUS_HOOK_ERROR, &limits),
                     turns: turn + 1,
                     tokens: total_tokens,
                     cost: total_cost,
@@ -8048,7 +8068,7 @@ impl Agent {
                 let _ = self.record_turn(
                     &mut agent_limits,
                     emitter,
-                    &limits.fault,
+                    &limits,
                     TurnOutcome::Finished,
                     loop_aborts,
                 );
@@ -8058,7 +8078,7 @@ impl Agent {
                 // instance's record standing.
                 persistence.record(context);
                 return LoopEnd {
-                    status: TerminalStatus::attributed(STATUS_COMPLETED, &limits.fault),
+                    status: TerminalStatus::attributed(STATUS_COMPLETED, &limits),
                     turns: turn + 1,
                     tokens: total_tokens,
                     cost: total_cost,
@@ -8102,7 +8122,7 @@ impl Agent {
                     )
                     .await
                     {
-                        return hook_failed(self, emitter, &limits.fault, failure, turn + 1);
+                        return hook_failed(self, emitter, &limits, failure, turn + 1);
                     }
                 }
                 (None, Some(pending)) => context.push(
@@ -8133,12 +8153,12 @@ impl Agent {
                 let _ = self.record_turn(
                     &mut agent_limits,
                     emitter,
-                    &limits.fault,
+                    &limits,
                     TurnOutcome::Progressed,
                     loop_aborts,
                 );
                 return LoopEnd {
-                    status: TerminalStatus::attributed(STATUS_COMPLETED, &limits.fault),
+                    status: TerminalStatus::attributed(STATUS_COMPLETED, &limits),
                     turns: turn + 1,
                     tokens: total_tokens,
                     cost: total_cost,
@@ -8159,13 +8179,13 @@ impl Agent {
             if let Some(breach) = self.record_turn(
                 &mut agent_limits,
                 emitter,
-                &limits.fault,
+                &limits,
                 TurnOutcome::Progressed,
                 loop_aborts,
             ) {
                 return self.stop_on_limit(
                     emitter,
-                    &limits.fault,
+                    &limits,
                     breach,
                     turn + 1,
                     total_tokens,
@@ -8192,7 +8212,7 @@ impl Agent {
         };
         self.stop_on_limit(
             emitter,
-            &limits.fault,
+            &limits,
             breach,
             turn_bound,
             total_tokens,
@@ -8208,9 +8228,8 @@ impl Agent {
     ///
     /// It does four things, in this order and for these reasons:
     ///
-    /// 1. **judges the outcome against the run's [fault latch](crate::fault)**, so that a turn
-    ///    which failed while gg was already broken is recorded as gg's — see
-    ///    [`attributed`](Self::attributed);
+    /// 1. **judges the outcome against the `run`**, so that a turn which failed while gg was
+    ///    already broken is recorded as gg's — see [`attributed`](Self::attributed);
     /// 2. **folds the outcome into this agent's [ceilings](AgentLimits)**, which is what makes the
     ///    consecutive count and the rate window statements about a complete turn sequence;
     /// 3. **publishes it** as a [`TurnOutcome`](GgTelemetryKind::TurnOutcome) event, so the judgement
@@ -8235,11 +8254,11 @@ impl Agent {
         &self,
         agent_limits: &mut AgentLimits,
         emitter: &Emitter,
-        fault: &FaultLatch,
+        run: &impl FaultedRun,
         outcome: TurnOutcome,
         loop_aborts: u32,
     ) -> Option<GgLimitBreach> {
-        let outcome = Self::attributed(outcome, fault);
+        let outcome = Self::attributed(outcome, run);
         let breach = agent_limits.record(outcome, &self.id);
         let (wire_outcome, error, error_type) = outcome.wire();
         emitter.emit(GgTelemetryKind::TurnOutcome {
@@ -8289,9 +8308,16 @@ impl Agent {
     /// being recorded as gg's. That run is disqualified either way and will never be scored, so the
     /// figure is one nobody reads — where the failure in the other direction is a defect of ours
     /// counted as the model's on a run somebody does.
-    fn attributed(outcome: TurnOutcome, fault: &FaultLatch) -> TurnOutcome {
+    ///
+    /// The question is put to a [`FaultedRun`] rather than to a latch for the reason the
+    /// [ending seam](attribution) gives, and it belongs here at least as much: this record is what
+    /// the [error ceilings](RunLimits) spend and what the published per-type error rollup counts, so
+    /// a turn attributed against a latch of somebody's own making would put gg's defect in the
+    /// model's column of the two figures a study reads most. A type-level guarantee that covered
+    /// only the ending would have been the weaker half of the pair.
+    fn attributed(outcome: TurnOutcome, run: &impl FaultedRun) -> TurnOutcome {
         match outcome {
-            TurnOutcome::Error(_) if fault.raised().is_some() => {
+            TurnOutcome::Error(_) if run.fault().raised().is_some() => {
                 TurnOutcome::Fatal(FatalFault::RunBroken)
             }
             outcome => outcome,
@@ -8314,8 +8340,8 @@ impl Agent {
     /// had, and the three new ones share [`STATUS_LIMIT_EXCEEDED`]. A caller that chose its own
     /// could disagree with the breach it is carrying.
     ///
-    /// It reads the run's `fault` latch on the way to its status like every other ending does, and
-    /// in practice never changes anything: no ceiling ends an agent on a failure status, and the
+    /// It reads the run's [fault latch](crate::fault) on the way to its status like every other
+    /// ending does, and in practice never changes anything: no ceiling ends an agent on a failure status, and the
     /// loop reads the latch at its boundary *before* it measures a ceiling anyway. It goes through
     /// the same seam regardless, because [an ending whose status is decided somewhere
     /// else](attribution) is what this exists to make impossible.
@@ -8323,7 +8349,7 @@ impl Agent {
     fn stop_on_limit(
         &self,
         emitter: &Emitter,
-        fault: &FaultLatch,
+        limits: &LimitsSetup,
         breach: GgLimitBreach,
         turns: usize,
         tokens: TokenCounts,
@@ -8332,7 +8358,7 @@ impl Agent {
         last_report: Option<&str>,
         last_text: Option<String>,
     ) -> LoopEnd {
-        let status = TerminalStatus::attributed(status_for_breach(breach.limit), fault);
+        let status = TerminalStatus::attributed(status_for_breach(breach.limit), limits);
         emitter.emit(log("warn", breach_message(&breach)));
         emitter.emit(GgTelemetryKind::LimitExceeded {
             breach: breach.clone(),
@@ -8362,7 +8388,7 @@ impl Agent {
     fn stop_on_cancel(
         &self,
         emitter: &Emitter,
-        fault: &FaultLatch,
+        limits: &LimitsSetup,
         turns: usize,
         tokens: TokenCounts,
         cost: Option<Cost>,
@@ -8370,7 +8396,7 @@ impl Agent {
         last_report: Option<&str>,
         last_text: Option<String>,
     ) -> LoopEnd {
-        let status = TerminalStatus::attributed(STATUS_CANCELED, fault);
+        let status = TerminalStatus::attributed(STATUS_CANCELED, limits);
         emitter.emit(log(
             "warn",
             format!(
@@ -8410,7 +8436,7 @@ impl Agent {
     fn stop_on_fault(
         &self,
         emitter: &Emitter,
-        fault: &FaultLatch,
+        limits: &LimitsSetup,
         diagnostic: &str,
         turns: usize,
         tokens: TokenCounts,
@@ -8419,10 +8445,10 @@ impl Agent {
         last_report: Option<&str>,
         last_text: Option<String>,
     ) -> LoopEnd {
-        // Stated as the ending every other path states it, against the very latch that is stopping
-        // this agent — rather than asserted, which would leave the one ending that is *always* gg's
-        // as the one ending nothing checks.
-        let status = TerminalStatus::attributed(STATUS_INTERNAL_ERROR, fault);
+        // Stated as the ending every other path states it, against the very run whose latch is
+        // stopping this agent — rather than asserted, which would leave the one ending that is
+        // *always* gg's as the one ending nothing checks.
+        let status = TerminalStatus::attributed(STATUS_INTERNAL_ERROR, limits);
         emitter.emit(log(
             "error",
             format!(
@@ -8498,6 +8524,43 @@ fn breach_message(breach: &GgLimitBreach) -> String {
             breach.observed, breach.threshold
         ),
     }
+}
+
+/// The operator's `error` line for a **model call that failed**, rendered from the ending it
+/// [really produced](TerminalStatus) rather than from the error on its own.
+///
+/// The error alone is not the whole account, and on one run in a thousand it is the wrong one. A
+/// provider that refused, a credential that was rejected, a reply gg could not parse: read from
+/// where the call stands, each of those is somebody else's failure, and that is what this line used
+/// to say. On a run gg had **already broken** it is not — the turn beside it is recorded as gg's and
+/// the agent ends `internal_error` — and a line that went on naming the provider left the operator's
+/// own record of the event disagreeing with both of them. That is the same defect the
+/// [attribution seam](attribution) closed for the record and for the [final text](ended_text), in
+/// the one place a human reads first.
+///
+/// It matters more here than the phrasing of a log line usually would, because this is the only
+/// ending a gg defect can stop an agent through that does **not** go via
+/// [`stop_on_fault`](Agent::stop_on_fault): the fault is met inside the call rather than at the
+/// boundary before it, so unless this line says gg broke, nothing on this agent's stream does — and
+/// an agent's own stream is where a console reader looking at that agent is standing.
+///
+/// The underlying error is still printed on both paths. It is what gg actually observed, and an
+/// operator debugging a defect that raced a request needs the symptom as much as the attribution.
+fn model_call_failed(
+    turn: usize,
+    status: TerminalStatus,
+    error_type: TurnErrorType,
+    err: &ModelError,
+) -> String {
+    if status == STATUS_INTERNAL_ERROR {
+        return format!(
+            "gg had already broken this run when model turn {turn} failed, so the agent ends \
+             `{STATUS_INTERNAL_ERROR}` — what the call itself reported ({}: {err}) is not \
+             evidence about the model.",
+            error_type.phrase(),
+        );
+    }
+    format!("model turn {turn} failed — {}: {err}", error_type.phrase())
 }
 
 /// This agent's [return value](LoopEnd::final_text) for a loop ending the model did **not** choose.
@@ -8816,13 +8879,13 @@ async fn fire_post_compact(
 fn hook_failed(
     agent: &Agent,
     emitter: &Emitter,
-    fault: &FaultLatch,
+    limits: &LimitsSetup,
     failure: HookFailure,
     turns: usize,
 ) -> LoopEnd {
     emitter.emit(log("error", failure.to_string()));
     LoopEnd {
-        status: TerminalStatus::attributed(STATUS_HOOK_ERROR, fault),
+        status: TerminalStatus::attributed(STATUS_HOOK_ERROR, limits),
         turns,
         tokens: TokenCounts::default(),
         cost: None,
@@ -10963,7 +11026,23 @@ fn session_ended(status: impl Into<String>) -> GgTelemetryKind {
 #[path = "agent.attribution.rs"]
 mod attribution;
 
-use attribution::TerminalStatus;
+use attribution::{FaultedRun, TerminalStatus};
+
+/// The run every agent task is cloned from is the run its endings are attributed against.
+impl FaultedRun for Orchestrator {
+    fn fault(&self) -> &FaultLatch {
+        &self.fault
+    }
+}
+
+/// The ceilings threaded into a turn loop carry the same run's latch — a clone of the
+/// orchestrator's, taken where the loop is set up — so an ending inside the loop asks the run
+/// through the value it already has in hand rather than reaching back out to the orchestrator.
+impl FaultedRun for LimitsSetup {
+    fn fault(&self) -> &FaultLatch {
+        &self.fault
+    }
+}
 
 #[path = "agent.code.rs"]
 mod code;

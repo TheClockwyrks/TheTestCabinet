@@ -255,10 +255,10 @@ impl AgentTeardown {
         self.orch
             .fault
             .in_agent(&self.agent.id, &self.agent.slot, &detail);
-        // Stated against the latch this teardown has just raised, exactly as the loop's own endings
-        // are — so the one ending that could safely have hard-coded gg's status is not the one
-        // ending that sits outside the [attribution seam](super::attribution).
-        let status = TerminalStatus::attributed(STATUS_INTERNAL_ERROR, &self.orch.fault);
+        // Stated against the run whose latch this teardown has just raised, exactly as the loop's
+        // own endings are — so the one ending that could safely have hard-coded gg's status is not
+        // the one ending that sits outside the [attribution seam](super::attribution).
+        let status = TerminalStatus::attributed(STATUS_INTERNAL_ERROR, &self.orch);
 
         let end = LoopEnd {
             status,

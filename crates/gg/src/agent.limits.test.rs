@@ -1159,15 +1159,16 @@ fn an_error_turn_is_the_models_until_gg_breaks_under_it() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
     let agent = Agent::root(ROOT_AGENT);
-    // Armed at one error, so the difference between the two halves is a stopped run.
-    let limits = setup_from(GgRunLimits {
+    // Armed at one error, so the difference between the two halves is a stopped run. The whole
+    // setup — not its ceilings alone — because a turn is judged against the *run* it was taken in,
+    // which is the value the loop hands the seam and the only thing that can answer for a latch.
+    let healthy = setup_from(GgRunLimits {
         max_consecutive_errors: Some(1),
         ..GgRunLimits::default()
-    })
-    .limits;
+    });
+    let limits = healthy.limits;
     let failed_call = TurnOutcome::Error(TurnErrorType::ProgramToolError);
 
-    let healthy = FaultLatch::default();
     let breach = agent.record_turn(
         &mut AgentLimits::new(limits),
         &emitter,
@@ -1180,8 +1181,15 @@ fn an_error_turn_is_the_models_until_gg_breaks_under_it() {
         "a program that let a call throw on a healthy run failed its own turn"
     );
 
-    let broken = FaultLatch::default();
-    broken.in_agent("agent-3", "worker", "the profile would not bind");
+    // A second run, identical but for its latch — not a clone of the first, whose latch is shared
+    // by construction and would retroactively break the healthy half beside it.
+    let broken = setup_from(GgRunLimits {
+        max_consecutive_errors: Some(1),
+        ..GgRunLimits::default()
+    });
+    broken
+        .fault
+        .in_agent("agent-3", "worker", "the profile would not bind");
     let breach = agent.record_turn(
         &mut AgentLimits::new(limits),
         &emitter,

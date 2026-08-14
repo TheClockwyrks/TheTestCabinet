@@ -1646,3 +1646,174 @@ async fn an_ending_taken_while_the_run_is_broken_is_ggs_rather_than_the_models()
         "and the turn agrees with it: one event, one account of whose failure it was"
     );
 }
+
+/// Drive a root agent against `client` on a run whose latch is in whatever state `fault` is in, and
+/// hand back its ending together with the `error` lines the operator was given.
+///
+/// Tool-calling mode, deliberately: every ending below dies before a program could run, and the
+/// cheapest way to say that is to drive an agent that has no sandbox at all.
+async fn drive_with_latch(
+    dir: &Path,
+    client: &dyn ModelClient,
+    fault: FaultLatch,
+    hooks: HooksSetup,
+) -> (LoopEnd, Vec<String>) {
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
+    let mut limits = no_limits(3);
+    limits.fault = fault;
+
+    let end = drive_hooked(
+        client,
+        dir,
+        &registry,
+        &emitter,
+        limits,
+        hooks,
+        EndingRole::Standard,
+    )
+    .await;
+
+    let errors = sink
+        .events()
+        .iter()
+        .filter_map(|event| match &event.kind {
+            GgTelemetryKind::Log { level, message } if level == "error" => Some(message.clone()),
+            _ => None,
+        })
+        .collect();
+    (end, errors)
+}
+
+/// **The line an operator reads about a failed model call is attributed like the record is.**
+///
+/// The third account of one event, after the turn and the ending: the `error` line the agent says
+/// out loud. It was rendered from the model error alone, so on a run gg had already broken an
+/// operator reading this agent's stream was told the provider failed — beside a turn recorded as
+/// `fatal` and an ending recorded as `internal_error`, neither of which is on the stream they are
+/// reading.
+///
+/// It is the *only* place that could tell them, which is what makes it worth a test rather than
+/// tidier phrasing: every other agent of a broken run stops at a turn boundary and says so through
+/// [`Agent::stop_on_fault`], while an agent whose own call failed under the fault returns from here
+/// and never reaches another boundary.
+#[tokio::test]
+async fn the_error_line_for_a_call_that_failed_on_a_broken_run_names_gg() {
+    let dir = TempDir::new().unwrap();
+    let fault = FaultLatch::default();
+    let (end, errors) = drive_with_latch(
+        dir.path(),
+        &FaultingClient {
+            fault: fault.clone(),
+        },
+        fault,
+        no_hooks(),
+    )
+    .await;
+
+    assert_eq!(
+        end.status, STATUS_INTERNAL_ERROR,
+        "the ending is gg's, which is the fact the line has to agree with"
+    );
+    assert_eq!(errors.len(), 1, "one failure, one line: {errors:?}");
+    assert!(
+        errors[0].contains(STATUS_INTERNAL_ERROR) && !errors[0].contains(STATUS_MODEL_ERROR),
+        "the operator must be told whose failure this was, in the same terms as the record: {}",
+        errors[0]
+    );
+    assert!(
+        errors[0].contains("the provider is unavailable"),
+        "and still told what gg actually observed, which is what a defect that raced a request is \
+         debugged from: {}",
+        errors[0]
+    );
+}
+
+/// **On a healthy run the same failure is still the model's, and says so plainly.**
+///
+/// The control the test above is read against, and the half a rule of this shape gets wrong in the
+/// other direction: a line that named gg whenever a call failed would move every provider outage
+/// into our column, which is the same defect mirrored.
+#[tokio::test]
+async fn the_error_line_for_a_call_that_failed_on_a_healthy_run_names_the_model() {
+    let dir = TempDir::new().unwrap();
+    let (end, errors) = drive_with_latch(
+        dir.path(),
+        &FailingClient {
+            mode: FailureMode::Fatal,
+        },
+        FaultLatch::default(),
+        no_hooks(),
+    )
+    .await;
+
+    assert_eq!(end.status, STATUS_MODEL_ERROR, "nothing of gg's broke");
+    assert_eq!(errors.len(), 1, "one failure, one line: {errors:?}");
+    assert!(
+        errors[0].starts_with("model turn 0 failed") && !errors[0].contains(STATUS_INTERNAL_ERROR),
+        "a provider that refused is the provider's failure, said without hedging: {}",
+        errors[0]
+    );
+}
+
+/// **A hook that broke on a run gg had already broken is gg's ending too.**
+///
+/// The [attribution seam](crate::agent::attribution) forces every ending to *name* the run it is
+/// attributed against; it cannot force that run to be the right one, so the endings that would
+/// otherwise report somebody else's failure are the ones worth pinning by test. This is the hook
+/// error, and it is the one of them a single test buys the most of: seven of the loop's hook sites
+/// end through this one exit. An operator's script exiting non-zero is a failure ending like a
+/// refused credential, and on a broken run it is no more what disqualified the run than the
+/// credential was — gg had stopped feeding that script.
+///
+/// The `final_text` assertion is what makes this the *hook's* ending rather than the fault check at
+/// the next turn boundary: the boundary stops an agent with whatever it last produced, and only
+/// [`hook_failed`](crate::agent::hook_failed) hands back the script's own failure.
+#[tokio::test]
+async fn a_hook_that_broke_on_a_broken_run_ends_the_agent_as_ggs() {
+    let dir = TempDir::new().unwrap();
+    let fault = FaultLatch::default();
+    fault.in_agent("agent-4", "reviewer", PANIC_SITE);
+    let (end, _) = drive_with_latch(
+        dir.path(),
+        &MockClient::new("mock/primary", vec![finish_call("f1", "done")]),
+        fault,
+        broken_start_hook(dir.path()),
+    )
+    .await;
+
+    assert_eq!(
+        end.status, STATUS_INTERNAL_ERROR,
+        "a script gg stopped feeding is not what disqualified this run"
+    );
+    assert!(
+        end.final_text
+            .as_deref()
+            .is_some_and(|text| text.contains("exited non-zero")),
+        "this must be the hook's own ending, not the turn boundary's: {:?}",
+        end.final_text
+    );
+}
+
+/// **On a healthy run the same broken hook is the operator's, and ends `hook_error`.**
+///
+/// The control: the attribution must be the latch's doing and not the hook path quietly reporting
+/// every failed script as gg's, which would hide a broken gate in the one status that says nobody
+/// should look at the configuration.
+#[tokio::test]
+async fn a_hook_that_broke_on_a_healthy_run_ends_the_agent_as_the_operators() {
+    let dir = TempDir::new().unwrap();
+    let (end, _) = drive_with_latch(
+        dir.path(),
+        &MockClient::new("mock/primary", vec![finish_call("f1", "done")]),
+        FaultLatch::default(),
+        broken_start_hook(dir.path()),
+    )
+    .await;
+
+    assert_eq!(
+        end.status, STATUS_HOOK_ERROR,
+        "nothing of gg's broke: the script that exited non-zero is the whole story"
+    );
+}

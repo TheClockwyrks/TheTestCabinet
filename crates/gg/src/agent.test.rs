@@ -215,6 +215,31 @@ fn stop_hook(command: &str) -> HooksSetup {
     }
 }
 
+/// A run in `dir` whose only hook is a **script** that runs when an agent opens its session — an
+/// [agent-start](GgHookEvent::AgentStart) hook — and exits non-zero.
+///
+/// The counterpart of [`stop_hook`] at the other end of the loop, and the cheapest way to drive a
+/// hook that *broke* rather than one that refused. Both halves of that sentence are load-bearing.
+/// It is a script because a **command** hook's non-zero exit is a block, and only a script's is a
+/// [failure](HookFailure) — a block on an event that cannot be blocked is a warning the run carries
+/// on past. And it is the opening event because that one fires before the first turn is taken, so
+/// the agent ends without a model call having happened at all.
+fn broken_start_hook(dir: &Path) -> HooksSetup {
+    let mut profile = GgAgentConfig::root();
+    profile.hooks = vec![GgHook {
+        event: GgHookEvent::AgentStart,
+        action: GgHookAction::Custom {
+            source: "#!/bin/sh\nexit 1\n".to_string(),
+        },
+        name: "the opening".to_string(),
+    }];
+    HooksSetup {
+        runtime: Arc::new(HookRuntime::resolve_agent(&profile, dir).unwrap()),
+        session: Arc::new(HookRuntime::default()),
+        agent: HookAgent::new(ROOT_AGENT_ID, ROOT_AGENT),
+    }
+}
+
 /// A newtype letting a [`ScriptedFactory`] hand out clones of **one** shared [`MockClient`], so a
 /// test can read its [`turns_taken`](MockClient::turns_taken) after the run.
 ///
@@ -7865,6 +7890,101 @@ async fn a_captured_run_pins_its_envelope_and_every_agent_it_created() {
         row_at < first_entry_at,
         "the child is in the table before its first pinned input, so an agent that never \
          reaches one is in the table too",
+    );
+}
+
+/// Drive a two-agent run whose **child fails**: the root delegates, the child's provider refuses
+/// every turn it takes, and the root goes on to finish.
+///
+/// The two tests below read the two records of that child's ending — its provenance row and the
+/// agent-tree telemetry — and both are here rather than in the fault file because nothing of gg's
+/// broke: a model error is the plainest failure an agent can have, which is exactly what makes it
+/// the right thing to ask the question with.
+async fn run_with_a_failing_child(dir: &Path, emitter: &Emitter) {
+    let inv = invocation(dir, subagent_set(1, 3, &["subagent"]));
+    let factory = ScriptedFactory::new()
+        .slot(ROOT_AGENT, |b| {
+            Box::new(MockClient::with_subagent_parent_script(&b.model_id))
+        })
+        .slot("subagent", |_| {
+            Box::new(FailingClient {
+                mode: FailureMode::Fatal,
+            })
+        });
+
+    assert_eq!(
+        run_with_factory(&inv, emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran,
+        "a subagent whose model refused it is a run that ran: the failure is the result",
+    );
+}
+
+/// **A failed agent's provenance row says it failed**, beside a finished one that says it did not.
+///
+/// The row is what a reconstruction and the run record read an agent's ending from, and it carries
+/// only the two states — so if it recorded [`Done`](GgAgentStatus::Done) for every agent that
+/// reached an ending, every failure gg has would be indistinguishable from a clean finish in the
+/// record: a child that died mid-task, a refused credential, and — since a gg defect ends an agent
+/// on a [failure status](is_failure_status) too — a node the [attribution seam](attribution) exists
+/// to make legible.
+#[tokio::test]
+async fn a_failed_agents_provenance_row_records_that_it_failed() {
+    let dir = TempDir::new().unwrap();
+    let emitter = Emitter::with_sink(
+        Some("run-failed-row".to_string()),
+        Box::new(CollectingSink::new()),
+    );
+
+    run_with_a_failing_child(dir.path(), &emitter).await;
+
+    let rows = journal_agent_table(&read_session_journal(dir.path()));
+    assert_eq!(
+        rows.iter()
+            .map(|row| (row.agent_id.as_str(), row.terminal_status))
+            .collect::<Vec<_>>(),
+        vec![
+            (ROOT_AGENT_ID, Some(GgAgentStatus::Done)),
+            ("agent-0", Some(GgAgentStatus::Failed)),
+        ],
+        "one run, two endings, and the table tells them apart",
+    );
+}
+
+/// **A failed agent is reported failed on the agent tree**, which is the same ending read from the
+/// live stream instead of from the record.
+///
+/// The console draws its tree from these transitions, so this is where an operator watching a run
+/// finds out that a node of it died — and it is deliberately asserted apart from the row above:
+/// they are two independent readings of one [terminal status](TerminalStatus), and the whole point
+/// of reading them off one predicate is that they cannot disagree.
+#[tokio::test]
+async fn a_failed_agent_is_reported_failed_on_the_agent_tree() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-failed-tree".to_string()), Box::new(sink.clone()));
+
+    run_with_a_failing_child(dir.path(), &emitter).await;
+
+    let events = sink.events();
+    let terminal_for = |agent: &str| {
+        events
+            .iter()
+            .filter(|event| event.agent_id.as_deref() == Some(agent))
+            .rev()
+            .find_map(|event| match event.kind {
+                GgTelemetryKind::AgentStatus { status, .. } => Some(status),
+                _ => None,
+            })
+    };
+    assert_eq!(
+        terminal_for("agent-0"),
+        Some(GgAgentStatus::Failed),
+        "the child's node ends red: its model refused every turn it took",
+    );
+    assert_eq!(
+        terminal_for(ROOT_AGENT_ID),
+        Some(GgAgentStatus::Done),
+        "and its spawner's does not — a child that failed is not a root that did",
     );
 }
 
