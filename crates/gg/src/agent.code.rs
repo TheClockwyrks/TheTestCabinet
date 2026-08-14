@@ -437,7 +437,7 @@ pub(super) async fn run_code_turn(
         .collect();
 
     let decision = match &outcome.result {
-        Err(error) => sandbox_failure_decision(error, &notices, emitter),
+        Err(error) => sandbox_failure_decision(code.language, error, &notices, emitter),
         Ok(result) => {
             let report = program_report(&outcome, result);
             // The class the guest already typed the throw with, rather than the bare fact that
@@ -489,7 +489,8 @@ fn sandbox_error_type(error: &SandboxError) -> TurnErrorType {
 /// * the committed **artifact**, gg's own **plumbing**, gg's own **preparation** of a source it had
 ///   already accepted, or the language's **compiler** failing to finish: fatal, fed back to nobody,
 ///   charged to nothing;
-/// * the **model's program**: the language's diagnostic, verbatim, under `Compiler error`;
+/// * the **model's program**: the language's diagnostic, verbatim, under `Compiler error`, with the
+///   arm's [library set](crate::sandbox::library_set) after it where its catalogue declares one;
 /// * a sandbox **ceiling**: the ceiling's own words under `Runtime error`.
 ///
 /// Lifted out of [`run_code_turn`] rather than left inline because the split between the compiler
@@ -498,6 +499,7 @@ fn sandbox_error_type(error: &SandboxError) -> TurnErrorType {
 /// nothing read it, produces no failure anywhere, and sends the model rewriting a program that was
 /// never wrong. A function is a thing a test can hold.
 fn sandbox_failure_decision(
+    language: GgProgramLanguage,
     error: &SandboxError,
     notices: &[CodeFeedback],
     emitter: &Emitter,
@@ -553,8 +555,16 @@ fn sandbox_failure_decision(
         // The language's own diagnostic, with nothing wrapped around it. `SandboxError::Prepare`'s
         // `Display` prefixes it ("the program did not compile: …"), which the `Compiler error`
         // heading already says, so the inner error is what goes out.
+        //
+        // The one thing that goes out beside it is the arm's library set, which is what the
+        // compiler measured the program against and is the reason no prompt carries a package
+        // inventory. It is part of the diagnostic rather than advice about it: a program refused
+        // for naming a package this arm does not carry is answered here or nowhere.
         error @ SandboxError::Prepare(prepare) => CodeTurnOutcome::Continue {
-            feedback: vec![CodeFeedback::compiler(prepare.to_string())],
+            feedback: vec![CodeFeedback::compiler(compiler_error_body(
+                language,
+                &prepare.to_string(),
+            ))],
             // Which of the four prepare failures it was, from the error itself rather than from a
             // blanket "did not compile": a syntax error is a typo, a semantic error is almost
             // always two programs in one reply, a compile error is a whole coherent program written
@@ -581,6 +591,25 @@ fn sandbox_failure_decision(
                 report: "its last program was stopped by a sandbox limit".to_string(),
             }
         }
+    }
+}
+
+/// The body of a `Compiler error` message: the arm's diagnostic, and the
+/// [library set](crate::sandbox::library_set) its catalogue declares.
+///
+/// The set is delivered here rather than in the system prompt because the mistake it prevents — a
+/// program written against a package this arm does not carry — is one the compiler **detects**, and
+/// a detectable fact is delivered when it is detected. A model that never writes an import never
+/// reads the set; the one that did reads it beside the diagnostic that made it relevant.
+///
+/// It goes after the diagnostic, separated by a blank line, so the compiler's own first line is
+/// still the first line of the message. An arm whose catalogue declares no set — the two whose
+/// programs get their runtime's own standard library and nothing else — is answered with the
+/// diagnostic alone, with no trailing blank line to say a section was omitted.
+fn compiler_error_body(language: GgProgramLanguage, diagnostic: &str) -> String {
+    match sandbox::library_set(sandbox::language(language).catalogue()) {
+        Some(libraries) => format!("{diagnostic}\n\n{libraries}"),
+        None => diagnostic.to_string(),
     }
 }
 
@@ -2466,6 +2495,10 @@ fn docs_close_event(key: Option<&str>, closed: &ViewsClosed) -> Option<GgTelemet
 /// A hit's brief is shown whole and nothing else is: choosing is what this list is for, and reading
 /// is what a documentation view is for.
 ///
+/// The [bootstrap](crate::bootstrap)'s opening program renders its module listings through this same
+/// function, so the first listing a model reads and the ones its own searches produce are one
+/// format rather than two.
+///
 /// # Why each line leads with the key rather than the name
 ///
 /// The identifier on a hit's line is the one the model is about to type into an
@@ -2474,15 +2507,15 @@ fn docs_close_event(key: Option<&str>, closed: &ViewsClosed) -> Option<GgTelemet
 /// [`name`](crate::docs::DocHit::name). A bare name is not an identity on an arm — several
 /// modules offer a `close`, and [`DocsRuntime::function`](crate::docs::DocsRuntime) resolves a bare
 /// one to whichever the catalogue happens to list first — so a list rendered by name would hand the
-/// model an ambiguous string and silently answer with the wrong entry's page. Every arm's system
-/// prompt already promises the opposite, telling a model to open a view *by the fully-qualified name
-/// the brief carries*; this is the line that carries it.
+/// model an ambiguous string and silently answer with the wrong entry's page. The system prompt
+/// already promises the opposite, telling a model to open a view *by the fully-qualified name the
+/// brief carries*; this is the line that carries it.
 ///
 /// The module is not repeated beside it for the same reason: the key already
 /// begins with the module, and a **type**'s [`module`](crate::docs::DocHit::module) is the joined
 /// list of every module whose functions mention it, which as a parenthesised suffix is a
 /// twelve-item blob rather than a fact worth reading.
-fn render_search_results(query: &DocSearchQuery, page: &DocSearch) -> String {
+pub(crate) fn render_search_results(query: &DocSearchQuery, page: &DocSearch) -> String {
     let mut asked: Vec<String> = Vec::new();
     if !query.query.trim().is_empty() {
         asked.push(format!("`{}`", query.query.trim()));
@@ -3153,9 +3186,10 @@ impl ToolApi for LoopToolApi {
             offset: query.offset,
             limit: query.limit,
         })?;
-        let opened = self
-            .context
-            .open_search_view(render_search_results(&query, &page));
+        let opened = self.context.open_search_view(
+            SEARCH_RESULTS_VIEW.to_string(),
+            render_search_results(&query, &page),
+        );
         Ok(DocSearchResult {
             page,
             opened: SandboxViewOpened {

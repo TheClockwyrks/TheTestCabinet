@@ -146,6 +146,52 @@ fn the_generated_documentation_program_is_a_purescript_module() {
     );
 }
 
+/// **The opening program is a PureScript module**, and it covers every module and every
+/// documentation key gg handed it.
+///
+/// gg prepares and runs this one before the agent's first turn, so what a model reads at the top of
+/// its window is a program that ran. What is asserted here is that gg wrote PureScript — a module
+/// header, two top-level arrays with their own signatures, a `do` block and two `for_`s — and that
+/// the search is the whole-module lookup rather than the default page of one.
+///
+/// The **imports** are the half no other arm has to write, and there are two of them here where the
+/// documentation program has one: a program naming `Gg.Docs.search` and importing only the view
+/// module would not compile.
+#[test]
+fn the_opening_program_is_a_purescript_module() {
+    let limit = crate::docs::MAX_SEARCH_LIMIT;
+    assert_eq!(
+        purescript().bootstrap_program(&["files", "views"], &["readFile"]),
+        format!(
+            "module Main where\n\
+             \n\
+             import Prelude\n\
+             \n\
+             import Data.Foldable (for_)\n\
+             import Effect (Effect)\n\
+             import Gg.Docs as Gg.Docs\n\
+             import Gg.Views as Gg.Views\n\
+             \n\
+             modules :: Array String\n\
+             modules =\n\
+             \x20 [ \"files\"\n\
+             \x20 , \"views\"\n\
+             \x20 ]\n\
+             \n\
+             functions :: Array String\n\
+             functions =\n\
+             \x20 [ \"readFile\"\n\
+             \x20 ]\n\
+             \n\
+             main :: Effect Unit\n\
+             main = do\n\
+             \x20 for_ modules \\path -> Gg.Docs.search \"\" \
+             {{ module: path, limit: {limit} }}\n\
+             \x20 for_ functions Gg.Views.openDocsView\n"
+        )
+    );
+}
+
 /// **The generated catalogue is this language's**, and it carries the whole surface.
 ///
 /// The provenance assertion is inside [`catalogue`](super::PureScript::catalogue) and panics, so
@@ -213,7 +259,7 @@ fn every_name_is_written_under_the_module_a_program_imports() {
     }
 }
 
-/// **PureScript's libraries are declared in its catalogue**, which is what the prompt renders.
+/// **PureScript's libraries are declared in its catalogue**, which is what a compile failure quotes back.
 ///
 /// The set is a build-time fact about the compiled tree — `import Data.Map` works because
 /// `build.sh` compiled `ordered-collections` into the tarball gg carries — so the sentence a model

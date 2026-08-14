@@ -10,8 +10,6 @@
 //!   without parsing it;
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
 //!   questions of, whose lexer is [`source`]'s;
-//! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
-//!   in C#'s syntax;
 //! * `packages/gg-sandbox-csharp/src/Gg/` — that SDK, and the XML documentation comments every word
 //!   a model reads is reflected out of;
 //! * `packages/gg-sandbox-csharp/Sources/` — the guest's C: the shell, the bridge, the trampolines;
@@ -162,9 +160,10 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, PromptDialect, spell,
+    ProgramLanguage, spell,
 };
-use crate::sandbox::operations::{VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::docs::MAX_SEARCH_LIMIT;
+use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
 #[path = "csharp.compile.rs"]
 pub(super) mod compile;
@@ -220,19 +219,6 @@ const SIGNATURES: &str = include_str!(concat!(
 
 /// The parsed catalogue, parsed once per process.
 static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
-
-/// Everything gg *says* about a C# program that is written in C#'s own syntax.
-///
-/// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is.
-/// Individual function spellings are **not** here and not in the templates either: every name and
-/// signature they quote is resolved from this language's catalogue when the template
-/// renders.
-static PROMPT: PromptDialect = PromptDialect {
-    system_template: include_str!("../../../templates/system-code.csharp.hbs"),
-    system_template_name: "system-code.csharp",
-    nothing_shown_template: include_str!("../../../templates/code-nothing-shown.csharp.hbs"),
-    nothing_shown_template_name: "code-nothing-shown.csharp",
-};
 
 /// The one instance of this language. A unit struct, so the `static` costs nothing and coerces
 /// straight to `&'static dyn ProgramLanguage`.
@@ -343,10 +329,6 @@ impl ProgramLanguage for CSharp {
         &healing::CSHARP_DIALECT
     }
 
-    fn prompt(&self) -> &'static PromptDialect {
-        &PROMPT
-    }
-
     /// [`Views.OpenFile("src/Program.cs");`](self::open_file_statement) — with the window as the
     /// call's own optional arguments, passed by name.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
@@ -358,6 +340,17 @@ impl ProgramLanguage for CSharp {
     /// program written to do one thing looks like.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
+    }
+
+    /// [Two `string[]`s and two `foreach` loops](self::bootstrap_program), with both calls resolved
+    /// from this language's own catalogue and the filters passed by name.
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+        bootstrap_program(
+            &spell(self, DOCS_SEARCH),
+            &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            modules,
+            docs,
+        )
     }
 
     /// One `public static` method returning `name` — because a C# code module is the **body of a
@@ -487,6 +480,50 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
         }
     };
     format!("{listed}foreach (var name in functions)\n{{\n    {open_docs_view}(name);\n}}\n")
+}
+
+/// The opening turn: one `string[]` of module paths listed in full, then one of the names opened as
+/// documentation views, each with a `foreach` over it.
+///
+/// Top-level statements, which on this arm are already a whole compilation unit, so nothing is
+/// wrapped around them and no `class` or `Main` is written.
+///
+/// Two arrays and two loops rather than one call per entry, because a granted surface is a dozen
+/// modules and a dozen calls written out is a shape a model would copy for its own work; collection
+/// expressions for the same reason
+/// [`open_docs_views_statement`] uses one.
+///
+/// The filters have **default values and are passed by name**, which is this language's idiom for
+/// optional arguments and what its SDK declares them with.
+///
+/// A failed call throws and nothing here catches it, which is this arm's failure model: a bootstrap
+/// that caught its own failure would be a worked example of swallowing one.
+pub(super) fn bootstrap_program(
+    search: &str,
+    open_docs_view: &str,
+    modules: &[&str],
+    docs: &[&str],
+) -> String {
+    let listed = |binding: &str, names: &[&str]| -> String {
+        match names.is_empty() {
+            true => format!("string[] {binding} = [];\n"),
+            false => {
+                let entries: Vec<String> = names
+                    .iter()
+                    .map(|name| format!("    {},", serde_json::Value::String((*name).to_string())))
+                    .collect();
+                format!("string[] {binding} =\n[\n{}\n];\n", entries.join("\n"))
+            }
+        }
+    };
+    let paths = listed("modules", modules);
+    let functions = listed("functions", docs);
+    format!(
+        "{paths}foreach (var path in modules)\n{{\n    \
+         {search}(\"\", module: path, limit: {MAX_SEARCH_LIMIT});\n}}\n\
+         \n\
+         {functions}foreach (var name in functions)\n{{\n    {open_docs_view}(name);\n}}\n"
+    )
 }
 
 #[cfg(test)]

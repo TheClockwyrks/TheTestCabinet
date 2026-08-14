@@ -161,6 +161,29 @@ fn a_documentation_program_with_no_names_is_still_a_program() {
     );
 }
 
+/// **The opening program is top-level statements**, and it covers every module and every
+/// documentation key gg handed it.
+///
+/// gg prepares and runs this one before the agent's first turn, so what a model reads at the top of
+/// its window is a program that ran. What is asserted here is that gg wrote C# — collection
+/// expressions, `foreach`, **optional arguments passed by name** — and that the search is the
+/// whole-module lookup rather than the default page of one.
+#[test]
+fn the_opening_program_is_top_level_statements() {
+    let limit = crate::docs::MAX_SEARCH_LIMIT;
+    assert_eq!(
+        csharp().bootstrap_program(&["files", "views"], &["ReadFile"]),
+        format!(
+            "string[] modules =\n[\n    \"files\",\n    \"views\",\n];\n\
+             foreach (var path in modules)\n{{\n    \
+                 Gg.Docs.Search(\"\", module: path, limit: {limit});\n}}\n\
+             \n\
+             string[] functions =\n[\n    \"ReadFile\",\n];\n\
+             foreach (var name in functions)\n{{\n    Gg.Views.OpenDocsView(name);\n}}\n"
+        )
+    );
+}
+
 /// **The isolation gate's module subject is a class body**, not this arm's documentation program.
 ///
 /// The seam's default subject is that program, and here it is not a module at all: top-level

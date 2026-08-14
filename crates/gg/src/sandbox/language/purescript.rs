@@ -11,8 +11,6 @@
 //!   module header for the names its namespace offers;
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
 //!   questions of: the fence tags, the two predicates, and the nesting-and-primes lexer;
-//! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
-//!   in PureScript's syntax;
 //! * `packages/gg-sandbox-purescript/src/Gg/**` — the hand-written SDK, compiled **into** the library
 //!   tree below, so the surface a model is shown and the surface its program is compiled against are
 //!   one artifact;
@@ -141,9 +139,10 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, PromptDialect, spell,
+    ProgramLanguage, spell,
 };
-use crate::sandbox::operations::{VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::docs::MAX_SEARCH_LIMIT;
+use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
 #[path = "purescript.compile.rs"]
 pub(super) mod compile;
@@ -169,19 +168,6 @@ const SIGNATURES: &str = include_str!(concat!(
 /// The parsed catalogue, parsed once per process.
 static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
 
-/// Everything gg *says* about a PureScript program that is written in PureScript's own syntax.
-///
-/// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is.
-/// Individual function spellings are **not** here and not in the templates either: every name and
-/// signature they quote is resolved from this language's catalogue when the template
-/// renders.
-static PROMPT: PromptDialect = PromptDialect {
-    system_template: include_str!("../../../templates/system-code.purescript.hbs"),
-    system_template_name: "system-code.purescript",
-    nothing_shown_template: include_str!("../../../templates/code-nothing-shown.purescript.hbs"),
-    nothing_shown_template_name: "code-nothing-shown.purescript",
-};
-
 /// The one instance of this language. A unit struct, so the `static` costs nothing and coerces
 /// straight to `&'static dyn ProgramLanguage`.
 pub(super) static PURESCRIPT: PureScript = PureScript;
@@ -197,6 +183,14 @@ impl ProgramLanguage for PureScript {
 
     fn display_name(&self) -> &'static str {
         GgProgramLanguage::PureScript.display_name()
+    }
+
+    /// A module is compiled separately from the program that uses it, so there is no import for
+    /// `purs` to check the two against and a program names both halves as strings.
+    /// [`Gg.Core.lib`](https://docs.testcabinet.ai/gg/languages/purescript/) hands back a `Maybe` of
+    /// whatever type the program says it is.
+    fn lib_access(&self, key: &str) -> String {
+        format!("Gg.Core.lib \"{key}\" \"<name>\"")
     }
 
     /// The `purs` compile and the `esbuild` bundle, in this preparation's own hard-linked tree — see
@@ -297,10 +291,6 @@ impl ProgramLanguage for PureScript {
         &healing::PURESCRIPT_DIALECT
     }
 
-    fn prompt(&self) -> &'static PromptDialect {
-        &PROMPT
-    }
-
     /// [`void (Gg.Views.openFile "src/Main.purs" {})`](self::open_file_statement) — the call, its
     /// options record, and the `void` that discards what it hands back.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
@@ -311,6 +301,17 @@ impl ProgramLanguage for PureScript {
     /// names](self::open_docs_views_statement), each iteration opening one documentation view.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
+    }
+
+    /// [A module whose `main` folds a `for_` over each of two arrays](self::bootstrap_program), with
+    /// both calls resolved from this language's own catalogue and both modules imported by name.
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+        bootstrap_program(
+            &spell(self, DOCS_SEARCH),
+            &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            modules,
+            docs,
+        )
     }
 }
 
@@ -449,6 +450,74 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
          \n\
          main :: Effect Unit\n\
          main = for_ functions {open_docs_view}\n"
+    )
+}
+
+/// The opening turn: a module whose `main` folds a `for_` over the module paths, listing each in
+/// full, and then a `for_` over the names it opens documentation views of.
+///
+/// A whole module, because that is what a PureScript program is — and the two arrays are top-level
+/// declarations carrying their own type signatures, for the reason
+/// [`open_docs_views_statement`]'s one is: a `let` of an empty
+/// array inside the `do` block would be an ambiguous type rather than a program.
+///
+/// Each module the program calls into is imported under its own full name, which is the name the
+/// documentation is keyed by and the expression a program writes. The filters are the fields of a
+/// **record** argument, which is this language's idiom for optional ones.
+///
+/// A failed call is thrown rather than returned, and nothing here catches it: that is this arm's
+/// failure model, and a bootstrap that handled its own failure would be a worked example of
+/// swallowing one.
+pub(super) fn bootstrap_program(
+    search: &str,
+    open_docs_view: &str,
+    modules: &[&str],
+    docs: &[&str],
+) -> String {
+    let listed = |names: &[&str]| -> String {
+        let mut entries = String::new();
+        for (index, name) in names.iter().enumerate() {
+            let separator = if index == 0 { '[' } else { ',' };
+            let name = serde_json::Value::String((*name).to_string());
+            entries.push_str(&format!("  {separator} {name}\n"));
+        }
+        if entries.is_empty() {
+            entries.push_str("  [\n");
+        }
+        entries
+    };
+    let paths = listed(modules);
+    let functions = listed(docs);
+    // Two calls, and on this arm each needs its own import line — unless the SDK ever files both
+    // under one module, in which case importing it twice would be the compile error rather than the
+    // program.
+    let docs_module = module_of(search);
+    let views_module = module_of(open_docs_view);
+    let mut imports = format!("import {docs_module} as {docs_module}\n");
+    if views_module != docs_module {
+        imports.push_str(&format!("import {views_module} as {views_module}\n"));
+    }
+    format!(
+        "module Main where\n\
+         \n\
+         import Prelude\n\
+         \n\
+         import Data.Foldable (for_)\n\
+         import Effect (Effect)\n\
+         {imports}\
+         \n\
+         modules :: Array String\n\
+         modules =\n\
+         {paths}  ]\n\
+         \n\
+         functions :: Array String\n\
+         functions =\n\
+         {functions}  ]\n\
+         \n\
+         main :: Effect Unit\n\
+         main = do\n\
+         \x20 for_ modules \\path -> {search} \"\" {{ module: path, limit: {MAX_SEARCH_LIMIT} }}\n\
+         \x20 for_ functions {open_docs_view}\n"
     )
 }
 

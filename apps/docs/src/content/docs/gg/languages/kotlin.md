@@ -57,10 +57,10 @@ so a program cannot import the compiler's internals or `kotlinx.coroutines`.
 
 `packages/gg-sandbox-kotlin/libraries.txt` declares in groups what a program may
 import, which is the Kotlin standard library as TeaVM is able to translate it.
-The catalogue's `libraries` section is reflected from that file and the prompt
-renders it, and the arm's tests hold the claim to the artifact: every declared
-package goes through the real Kotlin compiler and the real TeaVM, and a real
-declaration in each must compile and run.
+The catalogue's `libraries` section is reflected from that file, and the arm's
+tests hold the claim to the artifact: every declared package goes through the
+real Kotlin compiler and the real TeaVM, and a real declaration in each must
+compile and run.
 
 ## Build outputs
 
@@ -150,6 +150,10 @@ toolchain failure reaches the model as a notice that its program was not run,
 and the diagnostic goes to the operator. The bands are described under
 [compilation](/gg/languages/compilation/).
 
+Integer division by zero answers `0` rather than throwing, because the
+arithmetic underneath is JavaScript's, and a `Thread` a program starts is
+refused by the sandbox.
+
 ## Code modules
 
 A code module is an ordinary Kotlin file rather than a script, and `kt` is the
@@ -159,28 +163,25 @@ none is refused by name. The file's JVM class name and the name TeaVM exports it
 under must differ, or the exported namespace resolves to `undefined`. A module
 key is camelCase and ASCII-only, since a program names it as a string.
 
-## Prompt dialect
+## Prompt segment
 
-The templates name no function and no signature: every function spelling they
-quote is resolved from this arm's catalogue as the template renders. What they
-state:
+[`system-code.hbs`](/gg/prompts/) reaches this arm through a segment gated on
+`kotlin`, and `code-nothing-shown.hbs` through a clause naming `println`.
+Neither names a function or a signature: every spelling they quote is resolved
+from this arm's catalogue as the template renders. The segment states:
 
-- the whole response is a Kotlin program, and views are the only way a computed
-  value reaches the model;
-- the program is compiled twice before it runs, and a program either compiler
-  refuses is not executed;
-- the response is compiled as a script: no class, no `main`, no `package`;
-- `import` lines may be written anywhere and are lifted;
-- gg's surface is written fully qualified and needs no import, and a type
-  belongs to the module that produces it;
-- a required argument is positional and an optional one is a named default;
-- a failure is a `gg.core.ToolError` and Kotlin has no checked exceptions;
-- every call is synchronous, `kotlinx.coroutines` is absent and a `Thread` is
-  refused;
-- integer division by zero returns `0`, because the arithmetic underneath is
-  JavaScript's;
-- the library set is the Kotlin standard library as TeaVM translates it,
-  rendered from the catalogue's libraries section.
+- the reply is compiled as a script, so statements and declarations sit side by
+  side at the top level and an `import` written anywhere is lifted;
+- a failed call is a `gg.core.ToolError`, and Kotlin has no checked exceptions,
+  so one may escape or be caught;
+- an optional argument is a named default, and every gg name is written fully
+  qualified.
+
+The arm names `kotlinc` as its [checker](/gg/languages/compilation/), so the
+shared body states that a program is compiled before it runs, that one the
+compiler refuses is not executed, and that a call the run withheld compiles and
+fails when it runs. The library set is carried by a compile failure rather than
+by the prompt.
 
 ## Healing dialect
 

@@ -23,12 +23,14 @@ implementation untouched.
 | Module preparation | Turning a [code skill](/gg/skills/)'s or [code memory](/gg/memories/)'s file into the source that yields that module's namespace, bound at `lib.<key>`. |
 | Module file extensions | The extensions a skills directory spells `skill.<ext>` and `on-use.<ext>` with, most preferred first, never empty. |
 | A binding name rule | A skill's authored name mapped to an identifier this language parses. Non-empty, and stable for a given name. |
+| A `lib` access form | How a program reaches one export of a module bound at `lib.<key>`, quoted back in the reply to the read that bound it. A path by default; an arm that reaches a module by string supplies its own. |
 | A guest component | The prebuilt `.wasm` that evaluates prepared source, or nothing for an arm that compiles the program itself into a component. |
 | A signature catalogue | Every module, signature, argument, type and type member the model reads, reflected out of the arm's own SDK by the language's own documentation tool. |
 | A healing dialect | Which fence tags mean "this block is the program", which lines are certainly code and which certainly prose, and which bytes of a source are code rather than string or comment. |
-| A prompt dialect | The arm's `system-code.<id>.hbs` and `code-nothing-shown.<id>.hbs` templates. |
+| A prompt segment | The arm's gated segment of `system-code.hbs` and of `code-nothing-shown.hbs`, keyed by the arm's id. |
 | A file-view statement | The one statement that opens a view of a path, whole or windowed, terminated the way this language terminates a statement. |
 | A documentation-view program | A whole program that opens one documentation view per name, which is the on-use script of every built-in family skill. |
+| A bootstrap program | A whole program that searches each named module and opens the documentation of each named key, which gg runs to seed a fresh window. |
 | Healing fixtures | Replies the arm's own dialect must survive, so the delete-only invariant is re-earned per language. |
 
 ### Program preparation
@@ -43,8 +45,26 @@ of the two failures it hit. Both rules are set out on
 
 Naming a checker has three consequences. Every program of the arm is timed on
 the failing path as well as the succeeding one, the sandbox reports that time,
-and the arm's system prompt states the checker's name. An arm cannot name a
-compiler and go untimed, or be timed and leave its model with half a sentence.
+and the system prompt states the checker's name and the sections a checked arm's
+model needs. An arm cannot name a compiler and go untimed, or be timed and leave
+its model with half a sentence.
+
+### The prompt segment
+
+One `system-code.hbs` serves every arm, and an arm reaches it through a segment
+gated on its own id. A segment carries the shape of a reply, the failure model
+and the name that catches one, and how a call's optional arguments are written.
+A gate holds it to three paragraphs, so anything an arm could report at the
+moment it matters is reported there instead. See [prompts](/gg/prompts/).
+
+### The bootstrap program
+
+The program gg runs to seed a fresh window is the arm's own, generated from the
+module list and the documentation keys gg hands it. It is one program by the
+arm's own rules, meaning one module, one `main` or one translation unit where
+the language wants one, and it handles a failed call the way the arm's segment
+of the prompt says to. It is the model's first example of its own output, so it
+is written the way that arm's users write.
 
 ### Guest shapes
 
@@ -167,10 +187,10 @@ below.
    `GgProgramLanguage::ALL`, and give it an `ordinal()` arm. Neither can be
    forgotten: the `match` is exhaustive and each arm checks its own position
    against `ALL` in a `const` block.
-9. Implement the trait in `crates/gg/src/sandbox/language/<id>.rs`, and author
-   the two templates in `crates/gg/templates/`. Every call a template quotes is
-   a reference resolved from the arm's catalogue at render time, never a
-   hand-typed spelling.
+9. Implement the trait in `crates/gg/src/sandbox/language/<id>.rs`, and add the
+   arm's segment to `system-code.hbs` and to `code-nothing-shown.hbs` in
+   `crates/gg/templates/`. A segment names no catalogued function of any arm,
+   because the shared template is judged against every arm's spellings at once.
 10. Install the run-time toolchain, if the arm needs one, in
     `containers/gg-toolchains/Dockerfile`. It installs under
     `/opt/gg/toolchains` and nowhere else, is relocatable across the Debian- and
@@ -186,15 +206,18 @@ below.
     arm requires an annotation a reader choosing it must have. Both are a
     `Record` over the `GgProgramLanguage` union, so a missing key is a
     TypeScript error. The prompt editor and the reference document need nothing:
-    one discovers `system-code.*.hbs` from the directory, the other walks
+    one seeds the same code default whatever the language, the other walks
     `GgProgramLanguage::ALL`.
 12. Run the gates. The isolation gate drives the new arm's program and module
     steps sixteen ways and requires every artifact to carry its own input. The
     capability gate holds the new catalogue to gg's operations table operation
-    by operation. The prompt gate renders the new templates under every context
-    fixture and checks every required section, every configured value, the
-    ending call and every rule a program runs under. The prompt-resolution gate
-    refuses a hand-typed spelling or an unresolvable reference. The healing
+    by operation. The prompt gate renders `system-code.hbs` for the new arm
+    under every context fixture and checks every required section, every
+    configured value, the ending call, every rule a program runs under, and that
+    the render carries this arm's segment and no other arm's, within the
+    three-paragraph ceiling. The bootstrap gate prepares and runs the arm's
+    bootstrap program and requires the views it promised. The spelling gates
+    refuse a segment that names a catalogued function of any arm. The healing
     invariant re-earns delete-only over the new dialect's fixtures and over the
     shared corpus.
 

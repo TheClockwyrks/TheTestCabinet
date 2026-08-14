@@ -179,11 +179,11 @@ pub(super) fn compiler_version() -> &'static str {
 /// The Ruby version this arm's programs are written in, as Opal reports it.
 ///
 /// `#[cfg(test)]` because it is a **gate** rather than a runtime need, in the same sense
-/// [`OPERATIONS`](super::super::operations::OPERATIONS) is: the language level a program is
-/// written in is a sentence in [this arm's system prompt](super::PROMPT), which is prose and cannot
-/// be generated from a manifest — so what this exists for is the test that holds that sentence to
-/// what the embedded compiler actually reports. Nothing at run time asks; a compile reports which
-/// *compiler* read the program, which is [`compiler_version`] and a different fact.
+/// [`OPERATIONS`](super::super::operations::OPERATIONS) is: it is what the embedded compiler says
+/// about the language level it implements, held to a band by this arm's own compile gate. Nothing
+/// at run time asks, and nothing model-facing quotes it — the one system prompt names no version of
+/// any language, and a compile reports which *compiler* read the program, which is
+/// [`compiler_version`] and a different fact.
 #[cfg(test)]
 pub(super) fn ruby_version() -> &'static str {
     &manifest().ruby_version

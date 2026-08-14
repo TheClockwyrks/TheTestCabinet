@@ -9,8 +9,6 @@
 //!   namespace a **code module**'s declarations are moved into, in place;
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
 //!   questions of, whose lexer is also what reads a code module's top level;
-//! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
-//!   in Swift's syntax;
 //! * `packages/gg-sandbox-swift/` — the SDK a program calls, the shell it is compiled beside, the
 //!   curated library set, and the build that cuts them;
 //! * `swift.guest.tar.gz`, `swift.libraries.tar.gz`, `swift.adapter.wasm` and
@@ -141,9 +139,10 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, PromptDialect, spell,
+    ProgramLanguage, spell,
 };
-use crate::sandbox::operations::{VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::docs::MAX_SEARCH_LIMIT;
+use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
 #[path = "swift.compile.rs"]
 pub(super) mod compile;
@@ -169,19 +168,6 @@ const SIGNATURES: &str = include_str!(concat!(
 
 /// The parsed catalogue, parsed once per process.
 static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
-
-/// Everything gg *says* about a Swift program that is written in Swift's own syntax.
-///
-/// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is.
-/// Individual function spellings are **not** here and not in the templates either: every name and
-/// signature they quote is resolved from this language's catalogue when the template
-/// renders.
-static PROMPT: PromptDialect = PromptDialect {
-    system_template: include_str!("../../../templates/system-code.swift.hbs"),
-    system_template_name: "system-code.swift",
-    nothing_shown_template: include_str!("../../../templates/code-nothing-shown.swift.hbs"),
-    nothing_shown_template_name: "code-nothing-shown.swift",
-};
 
 /// The one instance of this language. A unit struct, so the `static` costs nothing and coerces
 /// straight to `&'static dyn ProgramLanguage`.
@@ -290,10 +276,6 @@ impl ProgramLanguage for Swift {
         &healing::SWIFT_DIALECT
     }
 
-    fn prompt(&self) -> &'static PromptDialect {
-        &PROMPT
-    }
-
     /// [`try views.openFile("src/main.swift")`](self::open_file_statement) — with the window as the
     /// call's own two optional arguments, passed by label.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
@@ -304,6 +286,17 @@ impl ProgramLanguage for Swift {
     /// opening one documentation view.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
+    }
+
+    /// [Two arrays and two `for` loops, every call written with `try`](self::bootstrap_program),
+    /// with both calls resolved from this language's own catalogue.
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+        bootstrap_program(
+            &spell(self, DOCS_SEARCH),
+            &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            modules,
+            docs,
+        )
     }
 
     /// One `func` returning `name` — because a Swift code module is a file of **declarations** and a
@@ -418,6 +411,48 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
         false => format!("let functions = [\n{},\n]\n", entries.join(",\n")),
     };
     format!("{listed}for name in functions {{\n    try {open_docs_view}(name)\n}}\n")
+}
+
+/// The opening turn: one array of module paths listed in full, then one of the names opened as
+/// documentation views, each with a `for` over it and every call written with `try`.
+///
+/// Two arrays and two loops rather than one call per entry, because a granted surface is a dozen
+/// modules and a dozen calls written out is a shape a model would copy for its own work. `let`
+/// rather than `var`, and a type annotation on an empty array, for the reasons
+/// [`open_docs_views_statement`] gives.
+///
+/// The filters carry **argument labels** and take default values, which is this language's idiom for
+/// optional arguments. The search's page is bound to `_` rather than dropped, because a result this
+/// program does not read is a warning Swift is right to make and a discard the language spells out.
+///
+/// Every call is fallible, so every one is written with `try` and nothing catches: that is this
+/// arm's failure model, and a bootstrap that swallowed its own failure would be a worked example of
+/// doing so.
+pub(super) fn bootstrap_program(
+    search: &str,
+    open_docs_view: &str,
+    modules: &[&str],
+    docs: &[&str],
+) -> String {
+    let listed = |binding: &str, names: &[&str]| -> String {
+        let entries: Vec<String> = names
+            .iter()
+            .map(|name| format!("    {}", serde_json::Value::String((*name).to_string())))
+            .collect();
+        match entries.is_empty() {
+            true => format!("let {binding}: [String] = []\n"),
+            false => format!("let {binding} = [\n{},\n]\n", entries.join(",\n")),
+        }
+    };
+    let paths = listed("modules", modules);
+    let functions = listed("functions", docs);
+    format!(
+        "{paths}for path in modules {{\n    \
+             _ = try {search}(\"\", module: path, limit: {MAX_SEARCH_LIMIT})\n\
+         }}\n\
+         \n\
+         {functions}for name in functions {{\n    try {open_docs_view}(name)\n}}\n"
+    )
 }
 
 #[cfg(test)]

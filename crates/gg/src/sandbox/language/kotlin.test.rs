@@ -148,6 +148,33 @@ fn the_generated_documentation_program_is_a_kotlin_script() {
     );
 }
 
+/// **The opening program is a Kotlin script**, and it covers every module and every documentation
+/// key gg handed it.
+///
+/// gg prepares and runs this one before the agent's first turn, so what a model reads at the top of
+/// its window is a program that ran. What is asserted here is that gg wrote Kotlin — `listOf`,
+/// `for … in`, no terminators, every gg name written in full — that the filters are **default
+/// arguments passed by name**, and that the search is the whole-module lookup rather than the
+/// default page of one.
+#[test]
+fn the_opening_program_is_a_kotlin_script() {
+    let limit = crate::docs::MAX_SEARCH_LIMIT;
+    assert_eq!(
+        kotlin().bootstrap_program(&["files", "views"], &["readFile"]),
+        format!(
+            "val modules = listOf(\n    \"files\",\n    \"views\"\n)\n\
+             for (path in modules) {{\n    \
+                 gg.docs.search(\"\", module = path, limit = {limit})\n\
+             }}\n\
+             \n\
+             val functions = listOf(\n    \"readFile\"\n)\n\
+             for (name in functions) {{\n    \
+                 gg.views.openDocsView(name)\n\
+             }}\n"
+        )
+    );
+}
+
 /// **The generated catalogue is this language's**, and it carries the whole surface in Kotlin's own
 /// notation.
 ///
@@ -203,7 +230,7 @@ fn the_generated_catalogue_is_this_languages() {
     );
 }
 
-/// **Kotlin's libraries are declared in its catalogue**, which is what the prompt renders.
+/// **Kotlin's libraries are declared in its catalogue**, which is what a compile failure quotes back.
 ///
 /// The set is a fact about what TeaVM can translate rather than about anything gg installs, so the
 /// sentence a model reads is reflected from `packages/gg-sandbox-kotlin/libraries.txt` — the file the

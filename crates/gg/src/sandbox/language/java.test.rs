@@ -129,6 +129,35 @@ fn the_generated_documentation_program_is_java_statements() {
     );
 }
 
+/// **The opening program is Java statements**, and it covers every module and every documentation
+/// key gg handed it.
+///
+/// gg prepares and runs this one before the agent's first turn, so what a model reads at the top of
+/// its window is a program that ran. What is asserted here is that gg wrote Java — `List.of`,
+/// enhanced `for`s, terminators — and that the filters go in through the SDK's own **builder**,
+/// which is what this arm has in place of keyword arguments. The builder's own name is taken off the
+/// front of the search rather than written down beside it, because it is nested in the class the
+/// search is a method of.
+#[test]
+fn the_opening_program_is_java_statements() {
+    let limit = crate::docs::MAX_SEARCH_LIMIT;
+    assert_eq!(
+        java().bootstrap_program(&["files", "views"], &["readFile"]),
+        format!(
+            "List<String> modules = List.of(\n    \"files\",\n    \"views\"\n);\n\
+             for (String path : modules) {{\n    \
+                 gg.docs.Docs.search(\"\", \
+                 new gg.docs.Docs.SearchFilters().module(path).limit({limit}));\n\
+             }}\n\
+             \n\
+             List<String> functions = List.of(\n    \"readFile\"\n);\n\
+             for (String name : functions) {{\n    \
+                 gg.views.Views.openDocsView(name);\n\
+             }}\n"
+        )
+    );
+}
+
 /// **The generated catalogue is this language's**, and it carries the whole surface.
 ///
 /// The provenance assertion is inside [`catalogue`](super::Java::catalogue) and panics, so reaching
@@ -214,7 +243,7 @@ fn a_name_is_qualified_by_its_module_and_a_member_names_its_receiver() {
     );
 }
 
-/// **Java's libraries are declared in its catalogue**, which is what the prompt renders.
+/// **Java's libraries are declared in its catalogue**, which is what a compile failure quotes back.
 ///
 /// The set is a fact about what TeaVM can translate rather than about anything gg installs, so the
 /// sentence a model reads is reflected from `packages/gg-sandbox-java/libraries.txt` — the file the

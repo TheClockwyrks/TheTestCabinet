@@ -14,8 +14,6 @@
 //!   bound from;
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
 //!   questions of: the fence tags, the two predicates, and the mask;
-//! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
-//!   in this language's syntax;
 //! * [`COMPONENT`] — the `componentize-js` guest, built by `gg-artifact-typescript`;
 //! * the **signature catalogue** — every signature the prompt renders and a documentation view
 //!   answers with, reflected out of that guest's SDK by `packages/gg-sandbox/signatures.sh` and
@@ -74,9 +72,10 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, PromptDialect, spell,
+    ProgramLanguage, spell,
 };
-use crate::sandbox::operations::{VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::docs::MAX_SEARCH_LIMIT;
+use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
 #[path = "typescript.prepare.rs"]
 pub(super) mod prepare;
@@ -128,20 +127,6 @@ const SIGNATURES: &str = include_str!(concat!(
 
 /// The parsed catalogue, parsed once per process.
 static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
-
-/// Everything gg *says* about a TypeScript program that is written in TypeScript's own syntax.
-///
-/// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is,
-/// and are named for the language they belong to so a second one is a second file rather than a
-/// branch inside this one. Individual function spellings are **not** here, and not in the templates
-/// either: every name and signature they quote is resolved from this language's catalogue
-/// when the template renders, so there is one copy of each rather than two that have to agree.
-static PROMPT: PromptDialect = PromptDialect {
-    system_template: include_str!("../../../templates/system-code.typescript.hbs"),
-    system_template_name: "system-code.typescript",
-    nothing_shown_template: include_str!("../../../templates/code-nothing-shown.typescript.hbs"),
-    nothing_shown_template_name: "code-nothing-shown.typescript",
-};
 
 /// The one instance of this language. A unit struct, so the `static` costs nothing and coerces
 /// straight to `&'static dyn ProgramLanguage`; everything it "holds" is module-scope `const` and
@@ -257,10 +242,6 @@ impl ProgramLanguage for TypeScript {
         &healing::TYPESCRIPT_DIALECT
     }
 
-    fn prompt(&self) -> &'static PromptDialect {
-        &PROMPT
-    }
-
     /// [`gg.views.openFile("src/main.ts");`](self::open_file_statement), with the call's name resolved
     /// from this language's own catalogue rather than written out here.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
@@ -271,6 +252,17 @@ impl ProgramLanguage for TypeScript {
     /// it](self::open_docs_views_statement), each iteration opening one documentation view.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
+    }
+
+    /// [Two `const` arrays and two `for…of` loops](self::bootstrap_program), with both calls
+    /// resolved from this language's own catalogue.
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+        bootstrap_program(
+            &spell(self, DOCS_SEARCH),
+            &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            modules,
+            docs,
+        )
     }
 }
 
@@ -353,6 +345,40 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
         .collect();
     format!(
         "const functions = [\n{entries}];\nfor (const name of functions) {{\n  \
+         {open_docs_view}(name);\n}}\n"
+    )
+}
+
+/// The opening turn: one array of module paths listed in full, then one array of names opened as
+/// documentation views, each with a `for…of` over it.
+///
+/// Two arrays and two loops rather than one call per entry, because a granted surface is a dozen
+/// modules and a dozen calls written out is a shape a model would copy for its own work. The module
+/// filter is passed as a **trailing options object**, which is this syntax's idiom for optional
+/// arguments and the one the system prompt teaches; the loop variable is `path` rather than `module`
+/// so that nothing here shadows a name the guest's scope may already carry.
+///
+/// A failed call throws and is left to, which is this arm's failure model: a bootstrap that caught
+/// its own failure would be a worked example of swallowing one.
+pub(super) fn bootstrap_program(
+    search: &str,
+    open_docs_view: &str,
+    modules: &[&str],
+    docs: &[&str],
+) -> String {
+    let listed = |names: &[&str]| -> String {
+        names
+            .iter()
+            .map(|name| format!("  {},\n", serde_json::Value::String((*name).to_string())))
+            .collect()
+    };
+    let paths = listed(modules);
+    let functions = listed(docs);
+    format!(
+        "const modules = [\n{paths}];\nfor (const path of modules) {{\n  \
+         {search}(\"\", {{ module: path, limit: {MAX_SEARCH_LIMIT} }});\n}}\n\
+         \n\
+         const functions = [\n{functions}];\nfor (const name of functions) {{\n  \
          {open_docs_view}(name);\n}}\n"
     )
 }

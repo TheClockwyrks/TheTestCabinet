@@ -28,8 +28,8 @@ never disagree.
 | C++ | `clang++` |
 | C# | `csc` |
 
-An arm that names a checker also names it in its own system prompt, so a model
-told its program is checked is told by what. What the prompt states is that the
+An arm that names a checker has it interpolated into the system prompt, so a
+model told its program is checked is told by what. What the prompt states is that the
 program is compiled, rather than that its types are checked: `tsc` checks types
 and `opal` checks grammar, and both are checkers. The same answer decides
 whether the sandbox times the preparation.
@@ -209,6 +209,22 @@ after while the turn stays in the transcript. The size of a compiler's opinion
 is therefore decided in exactly one place, the arm that renders it, and the
 shared bound in `sandbox/language/diagnostics.rs` is what the arms decide it
 with.
+
+A compile failure carries one thing beside the diagnostic. Where the arm's
+catalogue declares a library set, `diagnostics::library_set` renders it group by
+group from that catalogue and the message ends with it, after a blank line: it
+is what the compiler measured the program against, and it is the reason no
+[prompt](/gg/prompts/) carries a package inventory. An arm whose catalogue
+declares no set is answered with the diagnostic alone.
+
+That set is the one thing this module renders rather than bounds. Everything
+else it touches is a list of mistakes, which grows with the program — one
+misremembered name at fifty call sites is fifty diagnostics — and the bound is
+what stops a model paying for all fifty. A library set does not grow with the
+program: it is a fixed fact about the arm, the same size on a program with one
+mistake and on a program with a hundred. Cutting it would also be the one cut
+here that lies, because a dropped library name reads as a library the arm does
+not have.
 
 Two helpers cover the two shapes an arm holds its diagnostics in.
 

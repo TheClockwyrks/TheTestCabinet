@@ -919,8 +919,8 @@ const PROBES: [(&str, &str); 22] = [
 /// and false of the call is a claim a model pays for.
 const IDIOMS: [&str; 15] = [
     "System.out.println(\"  padded  \".strip());",
-    // The workaround the prompt offers for the absent `String.lines()`, held to the artifact so the
-    // advice is measured rather than plausible.
+    // The workaround for the absent `String.lines()`, held to the artifact so the alternative this
+    // arm's docs record is measured rather than plausible.
     "System.out.println(String.valueOf(\"a\\nb\".split(\"\\n\").length));",
     "System.out.println(\"ab\".repeat(2));",
     "System.out.println(String.valueOf(\" \".isBlank()));",
@@ -946,8 +946,8 @@ const IDIOMS: [&str; 15] = [
 /// a model splitting a shell command's output, and `java.lang` is declared reachable.
 ///
 /// Each costs the model a turn and nothing else — the diagnostic arrives at the model's own line on
-/// the turn that wrote it — which is why the prompt and the docs name these by name rather than
-/// leaving "a large subset" to be discovered.
+/// the turn that wrote it — which is why this arm's docs name these by name rather than leaving
+/// "a large subset" to be discovered.
 const ABSENT: [&str; 4] = [
     "System.out.println(java.security.MessageDigest.getInstance(\"SHA-256\").getAlgorithm());\n",
     "System.out.println(String.valueOf(java.util.random.RandomGenerator.getDefault().nextInt(5)));\n",

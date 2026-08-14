@@ -29,10 +29,13 @@ made.
 An image is a file view of an image file, whose item carries the picture. A view
 is the only way a picture reaches a code agent's window.
 
-There is at most one search view, keyed by one constant selector, and every
-search replaces it. `gg.views.current` reports it as a text view, which is what
-it behaves like at that boundary: composed text under one label, closed by
-`gg.views.close`.
+A search view carries a selector like any other view, and a search the agent
+itself ran is keyed under one constant selector, so every such search replaces
+the last. The selector is an argument rather than a constant because [the
+opening turn](#the-opening-turn) keys one listing per module and each has to
+survive the next. `gg.views.current` reports a search view as a text view, which
+is what it behaves like at that boundary: composed text under one label, closed
+by `gg.views.close`.
 
 ## Opening and closing views
 
@@ -189,12 +192,36 @@ model to read documentation for a function it did not want.
 ## The opening turn
 
 The system prompt names the capability modules and names no function, so a fresh
-code-mode window is seeded with one synthesized assistant program, written in
-that agent's own language, plus the documentation views that program opened. The
-program opens the documentation for `gg.docs.search` and
-`gg.views.openDocsView`, the two calls discovery itself is made of.
+code-mode window is seeded with one program written in that agent's own
+language, which gg then runs. Its source is pushed as the assistant message and
+the views the window opens on are the ones its own calls placed, so the model's
+first example of a well-formed reply is a program that provably ran.
+
+The program makes two kinds of call. It searches each capability module the
+agent was granted, as an exact whole-module lookup, which leaves one search view
+per module listing every function that module offers with its one-line brief.
+It also opens the documentation of `gg.docs.search` and
+`gg.views.openDocsView`, the two calls discovery itself is made of. Between them
+the agent opens knowing every function it may call and how to read any of them
+in full.
+
+Each module's listing is its own view, keyed under that module's own path, so
+one listing supersedes only a re-listing of the same module. The agent's own
+searches keep the single results selector and keep superseding each other.
+
+The program runs against the agent's real capability grants and sandbox limits,
+with no deadline and no code modules, and it is prepared through a cache keyed
+by language and source so a run with a dozen agents compiles it once. It is not
+an agent turn: it consumes no turn index, no usage and no cost, records no
+program-library entry, and emits no turn or execution event.
 
 Seeding happens once, on a fresh window, immediately after the build prompt and
 before every other opening step. A window carried across an `exec` succession or
-a history-keeping `fork` is not re-seeded. A window that got no views gets no
-program either.
+a history-keeping `fork` is not re-seeded.
+
+A failure to run it is gg's, not the model's. A program that fails to prepare,
+a sandbox error, an execution the program itself reports as failed, a refused
+call, or a run that places no view at all ends the agent as an internal error:
+the fault latch is raised, the detail goes to the operator's `error` stream, and
+the run stops rather than opening a window the prompt describes and the session
+does not have.

@@ -189,7 +189,8 @@ use crate::persistence::{self, AgentPersistence, PersistenceSetup};
 use crate::prompts::{
     self, AssignedIssueView, AutoloadView, BoardView, CodeHeadingView, EndingView, FixBriefContext,
     MemoriesView, MergeBriefContext, ModuleView, NumberedItem, ReadFileView, ReviewBriefContext,
-    ReviewChangesView, ReviewRecordView, ShellView, SpawnableAgentView, SystemContext, TasksView,
+    ReviewChangesView, ReviewRecordView, ShellView, SkillView, SpawnableAgentView, SystemContext,
+    TasksView,
 };
 use crate::sandbox::{
     self, OperationId, PROGRAM_CALL_ID_PREFIX, ProgramResult, SandboxError, SandboxLimits,
@@ -6399,18 +6400,38 @@ impl Agent {
             Opening::Carried { .. } => true,
         };
 
-        // The bootstrap turn: on a code agent's fresh window, a synthesized program that opens the
-        // documentation of the calls discovery itself is made of, and the views it opened. First of
-        // every seeding step, because the prompt names no function and this is the only thing that
-        // hands the model its way in — see `crate::bootstrap` for why it is a program, why it is
-        // here rather than three steps later, and why it carries only the bootstrap calls.
+        // The bootstrap turn: on a code agent's fresh window, a program gg writes in this agent's
+        // language and **runs** — listing every module the agent was granted and opening the
+        // documentation of the calls discovery itself is made of — and the views its own calls
+        // placed. First of every seeding step, because the prompt names no function and this is the
+        // only thing that hands the model its way in; see `crate::bootstrap` for why it is a program
+        // that runs, what it carries, and why a failure of it is gg's rather than the model's.
         if !carried {
-            let placed = crate::bootstrap::seed_bootstrap(context, &docs);
-            if placed > 0 {
-                emitter.emit(log(
-                    "debug",
-                    format!("opened {placed} documentation view(s) to bootstrap discovery"),
-                ));
+            match crate::bootstrap::seed_bootstrap(
+                context,
+                &mut docs,
+                crate::bootstrap::BootstrapAgent {
+                    capabilities: &granted_capabilities,
+                    operations: &granted_operations,
+                    role: ending_role,
+                    limits: code.limits,
+                    doc_view_types: code.doc_view_types,
+                },
+            )
+            .await
+            {
+                Ok(placed) => {
+                    if placed > 0 {
+                        emitter.emit(log(
+                            "debug",
+                            format!("opened {placed} view(s) to bootstrap discovery"),
+                        ));
+                    }
+                }
+                // gg wrote the program, granted the scope it ran under and implements every call in
+                // it, so nothing here is the model's to recover from: the run ends as an internal
+                // error rather than opening a model on a window that never got its surface.
+                Err(detail) => return setup_broke(self, emitter, &limits, turn_base, detail),
             }
         }
 
@@ -10456,6 +10477,30 @@ pub(crate) fn module_views(
         .collect()
 }
 
+/// The **paths** of the modules this agent binds, in the prompt's own order — [`module_views`] with
+/// everything but the identifier dropped.
+///
+/// It exists so the [bootstrap](crate::bootstrap) searches exactly the set the prompt publishes,
+/// by the name the prompt shows. The two must be one answer: the prompt tells the model these paths
+/// are where its surface is filed, and the opening turn is what fills that in — a bootstrap that
+/// derived its own list could list a module the prompt did not name, or miss one it did, and in
+/// either direction the model's first window would contradict its own instructions.
+///
+/// A path rather than gg's module id because the path is what a *search* takes and what the model
+/// reads: the module filter accepts either, but a listing keyed by an id the model never saw would
+/// be a view it could not match to anything.
+pub(crate) fn module_paths(
+    capabilities: &[String],
+    operations: &[OperationId],
+    role: EndingRole,
+    program_language: GgProgramLanguage,
+) -> Vec<String> {
+    module_views(capabilities, operations, role, program_language)
+        .into_iter()
+        .map(|module| module.path)
+        .collect()
+}
+
 /// How an agent answers a turn, as the record spells it: `responses_as_code` when the
 /// [capability](CAPABILITY_RESPONSES_AS_CODE) is on for its profile, `tool_calling` otherwise.
 ///
@@ -10701,9 +10746,17 @@ fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
     prompts::render_system(
         &SystemContext {
             responses_as_code,
-            // Which language's responses-as-code template renders, and therefore which arm's module
-            // paths it names. `None` selects the tool-calling arm.
-            language: program_language,
+            // The one language segment of the shared code template that renders, and what that
+            // segment may say about itself. `None` on the tool-calling arm, which has no program
+            // language at all.
+            //
+            // Three fields and no prose: the **id** is what a segment is gated on, the
+            // **display name** is what a sentence calls the language, and the **checker** is the
+            // one fact a segment's own gating turns on that the id does not already answer — an arm
+            // whose programs are checked before they run and one whose are not have different
+            // things to tell a model about a call it may not make. A sentence a model reads lives
+            // in a `.hbs` file, so nothing here carries one.
+            language: program_language.map(prompts::language_view),
             // The modules the surface is divided into — only under responses-as-code, where a
             // program reaches them by path and a model has to be told where to start looking; the
             // tool-calling path puts the tools in the request instead.
@@ -10738,7 +10791,7 @@ fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
             fences_are_stripped,
             read_file,
             shell,
-            skills: skills.prompt_entries(),
+            skills: skill_views(skills, program_language),
             // The strategy decides what the section says: what memory *is* on this run differs
             // enough between the three (all of it in the window, an index over it, or nothing
             // until you search) that they are three paragraphs rather than one with holes.
@@ -10806,6 +10859,43 @@ fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
         // A profile may override the whole prompt template; `None` uses the built-in one.
         profile.system_prompt_template.as_deref(),
     )
+}
+
+/// The available [skills](crate::skills) as the system prompt lists them: each one's name and
+/// description, plus **what reading it will do** for this agent.
+///
+/// The two flags are the whole reason this is assembled here rather than taken straight off the
+/// runtime. Reading a skill does up to three things — it pins the prose, it binds code at `lib`, it
+/// runs an on-use script — and gg knows, per skill, which of the three apply. A prompt that listed
+/// all three under "if it carries…" would describe two branches that are false of the skill in front
+/// of it; with the flags, `{{#each skills}}` emits only the branch that is true.
+///
+/// The answer is **per language**, which is why it cannot be settled where the library is loaded: a
+/// skill authored in Python carries code and offers a TypeScript agent none, so the flag is
+/// `skill.code(language)` and not `skill.has_code()`. On the tool-calling arm both are false —
+/// there is no program for a `lib` to be bound into and no on-use script to run after one.
+fn skill_views(
+    skills: &SkillsRuntime,
+    program_language: Option<GgProgramLanguage>,
+) -> Vec<SkillView> {
+    // An agent that is offered no skills is listed none, which is what makes the prompt's whole
+    // Skills section vanish rather than render an empty list.
+    if !skills.offers_skills() {
+        return Vec::new();
+    }
+    let language = program_language.map(crate::sandbox::language);
+    skills
+        .library()
+        .skills()
+        .iter()
+        .map(|skill| SkillView {
+            name: skill.name().to_string(),
+            description: skill.description().to_string(),
+            carries_code: language.is_some_and(|language| skill.code(language).is_some()),
+            carries_on_use_script: language
+                .is_some_and(|language| skill.on_use(language).is_some()),
+        })
+        .collect()
 }
 
 /// How this agent's ending section reads: which [role](EndingRole) it was dispatched in, and that
@@ -11403,8 +11493,13 @@ impl FaultedRun for LimitsSetup {
     }
 }
 
+// `pub(crate)` for one reader outside this module: the [bootstrap](crate::bootstrap) runs gg's own
+// program against an api of its own, and the search view that program places has to be rendered by
+// `render_search_results` — the loop's own rendering, so what an agent reads in its opening window
+// is byte for byte what it will read after its own first search. A second rendering beside it would
+// be the one description of the SDK nothing could check against the SDK.
 #[path = "agent.code.rs"]
-mod code;
+pub(crate) mod code;
 use code::CodeFeedback;
 
 use code::{CodeTurn, CodeTurnOutcome, CodeTurnState, run_code_turn};

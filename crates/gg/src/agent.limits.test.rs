@@ -573,7 +573,7 @@ async fn a_model_api_error_is_still_fatal_on_the_first_occurrence() {
 ///
 /// A fault this shape cannot be provoked honestly — the prebuilt component compiles, the engine
 /// config is a constant, and the blocking task only fails to join if the host panicked — so it is
-/// armed through the [seam](crate::sandbox::force_next_program_fault) that exists for exactly this.
+/// armed through the [seam](crate::sandbox::force_model_program_fault) that exists for exactly this.
 #[tokio::test]
 async fn a_host_fault_ends_the_session_without_charging_the_model() {
     let dir = TempDir::new().unwrap();
@@ -581,7 +581,7 @@ async fn a_host_fault_ends_the_session_without_charging_the_model() {
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
     let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
 
-    crate::sandbox::force_next_program_fault(SandboxError::Host(
+    crate::sandbox::force_model_program_fault(SandboxError::Host(
         "the code sandbox task did not complete: task panicked".to_string(),
     ));
 
@@ -662,7 +662,7 @@ async fn a_host_fault_ends_the_session_without_charging_the_model() {
 /// scripted next, credit no ceiling with the stop even under the tightest one there is, and end
 /// under gg's own status with the fault on the latch.
 ///
-/// Armed through the same [seam](crate::sandbox::force_next_program_fault) the host fault is: no
+/// Armed through the same [seam](crate::sandbox::force_model_program_fault) the host fault is: no
 /// registered language runs a compiler yet, so there is no honest way to make one fall over.
 #[tokio::test]
 async fn a_compiler_that_could_not_finish_ends_the_run_and_is_charged_to_nobody() {
@@ -671,7 +671,7 @@ async fn a_compiler_that_could_not_finish_ends_the_run_and_is_charged_to_nobody(
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
     let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
 
-    crate::sandbox::force_next_program_fault(SandboxError::Toolchain(
+    crate::sandbox::force_model_program_fault(SandboxError::Toolchain(
         "`swiftc` exited with signal 11 (SIGSEGV)".to_string(),
     ));
 

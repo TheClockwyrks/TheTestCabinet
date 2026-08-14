@@ -10,8 +10,6 @@
 //! * [`healing`] — the [dialect](crate::healing::Dialect): the fence tags and the two predicates
 //!   response healing asks its lexical questions of, beside the five-string-shape lexer it never
 //!   asks for and [`modules`] reads;
-//! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
-//!   in Ruby's syntax;
 //! * [`COMPONENT`] — the guest, built by
 //!   `packages/gg-sandbox-ruby/build.sh`, carrying Opal's runtime, gg's hand-written Ruby SDK and
 //!   the declared library set pre-initialised into it;
@@ -97,9 +95,10 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, PromptDialect, spell,
+    ProgramLanguage, spell,
 };
-use crate::sandbox::operations::{VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::docs::MAX_SEARCH_LIMIT;
+use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
 #[path = "ruby.compile.rs"]
 pub(super) mod compile;
@@ -138,19 +137,6 @@ const SIGNATURES: &str = include_str!(concat!(env!("OUT_DIR"), "/signatures/ruby
 
 /// The parsed catalogue, parsed once per process.
 static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
-
-/// Everything gg *says* about a Ruby program that is written in Ruby's own syntax.
-///
-/// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is.
-/// Individual function spellings are **not** here and not in the templates either: every name and
-/// signature they quote is resolved from this language's catalogue when the template
-/// renders.
-static PROMPT: PromptDialect = PromptDialect {
-    system_template: include_str!("../../../templates/system-code.ruby.hbs"),
-    system_template_name: "system-code.ruby",
-    nothing_shown_template: include_str!("../../../templates/code-nothing-shown.ruby.hbs"),
-    nothing_shown_template_name: "code-nothing-shown.ruby",
-};
 
 /// The one instance of this language. A unit struct, so the `static` costs nothing and coerces
 /// straight to `&'static dyn ProgramLanguage`.
@@ -261,10 +247,6 @@ impl ProgramLanguage for Ruby {
         &healing::RUBY_DIALECT
     }
 
-    fn prompt(&self) -> &'static PromptDialect {
-        &PROMPT
-    }
-
     /// [`view.open_file("src/main.rb")`](self::open_file_statement), with the window as keyword
     /// arguments and no terminator.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
@@ -275,6 +257,17 @@ impl ProgramLanguage for Ruby {
     /// block](self::open_docs_views_statement), each iteration opening one documentation view.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
+    }
+
+    /// [Two arrays and two `each` blocks](self::bootstrap_program), with both calls resolved from
+    /// this language's own catalogue and the filter written as a keyword argument.
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+        bootstrap_program(
+            &spell(self, DOCS_SEARCH),
+            &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            modules,
+            docs,
+        )
     }
 }
 
@@ -360,6 +353,39 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
         .map(|name| format!("  {},\n", serde_json::Value::String((*name).to_string())))
         .collect();
     format!("functions = [\n{entries}]\nfunctions.each {{ |name| {open_docs_view}(name) }}\n")
+}
+
+/// The opening turn: one array of module paths listed in full, then one array of names opened as
+/// documentation views, each with an `each` block over it.
+///
+/// Two arrays and two blocks rather than one call per entry, because a granted surface is a dozen
+/// modules and a dozen calls written out is a shape a model would copy for its own work. The filter
+/// and the limit are **keyword arguments**, which is this SDK's idiom for optional ones — and the
+/// module filter is named `in_module:`, because `module` is a keyword this language will not take a
+/// parameter name from.
+///
+/// A failed call raises and is left to, which is this arm's failure model: a bootstrap that rescued
+/// its own failure would be a worked example of swallowing one.
+pub(super) fn bootstrap_program(
+    search: &str,
+    open_docs_view: &str,
+    modules: &[&str],
+    docs: &[&str],
+) -> String {
+    let listed = |names: &[&str]| -> String {
+        names
+            .iter()
+            .map(|name| format!("  {},\n", serde_json::Value::String((*name).to_string())))
+            .collect()
+    };
+    let paths = listed(modules);
+    let functions = listed(docs);
+    format!(
+        "modules = [\n{paths}]\nmodules.each {{ |path| \
+         {search}(\"\", in_module: path, limit: {MAX_SEARCH_LIMIT}) }}\n\
+         \n\
+         functions = [\n{functions}]\nfunctions.each {{ |name| {open_docs_view}(name) }}\n"
+    )
 }
 
 #[cfg(test)]

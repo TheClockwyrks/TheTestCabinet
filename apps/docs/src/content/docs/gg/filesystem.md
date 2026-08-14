@@ -94,10 +94,11 @@ Two further properties keep the arms comparable:
   note and no paging footer. Only files big enough to be capped differ between
   arms, so a comparison measures the cap rather than incidental formatting.
 - `unlimited` offers `offset` and `limit` nowhere. The tool's schema omits them,
-  and under [responses as code](/gg/responses-as-code/overview/) the
-  [system prompt](/gg/prompts/) teaches the windowed call only under
-  `default-cap`, with this run's own `lineCap` interpolated and the promise that
-  a larger `limit` is honored.
+  and the tool-calling [system prompt](/gg/prompts/) states the cap only under
+  `default-cap`, with this run's own `lineCap` interpolated. Under
+  [responses as code](/gg/responses-as-code/overview/) no prompt states it: the
+  paging footer above carries the file's length and where to continue from, on
+  the read that was actually windowed.
 
 A separate 256 KiB byte ceiling backstops every mode, since a file can have
 enormous lines, and applies to whatever the line window selected. A read

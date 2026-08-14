@@ -61,14 +61,22 @@ use crate::tools::{ARCHIVE_THREAD_TOOL, EVICT_FILE_VIEW_TOOL};
 /// counted as ~zero. An approximation, like the rest of the accounting.
 const MESSAGE_FRAMING_TOKENS: usize = 4;
 
-/// The one selector the [search-results view](ContextModel::open_search_view) is ever keyed under —
-/// what its heading is qualified by, what a `view.close` naming it removes, and what makes a second
-/// search replace the first rather than pile up beside it.
+/// The selector **a model's own** [search-results view](ContextModel::open_search_view) is keyed
+/// under — what its heading is qualified by, what a `view.close` naming it removes, and what makes a
+/// second search replace the first rather than pile up beside it.
 ///
 /// Constant rather than the query, because the view names an intent rather than a result: *these are
 /// the results I am working from* is one thing an agent has at a time, and keying it by the query
 /// would give an agent that refined a search three times three pages of results to pay for, two of
 /// which it had already decided against.
+///
+/// It is not the *only* selector a search view can carry, and the exception is the reason the
+/// selector is a parameter at all. The [bootstrap](crate::bootstrap) searches once per module the
+/// agent was granted, and those N listings are N answers that must all stand rather than one
+/// mutable intent — so each is keyed by **the module's own path**, superseded only by a re-listing
+/// of that same module. Everything downstream keys off the selector and needs no other change: the
+/// [heading](item_heading) qualifies the view with it, and a
+/// [`view.close`](ContextModel::close_search_views) naming it reaches exactly that listing.
 pub const SEARCH_RESULTS_VIEW: &str = "search results";
 
 /// The line appended to a [retired view](ContextModel::retire_view) whose attached picture was
@@ -1862,8 +1870,8 @@ impl ContextModel {
             .collect()
     }
 
-    /// Open (or replace) the [search-results view](GgContextSource::SearchResults): the briefs the
-    /// agent's last documentation search returned.
+    /// Open (or replace) the [search-results view](GgContextSource::SearchResults) keyed by
+    /// `selector`: the briefs one documentation search returned.
     ///
     /// # It supersedes, where a documentation view deliberately does not
     ///
@@ -1871,27 +1879,39 @@ impl ContextModel {
     /// [docview](Self::open_docview) names a **constant** — the documentation for one key is the
     /// same bytes every time — so re-opening one is a no-op and the band stays append-only. A search
     /// result names a mutable **intent**: *these are the results I am working from*. Re-stating it
-    /// replaces the copy that was there, exactly as [`open_text_view`](Self::open_text_view) does,
-    /// so an agent that searches five times holds one page rather than five, and the four it has
-    /// moved on from are not still in front of it being paid for.
+    /// replaces the copy that was there, exactly as [`open_text_view`](Self::open_text_view) does.
     ///
-    /// It is keyed by one constant selector ([`SEARCH_RESULTS_VIEW`]) rather than by the query,
-    /// which is what makes the supersession happen at all: a per-query key would accumulate one view
-    /// per search, which is the pile-up the intent reading exists to avoid.
-    pub fn open_search_view(&mut self, body: String) -> ViewOpened {
-        let superseded =
-            self.supersede_view(GgContextSource::SearchResults, SEARCH_RESULTS_VIEW, None);
+    /// # What the selector decides, and who passes which
+    ///
+    /// The supersession is per selector, so the selector is what says *which searches replace each
+    /// other*. There are exactly two callers and they want opposite things.
+    ///
+    /// A **model's own** search passes the constant [`SEARCH_RESULTS_VIEW`], so an agent that
+    /// searches five times holds one page rather than five and the four it has moved on from are not
+    /// still in front of it being paid for. That is the intent reading, unchanged.
+    ///
+    /// The **[bootstrap](crate::bootstrap)** passes **the module's own path**. Its searches are one
+    /// exhaustive listing per module the agent was granted, and all of them have to survive: they
+    /// are the agent's whole surface, not successive attempts at one question. Keyed per module,
+    /// each listing supersedes only a re-listing of that same module, which is what a re-run of the
+    /// bootstrap on one window should do.
+    pub fn open_search_view(&mut self, selector: String, body: String) -> ViewOpened {
+        let superseded = self.supersede_view(GgContextSource::SearchResults, &selector, None);
         let item = self.view_item(
             GgContextSource::SearchResults,
             Message::user(body),
-            SEARCH_RESULTS_VIEW.to_string(),
+            selector,
             None,
         );
         self.place_view(item, superseded)
     }
 
-    /// Close the [search-results view](GgContextSource::SearchResults) when `selector` names it —
-    /// or unconditionally when `selector` is `None` — reclaiming its tokens.
+    /// Close the [search-results view](GgContextSource::SearchResults) `selector` names — or every
+    /// one of them when `selector` is `None` — reclaiming its tokens.
+    ///
+    /// A window holds one per selector, so this reaches a model's own results under
+    /// [`SEARCH_RESULTS_VIEW`] and each of the [bootstrap](crate::bootstrap)'s module listings under
+    /// its module path, by the same rule and with no special case for either.
     ///
     /// Unlike closing a [documentation view](Self::close_docviews) this is not bought by a
     /// capability and costs the agent nothing it cannot get back: the same query answers the same
@@ -2321,7 +2341,10 @@ pub fn code_heading(source: GgContextSource) -> Option<&'static str> {
 /// A [documentation view](GgContextSource::DocsView) is the other, and reads
 /// `Documentation: readFile` — the key it was opened under, which is also the handle a close takes.
 /// A [search-results view](GgContextSource::SearchResults) is qualified for the same reason, by the
-/// one constant selector it is always keyed under. A **read skill** shares the word and keeps the
+/// selector it was [opened](ContextModel::open_search_view) under — `Documentation: search results`
+/// for a model's own search, `Documentation: gg::files` for one of the
+/// [bootstrap](crate::bootstrap)'s per-module listings, which is what tells a window holding a dozen
+/// of them apart. A **read skill** shares the word and keeps the
 /// bare `Documentation`, because its body opens by naming the skill and it cannot be closed anyway.
 ///
 /// Every other band keeps the bare word, including [`FileView`](GgContextSource::FileView) —

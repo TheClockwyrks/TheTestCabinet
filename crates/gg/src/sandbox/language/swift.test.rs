@@ -127,6 +127,31 @@ fn the_documentation_program_is_an_array_and_a_loop() {
     );
 }
 
+/// **The opening program writes every call with `try`**, and covers every module and every
+/// documentation key gg handed it.
+///
+/// gg prepares and runs this one before the agent's first turn, so what a model reads at the top of
+/// its window is a program that ran. What is asserted here is that gg wrote Swift — `let` arrays,
+/// `for`s, **argument labels** — that the page the search hands back is discarded explicitly rather
+/// than left as a warning, and that the search is the whole-module lookup rather than the default
+/// page of one.
+#[test]
+fn the_opening_program_writes_every_call_with_try() {
+    let limit = crate::docs::MAX_SEARCH_LIMIT;
+    assert_eq!(
+        swift().bootstrap_program(&["files", "views"], &["openText"]),
+        format!(
+            "let modules = [\n    \"files\",\n    \"views\",\n]\n\
+             for path in modules {{\n    \
+                 _ = try gg.docs.search(\"\", module: path, limit: {limit})\n\
+             }}\n\
+             \n\
+             let functions = [\n    \"openText\",\n]\n\
+             for name in functions {{\n    try gg.views.openDocsView(name)\n}}\n"
+        )
+    );
+}
+
 /// **A code module is not the same shape as a program here**, so this arm answers the isolation
 /// gate's subject for itself.
 ///

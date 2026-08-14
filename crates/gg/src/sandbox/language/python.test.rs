@@ -138,6 +138,32 @@ fn the_generated_documentation_program_is_python() {
         .expect("this arm prepares the program it generated");
 }
 
+/// **The opening program is Python**, and it covers every module and every documentation key gg
+/// handed it.
+///
+/// gg prepares and runs this one before the agent's first turn, so what a model reads at the top of
+/// its window is a program that ran. What is asserted here is that gg wrote Python — a list, a
+/// `for`, keyword arguments and no terminators — rather than another arm's syntax, and that the
+/// search is the whole-module lookup rather than the default page of one.
+#[test]
+fn the_opening_program_is_python() {
+    let limit = crate::docs::MAX_SEARCH_LIMIT;
+    let program = python().bootstrap_program(&["files", "views"], &["read_file"]);
+    assert_eq!(
+        program,
+        format!(
+            "modules = [\n    \"files\",\n    \"views\",\n]\n\
+             for path in modules:\n    gg.docs.search(\"\", module=path, limit={limit})\n\
+             \n\
+             functions = [\n    \"read_file\",\n]\n\
+             for name in functions:\n    gg.views.open_docs_view(name)\n"
+        )
+    );
+    python()
+        .prepare_program(&program, &[], &PrepareContext::new())
+        .expect("this arm prepares the program it generated");
+}
+
 /// **The generated catalogue is this language's**, and it carries the whole surface.
 ///
 /// The provenance assertion is inside [`catalogue`](super::Python::catalogue) and panics, so

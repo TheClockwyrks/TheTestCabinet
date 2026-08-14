@@ -146,6 +146,10 @@ map, folded on the host into a generated-line to model-line table shipped in the
 bundle's prelude, so a `NullPointerException` on the model's line 14 reads
 `java.lang.NullPointerException` followed by `at program.java:14`.
 
+Integer division by zero answers `0` rather than throwing, because the
+arithmetic underneath is JavaScript's, and a `Thread` a program starts is
+refused by the sandbox.
+
 Two failures cross untouched, so that the guest classifies the turn from what
 the host said. A `ToolError` the host raised is recorded as the host's own
 refusal before any Java description is considered, and a JavaScript exception
@@ -154,22 +158,26 @@ program reports no unreachable-tail count: a `return` leaves the method gg
 wrapped the statements in, so everything after it is javac's `unreachable
 statement` at the model's own line.
 
-## Prompt dialect
+## Prompt segment
 
-This arm's system prompt states that the whole response is a Java program, that
-views are the only way to read a value the program computed, and that nothing
-`System.out.println` writes is readable. It states that every method is
-synchronous and a started `Thread` is refused, that the program is compiled
-twice, and that a program either compiler refuses is not executed.
+[`system-code.hbs`](/gg/prompts/) reaches this arm through a segment gated on
+`java`, and `code-nothing-shown.hbs` through a clause naming
+`System.out.println`. The segment states:
 
-It states the shape of a program: a sequence of statements, no class, no `main`
-and no `package`; `import` lines lifted into the header; the eight packages
-already imported; gg's surface needing no import; a helper type being a local
-declaration. It states the signature idioms, that a failure is caught as
-`catch (ToolError failure)` and told apart by `failure.code()`, and that integer
-division by zero returns `0` here. It renders the library groups and names the
-absences. It states that a program that throws does not end the session, even if
-it called an ending method first.
+- the reply is a sequence of statements gg puts into a method body, so a helper
+  type is a local declaration and an `import` is lifted into the header;
+- a failed call throws an unchecked `ToolError`, caught as
+  `catch (ToolError failure)` and told apart by `failure.code()`;
+- an optional argument is an overload, a bag of them is a builder and a list is
+  a varargs, and each module is a class of `static` methods already imported.
+
+The arm names `javac` as its [checker](/gg/languages/compilation/), so the
+shared body states that a program is compiled before it runs, that one the
+compiler refuses is not executed, and that a call the run withheld compiles and
+fails when it runs. The library set TeaVM can translate is carried by a compile
+failure rather than by the prompt.
+
+## Healing dialect
 
 The healing dialect reads a `#` line as prose and deletes it, because Java has
 no `#` token at all, and treats a backtick as prose punctuation rather than

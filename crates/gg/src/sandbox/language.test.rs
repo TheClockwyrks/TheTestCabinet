@@ -11,7 +11,8 @@ use test_cabinet_core::gg::{
 
 use super::fixture::fixture_language;
 use super::*;
-use crate::sandbox::operations::VIEWS_OPEN_DOCS_VIEW;
+use crate::docs::MAX_SEARCH_LIMIT;
+use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW};
 use crate::validate::{LaunchDefect, LaunchReport};
 
 /// The language `profile` resolves to, asserting gg honoured its configuration exactly as written.
@@ -201,6 +202,131 @@ fn every_language_writes_the_program_that_opens_a_documentation_view() {
     );
 }
 
+/// **Every language writes the program that opens a session in its own syntax, covering every
+/// module and every documentation key gg handed it — and can prepare what it wrote.**
+///
+/// This one is not a quotation gg could degrade: it is the agent's [opening
+/// turn](crate::bootstrap), prepared and *run* before the first request, so a language whose program
+/// did not prepare would fail every one of its agents' runs as an internal error rather than
+/// producing a worse prompt. The same gate the generated documentation program gets, for the same
+/// reason, plus the two things only this program can get wrong — a module gg listed and the program
+/// never searched, and a search that took the default page instead of the whole module.
+///
+/// The [fixture](super::fixture) is included and answers deliberately unlike every registered arm,
+/// which is what makes "the opening turn is written in the agent's own language" an assertion rather
+/// than a promise.
+#[test]
+fn every_language_writes_the_program_that_opens_the_session() {
+    const MODULES: [&str; 2] = ["gg.files", "gg.views"];
+    const DOCS: [&str; 1] = ["gg.docs.search"];
+
+    for language in all_languages().chain(crate::sandbox::fixture_languages()) {
+        let program = language.bootstrap_program(&MODULES, &DOCS);
+        let search = spell(language, DOCS_SEARCH);
+        let open_docs_view = spell(language, VIEWS_OPEN_DOCS_VIEW);
+        for call in [&search, &open_docs_view] {
+            assert!(
+                program.contains(call.as_str()),
+                "{}: the opening program does not call `{call}`:\n{program}",
+                language.display_name()
+            );
+        }
+        for name in MODULES.iter().chain(DOCS.iter()) {
+            assert!(
+                program.contains(name),
+                "{}: the opening program never names `{name}`:\n{program}",
+                language.display_name()
+            );
+        }
+        // The whole-module lookup, which is the difference between an agent that is shown every
+        // function it holds and one that is shown the first page of some of them.
+        assert!(
+            program.contains(&MAX_SEARCH_LIMIT.to_string()),
+            "{}: the opening program does not ask for the whole of a module:\n{program}",
+            language.display_name()
+        );
+        // The order the model reads: what was searched, then what was opened.
+        assert!(
+            program.find(&search) < program.find(&open_docs_view),
+            "{}: the opening program opens a view before it searches:\n{program}",
+            language.display_name()
+        );
+        language
+            .prepare_program(&program, &[], &PrepareContext::new())
+            .unwrap_or_else(|failure| {
+                panic!(
+                    "{}: cannot prepare the program it generated ({failure}):\n{program}",
+                    language.display_name()
+                )
+            });
+    }
+
+    // Two implementations, written out, because containment cannot show that the syntax *around*
+    // the two calls is each language's own: a trailing options object and a `for…of` here, keyword
+    // arguments and one statement per module there.
+    assert_eq!(
+        typescript().bootstrap_program(&MODULES, &DOCS),
+        format!(
+            "const modules = [\n  \"gg.files\",\n  \"gg.views\",\n];\n\
+             for (const path of modules) {{\n  \
+             gg.docs.search(\"\", {{ module: path, limit: {MAX_SEARCH_LIMIT} }});\n}}\n\
+             \n\
+             const functions = [\n  \"gg.docs.search\",\n];\n\
+             for (const name of functions) {{\n  gg.views.openDocsView(name);\n}}\n"
+        )
+    );
+    assert_eq!(
+        fixture_language().bootstrap_program(&MODULES, &DOCS),
+        format!(
+            "docs.search(\"\", module=\"gg.files\", limit={MAX_SEARCH_LIMIT})\n\
+             docs.search(\"\", module=\"gg.views\", limit={MAX_SEARCH_LIMIT})\n\
+             views.open_docs_view(\"gg.docs.search\")\n"
+        )
+    );
+}
+
+/// **Every language says how a program reaches the code a skill or memory bound**, in a form that
+/// arm's own compiler would accept.
+///
+/// This is the one fact about the surface that no search can answer: `lib` binds no catalogued
+/// function, so the reply to the read that bound the module is the only place a model is told, and
+/// [`Loaded::note`](crate::knowledge::Loaded::note) builds that sentence from here. A form quoted in
+/// a syntax the arm does not have is a binding the model has not been given.
+///
+/// Asserted as containment for every arm, plus the exact text of the three that reach a module by
+/// **string** rather than by path, because those three are the ones a `member_separator` would get
+/// wrong and get wrong silently.
+#[test]
+fn every_language_says_how_a_bound_module_is_reached() {
+    for language in all_languages().chain(crate::sandbox::fixture_languages()) {
+        let access = language.lib_access("csvTools");
+        for part in ["lib", "csvTools", "<name>"] {
+            assert!(
+                access.to_lowercase().contains(&part.to_lowercase()),
+                "{}: `{access}` does not name `{part}`",
+                language.display_name()
+            );
+        }
+    }
+
+    assert_eq!(
+        language(GgProgramLanguage::Rust).lib_access("csvTools"),
+        "lib::csvTools::<name>"
+    );
+    assert_eq!(
+        language(GgProgramLanguage::Java).lib_access("csvTools"),
+        "Lib.<text|number|flag|run>(\"csvTools\", \"<name>\", …)"
+    );
+    assert_eq!(
+        language(GgProgramLanguage::Kotlin).lib_access("csvTools"),
+        "gg.core.lib.<text|number|flag|run>(\"csvTools\", \"<name>\", …)"
+    );
+    assert_eq!(
+        language(GgProgramLanguage::PureScript).lib_access("csvTools"),
+        "Gg.Core.lib \"csvTools\" \"<name>\""
+    );
+}
+
 /// **A run that names no language gets the default**, whether the capability is absent, on with no
 /// params, or on with a null one — and none of those is reported as an unreadable setting.
 #[test]
@@ -351,41 +477,6 @@ fn every_model_facing_call_resolves_in_every_language() {
     }
 }
 
-/// **Every language registers its own templates under its own id**, so two languages cannot collide
-/// on one Handlebars name and silently render each other's prompt.
-///
-/// The names are authored rather than derived — a `&'static str` costs nothing and reads plainly at
-/// the definition — so the convention they are supposed to follow is asserted here rather than
-/// assumed.
-#[test]
-fn every_language_names_its_templates_after_itself() {
-    for language in all_languages() {
-        let prompt = language.prompt();
-        assert_eq!(
-            prompt.system_template_name,
-            format!("system-code.{}", language.id()),
-            "{}: the system template's registered name",
-            language.id()
-        );
-        assert_eq!(
-            prompt.nothing_shown_template_name,
-            format!("code-nothing-shown.{}", language.id()),
-            "{}: the nothing-shown template's registered name",
-            language.id()
-        );
-        assert!(
-            !prompt.system_template.trim().is_empty(),
-            "{}: an empty system prompt",
-            language.id()
-        );
-        assert!(
-            !prompt.nothing_shown_template.trim().is_empty(),
-            "{}: an empty nothing-shown notice",
-            language.id()
-        );
-    }
-}
-
 /// **The JavaScript arm is the TypeScript arm with the check taken out, and with nothing else
 /// taken out.**
 ///
@@ -397,7 +488,8 @@ fn every_language_names_its_templates_after_itself() {
 ///
 /// Four things must be equal — the surface a model is shown, down to its type annotations; the
 /// evaluator; the binding convention; and the lexical reading healing does — and exactly two must
-/// differ: which language the prompt says the model is writing, and whether a compiler is named.
+/// differ: the name the one system prompt tells the model it is writing, and whether a compiler is
+/// named.
 #[test]
 fn the_javascript_arm_differs_from_typescript_only_in_the_check() {
     let ts = typescript();
@@ -474,21 +566,17 @@ fn the_javascript_arm_differs_from_typescript_only_in_the_check() {
     );
 }
 
-/// **The JavaScript arm's prompt names its own language and not the other's**, and says nothing
-/// about a compiler.
+/// **The JavaScript arm names itself, and names no compiler.**
 ///
-/// Both halves are the arm. A prompt that still said "TypeScript program" would be a copied
-/// template nobody re-read; one that kept the type-check section would tell a model its program is
-/// judged by something that never runs, which is worse than saying nothing.
+/// The two facts the one system prompt renders a language from, and the two an arm cut from another
+/// arm is most likely to inherit: a JavaScript agent told it is writing TypeScript would have been
+/// handed the wrong language outright, and one told its program is judged by `tsc` would be promised
+/// a check that never runs.
 #[test]
-fn the_javascript_prompt_is_its_own_and_claims_no_compiler() {
-    let template = language(GgProgramLanguage::JavaScript)
-        .prompt()
-        .system_template;
-    assert!(template.contains("JavaScript program"), "{template}");
-    assert!(!template.contains("TypeScript"), "{template}");
-    assert!(!template.contains("tsc"), "{template}");
-    assert!(!template.contains("type-check"), "{template}");
+fn the_javascript_arm_names_itself_and_no_compiler() {
+    let js = language(GgProgramLanguage::JavaScript);
+    assert_eq!(js.display_name(), "JavaScript");
+    assert_eq!(js.checker(), None);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -640,10 +728,10 @@ fn shared_artifacts(a: GgProgramLanguage, b: GgProgramLanguage) -> Option<&'stat
 
 /// **No language serves another language's artifacts**, except where the seam says so out loud.
 ///
-/// Four artifacts, each of which a consumer reaches through the trait object it was handed: the
-/// embedded component, the catalogue's spellings, the prompt's templates, and the healing dialect.
-/// A consumer that had kept a `static` of TypeScript's — the shape every one of these was in before
-/// the seam — would return the same value for both languages here.
+/// Three artifacts, each of which a consumer reaches through the trait object it was handed: the
+/// embedded component, the catalogue's spellings, and the healing dialect. A consumer that had kept
+/// a `static` of TypeScript's — the shape every one of these was in before the seam — would return
+/// the same value for both languages here.
 ///
 /// The rule is asserted over **every pair of registered languages** as well as against the fixture,
 /// because a registry with two real languages in it is the first tree where "one of them quietly
@@ -690,17 +778,11 @@ fn no_language_serves_another_languages_artifacts() {
                 ),
             }
             // Whatever an exemption covers, it never covers these: a language that answered another
-            // language's name, or rendered its prompt, would be a language an operator configured
-            // and did not get.
+            // language's id or another language's name would be a language an operator configured
+            // and did not get. The prompt is no longer among them — one template serves every arm,
+            // and what makes an arm's render its own is the segment gated on the id asserted here.
             assert_ne!(mine.id(), theirs.id());
             assert_ne!(mine.display_name(), theirs.display_name());
-            assert_ne!(
-                mine.prompt().system_template,
-                theirs.prompt().system_template,
-                "{} and {} render one system prompt",
-                mine.id(),
-                theirs.id(),
-            );
         }
     }
 
@@ -730,14 +812,6 @@ fn no_language_serves_another_languages_artifacts() {
     assert_eq!(spelling(ts), "readFile");
     assert_eq!(spelling(fixture), "read_file");
 
-    assert_ne!(
-        ts.prompt().system_template_name,
-        fixture.prompt().system_template_name,
-    );
-    assert_ne!(
-        ts.prompt().system_template,
-        fixture.prompt().system_template,
-    );
     assert_ne!(
         crate::sandbox::spell(ts, crate::sandbox::SESSION_REQUEST_CHANGES),
         crate::sandbox::spell(fixture, crate::sandbox::SESSION_REQUEST_CHANGES),

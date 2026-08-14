@@ -124,37 +124,37 @@ model can act on arrive as one band: Ruby the parser could not read, and valid
 Ruby this compiler has no lowering for. The shared preparation machinery behind
 that split is on [compilation](/gg/languages/compilation/).
 
+There is no type check, so a wrong positional count or an undeclared keyword
+reaches the model as an `ArgumentError` naming the count and the accepted
+keywords while the program runs. That holds for the model's own methods and for
+the SDK's functions, since Opal's corelib arrives already compiled with the
+check off.
+
 At run time an uncaught exception ends the program and is reported with its
 class, its message and the line of the model's own Ruby. Opal's `sleep` is a
 busy wait rather than a park in a host call, so the execution deadline reaches
 it as it reaches any other runaway.
 
-## Prompt dialect
+## Prompt segment
 
-The system prompt is written in Ruby's syntax and states:
+[`system-code.hbs`](/gg/prompts/) reaches this arm through a segment gated on
+`ruby`, and `code-nothing-shown.hbs` through a clause naming `puts`. The segment
+states:
 
-- the whole response is a Ruby program, and views are the only way a value the
-  program computed reaches the model;
-- every method is synchronous, with no event loop and no `Thread`;
-- the program is compiled first, with `opal`, which implements Ruby 3.2, and a
-  refused program is not executed. A test holds that version to what the
-  embedded compiler's manifest reports;
-- there is no type check, so a misspelled method, a wrong positional count or an
-  undeclared keyword reaches the model while the program runs rather than before
-  it starts, the last two as an `ArgumentError` naming the count and the
-  accepted keywords, and valid Ruby the compiler has no lowering for is refused
-  the way a typo is. That promise is scoped to the model's own methods and the
-  SDK's functions, since Opal's corelib arrives already compiled with the check
-  off;
-- signatures are Ruby's: required arguments positional, optional ones keyword
-  arguments with defaults, `*items` variadic, `&body` a block;
-- a call is `<module>.<method>(args...)`, a type is written under its own
-  module, and a failed call raises `GG::Core::ToolError` whose `code` is a
-  Symbol;
-- the declared library set, by group, and that `require` of anything else raises
-  `LoadError`;
-- integer arithmetic is JavaScript's, so `1 / 0` is `Infinity` and very large
-  integers lose precision.
+- the reply is the top-level body of a program, whose last expression's value
+  goes nowhere;
+- a failed call raises `GG::Core::ToolError`, a `StandardError` that `rescue`
+  catches, and its `code` is a Symbol;
+- optional arguments are keyword arguments with defaults, `*items` is variadic
+  and `&body` is a block, and each module is a constant the guest already
+  carries.
+
+The arm names `opal` as its [checker](/gg/languages/compilation/), so the shared
+body states that a program is compiled before it runs and one the compiler
+refuses is not executed. The declared library set is carried by a compile
+failure rather than by the prompt.
+
+## Healing dialect
 
 The healing dialect reads `ruby` and `rb` as the fence tags of a program. A `#`
 line is never prose, because a Ruby comment and a Markdown heading are the same

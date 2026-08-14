@@ -11,8 +11,6 @@
 //!   inside;
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
 //!   questions of, whose lexer is also the one [`source`] reads a reply with;
-//! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
-//!   in C++'s syntax;
 //! * `packages/gg-sandbox-cpp/Sources/sdk/` — the SDK, hand-written and idiomatic, whose `///`
 //!   comments are the model-facing documentation and whose `//` comments are not;
 //! * `packages/gg-sandbox-cpp/signatures.sh` — the reflection, out of clang's own comment AST;
@@ -142,9 +140,10 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, PromptDialect, spell,
+    ProgramLanguage, spell,
 };
-use crate::sandbox::operations::{VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::docs::MAX_SEARCH_LIMIT;
+use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
 #[path = "cpp.compile.rs"]
 pub(super) mod compile;
@@ -167,19 +166,6 @@ const SIGNATURES: &str = include_str!(concat!(env!("OUT_DIR"), "/signatures/cpp.
 
 /// The parsed catalogue, parsed once per process.
 static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
-
-/// Everything gg *says* about a C++ program that is written in C++'s own syntax.
-///
-/// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is.
-/// Individual function spellings are **not** here and not in the templates either: every name and
-/// signature they quote is resolved from this language's catalogue when the template
-/// renders.
-static PROMPT: PromptDialect = PromptDialect {
-    system_template: include_str!("../../../templates/system-code.cpp.hbs"),
-    system_template_name: "system-code.cpp",
-    nothing_shown_template: include_str!("../../../templates/code-nothing-shown.cpp.hbs"),
-    nothing_shown_template_name: "code-nothing-shown.cpp",
-};
 
 /// The one instance of this language. A unit struct, so the `static` costs nothing and coerces
 /// straight to `&'static dyn ProgramLanguage`.
@@ -313,10 +299,6 @@ impl ProgramLanguage for Cpp {
         &healing::CPP_DIALECT
     }
 
-    fn prompt(&self) -> &'static PromptDialect {
-        &PROMPT
-    }
-
     /// [`gg::views::open_file("src/main.cpp");`](self::open_file_statement) — with the window as the
     /// call's own optional second argument, written as a designated initialiser.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
@@ -328,6 +310,17 @@ impl ProgramLanguage for Cpp {
     /// else to put a statement than.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
+    }
+
+    /// [One `int main` holding two arrays and two range `for`s](self::bootstrap_program), with both
+    /// calls resolved from this language's own catalogue.
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+        bootstrap_program(
+            &spell(self, DOCS_SEARCH),
+            &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            modules,
+            docs,
+        )
     }
 
     /// One function returning `name` — because a C++ code module is a file of **declarations** and a
@@ -458,6 +451,53 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
     };
     format!(
         "int main() {{\n{listed}  for (const auto &name : functions) {{\n    \
+         {open_docs_view}(name);\n  }}\n  return 0;\n}}\n"
+    )
+}
+
+/// The opening turn: one `int main` holding an array of module paths listed in full and an array of
+/// names opened as documentation views, each with a range `for` over it.
+///
+/// A whole translation unit defining `main`, because this arm has nowhere else to put a statement
+/// and [refuses](self::source::defines_main) a reply that defines none.
+///
+/// Two arrays and two loops rather than one call per entry, because a granted surface is a dozen
+/// modules and a dozen calls written out is a shape a model would copy for its own work. The
+/// `std::array`s, the `const auto &` loops and the empty case's explicit element type are what
+/// [`open_docs_views_statement`] argues for, unchanged.
+///
+/// The filters are an aggregate filled in with **designated initialisers**, which is what this
+/// language offers in place of named arguments and what its SDK declares.
+///
+/// A failed call throws and nothing here catches it, which is this arm's failure model: a bootstrap
+/// that caught its own failure would be a worked example of swallowing one.
+pub(super) fn bootstrap_program(
+    search: &str,
+    open_docs_view: &str,
+    modules: &[&str],
+    docs: &[&str],
+) -> String {
+    let listed = |binding: &str, names: &[&str]| -> String {
+        let entries: Vec<String> = names
+            .iter()
+            .map(|name| format!("      {}", serde_json::Value::String((*name).to_string())))
+            .collect();
+        match entries.is_empty() {
+            true => format!(
+                "  const std::array<std::string_view, 0> {binding}{{}};\n  (void){binding};\n"
+            ),
+            false => format!(
+                "  const std::array {binding}{{\n{},\n  }};\n",
+                entries.join(",\n")
+            ),
+        }
+    };
+    let paths = listed("modules", modules);
+    let functions = listed("functions", docs);
+    format!(
+        "int main() {{\n{paths}  for (const auto &path : modules) {{\n    \
+         {search}(\"\", {{.module = path, .limit = {MAX_SEARCH_LIMIT}}});\n  }}\n\
+         \n{functions}  for (const auto &name : functions) {{\n    \
          {open_docs_view}(name);\n  }}\n  return 0;\n}}\n"
     )
 }

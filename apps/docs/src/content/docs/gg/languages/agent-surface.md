@@ -148,7 +148,9 @@ gg's prompts name no catalogued function at all, because a model finds one by
 searching. Three gates hold that line.
 
 - No template names a function of the surface it describes, read off the
-  template sources so that it covers a branch no test context renders.
+  template sources so that it covers a branch no test context renders. The
+  code template serves every arm, so it is judged against every arm's spellings
+  pooled and a language segment may name none of them.
 - No template a code agent reads names a bare gg tool. A tool name is the right
   identity in the tool-calling prompt, and a program calls a function in a
   module.
@@ -173,9 +175,9 @@ whole turn.
 
 ## Prompt requirements
 
-Each arm writes its own two templates, and a gate renders every registered arm's
-under every context fixture and reads what came out. Four things must survive
-the rendering.
+Each arm reaches the shared templates through a segment of its own, and a gate
+renders every registered arm under every context fixture and reads what came
+out. Four things must survive the rendering.
 
 - Every required section. A copied template can lose a section whole, and a
   heading can survive with nothing under it.
@@ -190,13 +192,15 @@ the rendering.
   ending is revoked.
 
 A fifth is read the other way, off a context with every capability off: a
-capability the agent was not granted appears nowhere. An arm's template fixtures
-need both contexts, because the maximal one alone cannot show that an ungranted
-capability stays out.
+capability the agent was not granted appears nowhere. Both contexts are needed,
+because the maximal one alone cannot show that an ungranted capability stays
+out.
 
-An arm that declares a library set renders it group by group, each group's
-heading beside that group's own list of names, so what a model is told it may
-import is what the arm's artifact carries.
+A sixth reads the language segments against each other. Every arm's render
+carries that arm's segment, no arm's render carries another's, and no segment is
+longer than three paragraphs. What an arm might have said beyond them is said by
+the error that reports it, which is where the library set an arm declares
+reaches its model.
 
 Wording is not asserted. The gate reads names, numbers, identifiers and the one
 term each rule cannot be stated without, so rewrapping a paragraph or rewriting
@@ -256,5 +260,5 @@ gg has and offers them differently: one is filed under a module gg has no word
 for, two are methods on the types they operate on, one is bound twice as an
 alias, and every name is spelled another way. The gate accepts all of it, and
 the test asserts the reshape is real. The fixture carries its own preparation
-step, healing dialect and prompt templates, and it has no wire id, so it can
-never be configured, recorded or run.
+step, healing dialect and bootstrap program, and it has no wire id, so it can
+never be configured, recorded or run, and no prompt segment is gated on it.

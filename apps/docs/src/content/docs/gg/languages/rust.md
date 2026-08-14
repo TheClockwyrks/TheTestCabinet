@@ -166,25 +166,31 @@ what the program reported over the trap that followed it, while a ceiling gg
 imposed, such as a timeout, still wins. `-Cstrip=symbols` leaves `Location`
 intact, since it is static data.
 
-## Prompt dialect
+## Prompt segment
 
-The templates are `system-code.rust.hbs` and `code-nothing-shown.rust.hbs`.
-Neither writes a function name: every call they quote is resolved from this
-arm's catalogue as the template renders. The system template states that the
-whole response is compiled as a Rust program and a program `rustc` refuses is
-not executed, and it also states:
+[`system-code.hbs`](/gg/prompts/) reaches this arm through a segment gated on
+`rust`, and `code-nothing-shown.hbs` through a clause naming `println!`. The
+segment states:
 
-- views are the only way to read a value, `println!` goes nowhere because the
-  target has no standard output, every function is synchronous with nothing to
-  `.await`, and `std::thread::spawn` panics;
-- the response is the body of a function with no `main`, `use gg::prelude::*;`
-  is already written above the first line as a glob, and the call, argument and
-  error idioms above are how a program is written;
-- the library set is the whole of what is linked, so reaching outside it is a
-  compile error on the turn that wrote it;
-- the module paths are the only names it gives, a function is found by searching
-  the documentation, and the SDK declares every function whatever the run
-  enabled, so a call the agent was not granted compiles and fails when it runs.
+- the reply is the body of a function gg declares, with `use gg::prelude::*;`
+  already written above its first line as a glob;
+- every call returns `Result<_, ToolError>` and the body returns a `Result`, so
+  `?` propagates a failure and a `match` on the `code` branches on one, and a
+  failure of the program's own is built with `gg::program::message`;
+- a call with one optional argument takes an `Option<T>`, a call with two or
+  more takes an options struct with a `Default`, and a module is reached by its
+  last segment through the prelude.
+
+`gg::program::message` is the one name any segment writes. It binds no
+capability, so no catalogue carries it and a documentation search cannot find
+it, and a program that means to fail on its own terms has no other way to build
+the failure its body returns.
+
+The arm names `rustc` as its [checker](/gg/languages/compilation/), so the
+shared body states that a program is compiled before it runs, that one `rustc`
+refuses is not executed, and that a call the run withheld compiles and fails
+when it runs. The library set is carried by a compile failure rather than by the
+prompt.
 
 ## Healing dialect
 

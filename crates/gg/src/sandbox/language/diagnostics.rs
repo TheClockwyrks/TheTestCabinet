@@ -70,6 +70,9 @@
 //! seventeen lines; a Swift diagnostic drags an excerpt and a caret behind it, so eight of those is
 //! a screen. Each arm names its own constant and says why, next to the compiler it measured.
 //!
+//! **Whether the library set is cut.** It is not — see [`library_set`], which is the one thing this
+//! module renders rather than bounds, and the paragraph there is the argument.
+//!
 //! **Whether an arm needs a bound at all.** Three registered arms are absent from the table above
 //! and none of them is an oversight. [Ruby](super::ruby)'s Opal driver catches a single thrown
 //! `SyntaxError` and reports it, so a rejection is structurally one diagnostic and there is no list
@@ -206,6 +209,52 @@ pub(super) fn capped_lines(rendered: &str, opens: impl Fn(&str) -> bool, shown: 
         text.push_str(&more(dropped));
     }
     text
+}
+
+/// **The library set a compile failure is answered with** — every group the arm's catalogue
+/// declares, rendered as the lines a model reads under the `Compiler error` heading.
+///
+/// `None` for an arm whose catalogue declares no set, which is the arm whose programs get their
+/// runtime's own standard library and nothing else: there is no set to quote, and a heading over an
+/// empty list would be a sentence about nothing.
+///
+/// # Why it rides a compile failure rather than the prompt
+///
+/// It used to be a section of every arm's system prompt, read on every turn of every run whether or
+/// not the model ever reached for a library. What it prevents is one mistake — a program written
+/// against a package this arm does not carry — and that mistake is **detected**, by the compiler,
+/// on the turn that made it. So it is delivered there: a model that never writes an import never
+/// reads it, and the one that did reads it beside the diagnostic that made it relevant.
+///
+/// It is quoted from [`libraries`](super::super::signatures::SignatureCatalogue::libraries) rather
+/// than authored, for the reason every model-facing word about an arm's surface is: a second copy
+/// of the set, written in prose, drifts from the artifact that decides it with nothing to catch it.
+///
+/// # Why this one is not bounded
+///
+/// Everything else this module touches is a **list of mistakes**, which grows with the program: one
+/// misremembered name at fifty call sites is fifty diagnostics, and the [bound](self) is what stops
+/// a model paying for all fifty. A library set does not grow with the program. It is a fixed fact
+/// about the arm — the largest today is PureScript's, at a little under 5 KB — and it is the same
+/// size on a program with one mistake and on a program with a hundred.
+///
+/// Cutting it would also be the one cut here that **lies**. A dropped diagnostic is a diagnostic the
+/// model is told the count of and can ask for again by fixing what it was shown; a dropped library
+/// name reads as a library the arm does not have, which is exactly the false negative this set is
+/// carried to prevent.
+pub fn library_set(catalogue: &super::super::signatures::SignatureCatalogue) -> Option<String> {
+    if catalogue.libraries.is_empty() {
+        return None;
+    }
+    let groups: Vec<String> = catalogue
+        .libraries
+        .iter()
+        .map(|group| format!("- {}: {}", group.group, group.modules.join(", ")))
+        .collect();
+    Some(format!(
+        "Libraries available to your program:\n\n{}",
+        groups.join("\n")
+    ))
 }
 
 #[cfg(test)]

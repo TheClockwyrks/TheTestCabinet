@@ -11,8 +11,6 @@
 //!   questions of: the fence tags, the two predicates and the template-aware lexer — the two
 //!   predicates both answering differently from [Java's](super::java::healing), on the arm that
 //!   shares a compiler with it;
-//! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
-//!   in Kotlin's syntax;
 //! * `packages/gg-sandbox-kotlin/src/` — the SDK, and every word of prose a model reads about it;
 //! * the **signature catalogue** — reflected out of that SDK's own KDoc by the compiler's own front
 //!   end, and generated into this build's `OUT_DIR` rather than committed anywhere (see
@@ -75,9 +73,10 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, PromptDialect, spell,
+    ProgramLanguage, spell,
 };
-use crate::sandbox::operations::{VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::docs::MAX_SEARCH_LIMIT;
+use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
 #[path = "kotlin.compile.rs"]
 pub(super) mod compile;
@@ -104,19 +103,6 @@ const SIGNATURES: &str = include_str!(concat!(
 /// The parsed catalogue, parsed once per process.
 static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
 
-/// Everything gg *says* about a Kotlin program that is written in Kotlin's own syntax.
-///
-/// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is.
-/// Individual function spellings are **not** here and not in the templates either: every name and
-/// signature they quote is resolved from this language's catalogue when the template
-/// renders.
-static PROMPT: PromptDialect = PromptDialect {
-    system_template: include_str!("../../../templates/system-code.kotlin.hbs"),
-    system_template_name: "system-code.kotlin",
-    nothing_shown_template: include_str!("../../../templates/code-nothing-shown.kotlin.hbs"),
-    nothing_shown_template_name: "code-nothing-shown.kotlin",
-};
-
 /// The one instance of this language. A unit struct, so the `static` costs nothing and coerces
 /// straight to `&'static dyn ProgramLanguage`.
 pub(super) static KOTLIN: Kotlin = Kotlin;
@@ -132,6 +118,14 @@ impl ProgramLanguage for Kotlin {
 
     fn display_name(&self) -> &'static str {
         GgProgramLanguage::Kotlin.display_name()
+    }
+
+    /// A module is compiled separately from the program that uses it, so there is no `import` for
+    /// `kotlinc` to check the two against and a program names both halves as strings —
+    /// [`gg.core.lib`](https://docs.testcabinet.ai/gg/languages/kotlin/)'s family, chosen by what
+    /// the export hands back.
+    fn lib_access(&self, key: &str) -> String {
+        format!("gg.core.lib.<text|number|flag|run>(\"{key}\", \"<name>\", …)")
     }
 
     /// The import hoist, the Kotlin compile and the TeaVM translation, in this preparation's own
@@ -236,10 +230,6 @@ impl ProgramLanguage for Kotlin {
         &healing::KOTLIN_DIALECT
     }
 
-    fn prompt(&self) -> &'static PromptDialect {
-        &PROMPT
-    }
-
     /// [`view.openFile("src/Main.kt")`](self::open_file_statement), with the window as two
     /// **named** arguments and no terminator.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
@@ -250,6 +240,17 @@ impl ProgramLanguage for Kotlin {
     /// opening one documentation view.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
+    }
+
+    /// [Two `listOf(…)`s and two `for` loops](self::bootstrap_program), with both calls resolved
+    /// from this language's own catalogue and the filters passed as named default arguments.
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+        bootstrap_program(
+            &spell(self, DOCS_SEARCH),
+            &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            modules,
+            docs,
+        )
     }
 
     /// One public top-level function returning `name` — because this is the second arm whose module
@@ -366,6 +367,51 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
     };
     format!(
         "{listed}\
+         for (name in functions) {{\n    \
+             {open_docs_view}(name)\n\
+         }}\n"
+    )
+}
+
+/// The opening turn: one `listOf(…)` of module paths listed in full, then one of the names opened as
+/// documentation views, each with a `for` over it.
+///
+/// Two lists and two loops rather than one call per entry, because a granted surface is a dozen
+/// modules and a dozen calls written out is a shape a model would copy for its own work. `listOf`
+/// needs no import, and the empty case is spelled `listOf<String>()` for the reason
+/// [`open_docs_views_statement`]'s is: there is no declared type
+/// beside it to infer an element type from.
+///
+/// The filters are **default arguments passed by name**, which is this language's idiom for optional
+/// ones, and every gg name is written in full, which is what this arm writes instead of an import.
+///
+/// A failed call throws and nothing here catches it, which is this arm's failure model: a bootstrap
+/// that caught its own failure would be a worked example of swallowing one.
+pub(super) fn bootstrap_program(
+    search: &str,
+    open_docs_view: &str,
+    modules: &[&str],
+    docs: &[&str],
+) -> String {
+    let listed = |binding: &str, names: &[&str]| -> String {
+        let entries: Vec<String> = names
+            .iter()
+            .map(|name| format!("    {}", serde_json::Value::String((*name).to_string())))
+            .collect();
+        match entries.is_empty() {
+            true => format!("val {binding} = listOf<String>()\n"),
+            false => format!("val {binding} = listOf(\n{}\n)\n", entries.join(",\n")),
+        }
+    };
+    let paths = listed("modules", modules);
+    let functions = listed("functions", docs);
+    format!(
+        "{paths}\
+         for (path in modules) {{\n    \
+             {search}(\"\", module = path, limit = {MAX_SEARCH_LIMIT})\n\
+         }}\n\
+         \n\
+         {functions}\
          for (name in functions) {{\n    \
              {open_docs_view}(name)\n\
          }}\n"

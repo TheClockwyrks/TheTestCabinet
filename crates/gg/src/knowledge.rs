@@ -161,11 +161,16 @@ impl Loaded {
     /// string crosses the membrane, and a binding path the model has to infer is a binding path it
     /// will get wrong. An empty [`Loaded`] appends nothing, so a prose skill's reply is untouched.
     ///
-    /// The path is written with the **reader's own**
-    /// [separator](ProgramLanguage::member_separator), for the same reason every call gg quotes back
-    /// at a model is spelled in that model's language: on an arm where an API object is a module,
-    /// `lib.<key>.<name>` is not a path the compiler will accept, and a binding quoted in a syntax
-    /// the model cannot use is a binding it has not been given.
+    /// The call is written in the **reader's own** [spelling](ProgramLanguage::lib_access), for the
+    /// same reason every call gg quotes back at a model is spelled in that model's language: on an
+    /// arm where an API object is a module, `lib.<key>.<name>` is not a path the compiler will
+    /// accept, and on the three that reach a module by string it is not a path at all — a binding
+    /// quoted in a syntax the model cannot use is a binding it has not been given.
+    ///
+    /// This note is the **only** place a model is told the spelling. `lib` binds no catalogued
+    /// function, so there is nothing to search for, and the system prompt says a skill *carries*
+    /// code without saying how it is reached, because the read that binds it is the moment that
+    /// answer matters.
     pub fn note(
         &self,
         origin: KnowledgeOrigin,
@@ -174,13 +179,12 @@ impl Loaded {
         if self.is_empty() {
             return None;
         }
-        let step = language.member_separator();
         let mut note = String::new();
         if let Some(key) = &self.key {
             note.push_str(&format!(
-                "\n\n---\nThe code this {} carries is loaded: call it as \
-                 `lib{step}{key}{step}<name>`",
-                origin.noun()
+                "\n\n---\nThe code this {} carries is loaded: call it as `{}`",
+                origin.noun(),
+                language.lib_access(key)
             ));
             if self.exports.is_empty() {
                 note.push_str(". It exports nothing.");

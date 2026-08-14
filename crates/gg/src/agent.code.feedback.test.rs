@@ -454,9 +454,19 @@ fn a_failed_on_use_script_is_still_charged_and_still_reported() {
 // ---------------------------------------------------------------------------------------------
 
 /// The decision for one sandbox failure, with the operator's stream thrown away.
+///
+/// In TypeScript, which is one of the two arms whose catalogue declares no library set: these tests
+/// are about which band a failure lands in and whose it was, and an arm that appends a set would
+/// have every one of them asserting the set as well.
+/// [`decision_for_arm`] is what the set's own tests use.
 fn decision_for(error: SandboxError) -> CodeTurnOutcome {
+    decision_for_arm(GgProgramLanguage::TypeScript, error)
+}
+
+/// The decision for one sandbox failure on a named arm.
+fn decision_for_arm(language: GgProgramLanguage, error: SandboxError) -> CodeTurnOutcome {
     let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
-    sandbox_failure_decision(&error, &[], &emitter)
+    sandbox_failure_decision(language, &error, &[], &emitter)
 }
 
 /// The feedback bodies of a decision, paired with the band each landed in.
@@ -479,11 +489,14 @@ fn recorded_type(decision: &CodeTurnOutcome) -> Option<TurnErrorType> {
 }
 
 /// **A program its own compiler rejected reaches the model as a `Compiler error` carrying the
-/// compiler's diagnostic and nothing else** — and the turn carries on.
+/// compiler's diagnostic** — and the turn carries on.
 ///
 /// The whole point of the band. A type error is the model's to fix and the model can only fix it if
 /// it is handed what the compiler said; wrapping gg's prose around it, or ending the session over it,
-/// are the two ways this goes wrong.
+/// are the two ways this goes wrong. On this arm the diagnostic is the whole message, because its
+/// catalogue declares no library set — see
+/// [the two tests below](a_rejection_names_the_library_set_the_compiler_measured_the_program_against)
+/// for the arm that does.
 #[test]
 fn a_compilers_rejection_reaches_the_model_as_the_compilers_own_words() {
     let decision = decision_for(SandboxError::Prepare(PrepareError::Compile(
@@ -503,6 +516,77 @@ fn a_compilers_rejection_reaches_the_model_as_the_compilers_own_words() {
         Some(TurnErrorType::TranspileCompile),
         "recorded as a compile error rather than pooled with syntax errors"
     );
+}
+
+/// **A rejected program is answered with the library set the compiler measured it against.**
+///
+/// The set used to be a section of every compiled arm's system prompt, read on every turn of every
+/// run. It is delivered here instead because the mistake it prevents — a program written against a
+/// package this arm does not carry — is one the compiler detects, so the fact is delivered at the
+/// moment it is detected. This is the gate that keeps it delivered *somewhere*: dropping it from the
+/// prompt and never adding it here would leave the model with no way to learn what it may import.
+#[test]
+fn a_rejection_names_the_library_set_the_compiler_measured_the_program_against() {
+    let decision = decision_for_arm(
+        GgProgramLanguage::Rust,
+        SandboxError::Prepare(PrepareError::Compile(
+            "E0432: unresolved import".to_string(),
+        )),
+    );
+    let banded = banded(&decision);
+    let [(source, body)] = banded.as_slice() else {
+        panic!("a rejection is one message: {banded:?}");
+    };
+    assert_eq!(*source, GgContextSource::CompilerError);
+    assert!(
+        body.starts_with("E0432: unresolved import\n\n"),
+        "the compiler's own first line is still the message's first line: {body}"
+    );
+    let expected =
+        crate::sandbox::library_set(crate::sandbox::language(GgProgramLanguage::Rust).catalogue())
+            .expect("this arm's catalogue declares a library set");
+    assert!(
+        body.ends_with(&expected),
+        "the set is quoted from the arm's own catalogue: {body}"
+    );
+    for group in &crate::sandbox::language(GgProgramLanguage::Rust)
+        .catalogue()
+        .libraries
+    {
+        for name in &group.modules {
+            assert!(
+                body.contains(name.as_str()),
+                "`{name}` is in the catalogue and not in what the model was told: {body}"
+            );
+        }
+    }
+}
+
+/// **An arm that declares no library set is answered with the diagnostic alone.**
+///
+/// A heading over an empty list is a sentence about nothing, and a trailing blank line would say a
+/// section had been omitted. The two arms in this position are the ones whose programs get their
+/// runtime's own standard library and nothing else.
+#[test]
+fn an_arm_with_no_declared_library_set_adds_nothing_to_its_diagnostic() {
+    for language in [GgProgramLanguage::TypeScript, GgProgramLanguage::JavaScript] {
+        assert!(
+            crate::sandbox::library_set(crate::sandbox::language(language).catalogue()).is_none(),
+            "{language:?} has started declaring a library set; this test picked it for not having one"
+        );
+        let decision = decision_for_arm(
+            language,
+            SandboxError::Prepare(PrepareError::Compile("TS2322: not assignable".to_string())),
+        );
+        assert_eq!(
+            banded(&decision),
+            vec![(
+                GgContextSource::CompilerError,
+                "TS2322: not assignable".to_string()
+            )],
+            "{language:?}"
+        );
+    }
 }
 
 /// **A compiler that could not finish reaches the model in no band at all, and ends the session.**

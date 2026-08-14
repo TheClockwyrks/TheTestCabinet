@@ -56,7 +56,7 @@ use super::compile::compile_program;
 use crate::prompts::{
     AssignedIssueView, AutoloadView, BoardView, CodeHeadingView, EndingView, MemoriesView,
     ModuleView, ReadFileView, ShellView, SkillView, SpawnableAgentView, SystemContext, TasksView,
-    render_code_nothing_shown_for, render_system_for,
+    render_code_nothing_shown_for, render_system,
 };
 use crate::sandbox::{
     PrepareContext, ProgramLanguage, SESSION_APPROVE, SESSION_FINISH, SESSION_REQUEST_CHANGES,
@@ -80,7 +80,7 @@ fn everything_on() -> SystemContext {
     };
     SystemContext {
         responses_as_code: true,
-        language: Some(GgProgramLanguage::CSharp),
+        language: Some(crate::prompts::language_view(GgProgramLanguage::CSharp)),
         program_library: true,
         modules: vec![ModuleView {
             path: "Gg.Files".to_string(),
@@ -108,6 +108,8 @@ fn everything_on() -> SystemContext {
         skills: vec![SkillView {
             name: "physics".to_string(),
             description: "How to tune the simulation.".to_string(),
+            carries_code: true,
+            carries_on_use_script: true,
         }],
         memories: Some(MemoriesView {
             scratchpad: false,
@@ -156,7 +158,7 @@ fn everything_on() -> SystemContext {
 /// reference set and the same flags a model's own reply gets, with the same SDK compiled beside it.
 #[test]
 fn every_csharp_example_a_model_is_shown_compiles() {
-    let prompt = render_system_for(csharp(), &everything_on());
+    let prompt = render_system(&everything_on(), None).expect("the code system prompt renders");
     let notice = render_code_nothing_shown_for(csharp());
     let catalogue: serde_json::Value =
         serde_json::from_str(super::SIGNATURES).expect("the generated catalogue is JSON");

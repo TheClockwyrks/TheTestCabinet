@@ -153,14 +153,18 @@ pub(crate) struct SignatureCatalogue {
     ///
     /// It belongs in the catalogue for the reason every signature does: it is **model-facing text
     /// about this arm's surface**, so the rule that nothing a model reads may be authored anywhere
-    /// but on the code that decides it applies word for word. A prompt that listed a language's
-    /// libraries in prose would drift from the artifact with nothing to catch it — and on the
+    /// but on the code that decides it applies word for word. Prose listing a language's libraries
+    /// would drift from the artifact with nothing to catch it — and on the
     /// [Python](super::language::python) arm it did, claiming a whole standard library where
     /// `componentize-py` had baked a curated subset of it.
     ///
+    /// What a model reads it through is a **compile failure**
+    /// ([`library_set`](super::library_set)): the set is what the compiler measured the program
+    /// against, and a program that reached outside it is answered with it on the turn that did.
+    ///
     /// Empty for a language whose programs get their runtime's own standard library and nothing
     /// else: `#[serde(default)]`, so an arm with nothing to declare emits a catalogue without the
-    /// key and its templates simply render no such section.
+    /// key and a compile failure on it carries the diagnostic alone.
     #[serde(default)]
     pub libraries: Vec<LibraryGroup>,
     /// The **modules** the surface is divided into, in the order it is presented in.
@@ -393,7 +397,7 @@ pub struct MemberFunction {
     pub brief: String,
 }
 
-/// One group of [libraries](SignatureCatalogue::libraries), as the prompt lists them.
+/// One group of [libraries](SignatureCatalogue::libraries), as a compile failure lists them.
 ///
 /// Grouped rather than flat because ninety names in one paragraph is a wall a model skims. The
 /// grouping is the *artifact's* — the headings the file that decides the set files them under — so

@@ -35,7 +35,8 @@ The namespace bound at `lib.<key>` is the module's own export list, and gg
 reports the lower-case value names among its exports. A `lib` key is camelCase
 with its leading upper-case run lower-cased and ASCII only, so `CSV-tools` binds
 at `lib.csvTools`: the key is a record label, which PureScript requires to begin
-lower-case.
+lower-case. A program reaches an export by string, `Gg.Core.lib "<key>"
+"<export>"`, which is the form the reply to the read that bound it quotes.
 
 `.purs` is the arm's only module file extension.
 
@@ -166,24 +167,26 @@ The SDK is spelled the way a PureScript library is:
 - `lib key name` hands back `Maybe a` and the program annotates the type it
   expects.
 
-## Prompt dialect
+## Prompt segment
 
-The arm's two templates, `system-code.purescript.hbs` and
-`code-nothing-shown.purescript.hbs`, quote every function name and signature
-from the catalogue rather than writing one out. The system prompt states:
+[`system-code.hbs`](/gg/prompts/) reaches this arm through a segment gated on
+`purescript`, and `code-nothing-shown.hbs` through a clause naming
+`Effect.Console.log`. Both quote every function name from the catalogue rather
+than writing one out. The segment states:
 
-- The response is a module whose `main` has type `Effect Unit`, written as
-  straight-line `Effect` code in a `do` block, and gg renames the header.
-- Each capability module is imported under its own full name.
-- Every call is synchronous, and `Aff` is outside the library set.
-- Optional arguments are the fields of a record argument, `{}` passes none of
-  them, and the `?` marking an optional field is gg's notation for a row.
-- A program is compiled before it runs, a program `purs` refuses is not
-  executed, and the compile is a full type-check.
-- A `do` block discards a statement's value only when it is `Unit`, so a call
-  handing back anything else must be bound or wrapped in `void`.
-- A failed call is thrown, and `Gg.Core.attempt` is how one is caught.
-- The library set a program may import, group by group.
+- the reply is a module whose `main` has type `Effect Unit`, written as
+  straight-line `Effect` code in a `do` block, and a `do` block discards a
+  statement's value only when it is `Unit`;
+- a failed call is thrown rather than returned, and `Gg.Core.attempt` catches
+  one as an `Either`;
+- optional arguments are the fields of a record argument, with `{}` passing none
+  of them and `?` marking an optional field of the row, and each capability
+  module is imported under its own full name.
+
+The arm names `purs` as its [checker](/gg/languages/compilation/), so the shared
+body states that a program is compiled before it runs, that one `purs` refuses
+is not executed, and that a call the run withheld compiles and fails when it
+runs. The library set is carried by a compile failure rather than by the prompt.
 
 ## Healing dialect
 

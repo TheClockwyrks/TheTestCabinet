@@ -163,23 +163,26 @@ questions in Python's terms:
   backslash escapes, reads an f-string's substitutions as string text, and
   declines when a string is still open at a newline or at end of input.
 
-## Prompt dialect
+## Prompt segment
 
-Two Handlebars templates carry everything gg says about this arm,
-`system-code.python.hbs` and `code-nothing-shown.python.hbs`. Neither writes a
-function name or a signature: every spelling they quote is resolved from this
-arm's catalogue when the template renders.
+[`system-code.hbs`](/gg/prompts/) reaches this arm through a segment gated on
+`python`, and `code-nothing-shown.hbs` through a clause naming `print`. Neither
+writes a function name or a signature: every spelling they quote is resolved
+from this arm's catalogue when the template renders. The segment states:
 
-The system prompt states that the response is executed as a module body with
-`__name__` set to `"__main__"`, that there is no `return` to write, and that a
-view is the only way a value or a file reaches the model. It states that gg's
-surface needs no import, that a module is reachable bare and under `gg`, and
-that each module owns the types it produces. It states that required arguments
-are positional and optional ones are keyword arguments, that every call is
-synchronous, and that a failed call raises `ToolError` with an enum `code`, and
-it renders the library set as the catalogue declares it.
+- the reply is executed as a module body, at the top level, with `__name__` set
+  to `"__main__"` and no `return` to write;
+- a failed call raises `ToolError`, which `except ToolError` catches, and its
+  `code` is an enum member;
+- optional arguments are keyword arguments with defaults, and every module is
+  bound bare and under `gg`.
 
-Statements gg synthesizes into a transcript are written in the same idiom. A
-file view is `gg.views.open_file("src/main.py")`, with a window as `offset` and
-`limit` keyword arguments and no terminator. A set of documentation views is a
-list of names and a `for` loop over it.
+The arm names no [checker](/gg/languages/compilation/), so nothing in the prompt
+describes a compile step. A program that imports outside the set the guest
+carries learns so from the guest's own `ModuleNotFoundError`.
+
+Source gg synthesizes for this arm is written in the same idiom. A file view is
+`gg.views.open_file("src/main.py")`, with a window as `offset` and `limit`
+keyword arguments and no terminator. A set of documentation views is a list of
+names and a `for` loop over it, and the bootstrap program is top-level
+statements in the same shape.

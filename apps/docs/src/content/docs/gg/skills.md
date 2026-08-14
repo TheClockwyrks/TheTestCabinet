@@ -108,6 +108,13 @@ parseCsv, toRows. It stays bound for the rest of your session, including across 
 compaction.
 ```
 
+That reply is where a model learns the spelling. `lib` binds no catalogued
+function, so a search finds nothing and the [system prompt](/gg/prompts/) states
+that a skill carries code without saying how the code is reached. Eight arms
+write a path, and Java, Kotlin and PureScript name both halves as strings,
+because a module is compiled separately from the program that uses it. Each arm
+supplies its own form through `ProgramLanguage::lib_access`.
+
 What a module may contain, what it exports, and what it is refused for are one
 shared rule across skills and memories, documented under
 [responses-as-code](/gg/responses-as-code/sandbox/). A module exports what it

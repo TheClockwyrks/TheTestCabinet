@@ -8,7 +8,7 @@ the vocabulary is exactly three messages.
 
 | Heading | When | Body |
 | --- | --- | --- |
-| `Compiler error` | the program did not compile, so none of it ran | the language's diagnostic, verbatim |
+| `Compiler error` | the program did not compile, so none of it ran | the language's diagnostic, verbatim, and the library set it was measured against |
 | `Runtime error` | it compiled and then threw, or a sandbox limit stopped it | the error |
 | `Notice` | a fact about the session rather than about the program | the fact |
 
@@ -38,8 +38,10 @@ that fault implies, because at that point the fact is part of the diagnostic. A
 `ReferenceError` is answered in the guest, at the call site, with the names of
 gg's modules, plus `lib` when the agent has loaded code. A documentation lookup
 that resolves nothing is answered by the host with at most three of the nearest
-names this agent binds, indented under the message. Each is a fact the fault
-implies, never advice about what to do with it.
+names this agent binds, indented under the message. A compile failure on an arm
+whose catalogue declares a library set is answered with that set, since it is
+what the compiler resolved against. Each is a fact the fault implies, never
+advice about what to do with it.
 
 ### Runtime errors
 
@@ -84,12 +86,12 @@ own messages live.
 
 A program that ran and did what it meant to gets nothing back. The views it
 opened are the turn's result, and the system prompt states that a program which
-compiles and runs is not told so.
+ran is not told so.
 
 The exception is mechanical. A window that would otherwise end on the
 assistant's own message makes the next request ask the provider to continue that
-message rather than to answer it, so gg pushes a `Notice` rendered from the
-agent's own language template:
+message rather than to answer it, so gg pushes a `Notice` rendered under the
+agent's own language:
 
 ```text
 Your program ran and put nothing in your context.

@@ -182,6 +182,33 @@ fn the_generated_documentation_program_is_a_statement_sequence() {
     );
 }
 
+/// **The opening program is a sequence of statements**, and it covers every module and every
+/// documentation key gg handed it.
+///
+/// gg prepares and runs this one before the agent's first turn, so what a model reads at the top of
+/// its window is a program that ran. What is asserted here is that gg wrote Rust — arrays, `for`s,
+/// an **options struct filled in with functional-update syntax** — that every call is composed with
+/// `?` rather than unwrapped, and that the search is the whole-module lookup rather than the default
+/// page of one.
+#[test]
+fn the_opening_program_composes_every_call_with_a_question_mark() {
+    let limit = crate::docs::MAX_SEARCH_LIMIT;
+    assert_eq!(
+        rust().bootstrap_program(&["files", "views"], &["read_file"]),
+        format!(
+            "let modules = [\n    \"files\",\n    \"views\",\n];\n\
+             for path in modules {{\n    \
+                 gg::docs::search(\n        \"\",\n        \
+                 gg::docs::SearchOptions {{\n            module: Some(path),\n            \
+                 limit: Some({limit}),\n            ..Default::default()\n        }},\n    )?;\n\
+             }}\n\
+             \n\
+             let functions = [\n    \"read_file\",\n];\n\
+             for name in functions {{\n    gg::views::open_docs_view(name)?;\n}}\n"
+        )
+    );
+}
+
 /// **A code module is declared below the program**, so nothing the model wrote moves.
 ///
 /// Everything about this arm's diagnostics rests on the model's line *n* being line *n + 1* of the
@@ -320,7 +347,7 @@ fn the_generated_catalogue_is_this_languages() {
     }
 }
 
-/// **This arm declares the libraries a program may reach**, which is what the prompt renders.
+/// **This arm declares the libraries a program may reach**, which is what a compile failure quotes back.
 ///
 /// The five curated crates and the standard library, grouped exactly as
 /// `packages/gg-sandbox-rust/Cargo.toml` heads them — the manifest is the one declaration and both

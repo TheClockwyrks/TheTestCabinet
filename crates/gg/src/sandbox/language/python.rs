@@ -9,8 +9,6 @@
 //!   level to say what its namespace offers;
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
 //!   questions of: the fence tags, the two predicates, and the mask;
-//! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
-//!   in Python's syntax;
 //! * [`COMPONENT`] — the `componentize-py` guest, CPython 3.14 linked
 //!   against `crates/gg/wit/gg-sandbox.wit`, built by `packages/gg-sandbox-python/build.sh`;
 //! * the **signature catalogue** — reflected out of that guest's hand-written SDK with `griffe`,
@@ -71,9 +69,11 @@
 //! are deliberately out.
 //!
 //! That set is model-facing text about this arm, so it obeys the rule the catalogue exists for: the
-//! reflector reads those imports and emits them as the catalogue's `libraries` section, and
-//! [`PROMPT`] renders that section. Nothing here describes the set in prose — the sentence that once
-//! did claimed a whole standard library that was never baked.
+//! reflector reads those imports and emits them as the catalogue's
+//! [`libraries`](crate::sandbox::signatures::SignatureCatalogue) section, which is structured data
+//! gg hands a model at the moment an import of something else fails rather than a list standing in
+//! front of every program. Nothing here describes the set in prose — the sentence that once did
+//! claimed a whole standard library that was never baked.
 
 use std::sync::OnceLock;
 
@@ -83,9 +83,10 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, PromptDialect, spell,
+    ProgramLanguage, spell,
 };
-use crate::sandbox::operations::{VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::docs::MAX_SEARCH_LIMIT;
+use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
 #[path = "python.modules.rs"]
 mod modules;
@@ -130,20 +131,6 @@ const SIGNATURES: &str = include_str!(concat!(
 
 /// The parsed catalogue, parsed once per process.
 static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
-
-/// Everything gg *says* about a Python program that is written in Python's own syntax.
-///
-/// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is.
-/// Individual function spellings are **not** here and not in the templates either: every name and
-/// signature they quote is resolved from this language's catalogue when the template
-/// renders, so `gg.files.read_file` and `fs.readFile` each reach their own model without either
-/// being written down twice.
-static PROMPT: PromptDialect = PromptDialect {
-    system_template: include_str!("../../../templates/system-code.python.hbs"),
-    system_template_name: "system-code.python",
-    nothing_shown_template: include_str!("../../../templates/code-nothing-shown.python.hbs"),
-    nothing_shown_template_name: "code-nothing-shown.python",
-};
 
 /// The one instance of this language. A unit struct, so the `static` costs nothing and coerces
 /// straight to `&'static dyn ProgramLanguage`.
@@ -257,10 +244,6 @@ impl ProgramLanguage for Python {
         &healing::PYTHON_DIALECT
     }
 
-    fn prompt(&self) -> &'static PromptDialect {
-        &PROMPT
-    }
-
     /// [`gg.views.open_file("src/main.py")`](self::open_file_statement), with the window as keyword
     /// arguments and no terminator — this language's idiom for all three of the things a
     /// synthesized statement gets to differ in.
@@ -272,6 +255,17 @@ impl ProgramLanguage for Python {
     /// it](self::open_docs_views_statement), each iteration opening one documentation view.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
+    }
+
+    /// [Two lists and two `for` loops](self::bootstrap_program), with both calls resolved from this
+    /// language's own catalogue and the module filter written as a keyword argument.
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+        bootstrap_program(
+            &spell(self, DOCS_SEARCH),
+            &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            modules,
+            docs,
+        )
     }
 }
 
@@ -356,6 +350,38 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
         .map(|name| format!("    {},\n", serde_json::Value::String((*name).to_string())))
         .collect();
     format!("functions = [\n{entries}]\nfor name in functions:\n    {open_docs_view}(name)\n")
+}
+
+/// The opening turn: one list of module paths listed in full, then one list of names opened as
+/// documentation views, each with a `for` over it.
+///
+/// Two lists and two loops rather than one call per entry, because a granted surface is a dozen
+/// modules and a dozen calls written out is a shape a model would copy for its own work. The filter
+/// and the limit are **keyword arguments**, which is this language's idiom for optional ones and
+/// what the module's own signatures are declared with.
+///
+/// A failed call raises and is left to, which is this arm's failure model: a bootstrap that caught
+/// its own failure would be a worked example of swallowing one.
+pub(super) fn bootstrap_program(
+    search: &str,
+    open_docs_view: &str,
+    modules: &[&str],
+    docs: &[&str],
+) -> String {
+    let listed = |names: &[&str]| -> String {
+        names
+            .iter()
+            .map(|name| format!("    {},\n", serde_json::Value::String((*name).to_string())))
+            .collect()
+    };
+    let paths = listed(modules);
+    let functions = listed(docs);
+    format!(
+        "modules = [\n{paths}]\nfor path in modules:\n    \
+         {search}(\"\", module=path, limit={MAX_SEARCH_LIMIT})\n\
+         \n\
+         functions = [\n{functions}]\nfor name in functions:\n    {open_docs_view}(name)\n"
+    )
 }
 
 #[cfg(test)]

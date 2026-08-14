@@ -23,7 +23,7 @@ varies this one value.
 ## The registered arms
 
 Eleven languages are registered. Each has its own page, its own hand-written
-SDK, its own prompt templates and its own healing dialect.
+SDK, its own segment of the shared prompt templates and its own healing dialect.
 
 | Language | `language` | How a program runs |
 | --- | --- | --- |
@@ -52,7 +52,7 @@ language's own code and bridges that idiom onto gg's WIT wire, so the model
 sees only the SDK. The rules the surface keeps in every language are on
 [agent surface](/gg/languages/agent-surface/).
 
-An arm owns its catalogue, its prompt templates and its healing dialect. A
+An arm owns its catalogue, its prompt segment and its healing dialect. A
 guest component is shared only between arms a declared table names, and a
 declared pair must hand back identical bytes. TypeScript, JavaScript,
 PureScript, Java and Kotlin share the ECMAScript guest; Ruby compiles to

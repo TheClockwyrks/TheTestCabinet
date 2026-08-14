@@ -161,10 +161,9 @@ directly. Ranges, `std::format`, `std::expected`, the containers, `<regex>`, `<c
 the whole of libc++, so a reply that writes `#include <iostream>` or `#include <thread>` gets that
 header and compiles — measured, not assumed. Making the list a real allowlist would mean
 `-nostdinc++` and an explicit include tree, and what it would buy is a refusal in place of a
-run-time exception a model can read. gg tells the model the truth instead, in
-`crates/gg/templates/system-code.cpp.hbs`, and `cpp.surface.test.rs` asserts both directions — that
-every header on the list is reachable, and that one off it is reachable too and behaves the way the
-prompt says it does.
+run-time exception a model can read. gg tells the model the truth instead: the set is reflected into
+this arm's catalogue and quoted back on a compile failure, and `cpp.surface.test.rs` asserts both
+directions — that every header on the list is reachable, and that one off it is reachable too.
 
 Four things are deliberately off the set, and each is a decision rather than an oversight.
 

@@ -10,8 +10,6 @@
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
 //!   questions of: the fence tags, the two predicates, and the text-block lexer — two of whose
 //!   answers are this arm's alone;
-//! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
-//!   in Java's syntax;
 //! * `packages/gg-sandbox-java/src/gg/` — the SDK, and every word of prose a model reads about it;
 //! * the **signature catalogue** — reflected out of that SDK's own Javadoc by `javadoc` and a
 //!   doclet of gg's own, and generated into this build's `OUT_DIR` rather than committed anywhere
@@ -84,9 +82,10 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, PromptDialect, spell,
+    ProgramLanguage, spell,
 };
-use crate::sandbox::operations::{VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::docs::MAX_SEARCH_LIMIT;
+use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
 #[path = "java.compile.rs"]
 pub(super) mod compile;
@@ -109,19 +108,6 @@ const SIGNATURES: &str = include_str!(concat!(env!("OUT_DIR"), "/signatures/java
 /// The parsed catalogue, parsed once per process.
 static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
 
-/// Everything gg *says* about a Java program that is written in Java's own syntax.
-///
-/// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is.
-/// Individual function spellings are **not** here and not in the templates either: every name and
-/// signature they quote is resolved from this language's catalogue when the template
-/// renders.
-static PROMPT: PromptDialect = PromptDialect {
-    system_template: include_str!("../../../templates/system-code.java.hbs"),
-    system_template_name: "system-code.java",
-    nothing_shown_template: include_str!("../../../templates/code-nothing-shown.java.hbs"),
-    nothing_shown_template_name: "code-nothing-shown.java",
-};
-
 /// The one instance of this language. A unit struct, so the `static` costs nothing and coerces
 /// straight to `&'static dyn ProgramLanguage`.
 pub(super) static JAVA: Java = Java;
@@ -137,6 +123,14 @@ impl ProgramLanguage for Java {
 
     fn display_name(&self) -> &'static str {
         GgProgramLanguage::Java.display_name()
+    }
+
+    /// A module is compiled separately from the program that uses it, so there is no `import` for
+    /// `javac` to check the two against and a program names both halves as strings —
+    /// [`Lib`](https://docs.testcabinet.ai/gg/languages/java/#code-modules)'s family, chosen by what
+    /// the export hands back.
+    fn lib_access(&self, key: &str) -> String {
+        format!("Lib.<text|number|flag|run>(\"{key}\", \"<name>\", …)")
     }
 
     /// The wrapper, the `javac` compile and the TeaVM translation, in this preparation's own
@@ -242,10 +236,6 @@ impl ProgramLanguage for Java {
         &healing::JAVA_DIALECT
     }
 
-    fn prompt(&self) -> &'static PromptDialect {
-        &PROMPT
-    }
-
     /// [`view.openFile("src/Main.java");`](self::open_file_statement), with the window as the second
     /// and third arguments of an **overload** and a semicolon at the end.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
@@ -256,6 +246,17 @@ impl ProgramLanguage for Java {
     /// it](self::open_docs_views_statement), each iteration opening one documentation view.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
+    }
+
+    /// [Two `List.of(…)`s and two enhanced `for` loops](self::bootstrap_program), with both calls
+    /// resolved from this language's own catalogue and the filters built with the SDK's own builder.
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+        bootstrap_program(
+            &spell(self, DOCS_SEARCH),
+            &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            modules,
+            docs,
+        )
     }
 
     /// A class body with one `public static` method returning `name` — because this is the one arm
@@ -373,6 +374,65 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
              {open_docs_view}(name);\n\
          }}\n"
     )
+}
+
+/// The opening turn: one `List.of(…)` of module paths listed in full, then one of the names opened
+/// as documentation views, each with an enhanced `for` over it.
+///
+/// Two lists and two loops rather than one call per entry, because a granted surface is a dozen
+/// modules and a dozen calls written out is a shape a model would copy for its own work. `List.of`
+/// needs no import of its own, exactly as it does not in
+/// [`open_docs_views_statement`].
+///
+/// The filters are a **builder** — this language has neither default parameters nor keyword
+/// arguments, so a call taking a bag of optional fields takes one of these, and the SDK declares it
+/// nested inside the module the search belongs to.
+///
+/// A failed call throws an unchecked exception and nothing here catches it, which is this arm's
+/// failure model: a bootstrap that caught its own failure would be a worked example of swallowing
+/// one.
+pub(super) fn bootstrap_program(
+    search: &str,
+    open_docs_view: &str,
+    modules: &[&str],
+    docs: &[&str],
+) -> String {
+    let listed = |names: &[&str]| -> String {
+        let entries: Vec<String> = names
+            .iter()
+            .map(|name| format!("    {}", serde_json::Value::String((*name).to_string())))
+            .collect();
+        match entries.is_empty() {
+            true => String::new(),
+            false => format!("\n{}\n", entries.join(",\n")),
+        }
+    };
+    let paths = listed(modules);
+    let functions = listed(docs);
+    let filters = format!("{}.SearchFilters", class_of(search));
+    format!(
+        "List<String> modules = List.of({paths});\n\
+         for (String path : modules) {{\n    \
+             {search}(\"\", new {filters}().module(path).limit({MAX_SEARCH_LIMIT}));\n\
+         }}\n\
+         \n\
+         List<String> functions = List.of({functions});\n\
+         for (String name : functions) {{\n    \
+             {open_docs_view}(name);\n\
+         }}\n"
+    )
+}
+
+/// The class a fully-qualified call is a `static` method of, taken off the front of the call itself.
+///
+/// The one thing gg has to write here that is a **type** rather than a call, and it is derived from
+/// the call rather than written down beside it so that the two cannot disagree: this SDK nests a
+/// module's option builders inside the module's own class, so the class in front of the search is
+/// the class the builder is reached through. Every catalogued name is module-qualified — the name
+/// rule (`signatures.fqn.rs`) is what makes that true on every arm — so a call that somehow carried
+/// no qualifier is used as its own class rather than crashing a turn.
+fn class_of(call: &str) -> &str {
+    call.rsplit_once('.').map_or(call, |(class, _)| class)
 }
 
 #[cfg(test)]

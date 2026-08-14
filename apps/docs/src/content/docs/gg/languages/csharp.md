@@ -138,37 +138,27 @@ At run time the guest is a real .NET runtime, so `try`, `catch` and `finally`
 work, and an unhandled exception reports `Exception.ToString()`: the type, the
 message and the managed frames.
 
-## Prompt dialect
+## Prompt segment
 
-Two Handlebars templates, `system-code.csharp.hbs` and
-`code-nothing-shown.csharp.hbs`, are written in C#'s syntax. Neither writes a
-function name or a signature: every spelling they quote is resolved from this
-arm's catalogue when the template renders, on the terms described in
-[agent surface](/gg/languages/agent-surface/). The system prompt states:
+[`system-code.hbs`](/gg/prompts/) reaches this arm through a segment gated on
+`csharp`, and `code-nothing-shown.hbs` through a clause naming
+`Console.WriteLine`. Neither names a catalogued function, on the terms
+described in [agent surface](/gg/languages/agent-surface/). The segment states:
 
-- the response is compiled by `csc`, verbatim, as one compilation unit, a
-  program it refuses is not executed, and top-level statements are the shape to
-  reach for;
-- every method is synchronous, nothing returns a `Task`, and a `Task.Run`
-  compiles, queues and never runs;
-- gg's surface needs no `using`, and `System`, `System.Collections.Generic`,
-  `System.Linq`, `System.Text`, `System.Text.RegularExpressions` and `System.IO`
-  are in scope already;
-- each module is a `static class`, called as `<Module>.<Method>(args…)`, and
-  `using static Gg.Files;` is how a program drops the prefix;
-- required arguments are positional, optional ones are defaults passed by name,
-  a fixed choice is an `enum`, and nullable reference types are on;
-- every call throws, an uncaught failure ends the turn with its type, message
-  and managed frames, and an expected failure is a `ToolException` whose `Code`
+- the reply is compiled verbatim as one compilation unit, written as top-level
+  statements;
+- every call throws, and an expected failure is a `ToolException` whose `Code`
   is an `enum`;
-- the listed namespaces are the whole of what is referenced, so anything else is
-  a compile error on the turn that wrote it, `HttpClient` compiles and cannot
-  transport, `System.Security.Cryptography` throws a catchable
-  `PlatformNotSupportedException`, and nothing in `System.Threading` will get
-  work done;
-- nothing `Console.WriteLine` writes is readable by the model.
+- optional arguments are defaults passed by name, and each module is a
+  `static class` in scope through a `global using` the SDK declares.
 
-Statements gg synthesizes into the transcript are written in the same dialect:
+The arm names `csc` as its [checker](/gg/languages/compilation/), so the shared
+body states that a program is compiled before it runs, that one the compiler
+refuses is not executed, and that a call the run withheld compiles and fails
+when it runs. The referenced namespace set is carried by a compile failure
+rather than by the prompt.
+
+Source gg synthesizes for this arm is written in the same dialect:
 `Gg.Views.OpenFile("src/Program.cs");`, with a window passed as the call's own
 `offset:` and `limit:` arguments.
 

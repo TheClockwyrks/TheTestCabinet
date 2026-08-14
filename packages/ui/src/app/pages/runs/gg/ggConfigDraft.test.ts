@@ -5,7 +5,10 @@ import type {
   GgCapabilitySet,
   GgModuleKind,
 } from "@test-cabinet/run-record/gg";
-import { DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE } from "@test-cabinet/run-record/gg-system-prompt";
+import {
+  DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE,
+  DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE,
+} from "@test-cabinet/run-record/gg-system-prompt";
 import {
   agentStates,
   bindModelSlots,
@@ -250,6 +253,26 @@ describe("gg agents", () => {
     // A non-empty override is preserved.
     draft.agents[0]!.systemPromptTemplate =
       DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE + "\nextra";
+    expect(
+      capabilitySetFromDraft(draft, null).agents[0]!.systemPromptTemplate,
+    ).toContain("extra");
+  });
+
+  // gg renders one responses-as-code template for every program language — it names no
+  // function, and what is specific to a language is a segment gated inside it — so a code
+  // agent has exactly one default to be left at, whatever arm of a study it is.
+  it("stores no override when a code agent's template is left at its one default", () => {
+    const draft = emptyDraft();
+    draft.agents = [blankAgentDraft(ROOT_AGENT, [RESPONSES_AS_CODE_CAP_ID])];
+    expect(draft.agents[0]!.mode).toBe("rac");
+
+    draft.agents[0]!.systemPromptTemplate = "";
+    expect(
+      capabilitySetFromDraft(draft, null).agents[0]!.systemPromptTemplate,
+    ).toBeUndefined();
+
+    draft.agents[0]!.systemPromptTemplate =
+      DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE + "\nextra";
     expect(
       capabilitySetFromDraft(draft, null).agents[0]!.systemPromptTemplate,
     ).toContain("extra");

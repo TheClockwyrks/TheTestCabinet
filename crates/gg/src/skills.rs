@@ -42,7 +42,6 @@ use crate::modules::{
     AdoptError, Module, ModuleHandle, ModuleIds, ModuleKind, ModuleResolveCtx, Ownership, Refresh,
     detached_ids,
 };
-use crate::prompts::SkillView;
 use crate::sandbox::ProgramLanguage;
 use crate::validate::{LaunchDefect, LaunchReport};
 
@@ -351,13 +350,17 @@ impl SkillLibrary {
 /// skills read so far.
 ///
 /// Constructed [enabled](Self::new) with a loaded library or [disabled](Self::disabled)
-/// (a configuration with the capability off). It produces the catalog the
-/// [system prompt](crate::prompts::SystemContext::skills) lists
-/// ([`prompt_entries`](Self::prompt_entries)), the
+/// (a configuration with the capability off). It carries the
+/// [library](Self::library) the agent builds the
+/// [system prompt](crate::prompts::SystemContext::skills)'s catalog from, produces the
 /// [`SkillsState`](GgTelemetryKind::SkillsState) telemetry
 /// ([`state_event`](Self::state_event)), and records reads
 /// ([`record_read`](Self::record_read)) — the loop uses the result to pin a freshly read
 /// skill's body exactly once.
+///
+/// The prompt's catalog is assembled by the agent rather than here because a
+/// [`SkillView`](crate::prompts::SkillView) says whether a skill carries code and an on-use script
+/// **for this agent's program language**, and a runtime holds no language.
 ///
 /// It is a [module](crate::modules::Module) whose two halves are copied differently: the catalog is
 /// immutable and always shared, while the **read set** is a promise about the window — "these skill
@@ -494,25 +497,6 @@ impl SkillsRuntime {
     /// [compaction](https://docs.testcabinet.ai/gg/compaction/) boundary's retention proof.
     pub fn read_count(&self) -> usize {
         self.read.lock().expect("skills read set lock").len()
-    }
-
-    /// Each offered skill's name and description, for the
-    /// [system prompt](crate::prompts::SystemContext::skills) to list — empty when no skills are
-    /// offered, which is what makes the prompt's skills section vanish. This is the "shown up
-    /// front" affordance: the model sees what skills exist and reads one by name when it is
-    /// relevant.
-    pub fn prompt_entries(&self) -> Vec<SkillView> {
-        if !self.offers_skills() {
-            return Vec::new();
-        }
-        self.library
-            .skills()
-            .iter()
-            .map(|skill| SkillView {
-                name: skill.name().to_string(),
-                description: skill.description().to_string(),
-            })
-            .collect()
     }
 
     /// The [`SkillsState`](GgTelemetryKind::SkillsState) telemetry for the current read

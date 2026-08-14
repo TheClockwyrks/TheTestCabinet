@@ -153,31 +153,32 @@ class and its `what()`, with no location. A libc++ hardening check traps with
 libc++'s own sentence at the model's own line. Any other undefined behaviour is
 a trap with no words, located at the model's own line and no more.
 
-## Prompt dialect
+## Prompt segment
 
-The templates are `system-code.cpp.hbs` and `code-nothing-shown.cpp.hbs` in
-`crates/gg/templates/`. Beyond what every arm's prompt states, this one states:
+[`system-code.hbs`](/gg/prompts/) reaches this arm through a segment gated on
+`cpp`, and `code-nothing-shown.hbs` through a clause naming printing. The
+segment states:
 
-- the reply is compiled verbatim as a whole translation unit and must define
-  `int main`, and gg's surface and the standard library are already in front of
-  the first line;
-- each capability module is a namespace and a call is a qualified name; a
-  program's own file-scope namespace sharing a module's name makes the
-  unqualified form ambiguous, and `gg::` plus the module name always resolves;
-- one optional argument is a default argument, two or more are designated
-  initialisers, and a fixed choice is an `enum class`;
+- the reply is compiled verbatim as a whole translation unit and defines
+  `int main`, with gg's surface and the prelude's headers already in front of
+  its first line;
 - every call throws, an expected failure is caught as `core::tool_error`, and
   its `code()` is an `enum class`;
-- the header list, that a standard header outside it still resolves if the
-  program includes it, and that a non-standard header is `file not found`;
-- that container bounds are checked, that undefined behaviour is the one failure
-  the sandbox cannot explain, and that `<thread>`, `<future>` and `<atomic>`
-  have nothing to run on.
+- one optional argument is a default argument and two or more are designated
+  initialisers, and each module is a namespace reached by a qualified name, with
+  `gg::` plus the module name always resolving.
 
-The statements gg synthesizes into a transcript use the same spelling. A file
-view is `gg::views::open_file("src/main.cpp");`, with a window as a designated
-initialiser, and a documentation-view program is a whole `int main` holding a
-`std::array` of names and a range `for` over it.
+The arm names `clang++` as its [checker](/gg/languages/compilation/), so the
+shared body states that a program is compiled before it runs, that one the
+compiler refuses is not executed, and that a call the run withheld compiles and
+fails when it runs. The header set is carried by a compile failure rather than
+by the prompt.
+
+Source gg synthesizes for this arm uses the same spelling. A file view is
+`gg::views::open_file("src/main.cpp");`, with a window as a designated
+initialiser; the documentation-view program and the bootstrap program are each a
+whole `int main`, the first holding a `std::array` of names and a range `for`
+over it.
 
 ## Healing dialect
 

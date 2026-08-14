@@ -146,29 +146,31 @@ An uncaught throw is the exception. The runtime hands the error to
 the model is gg's own sentence naming the failed call, with no line. Catching an
 expected failure is what buys the line back.
 
-## Prompt dialect
+## Prompt segment
 
-Two Handlebars templates, `system-code.swift.hbs` and
-`code-nothing-shown.swift.hbs`, are written in Swift's syntax. Neither writes a
-function name or a signature: every spelling they quote is resolved from this
-arm's catalogue when the template renders. The system prompt states:
+[`system-code.hbs`](/gg/prompts/) reaches this arm through a segment gated on
+`swift`, and `code-nothing-shown.hbs` through a clause naming `print`. Neither
+writes a function name or a signature: every spelling they quote is resolved
+from this arm's catalogue when the template renders. The segment states:
 
-- the response is compiled verbatim as a whole Swift file, and a program
-  `swiftc` refuses comes back as type diagnostics at the model's own line and
-  column instead of running;
-- every call throws, so `try` is required, an expected failure is caught as
-  `core.ToolError` and branched on by its `code`, and a runtime failure ends the
-  program with nothing able to catch it;
-- the program is synchronous, so nothing is awaited and a `Task` compiles,
-  schedules and never runs;
-- the declared libraries are the whole of what is linked;
-- gg's surface needs no import line, a program's own declaration of a module's
-  name shadows gg's while the fully qualified form still reaches it, and
-  optional arguments are default values passed by label.
+- the reply is compiled verbatim as a whole Swift file, whose top-level
+  statements are the program;
+- every call throws, so `try` is required, and an expected failure is caught as
+  `core.ToolError` and branched on by its `code`;
+- optional arguments are default values passed by label, and each module is a
+  caseless `enum` in scope, with the fully qualified form always reaching gg's.
 
-Statements gg synthesizes into the transcript are written in the same dialect:
+The arm names `swiftc` as its [checker](/gg/languages/compilation/), so the
+shared body states that a program is compiled before it runs, that one `swiftc`
+refuses comes back as diagnostics at the model's own line and column instead of
+running, and that a call the run withheld compiles and fails when it runs. The
+linked library set is carried by a compile failure rather than by the prompt.
+
+Source gg synthesizes for this arm is written in the same dialect:
 `try views.openFile("src/main.swift")`, with a window passed as the call's own
 `offset:` and `limit:` arguments.
+
+## Healing dialect
 
 The arm's healing dialect reads Swift lexically rather than parsing it, and
 declines rather than guessing. A `"` string ends at its line's end while a `"""`

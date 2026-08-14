@@ -46,9 +46,9 @@ use crate::sandbox::signatures::SignatureCatalogue;
 use super::typescript;
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, PromptDialect, spell,
+    ProgramLanguage, spell,
 };
-use crate::sandbox::operations::{VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
 /// This language's catalogue: the same SDK declarations TypeScript's is reflected from, emitted a
 /// second time under this language's own id by the guest package's `signatures.sh`.
@@ -70,20 +70,6 @@ const SIGNATURES: &str = include_str!(concat!(
 
 /// The parsed catalogue, parsed once per process.
 static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
-
-/// Everything gg says about a JavaScript program, in this language's own two templates.
-///
-/// It is TypeScript's prompt without the section that tells a model its program is compiled, and
-/// with one paragraph the checked arm does not need: that the signatures below are written with
-/// annotations, which the program may use or leave off. Without that sentence a model told it is
-/// writing JavaScript and shown a typed signature has been handed a contradiction to resolve on its
-/// own.
-static PROMPT: PromptDialect = PromptDialect {
-    system_template: include_str!("../../../templates/system-code.javascript.hbs"),
-    system_template_name: "system-code.javascript",
-    nothing_shown_template: include_str!("../../../templates/code-nothing-shown.javascript.hbs"),
-    nothing_shown_template_name: "code-nothing-shown.javascript",
-};
 
 /// The one instance of this language.
 pub(super) static JAVASCRIPT: JavaScript = JavaScript;
@@ -189,10 +175,6 @@ impl ProgramLanguage for JavaScript {
         &typescript::healing::TYPESCRIPT_DIALECT
     }
 
-    fn prompt(&self) -> &'static PromptDialect {
-        &PROMPT
-    }
-
     /// [`gg.views.openFile("src/main.js");`](super::typescript::open_file_statement), with the name
     /// resolved from **this** language's catalogue.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
@@ -204,6 +186,17 @@ impl ProgramLanguage for JavaScript {
     /// language's catalogue.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
         typescript::open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
+    }
+
+    /// [Two `const` arrays and two `for…of` loops](super::typescript::bootstrap_program), with both
+    /// names resolved from **this** language's catalogue.
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+        typescript::bootstrap_program(
+            &spell(self, DOCS_SEARCH),
+            &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            modules,
+            docs,
+        )
     }
 }
 

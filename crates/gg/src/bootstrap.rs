@@ -1,6 +1,7 @@
 //! The **synthesized opening turn** a [code-mode](crate::context::ContextModel::code_mode) agent's
-//! session starts with: one program that opens the documentation of the calls discovery itself is
-//! made of, and the views that program produced.
+//! session starts with: one program, written by gg in the agent's own language and actually run,
+//! that lists every module the agent was granted and opens the documentation of the calls discovery
+//! itself is made of — plus the views those calls placed.
 //!
 //! # Why anything is seeded at all
 //!
@@ -10,39 +11,48 @@
 //! that is a fixed point: an agent that cannot look anything up cannot look up how to look things
 //! up. The bootstrap breaks it, and it is the only thing that does.
 //!
-//! # Why a program rather than a paragraph
+//! # Why a program that runs, rather than a paragraph or a pretence
 //!
-//! A paragraph in the prompt naming the two calls would break the rule the prompt exists under, and
-//! it would teach worse. The mechanism gg already ships for this — the same one
-//! [autoload](crate::agent) and [persistence](crate::persistence::restore_file_views) use — puts a
-//! **reply the agent could have sent** into its own transcript, and a model reads its own transcript
-//! as the example of what a well-formed turn looks like. So the calls arrive as *source in the
-//! agent's own language*, which it can copy, rather than as prose about source it would have to
-//! translate. The program is not written here either: every arm already implements
-//! [`open_docs_views_statement`](crate::sandbox::ProgramLanguage::open_docs_views_statement), which
-//! writes a whole program of exactly this shape in that language's own syntax, and generating a
-//! twelfth thing beside it would be a second answer to a question the seam already answers.
+//! A paragraph in the prompt naming the two calls would break the rule the prompt exists under: a
+//! sentence a model reads lives in a template, and the one template gg now renders is
+//! **language-agnostic** — it cannot spell a call, because the spelling is the arm's. The mechanism
+//! gg already ships for this — the same one [autoload](crate::agent) and
+//! [persistence](crate::persistence::restore_file_views) use — puts a **reply the agent could have
+//! sent** into its own transcript, and a model reads its own transcript as the example of what a
+//! well-formed turn looks like.
 //!
-//! # What it carries, and what it deliberately does not
+//! What is new is that the reply is not a pretence. The program is [prepared](prepared_program) and
+//! [run](crate::sandbox::run_prepared_program) exactly as a model's own program is, against this
+//! agent's real scope, and the views beside it are the ones **its own calls placed**. Two things
+//! follow, and both are the point: the first program in the window provably compiles and runs in
+//! that arm's language, and gg cannot tell a model it opened something it did not.
 //!
-//! **Only the bootstrap calls** — [`BOOTSTRAP_CALLS`]. It does *not* carry one call per granted
-//! capability. That was proposed and rejected: seeding a call per capability would put the whole
-//! immediate function surface back in front of the model on turn one, under a different heading,
-//! and the point of the design is that an agent that decides to use tasks goes and finds the task
-//! calls. That round trip is the thing being measured, not an overhead to be optimized away.
+//! # What it carries: every module, and the two calls discovery is made of
+//!
+//! One whole-module listing per module this agent was granted — the same set
+//! [`module_paths`](crate::agent::module_paths) publishes into the prompt, searched by the path the
+//! prompt shows — and a documentation view of each [bootstrap call](BOOTSTRAP_CALLS).
+//!
+//! Seeding a call per capability was once proposed, rejected, and has now been decided the other
+//! way. An agent sees **every function it may call, with a one-line brief each**, before its first
+//! real turn. That is what makes one language-agnostic prompt possible at all — the prompt can name
+//! no call, so the opening turn has to be where the surface arrives — and a model that has already
+//! seen one valid program in its own language is likelier to write the next one. The round trip a
+//! model still makes is the one that matters: from a brief to the whole signature, by opening a
+//! documentation view of it.
 //!
 //! # Where it sits, and why it survives
 //!
 //! It is seeded once, on a fresh window, immediately after the build prompt and before every other
-//! opening step — the capability seedings, the opening hooks' notes, the autoloaded specifications
-//! and a persistent agent's restored desk all land after it. Three reasons, in order:
+//! opening step — the opening hooks' notes, the autoloaded specifications and a persistent agent's
+//! restored desk all land after it. Three reasons, in order:
 //!
 //! 1. **The transcript reads in the order the work happened.** The first thing in the window after
 //!    the task is the agent equipping itself to read documentation; everything the run pre-loads
 //!    comes after, as material it then has the vocabulary to work with.
 //! 2. **The documentation band is append-only** ([`open_docview`](crate::context::ContextModel::open_docview)),
 //!    so whatever is opened first stays first for the life of the session. Seeding here puts these
-//!    two at the head of that band, where they are part of the prefix a provider caches rather than
+//!    at the head of that band, where they are part of the prefix a provider caches rather than
 //!    something that shifts every other documentation view down.
 //! 3. **A persistent agent's restore is idempotent against it.** [`restore_docviews`](crate::persistence::restore_docviews)
 //!    re-opens the keys the last instance held, and a re-open of an open key is a no-op — so running
@@ -60,12 +70,51 @@
 //! on the same terms as every other opening step: it already holds these views, and pushing a second
 //! copy of the program into the middle of a live thread would read as the agent having repeated
 //! itself.
+//!
+//! # A failure here is gg's, and it refuses the run
+//!
+//! Everything in here is fallible, and every failure is internal. gg wrote the program, gg granted
+//! the scope it runs under and gg implements every call it makes, so a program that does not
+//! prepare, a sandbox that will not run it, a call it makes that is refused, a call it makes that
+//! this api does not implement, or a run that placed no views at all is a **defect in gg** — not a
+//! thinner opening turn to carry on from. Each is an `Err` out of [`seed_bootstrap`], which the
+//! [loop](crate::agent) routes into `setup_broke`: the operator is told, the run's
+//! [fault latch](crate::fault) is raised, and the run ends as an internal error rather than a model
+//! failure. A window whose model was never handed its surface would produce a tree indistinguishable
+//! from one whose model had it and ignored it.
+//!
+//! # It is not a turn
+//!
+//! It runs before the loop, so it consumes no turn index — and it takes none of the accounting a
+//! turn takes. There is no model call here, so there is no usage, no cost and no reply to record:
+//! nothing here begins a turn, records one, times one, files the program in the
+//! [library](crate::programs), touches the [loop guard](crate::loopguard), or emits a
+//! `TurnStarted`/`TurnOutcome`/`TurnTiming`/`CodeExecution` event. The program's calls are gg's
+//! own, which is also why [`BootstrapApi`] brackets none of them onto the API-call telemetry: an
+//! agent's surface record must report what the *model* reached for.
 
-use crate::context::ContextModel;
-use crate::docs::DocsRuntime;
-use crate::sandbox::{
-    DOCS_SEARCH, OperationId, VIEWS_OPEN_DOCS_VIEW, catalogue_functions, operation_of,
+use std::collections::BTreeMap;
+use std::hash::{Hash, Hasher};
+use std::sync::{LazyLock, Mutex};
+use std::time::Duration;
+
+use test_cabinet_core::gg::{GgProgramLanguage, GgToolFailure};
+
+use crate::board::IssueStatus;
+use crate::context::{
+    ContextModel, DocviewOpen, OpenViewInfo, SEARCH_RESULTS_VIEW, TurnRange, ViewKind,
 };
+use crate::docs::{DocQuery, DocViewTypes, DocsRuntime};
+use crate::ending::EndingRole;
+use crate::memories::MemoryCode;
+use crate::programs::{ProgramRefusal, ProgramSummary};
+use crate::sandbox::{
+    ApiIdentity, DOCS_SEARCH, DocSearchQuery, DocSearchResult, OperationId, PreparedProgram,
+    ProgramLanguage, ProgramScope, RunEnding, SandboxLimits, SandboxOutcome, SandboxViewOpened,
+    ToolApi, VIEWS_OPEN_DOCS_VIEW, ViewOpenOutcome, ViewRefusal, catalogue_functions, operation_of,
+};
+use crate::tasks::TaskStatus;
+use crate::tools::{ToolFailure, ToolOutcome};
 
 /// **The calls the bootstrap opens the documentation of** — the ones discovery is made of, and
 /// nothing else.
@@ -76,49 +125,193 @@ use crate::sandbox::{
 /// unrelated calls, and the model's own example of a well-formed turn is the one it will spend the
 /// session repeating.
 ///
-/// Searching was withheld from this list for as long as no arm's SDK published it: gg cannot open a
-/// documentation view of a name that is in no catalogue, so a run would have seeded a key that
-/// rendered nothing. It is here because the call now has a row in gg's own
-/// [operations table](crate::sandbox::operation_of) — until each arm follows, an arm that does not
-/// catalogue it is skipped by [`bootstrap_keys`] and fails the capability gate by name.
+/// The **searches** the bootstrap program makes are not on this list and do not need to be: they are
+/// one per granted module, resolved from the module list the prompt publishes rather than from an
+/// operation table. This is only what the program opens a *documentation view* of.
 pub(crate) const BOOTSTRAP_CALLS: &[OperationId] = &[DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW];
 
-/// Seed `context` with the bootstrap turn: one program that opens the
-/// [bootstrap calls](BOOTSTRAP_CALLS)' documentation, then those views.
+/// Everything about **this agent** the bootstrap program has to run as: what it was granted, what
+/// its programs run under, and what an `openDocsView` of a function opens beside it.
 ///
-/// Returns how many documentation views were placed, for the run's log — `0` when this agent's arm
-/// catalogues none of the bootstrap calls, or when they were all open already (which is what a
-/// second call on one window is). A window that got no views gets no program either: a synthesized
-/// reply whose views never arrived would teach the model that opening one sometimes silently does
-/// nothing, which is the one lesson this turn must not carry.
+/// One value rather than five parameters because it is one thing — *the agent gg is standing up* —
+/// and because every field of it is read straight off what the loop already resolved for this
+/// instance. Nothing here is re-derived from the profile: a second reading would be a second answer,
+/// and a bootstrap running under a wider grant than the membrane will service is a program gg wrote
+/// and gg then refuses.
+pub(crate) struct BootstrapAgent<'a> {
+    /// The gg capability ids this agent holds, as the loop resolved them.
+    pub capabilities: &'a [String],
+    /// The operations its allowlist names within those capabilities.
+    pub operations: &'a [OperationId],
+    /// Which ending calls it may declare. The bootstrap program declares none — but the scope it
+    /// runs under is the agent's own, so what the membrane would accept is the agent's own too.
+    pub role: EndingRole,
+    /// The execution timeout and memory ceiling one of this agent's programs runs under.
+    pub limits: SandboxLimits,
+    /// Which SDK types an [`open_docs_view`](ToolApi::open_docs_view) places beside the function it
+    /// was asked for, this agent's resolved [`DocViewTypes`] — read here for the same reason the
+    /// loop's own api reads it, since these are the views the model will open the session holding.
+    pub doc_view_types: DocViewTypes,
+}
+
+/// Seed `context` with the bootstrap turn: the program gg wrote on this agent's behalf, run, and
+/// the views its own calls placed.
 ///
-/// Nothing here is fallible. A key that renders no documentation is skipped rather than failing the
-/// agent, on the rule every seeding step follows: an opening turn that is thinner than intended
-/// costs the model a lookup, and a run that refuses to start costs it everything.
-pub(crate) fn seed_bootstrap(context: &mut ContextModel, docs: &DocsRuntime) -> usize {
+/// Returns **how many views the program placed** — one search view per granted module plus one
+/// documentation view per [bootstrap call](BOOTSTRAP_CALLS) and its types — for the run's log. `0`
+/// is not one of the answers: a run that placed nothing is an [`Err`], because a model whose opening
+/// turn shows a program beside an empty window has been taught that opening a view sometimes
+/// silently does nothing, which is the one lesson this turn must not carry.
+///
+/// `Ok(0)` is returned for the one case that is not a failure at all: a window that is not in code
+/// mode has no program to put in its mouth.
+///
+/// # Why the window and the documentation runtime are moved through
+///
+/// The program's calls act on the live window from a `spawn_blocking` thread, so the window and the
+/// runtime that answers its lookups travel **by value** into [`BootstrapApi`] and are handed back
+/// when it returns — exactly as a [code turn](crate::agent) moves them into its own api. `context`
+/// is [vacated](ContextModel::take) and the runtime is replaced by an empty one for the duration;
+/// nothing reads either in the meantime, and on the one path they cannot come back — the blocking
+/// task itself failed — the run ends without reading them again.
+pub(crate) async fn seed_bootstrap(
+    context: &mut ContextModel,
+    docs: &mut DocsRuntime,
+    agent: BootstrapAgent<'_>,
+) -> Result<usize, String> {
     if !context.code_mode() {
-        return 0;
+        return Ok(0);
     }
-    // Rendered before anything is pushed, for the reason autoload reads its files before writing its
-    // program: the program must name exactly the views that arrived.
-    let opened: Vec<(String, String)> = bootstrap_keys(docs)
-        .into_iter()
-        .filter(|key| !context.docview_is_open(key))
-        .filter_map(|key| docs.read_any(&key).map(|body| (key, body)))
-        .collect();
-    if opened.is_empty() {
-        return 0;
-    }
-    let names: Vec<&str> = opened.iter().map(|(key, _)| key.as_str()).collect();
-    context.push_assistant(
-        Some(docs.language().open_docs_views_statement(&names)),
-        Vec::new(),
+    let language = docs.language();
+    // The modules the prompt published, in the prompt's order, named by the path the prompt shows —
+    // one shared computation rather than a second answer to "what was this agent granted".
+    let modules = crate::agent::module_paths(
+        agent.capabilities,
+        agent.operations,
+        agent.role,
+        language.id(),
     );
-    let placed = opened.len();
-    for (key, body) in opened {
-        context.open_docview(key, body);
+    let keys = bootstrap_keys(docs);
+    if keys.len() != BOOTSTRAP_CALLS.len() {
+        return Err(format!(
+            "gg could not name the documentation calls the {} bootstrap program has to open (it \
+             catalogues {:?})",
+            language.display_name(),
+            keys
+        ));
     }
-    placed
+    let source = language.bootstrap_program(
+        &modules.iter().map(String::as_str).collect::<Vec<_>>(),
+        &keys.iter().map(String::as_str).collect::<Vec<_>>(),
+    );
+
+    // Pushed **before** the program runs, so the window reads in the order the work happened: the
+    // reply, and then what its own calls placed.
+    context.push_assistant(Some(source.clone()), Vec::new());
+
+    // Owned copies of the grant: nothing borrowed from the caller survives the move onto the
+    // blocking thread.
+    let capabilities = agent.capabilities.to_vec();
+    let operations = agent.operations.to_vec();
+    let ending = RunEnding::Role(agent.role);
+    let limits = agent.limits;
+    let api = BootstrapApi {
+        context: context.take(),
+        docs: std::mem::replace(
+            docs,
+            DocsRuntime::new(Vec::new(), agent.role, &[], language.id()),
+        ),
+        doc_view_types: agent.doc_view_types,
+        unimplemented: Vec::new(),
+    };
+
+    let ran = tokio::task::spawn_blocking(move || match prepared_program(language, &source) {
+        Err(detail) => (Err(detail), api),
+        Ok(prepared) => {
+            let (outcome, api) = crate::sandbox::run_prepared_program(
+                language,
+                prepared,
+                ProgramScope {
+                    capabilities: &capabilities,
+                    operations: &operations,
+                    // The bootstrap binds no `lib`: it calls gg's own surface and nothing else, and
+                    // a code module here would be a skill's code compiled into a program the model
+                    // never wrote.
+                    modules: &[],
+                    ending,
+                },
+                limits,
+                // No deadline. This is the run standing itself up rather than a turn spending its
+                // budget, and the program's own execution timeout already bounds it.
+                None,
+                api,
+            );
+            (Ok(outcome), api)
+        }
+    })
+    .await;
+
+    let (outcome, api) = match ran {
+        Ok(ran) => ran,
+        // The blocking task itself failed, so the window and the runtime are gone with it. The
+        // caller ends the run here and never reads either again.
+        Err(error) => return Err(format!("gg's bootstrap program could not be run: {error}")),
+    };
+    // Handed back before the verdict is read, so the window holding the program gg pushed is the
+    // window the caller ends the run over — a failure here is reported *about* an agent whose
+    // opening context is intact enough to read.
+    *context = api.context;
+    *docs = api.docs;
+    placed_views(outcome?, &api.unimplemented, language)
+}
+
+/// What the bootstrap's run amounts to: the number of views it placed, or the sentence naming the
+/// gg defect that stopped it.
+///
+/// Every arm of this is a failure of **gg's own machinery**, which is why none of them is fed back
+/// to anybody: the program is gg's, the scope is the one gg resolved for this agent, and the api
+/// under it is [`BootstrapApi`]. See the [module docs](self#a-failure-here-is-ggs-and-it-refuses-the-run).
+fn placed_views(
+    outcome: SandboxOutcome,
+    unimplemented: &[&'static str],
+    language: &'static dyn ProgramLanguage,
+) -> Result<usize, String> {
+    let arm = language.display_name();
+    if let Err(error) = &outcome.result {
+        return Err(format!("gg's {arm} bootstrap program did not run: {error}"));
+    }
+    if let Ok(result) = &outcome.result
+        && let Some(error) = &result.error
+    {
+        return Err(format!(
+            "gg's {arm} bootstrap program failed while it ran: {}",
+            error.message
+        ));
+    }
+    if let Some(refusal) = outcome.refusals.first() {
+        return Err(format!(
+            "gg's {arm} bootstrap program called `{}`, which this agent's grant refuses: {}",
+            refusal.name, refusal.message
+        ));
+    }
+    if let Some(refusal) = outcome.view_refusals.first() {
+        return Err(format!(
+            "gg's {arm} bootstrap program was refused a view it asked for: {refusal}"
+        ));
+    }
+    if let Some(call) = unimplemented.first() {
+        return Err(format!(
+            "gg's {arm} bootstrap program called `{call}`, which the bootstrap api does not \
+             implement"
+        ));
+    }
+    if outcome.views_opened.is_empty() {
+        return Err(format!(
+            "gg's {arm} bootstrap program ran and placed no views, so this agent would open on a \
+             program with nothing beside it"
+        ));
+    }
+    Ok(outcome.views_opened.len())
 }
 
 /// This arm's model-facing keys for the [bootstrap calls](BOOTSTRAP_CALLS), in that order.
@@ -128,9 +321,9 @@ pub(crate) fn seed_bootstrap(context: &mut ContextModel, docs: &DocsRuntime) -> 
 ///
 /// Resolved by the **operation** each entry names rather than by the spelling an arm files it
 /// under, because the [operation id](OperationId) is gg's own identity for a call and a spelling is
-/// one of eleven. A call this arm does not catalogue yields nothing and is skipped: gg cannot open a
-/// view of a name that is in no catalogue, and guessing one would seed the model a key that resolves
-/// to nothing.
+/// one of eleven. A call this arm does not catalogue yields nothing — and, since the program gg
+/// writes has to name one key per bootstrap call, a short list is a defect
+/// [`seed_bootstrap`] refuses the run over rather than a program with a call quietly dropped from it.
 fn bootstrap_keys(docs: &DocsRuntime) -> Vec<String> {
     let functions = catalogue_functions(docs.language());
     BOOTSTRAP_CALLS
@@ -146,6 +339,386 @@ fn bootstrap_keys(docs: &DocsRuntime) -> Vec<String> {
                 .map(|function| function.fqn.to_string())
         })
         .collect()
+}
+
+// ---------------------------------------------------------------------------
+// The prepared-program cache
+// ---------------------------------------------------------------------------
+
+/// Every bootstrap program this process has already prepared, by `(language, source hash)`.
+///
+/// # Why a cache here, and why this is not the cross-program caching that is forbidden
+///
+/// A compiled arm invokes a **real toolchain** per preparation — seconds of `swiftc`, `rustc` or a
+/// warm JVM — and a run with a dozen agents on one arm would otherwise pay a dozen identical
+/// compiles before any of them took a turn. The bootstrap program is the one program in gg whose
+/// source is a pure function of `(language, module set, docview keys)`, so those preparations are
+/// identical by construction rather than by luck.
+///
+/// Keying on the **source** is what keeps this from being the cross-program caching
+/// [`PreparedProgram::component`]'s doc comment correctly forbids: two different programs never
+/// share an entry, because two different sources never hash to one key. What is reused is one
+/// program's own artifact, for a second agent that would have compiled the same bytes.
+///
+/// Consulted by nothing but the bootstrap. A model's program is different every turn, so a cache in
+/// front of *that* preparation would be a map that only ever grows.
+static PREPARED: LazyLock<Mutex<BTreeMap<(GgProgramLanguage, u64), PreparedProgram>>> =
+    LazyLock::new(Mutex::default);
+
+/// `source` prepared for `language`'s guest, from [the cache](PREPARED) when this process has
+/// already prepared it.
+///
+/// The lock is never held across the preparation itself: a miss releases it, compiles, and inserts.
+/// Two agents starting at once may therefore both compile the first one, which costs one duplicated
+/// compile and avoids every other agent in the run queueing behind one lock for the length of a
+/// `swiftc` invocation.
+fn prepared_program(
+    language: &'static dyn ProgramLanguage,
+    source: &str,
+) -> Result<PreparedProgram, String> {
+    let key = (language.id(), source_hash(source));
+    if let Some(prepared) = PREPARED
+        .lock()
+        .expect("the bootstrap program cache holds no lock across a panic")
+        .get(&key)
+    {
+        return Ok(prepared.clone());
+    }
+    let prepared = crate::sandbox::prepare_program(language, source, &[]).map_err(|failure| {
+        format!(
+            "gg's {} bootstrap program did not prepare: {failure}",
+            language.display_name()
+        )
+    })?;
+    PREPARED
+        .lock()
+        .expect("the bootstrap program cache holds no lock across a panic")
+        .insert(key, prepared.clone());
+    Ok(prepared)
+}
+
+/// The hash a prepared program is filed under. The default hasher, because the key is a cache key
+/// and not a fingerprint anything trusts: a collision would have to be between two sources gg itself
+/// generated for one language.
+fn source_hash(source: &str) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    source.hash(&mut hasher);
+    hasher.finish()
+}
+
+// ---------------------------------------------------------------------------
+// The api the bootstrap program runs against
+// ---------------------------------------------------------------------------
+
+/// The [`ToolApi`] the bootstrap program's calls reach: this agent's window and its documentation
+/// runtime, and nothing else.
+///
+/// Two methods do real work — the search that lists a module and the open that places a
+/// documentation view — because those are the only two calls gg's own program makes. Everything else
+/// on the trait is [refused](Refusal) and **recorded**: gg authored the program, so a call arriving
+/// at one of those bodies is not a model doing something unexpected, it is gg's program having
+/// drifted from gg's api, and [`seed_bootstrap`] ends the run over it.
+///
+/// It holds the window and the runtime **by value** and hands them back, which is what the
+/// [`Send + 'static`](ToolApi) bound on the trait requires: the sandbox runs on a blocking thread,
+/// so nothing borrowed from the loop could cross into it.
+struct BootstrapApi {
+    /// The agent's window. Every view this program opens lands in it directly.
+    context: ContextModel,
+    /// The agent's documentation runtime, which answers exactly what its own lookups will answer —
+    /// so the listing it opens with is the surface it actually holds.
+    docs: DocsRuntime,
+    /// Which SDK types an [`open_docs_view`](ToolApi::open_docs_view) places beside a function.
+    doc_view_types: DocViewTypes,
+    /// The api methods this program reached that gg never wrote a call to. Empty on every healthy
+    /// run; anything in it fails the run.
+    unimplemented: Vec<&'static str>,
+}
+
+impl BootstrapApi {
+    /// Record that `call` was reached and answer it with the class of refusal its return type has.
+    ///
+    /// The recording is the point. The refusal value exists only because the method has to return
+    /// something — the run is over as soon as [`seed_bootstrap`] reads the list.
+    fn refuse<T: Refusal>(&mut self, call: &'static str) -> T {
+        self.unimplemented.push(call);
+        T::refused(call)
+    }
+}
+
+/// How one return type of the [`ToolApi`] surface says *the bootstrap api does not implement this*.
+///
+/// It exists so the forty-odd unreachable methods can be generated rather than hand-written. Every
+/// implementation is a refusal in that type's own vocabulary: a classified failure where the type
+/// carries one, an empty list where it carries none.
+trait Refusal {
+    /// The refusal for `call`, which is the api method's own name.
+    fn refused(call: &str) -> Self;
+}
+
+/// What a refused call says. It reaches no model — the run ends before the next turn — so it is
+/// written for the operator reading the log line that ends the run.
+fn refusal_message(call: &str) -> String {
+    format!("gg's bootstrap api does not implement `{call}`")
+}
+
+impl Refusal for ToolOutcome {
+    fn refused(call: &str) -> Self {
+        ToolOutcome::failed(ToolFailure::Refused, refusal_message(call))
+    }
+}
+
+impl<T> Refusal for Result<T, ViewRefusal> {
+    fn refused(call: &str) -> Self {
+        Err(ViewRefusal {
+            failure: ToolFailure::Refused,
+            message: refusal_message(call),
+        })
+    }
+}
+
+impl Refusal for Result<String, ProgramRefusal> {
+    fn refused(call: &str) -> Self {
+        Err(ProgramRefusal {
+            failure: ToolFailure::Refused,
+            message: refusal_message(call),
+        })
+    }
+}
+
+impl<T> Refusal for Vec<T> {
+    fn refused(_call: &str) -> Self {
+        Vec::new()
+    }
+}
+
+impl Refusal for ViewOpenOutcome {
+    fn refused(call: &str) -> Self {
+        ViewOpenOutcome {
+            outcome: ToolOutcome::refused(call),
+            opened: None,
+        }
+    }
+}
+
+/// Generate the body of every [`ToolApi`] method the bootstrap program never calls.
+///
+/// One line per method rather than forty hand-written bodies that would all say the same thing —
+/// and, more usefully, a shape that makes an api method added to the trait a compile error here
+/// until somebody decides which of the two lists it belongs on.
+macro_rules! unimplemented_calls {
+    ($($name:ident($($arg:ident: $ty:ty),* $(,)?) -> $ret:ty;)*) => {
+        $(
+            #[allow(clippy::too_many_arguments)]
+            fn $name(&mut self $(, $arg: $ty)*) -> $ret {
+                $(let _ = $arg;)*
+                self.refuse(stringify!($name))
+            }
+        )*
+    };
+}
+
+impl ToolApi for BootstrapApi {
+    /// A no-op, on both halves of the bracket. This is gg standing the agent up, not the agent
+    /// making a call, and an [`ApiCall`](test_cabinet_core::gg::GgTelemetryKind::ApiCall) recorded
+    /// here would put two searches and an open into a model's own surface record before it had taken
+    /// a turn — which is exactly the figure a comparison of two configurations reads.
+    fn begin_api_call(&mut self, _call: ApiIdentity<'_>) {}
+
+    /// The closing half of the same no-op. See [`begin_api_call`](Self::begin_api_call).
+    fn end_api_call(&mut self, _call: ApiIdentity<'_>, _failure: Option<GgToolFailure>) {}
+
+    /// Search the documentation surface and leave the page in the window as a search view **keyed by
+    /// the module it listed**.
+    ///
+    /// The selector is what makes the bootstrap's N listings survive each other. A model's own
+    /// search names a mutable intent and is keyed by [`SEARCH_RESULTS_VIEW`], so the next one
+    /// replaces it; the bootstrap's searches are N answers that must all stand, and each is keyed by
+    /// the module path it is a listing of — superseded only by a re-listing of that same module. See
+    /// [`ContextModel::open_search_view`].
+    ///
+    /// The rendering is the loop's own, so what an agent reads in its opening window is byte for
+    /// byte what it will read after its own first search.
+    fn search_docs(&mut self, query: DocSearchQuery) -> Result<DocSearchResult, ViewRefusal> {
+        let page = self.docs.search(DocQuery {
+            query: &query.query,
+            module: query.module.as_deref(),
+            declared_type: query.declared_type.as_deref(),
+            kind: query.kind.as_deref(),
+            offset: query.offset,
+            limit: query.limit,
+        })?;
+        // The module gg's own program named. A bootstrap search always names one; the constant is
+        // what a search with no module filter means everywhere else in gg, so it is what an
+        // unfiltered one would land under here too.
+        let selector = query
+            .module
+            .clone()
+            .unwrap_or_else(|| SEARCH_RESULTS_VIEW.to_string());
+        let opened = self.context.open_search_view(
+            selector.clone(),
+            crate::agent::code::render_search_results(&query, &page),
+        );
+        Ok(DocSearchResult {
+            page,
+            opened: SandboxViewOpened {
+                kind: ViewKind::Search,
+                selector,
+                tokens: opened.tokens as u64,
+                superseded: opened.superseded,
+            },
+        })
+    }
+
+    /// Open the documentation view for `name`, plus the SDK types this agent's
+    /// [type mode](DocViewTypes) selects — the loop's own algorithm, on the loop's own terms.
+    ///
+    /// It mirrors [`LoopToolApi::open_docs_view`](crate::agent) deliberately rather than doing
+    /// something simpler: these are the views the session opens holding, and a model that closed one
+    /// and re-opened it must get back what it started with. One call, one level, and a key already
+    /// open is a total no-op.
+    ///
+    /// A name that resolves to nothing is a [refusal](ViewRefusal) here as it is there — but it is
+    /// also a gg defect, since [`bootstrap_keys`] resolved every key gg's program names against this
+    /// same runtime, so it is recorded like an unimplemented call and ends the run.
+    fn open_docs_view(&mut self, name: String) -> Result<Vec<SandboxViewOpened>, ViewRefusal> {
+        let Some((key, read)) = self
+            .docs
+            .docview_key(&name)
+            .and_then(|key| Some((key.clone(), self.docs.read_any(&key)?)))
+        else {
+            return Err(ViewRefusal {
+                failure: ToolFailure::NotFound,
+                message: format!(
+                    "gg's bootstrap program asked for the documentation of `{name}`, which this \
+                     agent does not bind"
+                ),
+            });
+        };
+        let types = self.docs.types_to_open(&name, self.doc_view_types);
+        let mut opened = Vec::new();
+        if let DocviewOpen::Placed { tokens } = self.context.open_docview(key.clone(), read) {
+            opened.push(SandboxViewOpened {
+                kind: ViewKind::Docs,
+                selector: key,
+                tokens: tokens as u64,
+                superseded: false,
+            });
+        }
+        for referenced in types {
+            let Some(body) = self.docs.read_type(referenced) else {
+                continue;
+            };
+            if let DocviewOpen::Placed { tokens } =
+                self.context.open_docview(referenced.to_string(), body)
+            {
+                opened.push(SandboxViewOpened {
+                    kind: ViewKind::Docs,
+                    selector: referenced.to_string(),
+                    tokens: tokens as u64,
+                    superseded: false,
+                });
+            }
+        }
+        Ok(opened)
+    }
+
+    unimplemented_calls! {
+        shell(command: String, timeout: Duration) -> ToolOutcome;
+        read_file(path: String, offset: Option<usize>, limit: Option<usize>) -> ToolOutcome;
+        write_file(path: String, contents: String) -> ToolOutcome;
+        edit_file(path: String, old_string: String, new_string: String) -> ToolOutcome;
+        list_dir(path: Option<String>) -> ToolOutcome;
+        read_skill(name: String) -> ToolOutcome;
+        write_memory(
+            name: String,
+            description: String,
+            body: String,
+            code: MemoryCode,
+        ) -> ToolOutcome;
+        update_memory(
+            name: String,
+            description: String,
+            body: String,
+            code: MemoryCode,
+        ) -> ToolOutcome;
+        create_memory(
+            name: String,
+            description: String,
+            contents: String,
+            code: MemoryCode,
+        ) -> ToolOutcome;
+        read_memory(name: String) -> ToolOutcome;
+        edit_memory(name: String, search: String, replace: String) -> ToolOutcome;
+        search_memories(keywords: Vec<String>) -> ToolOutcome;
+        delete_memory(name: String) -> ToolOutcome;
+        add_task(
+            id: String,
+            title: String,
+            description: Option<String>,
+            blocked_by: Vec<String>,
+        ) -> ToolOutcome;
+        update_task(
+            id: String,
+            title: Option<String>,
+            description: Option<String>,
+            status: Option<TaskStatus>,
+        ) -> ToolOutcome;
+        set_blocked_by(id: String, blocked_by: Vec<String>) -> ToolOutcome;
+        complete_task(id: String) -> ToolOutcome;
+        remove_task(id: String) -> ToolOutcome;
+        create_epic(prefix: String, title: String, description: String) -> ToolOutcome;
+        create_issue(
+            title: String,
+            description: Option<String>,
+            in_scope: String,
+            out_of_scope: String,
+            completion_criteria: String,
+            blocked_by: Vec<String>,
+            epic_id: Option<String>,
+            agent: String,
+            reviewers: Vec<String>,
+        ) -> ToolOutcome;
+        update_issue(
+            id: String,
+            title: Option<String>,
+            description: Option<String>,
+            in_scope: Option<String>,
+            out_of_scope: Option<String>,
+            completion_criteria: Option<String>,
+            status: Option<IssueStatus>,
+            epic_id: Option<String>,
+        ) -> ToolOutcome;
+        set_issue_blocked_by(id: String, blocked_by: Vec<String>) -> ToolOutcome;
+        remove_epic(id: String) -> ToolOutcome;
+        remove_issue(id: String) -> ToolOutcome;
+        wait_for_issue(id: String) -> ToolOutcome;
+        evict_file_view(path: Option<String>) -> ToolOutcome;
+        archive_thread(ranges: Vec<TurnRange>) -> ToolOutcome;
+        search_archive(query: String) -> ToolOutcome;
+        compact(summary: String, files: Vec<String>) -> ToolOutcome;
+        transition_state(state: String, note: Option<String>) -> ToolOutcome;
+        exec(agent: String, prompt: Option<String>) -> ToolOutcome;
+        fork(prompt: String) -> ToolOutcome;
+        spawn_subagent(
+            agent: String,
+            prompt: Option<String>,
+            issue_id: Option<String>,
+        ) -> ToolOutcome;
+        wait_for_subagents(ids: Option<Vec<String>>) -> ToolOutcome;
+        send_message(agent_id: String, message: String) -> ToolOutcome;
+        close_docviews(key: Option<String>) -> Result<u32, ViewRefusal>;
+        open_file_view(
+            path: String,
+            offset: Option<usize>,
+            limit: Option<usize>,
+        ) -> ViewOpenOutcome;
+        open_text_view(label: String, body: String) -> Result<SandboxViewOpened, ViewRefusal>;
+        close_view(selector: String) -> Result<u32, ViewRefusal>;
+        current_views() -> Vec<OpenViewInfo>;
+        program_history() -> Vec<ProgramSummary>;
+        program_source(turn: Option<u64>) -> Result<String, ProgramRefusal>;
+    }
 }
 
 #[cfg(test)]

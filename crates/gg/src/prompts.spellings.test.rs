@@ -14,6 +14,13 @@
 //! What replaces them is stricter in the only direction that matters: a template may not name a
 //! catalogued function **however** it came by the name.
 //!
+//! It got stricter again when the eleven code templates became one. A per-language template was
+//! judged against its own arm's spellings, on the reasoning that a name that is a call in Ruby and
+//! ordinary prose in Swift is a defect in exactly one of two files. There is one file now, and a
+//! sentence written under Ruby's gate sits three lines from Swift's, so **every arm's spellings are
+//! pooled against every template** — a language segment may not name a catalogued call of any arm,
+//! including one that is not its own.
+//!
 //! # The three rules, and what each of them can see
 //!
 //! Two read the template **sources**, so they cover every branch — including the sections a test's
@@ -23,7 +30,7 @@
 //! * [`no_code_reachable_template_names_a_bare_gg_tool`] — a gg tool name is the right identity in
 //!   the tool-calling prompt and nowhere else, because a program calls a function in a module.
 //!
-//! And one reads what is actually **rendered**, for every language including the seam's fixture:
+//! And one reads what is actually **rendered**, for every registered language:
 //!
 //! * [`every_name_a_rendered_prompt_writes_under_a_module_is_one_it_publishes`].
 //!
@@ -50,43 +57,18 @@
 //! PureScript's `Gg.Core.attempt` — and the ending calls above. It may never name a **catalogued**
 //! function, because that is precisely the set a search will hand over.
 
-use super::{TEMPLATES, render_code_nothing_shown_for, render_system_for};
+use super::{TEMPLATES, render_code_nothing_shown, render_system};
 use crate::sandbox::{ProgramLanguage, all_languages, catalogue_functions};
+use test_cabinet_core::gg::GgProgramLanguage;
 
-/// Every template gg renders, as `(name, source)` — the shared ones plus each registered language's
-/// pair and the fixture's.
+/// Every language a template is judged against: **all of them**, plus the seam's fixture.
 ///
-/// Read from the same two places [`engine`](super::engine) registers from, so a template added
-/// anywhere is covered here without anyone editing a list.
-fn every_template() -> Vec<(&'static str, &'static str)> {
-    let mut out: Vec<(&'static str, &'static str)> = TEMPLATES.to_vec();
-    for language in all_languages().chain(crate::sandbox::fixture_languages()) {
-        let dialect = language.prompt();
-        out.push((dialect.system_template_name, dialect.system_template));
-        out.push((
-            dialect.nothing_shown_template_name,
-            dialect.nothing_shown_template,
-        ));
-    }
-    out
-}
-
-/// The languages a template is judged against: the one whose dialect owns it, or **every** language
-/// for a template both execution modes share.
-///
-/// A per-language template is judged against its own arm alone, and that is the half that matters.
-/// A name that is a call in Ruby and ordinary prose in Swift is a defect in exactly one of the two
-/// files, and a rule that pooled every arm's spellings would either miss it or refuse a Swift
-/// sentence for a Ruby reason.
-fn judged_against(template: &str) -> Vec<&'static dyn ProgramLanguage> {
-    for language in all_languages().chain(crate::sandbox::fixture_languages()) {
-        let dialect = language.prompt();
-        if template == dialect.system_template_name
-            || template == dialect.nothing_shown_template_name
-        {
-            return vec![language];
-        }
-    }
+/// There is one system prompt and one "nothing shown" notice for every arm, so there is no longer a
+/// template whose spellings belong to one language. Pooling is the correct reading of a shared
+/// document and it is strictly stricter than what it replaces: a language segment may not name a
+/// catalogued call of **any** arm, not merely of its own — which is the right rule for a file where a
+/// sentence written under one arm's gate sits three lines from another's.
+fn judged_against() -> Vec<&'static dyn ProgramLanguage> {
     all_languages()
         .chain(crate::sandbox::fixture_languages())
         .collect()
@@ -228,14 +210,14 @@ fn call_head<'a>(
 /// scale of a study whose whole subject is how a model finds its surface.
 ///
 /// It reads the template *sources* rather than a rendering, so it covers a `{{#if}}` section no test
-/// context turns on — which is exactly where a spelling survives longest — and it judges each
-/// language-specific template against [its own arm](judged_against).
+/// context turns on — which is exactly where a spelling survives longest — and it judges every
+/// template against [every arm's spellings pooled](judged_against).
 #[test]
 fn no_template_names_a_function_of_the_surface_it_describes() {
     let mut offenders = Vec::new();
-    for (name, source) in every_template() {
-        for language in judged_against(name) {
-            let spellings = call_spellings(language);
+    for language in judged_against() {
+        let spellings = call_spellings(language);
+        for (name, source) in TEMPLATES {
             for span in backticked(source) {
                 for spelling in &spellings {
                     if span.starts_with(spelling.as_str()) {
@@ -267,8 +249,8 @@ fn no_template_names_a_function_of_the_surface_it_describes() {
 #[test]
 fn no_code_reachable_template_names_a_bare_gg_tool() {
     let mut offenders = Vec::new();
-    for (name, source) in every_template() {
-        if name == "system-tools" {
+    for (name, source) in TEMPLATES {
+        if *name == "system-tools" {
             continue;
         }
         for span in backticked(source) {
@@ -305,10 +287,15 @@ fn no_code_reachable_template_names_a_bare_gg_tool() {
 /// arm** on a language that qualifies those by the module rather than by the type:
 /// `Gg.Delegation.Prompt` is a real, correct, reflected name in PureScript's prompt and is neither a
 /// function nor a type. What is refused either way is a name the arm does not carry at all.
+///
+/// The **registered** arms, and not the seam's fixture: a document is rendered for the language its
+/// context names, a language segment is gated on a wire id, and the fixture deliberately has none.
+/// It is still judged by the two rules above, which read sources rather than renderings.
 #[test]
 fn every_name_a_rendered_prompt_writes_under_a_module_is_one_it_publishes() {
     let mut offenders = Vec::new();
-    for language in all_languages().chain(crate::sandbox::fixture_languages()) {
+    for &id in GgProgramLanguage::ALL {
+        let language = crate::sandbox::language(id);
         let groupings = groupings_of(language);
         let bound: Vec<(&str, &str)> = catalogue_functions(language)
             .into_iter()
@@ -330,8 +317,9 @@ fn every_name_a_rendered_prompt_writes_under_a_module_is_one_it_publishes() {
 
         let rendered = format!(
             "{}\n{}",
-            render_system_for(language, &super::tests::every_code_section_on_for(language)),
-            render_code_nothing_shown_for(language),
+            render_system(&super::tests::every_code_section_on(id), None)
+                .expect("every arm's system prompt renders"),
+            render_code_nothing_shown(id),
         );
         for span in backticked(&rendered) {
             let Some((object, name, _)) = call_head(span, language.member_separator(), &groupings)

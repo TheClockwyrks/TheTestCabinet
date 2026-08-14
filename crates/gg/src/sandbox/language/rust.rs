@@ -9,8 +9,6 @@
 //!   how a code module is declared below the program that reads it;
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
 //!   questions of, one of whose answers no other arm gives;
-//! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
-//!   in Rust's syntax;
 //! * `packages/gg-sandbox-rust/` — the crate a program is compiled against: the SDK, the shell, the
 //!   curated library set, and the build that cuts them;
 //! * `rust.libraries.tar.gz` and `rust.toolchain.json` — the compiled library set and what built it,
@@ -104,9 +102,10 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, PromptDialect, spell,
+    ProgramLanguage, spell,
 };
-use crate::sandbox::operations::{VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
+use crate::docs::MAX_SEARCH_LIMIT;
+use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
 #[path = "rust.compile.rs"]
 pub(super) mod compile;
@@ -128,19 +127,6 @@ const SIGNATURES: &str = include_str!(concat!(env!("OUT_DIR"), "/signatures/rust
 
 /// The parsed catalogue, parsed once per process.
 static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
-
-/// Everything gg *says* about a Rust program that is written in Rust's own syntax.
-///
-/// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is.
-/// Individual function spellings are **not** here and not in the templates either: every name and
-/// signature they quote is resolved from this language's catalogue when the template
-/// renders.
-static PROMPT: PromptDialect = PromptDialect {
-    system_template: include_str!("../../../templates/system-code.rust.hbs"),
-    system_template_name: "system-code.rust",
-    nothing_shown_template: include_str!("../../../templates/code-nothing-shown.rust.hbs"),
-    nothing_shown_template_name: "code-nothing-shown.rust",
-};
 
 /// The one instance of this language. A unit struct, so the `static` costs nothing and coerces
 /// straight to `&'static dyn ProgramLanguage`.
@@ -259,10 +245,6 @@ impl ProgramLanguage for Rust {
         &healing::RUST_DIALECT
     }
 
-    fn prompt(&self) -> &'static PromptDialect {
-        &PROMPT
-    }
-
     /// [`gg::views::open_file("src/main.rs", …)?;`](self::open_file_statement) — with the window
     /// as the two fields of this arm's options struct.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
@@ -273,6 +255,17 @@ impl ProgramLanguage for Rust {
     /// opening one documentation view.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
+    }
+
+    /// [Two arrays and two `for` loops, each call composed with `?`](self::bootstrap_program), with
+    /// both paths resolved from this language's own catalogue.
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
+        bootstrap_program(
+            &spell(self, DOCS_SEARCH),
+            &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            modules,
+            docs,
+        )
     }
 
     /// One `pub fn` returning `name` — because this is the third arm whose module shape is not its
@@ -393,6 +386,62 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
         false => format!("let functions = [\n{},\n];\n", entries.join(",\n")),
     };
     format!("{listed}for name in functions {{\n    {open_docs_view}(name)?;\n}}\n")
+}
+
+/// The opening turn: one array of module paths listed in full, then one of the names opened as
+/// documentation views, each with a `for` over it and each call composed with `?`.
+///
+/// Two arrays and two loops rather than one call per entry, because a granted surface is a dozen
+/// modules and a dozen calls written out is a shape a model would copy for its own work. Arrays
+/// rather than `Vec`s, and a type annotation on an empty one, for the reasons
+/// [`open_docs_views_statement`] gives.
+///
+/// A call with two or more optional arguments takes an **options struct with a `Default`, filled in
+/// with functional-update syntax**, which is this language's idiom and the one its SDK declares.
+///
+/// Every call returns a `Result` and every one is propagated with `?`, which is this arm's failure
+/// model: a bootstrap that unwrapped, or ignored, what a call handed back would be a worked example
+/// of the two things this language's programs are written not to do.
+pub(super) fn bootstrap_program(
+    search: &str,
+    open_docs_view: &str,
+    modules: &[&str],
+    docs: &[&str],
+) -> String {
+    let listed = |binding: &str, names: &[&str]| -> String {
+        let entries: Vec<String> = names
+            .iter()
+            .map(|name| format!("    {}", serde_json::Value::String((*name).to_string())))
+            .collect();
+        match entries.is_empty() {
+            true => format!("let {binding}: [&str; 0] = [];\n"),
+            false => format!("let {binding} = [\n{},\n];\n", entries.join(",\n")),
+        }
+    };
+    let paths = listed("modules", modules);
+    let functions = listed("functions", docs);
+    let options = format!("{}::SearchOptions", module_of(search));
+    format!(
+        "{paths}for path in modules {{\n    \
+             {search}(\n        \"\",\n        \
+             {options} {{\n            module: Some(path),\n            \
+             limit: Some({MAX_SEARCH_LIMIT}),\n            ..Default::default()\n        }},\n    \
+             )?;\n\
+         }}\n\
+         \n\
+         {functions}for name in functions {{\n    {open_docs_view}(name)?;\n}}\n"
+    )
+}
+
+/// The module a fully-qualified call is filed under, taken off the front of the call itself.
+///
+/// The one thing gg has to write here that is a **type** rather than a call, and it is derived from
+/// the call rather than written down beside it so the two cannot disagree: this SDK declares a
+/// call's options struct in the module the call itself lives in. Every catalogued name is
+/// module-qualified — the name rule (`signatures.fqn.rs`) is what makes that true on every arm — so
+/// a call that somehow carried no qualifier is used as its own module rather than crashing a turn.
+fn module_of(call: &str) -> &str {
+    call.rsplit_once("::").map_or(call, |(module, _)| module)
 }
 
 #[cfg(test)]

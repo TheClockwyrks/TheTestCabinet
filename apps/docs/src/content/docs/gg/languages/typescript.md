@@ -167,27 +167,30 @@ A module binds at `lib.<key>` under a `camelCase` name, so `csv-tools` becomes
 separators becomes `module`, and a leading digit is prefixed, so the binding
 always parses as an identifier.
 
-## Prompt dialect
+## Prompt segment
 
-This arm's two prompt templates, `system-code.typescript.hbs` and
-`code-nothing-shown.typescript.hbs`, are written in this language's syntax. No
-function name or signature is written in either; every call they quote is
-resolved from this arm's catalogue when the template renders.
+[`system-code.hbs`](/gg/prompts/) reaches this arm through a segment gated on
+`typescript`, and `code-nothing-shown.hbs` through a clause naming
+`console.log`. Neither names a catalogued function. The segment states:
 
-The system prompt must state that the whole response is processed as a
-TypeScript program, that every function is synchronous and `await` is not to be
-used, that views are the only way a program's values reach the model, and that
-the program is compiled with `tsc` in strict mode before it runs and is not
-executed if it fails to type-check. Two consequences of the check are stated
-with it: a caught error is `unknown` until it is narrowed, and the standard
-library is ES2022 with no DOM.
+- the reply is a sequence of top-level statements, with no function to return
+  from;
+- a failed call throws a `ToolError`, which a `catch` narrows to before reading
+  it, since a caught error is `unknown`;
+- optional arguments are the fields of a trailing options object, and every
+  module is already in scope under `gg`.
 
-Statements gg synthesizes into an agent's own transcript use the same idiom in
-the plainest form that does the job, since a model reads them as an example of
-its own output. A file view is one call with an optional trailing options object
-carrying `offset` and `limit`, and a set of documentation views is a `const`
-array of names with a `for…of` over it. Paths and names are rendered through
-JSON so a quote or a backslash cannot produce a program that will not parse.
+The arm names `tsc` as its [checker](/gg/languages/compilation/), so the shared
+body states that a program is compiled in strict mode before it runs and one
+that fails to type-check is not executed.
+
+Source gg synthesizes for this arm is written in the same idiom, in the plainest
+form that does the job, since a model reads it as an example of its own output.
+A file view is one call with an optional trailing options object carrying
+`offset` and `limit`; a set of documentation views is a `const` array of names
+with a `for…of` over it; the bootstrap program is a sequence of top-level
+statements. Paths and names are rendered through JSON so a quote or a backslash
+cannot produce a program that will not parse.
 
 ## Healing dialect
 

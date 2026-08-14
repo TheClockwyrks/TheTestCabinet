@@ -233,7 +233,7 @@ fn two_skill_runtime() -> SkillsRuntime {
 fn disabled_runtime_offers_nothing() {
     let runtime = SkillsRuntime::disabled();
     assert!(!runtime.offers_skills());
-    assert!(runtime.prompt_entries().is_empty());
+    assert!(runtime.library().skills().is_empty());
     assert!(runtime.state_event().is_none());
 }
 
@@ -241,18 +241,20 @@ fn disabled_runtime_offers_nothing() {
 fn enabled_but_empty_runtime_offers_nothing() {
     let runtime = SkillsRuntime::new(Arc::new(SkillLibrary::empty()));
     assert!(!runtime.offers_skills());
-    assert!(runtime.prompt_entries().is_empty());
+    assert!(runtime.library().skills().is_empty());
     assert!(runtime.state_event().is_none());
 }
 
-/// The catalog the system prompt lists carries every skill's name and description — the
-/// "shown up front" affordance.
+/// The library the agent builds the prompt's catalog from carries every skill's name and
+/// description — the "shown up front" affordance.
 #[test]
-fn prompt_entries_carry_each_skill_with_its_description() {
-    let entries = two_skill_runtime().prompt_entries();
-    let listed: Vec<(&str, &str)> = entries
+fn the_offered_library_carries_each_skill_with_its_description() {
+    let runtime = two_skill_runtime();
+    let library = runtime.library();
+    let listed: Vec<(&str, &str)> = library
+        .skills()
         .iter()
-        .map(|entry| (entry.name.as_str(), entry.description.as_str()))
+        .map(|skill| (skill.name(), skill.description()))
         .collect();
     assert_eq!(listed, vec![("a", "does a."), ("b", "does b.")]);
 }

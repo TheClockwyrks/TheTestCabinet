@@ -106,7 +106,7 @@ pub(crate) mod signatures;
 pub use invoker::ToolApi;
 pub use language::{
     FileWindow, PARAM_LANGUAGE, PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage,
-    UnreachableTail, all_languages, language, resolve_program_language, spell,
+    UnreachableTail, all_languages, language, library_set, resolve_program_language, spell,
 };
 
 // gg's own name for each model-facing call, for the code outside this module that has to *quote*
@@ -146,7 +146,7 @@ pub use operations::{
 #[allow(unused_imports)]
 pub use language::{
     CompilerCommand, CompilerDaemon, CompilerPool, CompilerReport, PrepareContext, PrepareError,
-    PromptDialect, Workspace, daemon, place, place_tree, shared_toolchain_dir,
+    Workspace, daemon, place, place_tree, shared_toolchain_dir,
 };
 
 // The seam's second implementation, which exists only under test. Re-exported for the one consumer
@@ -850,26 +850,63 @@ fn reclaim<A: ToolApi>(
 /// which is what it stands in for: a component that will not compile is a property of the process
 /// rather than of a turn, and the loop ends the session on the first occurrence anyway. And
 /// `cargo nextest` runs one process per test, so arming it in one test can never reach another.
-#[cfg(test)]
-static FORCED_FAULT: std::sync::Mutex<Option<SandboxError>> = std::sync::Mutex::new(None);
-
-/// Make the next [`run_program`] in this process report `error` instead of running the program.
+/// # Which program it lands on
 ///
-/// See [`FORCED_FAULT`] for why the seam exists and what bounds it.
+/// The armed value carries how many programs to let run **first**, because a code-mode session's
+/// first program is not the model's: the [bootstrap](crate::bootstrap) runs one before the loop
+/// starts. A test about gg's own machinery breaking under the bootstrap arms it for the next
+/// program; a test about the same break under a model's turn arms it with
+/// [`force_model_program_fault`].
+#[cfg(test)]
+static FORCED_FAULT: std::sync::Mutex<Option<(usize, SandboxError)>> = std::sync::Mutex::new(None);
+
+/// How many programs a code-mode session runs before the model's first one: the
+/// [bootstrap](crate::bootstrap)'s opening program, and nothing else.
+#[cfg(test)]
+const BOOTSTRAP_PROGRAMS: usize = 1;
+
+/// Make the next program run in this process report `error` instead of running.
+///
+/// See [`FORCED_FAULT`] for why the seam exists and what bounds it. In a code-mode session the next
+/// program is the [bootstrap](crate::bootstrap)'s; [`force_model_program_fault`] is the one that
+/// reaches a model's turn.
 #[cfg(test)]
 pub(crate) fn force_next_program_fault(error: SandboxError) {
-    *FORCED_FAULT
-        .lock()
-        .expect("the fault seam holds no lock across a panic") = Some(error);
+    arm_fault(0, error);
 }
 
-/// Take the armed fault, if a test armed one. Taking rather than reading is what makes it one-shot.
+/// Make the **model's** first program report `error`, letting a code-mode session's opening turn
+/// run first.
+///
+/// This is what a test of the turn taxonomy wants: the fault it arms is a stand-in for gg's own
+/// machinery breaking, and it is asking what the *loop* does with one.
+#[cfg(test)]
+pub(crate) fn force_model_program_fault(error: SandboxError) {
+    arm_fault(BOOTSTRAP_PROGRAMS, error);
+}
+
+#[cfg(test)]
+fn arm_fault(let_run: usize, error: SandboxError) {
+    *FORCED_FAULT
+        .lock()
+        .expect("the fault seam holds no lock across a panic") = Some((let_run, error));
+}
+
+/// Take the armed fault if this is the program it was armed for, counting down otherwise. Taking
+/// rather than reading is what makes it one-shot.
 #[cfg(test)]
 fn forced_fault() -> Option<SandboxError> {
-    FORCED_FAULT
+    let mut armed = FORCED_FAULT
         .lock()
-        .expect("the fault seam holds no lock across a panic")
-        .take()
+        .expect("the fault seam holds no lock across a panic");
+    match armed.as_mut() {
+        Some((0, _)) => armed.take().map(|(_, error)| error),
+        Some((remaining, _)) => {
+            *remaining -= 1;
+            None
+        }
+        None => None,
+    }
 }
 
 #[cfg(test)]

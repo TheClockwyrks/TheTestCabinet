@@ -659,11 +659,11 @@ fn cpp_reaches_every_library() {
     //
     // WHAT IT DEFENDS HAS CHANGED, and the test is worth keeping for the second thing rather than
     // the first. It used to be the guard on a hand-cut archive going stale — a committed `.a` that
-    // no longer carried what the prompt promised, with nothing to say so. That state is not
+    // no longer carried what the catalogue claimed, with nothing to say so. That state is not
     // reachable any more. What is still reachable, and is what this asserts, is the two halves of
     // one arm DISAGREEING at one vintage: `Sources/prelude.hpp` decides which headers the archive
     // carries and the catalogue's `libraries` section is reflected separately, so a header added to
-    // one and not the other is a promise the prompt makes and the compile refuses.
+    // one and not the other is a library gg offers a model and the compile refuses.
     let catalogue = catalogue();
     let named: Vec<&str> = section(&catalogue, "libraries")
         .iter()
@@ -722,17 +722,16 @@ fn cpp_reaches_every_library() {
 
 #[test]
 fn cpp_tells_the_truth_about_what_is_off_the_library_set() {
-    // The direction [`cpp_reaches_every_library`] does not close, and the one the prompt gets wrong
-    // if nobody looks: what happens to a header this arm does NOT list. The prelude is what is put
-    // in FRONT of a program, not an allowlist — clang's default include path is the whole of libc++
-    // — so the three sentences `system-code.cpp.hbs` writes about this have to be measured against
-    // the toolchain rather than assumed from the list.
-    //
-    // Each of the three is one statement here, and together they are the whole claim.
+    // The direction [`cpp_reaches_every_library`] does not close: what happens to a header this arm
+    // does NOT list. The prelude is what is put in FRONT of a program, not an allowlist — clang's
+    // default include path is the whole of libc++ — so what the catalogue's library set means for a
+    // header outside it is a fact about this toolchain, measured here rather than inferred from the
+    // list. It is what a compile failure naming that set is allowed to imply, and there are three
+    // different answers, so each is one statement here.
 
     // 1. A standard header off the set **resolves, compiles, links and runs**. `<iostream>` is off
-    //    the set because nothing reads a program's stdout, not because it is unavailable — and a
-    //    prompt that said otherwise would cost a model a turn on a program it was told to avoid.
+    //    the set because nothing reads a program's stdout, not because it is unavailable — so a
+    //    refusal built out of the set would cost a model a turn on a program that would have worked.
     let reached = evaluate(
         &prepare(
             "#include <iostream>\n\
@@ -754,14 +753,14 @@ fn cpp_tells_the_truth_about_what_is_off_the_library_set() {
     assert_eq!(
         logs(&reached),
         ["off the set"],
-        "a standard header off this arm's set must still compile and run, and the prompt says so"
+        "a standard header off this arm's set must still compile and run"
     );
 
-    // 2. `<thread>` is the one the prompt makes a specific promise about, so the promise is the
-    //    assertion: it compiles, it links, and the failure is at RUN time — a recoverable,
-    //    model-facing `system_error` carrying libc++'s own sentence, not a diagnostic and not
-    //    silence. This is the arm's honest position beside Rust's, whose `std::thread::spawn` also
-    //    compiles and then does nothing at all.
+    // 2. `<thread>` is the header whose absence from the set is most likely to be read as
+    //    unavailability, so what really happens to it is the assertion: it compiles, it links, and
+    //    the failure is at RUN time — a recoverable, model-facing `system_error` carrying libc++'s
+    //    own sentence, not a diagnostic and not silence. This is the arm's honest position beside
+    //    Rust's, whose `std::thread::spawn` also compiles and then does nothing at all.
     let threaded = evaluate(
         &prepare(
             "#include <thread>\n\
@@ -781,8 +780,8 @@ fn cpp_tells_the_truth_about_what_is_off_the_library_set() {
     let failure = super::substrate::program_error(&threaded);
     assert!(
         failure.message.contains("thread constructor failed"),
-        "a `std::thread` must fail at run time with libc++'s own sentence, which is what the \
-         prompt tells a model to expect: {}",
+        "a `std::thread` must fail at run time with libc++'s own sentence rather than before it \
+         runs: {}",
         failure.message
     );
     // Spelled the way the model would write it. gg's shell demangles the class by hand and drops
@@ -790,8 +789,8 @@ fn cpp_tells_the_truth_about_what_is_off_the_library_set() {
     // a name a model asked to catch would have to be told to write back wrongly.
     assert!(
         failure.message.contains("uncaught std::system_error:"),
-        "the run-time failure a model is promised is a `std::system_error`, spelled the way it \
-         would catch one: {}",
+        "the run-time failure is a `std::system_error`, spelled the way a model would catch \
+         one: {}",
         failure.message
     );
     assert_eq!(
@@ -800,9 +799,9 @@ fn cpp_tells_the_truth_about_what_is_off_the_library_set() {
         "the work a threaded program did before it reached the constructor was lost"
     );
 
-    // 3. And what really is `file not found` is a header that is not the standard library's — which
-    //    is the sentence the prompt may keep, because there is nothing here to fetch one from. A
-    //    model-facing compile error at the model's own line, not a toolchain failure.
+    // 3. And what really is `file not found` is a header that is not the standard library's,
+    //    because there is nothing here to fetch one from. A model-facing compile error at the
+    //    model's own line, not a toolchain failure.
     let refused = super::compile::compile_program(
         "#include <boost/asio.hpp>\nint main() { return 0; }\n",
         &[],
@@ -814,8 +813,8 @@ fn cpp_tells_the_truth_about_what_is_off_the_library_set() {
         ))) => {
             assert!(
                 rendered.contains("file not found") && rendered.contains("main.cpp:1"),
-                "a third-party header is the one thing the prompt promises is `file not found`, at \
-                 the model's own line: {rendered}"
+                "a third-party header is the one thing that is `file not found`, at the model's \
+                 own line: {rendered}"
             );
         }
         other => {

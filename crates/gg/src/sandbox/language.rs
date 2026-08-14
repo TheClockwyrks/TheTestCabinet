@@ -28,7 +28,28 @@
 //! * how a code [skill](crate::skills)'s or [memory](crate::memories)'s file becomes a namespace
 //!   bound at `lib.<key>` ([`ProgramLanguage::prepare_module`]);
 //! * which prebuilt component evaluates it ([`ProgramLanguage::guest_component`]);
-//! * and how its SDK spells the surface ([`ProgramLanguage::catalogue`]).
+//! * how its SDK spells the surface ([`ProgramLanguage::catalogue`]);
+//! * and the source gg **writes on the model's behalf** — the synthesized file view
+//!   ([`ProgramLanguage::open_file_statement`]), the on-use script of a built-in family skill
+//!   ([`ProgramLanguage::open_docs_views_statement`]), and the program that opens the session
+//!   ([`ProgramLanguage::bootstrap_program`]).
+//!
+//! # What a language does not own: the prose
+//!
+//! There is **one** responses-as-code system prompt for every arm, registered in
+//! [`prompts`](crate::prompts) and rendered from one `.hbs` file. A sentence that really is one
+//! arm's — the shape of a reply, what a failed call does, how an optional argument is written — is a
+//! segment of that template gated on the language's id, and anything a model can find by searching
+//! is in no part of it. Its **spellings** are authored nowhere: a template quotes
+//! `{{api.view.open_text.call}}` and the name is resolved from the rendering language's own
+//! [catalogue](ProgramLanguage::catalogue) at render time, so there is one copy of each name rather
+//! than two that have to agree, and no segment may write a call out in prose.
+//!
+//! Two things stay out of that template, each for its own reason. The refusals a language produces
+//! while *preparing* a program belong to the prepare step, because they answer something the model
+//! just wrote rather than standing in front of it. And a function's signature, description and
+//! summary are reflected out of the declaration they describe into the arm's catalogue, because a
+//! signature authored on gg's side is one nothing can compare against the code.
 //!
 //! # Why the registry is trait objects
 //!
@@ -36,7 +57,7 @@
 //! [`all_languages`] is *derived* from [`GgProgramLanguage::ALL`] rather than being a second list
 //! somebody has to remember to extend. Adding a variant to the core enum therefore fails to compile
 //! until this module has an arm for it, and the new arm is instantly in every iteration — the drift
-//! gates, the healing invariant, the prompt registration. `ALL` itself is not a list anyone can
+//! gates, the healing invariant, the opening turn. `ALL` itself is not a list anyone can
 //! forget either: [`GgProgramLanguage::ordinal`] is a second exhaustive `match` whose every arm is
 //! checked against `ALL` in a `const` block, so a variant that never reached the list is a build
 //! failure rather than a language every gate here silently skips.
@@ -71,6 +92,8 @@ pub use compile::{
 
 #[path = "language/diagnostics.rs"]
 mod diagnostics;
+
+pub use diagnostics::library_set;
 
 #[path = "language/typescript.rs"]
 mod typescript;
@@ -194,9 +217,9 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// A spelling, and one of the few the seam has to know about rather than resolve from a
     /// catalogue: every function's *name* comes out of the catalogue, but the punctuation between an
     /// object and its function is not a name and appears in no declaration. gg quotes qualified calls
-    /// in its own sentences ([`spell`]) and in every prompt template
-    /// (`{{api.view.open_text.call}}`), so a language that writes `view::open_text` and is quoted as
-    /// `view.open_text` is one whose model reads a prompt full of code that does not compile.
+    /// in its own sentences ([`spell`]) and in the system prompt (`{{api.view.open_text.call}}`), so
+    /// a language that writes `view::open_text` and is quoted as `view.open_text` is one whose model
+    /// reads a prompt full of code that does not compile.
     ///
     /// The **object** half is still identity and no language may rename it. This is only how the two
     /// halves are joined. `"."` is the default because it is what every arm but one writes.
@@ -204,12 +227,32 @@ pub trait ProgramLanguage: Send + Sync + 'static {
         "."
     }
 
+    /// **How a program reaches one export of a module bound at `lib.<key>`**, in this arm's own
+    /// spelling, with `<name>` standing in for the export.
+    ///
+    /// This is the sentence the reply to a [code skill or memory](crate::knowledge)'s read is built
+    /// from, and it is the **only** place a model learns it: `lib` binds no catalogued function, so
+    /// there is nothing to search for, and the system prompt states what a model cannot be told at
+    /// the moment it matters rather than what it can. The moment it matters is the read that bound
+    /// the module, so the read is what says it.
+    ///
+    /// The default is a path, which is what eight arms write. The three that reach a module **by
+    /// string** — because it is compiled separately and there is no import for their compiler to
+    /// check a program against — override it, and a family of calls that differ by what they hand
+    /// back is written `<text|number|flag|run>` rather than as one of its members, so a model
+    /// reading the note is not shown one arm of a choice it has to make.
+    fn lib_access(&self, key: &str) -> String {
+        let step = self.member_separator();
+        format!("lib{step}{key}{step}<name>")
+    }
+
     /// This language's name as a **human** reads it — `"TypeScript"`.
     ///
-    /// The operator-facing name: the launch warning that lists the languages gg can drive, the
-    /// warm-up line that names which component compiled. What the *model* reads is its own prompt
-    /// template, which is written in this language's syntax and names the language in its own words
-    /// — so this is not the string a model is shown, and changing it changes no prompt.
+    /// Read by the operator — the launch warning that lists the languages gg can drive, the warm-up
+    /// line that names which component compiled — **and by the model**: one system prompt serves
+    /// every arm, so the sentence that tells an agent which language its reply is read as is
+    /// rendered from this name rather than written out eleven times. Changing it changes what an
+    /// agent is told it is writing.
     fn display_name(&self) -> &'static str;
 
     /// Turn a model's reply into the source the guest evaluates as a program.
@@ -290,10 +333,10 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     ///
     /// The name is a **spelling**, and belongs to the language for the same reason every call's
     /// does: what two arms of a study share is that a program is checked before it runs, never what
-    /// the thing doing the checking is called. A language names its checker in its own
-    /// [system prompt](Self::prompt), because a model told its program is checked and not told by
-    /// what has been given half a sentence — and declaring the name here is what lets the prompt
-    /// gate hold *every* checked language to saying it, without holding them all to saying `tsc`.
+    /// the thing doing the checking is called. The one system prompt renders the name from here,
+    /// because a model told its program is checked and not told by what has been given half a
+    /// sentence — and answering `None` is what takes the sentence away entirely on an arm where
+    /// nothing reads a program before it runs, rather than leaving a promise no compiler keeps.
     ///
     /// The answer decides one further thing: whether the sandbox reports what preparing this
     /// program took, as [`SandboxOutcome::compile`](super::SandboxOutcome::compile). A language
@@ -438,15 +481,12 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// knows both halves exist.
     fn healing(&self) -> &'static dyn crate::healing::Dialect;
 
-    /// The authored, model-facing prose and spellings that are written in this language's syntax.
-    fn prompt(&self) -> &'static PromptDialect;
-
     /// The one statement a program writes to open a view of `path` — the whole file, or one
     /// `offset`/`limit` [window](FileWindow) of it — as this language spells it, terminated the way
     /// this language terminates a statement.
     ///
-    /// A trait method rather than a spelling in [`PromptDialect`] because it is not a name. The
-    /// optional half is an **arguments idiom** the seam explicitly leaves to each language (a
+    /// A trait method rather than something resolved out of the catalogue because it is not a name.
+    /// The optional half is an **arguments idiom** the seam explicitly leaves to each language (a
     /// trailing options object in TypeScript; keyword arguments where that is the idiom), and gg
     /// does not merely quote this call — it synthesizes it into the agent's own transcript, as an
     /// assistant turn the agent is meant to read as an example of its own output. A statement in
@@ -460,7 +500,8 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// A whole **program** that opens one documentation view per name in `names`, as this language
     /// spells and structures it.
     ///
-    /// The one place gg generates source rather than quoting a call, and it is not optional: it is
+    /// One of the two whole programs gg generates rather than quoting — the other opens the session
+    /// ([`bootstrap_program`](Self::bootstrap_program)) — and it is not optional: it is
     /// the on-use script of every [built-in family skill](crate::skills), so a language that could
     /// not write it would be a language whose agents read a skill and are shown nothing. The set of
     /// names is exactly the family this agent binds, which is why the program is generated at all —
@@ -473,6 +514,34 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// [`spell`]`(self, `[`VIEWS_OPEN_DOCS_VIEW`](super::VIEWS_OPEN_DOCS_VIEW)`)` rather than
     /// writing it out, for the same reason nothing else does.
     fn open_docs_views_statement(&self, names: &[&str]) -> String;
+
+    /// A whole **program** that lists each module in `modules` and opens a documentation view of
+    /// each name in `docs`, as this language spells and structures it.
+    ///
+    /// It is gg's [opening turn](crate::bootstrap): the program is prepared, run, and then pushed
+    /// into the agent's window as the assistant message the session opens on. So the first example
+    /// of its own output a model reads is a program that provably ran, and the documentation beside
+    /// it was placed by that program's own calls rather than by gg reaching around it.
+    ///
+    /// Two groups, in the order the model reads them: every search first, then every documentation
+    /// view. Each search is a **whole-module lookup** rather than a query — an empty query string,
+    /// one module as the filter, and an explicit limit of
+    /// [`MAX_SEARCH_LIMIT`](crate::docs::MAX_SEARCH_LIMIT), because the default page would silently
+    /// truncate the listing of a large module and a truncated listing is a function the agent never
+    /// learns it has.
+    ///
+    /// Both names are resolved with [`spell`]`(self, …)` rather than written out, exactly as
+    /// [`open_docs_views_statement`](Self::open_docs_views_statement) resolves its one. What an
+    /// implementation owns is the syntax around them, and it owes this program two things a quoted
+    /// call does not owe: it must be **idiomatic**, because a model copies the shape it is shown;
+    /// and it must handle failure the way this arm's programs handle it — propagating on a `Result`
+    /// arm, letting it escape on a throwing one — because a bootstrap that swallowed a failure
+    /// would open the window on a program the model would be wrong to imitate, and would leave a
+    /// [failure that is gg's](crate::bootstrap) looking like a turn that worked.
+    ///
+    /// Not a concatenation of two generated statements: on several arms a program is one module,
+    /// one `main` or one translation unit, so two programs do not add up to one.
+    fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String;
 
     /// Replies this language contributes to the delete-only invariant corpus.
     ///
@@ -490,7 +559,8 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// language's [module step](Self::prepare_module) with.
     ///
     /// That gate drives *both* preparation steps sixteen ways, so it needs a source valid for each,
-    /// and the seam guarantees exactly one whole program per language:
+    /// and it takes the shorter of the two whole programs the seam guarantees, which is the one that
+    /// carries a name it can look for afterwards:
     /// [`open_docs_views_statement`](Self::open_docs_views_statement). Wherever a code module is
     /// **ordinary source of the language** — which is every arm but one — that program is a module
     /// too, so it is the default and no language has to answer this.
@@ -563,45 +633,6 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     fn isolation_marker_forms(&self, marker: &str) -> Vec<String> {
         vec![marker.to_string()]
     }
-}
-
-/// The model-facing **prose** that is written in one language's syntax: two Handlebars templates,
-/// and nothing else.
-///
-/// The responses-as-code system prompt is written per language because its *sentences* are — how a
-/// program is structured, what a statement ends with, what its example code looks like. Its
-/// **spellings** are not written here or in the template: every function name and every signature a
-/// template quotes is resolved from that language's own committed
-/// [catalogue](super::signatures) at render time, so a template says `{{api.view.open_text.call}}`
-/// and never `view.openText`. That is the whole rule — gg quotes what the SDK really binds, and
-/// there is no second copy of a name to drift.
-///
-/// What is deliberately **not** here:
-///
-/// * The refusals a language produces while *preparing* a program (a module import where there is no
-///   loader, an `await` where there is no event loop). Those belong to the prepare step and stay with
-///   it, because they are answers to something the model just wrote rather than standing prose.
-/// * Any function's **signature, description or summary**. All of it is reflected out of the
-///   declaration it describes and arrives in the language's catalogue — a signature authored on gg's
-///   side is one nothing can compare against the code, which is exactly the defect the catalogue
-///   exists to remove.
-pub struct PromptDialect {
-    /// This language's responses-as-code system prompt template, verbatim.
-    pub system_template: &'static str,
-    /// The name it is registered under: `system-code.<language id>`.
-    pub system_template_name: &'static str,
-    /// This language's "your program showed you nothing" notice template, verbatim.
-    ///
-    /// The one message a *successful* program can produce, and only because a request has to end on
-    /// something for the model to answer. It is per language for the same reason the system prompt
-    /// is: it names the calls that would have shown the model something.
-    ///
-    /// There is deliberately no counterpart for a program that *did* show itself something — the
-    /// views are the report, and a covering note over them would be gg narrating what the model can
-    /// already read.
-    pub nothing_shown_template: &'static str,
-    /// The name that is registered under: `code-nothing-shown.<language id>`.
-    pub nothing_shown_template_name: &'static str,
 }
 
 /// How `language` spells the [operation](super::operations::OperationId) `id`, qualified exactly as

@@ -155,6 +155,35 @@ fn the_generated_documentation_program_is_a_translation_unit() {
     assert!(source::defines_main(&empty), "{empty}");
 }
 
+/// **The opening program is a whole translation unit**, and it covers every module and every
+/// documentation key gg handed it.
+///
+/// gg prepares and runs this one before the agent's first turn, so what a model reads at the top of
+/// its window is a program that ran — and on this arm that program has to define `main`, because
+/// there is nowhere else for a statement to live. What is asserted here is that gg wrote C++ —
+/// `std::array`s, range `for`s, a **designated initialiser** for the filters — and that the search
+/// is the whole-module lookup rather than the default page of one.
+#[test]
+fn the_opening_program_is_a_translation_unit() {
+    let limit = crate::docs::MAX_SEARCH_LIMIT;
+    let program = cpp().bootstrap_program(&["files", "views"], &["read_file"]);
+    assert_eq!(
+        program,
+        format!(
+            "int main() {{\n  \
+                 const std::array modules{{\n      \"files\",\n      \"views\",\n  }};\n  \
+                 for (const auto &path : modules) {{\n    \
+                     gg::docs::search(\"\", {{.module = path, .limit = {limit}}});\n  }}\n\
+             \n  \
+                 const std::array functions{{\n      \"read_file\",\n  }};\n  \
+                 for (const auto &name : functions) {{\n    \
+                     gg::views::open_docs_view(name);\n  }}\n  \
+                 return 0;\n}}\n"
+        )
+    );
+    assert!(source::defines_main(&program), "{program}");
+}
+
 /// **A code module is a namespace opened around the author's own file, and `#line` is why nothing
 /// moves.**
 ///
@@ -336,7 +365,7 @@ fn the_generated_catalogue_is_this_languages() {
     }
 }
 
-/// **This arm declares the libraries a program may reach**, which is what the prompt renders.
+/// **This arm declares the libraries a program may reach**, which is what a compile failure quotes back.
 ///
 /// The C++ standard library, grouped exactly as `packages/gg-sandbox-cpp/Sources/prelude.hpp` heads
 /// it — the prelude is the one declaration and both the compile and the catalogue are reflected from
@@ -357,8 +386,8 @@ fn this_arm_declares_the_libraries_a_program_may_reach() {
             "`{header}` is in the prelude and the catalogue does not name it: {named:?}"
         );
     }
-    // The three absences the prompt tells a model about, so a header a model is told it does not
-    // have cannot quietly appear.
+    // The absences this arm decided on, so a header the catalogue does not offer cannot quietly
+    // appear in the set a compile failure quotes back.
     for absent in [
         "<thread>",
         "<future>",

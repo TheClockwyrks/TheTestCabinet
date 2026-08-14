@@ -39,7 +39,7 @@ arms to it:
   ones.
 
 What this arm owns is its id, its display name, its own catalogue file, and its
-own two prompt templates.
+own segment of the shared prompt templates.
 
 ## Toolchain and build outputs
 
@@ -106,30 +106,23 @@ the generated bindings and raises their `TypeError`. Either is reported at the
 model's own coordinates. An uncaught throw ends the turn there, so the
 statements after it do not run.
 
-## Prompt dialect
+## Prompt segment
 
-The arm's two templates are `system-code.javascript.hbs` and
-`code-nothing-shown.javascript.hbs`. They must state:
+[`system-code.hbs`](/gg/prompts/) reaches this arm through a segment gated on
+`javascript`, and `code-nothing-shown.hbs` through a clause naming
+`console.log`. The segment states:
 
-- the whole response is processed as a JavaScript program, with no prose or
-  Markdown around it;
-- views are the only way a program's data reaches the model. Nothing
-  `console.log` writes is readable, and a returned value is discarded;
-- every function is synchronous, so a program uses no `await` and treats no
-  return value as a promise;
-- signatures are written with type annotations, which a program may use or leave
-  off, and any it uses are erased before it runs;
-- the standard library is ES2022;
-- type names are documentation and do not exist while a program runs;
-  `ToolError` is the one gg name bound as a value, and `tool` and `code` are its
-  fields;
-- gg's surface needs no import: every module is reachable through `gg`, and the
-  path the documentation is keyed by is the path a program writes;
-- a few short names, `gg`, `ToolError` and `lib` among them, are the evaluated
-  function's parameters, so redeclaring one is a `SyntaxError` that ends the
-  turn before the program runs;
-- every function is bound whatever the run enabled, so a call the agent was not
-  granted runs and fails as a refusal.
+- the reply is a sequence of top-level statements, with no function to return
+  from;
+- a failed call throws a `ToolError`, the one gg name bound as a value, whose
+  `tool` and `code` an `instanceof` check reaches;
+- optional arguments are the fields of a trailing options object, and every
+  module is already in scope under `gg`.
 
-The templates describe a program that is evaluated as written. Neither carries a
-section about a compile step.
+The arm names no [checker](/gg/languages/compilation/), so nothing in the
+prompt describes a compile step and nothing describes a call that compiles and
+then fails on a capability the run withheld.
+
+Source gg synthesizes for this arm is written by TypeScript's syntax functions
+with the names resolved from this arm's own catalogue, since the two arms share
+a guest and TypeScript's synthesized forms carry no annotation.

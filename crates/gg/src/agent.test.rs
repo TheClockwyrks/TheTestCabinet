@@ -417,10 +417,17 @@ fn code_set(model_id: &str, params: serde_json::Value) -> GgCapabilitySet {
 const FINISHING_PROGRAM: &str = "harness.finish(\"done\");";
 const FINISHING_SUMMARY: &str = "done";
 
-/// An execution timeout short enough that a runaway loop trips it in a fraction of a second — so a
-/// test exercising the ceiling costs a tenth of a second rather than the thirty the real default
-/// would take. It is a wall-clock time in seconds, the unit the `timeoutSecs` param takes.
-const RUNAWAY_TIMEOUT_SECS: f64 = 0.1;
+/// An execution timeout short enough that a runaway loop trips it in a couple of seconds — so a
+/// test exercising the ceiling costs that rather than the thirty the real default would take. It is
+/// a wall-clock time in seconds, the unit the `timeoutSecs` param takes.
+///
+/// It has to leave room for one honest program as well as trip a dishonest one, because a code-mode
+/// session's first program is gg's own: the [bootstrap](crate::bootstrap) runs under the agent's
+/// configured [limits](crate::sandbox::SandboxLimits) like every other program, and a value that
+/// stops it refuses the run before the test's own script is reached. What it measures is guest CPU
+/// with time parked in a host call excluded, and the bootstrap's guest half is a loop over a dozen
+/// calls, so the margin here is very wide and the ceiling still trips on the first `while (true)`.
+const RUNAWAY_TIMEOUT_SECS: f64 = 2.0;
 
 /// A client that plays a fixed script and **records the messages it was handed**, in order.
 ///
