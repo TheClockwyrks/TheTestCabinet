@@ -3,7 +3,33 @@
 use serde_json::json;
 
 use super::*;
+use crate::validate::{LaunchDefect, LaunchReport};
 use test_cabinet_core::gg::{GgTaskStatus, GgTelemetryKind};
+
+/// The ceiling `params` resolves to, asserting gg honoured it exactly as written.
+fn max_tasks(params: Value) -> usize {
+    let mut report = LaunchReport::collecting();
+    let max = resolve_max_tasks(&params, &mut report);
+    let defects = report.into_defects();
+    assert!(defects.is_empty(), "unexpected refusals: {defects:?}");
+    max
+}
+
+/// The mode `params` resolves to, asserting gg honoured it exactly as written.
+fn task_mode(params: Value) -> TaskMode {
+    let mut report = LaunchReport::collecting();
+    let mode = resolve_task_mode(&params, &mut report);
+    let defects = report.into_defects();
+    assert!(defects.is_empty(), "unexpected refusals: {defects:?}");
+    mode
+}
+
+/// Everything `read` reports, for the cases whose subject is the refusal.
+fn reported(read: impl FnOnce(&mut LaunchReport)) -> Vec<LaunchDefect> {
+    let mut report = LaunchReport::collecting();
+    read(&mut report);
+    report.into_defects()
+}
 
 /// A store with a generous cap for the DAG tests.
 fn store() -> TaskStore {
@@ -313,17 +339,24 @@ fn context_block_surfaces_ready_vs_blocked() {
 
 #[test]
 fn resolve_max_tasks_reads_the_param_or_defaults() {
-    assert_eq!(resolve_max_tasks(&json!({})), DEFAULT_MAX_TASKS);
-    assert_eq!(resolve_max_tasks(&json!({ "maxTasks": 5 })), 5);
-    // A zero or non-integer is ignored.
-    assert_eq!(
-        resolve_max_tasks(&json!({ "maxTasks": 0 })),
-        DEFAULT_MAX_TASKS
-    );
-    assert_eq!(
-        resolve_max_tasks(&json!({ "maxTasks": "lots" })),
-        DEFAULT_MAX_TASKS
-    );
+    assert_eq!(max_tasks(json!({})), DEFAULT_MAX_TASKS);
+    assert_eq!(max_tasks(json!({ "maxTasks": 5 })), 5);
+    // An integral float names the same count, and an explicit `null` is an absence.
+    assert_eq!(max_tasks(json!({ "maxTasks": 5.0 })), 5);
+    assert_eq!(max_tasks(json!({ "maxTasks": null })), DEFAULT_MAX_TASKS);
+}
+
+#[test]
+fn a_max_tasks_gg_cannot_honour_is_refused() {
+    // A list the model may never add to offers `add_task` and refuses every use of it, and a
+    // ceiling gg cannot read at all would silently bound the plan at a number nobody wrote.
+    for params in [json!({ "maxTasks": 0 }), json!({ "maxTasks": "lots" })] {
+        let defects = reported(|report| {
+            resolve_max_tasks(&params, report);
+        });
+        assert_eq!(defects.len(), 1, "{params}: {defects:?}");
+        assert_eq!(defects[0].locus, "tasks.params.maxTasks", "{params}");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -370,20 +403,29 @@ fn enabled_runtime_emits_empty_state_and_no_block_until_a_task_exists() {
 
 #[test]
 fn task_mode_resolves_from_params_and_defaults_to_simple() {
-    assert_eq!(resolve_task_mode(&json!({})), TaskMode::Simple);
+    assert_eq!(task_mode(json!({})), TaskMode::Simple);
+    assert_eq!(task_mode(json!({ "mode": "issues" })), TaskMode::Issues);
+    assert_eq!(task_mode(json!({ "mode": "simple" })), TaskMode::Simple);
+    // The alternate spellings the parse deliberately tolerates.
     assert_eq!(
-        resolve_task_mode(&json!({ "mode": "issues" })),
+        task_mode(json!({ "mode": " Structured " })),
         TaskMode::Issues
     );
-    assert_eq!(
-        resolve_task_mode(&json!({ "mode": "simple" })),
-        TaskMode::Simple
-    );
-    // An unrecognized value keeps the default.
-    assert_eq!(
-        resolve_task_mode(&json!({ "mode": "nonsense" })),
-        TaskMode::Simple
-    );
+    assert_eq!(task_mode(json!({ "mode": null })), TaskMode::Simple);
+}
+
+#[test]
+fn a_mode_gg_does_not_recognize_is_refused() {
+    // Reading `isues` as `simple` would hold every task in the run to the wrong shape while the
+    // record named the other arm — and the two modes are the axis this capability is studied on.
+    for params in [json!({ "mode": "isues" }), json!({ "mode": 2 })] {
+        let defects = reported(|report| {
+            resolve_task_mode(&params, report);
+        });
+        assert_eq!(defects.len(), 1, "{params}: {defects:?}");
+        assert_eq!(defects[0].locus, "tasks.params.mode", "{params}");
+        assert_eq!(defects[0].known, ["simple", "issues"], "{params}");
+    }
 }
 
 #[test]

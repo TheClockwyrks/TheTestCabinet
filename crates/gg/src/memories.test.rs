@@ -8,6 +8,18 @@ use test_cabinet_core::gg::GgTelemetryKind;
 
 use super::*;
 
+/// A sink that **asserts nothing is reported** — for the values gg honours exactly as written.
+fn honoured() -> LaunchReport {
+    LaunchReport::Discarding
+}
+
+/// Everything `read` reports, for the cases whose subject is the refusal.
+fn reported(read: impl FnOnce(&mut LaunchReport)) -> Vec<LaunchDefect> {
+    let mut report = LaunchReport::collecting();
+    read(&mut report);
+    report.into_defects()
+}
+
 /// Tiny limits for exercising the guards without huge fixtures: at most 2 memories, 10
 /// characters of body each, 15 characters total.
 fn tiny_caps() -> MemoryCaps {
@@ -275,16 +287,62 @@ fn update_swaps_the_old_body_out_of_the_total_before_checking() {
 // Caps resolution
 // ---------------------------------------------------------------------------
 
+/// An absent params object — and an explicitly `null` limit — takes every default. **Absent is not
+/// unrecognized**, and that is what this case pins.
 #[test]
-fn caps_default_when_params_absent_or_invalid() {
+fn caps_default_when_params_are_absent() {
     let strategy = MemoryStrategy::Scratchpad;
     assert_eq!(
-        MemoryCaps::resolve(strategy, &json!({})),
+        MemoryCaps::resolve(strategy, &json!({}), &mut honoured()),
         MemoryCaps::default()
     );
-    // A non-integer value is ignored in favor of the default.
-    let caps = MemoryCaps::resolve(strategy, &json!({ "maxLenPerMemory": "big" }));
-    assert_eq!(caps, MemoryCaps::default());
+    assert_eq!(
+        MemoryCaps::resolve(
+            strategy,
+            &json!({ "maxLenPerMemory": null }),
+            &mut honoured()
+        ),
+        MemoryCaps::default()
+    );
+}
+
+/// A limit gg cannot read is **refused**, not replaced by the default. A limit is what a memories
+/// arm is bounded by, so a run silently bounded by gg's default cannot be compared with the arm
+/// beside it — and nothing in its record would say why.
+#[test]
+fn a_limit_gg_cannot_read_is_refused() {
+    for value in [
+        json!("big"),
+        json!(-1),
+        json!(1.5),
+        json!(true),
+        json!([10]),
+    ] {
+        let params = json!({ "maxLenPerMemory": value });
+        let defects = reported(|report| {
+            assert_eq!(
+                MemoryCaps::resolve(MemoryStrategy::Scratchpad, &params, report),
+                MemoryCaps::default(),
+                "the resolver stays total"
+            );
+        });
+        assert_eq!(defects.len(), 1, "{params} -> {defects:?}");
+        assert_eq!(defects[0].locus, "memories.params.maxLenPerMemory");
+    }
+}
+
+/// **An integral float is a count.** JSON has no integer type, so a sweep generated from JavaScript
+/// writes `1e2` and `100.0` as readily as `100`; refusing those would be a usability regression
+/// rather than a fallback fix.
+#[test]
+fn an_integral_float_is_a_valid_limit() {
+    let caps = MemoryCaps::resolve(
+        MemoryStrategy::Scratchpad,
+        &json!({ "maxCount": 3.0, "maxTotalLen": 2.5e2 }),
+        &mut honoured(),
+    );
+    assert_eq!(caps.max_count, Some(3));
+    assert_eq!(caps.max_total_len, Some(250));
 }
 
 #[test]
@@ -296,6 +354,7 @@ fn caps_resolve_each_param_when_present() {
             "maxLenPerMemory": 100,
             "maxTotalLen": 250,
         }),
+        &mut honoured(),
     );
     assert_eq!(caps.max_count, Some(3));
     assert_eq!(caps.max_len_per_memory, Some(100));
@@ -309,6 +368,7 @@ fn a_zero_param_disables_that_limit() {
     let caps = MemoryCaps::resolve(
         MemoryStrategy::Scratchpad,
         &json!({ "maxCount": 0, "maxTotalLen": 0 }),
+        &mut honoured(),
     );
     assert_eq!(caps.max_count, None);
     assert_eq!(caps.max_total_len, None);
@@ -348,11 +408,19 @@ fn the_description_cap_defaults_everywhere_and_is_configurable_everywhere() {
             Some(DEFAULT_MAX_LEN_DESCRIPTION),
             "{strategy:?} bounds descriptions by default"
         );
-        let caps = MemoryCaps::resolve(strategy, &json!({ "maxLenDescription": 40 }));
+        let caps = MemoryCaps::resolve(
+            strategy,
+            &json!({ "maxLenDescription": 40 }),
+            &mut honoured(),
+        );
         assert_eq!(caps.max_len_description, Some(40), "{strategy:?}");
     }
     // And `0` disables it, the same spelling every other limit uses.
-    let caps = MemoryCaps::resolve(MemoryStrategy::Markdown, &json!({ "maxLenDescription": 0 }));
+    let caps = MemoryCaps::resolve(
+        MemoryStrategy::Markdown,
+        &json!({ "maxLenDescription": 0 }),
+        &mut honoured(),
+    );
     assert_eq!(caps.max_len_description, None);
 }
 
@@ -424,15 +492,26 @@ fn the_description_cap_is_reported_before_the_body_caps() {
     assert!(matches!(err, MemoryError::DescriptionCap { .. }), "{err:?}");
 }
 
-/// A param a strategy does not use is ignored rather than rejected, so one sweep can hand every
-/// arm the same params block — and the limit stays `None` however the params spell it.
+/// **The deliberate exception.** A param a strategy does not use is ignored rather than rejected, so
+/// one sweep can hand every arm the same params block — and it is not read at all, so even a value
+/// gg could not have honoured on such a key is accepted here. The arm that *does* use the key is
+/// where the operator hears about it.
 #[test]
 fn a_param_the_strategy_does_not_use_is_ignored() {
     let caps = MemoryCaps::resolve(
         MemoryStrategy::Scratchpad,
         &json!({ "maxLenIndex": 4_096, "maxResults": 10 }),
+        &mut honoured(),
     );
     assert_eq!(caps.max_len_index, None);
+    assert_eq!(caps.max_results, None);
+
+    // …including one that is not a count at all.
+    let caps = MemoryCaps::resolve(
+        MemoryStrategy::Scratchpad,
+        &json!({ "maxResults": "lots" }),
+        &mut honoured(),
+    );
     assert_eq!(caps.max_results, None);
 }
 

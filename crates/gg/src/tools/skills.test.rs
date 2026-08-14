@@ -23,7 +23,7 @@ fn tool() -> ReadSkillTool {
         "---\nname: combat\ndescription: combat design.\n---\ncombat body text",
     )
     .unwrap();
-    ReadSkillTool::new(Arc::new(SkillLibrary::load(dir.path())))
+    ReadSkillTool::new(Arc::new(SkillLibrary::loaded(dir.path())))
 }
 
 #[tokio::test]

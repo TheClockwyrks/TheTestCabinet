@@ -884,10 +884,10 @@ pub fn instance_operations() -> Vec<OperationId> {
 /// The operations `names` grant, and every name that grants nothing — the resolution of a configured
 /// allowlist against this table.
 ///
-/// The unresolved half is returned rather than dropped because it is the **error** a run starts with
-/// rather than an inert entry: a name that answers to no operation is either a typo or a call from
-/// the other surface's vocabulary (a bare `read_file`, which is a gg tool and not an operation id),
-/// and in both cases the agent has silently been granted less than whoever configured it intended. A
+/// The unresolved half is returned rather than dropped because it **refuses the launch** rather than
+/// sitting inert: a name that answers to no operation is either a typo or a call from the other
+/// surface's vocabulary (a bare `read_file`, which is a gg tool and not an operation id), and in
+/// both cases the agent would silently have been granted less than whoever configured it intended. A
 /// list that quietly ignores what it cannot read is a list nobody can tell is wrong.
 ///
 /// Order and duplication are the table's, not the caller's: the granted ids come back in table

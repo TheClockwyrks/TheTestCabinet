@@ -1284,24 +1284,22 @@ async fn a_code_skill_binds_its_module_and_runs_its_on_use_script() {
     );
 }
 
-/// **A skill whose code is spelled in no language the reading agent writes is read as prose, and
-/// the operator is told.**
+/// **A skill whose code is spelled in no language any agent in the run writes refuses the launch.**
 ///
-/// Two halves, and both matter. The model's read still succeeds and still pins the body — refusing
-/// it, or binding a module the agent could not evaluate, would make a skill's shared half unusable
-/// because its unshared half was authored elsewhere. And the *operator* gets a `warn` naming the
-/// spellings the directory does carry, because a module nothing in the run can evaluate is an
-/// authoring mistake rather than a configuration.
+/// It used to read as prose with a `warn` on the operator's stream, and that is the shape this
+/// remediation deletes: the module the author wrote was never bound, the skill still read, and the
+/// run was then indistinguishable from the arm with no code skills in it at all — on the evidence
+/// of one warning, on a turn nobody re-reads. The directory is right there to be fixed, so the
+/// [workspace gate](crate::validate::validate_workspace) names it before a token is spent.
 ///
-/// The model is deliberately told nothing: which other languages a directory was authored for is
-/// not the agent's business, and naming them would vary a prompt between arms. So this asserts both
-/// directions — the message reached the sink, and it did not reach the conversation.
+/// The refusal names the spellings the directory *does* carry, because that is the whole of what
+/// the author has to change.
 ///
 /// The fixture language stands in for a real second arm, which is exactly what it is for: with only
 /// the two ECMAScript arms registered, each reads the other's spelling and this path has no way to
 /// be reached at all.
 #[tokio::test]
-async fn a_skill_spelled_in_no_language_this_agent_writes_is_read_as_prose_and_reported() {
+async fn a_skill_spelled_in_no_language_this_agent_writes_is_refused() {
     let dir = TempDir::new().unwrap();
     let skill = dir.path().join(".gg").join("skills").join("csv-tools");
     std::fs::create_dir_all(&skill).unwrap();
@@ -1320,46 +1318,27 @@ async fn a_skill_spelled_in_no_language_this_agent_writes_is_read_as_prose_and_r
     )
     .await;
 
-    assert_eq!(outcome, SessionOutcome::Ran);
-    let warnings: Vec<&String> = events
+    assert_eq!(outcome, SessionOutcome::HarnessError);
+    let errors: Vec<&String> = events
         .iter()
         .filter_map(|event| match &event.kind {
-            GgTelemetryKind::Log { level, message } if level == "warn" => Some(message),
+            GgTelemetryKind::Log { level, message } if level == "error" => Some(message),
             _ => None,
         })
         .collect();
-    let reported = warnings
+    let refused = errors
         .iter()
         .find(|message| message.contains("csv-tools"))
-        .unwrap_or_else(|| panic!("the operator is told the skill read as prose: {warnings:?}"));
+        .unwrap_or_else(|| panic!("the refusal names the skill: {errors:?}"));
     assert!(
-        reported.contains("`.fixture`"),
-        "the message names the spelling the directory carries: {reported}"
-    );
-    assert!(
-        reported.contains("TypeScript"),
-        "…and the language that could not read it: {reported}"
+        refused.contains(".fixture"),
+        "the refusal names the spelling the directory carries: {refused}"
     );
 
-    // The prose still arrived, and nothing was bound.
-    let conversation = requests
-        .last()
-        .expect("a recorded request")
-        .iter()
-        .filter_map(|message| message.content.clone())
-        .collect::<Vec<_>>()
-        .join("\n");
+    // …and nothing ran: the launch is refused before the first turn, so no request was ever made.
     assert!(
-        conversation.contains("Split on commas."),
-        "the body still reaches the model: {conversation}"
-    );
-    assert!(
-        !conversation.contains("lib.csvTools"),
-        "nothing was bound, so the read must not name a binding key: {conversation}"
-    );
-    assert!(
-        !conversation.contains("fixture"),
-        "the model is not told which other languages the directory was authored for: {conversation}"
+        requests.is_empty(),
+        "a refused launch spends nothing: {requests:?}"
     );
 }
 

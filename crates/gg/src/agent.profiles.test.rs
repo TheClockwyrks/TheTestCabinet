@@ -1,7 +1,7 @@
 //! **An agent profile the run does not declare**, at each of the five sites that resolve one.
 //!
 //! Every one of these is unreachable through the production launch path, and that is the point:
-//! [`validate_agents`] rejects a roster reference to an undeclared profile, [`crate::fsm::validate`]
+//! [`crate::validate::validate_launch`] rejects a roster reference to an undeclared profile, [`crate::fsm::validate`]
 //! rejects a state that names one, the board holds an issue's assignee and its reviewers to the
 //! filer's own roster, and a succession's target is checked against the roster before it is
 //! accepted. So the only thing that can put an undeclared name in front of a resolver is a **gg
@@ -51,19 +51,7 @@ use test_cabinet_core::gg::{
     ROOT_AGENT,
 };
 
-use super::{ScriptedFactory, invocation};
-
-/// Every `error`-level log message in the stream, in order — where each of these sites reports the
-/// defect, since an operator is the only reader who can do anything about one.
-fn error_messages(events: &[GgTelemetryEvent]) -> Vec<String> {
-    events
-        .iter()
-        .filter_map(|event| match &event.kind {
-            GgTelemetryKind::Log { level, message } if level == "error" => Some(message.clone()),
-            _ => None,
-        })
-        .collect()
-}
+use super::{ScriptedFactory, error_messages, invocation};
 
 /// Build the run's [`Orchestrator`] over `set` **without** the launch checks.
 ///
@@ -97,6 +85,7 @@ fn orchestrator_with(
                 root: None,
             },
             &mut warnings,
+            &mut crate::validate::LaunchReport::Discarding,
         )
         // None of these sets declares a machine, so the one thing building an orchestrator can
         // fail on is not in play here — see `a_machine_that_will_not_build_refuses_the_launch`.
@@ -255,7 +244,7 @@ async fn an_undeclared_successor_profile_ends_the_session_with_internal_error() 
 /// The `dangling_roster_set` with `After` **declared** and left unbound: the name resolves, and
 /// there is still no model to run the successor on.
 ///
-/// [`validate_agents`] rejects this set as firmly as it rejects the dangling roster above — a
+/// [`crate::validate::validate_launch`] rejects this set as firmly as it rejects the dangling roster above — a
 /// profile that is not an FSM shell must have a model — so an agent reaching it has been handed a
 /// configuration gg promised could not exist.
 fn modelless_successor_set() -> GgCapabilitySet {

@@ -61,6 +61,8 @@ use super::{
     ArgumentError, DirEntryData, DirEntryKind, FileImageData, FileTextData, Tool, ToolContext,
     ToolData, ToolFailure, ToolOutcome, invalid_argument, required_str, saturating_u32,
 };
+use test_cabinet_core::gg::CAPABILITY_READ_FILE;
+
 use crate::model::{ImageContent, ToolDefinition};
 
 /// The `read_file` tool name — also what the [system prompt](crate::prompts) checks for when it
@@ -103,8 +105,12 @@ pub const READ_MODE_UNLIMITED: &str = "unlimited";
 pub const READ_MODE_DEFAULT_CAP: &str = "default-cap";
 
 /// The line cap the [default-capped](ReadPolicy::DefaultCap) read mode uses when its capability
-/// declares no [`lineCap`](PARAM_LINE_CAP) (or declares a nonsensical one).
+/// declares no [`lineCap`](PARAM_LINE_CAP).
 pub const DEFAULT_READ_LINE_CAP: usize = 250;
+
+/// The two read modes, in the spelling a [refusal](crate::validate) offers back. The
+/// [default](READ_MODE_UNLIMITED) is first.
+pub const READ_MODES: [&str; 2] = [READ_MODE_UNLIMITED, READ_MODE_DEFAULT_CAP];
 
 // ---------------------------------------------------------------------------
 // Read policy
@@ -140,25 +146,55 @@ pub enum ReadPolicy {
 impl ReadPolicy {
     /// Resolve the policy from the read-file capability's `implementation` and `params`.
     ///
-    /// An absent or unrecognized implementation resolves to [`Unlimited`](Self::Unlimited),
-    /// the historical behavior: a run configured with a typo'd mode reads files exactly as
-    /// an unconfigured one does rather than silently enforcing a cap nobody asked for. A
-    /// missing, non-numeric, or zero [`lineCap`](PARAM_LINE_CAP) falls back to
-    /// [`DEFAULT_READ_LINE_CAP`], since a zero-line cap would make every read return
-    /// nothing.
-    pub fn resolve(implementation: Option<&str>, params: &Value) -> Self {
-        let cap = params
-            .get(PARAM_LINE_CAP)
-            .and_then(Value::as_u64)
-            .filter(|&n| n > 0)
-            .map(|n| n as usize)
-            .unwrap_or(DEFAULT_READ_LINE_CAP);
+    /// An **absent** implementation resolves to [`Unlimited`](Self::Unlimited), the historical
+    /// behavior, so a capability set that says nothing about read modes reads exactly as gg always
+    /// has; an absent or `null` [`lineCap`](PARAM_LINE_CAP) takes [`DEFAULT_READ_LINE_CAP`].
+    ///
+    /// A **present** implementation gg does not recognize [refuses the launch](crate::validate)
+    /// rather than resolving to `unlimited`, and this is the sharpest case of that rule in gg: the
+    /// implementation is the *arm selector* of the read-cap experiment, so a typo'd `defaultcap`
+    /// silently handed its agent **unlimited** reads while the run's record named the capped arm —
+    /// the two arms of the study, run as one. A `lineCap` gg cannot read as a whole number of one or
+    /// more is refused on the same terms. `Unlimited` still comes back, because by then the launch is
+    /// over and the resolver has to stay total for the mid-run calls that re-read a profile.
+    ///
+    /// The `lineCap` is read whether or not the selected mode uses it, on the terms every knob in gg
+    /// is judged by: a value is honourable or it is not, and which arm happens to consult it is a
+    /// different question from whether it was written correctly.
+    pub fn resolve(
+        implementation: Option<&str>,
+        params: &Value,
+        report: &mut crate::validate::LaunchReport,
+    ) -> Self {
+        let cap = crate::validate::positive_count_param(
+            params,
+            CAPABILITY_READ_FILE,
+            PARAM_LINE_CAP,
+            "a cap of no lines would make every read return nothing",
+            report,
+        )
+        .map_or(DEFAULT_READ_LINE_CAP, |cap| {
+            usize::try_from(cap).unwrap_or(usize::MAX)
+        });
         match implementation.map(str::trim) {
             Some(READ_MODE_DEFAULT_CAP) => Self::DefaultCap(cap),
-            Some(READ_MODE_UNLIMITED) | None => Self::Unlimited,
-            // An unrecognized mode is a misconfiguration, not an instruction: fall back to
-            // the historical behavior rather than enforcing a cap nobody asked for.
-            Some(_) => Self::Unlimited,
+            Some(READ_MODE_UNLIMITED) | Some("") | None => Self::Unlimited,
+            Some(unknown) => {
+                report.report(
+                    crate::validate::LaunchDefect::run_level(
+                        crate::validate::implementation_locus(CAPABILITY_READ_FILE),
+                        unknown,
+                        format!(
+                            "the `{CAPABILITY_READ_FILE}` capability's implementation names how \
+                             much of a file one call returns; gg has no such mode, and reading it \
+                             as `{READ_MODE_UNLIMITED}` would hand this agent uncapped reads under \
+                             the capped arm's name."
+                        ),
+                    )
+                    .known(READ_MODES),
+                );
+                Self::Unlimited
+            }
         }
     }
 

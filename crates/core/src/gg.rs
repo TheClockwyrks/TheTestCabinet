@@ -135,8 +135,11 @@ pub const CAPABILITY_AUTOLOAD_SPECS: &str = "autoload-specs";
 /// The [`implementation`](GgCapabilityConfig::implementation) of
 /// [`CAPABILITY_AUTOLOAD_SPECS`] that **locks** the autoloaded specifications into the
 /// window — pinned across compaction and immune to eviction — rather than injecting them
-/// as ordinary, droppable file reads (the default when the implementation is empty or
-/// unrecognized).
+/// as ordinary, droppable file reads (the default when the implementation is absent or empty).
+///
+/// This is the capability's whole vocabulary. A profile naming any other implementation is
+/// refused at launch: `lock` and `Locked` are not this arm, and a run that quietly took the
+/// unlocked arm instead would record the locked one having been asked for.
 pub const AUTOLOAD_LOCKED_IMPL: &str = "locked";
 
 /// The stable id of the **agent-persistence** capability: an agent profile whose instances
@@ -202,8 +205,9 @@ pub const CAPABILITY_SKILLS: &str = "skills";
 ///
 /// Every strategy stores memories **in gg, never on disk**, so the only way to write one is
 /// through the tools the capability offers — a model cannot forge a memory by writing a file
-/// into the workspace. An unrecognized strategy resolves to the default rather than failing
-/// to launch, so a sweep can name a not-yet-built one.
+/// into the workspace. A strategy name gg does not recognize **fails the launch** and names the
+/// three it knows: the arm is the independent variable, so a run that silently took the default
+/// would be a measurement of the wrong thing.
 ///
 /// Which params a run's [`params`](GgCapabilityConfig::params) may carry depends on the
 /// strategy — [`GgMemoryCaps`] documents the limits each resolves and their defaults.
@@ -216,8 +220,8 @@ pub const CAPABILITY_MEMORIES: &str = "memories";
 /// [`max_len_per_memory`](GgMemoryCaps::max_len_per_memory) and
 /// [`max_total_len`](GgMemoryCaps::max_total_len).
 ///
-/// The default: what an unconfigured memories capability uses, and what an unrecognized
-/// strategy name falls back to.
+/// The default: what a memories capability that names **no** strategy uses. Nothing else falls
+/// back to it — a strategy gg does not recognize fails the launch rather than landing here.
 pub const MEMORY_STRATEGY_SCRATCHPAD: &str = "scratchpad";
 
 /// The [memories](CAPABILITY_MEMORIES) strategy that splits memory into an **index** and a
@@ -248,9 +252,10 @@ pub const MEMORY_STRATEGY_KEYWORD_SEARCH: &str = "keyword-search";
 /// [scope](GgMemoryScope).
 ///
 /// Meaningful only where memories are enabled: a profile that sets it with the capability off is
-/// reported as a launch warning, because the two together describe an intent gg cannot honour.
-/// An unrecognized value falls back to [`isolated`](GgMemoryScope::Isolated) and warns, in line
-/// with how every other unrecognized capability *value* is treated.
+/// **refused** at launch, because the two together describe an intent gg cannot honour. An
+/// unrecognized value is refused on the same terms, in line with how every unrecognized capability
+/// *value* is treated — a scope decides which agents share a notebook, and there is no reading of
+/// the record afterwards that would show a run had silently been given private ones.
 ///
 /// See [memories](https://docs.testcabinet.ai/gg/memories/) for what each scope does, and
 /// [`MODULE_PARAM_OWNERSHIP`] for the orthogonal question of whether the bound instance is carried
@@ -345,14 +350,21 @@ pub const CAPABILITY_TASKS: &str = "tasks";
 /// [unowned](GgModuleOwnership::Unowned).
 ///
 /// A module-backed capability is one whose state gg keeps for the agent rather than one that is
-/// a pure function of a call — see [`GgModuleKind`] for the closed list of modules. Four of them
-/// read this param: [`memories`](CAPABILITY_MEMORIES),
-/// [`project-management`](CAPABILITY_PROJECT_MANAGEMENT), [`skills`](CAPABILITY_SKILLS) and
-/// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT). [`tasks`](CAPABILITY_TASKS) does
-/// not: the task list is what an agent steers its work by from turn to turn, so it is always
-/// carried in its holder's prompt as its own message, and an `ownership` key on that capability is
-/// read by nothing. An unrecognized value falls back to `owned` and is reported as a launch
-/// warning, never as a launch failure, in line with how every other unrecognized capability
+/// a pure function of a call — see [`GgModuleKind`] for the closed list of modules. Exactly **two**
+/// of them read this param: [`project-management`](CAPABILITY_PROJECT_MANAGEMENT) and
+/// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT).
+///
+/// The others have no ownership to configure, and every absence is load-bearing.
+/// [`tasks`](CAPABILITY_TASKS): the task list is what an agent steers its work by from turn to turn,
+/// so it is always carried in its holder's prompt as its own message.
+/// [`memories`](CAPABILITY_MEMORIES) and [`skills`](CAPABILITY_SKILLS): for both of them the knob
+/// would be a way of switching the capability off while pretending it was on — what a
+/// [memory strategy](MEMORY_STRATEGY_SCRATCHPAD) pins *is* what having memories means under it, and
+/// the strategy is already that knob.
+///
+/// So an `ownership` key on any capability but those two is a **launch failure**: it is a key on a
+/// capability that has none, which is a configuration asking for something gg cannot do. An
+/// unrecognized value is refused on the same terms, in line with how every unrecognized capability
 /// *value* is treated.
 ///
 /// See the [module model](https://docs.testcabinet.ai/gg/modules/) for what ownership changes.
@@ -469,8 +481,10 @@ impl std::fmt::Display for GgModuleKind {
 /// different origins, because one of them created it and the other bound, inherited or was handed
 /// it. Read beside the holder's declared [scope](GgMemoryScope) it is also the only way to see a
 /// binding that did not resolve the way its configuration asked — a holder reporting
-/// `scope: inherited` with `origin: created` is one whose inheritance silently fell back to a
-/// private instance, which is a legal outcome nothing else in the record states.
+/// `scope: inherited` with `origin: created` is one whose inheritance did not find a store to
+/// inherit. gg refuses the statically decidable form of that at launch and treats the rest as its
+/// own defect mid-run, so this pairing marks a gg bug rather than an accepted outcome; it stays
+/// legible in the record precisely so such a bug is findable.
 ///
 /// It deliberately does **not** distinguish a fork's copy from a fork's link. Whether the copy got
 /// its own store is already visible, and visible more reliably, in the
@@ -734,8 +748,10 @@ pub struct GgAgentApiFunction {
 /// - [`memory-compaction`](COMPACTION_STRATEGY_MEMORY) — the agent writes its working state
 ///   to [memories](CAPABILITY_MEMORIES) (which are retained verbatim) instead of a summary.
 ///
-/// An unrecognized strategy falls back to the default rather than failing to launch, so a
-/// sweep can name a not-yet-built one.
+/// A strategy gg does not recognize **fails the launch** and names the five it knows. The
+/// strategy *is* the experiment, so a run that quietly condensed itself with
+/// [`self-summarization`](COMPACTION_STRATEGY_SELF_SUMMARIZATION) while its record named a
+/// handoff arm would be a measurement attributed to the wrong arm.
 ///
 /// [compaction]: https://docs.testcabinet.ai/gg/compaction/
 pub const CAPABILITY_COMPACTION: &str = "compaction";
@@ -744,8 +760,8 @@ pub const CAPABILITY_COMPACTION: &str = "compaction";
 /// gg appends a user message asking for a summary of the work done and the work remaining, and
 /// rebuilds the next context from the model's own reply.
 ///
-/// The default: what an unconfigured compaction capability uses, and what an unrecognized
-/// strategy name falls back to.
+/// The default: what a compaction capability that names **no** strategy uses. Nothing else falls
+/// back to it — a strategy gg does not recognize fails the launch rather than landing here.
 pub const COMPACTION_STRATEGY_SELF_SUMMARIZATION: &str = "self-summarization";
 
 /// The [compaction](CAPABILITY_COMPACTION) strategy in which the agent compacts itself through
@@ -767,13 +783,21 @@ pub const COMPACTION_STRATEGY_HANDOFF_COMPACTION: &str = "handoff-compaction";
 /// The [compaction](CAPABILITY_COMPACTION) strategy in which the agent's working state is
 /// carried across the boundary as **[memories](CAPABILITY_MEMORIES)** rather than a summary:
 /// gg requires the model to write them, accepting only memory calls until a whole reply's calls
-/// succeed. It requires the memories capability; without it the run falls back to the default.
+/// succeed. It requires the [memories](CAPABILITY_MEMORIES) capability and a writable
+/// [scope](MEMORY_PARAM_SCOPE): a profile that selects this strategy without them is **refused**
+/// at launch rather than demoted to the default, because a demoted run records the memory arm and
+/// measures the summarization one.
 pub const COMPACTION_STRATEGY_MEMORY: &str = "memory-compaction";
 
 /// The [compaction](CAPABILITY_COMPACTION) capability param naming the model the two
 /// **handoff** strategies delegate to — an ordinary model id, resolved through the same client
-/// factory every agent's model is. Absent (or unresolvable) falls back to the agent's own model,
-/// so a handoff strategy always has a model to call.
+/// factory every agent's model is.
+///
+/// Absent, the handoff strategies condense on the agent's own model, which is the documented
+/// default for a key nobody wrote. **Present** and unresolvable is a different thing entirely: the
+/// whole point of a handoff arm is *which* model condensed the thread, so a model id the catalog
+/// has no window for fails the launch, and one that cannot be reached mid-run ends the run as gg's
+/// own error rather than quietly reverting to the working model.
 pub const COMPACTION_PARAM_MODEL: &str = "model";
 
 /// The [compaction](CAPABILITY_COMPACTION) capability param **deferring** the handoff model to
@@ -783,8 +807,9 @@ pub const COMPACTION_PARAM_MODEL: &str = "model";
 ///
 /// Launching resolves it: the launcher fills the slot in, writes the model it collected to
 /// [`model`](COMPACTION_PARAM_MODEL), and drops this key — so a set a run *records* never carries
-/// one. A set that reaches gg still carrying it named a slot nobody bound, which gg reports at
-/// launch and then treats as an unset handoff model (the agent condenses on its own model).
+/// one. A set that reaches gg still carrying it named a slot nobody bound, and gg **refuses** it:
+/// the key's mere presence at that point means the launch did not honour the binding, and a run
+/// that continued would condense on the agent's own model while its configuration named a slot.
 pub const COMPACTION_PARAM_MODEL_SLOT: &str = "modelSlot";
 
 /// The stable id of the Phase 2 [agent-managed context] capability: the model-facing
@@ -930,7 +955,7 @@ pub const FSM_PARAM_STATES: &str = "states";
 /// offered no transition call at all, so the machine ends when that agent ends, and its ending is
 /// the FSM agent's return value to whoever put it to work.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgFsmState {
     /// The state's name — how a [transition](GgFsmTransition::to) addresses it and how the model
@@ -954,7 +979,7 @@ pub struct GgFsmState {
 /// One edge of a user-authored [FSM](CAPABILITY_FSM): a state the model may move to, and exactly
 /// what it takes with it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgFsmTransition {
     /// The [state](GgFsmState::name) this edge leads to. Must name a state the same machine
@@ -970,11 +995,12 @@ pub struct GgFsmTransition {
     /// of the record cannot see. The console's editor pre-fills `["history"]` on every transition it
     /// creates, so the common case is still one click.
     ///
-    /// Deserialized **leniently**: an entry that is not a module kind gg knows is dropped rather
-    /// than failing the whole machine. A mistyped module name is an unrecognized *value*, which the
-    /// harness reports as a launch warning and falls back from, and refusing to launch over one
-    /// would put it in the same class as a state that points nowhere.
-    #[serde(default, deserialize_with = "module_kinds_lenient")]
+    /// Read **strictly**: every entry must be a [module kind](GgModuleKind) gg knows. An entry that
+    /// is not one — a mistyped name, or a value that is not even a string — fails the document,
+    /// which fails the launch. A transfer list gg silently shortened would run a machine that hands
+    /// its successor less than the configuration says it hands it, and there is no reading of the
+    /// record afterwards that could show the difference.
+    #[serde(default)]
     pub transfer: Vec<GgModuleKind>,
     /// When the model should take this edge, in its own words — rendered into the transition tool's
     /// description beside the target name, exactly as an agent's roster description is rendered into
@@ -982,23 +1008,6 @@ pub struct GgFsmTransition {
     /// *why* one target rather than another.
     #[serde(default)]
     pub description: String,
-}
-
-/// Deserialize a [transfer list](GgFsmTransition::transfer), dropping every entry that is not a
-/// [module kind](GgModuleKind) this gg knows.
-///
-/// The list is read as raw JSON and each entry re-parsed on its own, so one unknown name costs that
-/// one entry rather than the whole machine. The harness re-reads the raw param to *name* what it
-/// dropped; this is only the part that has to keep the document readable.
-fn module_kinds_lenient<'de, D>(deserializer: D) -> Result<Vec<GgModuleKind>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let raw = Vec::<serde_json::Value>::deserialize(deserializer)?;
-    Ok(raw
-        .into_iter()
-        .filter_map(|value| serde_json::from_value::<GgModuleKind>(value).ok())
-        .collect())
 }
 
 /// The stable id of the [exec] capability: an agent's ability to **replace itself** with one
@@ -1179,6 +1188,48 @@ pub const CAPABILITY_PROGRAM_LIBRARY: &str = "program-library";
 /// Default **off**, which is the arm in which the claim above holds without qualification.
 pub const CAPABILITY_DOCVIEW_CLOSE: &str = "docview-close";
 
+/// Every capability id gg ships, in catalog order — the **closed** vocabulary a
+/// [capability config](GgCapabilityConfig::id) is read against.
+///
+/// This is the single authority on what a capability may be called. A
+/// [set](GgCapabilitySet) naming an id that is not here cannot be honoured as written — gg has no
+/// such capability to switch on, and every surface downstream would report a configuration that
+/// did nothing — so it is **refused at launch**, before the first turn and before any model spend,
+/// rather than carried through the run as a field nothing reads.
+///
+/// It is also what makes the `cap.*` [query](crate::gg_query) namespace **total**:
+/// the document builder stores an explicit `false` for every id here that a run did not enable, so
+/// "configured and off" and "never mentioned" collapse into one honest answer instead of a missing
+/// key that would fail every comparison and quietly shrink an enablement rate's denominator. Because
+/// the launch refuses anything outside this list, that totality is unconditional — no run can carry
+/// an id the catalog has never heard of.
+///
+/// Adding a capability to gg means adding it here, and forgetting to means the capability cannot be
+/// configured at all — which is a loud failure rather than a silent one, and deliberately so.
+pub const GG_CAPABILITY_CATALOG: &[&str] = &[
+    CAPABILITY_SHELL,
+    CAPABILITY_READ_FILE,
+    CAPABILITY_WRITE_FILE,
+    CAPABILITY_EDIT_FILE,
+    CAPABILITY_LIST_DIR,
+    CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
+    CAPABILITY_AUTOLOAD_SPECS,
+    CAPABILITY_AGENT_PERSISTENCE,
+    CAPABILITY_SKILLS,
+    CAPABILITY_MEMORIES,
+    CAPABILITY_TASKS,
+    CAPABILITY_COMPACTION,
+    CAPABILITY_AGENT_MANAGED_CONTEXT,
+    CAPABILITY_PROJECT_MANAGEMENT,
+    CAPABILITY_SUBAGENTS,
+    CAPABILITY_FSM,
+    CAPABILITY_EXEC,
+    CAPABILITY_FORK,
+    CAPABILITY_RESPONSES_AS_CODE,
+    CAPABILITY_PROGRAM_LIBRARY,
+    CAPABILITY_DOCVIEW_CLOSE,
+];
+
 /// The workspace-relative dotdir gg keeps **its own** files in during a run: the capture
 /// [journal](crate::gg_session_journal::GG_SESSION_JOURNAL_PATH) and the
 /// [skills](CAPABILITY_SKILLS) library.
@@ -1216,7 +1267,7 @@ pub const ROOT_AGENT: &str = "Root";
 /// configuration. Freeze the model and the test case, vary the capability set, and the
 /// harness becomes a laboratory.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgCapabilitySet {
     /// The name of a saved preset this set was assembled from (for example
@@ -1452,14 +1503,27 @@ impl GgCapabilitySet {
     /// for "the run's model" would be wrong for every agent off the Root's model. An
     /// agent whose binding is still [deferred](GgAgentConfig::model_slot) names no model
     /// and is skipped, as is an [FSM shell](GgAgentConfig::is_fsm_shell), which runs none.
-    pub fn bound_model_ids(&self) -> Vec<&str> {
-        let mut ids: Vec<&str> = Vec::new();
-        for agent in &self.agents {
-            let Some(id) = agent.resolved_model_id() else {
-                continue;
-            };
-            if !ids.contains(&id) {
+    ///
+    /// A **[compaction handoff](COMPACTION_PARAM_MODEL) model counts too**, and that is not a
+    /// nicety: it is a second model this run really does send requests to, on the one event that
+    /// rewrites an agent's entire window. Left off this list it would never be priced, never have a
+    /// window resolved, and never be checked against the catalog — so a handoff naming a model that
+    /// does not exist would launch, fail to resolve on the first compaction, and (before this
+    /// remediation) quietly condense on the working model while the record named the handoff arm.
+    /// Being on the list is what makes that a launch refusal instead.
+    pub fn bound_model_ids<'a>(&'a self) -> Vec<&'a str> {
+        let mut ids: Vec<&'a str> = Vec::new();
+        let mut push = |id: &'a str| {
+            if !id.is_empty() && !ids.contains(&id) {
                 ids.push(id);
+            }
+        };
+        for agent in &self.agents {
+            if let Some(id) = agent.resolved_model_id() {
+                push(id);
+            }
+            if let Some(model) = agent.handoff_model_id() {
+                push(model);
             }
         }
         ids
@@ -1555,7 +1619,7 @@ impl fmt::Display for GgDispatchError<'_> {
 /// (the [`implementer`](GgSubagentScope::Implementer) scope) and its reviewers (the
 /// [`reviewer`](GgSubagentScope::Reviewer) scope). A profile may list itself, allowing recursion.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgAgentConfig {
     /// The profile's name, unique within a set. `"Root"` ([`ROOT_AGENT`]) for the
@@ -1596,9 +1660,12 @@ pub struct GgAgentConfig {
     ///
     /// Every name is checked against gg's tool vocabulary at launch, and one that is not a gg tool
     /// — a typo, a tool since removed, or an [operation id](Self::operations) from the other surface
-    /// — is an error, not a silently inert entry. An allowlist entry that grants nothing looks
-    /// exactly like a deliberate narrowing, so nothing but a launch-time complaint can tell an
-    /// operator that the call they meant to hand over never arrived.
+    /// — **refuses the launch**, rather than being a silently inert entry. An allowlist entry that
+    /// grants nothing looks exactly like a deliberate narrowing, so nothing gg could say afterwards
+    /// would tell an operator that the call they meant to hand over never arrived. A name that *is*
+    /// a gg tool but that this agent's capabilities do not offer is fine and silent: it grants
+    /// nothing, it is not a typo, and one shared document naming a call only some of the
+    /// configurations it describes enable is the ordinary way a sweep is written.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<String>,
     /// The **operation ids** — `files.read_file`, `memories.update_memory` — that this agent's
@@ -1610,8 +1677,8 @@ pub struct GgAgentConfig {
     /// [`tools`](Self::tools)'. What differs is the vocabulary, and the two are **scoped**: the API
     /// surface is strictly the larger of the two — every tool has an operation behind it, and
     /// operations exist that no tool does — but a name is granted on precisely the surface it
-    /// belongs to. A tool name here, or an operation id there, is a mistake gg reports rather than
-    /// a spelling it accepts.
+    /// belongs to. A tool name here, or an operation id there, refuses the launch rather than being
+    /// a spelling gg accepts.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub operations: Vec<String>,
     /// Operator-authored instructions inserted into this agent's system prompt. `None`
@@ -1783,6 +1850,40 @@ impl GgAgentConfig {
         (!id.is_empty()).then_some(id)
     }
 
+    /// The **second** model this agent runs on: the model its
+    /// [handoff compaction](COMPACTION_PARAM_MODEL) hands the thread to, or `None` when compaction
+    /// is off, the strategy is not a handoff, or the param names no model.
+    ///
+    /// It is here — beside the agent's own binding, and folded into
+    /// [`bound_model_ids`](GgCapabilitySet::bound_model_ids) — because a handoff really is a model
+    /// this run sends requests to and pays for, on the one event that rewrites an agent's entire
+    /// window. Everything a launch does per bound model (price it, resolve its context window,
+    /// prove the catalog knows it) has to be done for it too.
+    ///
+    /// The strategy is read as the two `handoff-*` ids and nothing more: gg owns the resolution and
+    /// refuses an `implementation` it cannot read, so an id this does not recognize is a run that is
+    /// about to be refused for that reason rather than one to guess a second model for. A `model` on
+    /// a **non-handoff** strategy is deliberately not counted — it is a key the capability knows and
+    /// the selected arm does not use, the "one shared params block per sweep" case, and demanding a
+    /// catalog entry for it would break exactly the sweep it exists to serve.
+    pub fn handoff_model_id(&self) -> Option<&str> {
+        let capability = self
+            .capability(CAPABILITY_COMPACTION)
+            .filter(|capability| capability.enabled)?;
+        let strategy = capability.implementation.as_deref()?.trim();
+        if strategy != COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION
+            && strategy != COMPACTION_STRATEGY_HANDOFF_COMPACTION
+        {
+            return None;
+        }
+        let model = capability
+            .params
+            .get(COMPACTION_PARAM_MODEL)?
+            .as_str()?
+            .trim();
+        (!model.is_empty()).then_some(model)
+    }
+
     /// Whether this agent names a model to run — a pinned binding, or a deferred one the
     /// launch has since filled in.
     ///
@@ -1834,7 +1935,7 @@ impl GgAgentConfig {
 /// The description is scoped to the `(spawner, target)` pair, so the same target can
 /// carry different guidance depending on which agent is allowed to spawn it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgSubagentRef {
     /// The name of the target agent this agent may put to work (may be the spawner itself).
@@ -1993,13 +2094,19 @@ impl GgPromptCacheTtl {
 /// param — a tool-calling model loops in exactly the same way, inside a tool call's arguments.
 ///
 /// Every knob is optional and an absent one takes gg's own default (documented per field). A knob
-/// set to a value that cannot bound anything is a startup **warning** and takes the default, never
-/// an error, on the same terms as [`GgRunLimits`].
+/// **set** to a value that cannot bound anything — a zero window, a zero threshold, a demand for
+/// no offenders — is a launch **failure**, on the same terms as [`GgRunLimits`]: a detector armed
+/// on gg's defaults instead of the ones the profile wrote is a different detector.
+///
+/// The one exception is a declaration gg arms exactly as written and which is merely provably
+/// inert: [`min_offenders`](Self::min_offenders) above
+/// [`window_words`](Self::window_words) can never saturate, but both numbers are honoured to the
+/// letter, so it warns rather than refusing.
 ///
 /// See the [loop-detection](https://docs.testcabinet.ai/gg/loop-detection/) page for the algorithm
 /// these knobs parameterise.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgLoopDetection {
     /// Whether the detector runs for this agent at all. `false` — the default — leaves the agent on
@@ -2013,7 +2120,10 @@ pub struct GgLoopDetection {
     /// A "word" is a whitespace-separated run of characters, plus a fixed-width slice whenever a run
     /// exceeds gg's internal cap — which is what makes a whitespace-free loop (`a();a();a();…`)
     /// detectable at all rather than one unbounded word.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        deserialize_with = "count::option_u64",
+        skip_serializing_if = "Option::is_none"
+    )]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub window_words: Option<u64>,
     /// `P` — how many times a single word may occur within the window before it counts as an
@@ -2022,7 +2132,10 @@ pub struct GgLoopDetection {
     ///
     /// Strictly more than `P` occurrences makes an offender, so raising it tolerates more legitimate
     /// repetition (a dense data literal, a long table) at the cost of catching a loop later.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        deserialize_with = "count::option_u64",
+        skip_serializing_if = "Option::is_none"
+    )]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub repeat_threshold: Option<u64>,
     /// `M` — how many **distinct** offenders must be present at once for the window to count as
@@ -2030,7 +2143,10 @@ pub struct GgLoopDetection {
     ///
     /// More than one is required because a single very common token (`the`, `0,`, a brace) is
     /// ordinary; a loop repeats a whole fragment, so it saturates several words together.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        deserialize_with = "count::option_u64",
+        skip_serializing_if = "Option::is_none"
+    )]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub min_offenders: Option<u64>,
     /// `R` — how many consecutive words must arrive while the window stays saturated before gg
@@ -2041,13 +2157,19 @@ pub struct GgLoopDetection {
     /// never stops. Requiring the saturation to be sustained is what lets the detector be aggressive
     /// without discarding a reply that was merely dense. `0` means "trip as soon as the window is
     /// saturated" — the unmodified frequency rule, and a deliberate choice rather than a mistake.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        deserialize_with = "count::option_u64",
+        skip_serializing_if = "Option::is_none"
+    )]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub min_saturated_run: Option<u64>,
     /// A hard ceiling, in characters, on a single reply — the backstop for a runaway that is not
     /// *repetitive* enough to trip the window rule. Absent takes gg's default (**250 000**); `0`
     /// turns the backstop off and leaves only the repetition rule.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        deserialize_with = "count::option_u64",
+        skip_serializing_if = "Option::is_none"
+    )]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub max_response_chars: Option<u64>,
 }
@@ -2174,18 +2296,25 @@ const DEFAULT_OPERATIONS: &[&str] = &[
 
 /// The configuration of a single capability within a [`GgCapabilitySet`].
 ///
-/// A capability is identified by a stable [`id`](Self::id) (an open string, not a
-/// closed enum, so later phases add capabilities freely), can be toggled
+/// A capability is identified by a stable [`id`](Self::id) — one of
+/// [`GG_CAPABILITY_CATALOG`], the closed vocabulary gg ships — can be toggled
 /// [on or off](Self::enabled), can select among alternate
 /// [implementations](Self::implementation) for A/B comparisons, and carries
 /// free-form [`params`](Self::params) for tuning.
+///
+/// The id is a `String` rather than an enum because the same vocabulary has to be spelled once for
+/// the console, the query language and the harness, not because it is open: an id outside the
+/// catalog names nothing gg can switch on, and the launch refuses it. The [`params`](Self::params)
+/// object is the one genuinely free-form field, and its **keys** are checked against the selected
+/// capability's own vocabulary at launch for the same reason.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgCapabilityConfig {
     /// The capability's stable id (for example `"shell"`, `"compaction"`, or
-    /// `"subagents"`). Stable across versions so recorded configurations stay
-    /// comparable.
+    /// `"subagents"`) — one of [`GG_CAPABILITY_CATALOG`]. Stable across versions so recorded
+    /// configurations stay comparable, and **closed**: an id gg does not ship is refused at
+    /// launch rather than carried through the run as a configuration nothing reads.
     pub id: String,
     /// Whether the capability is on. Off means gg behaves as if the feature does not
     /// exist — nothing it offers is exposed and it consumes no context — which is what makes two
@@ -2193,7 +2322,10 @@ pub struct GgCapabilityConfig {
     pub enabled: bool,
     /// The selected implementation of the capability, when it offers more than one
     /// (for example two compaction strategies or two memory strategies). `None` selects the
-    /// default. This is the basis for A/B comparisons between implementations.
+    /// default. This is the basis for A/B comparisons between implementations — which is exactly
+    /// why a name the capability does not offer is a **launch failure** and never a fall back to
+    /// the default: the arm is the independent variable, and a run measured on one arm while its
+    /// record names another is worse than no run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub implementation: Option<String>,
@@ -2256,7 +2388,7 @@ fn is_zero_u64(count: &u64) -> bool {
 /// every deferred one into a pinned one, so the set a run records has no deferred
 /// binding left.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgSlotBinding {
     /// The slot name capabilities reference (for example [`PRIMARY_SLOT`]).
@@ -2355,7 +2487,7 @@ impl GgSlotBinding {
 /// deferred binding to a concrete model, so this list is empty on the capability set a
 /// run records — what ran is a set of pinned bindings.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgModelSlot {
     /// The slot's name, as the launch form labels it and as a
@@ -2398,7 +2530,7 @@ pub struct GgModelSlot {
 /// block stops both the operation and the rest of that event's hooks — a later hook's opinion of an
 /// operation that is not going to happen is not worth the wall clock.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgHook {
     /// Which point of the run this hook fires at.
@@ -2580,7 +2712,8 @@ impl GgHookEvent {
 #[serde(
     tag = "type",
     rename_all = "kebab-case",
-    rename_all_fields = "camelCase"
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
 )]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum GgHookAction {
@@ -2612,7 +2745,8 @@ pub enum GgHookAction {
         timeout_secs: Option<f64>,
         /// How much of the output comes back inline and what happens to the rest — one of
         /// [`SHELL_OUTPUT_MODES`]. Absent follows the agent's own `shell` configuration, which is
-        /// almost always what an operator means.
+        /// almost always what an operator means; a value that is not one of the modes is refused
+        /// at launch, on the same terms as the `shell` capability's own `output` param.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "contract", ts(optional))]
         output: Option<String>,
@@ -2731,6 +2865,51 @@ pub enum GgHookOutcomeKind {
     },
 }
 
+/// **Reading a declared count**, for the [run limits](GgRunLimits) and the
+/// [loop detector](GgLoopDetection) — the two places gg's contract carries a bare number rather
+/// than a capability param.
+///
+/// JSON has no integer type. A sweep generated from JavaScript writes `60.0` and `6e1` as readily
+/// as `60`, and the derived `u64` reader rejects both — which would refuse a launch over a value
+/// that names exactly the count the operator meant. So an **integral** number in any spelling is
+/// read as that count, and everything else — a fraction, a negative, an infinity, a string, a
+/// number past `u64` — is an error, because rounding one would be gg choosing a number nobody
+/// wrote. It is the same rule the capability params are read under, in the one place a param
+/// resolver cannot reach.
+///
+/// `null` is `None`: the documented spelling of "take the default", not a value gg cannot read.
+mod count {
+    use serde::{Deserialize, Deserializer, de};
+
+    /// Deserialize one optional count under the rule the [module](self) states.
+    pub(super) fn option_u64<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let Some(value) = Option::<serde_json::Value>::deserialize(deserializer)? else {
+            return Ok(None);
+        };
+        if value.is_null() {
+            return Ok(None);
+        }
+        if let Some(count) = value.as_u64() {
+            return Ok(Some(count));
+        }
+        if let Some(count) = value.as_f64().filter(|number| {
+            number.is_finite()
+                && *number >= 0.0
+                && number.fract() == 0.0
+                && *number <= u64::MAX as f64
+        }) {
+            return Ok(Some(count as u64));
+        }
+        Err(de::Error::custom(format!(
+            "expected a whole number of zero or more (`60` and `60.0` are the same count); \
+             `{value}` names none"
+        )))
+    }
+}
+
 /// The **run-level guardrails** a gg run is bounded by: the [execution ceilings](GgLimitKind) that
 /// stop a session and record which one stopped it, plus the
 /// [parallelism cap](Self::max_parallel) that bounds how much of the run happens at once.
@@ -2750,24 +2929,34 @@ pub enum GgHookOutcomeKind {
 /// is armed by default instead are the two error
 /// ceilings that end a run which is *failing* rather than merely *long*: **5 consecutive errors**,
 /// and an **error rate above 0.4 over the last 50 turns**. Runtime and cost stay off when unset —
-/// the host owns the clock, and gg will not invent a spend ceiling nobody asked for. A field set to
-/// a value that cannot bound anything — a zero window, a negative rate, a rate above `1.0` — is a
-/// startup warning and is ignored, never an error, because a ceiling that cannot bind still leaves
-/// the run the operator asked for runnable; a **partially** declared error rate (a rate without a
-/// window, or a window without a rate) is likewise a warning and no ceiling, and does not
-/// fall back to the default. The run records the ceilings that were actually in force on
+/// the host owns the clock, and gg will not invent a spend ceiling nobody asked for.
+///
+/// **Absent takes the default; present-and-unhonourable fails the launch.** A field set to a value
+/// that cannot bound anything — a zero turn or runtime ceiling, a zero window, a negative rate, a
+/// rate above `1.0`, a non-finite cost — is refused by name, not disarmed with a warning: an
+/// operator who wrote a ceiling believes the run is bounded, and a run that quietly became
+/// unbounded is the one case where the misconfiguration costs money. A **partially** declared error
+/// rate (a rate without a window, or a window without a rate) is refused on the same terms rather
+/// than arming nothing. The run records the ceilings that were actually in force on
 /// [`GgSessionSummary::limits`], so a default is a recorded fact rather than a hidden one.
+///
+/// One combination stays a warning, because gg honours it exactly as written:
+/// [`error_rate_window`](Self::error_rate_window) at or above
+/// [`max_turns`](Self::max_turns) arms both numbers to the letter and merely leaves the rate
+/// ceiling able to fire only on the last turn. Which of the two knobs was meant is genuinely
+/// unknowable, so gg says so and runs what was asked for.
 ///
 /// See the [execution-limits](https://docs.testcabinet.ai/gg/execution-limits/) page for how each
 /// ceiling is accounted (per agent or run-wide) and what breaching it does to the run.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgRunLimits {
     /// How many of the run's agents may **run at once**, counting the root and every subagent,
     /// issue implementer and reviewer alike. **Absent means gg's default of
-    /// 16**; set it explicitly to widen or tighten the pool, and `0` is read as "no cap declared"
-    /// (a run with no agent able to run could not start at all).
+    /// 16**; set it explicitly to widen or tighten the pool. `0` is refused — a run with no agent
+    /// able to run could not start at all, so it is a ceiling gg cannot honour rather than a way
+    /// of writing "no cap".
     ///
     /// Unlike every other field here it **stops nothing** — it *queues*. An agent spawned while the
     /// pool is full is created normally and waits for a slot, so a configuration cannot lose work by
@@ -2781,23 +2970,36 @@ pub struct GgRunLimits {
     /// profile declared for itself would not add up to a number the operator could reason about. The
     /// one per-agent exception is [agent-persistence](CAPABILITY_AGENT_PERSISTENCE), which caps a
     /// single profile at one instance *within* this pool.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        deserialize_with = "count::option_u64",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub max_parallel: Option<u64>,
     /// The per-agent turn ceiling. **Absent means unbounded** — the host already caps a run's
     /// wall-clock, so a turn ceiling is left to the operator to set when a study wants one rather
     /// than imposed as a backstop that mostly cuts productive runs short. An agent that reaches a
     /// set ceiling ends `exhausted`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        deserialize_with = "count::option_u64",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub max_turns: Option<u64>,
     /// The run's wall-clock budget in seconds, observed by every agent at its own turn boundary.
     /// Absent means no budget. A run that spends it ends `timed_out`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        deserialize_with = "count::option_u64",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub max_runtime_secs: Option<u64>,
     /// How many **error turns in a row** end an agent. **Absent means gg's default of 5**; set it
-    /// explicitly to widen or tighten the ceiling.
+    /// explicitly to widen or tighten the ceiling. `0` is refused rather than read as "off" — it
+    /// would end an agent before its first turn, so it is not a ceiling gg can honour.
     ///
     /// A turn is an error when the work it *declared* could not be carried out as declared: a
     /// model call that failed, a program that did not compile, one that threw uncaught, or one the
@@ -2805,18 +3007,22 @@ pub struct GgRunLimits {
     /// **inside** an otherwise successful program is not one — the program handled it, which is
     /// the entire point of the typed tool surface, and counting it would make the one capability
     /// that expects failures the one capability that cannot survive them.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        deserialize_with = "count::option_u64",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub max_consecutive_errors: Option<u64>,
     /// The fraction of recent turns that may be errors before an agent is stopped, in `0.0..=1.0`.
     /// Breached only **strictly above** the value, matching "more than X%": at `0.5` over a window
     /// of ten, five errors is not a breach and six is. Needs
-    /// [`error_rate_window`](Self::error_rate_window); either alone is a startup warning and no
-    /// ceiling.
+    /// [`error_rate_window`](Self::error_rate_window); either alone fails the launch.
     ///
     /// When **both** this and the window are absent, gg's default arms an error rate of **0.4 over
     /// the last 50 turns**. A partial declaration (this without the window, or the window without
-    /// this) does not fall back to the default — it warns and arms nothing.
+    /// this) neither falls back to the default nor arms nothing — it is refused, because half a
+    /// ceiling is a ceiling the operator believes they have.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub max_error_rate: Option<f64>,
@@ -2826,7 +3032,11 @@ pub struct GgRunLimits {
     /// ceiling can stop a run on is therefore turn `error_rate_window` — at `1` it says "stop on
     /// any error", which is a legitimate declaration rather than an accident. Absent (together with
     /// [`max_error_rate`](Self::max_error_rate)) means gg's default window of **50**.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        deserialize_with = "count::option_u64",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub error_rate_window: Option<u64>,
     /// A ceiling on the run's accumulated cost, in the same USD figure the run record reports
@@ -2857,10 +3067,15 @@ pub struct GgRunLimits {
     /// params because capture is on for every run whatever the set says, so a ceiling parked on a
     /// capability would be unreadable by exactly the runs that need it.
     ///
-    /// `0` cannot bound anything (it would stop capture before its first line) and is read as
-    /// "no ceiling", with a startup warning, on the same terms as
-    /// [`max_consecutive_errors`](Self::max_consecutive_errors)`: 0`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// `0` cannot bound anything (it would stop capture before its first line) and is **refused**,
+    /// on the same terms as [`max_consecutive_errors`](Self::max_consecutive_errors)`: 0`. Omit the
+    /// key to take the default; there is no spelling of "no ceiling" here, because there is no run
+    /// that wants one.
+    #[serde(
+        deserialize_with = "count::option_u64",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub replay_max_bytes: Option<u64>,
 }
@@ -3464,7 +3679,7 @@ impl GgToolFailure {
 /// client reads `OPENROUTER_API_KEY` from the environment so a secret is never
 /// serialized to disk. JSON is camelCase, matching the rest of the contract.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GgInvocation {
     /// The id of this gg session. Stamped onto every emitted [`GgTelemetryEvent`] so
     /// the console can attribute the stream to the run.
@@ -3489,9 +3704,12 @@ pub struct GgInvocation {
     /// gg keeps **no model table of its own**. The catalog the backend owns is the
     /// single store of model facts, and a run is *told* what it needs at launch rather
     /// than querying for it from inside the run container — where it has neither the
-    /// backend's address nor a reason to reach it. A model the catalog has no window for
-    /// is simply absent from the map, and gg falls back to a conservative default (or to
-    /// an explicitly configured `windowLimit`).
+    /// backend's address nor a reason to reach it. Every model the set
+    /// [binds](GgCapabilitySet::bound_model_ids) must appear here — a run whose catalog could not
+    /// answer for one is rejected before the container is pulled
+    /// ([`RunRequest::validate`](crate::RunRequest::validate)) — because gg measures window
+    /// fullness, and therefore triggers [compaction](CAPABILITY_COMPACTION), against this figure
+    /// and has nothing to invent one from.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub model_windows: BTreeMap<String, u64>,
     /// The **input modalities** each model this run may bind accepts (`text`, `image`,
@@ -5869,9 +6087,10 @@ pub enum GgTelemetryKind {
         /// (everything the signature names). `None` for a tool-calling instance, which opens no
         /// documentation views.
         ///
-        /// The value is the mode gg **resolved**, never the string the profile wrote: an unreadable
-        /// one falls back to the default and is warned about at launch, and reporting the raw text
-        /// here would file that run under an arm it was never on.
+        /// The value is the mode gg **resolved**, which since an unreadable one is refused at
+        /// launch is always the mode the profile wrote. It is reported as the resolved value rather
+        /// than the raw text so a profile that named none reports the default it actually ran on
+        /// instead of an absence.
         ///
         /// It is reported for one reason, and the reason decides the field rather than decorating
         /// it. The three modes are meant to be compared against each other — opening the return

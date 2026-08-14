@@ -13,6 +13,23 @@ use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgCapab
 use wasmtime::ResourceLimiter;
 
 use super::*;
+use crate::validate::{LaunchDefect, LaunchReport};
+
+/// The limits `profile` resolves to, asserting gg honoured its configuration exactly as written.
+fn limits_of(profile: &GgAgentConfig) -> SandboxLimits {
+    let mut report = LaunchReport::collecting();
+    let limits = resolve_sandbox_limits(profile, &mut report);
+    let defects = report.into_defects();
+    assert!(defects.is_empty(), "unexpected refusals: {defects:?}");
+    limits
+}
+
+/// Everything resolving `profile` reports, for the cases whose subject is the refusal.
+fn reported(profile: &GgAgentConfig) -> (SandboxLimits, Vec<LaunchDefect>) {
+    let mut report = LaunchReport::collecting();
+    let limits = resolve_sandbox_limits(profile, &mut report);
+    (limits, report.into_defects())
+}
 
 /// An agent profile carrying `responses-as-code` with the given params.
 fn set_with(params: serde_json::Value) -> GgAgentConfig {
@@ -28,17 +45,19 @@ fn set_with(params: serde_json::Value) -> GgAgentConfig {
 /// A run that does not mention the capability at all runs at the default ceilings.
 #[test]
 fn an_absent_capability_resolves_to_the_defaults() {
-    assert_eq!(
-        resolve_sandbox_limits(&GgAgentConfig::root()),
-        SandboxLimits::default()
-    );
+    assert_eq!(limits_of(&GgAgentConfig::root()), SandboxLimits::default());
 }
 
 /// A capability with no params is the ordinary case, and is also the defaults.
 #[test]
 fn a_capability_with_no_params_resolves_to_the_defaults() {
+    assert_eq!(limits_of(&set_with(json!({}))), SandboxLimits::default());
+
+    // An explicit `null` is the same statement as leaving the key out.
     assert_eq!(
-        resolve_sandbox_limits(&set_with(json!({}))),
+        limits_of(&set_with(
+            json!({ "timeoutSecs": null, "maxMemoryBytes": null })
+        )),
         SandboxLimits::default()
     );
 }
@@ -46,7 +65,7 @@ fn a_capability_with_no_params_resolves_to_the_defaults() {
 /// A configured `timeoutSecs` is honoured — the whole point of the param.
 #[test]
 fn a_configured_timeout_is_honoured() {
-    let limits = resolve_sandbox_limits(&set_with(json!({ "timeoutSecs": 12 })));
+    let limits = limits_of(&set_with(json!({ "timeoutSecs": 12 })));
     assert_eq!(limits.timeout, Duration::from_secs(12));
     assert_eq!(
         limits.max_memory_bytes,
@@ -55,19 +74,30 @@ fn a_configured_timeout_is_honoured() {
     );
 }
 
-/// Zero seconds is "not configured", not "no time at all": a run at zero could not execute even the
-/// guest's own setup, so every turn would fail identically — never what a study asked for.
+/// Zero seconds names no ceiling — a run at zero could not execute even the guest's own setup, so
+/// every turn would fail identically — and taking gg's 30 seconds instead would run the ordinary arm
+/// under the starved arm's name. **Refused.**
 #[test]
-fn a_zero_timeout_falls_back_to_the_default() {
-    let limits = resolve_sandbox_limits(&set_with(json!({ "timeoutSecs": 0 })));
-    assert_eq!(limits.timeout, SandboxLimits::default().timeout);
+fn a_zero_timeout_is_refused() {
+    let (limits, defects) = reported(&set_with(json!({ "timeoutSecs": 0 })));
+    assert_eq!(
+        limits.timeout,
+        SandboxLimits::default().timeout,
+        "the resolver stays total"
+    );
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(defects[0].locus, "responses-as-code.params.timeoutSecs");
 }
 
-/// A non-numeric param is a misconfiguration that must not take the run down with it.
+/// A `timeoutSecs` gg cannot read as a number at all is refused on the same terms.
 #[test]
-fn a_non_numeric_timeout_falls_back_to_the_default() {
-    let limits = resolve_sandbox_limits(&set_with(json!({ "timeoutSecs": "ages" })));
-    assert_eq!(limits.timeout, SandboxLimits::default().timeout);
+fn a_non_numeric_timeout_is_refused() {
+    for value in [json!("ages"), json!(true), json!([30])] {
+        let (limits, defects) = reported(&set_with(json!({ "timeoutSecs": value.clone() })));
+        assert_eq!(limits.timeout, SandboxLimits::default().timeout);
+        assert_eq!(defects.len(), 1, "{value} -> {defects:?}");
+        assert_eq!(defects[0].locus, "responses-as-code.params.timeoutSecs");
+    }
 }
 
 /// **A fraction is a time.** The timeout is a wall-clock duration, so `0.5` is half a second — a
@@ -75,22 +105,42 @@ fn a_non_numeric_timeout_falls_back_to_the_default() {
 /// the way a fractional *count* would.
 #[test]
 fn a_fractional_timeout_is_honoured() {
-    let limits = resolve_sandbox_limits(&set_with(json!({ "timeoutSecs": 0.5 })));
+    let limits = limits_of(&set_with(json!({ "timeoutSecs": 0.5 })));
     assert_eq!(limits.timeout, Duration::from_millis(500));
 
-    // A memory fraction still truncates: it is a count, not a duration.
-    let limits = resolve_sandbox_limits(&set_with(json!({ "maxMemoryBytes": 1_048_576.5 })));
-    assert_eq!(limits.max_memory_bytes, 1_048_576);
-
-    // Zero, a negative, and anything not finite fall back rather than becoming something arbitrary.
-    for nonsense in [0.0, f64::NAN, f64::INFINITY, -1.0] {
-        let limits = resolve_sandbox_limits(&set_with(json!({ "timeoutSecs": nonsense })));
+    // Zero and a negative name no ceiling, and are refused rather than becoming something
+    // arbitrary. (JSON has no infinity and no NaN — `serde_json` writes both as `null`, which is
+    // the absent case and takes the default.)
+    for nonsense in [0.0, -1.0] {
+        let (limits, defects) = reported(&set_with(json!({ "timeoutSecs": nonsense })));
         assert_eq!(
             limits.timeout,
             SandboxLimits::default().timeout,
-            "{nonsense} must not configure a timeout"
+            "{nonsense}: the resolver stays total"
         );
+        assert_eq!(defects.len(), 1, "{nonsense} -> {defects:?}");
+        assert_eq!(defects[0].locus, "responses-as-code.params.timeoutSecs");
     }
+}
+
+/// **An integral float is a byte count**, and a fractional one is not. JSON has no integer type, so
+/// a sweep generated from JavaScript writes `5e8` as readily as `500000000` and both name the same
+/// half-gigabyte cap; `1_048_576.5` names no whole number of bytes, and rounding it would be gg
+/// choosing a cap nobody wrote.
+#[test]
+fn a_memory_cap_is_a_whole_number_of_bytes() {
+    assert_eq!(
+        limits_of(&set_with(json!({ "maxMemoryBytes": 5e8 }))).max_memory_bytes,
+        500_000_000
+    );
+    let (limits, defects) = reported(&set_with(json!({ "maxMemoryBytes": 1_048_576.5 })));
+    assert_eq!(
+        limits.max_memory_bytes,
+        SandboxLimits::default().max_memory_bytes,
+        "the resolver stays total"
+    );
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(defects[0].locus, "responses-as-code.params.maxMemoryBytes");
 }
 
 /// A configured memory cap is honoured, including one deliberately below the guest's floor — a
@@ -98,25 +148,45 @@ fn a_fractional_timeout_is_honoured() {
 /// not a clamp.
 #[test]
 fn a_configured_memory_cap_is_honoured_even_below_the_guest_floor() {
-    let limits = resolve_sandbox_limits(&set_with(json!({ "maxMemoryBytes": 4_194_304 })));
+    let limits = limits_of(&set_with(json!({ "maxMemoryBytes": 4_194_304 })));
     assert_eq!(limits.max_memory_bytes, 4_194_304);
     assert_eq!(limits.timeout, SandboxLimits::default().timeout);
 }
 
-/// Zero memory falls back for the same reason a zero timeout does.
+/// Zero memory is refused for the same reason a zero timeout is.
 #[test]
-fn a_zero_memory_cap_falls_back_to_the_default() {
-    let limits = resolve_sandbox_limits(&set_with(json!({ "maxMemoryBytes": 0 })));
+fn a_zero_memory_cap_is_refused() {
+    let (limits, defects) = reported(&set_with(json!({ "maxMemoryBytes": 0 })));
     assert_eq!(
         limits.max_memory_bytes,
-        SandboxLimits::default().max_memory_bytes
+        SandboxLimits::default().max_memory_bytes,
+        "the resolver stays total"
+    );
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(defects[0].locus, "responses-as-code.params.maxMemoryBytes");
+}
+
+/// **Both unusable ceilings are named in one refusal.** An operator fixing a sweep's one shared
+/// configuration wants every knob they got wrong, not the first one.
+#[test]
+fn every_unusable_ceiling_is_named_at_once() {
+    let (_, defects) = reported(&set_with(
+        json!({ "timeoutSecs": "ages", "maxMemoryBytes": -1 }),
+    ));
+    let loci: Vec<&str> = defects.iter().map(|defect| defect.locus.as_str()).collect();
+    assert_eq!(
+        loci,
+        vec![
+            "responses-as-code.params.timeoutSecs",
+            "responses-as-code.params.maxMemoryBytes",
+        ]
     );
 }
 
 /// Both params together, which is how a sweep configures an arm.
 #[test]
 fn every_param_resolves_together() {
-    let limits = resolve_sandbox_limits(&set_with(
+    let limits = limits_of(&set_with(
         json!({ "timeoutSecs": 5, "maxMemoryBytes": 65_536 }),
     ));
     assert_eq!(limits.timeout, Duration::from_secs(5));

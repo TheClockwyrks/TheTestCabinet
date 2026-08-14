@@ -38,9 +38,9 @@ Two module-backed capabilities read an `ownership` param:
   other module, and its telemetry is unchanged. What the model still gets is
   each tool's own schema and description.
 
-An unrecognized value resolves to `owned` and is reported as a launch warning
-rather than a launch failure, in line with every other unrecognized capability
-value.
+A value gg does not recognize refuses the launch, and so does an `ownership`
+param on a capability that reads none. The refusal names every such value in the
+configuration at once.
 
 Unowned suits a store an agent should be able to act on without paying for it in
 every request it makes. One case applies it without configuration: an agent
@@ -129,9 +129,12 @@ is what the successor keeps, and the turn counter is never renumbered.
 
 Only an FSM transition names modules explicitly, and the six kind names are the
 vocabulary its `transfer` list is written in. The console's state editor renders
-them as a checkbox each. A name that is not one of the six is dropped with a
-launch warning rather than failing the machine, and a name the outgoing agent
-does not hold is reported the same way.
+them as a checkbox each. A name that is not one of the six refuses the launch,
+and so does an edge naming a kind the outgoing state's agent would not hold —
+which is its profile's own switch for every kind but the board, and the board is
+the run's, held by every agent in a run that has one. Where only the live module
+set settles it, a transfer meeting a kind its predecessor does not hold is gg's
+own defect and ends the run under `internal_error`.
 
 ## Telemetry
 

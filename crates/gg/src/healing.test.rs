@@ -14,6 +14,41 @@ use serde_json::json;
 use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgCapabilityConfig};
 
 use super::*;
+use crate::validate::{LaunchDefect, LaunchReport};
+
+/// The healing configuration `profile` resolves to, asserting gg honoured it exactly as written.
+fn healing_of(profile: &GgAgentConfig) -> HealingConfig {
+    let mut report = LaunchReport::collecting();
+    let config = resolve_healing(profile, &mut report);
+    let defects = report.into_defects();
+    assert!(defects.is_empty(), "unexpected refusals: {defects:?}");
+    config
+}
+
+/// Everything resolving `profile`'s healing reports, for the cases whose subject is the refusal.
+fn healing_refusal(profile: &GgAgentConfig) -> (HealingConfig, Vec<LaunchDefect>) {
+    let mut report = LaunchReport::collecting();
+    let config = resolve_healing(profile, &mut report);
+    (config, report.into_defects())
+}
+
+/// The assistant-message mode `profile` resolves to, asserting gg honoured it exactly as written.
+fn assistant_messages_of(profile: &GgAgentConfig) -> AssistantMessageMode {
+    let mut report = LaunchReport::collecting();
+    let mode = resolve_assistant_messages(profile, &mut report);
+    let defects = report.into_defects();
+    assert!(defects.is_empty(), "unexpected refusals: {defects:?}");
+    mode
+}
+
+/// Everything resolving `profile`'s assistant-message mode reports.
+fn assistant_messages_refusal(
+    profile: &GgAgentConfig,
+) -> (AssistantMessageMode, Vec<LaunchDefect>) {
+    let mut report = LaunchReport::collecting();
+    let mode = resolve_assistant_messages(profile, &mut report);
+    (mode, report.into_defects())
+}
 
 /// The [dialect](Dialect) every case in this file heals through: **TypeScript's**.
 ///
@@ -772,14 +807,13 @@ fn absent_healing_takes_the_defaults() {
         json!({ "healing": null }),
         json!({ "healing": true }),
     ] {
-        let resolved = resolve_healing(&set_with(params.clone()));
-        assert_eq!(resolved.config, HealingConfig::default(), "{params}");
-        assert!(resolved.unknown_params.is_empty(), "{params}");
+        assert_eq!(
+            healing_of(&set_with(params.clone())),
+            HealingConfig::default(),
+            "{params}"
+        );
     }
-    assert_eq!(
-        resolve_healing(&GgAgentConfig::root()).config,
-        HealingConfig::default()
-    );
+    assert_eq!(healing_of(&GgAgentConfig::root()), HealingConfig::default());
 }
 
 /// **The default arm, spelled out.** Two strategies are on because repairing is strictly safer than
@@ -822,20 +856,15 @@ fn the_defaults_arm_every_strategy_except_the_doubled_response_one() {
 /// table a description of one line of code.
 #[test]
 fn the_doubled_response_strategy_is_armed_by_naming_it() {
-    let resolved = resolve_healing(&set_with(
+    let resolved = healing_of(&set_with(
         json!({ "healing": { "drop-doubled-response": true } }),
     ));
-    assert!(
-        resolved
-            .config
-            .enabled(HealingStrategy::DropDoubledResponse)
-    );
-    assert!(resolved.unknown_params.is_empty());
+    assert!(resolved.enabled(HealingStrategy::DropDoubledResponse));
     // Naming one strategy leaves every other one at its own default.
     for strategy in HealingStrategy::ALL {
         if strategy != HealingStrategy::DropDoubledResponse {
             assert_eq!(
-                resolved.config.enabled(strategy),
+                resolved.enabled(strategy),
                 strategy.default_armed(),
                 "{}",
                 strategy.id()
@@ -843,12 +872,9 @@ fn the_doubled_response_strategy_is_armed_by_naming_it() {
         }
     }
     assert!(
-        resolved
-            .config
-            .armed_summary()
-            .contains("drop-doubled-response"),
+        resolved.armed_summary().contains("drop-doubled-response"),
         "the launch log did not name the strategy the operator armed: {}",
-        resolved.config.armed_summary()
+        resolved.armed_summary()
     );
 }
 
@@ -856,85 +882,123 @@ fn the_doubled_response_strategy_is_armed_by_naming_it() {
 /// were on and leaves off the one that already was.
 #[test]
 fn the_master_switch_disarms_the_default_off_strategy_too() {
-    let resolved = resolve_healing(&set_with(json!({ "healing": false })));
+    let resolved = healing_of(&set_with(json!({ "healing": false })));
     for strategy in HealingStrategy::ALL {
-        assert!(!resolved.config.enabled(strategy), "{}", strategy.id());
+        assert!(!resolved.enabled(strategy), "{}", strategy.id());
     }
 }
 
 /// `"healing": false` is the master switch.
 #[test]
 fn healing_false_disarms_everything() {
-    let resolved = resolve_healing(&set_with(json!({ "healing": false })));
-    assert_eq!(resolved.config, HealingConfig::OFF);
-    assert!(resolved.unknown_params.is_empty());
+    assert_eq!(
+        healing_of(&set_with(json!({ "healing": false }))),
+        HealingConfig::OFF
+    );
 }
 
 /// One strategy can be named and disarmed; every other one stays at its own default.
 #[test]
 fn a_named_strategy_can_be_disarmed() {
-    let resolved = resolve_healing(&set_with(json!({ "healing": { "strip-prose": false } })));
-    assert!(!resolved.config.enabled(HealingStrategy::StripProse));
+    let resolved = healing_of(&set_with(json!({ "healing": { "strip-prose": false } })));
+    assert!(!resolved.enabled(HealingStrategy::StripProse));
     for strategy in HealingStrategy::ALL {
         if strategy != HealingStrategy::StripProse {
             assert_eq!(
-                resolved.config.enabled(strategy),
+                resolved.enabled(strategy),
                 strategy.default_armed(),
                 "{}",
                 strategy.id()
             );
         }
     }
-    assert!(resolved.unknown_params.is_empty());
 }
 
-/// A key that names nothing gg knows is **reported**, never guessed at.
+/// A key that names nothing gg knows **refuses the launch**, never guessed at.
 ///
 /// A typo in a healing configuration is the one failure this subsystem cannot survive:
 /// `stripFences` silently running the default arm under the disabled arm's name would make every
 /// number the study produced a measurement of the wrong thing.
 #[test]
-fn an_unknown_healing_key_is_reported_not_guessed_at() {
-    let resolved = resolve_healing(&set_with(json!({ "healing": { "stripFences": false } })));
-    assert_eq!(resolved.config, HealingConfig::default());
-    assert_eq!(resolved.unknown_params, vec!["healing.stripFences"]);
-}
-
-/// A known id whose value is not a toggle keeps its default, and the key is reported: `0` is not
-/// `false`, and reading it as one would be exactly the silent reinterpretation above.
-///
-/// It cuts both ways — `{"drop-doubled-response": 1}` leaves the strategy **off**, because `1` is
-/// not `true` either, and an operator who thinks they armed it is told they did not.
-#[test]
-fn a_non_boolean_toggle_keeps_its_default_and_is_reported() {
-    let resolved = resolve_healing(&set_with(json!({ "healing": { "strip-prose": 0 } })));
-    assert!(resolved.config.enabled(HealingStrategy::StripProse));
-    assert_eq!(resolved.unknown_params, vec!["healing.strip-prose"]);
-
-    let resolved = resolve_healing(&set_with(
-        json!({ "healing": { "drop-doubled-response": 1 } }),
-    ));
-    assert!(
-        !resolved
-            .config
-            .enabled(HealingStrategy::DropDoubledResponse)
+fn an_unknown_healing_key_is_refused() {
+    let (config, defects) =
+        healing_refusal(&set_with(json!({ "healing": { "stripFences": false } })));
+    assert_eq!(config, HealingConfig::default(), "the resolver stays total");
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(
+        defects[0].locus,
+        "responses-as-code.params.healing.stripFences"
     );
     assert_eq!(
-        resolved.unknown_params,
-        vec!["healing.drop-doubled-response"]
+        defects[0].known,
+        HealingStrategy::ALL.map(HealingStrategy::id).to_vec()
     );
+}
 
+/// **Every unreadable key is named in one refusal.** An operator fixing a sweep's one shared
+/// configuration wants every typo, not the first one.
+#[test]
+fn every_unreadable_healing_key_is_named_at_once() {
+    let (_, defects) = healing_refusal(&set_with(
+        json!({ "healing": { "stripFences": false, "strip-prose": 0 } }),
+    ));
+    let mut loci: Vec<&str> = defects.iter().map(|defect| defect.locus.as_str()).collect();
+    loci.sort_unstable();
+    assert_eq!(
+        loci,
+        vec![
+            "responses-as-code.params.healing.strip-prose",
+            "responses-as-code.params.healing.stripFences",
+        ]
+    );
+}
+
+/// A strategy id written with stray whitespace around it is the strategy it names — the one liberty
+/// taken with a vocabulary otherwise read literally.
+#[test]
+fn surrounding_whitespace_does_not_hide_a_strategy() {
+    let resolved = healing_of(&set_with(json!({ "healing": { " strip-prose ": false } })));
+    assert!(!resolved.enabled(HealingStrategy::StripProse));
+}
+
+/// A known id whose value is not a toggle **refuses the launch**: `0` is not `false`, and reading it
+/// as one would be exactly the silent reinterpretation above.
+///
+/// It cuts both ways — `{"drop-doubled-response": 1}` would leave the strategy **off**, because `1`
+/// is not `true` either, and an operator who thinks they armed it would never be told they did not.
+#[test]
+fn a_non_boolean_toggle_is_refused() {
+    for toggles in [
+        json!({ "strip-prose": 0 }),
+        json!({ "drop-doubled-response": 1 }),
+    ] {
+        let (_, defects) = healing_refusal(&set_with(json!({ "healing": toggles.clone() })));
+        assert_eq!(defects.len(), 1, "{toggles} -> {defects:?}");
+        assert!(
+            defects[0]
+                .locus
+                .starts_with("responses-as-code.params.healing."),
+            "{toggles} -> {defects:?}"
+        );
+    }
+
+    // A `healing` that is not a set of toggles at all has nothing in it gg can read.
     for unreadable in [json!(5), json!("off"), json!([])] {
-        let resolved = resolve_healing(&set_with(json!({ "healing": unreadable })));
-        assert_eq!(resolved.config, HealingConfig::default());
-        assert_eq!(resolved.unknown_params, vec!["healing"]);
+        let (config, defects) =
+            healing_refusal(&set_with(json!({ "healing": unreadable.clone() })));
+        assert_eq!(config, HealingConfig::default(), "the resolver stays total");
+        assert_eq!(defects.len(), 1, "{unreadable} -> {defects:?}");
+        assert_eq!(defects[0].locus, "responses-as-code.params.healing");
     }
 }
 
-/// A capability that is present but **disabled** configures nothing: healing never runs for such a
-/// run, so honouring its params would record an intention that had no effect.
+/// **A disabled capability's healing params are still read.** Nothing about the run changes —
+/// healing never runs where responses-as-code is off — and they are read anyway, on the rule the
+/// whole params table follows: a disabled capability records the configuration the arm would have
+/// used, and a typo skipped because a switch happened to be off is a typo that surfaces on the
+/// launch where it is flipped.
 #[test]
-fn healing_params_on_a_disabled_capability_are_ignored() {
+fn a_disabled_capabilitys_healing_params_are_still_read() {
     let set = GgAgentConfig {
         capabilities: vec![GgCapabilityConfig {
             params: json!({ "healing": false }),
@@ -942,9 +1006,21 @@ fn healing_params_on_a_disabled_capability_are_ignored() {
         }],
         ..GgAgentConfig::root()
     };
-    let resolved = resolve_healing(&set);
-    assert_eq!(resolved.config, HealingConfig::default());
-    assert!(resolved.unknown_params.is_empty());
+    assert_eq!(healing_of(&set), HealingConfig::OFF);
+}
+
+/// …and one gg cannot read is refused there too.
+#[test]
+fn a_disabled_capabilitys_unreadable_healing_param_is_refused() {
+    let set = GgAgentConfig {
+        capabilities: vec![GgCapabilityConfig {
+            params: json!({ "healing": { "stripFences": 0 } }),
+            ..GgCapabilityConfig::disabled(CAPABILITY_RESPONSES_AS_CODE)
+        }],
+        ..GgAgentConfig::root()
+    };
+    let (_, defects) = healing_refusal(&set);
+    assert_eq!(defects.len(), 1, "{defects:?}");
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -956,12 +1032,14 @@ fn healing_params_on_a_disabled_capability_are_ignored() {
 #[test]
 fn absent_assistant_messages_is_no_post_processing() {
     for params in [json!({}), json!({ "assistantMessages": null })] {
-        let resolved = resolve_assistant_messages(&set_with(params.clone()));
-        assert_eq!(resolved.mode, AssistantMessageMode::None, "{params}");
-        assert!(resolved.unknown_params.is_empty(), "{params}");
+        assert_eq!(
+            assistant_messages_of(&set_with(params.clone())),
+            AssistantMessageMode::None,
+            "{params}"
+        );
     }
     assert_eq!(
-        resolve_assistant_messages(&GgAgentConfig::root()).mode,
+        assistant_messages_of(&GgAgentConfig::root()),
         AssistantMessageMode::None
     );
 }
@@ -969,33 +1047,47 @@ fn absent_assistant_messages_is_no_post_processing() {
 /// The two named modes each resolve to their variant, and neither is reported.
 #[test]
 fn each_named_mode_resolves() {
-    let none = resolve_assistant_messages(&set_with(json!({ "assistantMessages": "none" })));
-    assert_eq!(none.mode, AssistantMessageMode::None);
-    assert!(none.unknown_params.is_empty());
-
-    let healing = resolve_assistant_messages(&set_with(
-        json!({ "assistantMessages": "response-healing" }),
-    ));
-    assert_eq!(healing.mode, AssistantMessageMode::ResponseHealing);
-    assert!(healing.unknown_params.is_empty());
+    assert_eq!(
+        assistant_messages_of(&set_with(json!({ "assistantMessages": "none" }))),
+        AssistantMessageMode::None
+    );
+    assert_eq!(
+        assistant_messages_of(&set_with(
+            json!({ "assistantMessages": "response-healing" })
+        )),
+        AssistantMessageMode::ResponseHealing
+    );
+    // Surrounding whitespace is not part of what an operator wrote.
+    assert_eq!(
+        assistant_messages_of(&set_with(
+            json!({ "assistantMessages": " response-healing " })
+        )),
+        AssistantMessageMode::ResponseHealing
+    );
 }
 
-/// A value naming no mode gg knows falls back to the default and is **reported**, never guessed at —
-/// the same discipline the healing keys follow, and for the same reason: a mode is a lever a study
-/// slices on, so a typo must change nothing silently.
+/// A value naming no mode gg knows **refuses the launch**, never guessed at — the same discipline
+/// the healing keys follow, and for the same reason: a mode is a lever a study slices on, so a typo
+/// must never leave the transcript recorded under the arm nobody chose.
 #[test]
-fn an_unknown_assistant_messages_value_is_reported() {
+fn an_unknown_assistant_messages_value_is_refused() {
     for unreadable in [json!("healed"), json!(true), json!(5), json!([])] {
-        let resolved =
-            resolve_assistant_messages(&set_with(json!({ "assistantMessages": unreadable })));
-        assert_eq!(resolved.mode, AssistantMessageMode::None);
-        assert_eq!(resolved.unknown_params, vec!["assistantMessages"]);
+        let (mode, defects) = assistant_messages_refusal(&set_with(
+            json!({ "assistantMessages": unreadable.clone() }),
+        ));
+        assert_eq!(mode, AssistantMessageMode::None, "the resolver stays total");
+        assert_eq!(defects.len(), 1, "{unreadable} -> {defects:?}");
+        assert_eq!(
+            defects[0].locus,
+            "responses-as-code.params.assistantMessages"
+        );
+        assert_eq!(defects[0].known, AssistantMessageMode::ALL, "{unreadable}");
     }
 }
 
-/// A present but **disabled** capability configures nothing, exactly as its healing params do.
+/// A present but **disabled** capability's mode is read exactly as its healing params are.
 #[test]
-fn assistant_messages_on_a_disabled_capability_are_ignored() {
+fn a_disabled_capabilitys_assistant_messages_is_still_read() {
     let set = GgAgentConfig {
         capabilities: vec![GgCapabilityConfig {
             params: json!({ "assistantMessages": "response-healing" }),
@@ -1003,7 +1095,8 @@ fn assistant_messages_on_a_disabled_capability_are_ignored() {
         }],
         ..GgAgentConfig::root()
     };
-    let resolved = resolve_assistant_messages(&set);
-    assert_eq!(resolved.mode, AssistantMessageMode::None);
-    assert!(resolved.unknown_params.is_empty());
+    assert_eq!(
+        assistant_messages_of(&set),
+        AssistantMessageMode::ResponseHealing
+    );
 }

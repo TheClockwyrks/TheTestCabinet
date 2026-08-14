@@ -85,7 +85,16 @@ const ENV_BINARY: &str = "TCAB_GG_BINARY";
 /// `"release"` (download a GitHub release). Unset auto-detects (local if a build is
 /// found, else release). This is how the cluster path pins release installs, matching
 /// how the driver already selects its container runtime by configuration.
+///
+/// Case and surrounding whitespace are normalized away; set to anything else, the run **fails to
+/// start**. An operator who wrote `TCAB_GG_INSTALL=relase` asked for a specific install and would
+/// otherwise get whichever one the machine happened to auto-detect — a local build on a developer
+/// box, a download in the cluster — which is the same silent substitution [`ENV_BINARY`] already
+/// refuses.
 const ENV_INSTALL_MODE: &str = "TCAB_GG_INSTALL";
+
+/// The install strategies [`ENV_INSTALL_MODE`] may name, for the diagnostic that lists them.
+const INSTALL_MODES: &[&str] = &["local", "release"];
 
 /// Env override: the gg release version to download in [release](GgInstall::Release)
 /// mode. Defaults to [`DEFAULT_RELEASE_VERSION`].
@@ -185,8 +194,11 @@ pub fn resolve_install() -> Result<GgInstall> {
 ///    misconfiguration, not a silent fallback).
 /// 3. `TCAB_GG_INSTALL=local` requires *some* local binary (the override or a probed
 ///    default), erroring if none is found.
-/// 4. Otherwise auto-detect: the first existing default build path wins; failing that,
-///    a release download.
+/// 4. `TCAB_GG_INSTALL` set to anything else errors, on rule 2's reasoning: an explicit
+///    override that cannot be honored is a misconfiguration, not a silent fallback.
+/// 5. Unset (or empty), auto-detect: the first existing default build path wins; failing
+///    that, a release download. That is the *absent* case, which takes the documented
+///    default rather than substituting one for something the operator wrote.
 fn resolve_install_with(
     env: impl Fn(&str) -> Option<String>,
     exists: impl Fn(&Path) -> bool,
@@ -243,10 +255,18 @@ fn resolve_install_with(
             })?;
             Ok(local(host))
         }
-        _ => match locate_local()? {
+        None => match locate_local()? {
             Some(host) => Ok(local(host)),
             None => Ok(release(&env)),
         },
+        Some(other) => Err(Error::HarnessUnavailable {
+            slug: GG_SLUG.to_string(),
+            detail: format!(
+                "{ENV_INSTALL_MODE} is set to `{other}`, which is not an install strategy \
+                 (expected one of: {})",
+                INSTALL_MODES.join(", ")
+            ),
+        }),
     }
 }
 
@@ -604,7 +624,9 @@ async fn stop_gg(runtime: &dyn ContainerRuntime, handle: &ContainerHandle) {
 }
 
 /// Construct the [`GgInvocation`] for this run: the run id as the session id, the
-/// seeded workspace, the rendered prompt, the run's validated capability set, the
+/// seeded workspace, the rendered prompt, the capability set the request carries — copied
+/// verbatim, and proved honourable by gg's own launch refusal inside the container, before
+/// its first turn and before any model spend — the
 /// [per-model context windows](GgInvocation::model_windows) the launch resolved from the
 /// model catalog (gg holds no model table of its own, so what it is told here is all it
 /// knows about the models it runs), and the [test-case-provided

@@ -359,7 +359,7 @@ fn registry_gates_read_skill_on_capability_and_a_non_empty_library() {
         "---\nname: intro\ndescription: d.\n---\nbody",
     )
     .unwrap();
-    let library = Arc::new(SkillLibrary::load(dir.path()));
+    let library = Arc::new(SkillLibrary::loaded(dir.path()));
     let empty = Arc::new(SkillLibrary::empty());
 
     // Enabled capability + a non-empty library => read_skill is offered.
@@ -960,7 +960,7 @@ fn maximal_registries() -> (TempDir, Vec<ToolRegistry>) {
         "---\nname: s\ndescription: d.\n---\nbody",
     )
     .unwrap();
-    let library = Arc::new(SkillLibrary::load(dir.path()));
+    let library = Arc::new(SkillLibrary::loaded(dir.path()));
 
     let mut capabilities = vec![GgCapabilityConfig::enabled(CAPABILITY_SHELL)];
     capabilities.extend(filesystem_enabled());

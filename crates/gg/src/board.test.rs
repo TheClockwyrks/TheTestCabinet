@@ -4,7 +4,24 @@
 use serde_json::json;
 
 use super::*;
+use crate::validate::{LaunchDefect, LaunchReport};
 use test_cabinet_core::gg::{GgIssueStatus, GgTelemetryKind};
+
+/// The caps `params` resolves to, asserting gg honoured every one of them exactly as written.
+fn caps(params: Value) -> BoardCaps {
+    let mut report = LaunchReport::collecting();
+    let caps = BoardCaps::resolve(&params, &mut report);
+    let defects = report.into_defects();
+    assert!(defects.is_empty(), "unexpected refusals: {defects:?}");
+    caps
+}
+
+/// Everything `read` reports, for the cases whose subject is the refusal.
+fn reported(read: impl FnOnce(&mut LaunchReport)) -> Vec<LaunchDefect> {
+    let mut report = LaunchReport::collecting();
+    read(&mut report);
+    report.into_defects()
+}
 
 /// A store with generous caps for the board tests.
 fn store() -> BoardStore {
@@ -543,14 +560,53 @@ fn context_block_is_none_when_empty_and_renders_the_board_otherwise() {
 
 #[test]
 fn caps_resolve_from_params_or_default() {
-    assert_eq!(BoardCaps::resolve(&json!({})), BoardCaps::default());
-    let caps = BoardCaps::resolve(&json!({ "maxEpics": 3, "maxIssues": 9 }));
-    assert_eq!(caps.max_epics, 3);
-    assert_eq!(caps.max_issues, 9);
-    // Zero / non-integer are ignored in favor of the default.
+    assert_eq!(caps(json!({})), BoardCaps::default());
+    let resolved = caps(json!({ "maxEpics": 3, "maxIssues": 9 }));
+    assert_eq!(resolved.max_epics, 3);
+    assert_eq!(resolved.max_issues, 9);
+    // An integral float names the same count: JSON has no integer type, and a sweep generated from
+    // JavaScript writes `9.0` as readily as `9`.
+    assert_eq!(caps(json!({ "maxIssues": 9.0 })).max_issues, 9);
+}
+
+#[test]
+fn a_board_ceiling_of_zero_is_refused() {
+    // A board that may hold no epic still offers `create_epic`, and refuses every use of it. Taking
+    // gg's default instead would bound the board at a number nobody wrote.
+    let defects = reported(|report| {
+        BoardCaps::resolve(&json!({ "maxEpics": 0, "maxIssues": 0 }), report);
+    });
+
     assert_eq!(
-        BoardCaps::resolve(&json!({ "maxEpics": 0 })).max_epics,
-        DEFAULT_MAX_EPICS
+        defects
+            .iter()
+            .map(|defect| defect.locus.clone())
+            .collect::<Vec<_>>(),
+        [
+            "project-management.params.maxEpics",
+            "project-management.params.maxIssues"
+        ]
+    );
+    assert!(
+        defects[0].message.contains("must be one or more"),
+        "{defects:?}"
+    );
+}
+
+#[test]
+fn a_board_ceiling_gg_cannot_read_is_refused() {
+    // `null` is deliberately not in this list: it is the documented spelling of "take the default",
+    // and an absent value is not an unrecognized one.
+    for value in [json!("lots"), json!(-2), json!(1.5), json!(true)] {
+        let defects = reported(|report| {
+            BoardCaps::resolve(&json!({ "maxIssues": value }), report);
+        });
+        assert_eq!(defects.len(), 1, "{value}: {defects:?}");
+        assert_eq!(defects[0].locus, "project-management.params.maxIssues");
+    }
+    assert_eq!(
+        caps(json!({ "maxIssues": null })).max_issues,
+        DEFAULT_MAX_ISSUES
     );
 }
 
@@ -593,19 +649,17 @@ fn enabled_runtime_offers_caps_and_state() {
 #[test]
 fn max_retries_resolves_from_params_and_defaults() {
     assert_eq!(BoardCaps::default().max_retries, DEFAULT_MAX_RETRIES);
-    assert_eq!(
-        BoardCaps::resolve(&json!({ "maxRetries": 3 })).max_retries,
-        3
-    );
-    // Zero is a valid retry count (one attempt only); a missing value keeps the default.
-    assert_eq!(
-        BoardCaps::resolve(&json!({ "maxRetries": 0 })).max_retries,
-        0
-    );
-    assert_eq!(
-        BoardCaps::resolve(&json!({})).max_retries,
-        DEFAULT_MAX_RETRIES
-    );
+    assert_eq!(caps(json!({ "maxRetries": 3 })).max_retries, 3);
+    // Zero is a valid retry count (one attempt only) — the one board ceiling whose zero means
+    // something — and a missing value keeps the default.
+    assert_eq!(caps(json!({ "maxRetries": 0 })).max_retries, 0);
+    assert_eq!(caps(json!({})).max_retries, DEFAULT_MAX_RETRIES);
+    // A retry count gg cannot read is refused, exactly as the two board ceilings are.
+    let defects = reported(|report| {
+        BoardCaps::resolve(&json!({ "maxRetries": "twice" }), report);
+    });
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(defects[0].locus, "project-management.params.maxRetries");
 }
 
 #[test]

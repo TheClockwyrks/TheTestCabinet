@@ -146,6 +146,13 @@ const DOC_VIEW_TYPES_RETURN: &str = "return";
 const DOC_VIEW_TYPES_RETURN_AND_PARAMETERS: &str = "return-and-parameters";
 
 impl DocViewTypes {
+    /// The three modes, in the spelling a [refusal](crate::validate) offers back.
+    pub const ALL: [&'static str; 3] = [
+        DOC_VIEW_TYPES_OFF,
+        DOC_VIEW_TYPES_RETURN,
+        DOC_VIEW_TYPES_RETURN_AND_PARAMETERS,
+    ];
+
     /// The mode's stable id — what the run was configured with, and what a replay reads to tell one
     /// arm of the comparison from another.
     pub fn id(self) -> &'static str {
@@ -157,55 +164,75 @@ impl DocViewTypes {
     }
 }
 
+/// The [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability param choosing how much of a
+/// function's type a documentation view shows. Absent takes [`DocViewTypes::default`].
+pub const PARAM_DOC_VIEW_TYPES: &str = "docViewTypes";
+
 /// Resolve the [documentation-view type mode](DocViewTypes) from this agent's
-/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `docViewTypes` param.
+/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's
+/// [`docViewTypes`](PARAM_DOC_VIEW_TYPES) param.
 ///
 /// | `params.docViewTypes` | Mode |
 /// | --- | --- |
 /// | absent / `null` / `"return"` | [`ReturnOnly`](DocViewTypes::ReturnOnly) — the return position (the default) |
 /// | `"off"` | [`Off`](DocViewTypes::Off) |
 /// | `"return-and-parameters"` | [`ReturnAndParameters`](DocViewTypes::ReturnAndParameters) |
-/// | anything else | [`ReturnOnly`](DocViewTypes::ReturnOnly), and the value is reported |
+/// | anything else | **refused** — the launch does not start |
 ///
-/// Read literally and reported on mismatch for the reason
+/// Read literally — with only surrounding whitespace forgiven — and [refused](crate::validate) on
+/// mismatch for the reason
 /// [`resolve_assistant_messages`](crate::healing::resolve_assistant_messages) is: the value is
-/// contract-visible, so a typo must change nothing silently rather than quietly pick the arm the
-/// study did not ask for. A capability that is present but **disabled** configures nothing.
-pub fn resolve_doc_view_types(profile: &GgAgentConfig) -> ResolvedDocViewTypes {
-    let mut resolved = ResolvedDocViewTypes {
-        mode: DocViewTypes::default(),
-        unknown_params: Vec::new(),
+/// contract-visible, and the [agent surface](crate::telemetry) records the *resolved* mode, so a
+/// typo read as the default would leave a run whose every record says it ran the arm it did not.
+/// The default comes back anyway to keep the resolver total for the per-turn calls that re-read it.
+/// The value is read whether the capability is switched on or off, on the rule the whole params
+/// table follows: a disabled capability records the configuration the arm would have used, and a
+/// typo skipped because a switch happened to be off is a typo that surfaces on the launch where it
+/// is flipped.
+pub fn resolve_doc_view_types(
+    profile: &GgAgentConfig,
+    report: &mut crate::validate::LaunchReport,
+) -> DocViewTypes {
+    let Some(capability) = profile.capability(CAPABILITY_RESPONSES_AS_CODE) else {
+        return DocViewTypes::default();
     };
-    let Some(capability) = profile
-        .capability(CAPABILITY_RESPONSES_AS_CODE)
-        .filter(|capability| capability.enabled)
-    else {
-        return resolved;
-    };
-    let Some(value) = capability.params.get("docViewTypes") else {
-        return resolved;
+    let Some(value) = capability.params.get(PARAM_DOC_VIEW_TYPES) else {
+        return DocViewTypes::default();
     };
 
     match value {
-        Value::Null => {}
-        Value::String(mode) if mode == DOC_VIEW_TYPES_RETURN => {}
-        Value::String(mode) if mode == DOC_VIEW_TYPES_OFF => resolved.mode = DocViewTypes::Off,
-        Value::String(mode) if mode == DOC_VIEW_TYPES_RETURN_AND_PARAMETERS => {
-            resolved.mode = DocViewTypes::ReturnAndParameters;
+        Value::Null => DocViewTypes::default(),
+        Value::String(mode) if mode.trim() == DOC_VIEW_TYPES_RETURN => DocViewTypes::default(),
+        Value::String(mode) if mode.trim() == DOC_VIEW_TYPES_OFF => DocViewTypes::Off,
+        Value::String(mode) if mode.trim() == DOC_VIEW_TYPES_RETURN_AND_PARAMETERS => {
+            DocViewTypes::ReturnAndParameters
         }
-        _ => resolved.unknown_params.push("docViewTypes".to_string()),
+        other => {
+            report.report(
+                crate::validate::LaunchDefect::run_level(
+                    crate::validate::param_locus(
+                        CAPABILITY_RESPONSES_AS_CODE,
+                        PARAM_DOC_VIEW_TYPES,
+                    ),
+                    crate::validate::as_written(other),
+                    format!(
+                        "the `{PARAM_DOC_VIEW_TYPES}` param names how much of a function's type is \
+                         opened beside it; gg has no such mode, and opening the default set would \
+                         hand the agent a different amount of documentation than the run asked for."
+                    ),
+                )
+                .known(DocViewTypes::ALL),
+            );
+            DocViewTypes::default()
+        }
     }
-    resolved
 }
 
-/// A resolved [type mode](DocViewTypes) together with the `docViewTypes` value gg could not read, if
-/// any — the same shape every other per-agent resolution takes, and reported the same way at launch.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResolvedDocViewTypes {
-    /// The mode this agent's documentation opens under.
-    pub mode: DocViewTypes,
-    /// The `docViewTypes` value that named no mode gg knows. Reported at `warn` when the run starts.
-    pub unknown_params: Vec<String>,
+/// The documentation half of one profile's contribution to the
+/// [launch pass](crate::validate::validate_launch): the [type mode](DocViewTypes) it declares, read
+/// exactly as the run will read it.
+pub fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) {
+    resolve_doc_view_types(profile, report);
 }
 
 /// The per-agent state behind `search` and `view.openDocsView()`: what this agent was

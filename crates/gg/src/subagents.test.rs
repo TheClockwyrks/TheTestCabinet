@@ -2,7 +2,25 @@ use std::sync::atomic::Ordering;
 
 use test_cabinet_core::gg::{CAPABILITY_SUBAGENTS, GgCapabilityConfig, GgCapabilitySet};
 
+use crate::validate::{LaunchDefect, LaunchReport};
+
 use super::*;
+
+/// The bounds `set` resolves to, asserting gg honoured both of them exactly as written.
+fn config(set: &GgCapabilitySet) -> SubagentConfig {
+    let mut report = LaunchReport::collecting();
+    let config = SubagentConfig::resolve(set, &mut report);
+    let defects = report.into_defects();
+    assert!(defects.is_empty(), "unexpected refusals: {defects:?}");
+    config
+}
+
+/// Everything `set` earns a refusal for, for the cases whose subject is the refusal.
+fn refusals(set: &GgCapabilitySet) -> Vec<LaunchDefect> {
+    let mut report = LaunchReport::collecting();
+    check_launch(set, &mut report);
+    report.into_defects()
+}
 
 /// No [exclusivity key](ExclusiveKey) held — the state every case that is not about persistence
 /// exercises the grant policy under.
@@ -119,46 +137,64 @@ fn select_grant_skips_a_waiter_whose_key_is_held() {
 /// A set without the subagents capability resolves to the defaults.
 #[test]
 fn config_defaults_without_the_capability() {
-    let config = SubagentConfig::resolve(&GgCapabilitySet::minimal("mock/x"));
+    let config = config(&GgCapabilitySet::minimal("mock/x"));
     assert_eq!(config.max_parallel, DEFAULT_MAX_PARALLEL);
     assert_eq!(config.max_depth, DEFAULT_MAX_DEPTH);
 }
 
-/// An explicit `maxDepth` overrides the default; a zero/absent value keeps it. The capability's
-/// params bound its own recursion and nothing else — the parallelism cap is not read from here.
+/// An explicit `maxDepth` overrides the default; an absent one keeps it. The capability's params
+/// bound its own recursion and nothing else — the parallelism cap is not read from here.
 #[test]
 fn config_reads_the_depth_param() {
     let mut set = GgCapabilitySet::minimal("mock/x");
     let mut cap = GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS);
     cap.params = serde_json::json!({ "maxDepth": 5 });
     crate::tools::grant_configured(&mut set.agents[0], cap);
-    let config = SubagentConfig::resolve(&set);
+    let config = config(&set);
     assert_eq!(config.max_depth, 5);
     assert_eq!(
         config.max_parallel, DEFAULT_MAX_PARALLEL,
         "the capability's params do not carry the run's parallelism cap"
     );
+}
 
+/// A depth of zero is a tree the root may not spawn into: the capability switched off by
+/// arithmetic, with all three of its tools still offered. Refused rather than quietly defaulted.
+#[test]
+fn a_depth_of_zero_is_refused() {
     let mut set = GgCapabilitySet::minimal("mock/x");
     let mut cap = GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS);
     cap.params = serde_json::json!({ "maxDepth": 0 });
     crate::tools::grant_configured(&mut set.agents[0], cap);
-    assert_eq!(SubagentConfig::resolve(&set).max_depth, DEFAULT_MAX_DEPTH);
+
+    let defects = refusals(&set);
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(defects[0].locus, "subagents.params.maxDepth");
 }
 
 /// The parallelism cap is readable off the run's own limits — no subagents capability needed, which
-/// is what makes it settable for a run that delegates only through the board. A declared zero is
-/// treated as no declaration.
+/// is what makes it settable for a run that delegates only through the board.
 #[test]
 fn config_reads_the_run_level_parallelism_cap() {
     let mut set = GgCapabilitySet::minimal("mock/x");
     set.limits.max_parallel = Some(3);
-    assert_eq!(SubagentConfig::resolve(&set).max_parallel, 3);
+    assert_eq!(config(&set).max_parallel, 3);
+}
 
+/// A parallelism cap of zero would be a run in which no agent may run at all, so it could not
+/// start. It is refused rather than read as "no declaration".
+#[test]
+fn a_parallelism_cap_of_zero_is_refused() {
+    let mut set = GgCapabilitySet::minimal("mock/x");
     set.limits.max_parallel = Some(0);
+
+    let defects = refusals(&set);
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(defects[0].locus, "limits.maxParallel");
     assert_eq!(
-        SubagentConfig::resolve(&set).max_parallel,
-        DEFAULT_MAX_PARALLEL
+        SubagentConfig::resolve(&set, &mut LaunchReport::collecting()).max_parallel,
+        DEFAULT_MAX_PARALLEL,
+        "the resolver stays total; the launch is over by the time this matters"
     );
 }
 

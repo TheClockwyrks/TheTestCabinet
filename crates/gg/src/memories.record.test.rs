@@ -388,6 +388,7 @@ fn the_state_event_reports_the_description_cap() {
     let caps = MemoryCaps::resolve(
         MemoryStrategy::Markdown,
         &json!({ "maxLenDescription": 80 }),
+        &mut LaunchReport::Discarding,
     );
     let store = MemoryStore::new(MemoryStrategy::Markdown, caps);
     let GgTelemetryKind::MemoryState { caps, .. } = state(&store) else {

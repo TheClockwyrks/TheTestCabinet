@@ -605,98 +605,116 @@ pub struct ResolvedLoopGuard {
     /// The knobs to watch this agent's replies with, or `None` when the detector is **off** — which
     /// is also what keeps that agent on gg's ordinary non-streaming transport.
     pub config: Option<LoopGuardConfig>,
-    /// Operator-facing warnings, in declaration order. The caller's to emit, on the same terms as
-    /// [`resolve_run_limits`](crate::limits::resolve_run_limits)'s: this function is pure, and the
-    /// loop logs them on the root's stream before the first turn.
+    /// Operator-facing warnings, in declaration order — today the one cross-knob relationship gg
+    /// arms exactly as declared and still has something to say about. The caller's to emit, on the
+    /// same terms as [`resolve_run_limits`](crate::limits::resolve_run_limits)'s: this function is
+    /// pure, and the loop logs them on the root's stream before the first turn.
     pub warnings: Vec<String>,
 }
 
-/// Resolve one agent's [detector](LoopGuardConfig) from its declaration, appending a warning for
-/// every knob that cannot do its job.
+/// Resolve one agent's [detector](LoopGuardConfig) from its declaration.
 ///
-/// **Total**, exactly as [`resolve_run_limits`](crate::limits::resolve_run_limits) is: a zero or
-/// nonsensical knob resolves to gg's default plus a warning, never to an error, so a sweep's one
-/// shared configuration document stays interpretable by every arm. No warning ever fails a launch.
+/// **Total**, and refusing rather than falling back, exactly as
+/// [`resolve_run_limits`](crate::limits::resolve_run_limits) is: an absent knob takes gg's
+/// [default](LoopGuardConfig::default) silently, and a knob that is present and cannot bound
+/// anything is reported to `report` — which refuses the launch — rather than replaced by a default.
+/// A detector armed on gg's defaults instead of the ones the profile wrote is a different detector,
+/// and a run comparing two of them would be comparing one of them with itself.
 ///
-/// | Declaration | Resolves to | Warning |
-/// | --- | --- | --- |
-/// | `enabled: false`, or absent | the detector is **off**; the agent keeps the non-streaming transport | — |
-/// | `enabled: true`, no knobs | gg's [defaults](LoopGuardConfig::default) | — |
-/// | `windowWords: 0` | [`DEFAULT_WINDOW_WORDS`] | a window of no words has nothing to look back over |
-/// | `repeatThreshold: 0` | [`DEFAULT_REPEAT_THRESHOLD`] | every word would be an offender, so no reply could be told from a loop |
-/// | `minOffenders: 0` | [`DEFAULT_MIN_OFFENDERS`] | a window with no offenders in it would count as saturated |
-/// | `minOffenders` > `windowWords` | **armed as declared** | the window cannot hold that many distinct words, so only the length backstop can fire |
-/// | `minSaturatedRun: 0` | `0` — the plain frequency rule | — (a deliberate choice; see the [module docs](self)) |
-/// | `maxResponseChars: 0` | the backstop is **off** | — |
+/// | Declaration | Resolves to |
+/// | --- | --- |
+/// | `enabled: false`, or absent | the detector is **off**; the agent keeps the non-streaming transport |
+/// | `enabled: true`, no knobs | gg's [defaults](LoopGuardConfig::default) |
+/// | `minSaturatedRun: 0` | `0` — the plain frequency rule (a deliberate choice; see the [module docs](self)) |
+/// | `maxResponseChars: 0` | the backstop is **off** |
+/// | `minOffenders` > `windowWords` | **armed as declared**, plus a warning: only the length backstop can fire |
+/// | `windowWords: 0`, `repeatThreshold: 0` or `minOffenders: 0` | **refused** |
 ///
-/// The two zero values that are *not* warned about are the two that mean something: a saturated-run
-/// of zero is the unmodified frequency rule, and a length backstop of zero turns the backstop off.
-/// The cross-knob check is warned about but **armed** rather than defaulted, on the same terms
-/// `errorRateWindow >= maxTurns` is: which of the two knobs the operator meant is not knowable, and
-/// silently replacing one of them would hide the mistake rather than report it.
+/// The two zeroes that resolve are the two that *mean* something: a saturated run of zero is the
+/// unmodified frequency rule, and a length backstop of zero turns the backstop off. The cross-knob
+/// row is armed rather than refused on the same terms `errorRateWindow >= maxTurns` is: both numbers
+/// are honoured to the letter, and which of the two the operator meant is not knowable.
 ///
-/// A declaration with `enabled: false` produces no warnings at all, whatever its knobs say. Nothing
-/// is going to read them, and a warning about a value that will never be used is noise in the one
-/// log an operator reads to find out what a run was actually configured to do.
-pub fn resolve_loop_guard(declared: &GgLoopDetection) -> ResolvedLoopGuard {
+/// **Every knob is judged whether or not the detector is armed.** A disarmed declaration reads
+/// nothing, but it is still configuration — it records the detector the arm *would* have run — and a
+/// typo in it is a typo an operator wants told about now rather than on the launch where they flip
+/// the switch. The *warning* is the other way round: it says a run's detector is inert, so a run
+/// with no detector at all has nothing for it to be about.
+pub fn resolve_loop_guard(
+    declared: &GgLoopDetection,
+    report: &mut crate::validate::LaunchReport,
+) -> ResolvedLoopGuard {
     let mut warnings = Vec::new();
-    if !declared.is_armed() {
-        return ResolvedLoopGuard {
-            config: None,
-            warnings,
-        };
-    }
 
-    let window_words = as_usize(positive_knob(
-        declared.window_words,
-        DEFAULT_WINDOW_WORDS as u64,
-        "windowWords",
-        "a window of no words has nothing to look back over",
-        &mut warnings,
-    ));
-    let repeat_threshold = as_u32(positive_knob(
-        declared.repeat_threshold,
-        u64::from(DEFAULT_REPEAT_THRESHOLD),
-        "repeatThreshold",
-        "every word would count as an offender, so no reply could be told apart from a loop",
-        &mut warnings,
-    ));
-    let min_offenders = as_usize(positive_knob(
-        declared.min_offenders,
-        DEFAULT_MIN_OFFENDERS as u64,
-        "minOffenders",
-        "a window with no offenders in it would count as saturated",
-        &mut warnings,
-    ));
+    let window_words = as_usize(
+        positive_knob(
+            declared.window_words,
+            DEFAULT_WINDOW_WORDS as u64,
+            KNOB_WINDOW_WORDS,
+            "a window of no words has nothing to look back over",
+            report,
+        ),
+        KNOB_WINDOW_WORDS,
+        report,
+    );
+    let repeat_threshold = as_u32(
+        positive_knob(
+            declared.repeat_threshold,
+            u64::from(DEFAULT_REPEAT_THRESHOLD),
+            KNOB_REPEAT_THRESHOLD,
+            "every word would count as an offender, so no reply could be told apart from a loop",
+            report,
+        ),
+        KNOB_REPEAT_THRESHOLD,
+        report,
+    );
+    let min_offenders = as_usize(
+        positive_knob(
+            declared.min_offenders,
+            DEFAULT_MIN_OFFENDERS as u64,
+            KNOB_MIN_OFFENDERS,
+            "a window with no offenders in it would count as saturated",
+            report,
+        ),
+        KNOB_MIN_OFFENDERS,
+        report,
+    );
 
-    // Cross-knob, and therefore armed rather than defaulted: a window of `N` words holds at most
+    // Cross-knob, and therefore armed rather than refused: a window of `N` words holds at most
     // `N` distinct words, so a demand for more offenders than that can never be met and the
     // repetition rule is silently inert. Said out loud, with both figures, because the operator's
-    // mistake is in the relationship rather than in either value.
-    if min_offenders > window_words {
+    // mistake is in the relationship rather than in either value — and said only for a detector
+    // that is actually running, because it is a statement about what this run's detector can do.
+    if declared.is_armed() && min_offenders > window_words {
         warnings.push(format!(
-            "minOffenders ({min_offenders}) is larger than windowWords ({window_words}), so the \
-             repetition rule can never fire; only the length backstop is left."
+            "{KNOB_MIN_OFFENDERS} ({min_offenders}) is larger than {KNOB_WINDOW_WORDS} \
+             ({window_words}), so the repetition rule can never fire; only the length backstop is \
+             left."
         ));
     }
 
-    // The two knobs whose zero *means* something, so they take the declaration as written and warn
-    // about nothing: a saturated run of zero is the plain frequency rule, and a length backstop of
-    // zero is off. Reading them through the same `unwrap_or` as the others keeps "absent takes gg's
-    // default" one rule rather than two.
+    // The two knobs whose zero *means* something, so they take the declaration as written: a
+    // saturated run of zero is the plain frequency rule, and a length backstop of zero is off.
+    // Reading them through the same `unwrap_or` as the others keeps "absent takes gg's default" one
+    // rule rather than two.
     let min_saturated_run = as_usize(
         declared
             .min_saturated_run
             .unwrap_or(DEFAULT_MIN_SATURATED_RUN as u64),
+        KNOB_MIN_SATURATED_RUN,
+        report,
     );
     let max_response_chars = as_usize(
         declared
             .max_response_chars
             .unwrap_or(DEFAULT_MAX_RESPONSE_CHARS as u64),
+        KNOB_MAX_RESPONSE_CHARS,
+        report,
     );
 
     ResolvedLoopGuard {
-        config: Some(LoopGuardConfig {
+        // The knobs are read whatever the switch says; only the *detector* is conditional on it.
+        config: declared.is_armed().then_some(LoopGuardConfig {
             window_words,
             repeat_threshold,
             min_offenders,
@@ -707,23 +725,70 @@ pub fn resolve_loop_guard(declared: &GgLoopDetection) -> ResolvedLoopGuard {
     }
 }
 
-/// Read one knob whose zero cannot bound anything: absent takes `default` silently, zero takes it
-/// with a warning naming the knob and saying what a zero would have meant, and anything else stands.
+/// Every agent profile's [loop-detection declaration](GgLoopDetection), read for the
+/// [launch pass](crate::validate::validate_launch).
 ///
-/// One helper rather than three `match`es so the three warnings are worded the same way and a fourth
+/// Per profile rather than per run: the detector is a per-agent (and therefore per-model) lever, so
+/// a knob is refused against the agent that wrote it. The advisory warning is dropped here — the
+/// orchestrator emits it, once, on the root's stream.
+pub fn check_launch(
+    set: &test_cabinet_core::gg::GgCapabilitySet,
+    report: &mut crate::validate::LaunchReport,
+) {
+    for agent in &set.agents {
+        report.for_agent(&agent.name, |report| {
+            resolve_loop_guard(&agent.loop_detection, report);
+        });
+    }
+}
+
+/// The [window](LoopGuardConfig::window_words) knob, as the declaration spells it.
+const KNOB_WINDOW_WORDS: &str = "windowWords";
+
+/// The [offender threshold](LoopGuardConfig::repeat_threshold) knob, as the declaration spells it.
+const KNOB_REPEAT_THRESHOLD: &str = "repeatThreshold";
+
+/// The [saturation](LoopGuardConfig::min_offenders) knob, as the declaration spells it.
+const KNOB_MIN_OFFENDERS: &str = "minOffenders";
+
+/// The [sustained-run](LoopGuardConfig::min_saturated_run) knob, as the declaration spells it.
+const KNOB_MIN_SATURATED_RUN: &str = "minSaturatedRun";
+
+/// The [length backstop](LoopGuardConfig::max_response_chars) knob, as the declaration spells it.
+const KNOB_MAX_RESPONSE_CHARS: &str = "maxResponseChars";
+
+/// Where one detector knob sits in the configuration document: `loopDetection.windowWords`.
+///
+/// The defect it names carries no agent, and that is deliberate: a resolver is handed one
+/// declaration and cannot see whose profile it came off. The
+/// [launch pass](crate::validate::LaunchReport::for_agent) stamps the profile on the way out.
+fn knob_locus(knob: &str) -> String {
+    format!("loopDetection.{knob}")
+}
+
+/// Read one knob whose zero cannot bound anything: absent takes `default` silently, and zero is
+/// **refused** — naming the knob, what a zero would have meant, and the default it is *not* going to
+/// quietly run instead.
+///
+/// One helper rather than three `match`es so the three refusals are worded the same way and a fourth
 /// knob of the same shape cannot be added with a differently shaped sentence.
 fn positive_knob(
     declared: Option<u64>,
     default: u64,
     knob: &str,
     consequence: &str,
-    warnings: &mut Vec<String>,
+    report: &mut crate::validate::LaunchReport,
 ) -> u64 {
     match declared {
         Some(0) => {
-            warnings.push(format!(
-                "{knob}: 0 cannot bound anything ({consequence}); the detector uses its default of \
-                 {default}."
+            report.report(crate::validate::LaunchDefect::run_level(
+                knob_locus(knob),
+                "0",
+                format!(
+                    "{knob} cannot bound anything at zero ({consequence}); gg will not run the \
+                     detector on its default of {default} under the name of the one this profile \
+                     configured."
+                ),
             ));
             default
         }
@@ -732,20 +797,37 @@ fn positive_knob(
     }
 }
 
-/// Narrow a declared knob to this platform's `usize`, saturating rather than wrapping.
+/// Narrow a declared knob to this platform's `usize`, refusing one it cannot hold.
 ///
-/// A declaration wider than a `usize` is a knob no reply could ever reach, and keeping the
-/// operator's intent ("effectively never") is better than silently arming a small ceiling — the
-/// same rule [`resolve_run_limits`](crate::limits::resolve_run_limits) applies to every count it
-/// narrows.
-fn as_usize(value: u64) -> usize {
-    usize::try_from(value).unwrap_or(usize::MAX)
+/// On every host gg runs on a `usize` is 64 bits wide and this can never fire; it is written as a
+/// refusal rather than a saturation for the reason
+/// [`resolve_run_limits`](crate::limits::resolve_run_limits) narrows its counts that way — an armed
+/// detector must be the one the profile wrote, not the widest one the platform happened to hold.
+fn as_usize(value: u64, knob: &str, report: &mut crate::validate::LaunchReport) -> usize {
+    usize::try_from(value).unwrap_or_else(|_| {
+        report.report(unholdable(knob, value, "this host"));
+        usize::MAX
+    })
 }
 
-/// Narrow a declared knob to a `u32`, saturating rather than wrapping, for the same reason
-/// [`as_usize`] does.
-fn as_u32(value: u64) -> u32 {
-    u32::try_from(value).unwrap_or(u32::MAX)
+/// Narrow a declared knob to a `u32`, refusing one it cannot hold, for the reason [`as_usize`] does.
+fn as_u32(value: u64, knob: &str, report: &mut crate::validate::LaunchReport) -> u32 {
+    u32::try_from(value).unwrap_or_else(|_| {
+        report.report(unholdable(knob, value, "gg's 32-bit occurrence counter"));
+        u32::MAX
+    })
+}
+
+/// A knob whose value is past what gg counts it in.
+fn unholdable(knob: &str, value: u64, holder: &str) -> crate::validate::LaunchDefect {
+    crate::validate::LaunchDefect::run_level(
+        knob_locus(knob),
+        value.to_string(),
+        format!(
+            "{holder} cannot hold a {knob} of {value}, and arming the largest one it can hold would \
+             be a detector nobody configured."
+        ),
+    )
 }
 
 #[cfg(test)]

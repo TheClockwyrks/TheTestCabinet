@@ -691,24 +691,23 @@ fn describe_kinds(kinds: &[ModuleKind]) -> Option<String> {
 // Launch diagnostics
 // ---------------------------------------------------------------------------
 
-/// The launch **warnings** a capability set's [exec](CAPABILITY_EXEC) and [fork](CAPABILITY_FORK)
-/// configuration produces: the configurations that enable one of them and get less of it than they
-/// asked for.
+/// The [exec](CAPABILITY_EXEC) and [fork](CAPABILITY_FORK) contribution to the
+/// [launch pass](crate::validate::validate_launch): the configurations that switch one of them on
+/// and would get **less of it than they asked for**.
 ///
-/// Each warning names the capability that will come up short, so an agent that enables only `fork`
-/// is never told about a roster it has no use for.
+/// Every one of these is a **refusal**, and this trio is the clearest case in gg for why. Each of
+/// them resolves to *a tool that is not offered*, and an absent tool is the one misconfiguration a
+/// model can never report: it simply never makes the call, and the run reads exactly like one where
+/// the agent had the call and chose not to use it. A study comparing "with `exec`" against "without"
+/// would be comparing two arms of the same thing, with nothing in either record to say so.
 ///
-/// All warnings rather than failures, on the same terms as every other configuration gg can still
-/// run: none of them makes the run unrunnable, and each is a tool that will simply not be there.
-/// Reported once per profile, before the first turn, because "why did the model never call `exec`?"
-/// is otherwise a question only a reading of the toolset can answer.
-///
-/// Collected by [`Orchestrator::build`](super::Orchestrator) alongside the rest of the launch
-/// diagnostics.
-pub(super) fn launch_warnings(set: &GgCapabilitySet) -> Vec<String> {
-    let mut warnings = Vec::new();
-    // Every profile a declared machine runs as one of its states. Such a profile keeps `fork` but
-    // is never offered `exec`, which is worth saying to whoever enabled the capability on it.
+/// Nothing here is decided from anything but the document: a roster, a switch, and the state tables
+/// of the machines the set declares. Each defect names the capability that would come up short, so
+/// an agent that enables only `fork` is never told about a roster it has no use for.
+pub(crate) fn check_launch(set: &GgCapabilitySet, report: &mut crate::validate::LaunchReport) {
+    // Every profile a declared machine runs as one of its states. Such a profile keeps `fork` but is
+    // never offered `exec`. Read off the machines that parse: one that does not is already refused
+    // by [`crate::fsm::check_launch`], and its state list is not a thing to draw conclusions from.
     let state_agents: BTreeSet<String> = crate::fsm::machines(set)
         .into_iter()
         .flatten()
@@ -726,38 +725,56 @@ pub(super) fn launch_warnings(set: &GgCapabilitySet) -> Vec<String> {
             continue;
         }
         if crate::fsm::is_shell(profile) {
-            // A shell has no turns of its own; `fsm::launch_warnings` already says its other
-            // capabilities are ignored, and repeating it per capability would be noise.
+            // A shell has no turns of its own; `fsm::check_launch` already refuses every capability
+            // it declares, one by one, and repeating each here would name one defect twice.
             continue;
         }
+        let locus = |capability: &str| format!("capabilities.{capability}");
         if exec
             && profile
                 .agents_in_scope(GgSubagentScope::Subagent)
                 .is_empty()
         {
-            warnings.push(format!(
-                "agent `{}`: it enables `{CAPABILITY_EXEC}` but lists no agents it may use, so \
-                 there is nothing for `{EXEC_TOOL}` to become and the call is not offered. Add the \
-                 agents it may continue as to its roster.",
-                profile.name,
+            report.report(crate::validate::LaunchDefect::on_agent(
+                &profile.name,
+                "subagents",
+                "",
+                format!(
+                    "the `{}` agent enables `{CAPABILITY_EXEC}` but lists no agents it may use, so \
+                     there is nothing for `{EXEC_TOOL}` to become and the call is not offered. Add \
+                     the agents it may continue as to its roster, or switch `{CAPABILITY_EXEC}` \
+                     off.",
+                    profile.name,
+                ),
             ));
         }
         if fork && !profile.is_enabled(CAPABILITY_SUBAGENTS) {
-            warnings.push(format!(
-                "agent `{}`: it enables `{CAPABILITY_FORK}` but not `{CAPABILITY_SUBAGENTS}`, \
-                 which is what offers `wait_for_subagents` and `send_message` — so a copy of it \
-                 could never be waited on or messaged, and `{FORK_TOOL}` is not offered.",
-                profile.name,
+            report.report(crate::validate::LaunchDefect::on_agent(
+                &profile.name,
+                locus(CAPABILITY_FORK),
+                "",
+                format!(
+                    "the `{}` agent enables `{CAPABILITY_FORK}` but not `{CAPABILITY_SUBAGENTS}`, \
+                     which is what offers `wait_for_subagents` and `send_message` — so a copy of it \
+                     could never be waited on or messaged, and `{FORK_TOOL}` is not offered. Enable \
+                     `{CAPABILITY_SUBAGENTS}`, or switch `{CAPABILITY_FORK}` off.",
+                    profile.name,
+                ),
             ));
         }
         if exec && state_agents.contains(profile.name.trim()) {
-            warnings.push(format!(
-                "agent `{}`: it enables `{CAPABILITY_EXEC}` and is run as the state of a process, \
-                 so it is not offered `{EXEC_TOOL}` — inside a machine the next move is \
-                 `{TRANSITION_STATE_TOOL}`'s. `{FORK_TOOL}` is unaffected.",
-                profile.name,
+            report.report(crate::validate::LaunchDefect::on_agent(
+                &profile.name,
+                locus(CAPABILITY_EXEC),
+                "",
+                format!(
+                    "the `{}` agent enables `{CAPABILITY_EXEC}` and is run as the state of a \
+                     machine, so it is not offered `{EXEC_TOOL}` — inside a machine the next move \
+                     is `{TRANSITION_STATE_TOOL}`'s. Switch `{CAPABILITY_EXEC}` off on it, or run \
+                     it outside the machine. `{FORK_TOOL}` is unaffected.",
+                    profile.name,
+                ),
             ));
         }
     }
-    warnings
 }

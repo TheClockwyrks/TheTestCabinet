@@ -31,7 +31,7 @@ use test_cabinet_core::gg::{
     ROOT_AGENT,
 };
 
-use super::super::transitions::{HandoffReason, fork_note, launch_warnings, succession_note};
+use super::super::transitions::{HandoffReason, check_launch, fork_note, succession_note};
 use super::{ScriptedFactory, invocation};
 
 /// The module kinds a transition's per-module list reports with `disposition`, as the wire spells
@@ -254,7 +254,7 @@ fn an_exec_note_states_the_inheritance_and_carries_the_predecessors_message() {
             transition_module(ModuleKind::Tasks, GgModuleDisposition::Dropped),
         ],
         notes: Vec::new(),
-        warnings: Vec::new(),
+        defects: Vec::new(),
     };
 
     let note = succession_note(&handoff, &report, "After", None);
@@ -288,33 +288,85 @@ fn a_fork_note_names_its_origin_and_carries_its_instructions() {
 // Launch diagnostics
 // ---------------------------------------------------------------------------
 
-/// A profile that carries `exec` and `fork` and nothing to use either with earns a warning per
-/// missing half, because an absent tool is the one misconfiguration a model can never report — it
-/// simply never makes the call.
+/// Every defect `set`'s delegation configuration earns, as one refusal.
+fn refusal(set: &GgCapabilitySet) -> Result<(), String> {
+    let mut report = crate::validate::LaunchReport::collecting();
+    check_launch(set, &mut report);
+    let defects = report.into_defects();
+    if defects.is_empty() {
+        return Ok(());
+    }
+    Err(defects
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n"))
+}
+
+/// A profile that carries `exec` and `fork` and nothing to use either with is **refused**, once per
+/// withheld call. This is the clearest case in gg for refusing rather than warning: an absent tool
+/// is the one misconfiguration a model can never report — it simply never makes the call, and the
+/// run reads exactly like one where the agent had the call and chose not to use it.
 #[test]
-fn launch_warns_when_neither_half_of_the_capability_can_be_offered() {
+fn a_capability_whose_call_could_not_be_offered_is_refused() {
     let mut set = GgCapabilitySet::minimal("mock/primary");
     set.agents[0].capabilities.extend([
         GgCapabilityConfig::enabled(CAPABILITY_EXEC),
         GgCapabilityConfig::enabled(CAPABILITY_FORK),
     ]);
 
-    let warnings = launch_warnings(&set);
+    let error = refusal(&set).expect_err("neither call could be offered");
 
-    assert_eq!(warnings.len(), 2, "one per withheld call: {warnings:?}");
-    assert!(
-        warnings.iter().any(|w| w.contains(EXEC_TOOL)),
-        "an empty roster leaves nothing to become: {warnings:?}"
+    assert_eq!(
+        error.lines().count(),
+        2,
+        "one defect per withheld call: {error}"
     );
     assert!(
-        warnings.iter().any(|w| w.contains(FORK_TOOL)),
-        "no delegation runtime leaves the copy uncollectable: {warnings:?}"
+        error.contains(EXEC_TOOL),
+        "an empty roster leaves nothing to become: {error}"
     );
+    assert!(
+        error.contains(FORK_TOOL),
+        "no delegation runtime leaves the copy uncollectable: {error}"
+    );
+}
+
+/// A profile a declared machine runs as one of its states is never offered `exec` — inside a machine
+/// the next move is the transition's — so enabling it there is refused too.
+#[test]
+fn exec_on_a_profile_a_machine_runs_is_refused() {
+    let mut set = GgCapabilitySet::minimal("mock/primary");
+    set.agents[0].capabilities.clear();
+    set.agents[0].model_id = String::new();
+    crate::tools::grant_configured(
+        &mut set.agents[0],
+        GgCapabilityConfig {
+            params: serde_json::json!({
+                "states": [{ "name": "only", "agent": "Worker" }],
+            }),
+            ..GgCapabilityConfig::enabled(test_cabinet_core::gg::CAPABILITY_FSM)
+        },
+    );
+    let mut worker = GgAgentConfig {
+        name: "Worker".to_string(),
+        model_id: "mock/primary".to_string(),
+        subagents: vec![roster(ROOT_AGENT)],
+        ..GgAgentConfig::root()
+    };
+    worker
+        .capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_EXEC));
+    set.agents.push(worker);
+
+    let error = refusal(&set).expect_err("a state's agent is not offered `exec`");
+    assert!(error.contains("Worker"), "{error}");
+    assert!(error.contains(EXEC_TOOL), "{error}");
 }
 
 /// Both halves available means silence: the capability got exactly what it asked for.
 #[test]
-fn launch_is_quiet_when_both_calls_can_be_offered() {
+fn a_capability_that_can_be_offered_is_accepted() {
     let mut set = GgCapabilitySet::minimal("mock/primary");
     set.agents[0].subagents = vec![roster(ROOT_AGENT)];
     set.agents[0].capabilities.extend([
@@ -323,7 +375,7 @@ fn launch_is_quiet_when_both_calls_can_be_offered() {
         GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS),
     ]);
 
-    assert!(launch_warnings(&set).is_empty());
+    assert_eq!(refusal(&set), Ok(()));
 }
 
 // ---------------------------------------------------------------------------

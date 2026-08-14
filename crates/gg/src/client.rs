@@ -392,13 +392,17 @@ impl OpenRouterClient {
     /// nothing about loop detection behaves precisely as it did before the detector existed.
     ///
     /// The [warnings](ResolvedLoopGuard::warnings) resolution produces are deliberately dropped
-    /// here. They are one-per-run operator advice about a knob that could not do its job, not
-    /// one-per-agent-client advice, and a client has no stream to emit them on; the launch path
-    /// resolves the same declaration itself and logs them once, in the register of the
-    /// [run limits](crate::limits::resolve_run_limits)' warnings. Resolution is pure, so resolving
-    /// twice cannot disagree.
+    /// here. They are one-per-run operator advice about a detector armed exactly as declared and
+    /// provably inert, not one-per-agent-client advice, and a client has no stream to emit them on;
+    /// the launch path resolves the same declaration itself and logs them once, in the register of
+    /// the [run limits](crate::limits::resolve_run_limits)' warnings. Resolution is pure, so
+    /// resolving twice cannot disagree.
+    ///
+    /// The sink is [discarding](crate::validate::LaunchReport::Discarding) for the same reason: a
+    /// knob gg cannot arm refused this run at launch, before any client existed to be built.
     pub fn with_loop_detection(mut self, declared: GgLoopDetection) -> Self {
-        self.loop_guard = resolve_loop_guard(&declared).config;
+        self.loop_guard =
+            resolve_loop_guard(&declared, &mut crate::validate::LaunchReport::Discarding).config;
         self
     }
 

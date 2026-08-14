@@ -182,14 +182,33 @@ fn a_shell_timeout_without_a_deadline_is_the_programs_own() {
     );
 }
 
-/// A guest that sent a nonsense timeout (the SDK rejects these, so this is the backstop) falls back
-/// to the default rather than passing on something the tool would only refuse.
+/// **A nonsense timeout is an argument error, not gg's default.** The SDK rejects these first, so
+/// this is the backstop — and the backstop says the same thing the native `shell` tool's own
+/// argument parsing says, rather than running the command under a ceiling the program never wrote
+/// and handing back the result as though it had.
 #[test]
-fn a_nonsense_shell_timeout_falls_back_to_the_default() {
+fn a_nonsense_shell_timeout_is_an_argument_error() {
+    for nonsense in [-4.0, 0.0, f64::NAN] {
+        let log = CallLog::default();
+        let mut state = membrane(&log);
+
+        let err = state
+            .shell("ls".to_string(), Some(nonsense))
+            .expect_err("a timeout that names no duration is not a timeout");
+
+        assert_eq!(err.code, ErrorCode::InvalidArgument, "{nonsense}");
+        assert!(err.message.contains("timeout_secs"), "{}", err.message);
+        assert!(log.args("shell").is_none(), "nothing was dispatched");
+    }
+}
+
+/// …and an **absent** one takes gg's documented default, which is the whole of what absent means.
+#[test]
+fn an_absent_shell_timeout_takes_the_default() {
     let log = CallLog::default();
     let mut state = membrane(&log);
 
-    state.shell("ls".to_string(), Some(-4.0)).expect("ran");
+    state.shell("ls".to_string(), None).expect("ran");
 
     assert_eq!(
         log.args("shell")

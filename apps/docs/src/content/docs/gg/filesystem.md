@@ -54,9 +54,13 @@ experiment.
 | `unlimited` *(default)* | The whole file, one call. | — |
 | `default-cap` | `lineCap` lines by default. | `offset` and `limit` |
 
-The `lineCap` param sets the default window and itself defaults to 250 lines. It
-is read only under `default-cap`. An implementation gg does not recognize
-resolves to `unlimited`.
+The `lineCap` param sets the default window under `default-cap` and itself
+defaults to 250 lines. A value gg cannot read as a line count of one or more
+refuses the launch, whichever mode is selected, so a sweep that varies the mode
+over one shared params block is told about the typo on its first launch. An
+implementation gg does not recognize refuses the launch, naming the two modes. A
+refusal names every value in the configuration gg cannot honour exactly as
+written, so one pass fixes them all.
 
 `default-cap` gives `read_file` two extra arguments, so the agent can page
 through a file it did not get at once:

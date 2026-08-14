@@ -19,6 +19,8 @@
 
 use test_cabinet_core::gg::GgLoopDetection;
 
+use crate::validate::{LaunchDefect, LaunchReport};
+
 use super::*;
 
 // ---------------------------------------------------------------------------------------------
@@ -72,27 +74,42 @@ fn armed_declaration() -> GgLoopDetection {
     }
 }
 
-/// The knobs `declared` resolves to, together with every warning the resolution produced.
-fn resolve(declared: GgLoopDetection) -> (LoopGuardConfig, Vec<String>) {
-    let resolved = resolve_loop_guard(&declared);
+/// The knobs `declared` resolves to, together with every value gg refused and every advisory
+/// warning it produced.
+fn resolve(declared: GgLoopDetection) -> (LoopGuardConfig, Vec<LaunchDefect>, Vec<String>) {
+    let mut report = LaunchReport::collecting();
+    let resolved = resolve_loop_guard(&declared, &mut report);
     (
         resolved
             .config
             .expect("an armed declaration resolves to a detector"),
+        report.into_defects(),
         resolved.warnings,
     )
 }
 
-/// The knobs `declared` resolves to, asserting it produced no warning at all.
+/// The knobs `declared` resolves to, asserting gg honoured every one of them exactly as written.
 fn resolve_cleanly(declared: GgLoopDetection) -> LoopGuardConfig {
-    let (config, warnings) = resolve(declared);
+    let (config, defects, warnings) = resolve(declared);
+    assert!(defects.is_empty(), "unexpected refusals: {defects:?}");
     assert!(warnings.is_empty(), "unexpected warnings: {warnings:?}");
     config
 }
 
-/// The single warning `declared` produced, asserting there was exactly one.
+/// The single refusal `declared` earned, rendered as the operator reads it.
+fn sole_refusal(declared: GgLoopDetection) -> String {
+    let mut report = LaunchReport::collecting();
+    resolve_loop_guard(&declared, &mut report);
+    let mut defects = report.into_defects();
+    assert_eq!(defects.len(), 1, "expected one refusal, got {defects:?}");
+    defects.remove(0).to_string()
+}
+
+/// The single advisory warning `declared` produced, asserting there was exactly one and that
+/// nothing was refused — a warning is only ever about a knob gg **armed**.
 fn sole_warning(declared: GgLoopDetection) -> String {
-    let (_, mut warnings) = resolve(declared);
+    let (_, defects, mut warnings) = resolve(declared);
+    assert!(defects.is_empty(), "unexpected refusals: {defects:?}");
     assert_eq!(warnings.len(), 1, "expected one warning, got {warnings:?}");
     warnings.remove(0)
 }
@@ -720,10 +737,12 @@ fn a_trip_describes_itself_for_the_operators_log() {
 /// non-streaming transport.
 #[test]
 fn an_unarmed_declaration_resolves_to_no_detector_at_all() {
-    let resolved = resolve_loop_guard(&GgLoopDetection::default());
+    let mut report = LaunchReport::collecting();
+    let resolved = resolve_loop_guard(&GgLoopDetection::default(), &mut report);
 
     assert_eq!(resolved.config, None);
     assert!(resolved.warnings.is_empty());
+    assert!(report.into_defects().is_empty());
 }
 
 /// Arming the detector without naming a knob takes gg's defaults, silently.
@@ -759,46 +778,81 @@ fn every_knob_is_taken_as_declared() {
     );
 }
 
-/// A window of no words has nothing to look back over, so it warns and takes the default rather
-/// than arming a detector that cannot observe anything.
+/// A window of no words has nothing to look back over, so it is refused: a detector armed on gg's
+/// default window instead of the one the profile wrote is a different detector.
 #[test]
-fn a_window_of_no_words_warns_and_takes_the_default() {
+fn a_window_of_no_words_is_refused() {
     let declared = GgLoopDetection {
         window_words: Some(0),
         ..armed_declaration()
     };
 
-    assert!(sole_warning(declared).contains("windowWords: 0"));
-    assert_eq!(resolve(declared).0.window_words, DEFAULT_WINDOW_WORDS);
+    let refusal = sole_refusal(declared);
+    assert!(
+        refusal.starts_with("loopDetection.windowWords = `0` —"),
+        "{refusal}"
+    );
+    assert!(refusal.contains("nothing to look back over"), "{refusal}");
 }
 
 /// A threshold of zero would make every word an offender, so no reply could be told apart from a
-/// loop. It warns and takes the default.
+/// loop. Refused.
 #[test]
-fn a_threshold_of_zero_warns_and_takes_the_default() {
+fn a_threshold_of_zero_is_refused() {
     let declared = GgLoopDetection {
         repeat_threshold: Some(0),
         ..armed_declaration()
     };
 
-    assert!(sole_warning(declared).contains("repeatThreshold: 0"));
-    assert_eq!(
-        resolve(declared).0.repeat_threshold,
-        DEFAULT_REPEAT_THRESHOLD
+    assert!(
+        sole_refusal(declared).starts_with("loopDetection.repeatThreshold = `0` —"),
+        "{}",
+        sole_refusal(declared)
     );
 }
 
-/// Requiring no offenders would make an empty window count as saturated. It warns and takes the
-/// default.
+/// Requiring no offenders would make an empty window count as saturated. Refused.
 #[test]
-fn requiring_no_offenders_warns_and_takes_the_default() {
+fn requiring_no_offenders_is_refused() {
     let declared = GgLoopDetection {
         min_offenders: Some(0),
         ..armed_declaration()
     };
 
-    assert!(sole_warning(declared).contains("minOffenders: 0"));
-    assert_eq!(resolve(declared).0.min_offenders, DEFAULT_MIN_OFFENDERS);
+    assert!(
+        sole_refusal(declared).starts_with("loopDetection.minOffenders = `0` —"),
+        "{}",
+        sole_refusal(declared)
+    );
+}
+
+/// Every unusable knob is named in **one** refusal, so an operator fixing the profile fixes all
+/// three in one pass.
+#[test]
+fn every_unusable_knob_is_named_in_one_refusal() {
+    let mut report = LaunchReport::collecting();
+    resolve_loop_guard(
+        &GgLoopDetection {
+            window_words: Some(0),
+            repeat_threshold: Some(0),
+            min_offenders: Some(0),
+            ..armed_declaration()
+        },
+        &mut report,
+    );
+
+    assert_eq!(
+        report
+            .into_defects()
+            .iter()
+            .map(|defect| defect.locus.clone())
+            .collect::<Vec<_>>(),
+        [
+            "loopDetection.windowWords",
+            "loopDetection.repeatThreshold",
+            "loopDetection.minOffenders",
+        ]
+    );
 }
 
 /// Demanding more offenders than the window can hold is a mistake in the *relationship* between two
@@ -835,37 +889,66 @@ fn the_two_zeroes_that_mean_something_are_taken_as_written() {
     assert_eq!(config.max_response_chars, 0);
 }
 
-/// Knobs declared on an agent that never arms the detector are never warned about: nothing is going
-/// to read them, and a warning about a value that will never be used is noise in the one log an
-/// operator reads to find out what a run was configured to do.
+/// A knob is judged whether or not the detector is armed. A disarmed declaration reads nothing, but
+/// it is still configuration — it records the detector the off arm *would* have run — so a typo in
+/// it is a typo an operator hears about now rather than on the launch that flips the switch.
+///
+/// The *warning* is the other way round: it says this run's detector is inert, and a run with no
+/// detector has nothing for it to be about.
 #[test]
-fn knobs_declared_on_an_unarmed_agent_are_never_warned_about() {
-    let resolved = resolve_loop_guard(&GgLoopDetection {
-        enabled: false,
-        window_words: Some(0),
-        min_offenders: Some(0),
-        repeat_threshold: Some(0),
-        ..GgLoopDetection::default()
-    });
+fn knobs_declared_on_an_unarmed_agent_are_still_judged() {
+    let mut report = LaunchReport::collecting();
+    let resolved = resolve_loop_guard(
+        &GgLoopDetection {
+            enabled: false,
+            window_words: Some(0),
+            min_offenders: Some(0),
+            repeat_threshold: Some(0),
+            ..GgLoopDetection::default()
+        },
+        &mut report,
+    );
 
-    assert_eq!(resolved.config, None);
-    assert!(resolved.warnings.is_empty());
+    assert_eq!(resolved.config, None, "nothing is armed");
+    assert!(resolved.warnings.is_empty(), "and nothing to advise about");
+    assert_eq!(report.into_defects().len(), 3, "but all three are refused");
 }
 
-/// A knob wider than this platform's `usize` saturates rather than wrapping: the operator's intent
-/// ("effectively never") is kept, where wrapping would silently arm a tiny ceiling.
+/// The cross-knob warning is only about an **armed** detector: a disarmed profile whose knobs could
+/// never saturate is not a run whose detector is inert, it is a run with no detector.
 #[test]
-fn a_knob_wider_than_the_platform_saturates() {
-    let config = resolve_cleanly(GgLoopDetection {
-        window_words: Some(u64::MAX),
-        repeat_threshold: Some(u64::MAX),
-        max_response_chars: Some(u64::MAX),
+fn the_cross_knob_warning_needs_an_armed_detector() {
+    let mut report = LaunchReport::collecting();
+    let resolved = resolve_loop_guard(
+        &GgLoopDetection {
+            enabled: false,
+            window_words: Some(64),
+            min_offenders: Some(300),
+            ..GgLoopDetection::default()
+        },
+        &mut report,
+    );
+
+    assert!(resolved.warnings.is_empty());
+    assert!(report.into_defects().is_empty());
+}
+
+/// A knob wider than what gg counts it in is refused rather than saturated: arming the widest value
+/// the platform happens to hold would be a detector nobody configured.
+#[test]
+fn a_knob_wider_than_gg_counts_it_in_is_refused() {
+    // `windowWords` and `maxResponseChars` are `usize`, which is 64 bits wide here, so the only one
+    // that can overflow on this host is the `u32` occurrence threshold.
+    let refusal = sole_refusal(GgLoopDetection {
+        repeat_threshold: Some(u64::from(u32::MAX) + 1),
         ..armed_declaration()
     });
 
-    assert_eq!(config.window_words, usize::MAX);
-    assert_eq!(config.repeat_threshold, u32::MAX);
-    assert_eq!(config.max_response_chars, usize::MAX);
+    assert!(
+        refusal.starts_with("loopDetection.repeatThreshold ="),
+        "{refusal}"
+    );
+    assert!(refusal.contains("32-bit occurrence counter"), "{refusal}");
 }
 
 // ---------------------------------------------------------------------------------------------

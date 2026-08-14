@@ -105,5 +105,11 @@ children at all, whether by spawning them from its roster or by forking itself.
 | --- | --- | --- |
 | `maxDepth` | 3 | The deepest an agent may sit in the delegation tree; a spawn at that depth fails as a limit. |
 
+An absent `maxDepth` takes the default above. One carrying a value gg cannot
+honour exactly as written refuses the launch, alongside every other such value in
+the capability set. It bounds the run's whole agent tree rather than one agent,
+so it is read off the first profile; a *different* `maxDepth` on another profile
+would be read by nothing and refuses the launch too.
+
 Switched off, none of the three tools is offered and the agent delegates nothing
 of its own.

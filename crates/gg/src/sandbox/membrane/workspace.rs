@@ -62,7 +62,7 @@ impl<A: ToolApi> ShellHost for MembraneState<A> {
     ) -> Result<ShellOutput, ToolError> {
         self.recorded(SHELL_SHELL, |state, rec| {
             let timeout =
-                Duration::from_secs_f64(clamp_timeout(timeout_secs, state.remaining_budget()));
+                Duration::from_secs_f64(clamp_timeout(timeout_secs, state.remaining_budget())?);
             let mut outcome =
                 state.call_raw(rec, SHELL_SHELL, |api| api.shell(command, timeout))?;
             let data = outcome.data.take();
@@ -255,18 +255,33 @@ fn entry(entry: DirEntryData) -> DirEntry {
 /// with no deadline has nothing to clamp against, which is exactly why the absolute ceiling has to
 /// exist independently of it.
 ///
-/// A non-finite or non-positive request falls back to the default. The guest SDK already rejects
-/// those, so this is the backstop for a guest that did not — which is the same reason the ceiling
-/// is enforced here rather than trusted to the guest.
-fn clamp_timeout(requested: Option<f64>, remaining: Option<Duration>) -> f64 {
-    let requested = requested
-        .filter(|secs| secs.is_finite() && *secs > 0.0)
-        .unwrap_or(DEFAULT_TIMEOUT_SECS)
-        .min(MAX_TIMEOUT_SECS);
-    match remaining {
+/// An **absent** request takes [`DEFAULT_TIMEOUT_SECS`], which is the documented default. A request
+/// that is present and is not a positive, finite number of seconds is an **argument error**: it
+/// names no duration, and running the command under gg's default instead would be gg choosing a
+/// ceiling the program did not write and then reporting the result as though it had. That is the
+/// same answer the native `shell` tool's own argument parsing gives, so a model gets one story about
+/// its timeout whichever surface it called through. The guest SDK rejects these first; this is the
+/// backstop for a guest that did not, for the same reason the ceiling above is enforced here rather
+/// than trusted to the guest.
+fn clamp_timeout(requested: Option<f64>, remaining: Option<Duration>) -> Result<f64, ToolError> {
+    let requested = match requested {
+        None => DEFAULT_TIMEOUT_SECS,
+        Some(secs) if secs.is_finite() && secs > 0.0 => secs,
+        Some(secs) => {
+            return Err(ToolError {
+                code: ErrorCode::InvalidArgument,
+                tool: SHELL_SHELL.key.to_string(),
+                message: format!(
+                    "`timeout_secs` is how many seconds the command may run for, so it must be a                      positive number; `{secs}` names no duration. Omit it to take gg's default of                      {DEFAULT_TIMEOUT_SECS}s."
+                ),
+            });
+        }
+    };
+    let requested = requested.min(MAX_TIMEOUT_SECS);
+    Ok(match remaining {
         Some(remaining) => requested.min(remaining.as_secs_f64()),
         None => requested,
-    }
+    })
 }
 
 #[cfg(test)]

@@ -7,7 +7,7 @@
 //! against a stubbed runner would prove nothing about the one thing it exists to do.
 
 use super::*;
-use test_cabinet_core::gg::{ALL_HOOK_EVENTS, GgAgentConfig, GgCapabilitySet};
+use test_cabinet_core::gg::{ALL_HOOK_EVENTS, GgAgentConfig, GgCapabilitySet, ROOT_AGENT};
 
 /// An agent profile carrying `hooks` and nothing else that matters here — the declaration site for
 /// the eight [agent events](test_cabinet_core::gg::AGENT_HOOK_EVENTS), which is what nearly every
@@ -185,6 +185,141 @@ fn refuses_a_session_event_declared_on_an_agent() {
     assert_eq!(errors.len(), 1);
     assert!(errors[0].contains("session-end"), "{}", errors[0]);
     assert!(errors[0].contains("reviewer"), "{}", errors[0]);
+}
+
+// --- The launch these refusals actually stop ---------------------------------
+
+/// **The regression this whole check existed for.** [`HookRuntime::resolve`] has always returned
+/// these as errors and the *launch* used to swallow them: the offending declaration site was
+/// resolved to an empty runtime and the run started anyway, so one typo'd built-in id disarmed every
+/// other hook declared beside it — including the blocking `pre-write`, `pre-shell` and `agent-stop`
+/// gates — while the operator read a warning and believed they had gates.
+///
+/// So the assertion that matters is not the resolver's (that is two tests up), it is that the
+/// **launch pass** carries it: a set with one unresolvable hook is refused, and the refusal names
+/// both the hook gg cannot arm and the vocabulary that would fix it.
+#[test]
+fn a_hook_gg_cannot_arm_refuses_the_launch() {
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    set.hooks = vec![GgHook {
+        event: GgHookEvent::SessionStart,
+        action: GgHookAction::BuiltIn {
+            script: "trace-everything".to_string(),
+        },
+        name: "trace".to_string(),
+    }];
+    // …and a second, on an agent, so the refusal is proved to walk both declaration sites and to
+    // attribute each defect where an operator has to go and edit it.
+    set.agents[0].hooks = vec![script_hook(GgHookEvent::SessionEnd, "#!/bin/sh\ntrue")];
+
+    let defects = crate::validate::validate_capability_set(&set)
+        .expect_err("a hook gg cannot arm must not start a run");
+    assert_eq!(defects.len(), 2, "{defects:?}");
+
+    assert_eq!(defects[0].agent, None, "a session hook is run-level");
+    assert_eq!(defects[0].locus, "hooks[trace]");
+    assert!(
+        defects[0].message.contains("trace-everything"),
+        "{defects:?}"
+    );
+    assert!(
+        defects[0].message.contains(GG_BUILTIN_HOOKS[0]),
+        "the refusal lists what gg does ship: {defects:?}"
+    );
+
+    assert_eq!(defects[1].agent.as_deref(), Some(ROOT_AGENT));
+    assert_eq!(defects[1].locus, "hooks[under test]");
+    assert!(defects[1].message.contains("session-end"), "{defects:?}");
+}
+
+/// **Every part of an action gg would otherwise read past.** A gate that silently does not run is
+/// worse than no gate, and each of these is a way of having one: a blank command line runs `sh -c`
+/// on nothing and passes every operation it gates; a custom hook with no source is written to an
+/// empty file and dies on the first operation for printing no decision; a `timeoutSecs` gg cannot
+/// read is silently replaced by a five-minute ceiling nobody wrote.
+#[test]
+fn an_action_gg_cannot_perform_refuses_the_launch() {
+    let cases: [(GgHookAction, &str); 4] = [
+        (
+            GgHookAction::Command {
+                command: "   ".to_string(),
+                cwd: None,
+                timeout_secs: None,
+                output: None,
+            },
+            "command",
+        ),
+        (
+            GgHookAction::Command {
+                command: "npm test".to_string(),
+                cwd: None,
+                timeout_secs: Some(0.0),
+                output: None,
+            },
+            "timeoutSecs",
+        ),
+        (
+            GgHookAction::Command {
+                command: "npm test".to_string(),
+                cwd: None,
+                timeout_secs: Some(-5.0),
+                output: None,
+            },
+            "timeoutSecs",
+        ),
+        (
+            GgHookAction::Custom {
+                source: "  ".to_string(),
+            },
+            "source",
+        ),
+    ];
+    for (action, locus) in cases {
+        let mut set = GgCapabilitySet::minimal("mock/echo");
+        set.hooks = vec![GgHook {
+            event: GgHookEvent::SessionStart,
+            action,
+            name: "gate".to_string(),
+        }];
+        let defects = crate::validate::validate_capability_set(&set)
+            .expect_err("an action gg cannot perform must not start a run");
+        assert_eq!(defects.len(), 1, "{defects:?}");
+        assert_eq!(defects[0].locus, format!("hooks[gate].{locus}"));
+    }
+}
+
+/// An **absent** `timeoutSecs` takes gg's documented default, which is the whole of what absent
+/// means anywhere in this contract.
+#[test]
+fn an_absent_hook_timeout_takes_the_default() {
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    set.hooks = vec![GgHook {
+        event: GgHookEvent::SessionStart,
+        action: GgHookAction::Command {
+            command: "npm test".to_string(),
+            cwd: None,
+            timeout_secs: None,
+            output: None,
+        },
+        name: "gate".to_string(),
+    }];
+    crate::validate::validate_capability_set(&set).expect("an absent ceiling is not a defect");
+}
+
+/// …and a set whose hooks all resolve launches, hooks and all. The refusal has to be exactly the
+/// declarations gg cannot arm.
+#[test]
+fn hooks_gg_can_arm_launch() {
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    set.hooks = vec![script_hook(GgHookEvent::SessionStart, "#!/bin/sh\ntrue")];
+    set.agents[0].hooks = vec![GgHook {
+        event: GgHookEvent::PreWrite,
+        action: GgHookAction::BuiltIn {
+            script: GG_BUILTIN_HOOKS[0].to_string(),
+        },
+        name: "gate".to_string(),
+    }];
+    assert_eq!(crate::validate::validate_capability_set(&set), Ok(()));
 }
 
 /// Two profiles that name a hook the same thing materialize their scripts to **different files**.

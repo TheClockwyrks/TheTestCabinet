@@ -1,7 +1,19 @@
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_core::gg::{GgAgentConfig, GgProgramLanguage};
 
 use super::*;
 use crate::ending::EndingRole;
+
+/// [`super::render_system`] for the tests, which render gg's own templates against contexts they
+/// built to be renderable.
+///
+/// It shadows the glob-imported production function deliberately, so the ~40 assertions below stay
+/// about *what the prompt says* rather than each unwrapping the same `Result`. Both of that
+/// function's failures are gg's own defects — an override that will not render, a code-mode context
+/// naming no program language — and each has a test of its own that calls `super::render_system`
+/// and asserts the `Err`.
+fn render_system(context: &SystemContext, template_override: Option<&str>) -> String {
+    super::render_system(context, template_override).expect("this system prompt renders")
+}
 
 /// A rendered prompt with every run of whitespace collapsed to one space.
 ///
@@ -2478,4 +2490,89 @@ fn a_capability_the_run_withheld_is_absent_from_its_prompt() {
             );
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// The per-agent override, and the two ways rendering one fails
+// ---------------------------------------------------------------------------
+
+/// An override gg **can** render is rendered, against the same context the built-in template gets —
+/// which is the whole of what an override is for.
+#[test]
+fn an_override_renders_against_the_runs_own_context() {
+    let context = SystemContext {
+        read_file: ReadFileView {
+            offered: true,
+            capped: true,
+            line_cap: 40,
+            images: false,
+        },
+        ..SystemContext::default()
+    };
+    let rendered = super::render_system(&context, Some("You may read {{readFile.lineCap}} lines."))
+        .expect("an override naming a variable the context carries renders");
+    assert_eq!(rendered, "You may read 40 lines.");
+}
+
+/// **An override that will not render ends the run, rather than being swapped for gg's own.**
+///
+/// This is the single most consequential silent fallback gg had: the prompt an agent reasons under
+/// *is* the experiment, and gg used to answer a failed render by rendering the built-in template for
+/// the run's mode — with no log line anywhere. The run then measured gg's prompt while its record,
+/// its capability set and its console all named the operator's.
+///
+/// The failure that survives to here is a template that **parses** and names a variable the context
+/// does not carry: [`check_launch`] has already refused everything that does not parse.
+#[test]
+fn an_override_that_will_not_render_is_an_error() {
+    let problem = super::render_system(
+        &SystemContext::default(),
+        Some("Read {{noSuchVariable}} of them."),
+    )
+    .expect_err("strict mode makes an unknown variable a render failure");
+    assert!(problem.contains("systemPromptTemplate"), "{problem}");
+}
+
+/// A **blank** override is not an override: it takes the built-in template for the run's mode, the
+/// same as an absent one. Nothing was written, so nothing is substituted.
+#[test]
+fn a_blank_override_takes_the_built_in_template() {
+    let built_in = render_system(&bare_system(), None);
+    assert_eq!(render_system(&bare_system(), Some("   \n ")), built_in);
+}
+
+/// **A responses-as-code context that names no program language is an error in every build.**
+///
+/// It was a `debug_assert!` over `unwrap_or_default()`, which compiles out of exactly the builds
+/// that run studies — so a construction site that forgot the field would have rendered TypeScript's
+/// contract to an agent writing something else, in release only. Its own comment named the failure:
+/// "a silent default is exactly how a second language would come to behave like TypeScript".
+#[test]
+fn a_code_context_with_no_language_is_an_error() {
+    let context = SystemContext {
+        responses_as_code: true,
+        language: None,
+        ..SystemContext::default()
+    };
+    let problem = super::render_system(&context, None)
+        .expect_err("a code prompt cannot be rendered without knowing which arm it is");
+    assert!(problem.contains("program language"), "{problem}");
+}
+
+/// The launch pass refuses an override that is not a Handlebars template at all, so the render
+/// failure above can only ever be about a *variable*.
+#[test]
+fn an_override_that_does_not_parse_is_refused_at_launch() {
+    let mut profile = GgAgentConfig::root();
+    profile.system_prompt_template = Some("Unclosed {{#if skills}} section".to_string());
+    let mut report = crate::validate::LaunchReport::collecting();
+    check_launch(&profile, &mut report);
+    let defects = report.into_defects();
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(defects[0].locus, "systemPromptTemplate");
+
+    // …and an absent override is the ordinary case, not a defect.
+    let mut report = crate::validate::LaunchReport::collecting();
+    check_launch(&GgAgentConfig::root(), &mut report);
+    assert!(report.is_empty());
 }

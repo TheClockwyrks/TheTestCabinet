@@ -330,28 +330,55 @@ fn inheritance_is_refused_across_a_strategy_mismatch() {
     assert!(child.is_writable(), "its own notebook is its own to write");
 }
 
-/// An unrecognized `scope` falls back to `isolated` and warns rather than failing the launch — the
-/// standing rule for an unrecognized capability *value*.
+/// An absent `scope` takes the documented default — absent is not unrecognized.
 #[test]
-fn an_unreadable_scope_falls_back_to_isolated_with_a_warning() {
+fn an_absent_scope_takes_the_default() {
     let mut config = scratchpad("Solo", MemoryScope::Isolated);
-    config.capabilities[0].params = json!({ "scope": "communal" });
-    let (scope, warning) = resolve_scope(&config);
-    assert_eq!(scope, MemoryScope::Isolated);
-    let warning = warning.expect("an unreadable value is reported");
-    assert!(warning.contains("communal"), "{warning}");
-    assert!(warning.contains("`isolated`"), "{warning}");
-
-    // And a non-string is refused the same way rather than coerced.
-    config.capabilities[0].params = json!({ "scope": 3 });
-    assert_eq!(resolve_scope(&config).0, MemoryScope::Isolated);
-    assert!(resolve_scope(&config).1.is_some());
+    config.capabilities[0].params = json!({});
+    assert_eq!(
+        resolve_scope(&config, &mut LaunchReport::Discarding),
+        MemoryScope::Isolated
+    );
+    config.capabilities[0].params = json!({ "scope": null });
+    assert_eq!(
+        resolve_scope(&config, &mut LaunchReport::Discarding),
+        MemoryScope::Isolated
+    );
 }
 
-/// The launch validations: a scope gg cannot read, a scope on an agent with no memories, and an
-/// inheriting child whose spawner organizes memories differently.
+/// A `scope` gg cannot read is **refused**. The scope decides *whose notebook this agent holds*, so
+/// reading `communal` as `isolated` would give a run in which two agents were meant to curate one
+/// store two stores that never meet — and the only evidence would be a notebook that stayed empty.
 #[test]
-fn launch_warnings_report_a_scoping_gg_cannot_honour() {
+fn an_unreadable_scope_is_refused() {
+    let mut config = scratchpad("Solo", MemoryScope::Isolated);
+    for (params, found) in [
+        (json!({ "scope": "communal" }), "communal"),
+        (json!({ "scope": 3 }), "3"),
+    ] {
+        config.capabilities[0].params = params.clone();
+        let mut report = LaunchReport::collecting();
+        assert_eq!(
+            resolve_scope(&config, &mut report),
+            MemoryScope::Isolated,
+            "the resolver stays total"
+        );
+        let defects = report.into_defects();
+        assert_eq!(defects.len(), 1, "{params} -> {defects:?}");
+        assert_eq!(defects[0].found, found);
+        assert_eq!(defects[0].locus, "memories.params.scope");
+        assert!(
+            defects[0].known.contains(&"shared".to_string()),
+            "the refusal offers the vocabulary back: {:?}",
+            defects[0].known
+        );
+    }
+}
+
+/// The three scoping refusals, in one pass over one set: a scope gg cannot read, a scope on an agent
+/// with no memories, and an inheriting child whose spawner organizes memories differently.
+#[test]
+fn a_scoping_gg_cannot_honour_refuses_the_launch() {
     let mut set = GgCapabilitySet::minimal("mock/echo");
     // The root inherits from nobody but may spawn `Indexer`, which organizes memories differently.
     set.agents[0] = GgAgentConfig {
@@ -367,33 +394,64 @@ fn launch_warnings_report_a_scoping_gg_cannot_honour() {
         MemoryStrategy::Markdown,
         MemoryScope::Inherited,
     ));
-    // A third agent asks for a scope with the capability turned off entirely.
-    let mut scopeless = profile("Ghost", MemoryStrategy::Scratchpad, MemoryScope::Shared);
-    scopeless.capabilities[0].enabled = false;
-    set.agents.push(scopeless);
-    // And a fourth names a scope gg does not know.
+    // A third names a scope gg does not know.
     let mut typo = scratchpad("Typo", MemoryScope::Isolated);
     typo.capabilities[0].params = json!({ "scope": "communal" });
     set.agents.push(typo);
 
-    let warnings = launch_warnings(&set);
+    let refusal = crate::validate::refusal(&set).expect_err("the set is refused");
+    for expected in [
+        // the unreadable value, named with the profile that wrote it
+        "Typo", "communal",
+        // the child that could never inherit the store it says it inherits
+        "Indexer", "markdown",
+    ] {
+        assert!(
+            refusal.contains(expected),
+            "the single refusal is missing `{expected}`:\n{refusal}"
+        );
+    }
+}
+
+/// **A `scope` on a capability that is switched off launches.** A disabled capability records the
+/// configuration the arm would have used — which is what keeps the on and off arms of one
+/// comparison symmetric, and is exactly what the console writes — so it is not a contradiction to
+/// refuse. Only a scope gg cannot *read* is.
+#[test]
+fn a_scope_on_a_disabled_capability_launches() {
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    let mut off = profile("Ghost", MemoryStrategy::Scratchpad, MemoryScope::Shared);
+    off.capabilities[0].enabled = false;
+    set.agents.push(off);
+
+    // The helper profiles bind no model, so the set is refused for that; what matters is that
+    // nothing in the refusal is about the scope.
+    let refusal = crate::validate::refusal(&set).unwrap_err();
     assert!(
-        warnings
-            .iter()
-            .any(|w| w.contains("Typo") && w.contains("communal")),
-        "the unreadable value is named: {warnings:?}"
+        !refusal.contains("scope"),
+        "a disabled capability's scope is configuration, not a defect:\n{refusal}"
     );
+}
+
+/// **An inheriting child that names no strategy of its own launches**, whatever its spawner
+/// organizes memories as. Inheriting *is* "organize them the way my spawner does", so an absent
+/// `implementation` agrees with every spawner rather than defaulting into a contradiction with one.
+#[test]
+fn an_inheriting_child_that_names_no_strategy_launches() {
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    set.agents[0] = GgAgentConfig {
+        subagents: vec![GgSubagentRef::any("Worker")],
+        ..profile(ROOT_AGENT, MemoryStrategy::Markdown, MemoryScope::Isolated)
+    };
+    let mut child = scratchpad("Worker", MemoryScope::Inherited);
+    // Exactly what an editor writes for "I did not choose a strategy".
+    child.capabilities[0].implementation = None;
+    set.agents.push(child);
+
+    let refusal = crate::validate::refusal(&set).unwrap_err();
     assert!(
-        warnings
-            .iter()
-            .any(|w| w.contains("Ghost") && w.contains("is not enabled")),
-        "a scope with memories off is reported: {warnings:?}"
-    );
-    assert!(
-        warnings
-            .iter()
-            .any(|w| w.contains("Indexer") && w.contains("markdown")),
-        "the strategy mismatch is reported: {warnings:?}"
+        !refusal.contains("inherits its memories"),
+        "a child that names no strategy takes its spawner's, whatever it is:\n{refusal}"
     );
 }
 

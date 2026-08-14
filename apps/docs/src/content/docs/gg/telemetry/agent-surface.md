@@ -133,9 +133,10 @@ reports its own, so "which arm was this agent on, and what did it cost?" is a
 join by `agentId` from this event to that agent's `context_breakdown` bands
 (`docs_view` and `search_results`) and to its `api_call` counts.
 
-`docViewTypes` is the mode gg resolved, never the string the profile wrote: an
-unreadable one falls back to the default and is warned about at launch. Its
-values are `off`, `return` and `return-and-parameters`.
+`docViewTypes` is the mode the agent ran under, which is the mode its profile
+wrote: a value gg cannot honour refuses the launch, so a recorded run has one
+mode and the event names it. Its values are `off`, `return` and
+`return-and-parameters`.
 
 One caveat a study has to carry: `api_call` counts lookups, not the views a
 lookup placed, and views per lookup is exactly what `docViewTypes` changes. One

@@ -22,6 +22,7 @@ use crate::limits::DEFAULT_MAX_CONSECUTIVE_ERRORS;
 use crate::subagents::DEFAULT_MAX_PARALLEL;
 use test_cabinet_core::gg::{
     GgLoopDetection, GgProgramLanguage, GgTurnErrorKind, GgTurnErrorType, GgTurnOutcome,
+    SHELL_OUTPUT_MODES,
 };
 
 /// A reply that is not a program — the shape a model sends when it narrates a finished task instead
@@ -46,8 +47,14 @@ fn code_on() -> CodeSetup {
 fn setup_from(declared: GgRunLimits) -> LimitsSetup {
     let mut set = GgCapabilitySet::minimal("mock/primary");
     set.limits = declared;
+    let mut report = crate::validate::LaunchReport::collecting();
     let mut warnings = Vec::new();
-    let limits = resolve_run_limits(&set, &mut warnings);
+    let limits = resolve_run_limits(&set, &mut report, &mut warnings);
+    let defects = report.into_defects();
+    assert!(
+        defects.is_empty(),
+        "this helper is for ceilings gg can arm; got {defects:?}"
+    );
     assert!(
         warnings.is_empty(),
         "this helper is for usable declarations; got {warnings:?}"
@@ -993,25 +1000,62 @@ async fn a_subagents_error_ceiling_ends_it_alone() {
 // Resolution diagnostics
 // ---------------------------------------------------------------------------
 
-/// **Unusable limit declarations warn on the root stream and launch anyway.**
+/// **Unusable limit declarations refuse the launch, naming every one of them.**
 ///
-/// One shared configuration document has to stay interpretable by every configuration it describes,
-/// so a ceiling that cannot bound anything is a loud no-op rather than a refused launch — the same
-/// terms a name no gg tool bears is read on in an agent's own allowlist.
+/// A ceiling is the declaration whose failure mode is silence: an operator who wrote `maxCost`
+/// believes the run is bounded, and a `maxCost` gg disarmed leaves a run that behaves exactly like
+/// one nobody bounded — while spending money. So it is refused before the first turn, on the same
+/// terms as a name no gg tool bears in an agent's own allowlist.
 #[tokio::test]
-async fn unusable_limit_declarations_warn_on_the_root_stream_and_launch_anyway() {
+async fn unusable_limit_declarations_refuse_the_launch_naming_every_one() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-warn".to_string()), Box::new(sink.clone()));
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    let mut code = GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE);
-    code.params = json!({ "healing": { "stripFences": false } });
-    code.enabled = false;
-    crate::tools::grant_configured(&mut set.agents[0], code);
     set.limits = GgRunLimits {
         max_consecutive_errors: Some(0),
-        max_error_rate: Some(0.5),
+        // A rate no run could exceed. (`0.5` alone would be perfectly usable: the missing window
+        // half simply takes gg's default.)
+        max_error_rate: Some(1.5),
         max_cost: Some(-1.0),
+        ..GgRunLimits::default()
+    };
+    let inv = invocation(dir.path(), set);
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::HarnessError);
+
+    // Every one of the three is named, in one refusal, before the first turn: an operator fixing a
+    // sweep's shared document must not have to launch three times to find three typos.
+    let refused = error_messages(&sink.events()).join("\n");
+    for expected in [
+        "limits.maxConsecutiveErrors",
+        "limits.maxErrorRate",
+        "limits.maxCost",
+    ] {
+        assert!(
+            refused.contains(expected),
+            "no refusal named `{expected}`:\n{refused}"
+        );
+    }
+    assert!(
+        turns_started(&sink.events()) == 0,
+        "the run is refused before it spends a token"
+    );
+}
+
+/// **The ceilings that *are* in force are still named**, on a run that launches. The refusal is
+/// about values gg cannot honour; a run that declared nothing usable is a different thing from a
+/// run that declared nothing at all, and both say what they are bounded by.
+#[tokio::test]
+async fn a_run_that_arms_no_ceiling_says_so_and_launches() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-unbounded".to_string()), Box::new(sink.clone()));
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    // The two error ceilings gg arms by default, switched off the only way they can be: by naming
+    // a ceiling gg *can* arm that is wide enough never to fire.
+    set.limits = GgRunLimits {
+        max_consecutive_errors: Some(1_000),
         ..GgRunLimits::default()
     };
     let inv = invocation(dir.path(), set);
@@ -1019,41 +1063,29 @@ async fn unusable_limit_declarations_warn_on_the_root_stream_and_launch_anyway()
     assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
 
     let events = sink.events();
-    let warned = warn_messages(&events).join("\n");
-    for expected in [
-        "maxConsecutiveErrors: 0",
-        "maxErrorRate is set but errorRateWindow is not",
-        "maxCost must be greater than zero",
-    ] {
-        assert!(
-            warned.contains(expected),
-            "no warning named `{expected}`:\n{warned}"
-        );
-    }
-    // Nothing armed, so the run is bounded by the turn ceiling's default — and says so.
     assert!(
         events.iter().any(|e| matches!(
             &e.kind,
             GgTelemetryKind::Log { level, message }
-                if level == "info" && message.contains("no execution ceiling is armed")
+                if level == "info" && message.contains("execution ceilings in force")
         )),
-        "the ceilings actually in force are named too"
+        "the ceilings actually in force are named"
     );
     let summary = session_summary(&events).expect("a session summary");
     assert_eq!(
         summary.limits.max_turns, None,
         "an unset turn ceiling is recorded as unbounded"
     );
-    assert!(summary.limits.max_consecutive_errors.is_none());
+    assert_eq!(summary.limits.max_consecutive_errors, Some(1_000));
 }
 
 /// **An unrecognized shell output mode warns on the root stream and launches anyway.**
 ///
-/// A mode gg does not recognize reads as the default one, so a typo runs the *default* arm under
-/// another arm's name. That is a silent wrong-experiment failure, and it is reported on the same
-/// terms an unusable ceiling is: loudly, once, before the first turn, without failing the launch.
+/// **A mode gg does not recognize refuses the launch.** Reading it as the default would run the
+/// *default* arm under another arm's name — a silent wrong-experiment failure — so the run stops
+/// before the first turn, and the refusal names the mode as it was written.
 #[tokio::test]
-async fn an_unknown_shell_output_mode_warns_and_launches_anyway() {
+async fn an_unknown_shell_output_mode_is_refused() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-offload".to_string()), Box::new(sink.clone()));
@@ -1067,23 +1099,24 @@ async fn an_unknown_shell_output_mode_warns_and_launches_anyway() {
 
     assert_eq!(
         run(&invocation(dir.path(), set), &emitter).await,
-        SessionOutcome::Ran
+        SessionOutcome::HarnessError
     );
 
-    let warned = warn_messages(&sink.events()).join("\n");
+    let refused = error_messages(&sink.events()).join("\n");
     assert!(
-        warned.contains("offlaod") && warned.contains(SHELL_OUTPUT_ADAPTIVE),
-        "the warning names the unreadable mode and the one gg ran instead:\n{warned}"
+        refused.contains("offlaod") && refused.contains("shell.implementation"),
+        "the refusal names the unreadable mode and where it is written:\n{refused}"
     );
 }
 
-/// **An unbound compaction model slot warns on the root stream and launches anyway.**
+/// **An unbound compaction model slot refuses the launch.**
 ///
-/// Binding the slots is the launcher's job; a set that reaches gg still deferring one has a
-/// compaction that will silently run on the agent's own model — a different experiment from the one
-/// the configuration describes, and one whose only other trace is the cost split.
+/// Binding the slots is the launcher's job, and a bound launch replaces the key with the model it
+/// collected. A set that reaches gg still deferring one would compact on the agent's own model — a
+/// different experiment from the one the configuration describes, and one whose only other trace is
+/// the cost split — so gg does not start it, and says so before a token is spent.
 #[tokio::test]
-async fn an_unbound_compaction_model_slot_warns_and_launches_anyway() {
+async fn an_unbound_compaction_model_slot_is_refused() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-compaction".to_string()), Box::new(sink.clone()));
@@ -1100,13 +1133,21 @@ async fn an_unbound_compaction_model_slot_warns_and_launches_anyway() {
 
     assert_eq!(
         run(&invocation(dir.path(), set), &emitter).await,
-        SessionOutcome::Ran
+        SessionOutcome::HarnessError
     );
 
-    let warned = warn_messages(&sink.events()).join("\n");
+    let refused = sink
+        .events()
+        .iter()
+        .filter_map(|event| match &event.kind {
+            GgTelemetryKind::Log { level, message } if level == "error" => Some(message.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
     assert!(
-        warned.contains("summarizer") && warned.contains("own model"),
-        "the warning names the slot and what gg did instead:\n{warned}"
+        refused.contains("summarizer") && refused.contains("modelSlot"),
+        "the refusal names the slot and the key it is written on:\n{refused}"
     );
 }
 
@@ -1604,11 +1645,11 @@ async fn a_disarmed_loop_detector_is_silent() {
     );
 }
 
-/// **An unusable loop-detection knob warns and launches anyway** — the same terms every other
-/// declaration gg cannot act on is read on, and the warning names the agent, because the lever is
-/// per agent and a run with five profiles would otherwise say which knob but not whose.
+/// **An unusable loop-detection knob refuses the launch** — the same terms every other declaration
+/// gg cannot act on is read on, and the refusal names the agent, because the lever is per agent and
+/// a run with five profiles would otherwise say which knob but not whose.
 #[tokio::test]
-async fn an_unusable_loop_detection_knob_warns_and_launches_anyway() {
+async fn an_unusable_loop_detection_knob_refuses_the_launch() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(
@@ -1616,7 +1657,7 @@ async fn an_unusable_loop_detection_knob_warns_and_launches_anyway() {
         Box::new(sink.clone()),
     );
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    // Renamed, so the warning has an agent name to carry that is not the default one.
+    // Renamed, so the refusal has an agent name to carry that is not the default one.
     set.agents[0].name = "builder".to_string();
     set.agents[0].loop_detection = GgLoopDetection {
         enabled: true,
@@ -1626,20 +1667,23 @@ async fn an_unusable_loop_detection_knob_warns_and_launches_anyway() {
 
     assert_eq!(
         run(&invocation(dir.path(), set), &emitter).await,
-        SessionOutcome::Ran
+        SessionOutcome::HarnessError
     );
 
-    let warned = warn_messages(&sink.events()).join("\n");
+    // The attribution is the point: a configuration with eight profiles gives an unattributed
+    // message nowhere to land.
+    let refused = error_messages(&sink.events()).join("\n");
     assert!(
-        warned.contains("agent `builder`") && warned.contains("windowWords"),
-        "the warning names the agent and the knob:\n{warned}"
+        refused.contains("agent `builder`") && refused.contains("loopDetection.windowWords"),
+        "the refusal names the agent and the knob:\n{refused}"
     );
 }
 
-/// **A disarmed declaration warns about nothing**, however nonsensical its knobs are. Nothing is
-/// going to read them, and a warning about a value that will never be used is noise.
+/// **A knob is judged whether or not the detector is armed.** A disarmed declaration reads nothing,
+/// but it is still configuration — it records the detector the off arm *would* have run — so a knob
+/// gg could not arm refuses the launch now rather than on the one that flips the switch.
 #[tokio::test]
-async fn a_disarmed_loop_detection_declaration_warns_about_nothing() {
+async fn a_disarmed_loop_detections_knobs_are_judged_too() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(
@@ -1656,13 +1700,44 @@ async fn a_disarmed_loop_detection_declaration_warns_about_nothing() {
 
     assert_eq!(
         run(&invocation(dir.path(), set), &emitter).await,
+        SessionOutcome::HarnessError
+    );
+
+    let refused = error_messages(&sink.events()).join("\n");
+    assert!(
+        refused.contains("loopDetection.windowWords")
+            && refused.contains("loopDetection.minOffenders"),
+        "both knobs are named:\n{refused}"
+    );
+}
+
+/// **A disarmed declaration whose knobs gg can arm is silent**: it produces no refusal (nothing is
+/// unhonourable) and no warning either (there is no detector for one to be about).
+#[tokio::test]
+async fn a_disarmed_loop_detection_with_usable_knobs_says_nothing() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(
+        Some("run-loopguard-mute".to_string()),
+        Box::new(sink.clone()),
+    );
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    set.agents[0].loop_detection = GgLoopDetection {
+        enabled: false,
+        window_words: Some(64),
+        min_offenders: Some(300),
+        ..GgLoopDetection::default()
+    };
+
+    assert_eq!(
+        run(&invocation(dir.path(), set), &emitter).await,
         SessionOutcome::Ran
     );
 
     let warned = warn_messages(&sink.events()).join("\n");
     assert!(
-        !warned.contains("windowWords") && !warned.contains("minOffenders"),
-        "an unread knob is not worth a warning:\n{warned}"
+        !warned.contains("minOffenders"),
+        "a run with no detector has no inert detector to report:\n{warned}"
     );
 }
 

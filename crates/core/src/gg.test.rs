@@ -431,6 +431,35 @@ fn run_limits_round_trip_camel_case_and_omit_every_unset_ceiling() {
     assert!(GgRunLimits::default().is_empty());
 }
 
+/// **A count is a count however JSON spells it.** JSON has no integer type, so a sweep generated
+/// from JavaScript writes `60.0` and `6e1` as readily as `60` — and all three name the same ceiling.
+/// A number that names no count at all is a different matter, and is refused where it is written
+/// rather than rounded to one gg made up.
+#[test]
+fn an_integral_ceiling_reads_the_same_however_it_is_spelled() {
+    for spelling in [json!(60), json!(60.0), json!(6e1)] {
+        let limits: GgRunLimits =
+            serde_json::from_value(json!({ "maxTurns": spelling })).expect("deserialize");
+        assert_eq!(limits.max_turns, Some(60), "{spelling}");
+    }
+    // `null` is the documented spelling of "take the default", not a value gg cannot read.
+    let absent: GgRunLimits =
+        serde_json::from_value(json!({ "maxTurns": null })).expect("deserialize");
+    assert_eq!(absent.max_turns, None);
+
+    for refused in [json!(60.5), json!(-1), json!("60"), json!(true)] {
+        assert!(
+            serde_json::from_value::<GgRunLimits>(json!({ "maxTurns": refused })).is_err(),
+            "{refused} names no count"
+        );
+    }
+    // The detector's knobs are read under the same rule, in the same way.
+    let detector: GgLoopDetection =
+        serde_json::from_value(json!({ "enabled": true, "windowWords": 256.0 }))
+            .expect("deserialize");
+    assert_eq!(detector.window_words, Some(256));
+}
+
 /// A set that arms no ceiling deserializes to one that declares none, and serializing it back
 /// writes no `limits` key — so an unbounded configuration round-trips byte for byte rather than
 /// growing an object full of nulls.
@@ -740,6 +769,68 @@ fn bound_model_ids_lists_each_resolved_model_once() {
     );
 
     assert!(GgCapabilitySet::default().bound_model_ids().is_empty());
+}
+
+/// **A compaction handoff's model is a bound model.**
+///
+/// It is a second model the run really does send requests to, on the one event that rewrites an
+/// agent's entire window, so everything a launch does per bound model — price it, resolve its
+/// context window, prove the catalog knows it — has to be done for it. Left off this list, a handoff
+/// naming a model that does not exist launched happily and failed on the first compaction, where gg
+/// used to fall back to the working model while every record of the run named the handoff arm.
+#[test]
+fn a_handoff_compaction_model_is_a_bound_model() {
+    let handoff = |strategy: &str, model: serde_json::Value| GgCapabilitySet {
+        preset: None,
+        agents: vec![GgAgentConfig {
+            model_id: "anthropic/claude-opus-4.8".to_string(),
+            capabilities: vec![GgCapabilityConfig {
+                id: CAPABILITY_COMPACTION.to_string(),
+                enabled: true,
+                implementation: Some(strategy.to_string()),
+                params: json!({ COMPACTION_PARAM_MODEL: model }),
+            }],
+            ..GgAgentConfig::root()
+        }],
+        model_slots: Vec::new(),
+        limits: GgRunLimits::default(),
+        hooks: Vec::new(),
+    };
+
+    assert_eq!(
+        handoff(
+            COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION,
+            json!("openai/gpt-5.4-mini"),
+        )
+        .bound_model_ids(),
+        vec!["anthropic/claude-opus-4.8", "openai/gpt-5.4-mini"],
+    );
+    assert_eq!(
+        handoff(
+            COMPACTION_STRATEGY_HANDOFF_COMPACTION,
+            json!("  openai/gpt-5.4-mini  "),
+        )
+        .bound_model_ids(),
+        vec!["anthropic/claude-opus-4.8", "openai/gpt-5.4-mini"],
+        "the id is read as written, trimmed",
+    );
+
+    // A `model` the **selected arm does not use** is not a bound model: it is a key the capability
+    // knows and this strategy ignores, which is the deliberate one-params-block-per-sweep case.
+    // Demanding a catalog entry for it would break exactly the sweep it exists to serve.
+    assert_eq!(
+        handoff(
+            COMPACTION_STRATEGY_SELF_SUMMARIZATION,
+            json!("openai/gpt-5.4-mini"),
+        )
+        .bound_model_ids(),
+        vec!["anthropic/claude-opus-4.8"],
+    );
+    // …nor is a value that names no model at all. gg's launch pass refuses that in its own words.
+    assert_eq!(
+        handoff(COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION, json!("   ")).bound_model_ids(),
+        vec!["anthropic/claude-opus-4.8"],
+    );
 }
 
 #[test]
@@ -2348,4 +2439,177 @@ fn every_event_belongs_to_exactly_one_declaration_site() {
         SESSION_HOOK_EVENTS.len() + AGENT_HOOK_EVENTS.len(),
         ALL_HOOK_EVENTS.len()
     );
+}
+
+// --- The capability-id vocabulary ---------------------------------------------
+
+/// [`GG_CAPABILITY_CATALOG`] is the **single** authority on what a capability may be called: the
+/// launch reads it to refuse an id gg does not ship, and the query-document builder reads it to
+/// make the `cap.*` namespace total. Both jobs are wrong if the list has a duplicate or is missing
+/// an id that exists.
+///
+/// The coverage half is asserted against the module's own source rather than against a second list
+/// written here, because a second list is exactly the drift the catalog exists to prevent: adding
+/// `pub const CAPABILITY_X` without adding it to the catalog must fail this test, and it can only
+/// do that if the test finds the constant itself.
+#[test]
+fn the_capability_catalog_has_no_duplicates_and_covers_every_shipped_id() {
+    let mut seen = std::collections::BTreeSet::new();
+    for id in GG_CAPABILITY_CATALOG {
+        assert!(seen.insert(*id), "`{id}` appears in the catalog twice");
+        assert!(
+            !id.is_empty() && id.trim() == *id,
+            "`{id}` is not a usable capability id"
+        );
+    }
+
+    let declared = declared_capability_ids();
+    assert!(
+        !declared.is_empty(),
+        "the source scan found no CAPABILITY_* constants at all — it has stopped working"
+    );
+    for id in &declared {
+        assert!(
+            seen.contains(id.as_str()),
+            "`pub const CAPABILITY_… = {id:?}` is declared but missing from GG_CAPABILITY_CATALOG, \
+             so a set naming it would be refused at launch"
+        );
+    }
+    assert_eq!(
+        seen.len(),
+        declared.len(),
+        "the catalog carries an id no CAPABILITY_* constant declares"
+    );
+}
+
+/// Every `pub const CAPABILITY_… : &str = "…";` declared in `gg.rs`, read out of the source.
+fn declared_capability_ids() -> std::collections::BTreeSet<String> {
+    include_str!("gg.rs")
+        .lines()
+        .filter_map(|line| {
+            let rest = line.strip_prefix("pub const CAPABILITY_")?;
+            let (_, value) = rest.split_once('=')?;
+            let value = value.trim().trim_end_matches(';').trim();
+            Some(value.trim_matches('"').to_string())
+        })
+        .collect()
+}
+
+// --- The configuration contract is strict -------------------------------------
+
+/// Every container of the gg **configuration** contract refuses a key it does not know.
+///
+/// A misspelled key is the one misconfiguration nothing downstream can see: `implementaton` parses
+/// as an absent implementation, `maxTurnss` as an unbounded run, `transtions` as a terminal state —
+/// each of them a run that is recorded as the configuration the operator wrote and is not the run
+/// they asked for. gg has no back-compat, so a newer console writing a field an older gg has never
+/// heard of is the same defect wearing a nicer hat, and fails the same way.
+#[test]
+fn an_unknown_key_is_refused_by_every_configuration_container() {
+    fn refuses<T: serde::de::DeserializeOwned>(what: &str, mut value: serde_json::Value) {
+        let object = value.as_object_mut().expect("a JSON object fixture");
+        object.insert("nosuchkey".to_string(), json!(1));
+        let error = serde_json::from_value::<T>(value)
+            .err()
+            .unwrap_or_else(|| panic!("{what} accepted an unknown key"));
+        assert!(
+            error.to_string().contains("unknown field"),
+            "{what} failed for the wrong reason: {error}"
+        );
+    }
+
+    refuses::<GgCapabilitySet>("GgCapabilitySet", json!({ "agents": [] }));
+    refuses::<GgAgentConfig>("GgAgentConfig", json!({ "name": ROOT_AGENT }));
+    refuses::<GgCapabilityConfig>(
+        "GgCapabilityConfig",
+        json!({ "id": CAPABILITY_SHELL, "enabled": true }),
+    );
+    refuses::<GgLoopDetection>("GgLoopDetection", json!({ "enabled": true }));
+    refuses::<GgFsmState>("GgFsmState", json!({ "name": "build" }));
+    refuses::<GgFsmTransition>("GgFsmTransition", json!({ "to": "review" }));
+    refuses::<GgRunLimits>("GgRunLimits", json!({ "maxTurns": 40 }));
+    refuses::<GgSubagentRef>("GgSubagentRef", json!({ "agent": "Reviewer" }));
+    refuses::<GgModelSlot>("GgModelSlot", json!({ "name": PRIMARY_SLOT }));
+    refuses::<GgSlotBinding>(
+        "GgSlotBinding",
+        json!({ "slot": PRIMARY_SLOT, "modelId": "anthropic/claude-opus-4.8" }),
+    );
+    refuses::<GgHook>(
+        "GgHook",
+        json!({ "event": "pre-write", "action": { "type": "built-in", "script": "trace" } }),
+    );
+    refuses::<GgHookAction>(
+        "GgHookAction",
+        json!({ "type": "command", "command": "npm test" }),
+    );
+    refuses::<GgInvocation>(
+        "GgInvocation",
+        json!({ "sessionId": "s1", "workspaceDir": "/work", "prompt": "build it" }),
+    );
+}
+
+/// The strictness reaches **inside** the envelope, which is where it earns its keep: a typo on a
+/// capability's `implementation` key is nested three levels down in the one document a sweep shares
+/// across every arm.
+#[test]
+fn an_unknown_key_nested_in_the_invocation_is_refused() {
+    let error = serde_json::from_value::<GgInvocation>(json!({
+        "sessionId": "s1",
+        "workspaceDir": "/work",
+        "prompt": "build it",
+        "capabilitySet": {
+            "agents": [{
+                "name": ROOT_AGENT,
+                "modelId": "anthropic/claude-opus-4.8",
+                "capabilities": [{
+                    "id": CAPABILITY_COMPACTION,
+                    "enabled": true,
+                    "implementaton": COMPACTION_STRATEGY_MEMORY,
+                }],
+            }],
+        },
+    }))
+    .expect_err("a misspelled `implementation` must not read as an absent one");
+    assert!(error.to_string().contains("implementaton"), "{error}");
+}
+
+/// A [`params`](GgCapabilityConfig::params) object stays free-form: its keys are the capability's
+/// own vocabulary, checked at launch by the capability that reads them, not by serde. Refusing them
+/// here would make one capability's params a field of every other capability's type.
+#[test]
+fn capability_params_stay_free_form() {
+    let config: GgCapabilityConfig = serde_json::from_value(json!({
+        "id": CAPABILITY_COMPACTION,
+        "enabled": true,
+        "params": { "summaryHeadroom": 0.3, "anything": ["at", "all"] },
+    }))
+    .expect("params are a free-form object");
+    assert_eq!(config.params["summaryHeadroom"], json!(0.3));
+}
+
+/// A [transfer list](GgFsmTransition::transfer) entry that is not a module kind gg knows is
+/// **refused**, not dropped.
+///
+/// Both shapes matter and only one of them was ever visible: a mistyped *string* could at least be
+/// scanned for, while an entry that is not a string at all could not be seen by any scan over
+/// `Value::as_str`. Neither reaches a machine now.
+#[test]
+fn an_unknown_transfer_kind_is_refused() {
+    let good: GgFsmTransition =
+        serde_json::from_value(json!({ "to": "review", "transfer": ["history", "tasks"] }))
+            .expect("a list of real module kinds");
+    assert_eq!(
+        good.transfer,
+        vec![GgModuleKind::History, GgModuleKind::Tasks]
+    );
+
+    for bad in [json!(["histry"]), json!(["history", 7]), json!([null])] {
+        serde_json::from_value::<GgFsmTransition>(json!({ "to": "review", "transfer": bad }))
+            .expect_err("an entry that is not a module kind must fail the machine");
+    }
+
+    // Absent is still the documented default — a hard reset that transfers nothing.
+    let none: GgFsmTransition =
+        serde_json::from_value(json!({ "to": "review" })).expect("deserialize");
+    assert!(none.transfer.is_empty());
 }

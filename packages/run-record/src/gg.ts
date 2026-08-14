@@ -71,9 +71,12 @@ export type GgAgentConfig = {
    *
    * Every name is checked against gg's tool vocabulary at launch, and one that is not a gg tool
    * — a typo, a tool since removed, or an [operation id](Self::operations) from the other surface
-   * — is an error, not a silently inert entry. An allowlist entry that grants nothing looks
-   * exactly like a deliberate narrowing, so nothing but a launch-time complaint can tell an
-   * operator that the call they meant to hand over never arrived.
+   * — **refuses the launch**, rather than being a silently inert entry. An allowlist entry that
+   * grants nothing looks exactly like a deliberate narrowing, so nothing gg could say afterwards
+   * would tell an operator that the call they meant to hand over never arrived. A name that *is*
+   * a gg tool but that this agent's capabilities do not offer is fine and silent: it grants
+   * nothing, it is not a typo, and one shared document naming a call only some of the
+   * configurations it describes enable is the ordinary way a sweep is written.
    */
   tools?: Array<string>;
   /**
@@ -86,8 +89,8 @@ export type GgAgentConfig = {
    * [`tools`](Self::tools)'. What differs is the vocabulary, and the two are **scoped**: the API
    * surface is strictly the larger of the two — every tool has an operation behind it, and
    * operations exist that no tool does — but a name is granted on precisely the surface it
-   * belongs to. A tool name here, or an operation id there, is a mistake gg reports rather than
-   * a spelling it accepts.
+   * belongs to. A tool name here, or an operation id there, refuses the launch rather than being
+   * a spelling gg accepts.
    */
   operations?: Array<string>;
   /**
@@ -242,8 +245,14 @@ export type GgPromptCacheTtl = "standard" | "extended";
  * param — a tool-calling model loops in exactly the same way, inside a tool call's arguments.
  *
  * Every knob is optional and an absent one takes gg's own default (documented per field). A knob
- * set to a value that cannot bound anything is a startup **warning** and takes the default, never
- * an error, on the same terms as [`GgRunLimits`].
+ * **set** to a value that cannot bound anything — a zero window, a zero threshold, a demand for
+ * no offenders — is a launch **failure**, on the same terms as [`GgRunLimits`]: a detector armed
+ * on gg's defaults instead of the ones the profile wrote is a different detector.
+ *
+ * The one exception is a declaration gg arms exactly as written and which is merely provably
+ * inert: [`min_offenders`](Self::min_offenders) above
+ * [`window_words`](Self::window_words) can never saturate, but both numbers are honoured to the
+ * letter, so it warns rather than refusing.
  *
  * See the [loop-detection](https://docs.testcabinet.ai/gg/loop-detection/) page for the algorithm
  * these knobs parameterise.
@@ -336,17 +345,24 @@ export type GgModelSlot = {
 /**
  * The configuration of a single capability within a [`GgCapabilitySet`].
  *
- * A capability is identified by a stable [`id`](Self::id) (an open string, not a
- * closed enum, so later phases add capabilities freely), can be toggled
+ * A capability is identified by a stable [`id`](Self::id) — one of
+ * [`GG_CAPABILITY_CATALOG`], the closed vocabulary gg ships — can be toggled
  * [on or off](Self::enabled), can select among alternate
  * [implementations](Self::implementation) for A/B comparisons, and carries
  * free-form [`params`](Self::params) for tuning.
+ *
+ * The id is a `String` rather than an enum because the same vocabulary has to be spelled once for
+ * the console, the query language and the harness, not because it is open: an id outside the
+ * catalog names nothing gg can switch on, and the launch refuses it. The [`params`](Self::params)
+ * object is the one genuinely free-form field, and its **keys** are checked against the selected
+ * capability's own vocabulary at launch for the same reason.
  */
 export type GgCapabilityConfig = {
   /**
    * The capability's stable id (for example `"shell"`, `"compaction"`, or
-   * `"subagents"`). Stable across versions so recorded configurations stay
-   * comparable.
+   * `"subagents"`) — one of [`GG_CAPABILITY_CATALOG`]. Stable across versions so recorded
+   * configurations stay comparable, and **closed**: an id gg does not ship is refused at
+   * launch rather than carried through the run as a configuration nothing reads.
    */
   id: string;
   /**
@@ -358,7 +374,10 @@ export type GgCapabilityConfig = {
   /**
    * The selected implementation of the capability, when it offers more than one
    * (for example two compaction strategies or two memory strategies). `None` selects the
-   * default. This is the basis for A/B comparisons between implementations.
+   * default. This is the basis for A/B comparisons between implementations — which is exactly
+   * why a name the capability does not offer is a **launch failure** and never a fall back to
+   * the default: the arm is the independent variable, and a run measured on one arm while its
+   * record names another is worse than no run.
    */
   implementation?: string;
   /**
@@ -485,8 +504,10 @@ export type GgModuleOwnership = "owned" | "unowned";
  * different origins, because one of them created it and the other bound, inherited or was handed
  * it. Read beside the holder's declared [scope](GgMemoryScope) it is also the only way to see a
  * binding that did not resolve the way its configuration asked — a holder reporting
- * `scope: inherited` with `origin: created` is one whose inheritance silently fell back to a
- * private instance, which is a legal outcome nothing else in the record states.
+ * `scope: inherited` with `origin: created` is one whose inheritance did not find a store to
+ * inherit. gg refuses the statically decidable form of that at launch and treats the rest as its
+ * own defect mid-run, so this pairing marks a gg bug rather than an accepted outcome; it stays
+ * legible in the record precisely so such a bug is findable.
  *
  * It deliberately does **not** distinguish a fork's copy from a fork's link. Whether the copy got
  * its own store is already visible, and visible more reliably, in the
@@ -769,10 +790,11 @@ export type GgFsmTransition = {
    * of the record cannot see. The console's editor pre-fills `["history"]` on every transition it
    * creates, so the common case is still one click.
    *
-   * Deserialized **leniently**: an entry that is not a module kind gg knows is dropped rather
-   * than failing the whole machine. A mistyped module name is an unrecognized *value*, which the
-   * harness reports as a launch warning and falls back from, and refusing to launch over one
-   * would put it in the same class as a state that points nowhere.
+   * Read **strictly**: every entry must be a [module kind](GgModuleKind) gg knows. An entry that
+   * is not one — a mistyped name, or a value that is not even a string — fails the document,
+   * which fails the launch. A transfer list gg silently shortened would run a machine that hands
+   * its successor less than the configuration says it hands it, and there is no reading of the
+   * record afterwards that could show the difference.
    */
   transfer: Array<GgModuleKind>;
   /**
@@ -1448,13 +1470,22 @@ export type GgReviewer = {
  * is armed by default instead are the two error
  * ceilings that end a run which is *failing* rather than merely *long*: **5 consecutive errors**,
  * and an **error rate above 0.4 over the last 50 turns**. Runtime and cost stay off when unset —
- * the host owns the clock, and gg will not invent a spend ceiling nobody asked for. A field set to
- * a value that cannot bound anything — a zero window, a negative rate, a rate above `1.0` — is a
- * startup warning and is ignored, never an error, because a ceiling that cannot bind still leaves
- * the run the operator asked for runnable; a **partially** declared error rate (a rate without a
- * window, or a window without a rate) is likewise a warning and no ceiling, and does not
- * fall back to the default. The run records the ceilings that were actually in force on
+ * the host owns the clock, and gg will not invent a spend ceiling nobody asked for.
+ *
+ * **Absent takes the default; present-and-unhonourable fails the launch.** A field set to a value
+ * that cannot bound anything — a zero turn or runtime ceiling, a zero window, a negative rate, a
+ * rate above `1.0`, a non-finite cost — is refused by name, not disarmed with a warning: an
+ * operator who wrote a ceiling believes the run is bounded, and a run that quietly became
+ * unbounded is the one case where the misconfiguration costs money. A **partially** declared error
+ * rate (a rate without a window, or a window without a rate) is refused on the same terms rather
+ * than arming nothing. The run records the ceilings that were actually in force on
  * [`GgSessionSummary::limits`], so a default is a recorded fact rather than a hidden one.
+ *
+ * One combination stays a warning, because gg honours it exactly as written:
+ * [`error_rate_window`](Self::error_rate_window) at or above
+ * [`max_turns`](Self::max_turns) arms both numbers to the letter and merely leaves the rate
+ * ceiling able to fire only on the last turn. Which of the two knobs was meant is genuinely
+ * unknowable, so gg says so and runs what was asked for.
  *
  * See the [execution-limits](https://docs.testcabinet.ai/gg/execution-limits/) page for how each
  * ceiling is accounted (per agent or run-wide) and what breaching it does to the run.
@@ -1463,8 +1494,9 @@ export type GgRunLimits = {
   /**
    * How many of the run's agents may **run at once**, counting the root and every subagent,
    * issue implementer and reviewer alike. **Absent means gg's default of
-   * 16**; set it explicitly to widen or tighten the pool, and `0` is read as "no cap declared"
-   * (a run with no agent able to run could not start at all).
+   * 16**; set it explicitly to widen or tighten the pool. `0` is refused — a run with no agent
+   * able to run could not start at all, so it is a ceiling gg cannot honour rather than a way
+   * of writing "no cap".
    *
    * Unlike every other field here it **stops nothing** — it *queues*. An agent spawned while the
    * pool is full is created normally and waits for a slot, so a configuration cannot lose work by
@@ -1494,7 +1526,8 @@ export type GgRunLimits = {
   maxRuntimeSecs?: number;
   /**
    * How many **error turns in a row** end an agent. **Absent means gg's default of 5**; set it
-   * explicitly to widen or tighten the ceiling.
+   * explicitly to widen or tighten the ceiling. `0` is refused rather than read as "off" — it
+   * would end an agent before its first turn, so it is not a ceiling gg can honour.
    *
    * A turn is an error when the work it *declared* could not be carried out as declared: a
    * model call that failed, a program that did not compile, one that threw uncaught, or one the
@@ -1508,12 +1541,12 @@ export type GgRunLimits = {
    * The fraction of recent turns that may be errors before an agent is stopped, in `0.0..=1.0`.
    * Breached only **strictly above** the value, matching "more than X%": at `0.5` over a window
    * of ten, five errors is not a breach and six is. Needs
-   * [`error_rate_window`](Self::error_rate_window); either alone is a startup warning and no
-   * ceiling.
+   * [`error_rate_window`](Self::error_rate_window); either alone fails the launch.
    *
    * When **both** this and the window are absent, gg's default arms an error rate of **0.4 over
    * the last 50 turns**. A partial declaration (this without the window, or the window without
-   * this) does not fall back to the default — it warns and arms nothing.
+   * this) neither falls back to the default nor arms nothing — it is refused, because half a
+   * ceiling is a ceiling the operator believes they have.
    */
   maxErrorRate?: number;
   /**
@@ -1554,9 +1587,10 @@ export type GgRunLimits = {
    * params because capture is on for every run whatever the set says, so a ceiling parked on a
    * capability would be unreadable by exactly the runs that need it.
    *
-   * `0` cannot bound anything (it would stop capture before its first line) and is read as
-   * "no ceiling", with a startup warning, on the same terms as
-   * [`max_consecutive_errors`](Self::max_consecutive_errors)`: 0`.
+   * `0` cannot bound anything (it would stop capture before its first line) and is **refused**,
+   * on the same terms as [`max_consecutive_errors`](Self::max_consecutive_errors)`: 0`. Omit the
+   * key to take the default; there is no spelling of "no ceiling" here, because there is no run
+   * that wants one.
    */
   replayMaxBytes?: number;
 };
@@ -1726,7 +1760,8 @@ export type GgHookAction =
       /**
        * How much of the output comes back inline and what happens to the rest — one of
        * [`SHELL_OUTPUT_MODES`]. Absent follows the agent's own `shell` configuration, which is
-       * almost always what an operator means.
+       * almost always what an operator means; a value that is not one of the modes is refused
+       * at launch, on the same terms as the `shell` capability's own `output` param.
        */
       output?: string;
     }
@@ -3091,9 +3126,10 @@ export type GgTelemetryKind =
        * (everything the signature names). `None` for a tool-calling instance, which opens no
        * documentation views.
        *
-       * The value is the mode gg **resolved**, never the string the profile wrote: an unreadable
-       * one falls back to the default and is warned about at launch, and reporting the raw text
-       * here would file that run under an arm it was never on.
+       * The value is the mode gg **resolved**, which since an unreadable one is refused at
+       * launch is always the mode the profile wrote. It is reported as the resolved value rather
+       * than the raw text so a profile that named none reports the default it actually ran on
+       * instead of an absence.
        *
        * It is reported for one reason, and the reason decides the field rather than decorating
        * it. The three modes are meant to be compared against each other — opening the return
@@ -4183,9 +4219,10 @@ export type GgTelemetryEvent = {
        * (everything the signature names). `None` for a tool-calling instance, which opens no
        * documentation views.
        *
-       * The value is the mode gg **resolved**, never the string the profile wrote: an unreadable
-       * one falls back to the default and is warned about at launch, and reporting the raw text
-       * here would file that run under an arm it was never on.
+       * The value is the mode gg **resolved**, which since an unreadable one is refused at
+       * launch is always the mode the profile wrote. It is reported as the resolved value rather
+       * than the raw text so a profile that named none reports the default it actually ran on
+       * instead of an absence.
        *
        * It is reported for one reason, and the reason decides the field rather than decorating
        * it. The three modes are meant to be compared against each other — opening the return

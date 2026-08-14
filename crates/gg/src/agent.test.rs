@@ -27,6 +27,18 @@ use crate::model::{
 };
 use crate::modules::{HistorySetup, ModuleHandle, ModuleSet};
 use crate::skills::{SkillLibrary, SkillsRuntime};
+
+/// [`super::system_prompt`] for the tests, which build their own [`SystemContext`] and expect it to
+/// render.
+///
+/// It shadows the glob-imported production function deliberately, so the ~20 assertions below stay
+/// about *what the prompt says* rather than each unwrapping the same `Result`. The failures it
+/// panics on are both gg's own — a template override that will not render and a code-mode context
+/// with no program language — and a test that provoked one has found a defect either way. The
+/// production disposition (the agent's loop ends, and the run with it) is asserted where the loop is.
+fn system_prompt(inputs: PromptInputs<'_>) -> String {
+    super::system_prompt(inputs).expect("this agent's system prompt renders")
+}
 use crate::tasks::TasksRuntime;
 use crate::telemetry::{CollectingSink, Emitter};
 use crate::tools::{ToolContext, ToolRegistry, VisionContext};
@@ -359,6 +371,19 @@ fn limit_breaches(events: &[GgTelemetryEvent]) -> Vec<GgLimitBreach> {
         .iter()
         .filter_map(|e| match &e.kind {
             GgTelemetryKind::LimitExceeded { breach } => Some(breach.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Every `error`-level log message in the stream, in order — where a
+/// [launch refusal](crate::validate) lands, and where every other defect only an operator can act
+/// on is reported.
+fn error_messages(events: &[GgTelemetryEvent]) -> Vec<String> {
+    events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::Log { level, message } if level == "error" => Some(message.clone()),
             _ => None,
         })
         .collect()
@@ -1740,7 +1765,7 @@ async fn autoload_seeds_the_provided_files_as_read_pairs() {
     std::fs::write(dir.path().join("reference").join("title.png"), FAKE_PNG).unwrap();
 
     let ctx = ToolContext::new(dir.path());
-    let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
+
     let mut context = ContextModel::new(
         Arc::new(HeuristicTokenEstimator::new()),
         Some(100_000),
@@ -1757,9 +1782,9 @@ async fn autoload_seeds_the_provided_files_as_read_pairs() {
         &ctx,
         GgProgramLanguage::TypeScript,
         false,
-        &emitter,
     )
-    .await;
+    .await
+    .expect("every provided file is readable");
 
     // Two file views, in the order provided, tagged with their paths — ephemeral (not locked).
     let views: Vec<_> = context
@@ -1811,7 +1836,7 @@ async fn autoload_seeds_a_code_agent_with_a_program_not_a_tool_call() {
     std::fs::write(dir.path().join("reference").join("title.png"), FAKE_PNG).unwrap();
 
     let ctx = ToolContext::new(dir.path());
-    let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
+
     let mut context = ContextModel::new(
         Arc::new(HeuristicTokenEstimator::new()),
         Some(100_000),
@@ -1829,9 +1854,9 @@ async fn autoload_seeds_a_code_agent_with_a_program_not_a_tool_call() {
         &ctx,
         GgProgramLanguage::TypeScript,
         false,
-        &emitter,
     )
-    .await;
+    .await
+    .expect("every provided file is readable");
 
     // One assistant turn, and it is a program naming both files in seeding order.
     let assistant: Vec<String> = context
@@ -1911,7 +1936,7 @@ async fn a_locked_code_mode_seed_is_pinned() {
     let dir = TempDir::new().unwrap();
     std::fs::write(dir.path().join("SPEC.md"), "the whole specification").unwrap();
     let ctx = ToolContext::new(dir.path());
-    let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
+
     let mut context = ContextModel::new(Arc::new(HeuristicTokenEstimator::new()), None, true);
 
     autoload_specifications(
@@ -1920,9 +1945,9 @@ async fn a_locked_code_mode_seed_is_pinned() {
         &ctx,
         GgProgramLanguage::TypeScript,
         true,
-        &emitter,
     )
-    .await;
+    .await
+    .expect("every provided file is readable");
 
     assert!(
         context
@@ -1941,7 +1966,7 @@ async fn locked_autoload_survives_compaction() {
     let dir = TempDir::new().unwrap();
     std::fs::write(dir.path().join("SPEC.md"), "the whole specification").unwrap();
     let ctx = ToolContext::new(dir.path());
-    let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
+
     let provided = vec![PathBuf::from("SPEC.md")];
 
     // Unlocked: the view is ephemeral, so a compaction drops it.
@@ -1958,9 +1983,9 @@ async fn locked_autoload_survives_compaction() {
         &ctx,
         GgProgramLanguage::TypeScript,
         false,
-        &emitter,
     )
-    .await;
+    .await
+    .expect("every provided file is readable");
     unlocked.clear_ephemeral();
     assert!(
         !unlocked
@@ -1984,9 +2009,9 @@ async fn locked_autoload_survives_compaction() {
         &ctx,
         GgProgramLanguage::TypeScript,
         true,
-        &emitter,
     )
-    .await;
+    .await
+    .expect("every provided file is readable");
     assert!(
         context_has_pinned_file_view(&locked),
         "a locked spec is pinned before compaction"
@@ -2411,16 +2436,24 @@ fn resolve_window_limit_takes_the_catalog_window_and_never_guesses() {
     let set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
     let catalog = windows("anthropic/claude-opus-4.8", 200_000);
     assert_eq!(
-        resolve_window_limit(&set, &catalog, "anthropic/claude-opus-4.8"),
+        resolve_window_limit(&set, set.root(), &catalog, "anthropic/claude-opus-4.8"),
         Some(200_000)
     );
 
     // A model the launch pushed no window for resolves to nothing at all — a guessed
     // denominator would silently mis-scale every fullness figure and the compaction
     // trigger, so the launch check refuses the run instead.
-    assert_eq!(resolve_window_limit(&set, &catalog, "mock/echo"), None);
     assert_eq!(
-        resolve_window_limit(&set, &BTreeMap::new(), "anthropic/claude-opus-4.8"),
+        resolve_window_limit(&set, set.root(), &catalog, "mock/echo"),
+        None
+    );
+    assert_eq!(
+        resolve_window_limit(
+            &set,
+            set.root(),
+            &BTreeMap::new(),
+            "anthropic/claude-opus-4.8"
+        ),
         None
     );
 }
@@ -2461,26 +2494,62 @@ fn window_override(limit: u64) -> GgCapabilityConfig {
     }
 }
 
-/// An enabled `context-window-override` narrows the catalog's figure by its `windowLimit`, and
-/// a zero (or non-integer) one is ignored in favor of it.
+/// An enabled `context-window-override` narrows the catalog's figure by its `windowLimit`.
 #[test]
 fn resolve_window_limit_narrows_with_the_param() {
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
     set.agents[0].capabilities.push(window_override(42_000));
     let catalog = windows("anthropic/claude-opus-4.8", 200_000);
     assert_eq!(
-        resolve_window_limit(&set, &catalog, "anthropic/claude-opus-4.8"),
+        resolve_window_limit(&set, set.root(), &catalog, "anthropic/claude-opus-4.8"),
         Some(42_000)
     );
+}
 
-    for cap in &mut set.agents[0].capabilities {
-        if cap.id == CAPABILITY_CONTEXT_WINDOW_OVERRIDE {
-            cap.params = json!({ "windowLimit": 0 });
-        }
-    }
+/// A `windowLimit` of `0` is an override that narrows nothing — one the run **records** and never
+/// applies, which would make the two arms of a context-window study the same arm. It refuses the
+/// launch rather than reverting to the model's own window.
+#[test]
+fn a_window_limit_of_zero_is_refused() {
+    let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
+    set.agents[0].capabilities.push(GgCapabilityConfig {
+        params: json!({ "windowLimit": 0 }),
+        ..GgCapabilityConfig::enabled(CAPABILITY_CONTEXT_WINDOW_OVERRIDE)
+    });
+
+    let defects = window_defects(&set, windows("anthropic/claude-opus-4.8", 200_000));
+    assert_eq!(defects.len(), 1, "{defects:?}");
     assert_eq!(
-        resolve_window_limit(&set, &catalog, "anthropic/claude-opus-4.8"),
-        Some(200_000)
+        defects[0].locus,
+        "context-window-override.params.windowLimit"
+    );
+}
+
+/// The narrowing is **per agent**, like every other capability: a run may narrow its implementer's
+/// window and measure its reviewer against its model's own.
+#[test]
+fn resolve_window_limit_reads_the_agents_own_override() {
+    let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
+    set.agents[0].capabilities.push(window_override(42_000));
+    set.agents.push(GgAgentConfig {
+        name: "reviewer".to_string(),
+        ..GgAgentConfig::root()
+    });
+    let catalog = windows("anthropic/claude-opus-4.8", 200_000);
+
+    assert_eq!(
+        resolve_window_limit(&set, set.root(), &catalog, "anthropic/claude-opus-4.8"),
+        Some(42_000)
+    );
+    assert_eq!(
+        resolve_window_limit(
+            &set,
+            set.agent("reviewer").expect("the second profile"),
+            &catalog,
+            "anthropic/claude-opus-4.8"
+        ),
+        Some(200_000),
+        "a profile that declared no override is not narrowed because another one did"
     );
 }
 
@@ -2500,6 +2569,7 @@ fn resolve_window_limit_ignores_a_disabled_override() {
     assert_eq!(
         resolve_window_limit(
             &set,
+            set.root(),
             &windows("anthropic/claude-opus-4.8", 200_000),
             "anthropic/claude-opus-4.8"
         ),
@@ -2520,6 +2590,7 @@ fn resolve_window_limit_ignores_the_param_on_another_capability() {
     assert_eq!(
         resolve_window_limit(
             &set,
+            set.root(),
             &windows("anthropic/claude-opus-4.8", 200_000),
             "anthropic/claude-opus-4.8"
         ),
@@ -2527,24 +2598,34 @@ fn resolve_window_limit_ignores_the_param_on_another_capability() {
     );
 }
 
-/// The window-limit override may only *narrow* the model's window: the catalog's figure is a
-/// hard limit, so an override above it is clamped back down to it rather than believed.
+/// The window-limit override may only *narrow* the model's window: the catalog's figure is a hard
+/// limit, so an override above it is **refused**. Clamping it silently left a run recording a
+/// narrowing it never applied and measuring the model's full window under the narrowed arm's name.
 #[test]
-fn resolve_window_limit_clamps_an_override_above_the_model_window() {
+fn an_override_above_the_model_window_is_refused() {
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
     set.agents[0].capabilities.push(window_override(2_000_000));
-    let catalog = windows("anthropic/claude-opus-4.8", 200_000);
-    assert_eq!(
-        resolve_window_limit(&set, &catalog, "anthropic/claude-opus-4.8"),
-        Some(200_000)
+
+    let defects = window_defects(&set, windows("anthropic/claude-opus-4.8", 200_000));
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert!(
+        defects[0].message.contains("only make a window smaller"),
+        "{defects:?}"
     );
 
-    // An override cannot conjure a window for a model the launch pushed none for, either:
-    // there is no figure to clamp it against, so the run does not start.
-    assert_eq!(
-        resolve_window_limit(&set, &BTreeMap::new(), "anthropic/claude-opus-4.8"),
-        None
-    );
+    // A model the launch pushed no window for is left alone here: `validate_model_windows` owns
+    // that refusal, and naming one defect twice is worse than naming it once.
+    assert!(window_defects(&set, BTreeMap::new()).is_empty());
+}
+
+/// Every value gg refuses in `set`'s window overrides, judged against `catalog`.
+fn window_defects(
+    set: &GgCapabilitySet,
+    catalog: BTreeMap<String, u64>,
+) -> Vec<crate::validate::LaunchDefect> {
+    let mut report = crate::validate::LaunchReport::collecting();
+    check_window_limits(set, &catalog, &mut report);
+    report.into_defects()
 }
 
 /// Enabling compaction reserves the summary headroom out of the window the agent is
@@ -2556,13 +2637,13 @@ fn resolve_window_limit_reserves_compaction_headroom() {
     crate::tools::grant(&mut set.agents[0], CAPABILITY_COMPACTION);
     let catalog = windows("anthropic/claude-opus-4.8", 200_000);
     assert_eq!(
-        resolve_window_limit(&set, &catalog, "anthropic/claude-opus-4.8"),
+        resolve_window_limit(&set, set.root(), &catalog, "anthropic/claude-opus-4.8"),
         Some(160_000)
     );
 
     set.agents[0].capabilities.push(window_override(50_000));
     assert_eq!(
-        resolve_window_limit(&set, &catalog, "anthropic/claude-opus-4.8"),
+        resolve_window_limit(&set, set.root(), &catalog, "anthropic/claude-opus-4.8"),
         Some(40_000)
     );
 }
@@ -2578,11 +2659,11 @@ fn resolve_window_limit_is_per_model() {
         ("openai/gpt-5.4-mini".to_string(), 400_000),
     ]);
     assert_eq!(
-        resolve_window_limit(&set, &catalog, "anthropic/claude-opus-4.8"),
+        resolve_window_limit(&set, set.root(), &catalog, "anthropic/claude-opus-4.8"),
         Some(200_000)
     );
     assert_eq!(
-        resolve_window_limit(&set, &catalog, "openai/gpt-5.4-mini"),
+        resolve_window_limit(&set, set.root(), &catalog, "openai/gpt-5.4-mini"),
         Some(400_000)
     );
 }
@@ -2684,7 +2765,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
         "---\nname: guide\ndescription: a guide.\n---\nThis is the guide body with enough words to count.",
     )
     .unwrap();
-    let library = Arc::new(SkillLibrary::load(dir.path()));
+    let library = Arc::new(SkillLibrary::loaded(dir.path()));
     assert_eq!(library.len(), 1);
 
     let set = GgCapabilitySet::minimal("mock/echo");
@@ -3774,7 +3855,7 @@ fn compaction_script() -> Vec<ModelResponse> {
 /// empty memory store, and an empty task store, all bound into the toolset.
 fn compaction_runtimes(dir: &Path) -> (ToolRegistry, SkillsRuntime, MemoriesRuntime, TasksRuntime) {
     seed_default_skill(dir);
-    let library = Arc::new(SkillLibrary::load(&dir.join(".gg").join("skills")));
+    let library = Arc::new(SkillLibrary::loaded(&dir.join(".gg").join("skills")));
     assert_eq!(library.len(), 1, "the seeded skill loaded");
     let skills = SkillsRuntime::new(Arc::clone(&library));
     let memories = MemoriesRuntime::new(
@@ -4178,9 +4259,12 @@ fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
             "archive-0".to_string(),
             // The run's own resolution, threaded in exactly as the loop threads it: the language is
             // resolved once per agent and read from there, never re-derived per consumer.
-            profile
-                .is_enabled(CAPABILITY_RESPONSES_AS_CODE)
-                .then(|| crate::sandbox::resolve_program_language(profile).language),
+            profile.is_enabled(CAPABILITY_RESPONSES_AS_CODE).then(|| {
+                crate::sandbox::resolve_program_language(
+                    profile,
+                    &mut crate::validate::LaunchReport::Discarding,
+                )
+            }),
         )
     };
 
@@ -4813,9 +4897,9 @@ fn profile_binding_carries_the_profiles_prompt_cache_lifetime() {
 /// (The old `effective_slot` / `slot_binding` / multi-model-collapse tests were removed with the
 /// slot mechanism they exercised — an agent now runs under a named profile, not a resolved slot.)
 #[test]
-fn validate_agents_enforces_the_profile_invariants() {
+fn the_launch_refusal_enforces_the_profile_invariants() {
     // A good set (root bound, unique, resolved) validates.
-    assert!(validate_agents(&GgCapabilitySet::minimal("mock/echo")).is_ok());
+    assert!(crate::validate::refusal(&GgCapabilitySet::minimal("mock/echo")).is_ok());
 
     // The root is the *first* profile, not one called `Root`: a configuration whose root was
     // renamed is a perfectly good set, and refusing it would make renaming the root unusable.
@@ -4827,7 +4911,7 @@ fn validate_agents_enforces_the_profile_invariants() {
         }],
         ..GgCapabilitySet::default()
     };
-    assert!(validate_agents(&renamed_root).is_ok());
+    assert!(crate::validate::refusal(&renamed_root).is_ok());
 
     // …and the same with the other profiles a real multi-agent configuration carries, since a
     // renamed root is only useful alongside the agents it delegates to.
@@ -4847,14 +4931,14 @@ fn validate_agents_enforces_the_profile_invariants() {
         ],
         ..GgCapabilitySet::default()
     };
-    assert!(validate_agents(&renamed_root_with_roster).is_ok());
+    assert!(crate::validate::refusal(&renamed_root_with_roster).is_ok());
 
     // No profiles at all: nothing to run.
     let no_agents = GgCapabilitySet {
         agents: Vec::new(),
         ..GgCapabilitySet::default()
     };
-    let err = validate_agents(&no_agents).unwrap_err();
+    let err = crate::validate::refusal(&no_agents).unwrap_err();
     assert!(
         err.contains("no agent profiles"),
         "unexpected reason: {err}"
@@ -4869,7 +4953,7 @@ fn validate_agents_enforces_the_profile_invariants() {
         }],
         ..GgCapabilitySet::default()
     };
-    let err = validate_agents(&deferred).unwrap_err();
+    let err = crate::validate::refusal(&deferred).unwrap_err();
     assert!(err.contains("model slot"), "unexpected reason: {err}");
 
     // A duplicate agent name is ambiguous.
@@ -4887,7 +4971,7 @@ fn validate_agents_enforces_the_profile_invariants() {
         ..GgCapabilitySet::default()
     };
     assert!(
-        validate_agents(&dup)
+        crate::validate::refusal(&dup)
             .unwrap_err()
             .contains("more than once")
     );
@@ -4900,7 +4984,7 @@ fn validate_agents_enforces_the_profile_invariants() {
         }],
         ..GgCapabilitySet::default()
     };
-    assert!(validate_agents(&empty_model).is_err());
+    assert!(crate::validate::refusal(&empty_model).is_err());
 
     // ...but an FSM shell with no model is exactly right: a machine takes no turns, so the model
     // check is asked of the profiles its states run and not of the machine itself.
@@ -4922,7 +5006,7 @@ fn validate_agents_enforces_the_profile_invariants() {
         ],
         ..GgCapabilitySet::default()
     };
-    assert!(validate_agents(&machine).is_ok());
+    assert!(crate::validate::refusal(&machine).is_ok());
     // And the client a dispatch onto that machine resolves is the entry state's, not the shell's.
     assert_eq!(
         profile_binding(&machine, ROOT_AGENT).expect("the machine resolves a model"),
@@ -4942,7 +5026,11 @@ fn validate_agents_enforces_the_profile_invariants() {
         }],
         ..GgCapabilitySet::default()
     };
-    assert!(validate_agents(&dangling).unwrap_err().contains("ghost"));
+    assert!(
+        crate::validate::refusal(&dangling)
+            .unwrap_err()
+            .contains("ghost")
+    );
 }
 
 /// An agent that may **file issues** must have someone to assign them to: an issue names its
@@ -4976,20 +5064,20 @@ fn an_issue_filer_needs_an_implementer_to_assign_to() {
         }
     };
 
-    let err = validate_agents(&board_agent(&[], Vec::new())).unwrap_err();
+    let err = crate::validate::refusal(&board_agent(&[], Vec::new())).unwrap_err();
     assert!(err.contains("no `implementer`"), "unexpected reason: {err}");
 
     // A spawnable-only roster entry is not an implementer, so it does not satisfy the check.
     let spawn_only = vec![GgSubagentRef::new(ROOT_AGENT, &[GgSubagentScope::Subagent])];
-    let err = validate_agents(&board_agent(&[], spawn_only.clone())).unwrap_err();
+    let err = crate::validate::refusal(&board_agent(&[], spawn_only.clone())).unwrap_err();
     assert!(err.contains("no `implementer`"), "unexpected reason: {err}");
 
     // Read-only board access (no `create_issue`) is fine with no roster at all.
-    assert!(validate_agents(&board_agent(&["create_issue"], Vec::new())).is_ok());
+    assert!(crate::validate::refusal(&board_agent(&["create_issue"], Vec::new())).is_ok());
 
     // And so is an issue filer with an implementer to assign to.
     assert!(
-        validate_agents(&board_agent(
+        crate::validate::refusal(&board_agent(
             &[],
             vec![GgSubagentRef::new(
                 ROOT_AGENT,
@@ -7341,7 +7429,8 @@ fn project_management_requires_a_shell_capable_merge_agent() {
     // No merge agent at all.
     let mut missing = base();
     crate::tools::grant(&mut missing.agents[0], CAPABILITY_PROJECT_MANAGEMENT);
-    let err = validate_agents(&missing).expect_err("a board with no merge agent is refused");
+    let err =
+        crate::validate::refusal(&missing).expect_err("a board with no merge agent is refused");
     assert!(
         err.contains("mergeAgent"),
         "the error names the param: {err}"
@@ -7356,7 +7445,7 @@ fn project_management_requires_a_shell_capable_merge_agent() {
             ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
         },
     );
-    let err = validate_agents(&unknown).expect_err("an undeclared merge agent is refused");
+    let err = crate::validate::refusal(&unknown).expect_err("an undeclared merge agent is refused");
     assert!(err.contains("nobody"), "the error names the profile: {err}");
 
     // A declared merge agent without the shell capability.
@@ -7375,7 +7464,8 @@ fn project_management_requires_a_shell_capable_merge_agent() {
     };
     merger.capabilities.retain(|cap| cap.id != CAPABILITY_SHELL);
     shell_less.agents.push(merger);
-    let err = validate_agents(&shell_less).expect_err("a shell-less merge agent is refused");
+    let err =
+        crate::validate::refusal(&shell_less).expect_err("a shell-less merge agent is refused");
     assert!(
         err.contains("shell"),
         "the error says why a shell is needed: {err}"
@@ -7385,7 +7475,7 @@ fn project_management_requires_a_shell_capable_merge_agent() {
     let mut ok = shell_less.clone();
     crate::tools::grant(&mut ok.agents[1], CAPABILITY_SHELL);
     assert!(
-        validate_agents(&ok).is_ok(),
+        crate::validate::refusal(&ok).is_ok(),
         "a shell-capable merge agent is accepted"
     );
 }
@@ -7400,7 +7490,7 @@ fn issue_assignment_is_governed_by_roster_scopes() {
         GgSubagentRef::new("builder", &[GgSubagentScope::Implementer]),
         GgSubagentRef::new("critic", &[GgSubagentScope::Reviewer]),
     ];
-    let policy = IssuePolicy::resolve(set.root());
+    let policy = IssuePolicy::resolve(set.root(), &mut crate::validate::LaunchReport::Discarding);
     assert!(policy.allows_implementer("builder"));
     assert!(!policy.allows_implementer("critic"));
     assert!(policy.allows_reviewer("critic"));
@@ -7837,7 +7927,8 @@ async fn a_captured_run_pins_its_envelope_and_every_agent_it_created() {
     );
     assert_eq!(
         seed.model_windows["mock/primary"],
-        resolve_window_limit(&set, &inv.model_windows, "mock/primary").expect("a resolved window"),
+        resolve_window_limit(&set, set.root(), &inv.model_windows, "mock/primary")
+            .expect("a resolved window"),
         "the **resolved** window the fullness signal is measured against, not the catalog figure",
     );
     assert!(

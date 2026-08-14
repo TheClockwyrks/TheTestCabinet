@@ -53,8 +53,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use serde_json::Value;
-
 use crate::ending::Ending;
 use test_cabinet_core::gg::{CAPABILITY_SUBAGENTS, GgCapabilitySet};
 use tokio::sync::{mpsc, oneshot};
@@ -68,7 +66,7 @@ pub const DEFAULT_MAX_PARALLEL: usize = 16;
 pub const DEFAULT_MAX_DEPTH: usize = 3;
 
 /// The subagents-capability param naming the recursion [depth cap](SubagentConfig::max_depth).
-const PARAM_MAX_DEPTH: &str = "maxDepth";
+pub(crate) const PARAM_MAX_DEPTH: &str = "maxDepth";
 
 /// The two bounds a run's delegation is governed by: the run-level
 /// [parallelism cap](test_cabinet_core::gg::GgRunLimits::max_parallel) and the subagents capability's depth cap.
@@ -98,23 +96,48 @@ impl SubagentConfig {
     /// declares one — it is a run-level guardrail, so it is readable whether or not any profile
     /// enables the [subagents](CAPABILITY_SUBAGENTS) capability, which matters for a run that
     /// delegates purely through the [board](test_cabinet_core::gg::CAPABILITY_PROJECT_MANAGEMENT).
-    /// Failing that, the [default](DEFAULT_MAX_PARALLEL) applies. `max_depth` comes from the
-    /// subagents capability alone (it bounds *that* capability's recursion, nothing else). A
-    /// missing, zero, or non-integer value keeps the default everywhere, and `max_parallel` is
-    /// clamped to at least `1` so a run always makes progress.
-    pub fn resolve(set: &GgCapabilitySet) -> Self {
+    /// `max_depth` comes from the subagents capability alone (it bounds *that* capability's
+    /// recursion, nothing else).
+    ///
+    /// An absent value takes the default beside it. A present one is honoured exactly as written,
+    /// and a `0` — which neither bound can be honoured at, since a run with no agent able to run
+    /// could not start and a tree no agent may spawn into is the capability switched off by
+    /// arithmetic — is [reported](crate::validate) and refuses the launch rather than quietly
+    /// becoming gg's default.
+    pub fn resolve(set: &GgCapabilitySet, report: &mut crate::validate::LaunchReport) -> Self {
         let default = Self::default();
         let params = set.capability(CAPABILITY_SUBAGENTS).map(|cap| &cap.params);
-        let max_parallel = set
-            .limits
-            .max_parallel
-            .filter(|&max| max > 0)
-            .map(|max| usize::try_from(max).unwrap_or(usize::MAX))
-            .unwrap_or(default.max_parallel)
-            .max(1);
+        let max_parallel = match set.limits.max_parallel {
+            Some(0) => {
+                report.report(crate::validate::LaunchDefect::run_level(
+                    format!("limits.{LIMIT_MAX_PARALLEL}"),
+                    "0",
+                    format!(
+                        "a run in which no agent may run at once could not start, so \
+                         `{LIMIT_MAX_PARALLEL}` cannot be honoured at zero. Omit the key to take \
+                         gg's default of {}.",
+                        DEFAULT_MAX_PARALLEL
+                    ),
+                ));
+                default.max_parallel
+            }
+            Some(max) => usize::try_from(max).unwrap_or(usize::MAX),
+            None => default.max_parallel,
+        };
         let max_depth = params
-            .and_then(|p| positive_usize(p, PARAM_MAX_DEPTH))
-            .unwrap_or(default.max_depth);
+            .and_then(|params| {
+                crate::validate::positive_count_param(
+                    params,
+                    CAPABILITY_SUBAGENTS,
+                    PARAM_MAX_DEPTH,
+                    "a tree the root may not spawn into is the capability switched off by \
+                     arithmetic, with every one of its tools still offered",
+                    report,
+                )
+            })
+            .map_or(default.max_depth, |depth| {
+                usize::try_from(depth).unwrap_or(usize::MAX)
+            });
         Self {
             max_parallel,
             max_depth,
@@ -122,13 +145,19 @@ impl SubagentConfig {
     }
 }
 
-/// A positive-integer param value, or `None` when absent, zero, or non-integer.
-fn positive_usize(params: &Value, key: &str) -> Option<usize> {
-    params
-        .get(key)
-        .and_then(Value::as_u64)
-        .filter(|&n| n > 0)
-        .map(|n| n as usize)
+/// The `limits` key naming the [parallelism cap](SubagentConfig::max_parallel).
+///
+/// It lives on the run's [limits](test_cabinet_core::gg::GgRunLimits) rather than on this
+/// capability, and is resolved here, because it bounds the whole run's concurrency — including the
+/// top-level agents a board dispatches in a run where nothing has the subagents capability at all.
+pub(crate) const LIMIT_MAX_PARALLEL: &str = "maxParallel";
+
+/// The two delegation bounds, read for the [launch pass](crate::validate::validate_launch).
+///
+/// Run-level, both of them: the parallelism cap is declared on the set's limits, and the depth cap
+/// is read off [whichever profile carries](GgCapabilitySet::capability) the subagents capability.
+pub fn check_launch(set: &GgCapabilitySet, report: &mut crate::validate::LaunchReport) {
+    SubagentConfig::resolve(set, report);
 }
 
 /// The value a subagent hands back to the agent that spawned it — its

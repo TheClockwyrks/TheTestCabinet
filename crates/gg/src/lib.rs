@@ -63,6 +63,7 @@ mod tasks;
 mod telemetry;
 mod tools;
 mod turn_timing;
+mod validate;
 mod vision;
 
 use std::path::PathBuf;

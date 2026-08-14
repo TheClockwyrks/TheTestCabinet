@@ -1,9 +1,25 @@
 use super::*;
 use serde_json::json;
 use test_cabinet_core::gg::{
-    GgAgentConfig, GgCapabilityConfig, GgCapabilitySet, GgDispatchError, GgSubagentRef,
-    GgSubagentScope, ROOT_AGENT,
+    CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_TASKS, GgAgentConfig, GgCapabilityConfig,
+    GgCapabilitySet, GgDispatchError, GgSubagentRef, GgSubagentScope, ROOT_AGENT,
 };
+
+/// Every machine defect `set` earns, joined into one refusal — [`check_launch`] read as the launch
+/// pass reads it, but as a string, because what these cases assert is *which value* was named.
+fn refusal(set: &GgCapabilitySet) -> Result<(), String> {
+    let mut report = crate::validate::LaunchReport::collecting();
+    check_launch(set, &mut report);
+    let defects = report.into_defects();
+    if defects.is_empty() {
+        return Ok(());
+    }
+    Err(defects
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n"))
+}
 
 /// An ordinary (non-shell) agent profile bound to the mock model.
 fn agent(name: &str) -> GgAgentConfig {
@@ -114,7 +130,7 @@ fn an_enabled_capability_without_states_is_a_launch_failure() {
             ..GgCapabilityConfig::enabled(CAPABILITY_FSM)
         },
     );
-    let error = validate(&set).expect_err("a machine-less FSM agent cannot run");
+    let error = refusal(&set).expect_err("a machine-less FSM agent cannot run");
     assert!(error.contains(FSM_PARAM_STATES), "{error}");
     assert!(error.contains("Root"), "{error}");
 }
@@ -123,7 +139,7 @@ fn an_enabled_capability_without_states_is_a_launch_failure() {
 #[test]
 fn an_empty_states_list_is_a_launch_failure() {
     let set = machine_set(json!([]), &[]);
-    let error = validate(&set).expect_err("a machine with no states cannot run");
+    let error = refusal(&set).expect_err("a machine with no states cannot run");
     assert!(error.contains("empty"), "{error}");
 }
 
@@ -132,7 +148,7 @@ fn an_empty_states_list_is_a_launch_failure() {
 #[test]
 fn an_unparseable_states_value_is_a_launch_failure() {
     let set = machine_set(json!("tdd"), &[]);
-    let error = validate(&set).expect_err("a string is not a state table");
+    let error = refusal(&set).expect_err("a string is not a state table");
     assert!(error.contains("could not read"), "{error}");
 }
 
@@ -143,7 +159,7 @@ fn an_unnamed_state_is_a_launch_failure() {
         json!([{ "name": "  ", "agent": "Explorer" }]),
         &["Explorer"],
     );
-    let error = validate(&set).expect_err("an unnamed state cannot run");
+    let error = refusal(&set).expect_err("an unnamed state cannot run");
     assert!(error.contains("empty name"), "{error}");
 }
 
@@ -157,7 +173,7 @@ fn a_duplicated_state_name_is_a_launch_failure() {
         ]),
         &["Explorer", "Builder"],
     );
-    let error = validate(&set).expect_err("a duplicated state cannot run");
+    let error = refusal(&set).expect_err("a duplicated state cannot run");
     assert!(error.contains("more than once"), "{error}");
 }
 
@@ -165,7 +181,7 @@ fn a_duplicated_state_name_is_a_launch_failure() {
 #[test]
 fn a_state_with_no_agent_is_a_launch_failure() {
     let set = machine_set(json!([{ "name": "explore" }]), &[]);
-    let error = validate(&set).expect_err("a state with no agent cannot run");
+    let error = refusal(&set).expect_err("a state with no agent cannot run");
     assert!(error.contains("names no agent"), "{error}");
 }
 
@@ -174,7 +190,7 @@ fn a_state_with_no_agent_is_a_launch_failure() {
 #[test]
 fn a_state_naming_an_undeclared_agent_is_a_launch_failure() {
     let set = machine_set(json!([{ "name": "explore", "agent": "Ghost" }]), &[]);
-    let error = validate(&set).expect_err("an undeclared agent cannot run a state");
+    let error = refusal(&set).expect_err("an undeclared agent cannot run a state");
     assert!(error.contains("Ghost"), "{error}");
     assert!(error.contains("not a declared agent profile"), "{error}");
 }
@@ -186,7 +202,7 @@ fn a_transition_to_an_undeclared_state_is_a_launch_failure() {
         json!([{ "name": "explore", "agent": "Explorer", "transitions": [{ "to": "ship" }] }]),
         &["Explorer"],
     );
-    let error = validate(&set).expect_err("a transition to nowhere cannot run");
+    let error = refusal(&set).expect_err("a transition to nowhere cannot run");
     assert!(error.contains("ship"), "{error}");
     assert!(error.contains("not a state it declares"), "{error}");
 }
@@ -200,21 +216,22 @@ fn a_state_running_another_shell_is_a_launch_failure() {
     set.agents[inner]
         .capabilities
         .push(fsm_capability(json!([{ "name": "a", "agent": "Root" }])));
-    let error = validate(&set).expect_err("a shell cannot be a state");
+    let error = refusal(&set).expect_err("a shell cannot be a state");
     assert!(error.contains("itself an FSM shell"), "{error}");
 }
 
 /// A well-formed machine passes, and so does a set with no machine in it.
 #[test]
 fn a_well_formed_machine_validates() {
-    assert!(validate(&machine_set(two_state(), &["Explorer", "Builder"])).is_ok());
-    assert!(validate(&GgCapabilitySet::minimal("mock/echo")).is_ok());
+    assert!(refusal(&machine_set(two_state(), &["Explorer", "Builder"])).is_ok());
+    assert!(refusal(&GgCapabilitySet::minimal("mock/echo")).is_ok());
 }
 
-/// A state nothing can reach is kept — an author mid-edit should not be refused — but it is named,
-/// because a state that never runs is almost never what was meant.
+/// A state nothing can reach is **refused**. Every value in it is honourable and the machine still
+/// runs a strictly smaller process than the one written down — and nothing in the run's record
+/// afterwards distinguishes a state that never came up from one that never could.
 #[test]
-fn an_unreachable_state_warns() {
+fn an_unreachable_state_is_refused() {
     let set = machine_set(
         json!([
             { "name": "explore", "agent": "Explorer" },
@@ -222,57 +239,146 @@ fn an_unreachable_state_warns() {
         ]),
         &["Explorer", "Builder"],
     );
-    let warnings = launch_warnings(&set);
-    assert_eq!(warnings.len(), 1, "{warnings:?}");
-    assert!(warnings[0].contains("orphan"), "{}", warnings[0]);
-    assert!(warnings[0].contains("unreachable"), "{}", warnings[0]);
+    let error = refusal(&set).expect_err("a state nothing can enter is not the machine written");
+    assert!(error.contains("orphan"), "{error}");
+    assert!(error.contains("unreachable"), "{error}");
+    assert!(
+        error.contains("explore"),
+        "the entry state is named: {error}"
+    );
 }
 
-/// A transfer list is a list of *values*, so a name gg does not know falls back — the entry carries
-/// nothing — and is reported rather than failing the launch.
+/// **An edge transferring a module its own state does not hold fails the launch.** The successor
+/// would open with an empty one under a configuration that says it continues, and the only place
+/// that shows is a store that stayed empty. gg's transfer reports it and ends the run as an internal
+/// error, which is right for a pairing only the run could discover — and wrong for this one, which
+/// is written in the machine's own table.
 #[test]
-fn an_unknown_transfer_kind_warns_and_is_dropped() {
-    let set = machine_set(
+fn a_transfer_the_outgoing_state_could_not_make_is_refused() {
+    let mut set = machine_set(
         json!([
             {
                 "name": "explore",
                 "agent": "Explorer",
-                "transitions": [{ "to": "build", "transfer": ["history", "plan"] }]
+                "transitions": [{ "to": "build", "transfer": ["history", "tasks"] }]
             },
             { "name": "build", "agent": "Builder" }
         ]),
         &["Explorer", "Builder"],
     );
-    assert!(validate(&set).is_ok(), "a typo is not a launch failure");
+    // The state that transfers the task list keeps none.
+    let explorer = set
+        .agents
+        .iter_mut()
+        .find(|agent| agent.name == "Explorer")
+        .unwrap();
+    explorer
+        .capabilities
+        .retain(|capability| capability.id != CAPABILITY_TASKS);
+
+    let error = refusal(&set).expect_err("a transfer of a module the state has not is not the run");
+    assert!(error.contains("tasks"), "{error}");
+    assert!(error.contains("Explorer"), "{error}");
+    assert!(error.contains("holds no such module"), "{error}");
+}
+
+/// …and the **board** is not that: it is the run's single work queue, held by every agent in a run
+/// that has one, so a state whose profile cannot author it still holds it and may transfer it.
+#[test]
+fn a_transfer_of_the_runs_board_is_accepted_from_any_state() {
+    let mut set = machine_set(
+        json!([
+            {
+                "name": "explore",
+                "agent": "Explorer",
+                "transitions": [{ "to": "build", "transfer": ["history", "board"] }]
+            },
+            { "name": "build", "agent": "Builder" }
+        ]),
+        &["Explorer", "Builder"],
+    );
+    // Only the *other* state authors the board; the outgoing one holds it unowned.
+    let builder = set
+        .agents
+        .iter_mut()
+        .find(|agent| agent.name == "Builder")
+        .unwrap();
+    crate::tools::grant_configured(
+        builder,
+        GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT),
+    );
+
+    assert!(refusal(&set).is_ok(), "{:?}", refusal(&set));
+}
+
+/// A `transfer` entry naming something that is not a module kind gg knows **fails the launch**.
+///
+/// It used to be dropped, which made the machine hand its successor less than the configuration
+/// said it handed it — a difference nothing in the run's record could afterwards show. The refusal
+/// comes from the contract type itself, so it catches the shape a warning scan structurally could
+/// not: an entry that is not even a string.
+#[test]
+fn an_unknown_transfer_kind_is_refused() {
+    for bad in [
+        json!(["history", "plan"]),
+        json!(["history", 7]),
+        json!([null]),
+    ] {
+        let set = machine_set(
+            json!([
+                {
+                    "name": "explore",
+                    "agent": "Explorer",
+                    "transitions": [{ "to": "build", "transfer": bad }]
+                },
+                { "name": "build", "agent": "Builder" }
+            ]),
+            &["Explorer", "Builder"],
+        );
+        let error = refusal(&set).expect_err("a transfer gg cannot honour must fail the launch");
+        assert!(
+            error.contains(FSM_PARAM_STATES) && error.contains("could not read"),
+            "{error}"
+        );
+        assert!(FsmSpec::resolve(&set.agents[0]).unwrap().is_err());
+    }
+
+    // The list gg *can* honour still lowers, deduplicated in declaration order.
+    let set = machine_set(
+        json!([
+            {
+                "name": "explore",
+                "agent": "Explorer",
+                "transitions": [{ "to": "build", "transfer": ["history", "tasks", "history"] }]
+            },
+            { "name": "build", "agent": "Builder" }
+        ]),
+        &["Explorer", "Builder"],
+    );
+    assert!(refusal(&set).is_ok());
     let spec = FsmSpec::resolve(&set.agents[0]).unwrap().unwrap();
     assert_eq!(
         spec.state("explore").unwrap().transitions[0].transfer,
-        vec![ModuleKind::History],
-        "the unknown kind is dropped and the known one survives"
-    );
-    let warnings = launch_warnings(&set);
-    assert!(
-        warnings.iter().any(|warning| warning.contains("`plan`")),
-        "{warnings:?}"
+        vec![ModuleKind::History, ModuleKind::Tasks]
     );
 }
 
-/// A shell's own configuration is never read, so anything else it declares is named at launch.
+/// A shell's own configuration is never read, so anything else it declares is **refused** rather
+/// than discarded with a word about it: an operator who switched `memories` on here believes the
+/// machine's agents have memories.
 #[test]
-fn a_shell_declaring_other_capabilities_warns() {
+fn a_shell_declaring_other_capabilities_is_refused() {
     let mut set = machine_set(two_state(), &["Explorer", "Builder"]);
     crate::tools::grant(&mut set.agents[0], "memories");
-    let warnings = launch_warnings(&set);
-    assert!(
-        warnings.iter().any(|warning| warning.contains("memories")),
-        "{warnings:?}"
-    );
+    let error = refusal(&set).expect_err("a shell reads none of its own capabilities");
+    assert!(error.contains("memories"), "{error}");
 }
 
 /// The whole of a worker's configuration is dead weight on a shell, so a hand-written set that
-/// carries any of it is told which parts gg will not read — by name, in one warning.
+/// carries any of it is refused **once**, with every part it wrote named separately — an operator
+/// deleting them wants the whole list.
 #[test]
-fn a_shell_declaring_a_workers_configuration_warns_about_each_part() {
+fn a_shell_declaring_a_workers_configuration_is_refused_part_by_part() {
     let mut set = machine_set(two_state(), &["Explorer", "Builder"]);
     set.agents[0].model_id = "mock/echo".to_string();
     set.agents[0].custom_instructions = Some("be brief".to_string());
@@ -281,11 +387,15 @@ fn a_shell_declaring_a_workers_configuration_warns_about_each_part() {
         description: String::new(),
         scopes: vec![GgSubagentScope::Subagent],
     }];
-    let warnings = launch_warnings(&set);
-    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    let error = refusal(&set).expect_err("a shell takes no turns, so none of this is read");
     for part in ["model binding", "system prompt", "roster"] {
-        assert!(warnings[0].contains(part), "{}", warnings[0]);
+        assert!(error.contains(part), "{error}");
     }
+    assert_eq!(
+        error.lines().count(),
+        3,
+        "one defect per declaration: {error}"
+    );
 }
 
 /// A dispatch onto a machine resolves the profile its **entry state** runs — the one whose turns
@@ -321,7 +431,7 @@ fn a_machine_entering_an_undeclared_agent_is_reported_by_that_name() {
             entry: "Explorer",
         })
     );
-    assert!(validate(&set).unwrap_err().contains("Explorer"));
+    assert!(refusal(&set).unwrap_err().contains("Explorer"));
 }
 
 /// A duplicated transfer entry carries the module once — the transfer is a set, and a repeated
@@ -423,10 +533,9 @@ fn a_cyclic_machine_reaches_every_state() {
         ]),
         &["Explorer", "Builder", "Verifier"],
     );
-    assert!(validate(&set).is_ok());
-    assert!(
-        launch_warnings(&set).is_empty(),
-        "every state is reachable: {:?}",
-        launch_warnings(&set)
+    assert_eq!(
+        refusal(&set),
+        Ok(()),
+        "every state is reachable from the entry"
     );
 }

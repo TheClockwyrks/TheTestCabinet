@@ -217,21 +217,6 @@ impl ProgramLibrary {
     }
 }
 
-/// A [library](ProgramLibrary) resolved from an agent profile, together with every
-/// `program-library` param gg could not act on.
-///
-/// The unknown params are carried out rather than dropped for the reason
-/// [`ResolvedHealing`](crate::healing::ResolvedHealing) carries its own: a typo in a configuration's
-/// configuration that silently runs the default arm is a study measuring the wrong thing.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResolvedProgramLibrary {
-    /// The library this agent runs with — disabled when the capability is absent or off.
-    pub library: ProgramLibrary,
-    /// Every param that named nothing gg knows, or named something it knows with a value it could
-    /// not read. Reported at `warn` when the run starts.
-    pub unknown_params: Vec<String>,
-}
-
 /// Resolve one agent's [program library](ProgramLibrary) from its
 /// [capability](CAPABILITY_PROGRAM_LIBRARY) params.
 ///
@@ -241,44 +226,53 @@ pub struct ResolvedProgramLibrary {
 /// | no `keep` | the [default](DEFAULT_KEEP) retention |
 /// | `keep: 0` | every program of the session is retained |
 /// | `keep: 5` | the five most recent |
-/// | `keep: "5"`, `keep: -1` | the default retention, and `keep` is reported |
+/// | `keep: "5"`, `keep: -1` | **refused** — the launch does not proceed |
+///
+/// `0` is a value here rather than an absence, and the one integral param in gg whose zero is the
+/// widest setting rather than the narrowest: it says *keep everything*, which is what a study
+/// reading whole sessions back wants and what a bounded default cannot express. A `keep` gg cannot
+/// read is the opposite — it takes no setting at all — so it is [reported](crate::validate) and
+/// refuses the launch, and a study never holds a different number of programs than its
+/// configuration says.
 ///
 /// Per **agent** rather than per run, like every other capability: a reviewer may keep programs
 /// where its spawner does not, and the object a program sees is exactly what its own profile
 /// declares.
-pub fn resolve_program_library(profile: &GgAgentConfig) -> ResolvedProgramLibrary {
+pub fn resolve_program_library(
+    profile: &GgAgentConfig,
+    report: &mut crate::validate::LaunchReport,
+) -> ProgramLibrary {
     let Some(capability) = profile
         .capability(CAPABILITY_PROGRAM_LIBRARY)
         .filter(|capability| capability.enabled)
     else {
-        return ResolvedProgramLibrary {
-            library: ProgramLibrary::disabled(),
-            unknown_params: Vec::new(),
-        };
+        return ProgramLibrary::disabled();
     };
+    ProgramLibrary::enabled(resolve_keep(&capability.params, report))
+}
 
-    let mut unknown_params = Vec::new();
-    let keep = match capability.params.get(PARAM_KEEP) {
-        None | Some(Value::Null) => Some(DEFAULT_KEEP),
-        // `0` is a value, not an absence: it says "keep everything", which is what a study reading
-        // whole sessions back wants and what a bounded default cannot express.
-        Some(Value::Number(number)) => match number.as_u64() {
-            Some(0) => None,
-            Some(keep) => Some(usize::try_from(keep).unwrap_or(usize::MAX)),
-            None => {
-                unknown_params.push(PARAM_KEEP.to_string());
-                Some(DEFAULT_KEEP)
-            }
-        },
-        Some(_) => {
-            unknown_params.push(PARAM_KEEP.to_string());
-            Some(DEFAULT_KEEP)
-        }
-    };
+/// The retention `params` declares: `None` for "keep every program of the session", and
+/// [`DEFAULT_KEEP`] when the key is absent or when it carries a value gg refused.
+fn resolve_keep(params: &Value, report: &mut crate::validate::LaunchReport) -> Option<usize> {
+    match crate::validate::count_param(params, CAPABILITY_PROGRAM_LIBRARY, PARAM_KEEP, report) {
+        Some(0) => None,
+        Some(keep) => Some(usize::try_from(keep).unwrap_or(usize::MAX)),
+        // Absent, or refused: the default stands either way, and in the refused case the launch is
+        // over long before any program reaches the library it would have been kept in.
+        None => Some(DEFAULT_KEEP),
+    }
+}
 
-    ResolvedProgramLibrary {
-        library: ProgramLibrary::enabled(keep),
-        unknown_params,
+/// The program library's whole contribution to the [launch pass](crate::validate::validate_launch):
+/// the retention `profile` declares.
+///
+/// Read on a **disabled** capability too, unlike the resolver above, which has no library to build
+/// for one: the params of a switched-off capability are still configuration — they record the
+/// retention the arm would have kept — so a typo in them is a typo now rather than on the launch
+/// that flips the switch.
+pub fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) {
+    if let Some(capability) = profile.capability(CAPABILITY_PROGRAM_LIBRARY) {
+        resolve_keep(&capability.params, report);
     }
 }
 
@@ -293,16 +287,25 @@ pub fn resolve_program_library(profile: &GgAgentConfig) -> ResolvedProgramLibrar
 pub fn launch_summary(agents: &[GgAgentConfig]) -> Option<String> {
     let keeping: Vec<&GgAgentConfig> = agents
         .iter()
-        .filter(|agent| resolve_program_library(agent).library.is_enabled())
+        .filter(|agent| {
+            // Discarding: every one of these params was read, and refused if unhonourable, by
+            // `check_launch` before the run started.
+            resolve_program_library(agent, &mut crate::validate::LaunchReport::Discarding)
+                .is_enabled()
+        })
         .collect();
     if keeping.is_empty() {
         return None;
     }
     let clauses: Vec<String> = keeping
         .iter()
-        .map(|agent| match resolve_program_library(agent).library.keep {
-            Some(keep) => format!("`{}` keeps its {keep} most recent", agent.name),
-            None => format!("`{}` keeps every one", agent.name),
+        .map(|agent| {
+            match resolve_program_library(agent, &mut crate::validate::LaunchReport::Discarding)
+                .keep
+            {
+                Some(keep) => format!("`{}` keeps its {keep} most recent", agent.name),
+                None => format!("`{}` keeps every one", agent.name),
+            }
         })
         .collect();
     // The two calls, spelled by the languages the agents this line is *about* actually write in —
@@ -311,8 +314,10 @@ pub fn launch_summary(agents: &[GgAgentConfig]) -> Option<String> {
     let calls: BTreeSet<String> = keeping
         .iter()
         .map(|agent| {
-            let language =
-                crate::sandbox::language(crate::sandbox::resolve_program_language(agent).language);
+            let language = crate::sandbox::language(crate::sandbox::resolve_program_language(
+                agent,
+                &mut crate::validate::LaunchReport::Discarding,
+            ));
             format!(
                 "`{}`, `{}`",
                 crate::sandbox::spell(language, crate::sandbox::PROGRAMS_GET),

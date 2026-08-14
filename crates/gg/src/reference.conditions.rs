@@ -252,8 +252,14 @@ impl Axis {
                 let memories = module_axis(ModuleAxis::Memories);
                 let writable = configuration.holds(capability_axis(CAPABILITY_MEMORIES))
                     && (!configuration.binds(memories) || configuration.memory_writable);
-                let resolved =
-                    CompactionStrategy::resolve(Some(configuration.compaction), writable).id();
+                // Every value on this axis is drawn from `COMPACTION_STRATEGIES`, so there is
+                // nothing here a resolver could fail to read.
+                let resolved = CompactionStrategy::resolve(
+                    Some(configuration.compaction),
+                    writable,
+                    &mut crate::validate::LaunchReport::Discarding,
+                )
+                .id();
                 COMPACTION_STRATEGIES
                     .iter()
                     .position(|strategy| *strategy == resolved)

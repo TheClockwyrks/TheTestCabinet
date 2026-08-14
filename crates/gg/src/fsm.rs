@@ -22,7 +22,7 @@
 //! model binding that nothing would read. That resolution reads the entry state off the raw
 //! capability set rather than off a parsed [`FsmSpec`], so the profile a dispatch binds and the
 //! profile the backend names as the run's model cannot come apart; one hop is enough, because
-//! [`validate`] refuses a machine whose state runs another shell.
+//! [`check_launch`] refuses a machine whose state runs another shell.
 //!
 //! ```jsonc
 //! { "id": "fsm", "enabled": true, "params": { "states": [
@@ -45,15 +45,26 @@
 //! **not** silently run as an ordinary single agent: it fails to launch, because a run recorded as
 //! "the TDD arm" that was nothing of the sort would poison every comparison drawn from it.
 //!
-//! # Structural errors are launch failures
+//! # Every machine defect is a launch failure
 //!
-//! [`validate`] refuses a machine whose states are missing, unnamed, duplicated, or point at things
-//! that do not exist. These are structural in exactly the way an undeclared roster reference already
-//! is — a run with them is not a differently-configured run, it is an unrunnable one — so they are
-//! hard failures rather than the warn-and-fall-back gg applies to unrecognized *values*. The softer
-//! problems (a transfer list naming a module kind gg does not know, a state nothing can reach) are
-//! [warnings](launch_warnings): the machine still runs, and what it will actually do is stated
-//! before the first turn.
+//! [`check_launch`] refuses a machine whose states are missing, unnamed, duplicated, or point at
+//! things that do not exist — including a `transfer` entry naming something that is not a module
+//! kind gg knows, which the contract type itself refuses before the machine is ever built. These
+//! are structural in exactly the way an undeclared roster reference already is: a run with them is
+//! not a differently-configured run, it is a run that would do something other than what it says.
+//!
+//! It refuses the two that used to be *warnings* on the same terms, because both describe a process
+//! other than the one written down:
+//!
+//!  * **A declaration on an FSM shell that gg will never read** — a model binding, a prompt, a
+//!    roster, a capability. The shell takes no turns, so every one of them is discarded; an operator
+//!    who wrote one believes the machine's agents inherit it.
+//!  * **A state unreachable from the entry state.** Every value in it is honoured, and the machine
+//!    still runs a strictly smaller process than the one declared — with nothing in the run's record
+//!    afterwards to show which states never ran because they *could* not.
+//!
+//! Nothing about a machine is a launch warning: there is no configuration here gg honours exactly as
+//! written and still has something to say about.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -115,7 +126,7 @@ impl FsmSpec {
     ///
     /// Returns `Err` for a machine gg cannot build at all: an unparseable or empty `states` param,
     /// an unnamed or duplicated state. The *cross-profile* checks — that every named agent exists
-    /// and is not itself a shell — need the whole set and live in [`validate`].
+    /// and is not itself a shell — need the whole set and live in [`check_launch`].
     pub fn resolve(profile: &GgAgentConfig) -> Option<Result<Self, String>> {
         let capability = profile
             .capability(CAPABILITY_FSM)
@@ -201,7 +212,7 @@ impl FsmSpec {
     }
 
     /// Every state name reachable from the [entry](Self::entry) by following transitions, including
-    /// the entry itself. What [`launch_warnings`] measures a declared-but-orphaned state against.
+    /// the entry itself. What [`check_launch`] measures a declared-but-orphaned state against.
     fn reachable(&self) -> BTreeSet<&str> {
         let mut seen = BTreeSet::new();
         let mut frontier = vec![self.entry.as_str()];
@@ -223,12 +234,13 @@ impl FsmSpec {
     }
 }
 
-/// Lower one declared edge, dropping any [module kind](ModuleKind) gg does not know.
+/// Lower one declared edge.
 ///
-/// An unknown kind is dropped rather than refused because it is an unrecognized *value*, which gg
-/// treats everywhere by falling back and saying so — [`launch_warnings`] names it. The list is
-/// deduplicated in declaration order, so a transfer list that names `history` twice carries it once
-/// and the diagnostics do not repeat themselves.
+/// Every entry of the transfer list is already a [module kind](ModuleKind) gg knows — the document
+/// would not have parsed otherwise, and a machine that transferred less than it says it does is a
+/// launch failure rather than a lowering concern. All this does is deduplicate, in declaration
+/// order, so a transfer list that names `history` twice carries it once and the diagnostics do not
+/// repeat themselves.
 fn transition_spec(transition: GgFsmTransition) -> FsmTransitionSpec {
     let mut transfer: Vec<ModuleKind> = Vec::with_capacity(transition.transfer.len());
     for kind in transition.transfer {
@@ -352,7 +364,7 @@ impl FsmPosition {
 /// launch and shared by every agent instance the machines run.
 ///
 /// Returns the first structural error rather than a partial table: a set with an unbuildable
-/// machine in it is unrunnable, and [`validate`] has already refused it by the time this is called
+/// machine in it is unrunnable, and [`check_launch`] has already refused it by the time this is called
 /// in production. It is fallible here too because the two must not be able to disagree.
 pub fn machines(set: &GgCapabilitySet) -> Result<BTreeMap<String, Arc<FsmSpec>>, String> {
     let mut machines = BTreeMap::new();
@@ -371,118 +383,201 @@ pub fn is_shell(profile: &GgAgentConfig) -> bool {
     profile.is_fsm_shell()
 }
 
-/// Validate every [machine](FsmSpec) `set` declares, returning the first structural problem.
+/// The [FSM](CAPABILITY_FSM) contribution to the [launch pass](crate::validate::validate_launch):
+/// every machine `set` declares, read exactly as the run will read it, with every defect reported
+/// rather than the first.
 ///
-/// The checks that are launch **failures**, in the same class as a roster reference naming an
-/// undeclared profile:
+/// What is refused, all of it in the same class as a roster reference naming an undeclared profile —
+/// a run carrying one is not a differently-configured run, it is an unrunnable one, or one that
+/// would do something other than what it says:
 ///
 /// - an enabled `fsm` capability whose `states` is absent, unparseable, or empty;
 /// - a state with an empty name, or two states with the same name (both from [`FsmSpec::parse`]);
 /// - a state whose `agent` names a profile the set does not declare;
 /// - a transition whose `to` names a state the machine does not declare;
 /// - an FSM shell named as a state's `agent` — a shell cannot be a state, because entering it would
-///   enter a second machine inside the first with no way to say which one a transition addressed.
+///   enter a second machine inside the first with no way to say which one a transition addressed;
+/// - anything else the shell declares, which nothing will read;
+/// - a state unreachable from the entry state.
 ///
-/// Called from `validate_agents` at launch, before any agent is built.
-pub fn validate(set: &GgCapabilitySet) -> Result<(), String> {
-    for (fsm, spec) in machines(set)? {
-        for state in spec.states.values() {
-            if state.agent.is_empty() {
-                return Err(format!(
+/// A machine that does not parse contributes only that: there is no table to ask the rest of the
+/// questions of, and the parse error is the cause every other line would be a consequence of.
+pub fn check_launch(set: &GgCapabilitySet, report: &mut crate::validate::LaunchReport) {
+    for profile in &set.agents {
+        let Some(resolved) = FsmSpec::resolve(profile) else {
+            continue;
+        };
+        report.for_agent(&profile.name, |report| match resolved {
+            Err(err) => report.report(crate::validate::LaunchDefect::run_level(
+                param_locus(FSM_PARAM_STATES),
+                "",
+                err,
+            )),
+            Ok(spec) => {
+                check_shell_declarations(profile, report);
+                check_states(set, &spec, report);
+            }
+        });
+    }
+}
+
+/// Every state of one parsed machine: the profile it runs, where its edges lead, and whether
+/// anything can reach it.
+fn check_states(set: &GgCapabilitySet, spec: &FsmSpec, report: &mut crate::validate::LaunchReport) {
+    let fsm = &spec.fsm;
+    let reachable = spec.reachable();
+    let locus = |state: &str| format!("{}[{state}]", param_locus(FSM_PARAM_STATES));
+    for state in spec.states.values() {
+        if state.agent.is_empty() {
+            report.report(crate::validate::LaunchDefect::run_level(
+                locus(&state.name),
+                "",
+                format!(
                     "the `{fsm}` machine's `{}` state names no agent; every state runs an agent \
                      profile.",
                     state.name
-                ));
-            }
-            let Some(profile) = set.agent(&state.agent) else {
-                return Err(format!(
-                    "the `{fsm}` machine's `{}` state runs the `{}` agent, which is not a declared \
-                     agent profile.",
-                    state.name, state.agent
-                ));
-            };
+                ),
+            ));
+        } else if let Some(profile) = set.agent(&state.agent) {
             if is_shell(profile) {
-                return Err(format!(
-                    "the `{fsm}` machine's `{}` state runs the `{}` agent, which is itself an FSM \
-                     shell; a machine cannot be a state of another machine. Name one of its states' \
-                     agents instead.",
-                    state.name, state.agent
+                report.report(crate::validate::LaunchDefect::run_level(
+                    locus(&state.name),
+                    &state.agent,
+                    format!(
+                        "the `{fsm}` machine's `{}` state runs the `{}` agent, which is itself an \
+                         FSM shell; a machine cannot be a state of another machine. Name one of \
+                         its states' agents instead.",
+                        state.name, state.agent
+                    ),
                 ));
             }
-            for transition in &state.transitions {
-                if !spec.states.contains_key(&transition.to) {
-                    return Err(format!(
-                        "the `{fsm}` machine's `{}` state may transition to `{}`, which is not a \
-                         state it declares.",
-                        state.name, transition.to
-                    ));
-                }
-            }
+        } else {
+            report.report(
+                crate::validate::LaunchDefect::run_level(
+                    locus(&state.name),
+                    &state.agent,
+                    format!(
+                        "the `{fsm}` machine's `{}` state runs the `{}` agent, which is not a \
+                         declared agent profile.",
+                        state.name, state.agent
+                    ),
+                )
+                .known(set.agents.iter().map(|agent| agent.name.as_str())),
+            );
         }
-    }
-    Ok(())
-}
-
-/// The launch **warnings** a capability set's [FSM](CAPABILITY_FSM) configuration produces: the
-/// problems that leave the machine runnable but not quite the machine that was written down.
-///
-/// Reported rather than refused, on the same terms as every other unrecognized *value*: the run
-/// still happens, and what it will actually do is stated on the root agent's stream before the
-/// first turn.
-///
-/// Collected by [`Orchestrator::build`](crate::agent) alongside the rest of the launch diagnostics.
-/// It assumes [`validate`] has already passed — an unbuildable machine contributes nothing here,
-/// because there is nothing to warn *about* until there is a machine.
-pub fn launch_warnings(set: &GgCapabilitySet) -> Vec<String> {
-    let mut warnings = Vec::new();
-    let Ok(machines) = machines(set) else {
-        return warnings;
-    };
-    for (fsm, spec) in machines {
-        // A shell has no turns of its own, so anything else it declares is configuration that will
-        // never be read. Said out loud because the alternative is an operator who believes the
-        // machine's agents inherited the shell's memories. The console's editor offers a machine
-        // none of these fields, so reaching here means a hand-written set (or one written by an
-        // older editor) is carrying them.
-        if let Some(profile) = set.agent(&fsm) {
-            let ignored = ignored_shell_declarations(profile);
-            if let Some((last, rest)) = ignored.split_last() {
-                let named = match rest {
-                    [] => format!("the {last}"),
-                    _ => format!("the {} and the {last}", rest.join(", the ")),
-                };
-                warnings.push(format!(
-                    "agent `{fsm}`: it is an FSM shell, so {named} it declares {} ignored — each \
-                     state runs the agent profile it names, with that profile's configuration.",
-                    if rest.is_empty() { "is" } else { "are" },
-                ));
+        for transition in &state.transitions {
+            if !spec.states.contains_key(&transition.to) {
+                report.report(
+                    crate::validate::LaunchDefect::run_level(
+                        locus(&state.name),
+                        &transition.to,
+                        format!(
+                            "the `{fsm}` machine's `{}` state may transition to `{}`, which is not \
+                             a state it declares.",
+                            state.name, transition.to
+                        ),
+                    )
+                    .known(spec.states.keys().map(String::as_str)),
+                );
             }
+            check_transfer(set, spec, state, transition, report);
         }
-        let reachable = spec.reachable();
-        for state in spec.states.values() {
-            if !reachable.contains(state.name.as_str()) {
-                warnings.push(format!(
-                    "agent `{fsm}`: the `{}` state is unreachable from the entry state `{}`; it is \
-                     kept, but nothing can enter it.",
+        // A state nothing leads to is a state that will never run, and the machine is therefore a
+        // strictly smaller process than the one written down — with nothing in the run's record
+        // afterwards to distinguish "this state never came up" from "this state could not". It is
+        // refused on the same footing as a transition whose target does not exist: both are edges
+        // the author believed they had drawn.
+        if !reachable.contains(state.name.as_str()) {
+            report.report(crate::validate::LaunchDefect::run_level(
+                locus(&state.name),
+                &state.name,
+                format!(
+                    "the `{fsm}` machine's `{}` state is unreachable from the entry state `{}`, so \
+                     nothing can ever enter it. Give it an incoming transition, or remove it.",
                     state.name, spec.entry,
-                ));
-            }
+                ),
+            ));
         }
     }
-    warnings.extend(unknown_transfer_kinds(set));
-    warnings
 }
 
-/// What an [FSM shell](is_shell) profile declares that gg will never read, named as a reader would
-/// name it — the body of the warning above.
+/// **One edge's transfer list, read against the module set the outgoing state actually holds.**
+///
+/// A transfer names what the successor continues with. An entry naming a module the *source* state
+/// does not hold cannot be honoured: the successor starts with an empty one under a configuration
+/// that says it continues, and the one place that would show is a store that stayed empty. gg's own
+/// transfer reports it and ends the run as an internal error, which is the right answer for a
+/// pairing only the run could discover — and the wrong answer for this one, which is written down in
+/// the machine's own table and decidable before a token is spent.
+///
+/// Decided against [`would_hold`](crate::modules::would_hold), the static form of the
+/// [`has`](crate::modules::ModuleSet::has) the transfer itself asks — so the launch refuses exactly
+/// the edges the run would have faulted on, and no others. The *receiving* side is not checked here:
+/// a successor whose profile switches the capability off drops the module deliberately, which is a
+/// documented disposition rather than a defect.
+fn check_transfer(
+    set: &GgCapabilitySet,
+    spec: &FsmSpec,
+    state: &FsmStateSpec,
+    transition: &FsmTransitionSpec,
+    report: &mut crate::validate::LaunchReport,
+) {
+    let Some(profile) = set.agent(&state.agent) else {
+        // The state's agent is not a declared profile, which is already reported; there is no
+        // configuration to read a module set off.
+        return;
+    };
+    let fsm = &spec.fsm;
+    for kind in &transition.transfer {
+        if crate::modules::would_hold(set, profile, *kind) {
+            continue;
+        }
+        report.report(crate::validate::LaunchDefect::run_level(
+            format!(
+                "{}[{}].transitions[{}].transfer",
+                param_locus(FSM_PARAM_STATES),
+                state.name,
+                transition.to,
+            ),
+            kind.to_string(),
+            format!(
+                "the `{fsm}` machine's `{}` state transfers the `{kind}` module to `{}`, and the \
+                 `{}` agent it runs holds no such module. The successor would open with an empty \
+                 one under a configuration that says it continues.",
+                state.name, transition.to, state.agent,
+            ),
+        ));
+    }
+}
+
+/// Everything an [FSM shell](is_shell) profile declares that gg will never read — refused, one
+/// defect per declaration, in the operator's own vocabulary.
 ///
 /// Everything a *worker* profile is configured with is on this list, because a machine is not a
 /// worker: it never takes a turn, so there is no model to call, no prompt to render, no roster to
-/// spawn from, and no capability whose tools anything would be offered.
-fn ignored_shell_declarations(profile: &GgAgentConfig) -> Vec<String> {
-    let mut ignored = Vec::new();
-    if profile.resolved_model_id().is_some() || profile.model_slot.is_some() {
-        ignored.push("model binding".to_string());
+/// spawn from, and no capability whose tools anything would be offered. Each state runs the agent
+/// profile it names, with **that** profile's configuration — so a declaration here is not a value gg
+/// substitutes something else for, it is a value gg discards, and an operator who wrote one believes
+/// the machine's agents inherit it. The console's editor offers a machine none of these fields, so
+/// one reaching here comes from a hand-written set or an older editor.
+fn check_shell_declarations(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) {
+    let fsm = &profile.name;
+    let ignored = |locus: &str, what: &str| {
+        crate::validate::LaunchDefect::run_level(
+            locus,
+            "",
+            format!(
+                "the `{fsm}` agent is an FSM shell, so the {what} it declares would never be read \
+                 — each state runs the agent profile it names, with that profile's configuration. \
+                 Remove it, or move it onto the profile a state runs."
+            ),
+        )
+    };
+    if profile.resolved_model_id().is_some() {
+        report.report(ignored("model", "model binding"));
+    }
+    if profile.model_slot.is_some() {
+        report.report(ignored("modelSlot", "model slot"));
     }
     if profile
         .custom_instructions
@@ -490,59 +585,24 @@ fn ignored_shell_declarations(profile: &GgAgentConfig) -> Vec<String> {
         .is_some_and(|prose| !prose.trim().is_empty())
         || profile.system_prompt_template.is_some()
     {
-        ignored.push("system prompt".to_string());
+        report.report(ignored("systemPrompt", "system prompt"));
     }
     if !profile.subagents.is_empty() {
-        ignored.push("roster".to_string());
+        report.report(ignored("subagents", "roster"));
     }
-    let capabilities: Vec<&str> = profile
-        .capabilities
-        .iter()
-        .filter(|capability| capability.enabled && capability.id != CAPABILITY_FSM)
-        .map(|capability| capability.id.as_str())
-        .collect();
-    if !capabilities.is_empty() {
-        ignored.push(format!("capabilities ({})", capabilities.join(", ")));
-    }
-    ignored
-}
-
-/// The warnings for a `transfer` entry naming something that is not a [module kind](ModuleKind).
-///
-/// This is the one diagnostic the parsed machine cannot produce: serde refuses the whole `states`
-/// value for one bad kind, and refusing a machine because a transfer list has a typo in it would
-/// turn a warn-and-fall-back into a launch failure. So the raw param is re-read here, leniently, and
-/// the unknown names are reported while the machine itself parses from the kinds gg does know.
-fn unknown_transfer_kinds(set: &GgCapabilitySet) -> Vec<String> {
-    let mut warnings = Vec::new();
-    let known: Vec<&str> = ModuleKind::ALL.iter().map(|kind| kind.as_str()).collect();
-    for profile in &set.agents {
-        let Some(states) = profile
-            .capability(CAPABILITY_FSM)
-            .filter(|capability| capability.enabled)
-            .and_then(|capability| capability.params.get(FSM_PARAM_STATES))
-            .and_then(Value::as_array)
-        else {
-            continue;
-        };
-        for name in states
-            .iter()
-            .filter_map(|state| state.get("transitions")?.as_array())
-            .flatten()
-            .filter_map(|transition| transition.get("transfer")?.as_array())
-            .flatten()
-            .filter_map(Value::as_str)
-            .filter(|name| !known.contains(name))
-        {
-            warnings.push(format!(
-                "agent `{}`: a transition's `transfer` names `{name}`, which is not a module gg \
-                 knows ({}); it carries nothing.",
-                profile.name,
-                known.join(", "),
+    for (index, capability) in profile.capabilities.iter().enumerate() {
+        if capability.enabled && capability.id != CAPABILITY_FSM {
+            report.report(ignored(
+                &format!("capabilities[{index}].id"),
+                &format!("`{}` capability", capability.id),
             ));
         }
     }
-    warnings
+}
+
+/// Where one of the machine's own params sits in the document: `fsm.params.states`.
+fn param_locus(key: &str) -> String {
+    crate::validate::param_locus(CAPABILITY_FSM, key)
 }
 
 #[cfg(test)]

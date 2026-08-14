@@ -17,61 +17,17 @@ use time::format_description::well_known::Rfc3339;
 
 use super::GgRunDoc;
 use crate::code_analysis::{CodeAnalysisSummary, CodeLanguage};
-use crate::gg::{
-    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_AGENT_PERSISTENCE, CAPABILITY_AUTOLOAD_SPECS,
-    CAPABILITY_COMPACTION, CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_DOCVIEW_CLOSE,
-    CAPABILITY_EDIT_FILE, CAPABILITY_EXEC, CAPABILITY_FORK, CAPABILITY_FSM, CAPABILITY_LIST_DIR,
-    CAPABILITY_MEMORIES, CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_PROJECT_MANAGEMENT,
-    CAPABILITY_READ_FILE, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS,
-    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WRITE_FILE, GgCapabilitySet,
-    GgSessionSummary,
-};
+use crate::gg::{GgCapabilitySet, GgSessionSummary};
 use crate::review::Rating;
 use crate::run_record::RunRecord;
 
-/// Every capability id gg ships, in catalog order — the closed set the `cap.*`
-/// namespace is made **total** over.
+/// The capability-id vocabulary the `cap.*` namespace is made total over, re-exported from
+/// [`crate::gg`] where it is declared.
 ///
-/// Totality is what makes `cap.compaction:false` and `avg(cap.compaction)` mean what
-/// a reader expects: the builder stores an explicit `false` for every id here that a
-/// run did not enable, so "configured and off" and "never mentioned" collapse into
-/// one honest answer instead of a missing key that would fail every comparison
-/// ([rule 1](crate::gg_query#the-seven-semantic-rules)) and quietly shrink an enablement rate's
-/// denominator.
-///
-/// A run that carries a capability id **not** in this list — an externally supplied
-/// one, or one added to gg after a document was built — still gets its own `cap.<id>`
-/// field: the builder emits the union of this catalog and the ids **any** of the run's
-/// agents declares. The catalog is the floor, not the ceiling.
-///
-/// Adding a capability to gg means adding it here. Forgetting to is not a silent
-/// failure of the field (it still appears on any run that enables it) but it *is* a
-/// silent failure of the totality guarantee — the field would be sparse, so an
-/// average over it would be a rate among the runs that mentioned it rather than among
-/// all runs.
-pub const GG_CAPABILITY_CATALOG: &[&str] = &[
-    CAPABILITY_SHELL,
-    CAPABILITY_READ_FILE,
-    CAPABILITY_WRITE_FILE,
-    CAPABILITY_EDIT_FILE,
-    CAPABILITY_LIST_DIR,
-    CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
-    CAPABILITY_AUTOLOAD_SPECS,
-    CAPABILITY_AGENT_PERSISTENCE,
-    CAPABILITY_SKILLS,
-    CAPABILITY_MEMORIES,
-    CAPABILITY_TASKS,
-    CAPABILITY_COMPACTION,
-    CAPABILITY_AGENT_MANAGED_CONTEXT,
-    CAPABILITY_PROJECT_MANAGEMENT,
-    CAPABILITY_SUBAGENTS,
-    CAPABILITY_FSM,
-    CAPABILITY_EXEC,
-    CAPABILITY_FORK,
-    CAPABILITY_RESPONSES_AS_CODE,
-    CAPABILITY_PROGRAM_LIBRARY,
-    CAPABILITY_DOCVIEW_CLOSE,
-];
+/// One list, in one place: the launch check reads it to refuse an id gg does not have, and the
+/// builder reads it to emit a field per id. A second copy here is exactly the drift that would let
+/// a run be configured with a capability no document could report on.
+pub use crate::gg::GG_CAPABILITY_CATALOG;
 
 /// The fields that are epoch-millisecond timestamps rather than plain numbers.
 ///
@@ -322,9 +278,12 @@ fn insert_capability_set(doc: &mut GgRunDoc, set: &GgCapabilitySet) {
         }
     }
 
-    // The union of the shipped catalog and whatever this run's agents actually declare,
-    // so an externally supplied capability is queryable even though the catalog cannot
-    // know about it. Every agent contributes, not just the root: a capability declared
+    // The union of the shipped catalog and whatever this run's agents actually declare.
+    // A launch refuses an id outside the catalog, so on any run that actually happened the
+    // union *is* the catalog; the extension survives for the same reason this builder does
+    // not read `GgCapabilitySet::root` — a hand-written or corrupted stored record must stay
+    // queryable rather than silently lose the field that would show what is wrong with it.
+    // Every agent contributes, not just the root: a capability declared
     // only on a subagent would otherwise produce no field at all, which is the same
     // root-only blind spot the enabled flag itself used to have. Ordering is irrelevant
     // (the document is a `BTreeMap`) but the set must be de-duplicated or a declared

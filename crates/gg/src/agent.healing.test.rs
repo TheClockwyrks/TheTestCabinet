@@ -346,13 +346,15 @@ async fn disarming_a_strategy_changes_only_what_healing_returns() {
     assert!(error.is_some());
 }
 
-/// **An unreadable `healing` key is reported rather than guessed at.**
+/// **An unreadable `healing` key refuses the launch.**
 ///
 /// A typo in a healing configuration is the one failure this subsystem cannot survive:
 /// `{"stripFences": false}` would otherwise run the default arm silently, under the disabled arm's
-/// name, and every number the study produced would be a measurement of the wrong thing.
+/// name, and every number the study produced would be a measurement of the wrong thing. Both
+/// classes — a key that names nothing and a known key whose value is not a toggle — are named in the
+/// same refusal, before a token is spent.
 #[tokio::test]
-async fn an_unreadable_healing_param_is_logged_at_warn() {
+async fn an_unreadable_healing_param_refuses_the_launch() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-healing".to_string()), Box::new(sink.clone()));
@@ -369,23 +371,23 @@ async fn an_unreadable_healing_param_is_logged_at_warn() {
 
     assert_eq!(
         run_with_factory(&inv, &emitter, Arc::new(factory)).await,
-        SessionOutcome::Ran
+        SessionOutcome::HarnessError
     );
 
     let events = sink.events();
-    let warned = warn_messages(&events).join("\n");
+    let refused = error_messages(&events).join("\n");
     assert!(
-        warned.contains("healing.stripFences"),
-        "a key that names nothing gg knows is named back: {warned}"
+        refused.contains("healing.stripFences"),
+        "a key that names nothing gg knows is named back: {refused}"
     );
     assert!(
-        warned.contains("healing.strip-prose"),
-        "and so is a known key whose value is not a toggle: {warned}"
+        refused.contains("healing.strip-prose"),
+        "and so is a known key whose value is not a toggle: {refused}"
     );
-    // ...and the run launched anyway: a warning never fails a launch.
+    // ...and the run did not start: the refusal is the terminal event.
     assert!(matches!(
         &events.last().expect("a terminal event").kind,
-        GgTelemetryKind::SessionEnded { status } if status == "completed"
+        GgTelemetryKind::SessionEnded { status } if status == "error"
     ));
 }
 

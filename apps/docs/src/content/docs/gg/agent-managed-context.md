@@ -257,6 +257,9 @@ Two sliders sit in the capability's Features box, and each is per agent.
 
 It is set per agent, because how many reads a window holds at once differs
 enormously between an agent that opens two specs and one crawling a codebase.
+Absent, it takes the default above. Carrying a value gg cannot honour exactly as
+written, it refuses the launch, alongside every other such value in the
+capability set.
 
 ## Telemetry and the console
 

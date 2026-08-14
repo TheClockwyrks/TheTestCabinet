@@ -30,8 +30,12 @@ full specification. The line cap still governs the reads the model makes itself.
 
 A text spec arrives as text. A reference mockup arrives as a picture when this
 agent's model [can see images](/gg/filesystem/#reading-images), and as a
-description otherwise, on the same terms as any read. A file that cannot be read
-is skipped with a warning rather than failing the run.
+description otherwise, on the same terms as any read.
+
+Every file on that list has to arrive. gg reads them once the run is seeded and
+before the first turn, and a file it cannot read ends the run there, naming the
+file. A run seeded with part of the brief measures something other than the arm
+it was configured as.
 
 Because the injected material is ordinary file views, it appears in the
 [context breakdown](/gg/context-visibility/) under the same file band a manual
@@ -66,10 +70,10 @@ quote or a backslash in a path cannot break the parse. The views arrive as
 headed `File` items keyed by path, the same envelope a real file-view call
 produces.
 
-The reads run first and the program is written from what actually succeeded, so
-a file that was skipped never appears in the synthesized program. A program
-listing a call whose view never arrived would teach the model that opening a
-file view sometimes does nothing.
+The reads run first, and the program holds one call per file that was read.
+Every one of those views is present in the same opening context, since the run
+ends on a file gg cannot read. A program listing a call whose view never arrived
+would teach the model that opening a file view sometimes does nothing.
 
 ## Locked
 
@@ -88,6 +92,11 @@ The capability's one lever is its `implementation`:
   `gg.views.current()` for the same reason: an entry whose close reclaims
   nothing is worse than no entry. The full brief is present for the whole
   session.
+
+`locked` is the lever's whole vocabulary. An `implementation` written as anything
+else refuses the launch, listed with every other value in the capability set gg
+cannot honour exactly as written, so one pass over the configuration fixes them
+all.
 
 Either arm applies to the file views. The synthesized assistant turn that opened
 them is always ephemeral, since it is there to make the reads attributable

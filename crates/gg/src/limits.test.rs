@@ -12,6 +12,8 @@
 // test imports them for its own wire mapping.
 use test_cabinet_core::gg::{GgAgentConfig, GgCapabilityConfig, GgCapabilitySet, GgRunLimits};
 
+use crate::validate::{LaunchDefect, LaunchReport};
+
 use super::*;
 
 // ---------------------------------------------------------------------------------------------
@@ -21,28 +23,41 @@ use super::*;
 /// The agent id every breach in this file is stamped with — short, so an assertion reads.
 const AGENT: &str = "root";
 
-/// Resolve `declared` on an otherwise ordinary capability set, returning the ceilings and every
-/// warning the resolution produced.
-fn resolve(declared: GgRunLimits) -> (RunLimits, Vec<String>) {
+/// Resolve `declared` on an otherwise ordinary capability set, returning the ceilings, every value
+/// gg refused, and every advisory warning it produced.
+fn resolve(declared: GgRunLimits) -> (RunLimits, Vec<LaunchDefect>, Vec<String>) {
     let set = GgCapabilitySet {
         limits: declared,
         ..GgCapabilitySet::default()
     };
+    let mut report = LaunchReport::collecting();
     let mut warnings = Vec::new();
-    let limits = resolve_run_limits(&set, &mut warnings);
-    (limits, warnings)
+    let limits = resolve_run_limits(&set, &mut report, &mut warnings);
+    (limits, report.into_defects(), warnings)
 }
 
-/// The ceilings `declared` resolves to, asserting it produced no warning at all.
+/// The ceilings `declared` resolves to, asserting gg honoured every one of them exactly as written:
+/// nothing refused, and nothing to advise about either.
 fn resolve_cleanly(declared: GgRunLimits) -> RunLimits {
-    let (limits, warnings) = resolve(declared);
+    let (limits, defects, warnings) = resolve(declared);
+    assert!(defects.is_empty(), "unexpected refusals: {defects:?}");
     assert!(warnings.is_empty(), "unexpected warnings: {warnings:?}");
     limits
 }
 
-/// The single warning `declared` produced, asserting there was exactly one.
+/// The single refusal `declared` earned, rendered as the operator reads it, asserting there was
+/// exactly one.
+fn sole_refusal(declared: GgRunLimits) -> String {
+    let (_, mut defects, _) = resolve(declared);
+    assert_eq!(defects.len(), 1, "expected one refusal, got {defects:?}");
+    defects.remove(0).to_string()
+}
+
+/// The single advisory warning `declared` produced, asserting there was exactly one and that
+/// nothing was refused — a warning is only ever about a value gg **honoured**.
 fn sole_warning(declared: GgRunLimits) -> String {
-    let (_, mut warnings) = resolve(declared);
+    let (_, defects, mut warnings) = resolve(declared);
+    assert!(defects.is_empty(), "unexpected refusals: {defects:?}");
     assert_eq!(warnings.len(), 1, "expected one warning, got {warnings:?}");
     warnings.remove(0)
 }
@@ -142,94 +157,116 @@ fn every_declared_ceiling_resolves_when_it_is_usable() {
 }
 
 #[test]
-fn a_zero_turn_ceiling_is_unbounded() {
-    // Zero is read as "not configured" rather than "no turns at all", and not-configured is now
-    // unbounded — quietly, because it is not a new mistake to warn a study about.
-    let limits = resolve_cleanly(GgRunLimits {
-        max_turns: Some(0),
-        ..GgRunLimits::default()
-    });
-
-    assert_eq!(limits.max_turns, None);
+fn a_zero_turn_ceiling_is_refused_rather_than_read_as_unbounded() {
+    // The two spellings are not the same: an **absent** turn ceiling is unbounded, which is gg's
+    // documented default, while a declared `0` is a ceiling nothing could run under. Reading the
+    // second as the first is reading a ceiling as its own opposite — and the run that results is
+    // one nobody bounded, burning money, with a `maxTurns` in its own record.
+    assert_eq!(
+        sole_refusal(GgRunLimits {
+            max_turns: Some(0),
+            ..GgRunLimits::default()
+        }),
+        "limits.maxTurns = `0` — a run in which no agent may take a turn has nothing to do, so gg \
+         cannot arm the ceiling `maxTurns` declares. Omit the key to take gg's default, or give it \
+         a value it can be bounded by."
+    );
 }
 
 #[test]
-fn a_zero_runtime_budget_is_no_budget() {
-    let limits = resolve_cleanly(GgRunLimits {
-        max_runtime_secs: Some(0),
-        ..GgRunLimits::default()
-    });
-
-    assert_eq!(limits.max_runtime, None);
+fn a_zero_runtime_budget_is_refused() {
+    assert!(
+        sole_refusal(GgRunLimits {
+            max_runtime_secs: Some(0),
+            ..GgRunLimits::default()
+        })
+        .starts_with(
+            "limits.maxRuntimeSecs = `0` — a budget of no seconds is spent before the run"
+        )
+    );
 }
 
 #[test]
-fn a_zero_consecutive_error_ceiling_is_off_and_says_so() {
+fn a_zero_consecutive_error_ceiling_is_refused() {
     let declared = GgRunLimits {
         max_consecutive_errors: Some(0),
         ..GgRunLimits::default()
     };
 
-    let (limits, _) = resolve(declared);
+    let (limits, _, _) = resolve(declared);
     assert_eq!(limits.max_consecutive_errors, None);
     assert_eq!(
-        sole_warning(declared),
-        "maxConsecutiveErrors: 0 cannot bound anything (it would stop a run before its first \
-         turn); the ceiling is off."
+        sole_refusal(declared),
+        "limits.maxConsecutiveErrors = `0` — it would end an agent before its first turn, so gg \
+         cannot arm the ceiling `maxConsecutiveErrors` declares. Omit the key to take gg's \
+         default, or give it a value it can be bounded by."
     );
 }
 
 #[test]
-fn a_rate_without_a_window_is_off_and_says_so() {
-    let declared = GgRunLimits {
+fn a_count_past_what_gg_holds_it_in_is_refused() {
+    // The consecutive-error count is a `u32`. Saturating to its maximum would arm a ceiling nobody
+    // wrote — effectively none — which is the same silence a dropped ceiling leaves.
+    assert!(
+        sole_refusal(GgRunLimits {
+            max_consecutive_errors: Some(u64::from(u32::MAX) + 1),
+            ..GgRunLimits::default()
+        })
+        .contains("cannot hold a ceiling above 4294967295")
+    );
+}
+
+/// **Half a ceiling is the half that was written, over the default for the other.** Absent is not
+/// unrecognized: the missing half has a documented default, exactly as it does when *neither* half
+/// is written, and filling it in substitutes for nothing.
+#[test]
+fn a_rate_without_a_window_arms_the_default_window() {
+    let limits = resolve_cleanly(GgRunLimits {
         max_error_rate: Some(0.5),
         ..GgRunLimits::default()
-    };
-
-    let (limits, _) = resolve(declared);
-    assert_eq!(limits.error_rate, None);
+    });
     assert_eq!(
-        sole_warning(declared),
-        "maxErrorRate is set but errorRateWindow is not; a rate needs a window to be measured \
-         over, so the ceiling is off."
+        limits.error_rate,
+        Some(ErrorRateLimit {
+            max_rate: 0.5,
+            window: DEFAULT_ERROR_RATE_WINDOW,
+        })
     );
 }
 
 #[test]
-fn a_window_without_a_rate_is_off_and_says_so() {
-    let declared = GgRunLimits {
+fn a_window_without_a_rate_arms_the_default_rate() {
+    let limits = resolve_cleanly(GgRunLimits {
         error_rate_window: Some(10),
         ..GgRunLimits::default()
-    };
-
-    let (limits, _) = resolve(declared);
-    assert_eq!(limits.error_rate, None);
+    });
     assert_eq!(
-        sole_warning(declared),
-        "errorRateWindow is set but maxErrorRate is not; a window needs a rate to be judged \
-         against, so the ceiling is off."
+        limits.error_rate,
+        Some(ErrorRateLimit {
+            max_rate: DEFAULT_MAX_ERROR_RATE,
+            window: 10,
+        })
     );
 }
 
 #[test]
-fn a_rate_outside_zero_to_one_is_off_and_says_so() {
+fn a_rate_outside_zero_to_one_is_refused() {
     let declared = GgRunLimits {
         max_error_rate: Some(1.5),
         error_rate_window: Some(10),
         ..GgRunLimits::default()
     };
 
-    let (limits, _) = resolve(declared);
+    let (limits, _, _) = resolve(declared);
     assert_eq!(limits.error_rate, None);
-    assert_eq!(
-        sole_warning(declared),
-        "maxErrorRate must be a fraction between 0.0 and 1.0; 1.5 can never be exceeded, so the \
-         ceiling is off."
-    );
+    assert!(sole_refusal(declared).starts_with(
+        "limits.maxErrorRate = `1.5` — an error rate is a fraction of the window between 0.0 \
+             and 1.0"
+    ));
 }
 
 #[test]
-fn a_rate_that_is_not_a_number_is_off_and_says_so() {
+fn a_rate_that_is_not_a_number_is_refused() {
     // JSON has no NaN, but a `f64` field deserialised from a sweep's generated configuration can
     // still arrive as one through any producer that is not `serde_json` — and a NaN threshold is
     // never greater than anything, so the ceiling would silently never fire.
@@ -240,29 +277,45 @@ fn a_rate_that_is_not_a_number_is_off_and_says_so() {
             ..GgRunLimits::default()
         };
 
-        let (limits, warnings) = resolve(declared);
+        let (limits, defects, _) = resolve(declared);
         assert_eq!(limits.error_rate, None, "{rate} should arm nothing");
-        assert_eq!(warnings.len(), 1, "{rate}: {warnings:?}");
-        assert!(
-            warnings[0].starts_with("maxErrorRate must be a fraction between 0.0 and 1.0;"),
-            "{rate}: {warnings:?}"
-        );
+        assert_eq!(defects.len(), 1, "{rate}: {defects:?}");
+        assert_eq!(defects[0].locus, "limits.maxErrorRate", "{rate}");
     }
 }
 
 #[test]
-fn a_zero_window_is_off_and_says_so() {
+fn a_zero_window_is_refused() {
     let declared = GgRunLimits {
         max_error_rate: Some(0.5),
         error_rate_window: Some(0),
         ..GgRunLimits::default()
     };
 
-    let (limits, _) = resolve(declared);
+    let (limits, _, _) = resolve(declared);
     assert_eq!(limits.error_rate, None);
+    assert!(
+        sole_refusal(declared)
+            .starts_with("limits.errorRateWindow = `0` — a window of no turns has nothing to")
+    );
+}
+
+#[test]
+fn both_halves_of_an_unusable_error_rate_are_refused_at_once() {
+    // A rate and a window are edited in the same place, so an operator fixing one wants to be told
+    // about the other in the same pass rather than on the next launch.
+    let (_, defects, _) = resolve(GgRunLimits {
+        max_error_rate: Some(2.0),
+        error_rate_window: Some(0),
+        ..GgRunLimits::default()
+    });
+
     assert_eq!(
-        sole_warning(declared),
-        "errorRateWindow: 0 has no turns to measure; the ceiling is off."
+        defects
+            .iter()
+            .map(|defect| defect.locus.as_str())
+            .collect::<Vec<_>>(),
+        ["limits.maxErrorRate", "limits.errorRateWindow"]
     );
 }
 
@@ -275,7 +328,7 @@ fn a_window_not_smaller_than_the_turn_ceiling_is_armed_but_warned_about() {
         ..GgRunLimits::default()
     };
 
-    let (limits, _) = resolve(declared);
+    let (limits, _, _) = resolve(declared);
     assert_eq!(
         limits.error_rate,
         Some(ErrorRateLimit {
@@ -292,29 +345,53 @@ fn a_window_not_smaller_than_the_turn_ceiling_is_armed_but_warned_about() {
 }
 
 #[test]
-fn a_non_positive_cost_ceiling_is_off_and_says_so() {
+fn a_non_positive_cost_ceiling_is_refused() {
     for max_cost in [0.0, -1.0, f64::NAN] {
         let declared = GgRunLimits {
             max_cost: Some(max_cost),
             ..GgRunLimits::default()
         };
 
-        let (limits, _) = resolve(declared);
+        let (limits, _, _) = resolve(declared);
         assert_eq!(limits.max_cost, None, "{max_cost} should arm nothing");
-        assert_eq!(
-            sole_warning(declared),
-            "maxCost must be greater than zero; the ceiling is off."
+        assert!(
+            sole_refusal(declared).contains(
+                "a spend ceiling must be a finite figure greater than zero, so gg cannot arm the \
+                 ceiling `maxCost` declares"
+            ),
+            "{max_cost}"
         );
     }
 }
 
 #[test]
-fn resolution_never_fails_a_launch() {
-    // Every unusable declaration at once. The run still resolves to a launchable configuration —
-    // here one with nothing armed, bounded only by the host's clock — because a sweep of configurations
-    // shares one document across arms, and an arm that cannot launch measures nothing at all.
-    // (Every ceiling was declared unusable, so even the error defaults are suppressed: a
-    // half-declared rate is a mistake, not an unset field.)
+fn a_zero_journal_ceiling_is_refused() {
+    // The one ceiling that bounds the *observation* of a run rather than the run, and read on the
+    // same terms: a `0` would stop capture before its first line, and there is deliberately no
+    // spelling of "no journal ceiling" for it to be read as.
+    let declared = GgRunLimits {
+        replay_max_bytes: Some(0),
+        ..GgRunLimits::default()
+    };
+
+    let (limits, _, _) = resolve(declared);
+    assert_eq!(
+        limits.replay_max_bytes,
+        Some(DEFAULT_REPLAY_MAX_BYTES),
+        "the refused value leaves the default standing; the launch is over either way"
+    );
+    assert!(
+        sole_refusal(declared)
+            .starts_with("limits.replayMaxBytes = `0` — it would stop session capture before")
+    );
+}
+
+#[test]
+fn every_unusable_ceiling_is_named_in_one_refusal() {
+    // Every unusable declaration at once, and every one of them named. This is the operator-facing
+    // property the whole refusal exists for: a sweep shares one configuration document across its
+    // arms, so the operator fixing it wants the whole list in one pass rather than a dozen launches
+    // each revealing the next.
     let set = GgCapabilitySet {
         agents: vec![GgAgentConfig {
             capabilities: vec![GgCapabilityConfig::enabled("shell")],
@@ -333,11 +410,39 @@ fn resolution_never_fails_a_launch() {
         ..GgCapabilitySet::default()
     };
 
+    let mut report = LaunchReport::collecting();
     let mut warnings = Vec::new();
-    let limits = resolve_run_limits(&set, &mut warnings);
+    let limits = resolve_run_limits(&set, &mut report, &mut warnings);
 
-    assert_eq!(limits, bare_limits());
-    assert_eq!(warnings.len(), 4, "{warnings:?}");
+    assert_eq!(
+        report
+            .into_defects()
+            .iter()
+            .map(|defect| defect.locus.clone())
+            .collect::<Vec<_>>(),
+        [
+            "limits.maxTurns",
+            "limits.maxRuntimeSecs",
+            "limits.maxConsecutiveErrors",
+            "limits.maxErrorRate",
+            "limits.errorRateWindow",
+            "limits.maxCost",
+            "limits.replayMaxBytes",
+        ]
+    );
+    assert!(
+        warnings.is_empty(),
+        "nothing here was honoured, so there is nothing to advise about: {warnings:?}"
+    );
+    // The values that come back no longer decide anything — the run is refused — but the resolver
+    // stays total, so every mid-run caller of it still gets an answer.
+    assert_eq!(
+        limits,
+        RunLimits {
+            replay_max_bytes: Some(DEFAULT_REPLAY_MAX_BYTES),
+            ..bare_limits()
+        }
+    );
 }
 
 #[test]

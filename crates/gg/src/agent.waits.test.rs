@@ -34,6 +34,7 @@
 //! hand-driven ones through [`until`] and a timeout on the wait's own task.
 
 use super::*;
+use crate::board;
 
 use super::fault_tests::PanickingClient;
 
@@ -515,6 +516,7 @@ fn hand_driven_orchestrator(dir: &TempDir, emitter: &Emitter) -> Arc<Orchestrato
                 root: None,
             },
             &mut warnings,
+            &mut crate::validate::LaunchReport::Discarding,
         )
         .expect("a set with no machines builds an orchestrator"),
     )
