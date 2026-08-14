@@ -24,6 +24,11 @@ export class Surge {
 
   x: number;
   y: number;
+  // Where this unit stood when the current step began, so the renderer can draw
+  // between that and (x, y) — see Game.renderAlpha. Written by the step and read
+  // by the renderer, never the other way about.
+  prevX: number;
+  prevY: number;
   hp: number;
   readonly maxHp: number;
 
@@ -51,6 +56,8 @@ export class Surge {
     const ctr = tileCenter(c, r);
     this.x = ctr.x;
     this.y = ctr.y;
+    this.prevX = this.x;
+    this.prevY = this.y;
 
     // A flyer flies straight from its vent to the opposite exhaust opening,
     // keeping its cross-axis coordinate (specs/playfield.md).
@@ -158,6 +165,19 @@ export class Surge {
       this.y += (dy / dist) * move;
     }
     return false;
+  }
+
+  // Collapse the interpolation window onto the current position.
+  syncView(): void {
+    this.prevX = this.x;
+    this.prevY = this.y;
+  }
+
+  viewX(alpha: number): number {
+    return this.prevX + (this.x - this.prevX) * alpha;
+  }
+  viewY(alpha: number): number {
+    return this.prevY + (this.y - this.prevY) * alpha;
   }
 
   // Remaining distance to the exhaust — used to pick the target "furthest along

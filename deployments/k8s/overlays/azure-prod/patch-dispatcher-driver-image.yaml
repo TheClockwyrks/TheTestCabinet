@@ -11,14 +11,17 @@
 # service images: it decides the image every future RUN executes inside, so it moves
 # with a release that was rehearsed on staging, not with a service roll.
 #
-# It currently sits at `e6afbee6` (the v0.6.0-beta4 build) while the service pin is
-# at `e376e0fa` (v0.6.1-rc5). That gap is a leftover, not a design: `build-containers`
-# used to be path-filtered, so every build since beta4 — v0.6.0-rc1, rc2 and
-# v0.6.1-rc1, rc4, rc4.1, rc5 — ran only `build-service-images` and left no run images
-# to pin to. It stayed benign only because nothing under containers/ changed in that
-# window. Both workflows now run unfiltered on every master/staging push, so run
-# images exist at EVERY sha the service images do and the two pins can be advanced
-# together at the next release — do that rather than letting this drift again.
+# It is now CONVERGED with the driver SERVICE image at `31568780` (v0.6.2-rc1), closing
+# a gap that had been open since `e6afbee6` (v0.6.0-beta4). That gap was a leftover, not
+# a design: `build-containers` used to be path-filtered, so every build since beta4 —
+# v0.6.0-rc1, rc2 and v0.6.1-rc1, rc4, rc4.1, rc5 — ran only `build-service-images` and
+# left no run images to pin to. It stayed benign only because nothing under containers/
+# changed in that window; nothing changed between `e6afbee6` and this sha either, so the
+# run images here are rebuilds of identical Dockerfiles (only upstream base layers
+# moved) rather than new content of ours. Both workflows now run unfiltered on every
+# master/staging push (`5ef86c1d`), so run images exist at EVERY sha the service images
+# do. staging converged both pins at this sha first; keep them in lockstep from here
+# rather than letting this drift again.
 #
 # Note TCAB_DRIVER_IMAGE below is the driver SERVICE image and DOES move with the
 # service pin. Without this patch the base default (latest) would leave the run
@@ -35,6 +38,6 @@ spec:
         - name: dispatcher
           env:
             - name: TCAB_DRIVER_IMAGE
-              value: "ghcr.io/theclockwyrks/tcab-driver:e376e0fa9e228b62d60e60a60cdfbd27549d686b"
+              value: "ghcr.io/theclockwyrks/tcab-driver:31568780009adf70ba3369feb05cb6313048286f"
             - name: TCAB_CONTAINER_TAG
-              value: "e6afbee63a8093a7c717b5195cd8dcae85d77fdf"
+              value: "31568780009adf70ba3369feb05cb6313048286f"

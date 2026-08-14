@@ -180,6 +180,13 @@ export interface Miner {
   /** Continuous logical-pixel position (top-left of the miner's 48x48 box). */
   x: number;
   y: number;
+  /**
+   * Where the miner stood when the current step began, so the renderer can draw
+   * between that and (x, y) — see Game.renderAlpha. Written by the step and read
+   * by the renderer, never the other way about.
+   */
+  prevX: number;
+  prevY: number;
   vx: number;
   vy: number;
   facing: Facing;

@@ -35,6 +35,8 @@ export function randInt(min: number, max: number): number {
 export class Ship {
   x = SAFE_X;
   y = SAFE_Y;
+  prevX = SAFE_X;
+  prevY = SAFE_Y;
   vx = 0;
   vy = 0;
   angle = FACE_UP; // facing, radians, clockwise from +x (up = -90deg)
@@ -44,6 +46,8 @@ export class Ship {
   reset(): void {
     this.x = SAFE_X;
     this.y = SAFE_Y;
+    this.prevX = SAFE_X;
+    this.prevY = SAFE_Y;
     this.vx = 0;
     this.vy = 0;
     this.angle = FACE_UP;
@@ -86,6 +90,8 @@ export function makeRock(
   return {
     x,
     y,
+    prevX: x,
+    prevY: y,
     vx,
     vy,
     size,
@@ -165,9 +171,12 @@ export function makeSaucer(speed: number, weaveSpeed: number): Saucer {
   const fromLeft = random() < 0.5;
   const x = fromLeft ? -30 : FIELD_W + 30;
   const vx = fromLeft ? speed : -speed;
+  const y = rand(80, FIELD_H - 80);
   return {
     x,
-    y: rand(80, FIELD_H - 80),
+    y,
+    prevX: x,
+    prevY: y,
     vx,
     vy: rand(-1, 1) * weaveSpeed,
     fireTimer: 1.0,

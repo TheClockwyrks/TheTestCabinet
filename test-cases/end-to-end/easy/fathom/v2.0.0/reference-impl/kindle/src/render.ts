@@ -46,7 +46,9 @@ function drawVisionMask(ctx: CanvasRenderingContext2D, game: Game): void {
   const f = game.forager;
   const R = game.visionCircle;
   const inner = Math.max(0, R - 20); // a soft edge over the last ~20px
-  const g = ctx.createRadialGradient(f.x, f.y, inner, f.x, f.y, R);
+  const fx = f.viewX(game.renderAlpha);
+  const fy = f.viewY(game.renderAlpha);
+  const g = ctx.createRadialGradient(fx, fy, inner, fx, fy, R);
   g.addColorStop(0, "rgba(3,6,12,0)"); // transparent inside the circle
   g.addColorStop(1, COLOR.fog); // opaque fog; the gradient extends this beyond R
   ctx.fillStyle = g;
@@ -283,7 +285,13 @@ function drawFlareLight(ctx: CanvasRenderingContext2D, game: Game): void {
     ctx.save();
     // Clip to the flare's circle, attached to the Flarefish.
     ctx.beginPath();
-    ctx.arc(p.x, p.y, FLARE_RADIUS, 0, Math.PI * 2);
+    ctx.arc(
+      p.viewX(game.renderAlpha),
+      p.viewY(game.renderAlpha),
+      FLARE_RADIUS,
+      0,
+      Math.PI * 2,
+    );
     ctx.clip();
     ctx.globalAlpha = alpha;
     const rad = Math.ceil(FLARE_RADIUS / TILE) + 1;
@@ -368,6 +376,7 @@ function drawSonarWaves(ctx: CanvasRenderingContext2D, game: Game): void {
   const HALO = { w: TILE * 0.42, k: 0.16 };
   const CORE = { w: TILE * 0.16, k: 0.7 };
   for (const wave of game.waves) {
+    const front = wave.viewFront(game.renderAlpha);
     // The Gloamfin's guaranteed "lost you" ping is orange, distinct from its
     // ordinary violet ping (specs/predators.md); the forager's ping is cyan.
     const rgb = wave.orange
@@ -378,7 +387,7 @@ function drawSonarWaves(ctx: CanvasRenderingContext2D, game: Game): void {
     for (const seg of [HALO, CORE]) {
       ctx.lineWidth = seg.w;
       for (const [key, d] of wave.dist) {
-        const delta = wave.front - d; // how far the front has swept past this tile
+        const delta = front - d; // how far the front has swept past this tile
         if (delta < 0 || delta > SONAR_WAVE_BAND) continue;
         // Brightest at the leading edge (delta 0), fading to nothing behind it.
         const a = (1 - delta / SONAR_WAVE_BAND) * seg.k;
@@ -438,7 +447,13 @@ function drawEffectsAndCreatures(ctx: CanvasRenderingContext2D, game: Game): voi
       scale = 1 - 0.3 * ft;
     }
     const size = FLARE_RADIUS * 2 * scale;
-    ctx.drawImage(assets.flareBloom[frame], p.x - size / 2, p.y - size / 2, size, size);
+    ctx.drawImage(
+      assets.flareBloom[frame],
+      p.viewX(game.renderAlpha) - size / 2,
+      p.viewY(game.renderAlpha) - size / 2,
+      size,
+      size,
+    );
   }
   ctx.restore();
 
@@ -458,7 +473,7 @@ function drawEffectsAndCreatures(ctx: CanvasRenderingContext2D, game: Game): voi
     if (!predatorBodyVisible(game, p)) continue;
     const lit = game.fog.isLit(p.col, p.row) || p.alertT > 0;
     ctx.globalAlpha = lit ? 1 : 0.6;
-    drawPredator(ctx, assets, p);
+    drawPredator(ctx, assets, p, game.renderAlpha);
     ctx.globalAlpha = 1;
   }
 
@@ -474,8 +489,8 @@ function drawEffectsAndCreatures(ctx: CanvasRenderingContext2D, game: Game): voi
     ctx.globalAlpha = 1;
     ctx.drawImage(
       assets.drifter[Math.floor(d.animT * 8) % 8],
-      d.x - 16,
-      d.y - 16,
+      d.viewX(game.renderAlpha) - 16,
+      d.viewY(game.renderAlpha) - 16,
       TILE,
       TILE,
     );
@@ -484,7 +499,13 @@ function drawEffectsAndCreatures(ctx: CanvasRenderingContext2D, game: Game): voi
 
   // Forager (always drawn).
   const f = game.forager;
-  ctx.drawImage(assets.glimmerfin[spriteFrame(f)], f.x - 16, f.y - 16, TILE, TILE);
+  ctx.drawImage(
+    assets.glimmerfin[spriteFrame(f)],
+    f.viewX(game.renderAlpha) - 16,
+    f.viewY(game.renderAlpha) - 16,
+    TILE,
+    TILE,
+  );
   ctx.restore();
 
   // The amber lights (additive): the bonus drifters and every out-of-den
@@ -496,17 +517,21 @@ function drawEffectsAndCreatures(ctx: CanvasRenderingContext2D, game: Game): voi
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   const R = game.visionCircle;
-  const inView = (x: number, y: number) => Math.hypot(x - f.x, y - f.y) <= R;
+  const fx = f.viewX(game.renderAlpha);
+  const fy = f.viewY(game.renderAlpha);
+  const inView = (x: number, y: number) => Math.hypot(x - fx, y - fy) <= R;
   for (const d of game.drifters) {
-    if (inView(d.x, d.y)) drawAmberOrb(ctx, d.x, d.y);
+    const dx = d.viewX(game.renderAlpha);
+    const dy = d.viewY(game.renderAlpha);
+    if (inView(dx, dy)) drawAmberOrb(ctx, dx, dy);
   }
   for (const p of game.predators) {
     if (
       p.kind === PredKind.Lanternjaw &&
       p.state !== PredState.Den &&
-      inView(p.x, p.y)
+      inView(p.viewX(game.renderAlpha), p.viewY(game.renderAlpha))
     )
-      drawAmberOrb(ctx, p.x, p.y);
+      drawAmberOrb(ctx, p.viewX(game.renderAlpha), p.viewY(game.renderAlpha));
   }
   ctx.restore();
 }
@@ -529,6 +554,7 @@ function drawPredator(
   ctx: CanvasRenderingContext2D,
   assets: Game["assets"],
   p: Predator,
+  alpha: number,
 ): void {
   let frame: number;
   let sheet: HTMLImageElement[];
@@ -546,7 +572,13 @@ function drawPredator(
     sheet = assets.flarefish;
     frame = spriteFrame(p);
   }
-  ctx.drawImage(sheet[frame], p.x - 16, p.y - 16, TILE, TILE);
+  ctx.drawImage(
+    sheet[frame],
+    p.viewX(alpha) - 16,
+    p.viewY(alpha) - 16,
+    TILE,
+    TILE,
+  );
 }
 
 // A soft amber mote with a bright core (`#ffd166`), used for BOTH the bonus

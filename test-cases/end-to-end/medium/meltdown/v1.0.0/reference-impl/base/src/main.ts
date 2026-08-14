@@ -56,12 +56,22 @@ function frame(now: number): void {
     accumulator += dt;
     while (accumulator >= FIXED_STEP) {
       const steps = game.state === "playing" ? game.speed : 1;
+      game.syncView(); // one interpolation window per displayed step
       for (let k = 0; k < steps; k++) game.fixedStep(FIXED_STEP);
       accumulator -= FIXED_STEP;
     }
   } else {
     accumulator = 0;
   }
+
+  // What is left in the accumulator is time the display is showing but the
+  // simulation has not stepped through yet. Hand it to the renderer as a
+  // fraction of a step so it can draw between the last two states: the tick rate
+  // and the refresh rate do not divide evenly, so the number of steps per frame
+  // varies, and drawing the raw state would move every unit by a different
+  // distance each frame. Zero while the debug API holds the clock, so a posed
+  // scenario is drawn exactly as it was stepped.
+  game.renderAlpha = game.autoStep ? accumulator / FIXED_STEP : 0;
 
   game.updatePointer();
 

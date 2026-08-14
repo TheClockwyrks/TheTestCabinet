@@ -19,6 +19,10 @@ export function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }
 
+export function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
 export class Paddle {
   readonly side: Side;
   readonly x0: number; // left edge
@@ -72,6 +76,12 @@ export class Ball {
 
   readonly hx: number; // home point x
   readonly hy: number; // home point y
+  // Where this ball stood when the current step began. The renderer draws
+  // between that and the current position (see Game.renderAlpha), so motion is
+  // smooth even though the simulation moves in whole fixed steps. Written by
+  // the step, read by the renderer, never the reverse.
+  prevX: number;
+  prevY: number;
   held = false; // parked solid at the home point, counting down
   holdTimer = 0; // seconds remaining on this ball's own countdown
 
@@ -80,6 +90,22 @@ export class Ball {
     this.hy = hy;
     this.x = hx;
     this.y = hy;
+    this.prevX = hx;
+    this.prevY = hy;
+  }
+
+  viewX(alpha: number): number {
+    return lerp(this.prevX, this.x, alpha);
+  }
+  viewY(alpha: number): number {
+    return lerp(this.prevY, this.y, alpha);
+  }
+
+  // Collapse the interpolation window onto the current position, so a ball that
+  // is repositioned rather than integrated is not drawn smearing across the jump.
+  syncView(): void {
+    this.prevX = this.x;
+    this.prevY = this.y;
   }
 
   get speed(): number {
@@ -96,6 +122,7 @@ export class Ball {
     this.spin = 0;
     this.held = true;
     this.holdTimer = HOLD_TIME;
+    this.syncView();
   }
 
   // Launch from the home point at the given absolute angle (radians), at the
@@ -108,6 +135,7 @@ export class Ball {
     this.vy = SERVE_SPEED * Math.sin(angle);
     this.held = false;
     this.holdTimer = 0;
+    this.syncView();
   }
 
   radius(): number {

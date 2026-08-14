@@ -146,7 +146,7 @@ function drawPaddles(ctx: Ctx, game: Game): void {
   glowRect(
     ctx,
     game.left.x0,
-    game.left.cy - PADDLE_HALF,
+    game.viewLeftCy - PADDLE_HALF,
     PADDLE_W,
     PADDLE_HALF * 2,
     8,
@@ -157,7 +157,7 @@ function drawPaddles(ctx: Ctx, game: Game): void {
   glowRect(
     ctx,
     game.right.x0,
-    game.right.cy - PADDLE_HALF,
+    game.viewRightCy - PADDLE_HALF,
     PADDLE_W,
     PADDLE_HALF * 2,
     8,
@@ -172,9 +172,20 @@ function drawPaddles(ctx: Ctx, game: Game): void {
 // the oldest end, filled with a head->tail gradient so it reads as a smooth
 // streak rather than discrete dots. Length is proportional to speed because the
 // samples span a fixed slice of time.
-function drawTrail(ctx: Ctx, trail: Trail, simTime: number): void {
+function drawTrail(
+  ctx: Ctx,
+  trail: Trail,
+  simTime: number,
+  ball: Ball,
+  alpha: number,
+): void {
   const pts = trail.ribbon(simTime);
   if (pts.length < 2) return;
+
+  // The head rides the ball the renderer is actually drawing rather than the
+  // position the last completed step left it at, so the comet stays attached to
+  // the ball between steps.
+  pts[0] = { x: ball.viewX(alpha), y: ball.viewY(alpha), t: simTime };
 
   const head = pts[0];
   const tail = pts[pts.length - 1];
@@ -347,7 +358,8 @@ function drawTitle(ctx: Ctx, game: Game): void {
   // 50% / 75% of the field height), hinting at multi-ball play.
   ctx.save();
   ctx.globalAlpha = 0.5;
-  for (const b of game.balls) drawBall(ctx, b.x, b.y);
+  for (const b of game.balls)
+    drawBall(ctx, b.viewX(game.renderAlpha), b.viewY(game.renderAlpha));
   ctx.restore();
   drawVignette(ctx);
 
@@ -445,9 +457,10 @@ function drawMatchScene(ctx: Ctx, game: Game): void {
   drawField(ctx, game, 1, false);
   drawVignette(ctx);
   for (let i = 0; i < game.balls.length; i++) {
-    drawTrail(ctx, game.trails[i], game.simTime);
+    drawTrail(ctx, game.trails[i], game.viewSimTime, game.balls[i], game.renderAlpha);
   }
-  for (const b of game.balls) drawBall(ctx, b.x, b.y);
+  for (const b of game.balls)
+    drawBall(ctx, b.viewX(game.renderAlpha), b.viewY(game.renderAlpha));
   // A small countdown digit over any ball held for its own respawn (only
   // during live play — the match-start countdown uses the full-field overlay).
   if (game.state === "playing") {

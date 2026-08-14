@@ -256,7 +256,13 @@ function drawFlareLight(ctx: CanvasRenderingContext2D, game: Game): void {
     ctx.save();
     // Clip to the flare's circle, attached to the Flarefish.
     ctx.beginPath();
-    ctx.arc(p.x, p.y, FLARE_RADIUS, 0, Math.PI * 2);
+    ctx.arc(
+      p.viewX(game.renderAlpha),
+      p.viewY(game.renderAlpha),
+      FLARE_RADIUS,
+      0,
+      Math.PI * 2,
+    );
     ctx.clip();
     ctx.globalAlpha = alpha;
     const rad = Math.ceil(FLARE_RADIUS / TILE) + 1;
@@ -301,7 +307,9 @@ function drawLightPocket(ctx: CanvasRenderingContext2D, game: Game): void {
   const f = game.forager;
   const R = game.visionRadius * 1.35;
   const glow = 0.14 + 0.22 * game.forager.g;
-  const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, R);
+  const fx = f.viewX(game.renderAlpha);
+  const fy = f.viewY(game.renderAlpha);
+  const g = ctx.createRadialGradient(fx, fy, 0, fx, fy, R);
   g.addColorStop(0, `rgba(70,240,224,${glow})`);
   g.addColorStop(0.5, `rgba(36,80,107,${glow * 0.5})`);
   g.addColorStop(1, "rgba(3,6,12,0)");
@@ -309,7 +317,7 @@ function drawLightPocket(ctx: CanvasRenderingContext2D, game: Game): void {
   ctx.globalCompositeOperation = "lighter";
   ctx.fillStyle = g;
   ctx.beginPath();
-  ctx.arc(f.x, f.y, R, 0, Math.PI * 2);
+  ctx.arc(fx, fy, R, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }
@@ -340,6 +348,7 @@ function drawSonarWaves(ctx: CanvasRenderingContext2D, game: Game): void {
   const HALO = { w: TILE * 0.42, k: 0.16 };
   const CORE = { w: TILE * 0.16, k: 0.7 };
   for (const wave of game.waves) {
+    const front = wave.viewFront(game.renderAlpha);
     // The Gloamfin's guaranteed "lost you" ping is orange, distinct from its
     // ordinary violet ping (specs/predators.md); the forager's ping is cyan.
     const rgb = wave.orange
@@ -350,7 +359,7 @@ function drawSonarWaves(ctx: CanvasRenderingContext2D, game: Game): void {
     for (const seg of [HALO, CORE]) {
       ctx.lineWidth = seg.w;
       for (const [key, d] of wave.dist) {
-        const delta = wave.front - d; // how far the front has swept past this tile
+        const delta = front - d; // how far the front has swept past this tile
         if (delta < 0 || delta > SONAR_WAVE_BAND) continue;
         // Brightest at the leading edge (delta 0), fading to nothing behind it.
         const a = (1 - delta / SONAR_WAVE_BAND) * seg.k;
@@ -408,7 +417,13 @@ function drawEffectsAndCreatures(ctx: CanvasRenderingContext2D, game: Game): voi
       scale = 1 - 0.3 * ft;
     }
     const size = FLARE_RADIUS * 2 * scale;
-    ctx.drawImage(assets.flareBloom[frame], p.x - size / 2, p.y - size / 2, size, size);
+    ctx.drawImage(
+      assets.flareBloom[frame],
+      p.viewX(game.renderAlpha) - size / 2,
+      p.viewY(game.renderAlpha) - size / 2,
+      size,
+      size,
+    );
   }
   ctx.restore();
 
@@ -428,7 +443,7 @@ function drawEffectsAndCreatures(ctx: CanvasRenderingContext2D, game: Game): voi
     if (!predatorBodyVisible(game, p)) continue;
     const lit = game.fog.isLit(p.col, p.row) || p.alertT > 0;
     ctx.globalAlpha = lit ? 1 : 0.6;
-    drawPredator(ctx, assets, p);
+    drawPredator(ctx, assets, p, game.renderAlpha);
     ctx.globalAlpha = 1;
   }
 
@@ -444,8 +459,8 @@ function drawEffectsAndCreatures(ctx: CanvasRenderingContext2D, game: Game): voi
     ctx.globalAlpha = 1;
     ctx.drawImage(
       assets.drifter[Math.floor(d.animT * 8) % 8],
-      d.x - 16,
-      d.y - 16,
+      d.viewX(game.renderAlpha) - 16,
+      d.viewY(game.renderAlpha) - 16,
       TILE,
       TILE,
     );
@@ -454,7 +469,13 @@ function drawEffectsAndCreatures(ctx: CanvasRenderingContext2D, game: Game): voi
 
   // Forager (always drawn).
   const f = game.forager;
-  ctx.drawImage(assets.glimmerfin[spriteFrame(f)], f.x - 16, f.y - 16, TILE, TILE);
+  ctx.drawImage(
+    assets.glimmerfin[spriteFrame(f)],
+    f.viewX(game.renderAlpha) - 16,
+    f.viewY(game.renderAlpha) - 16,
+    TILE,
+    TILE,
+  );
   ctx.restore();
 
   // The always-visible amber lights (additive), drawn on top so they read at any
@@ -462,10 +483,11 @@ function drawEffectsAndCreatures(ctx: CanvasRenderingContext2D, game: Game): voi
   // Lanternjaw's bulb (specs/predators.md, specs/sensing.md).
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
-  for (const d of game.drifters) drawAmberOrb(ctx, d.x, d.y);
+  for (const d of game.drifters)
+    drawAmberOrb(ctx, d.viewX(game.renderAlpha), d.viewY(game.renderAlpha));
   for (const p of game.predators) {
     if (p.kind === PredKind.Lanternjaw && p.state !== PredState.Den)
-      drawAmberOrb(ctx, p.x, p.y);
+      drawAmberOrb(ctx, p.viewX(game.renderAlpha), p.viewY(game.renderAlpha));
   }
   ctx.restore();
 }
@@ -488,6 +510,7 @@ function drawPredator(
   ctx: CanvasRenderingContext2D,
   assets: Game["assets"],
   p: Predator,
+  alpha: number,
 ): void {
   let frame: number;
   let sheet: HTMLImageElement[];
@@ -505,7 +528,13 @@ function drawPredator(
     sheet = assets.flarefish;
     frame = spriteFrame(p);
   }
-  ctx.drawImage(sheet[frame], p.x - 16, p.y - 16, TILE, TILE);
+  ctx.drawImage(
+    sheet[frame],
+    p.viewX(alpha) - 16,
+    p.viewY(alpha) - 16,
+    TILE,
+    TILE,
+  );
 }
 
 // A soft amber mote with a bright core (`#ffd166`), used for BOTH the bonus
