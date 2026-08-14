@@ -1041,9 +1041,16 @@ export function RunReviewEditor({
           verdicts, so surfacing it while the review is still being written only buries
           the form the reviewer is here to complete. Show it only once *this* reviewer
           has submitted their own review, where it stands as evidence behind their
-          verdict — another reviewer's review must not reveal it early. */}
+          verdict — another reviewer's review must not reveal it early. Even then it
+          stays folded away: by that point the reviewer has already made the call, so
+          an expanded table here is a screenful of scrolling between them and the
+          review summary and actions below. */}
       {debugScripts.length > 0 && (ownReview || submittedThisSession) && (
-        <DebugScriptList scripts={debugScripts} heading="Automated validation" />
+        <DebugScriptList
+          scripts={debugScripts}
+          heading="Automated validation"
+          collapsible
+        />
       )}
 
       {/* The review form proper — the checklist questions, the writeup, and the
