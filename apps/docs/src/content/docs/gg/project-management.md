@@ -214,9 +214,14 @@ scheduler capacity; see [scheduling](/gg/subagents/) for the slot discipline.
 The blocked-by DAG and `wait_for_issue` come with the capability and are
 available wherever it is.
 
-Two things end a wait without the issue ever reaching a terminal state, and each
-is an error on the call rather than a resolution, because the awaited work did
-not happen:
+What a wait reports is read off the board at the moment the agent resumes, never
+from the board change that woke it. A woken agent is marked ready and then queues
+for a running slot, and the run keeps moving in between: an agent still running
+may revise the issue, revive a failed blocker, or drop a dependency.
+
+Three things end a wait without the issue ever reaching a terminal state, and
+each is an error on the call rather than a resolution, because the awaited work
+did not happen:
 
 - The issue can never be finished. Failure does not cascade, so an issue behind a
   failed blocker stays open and stops being dispatchable for the rest of the run:
@@ -225,6 +230,9 @@ not happen:
   dropping the dependency or refiling the work. The check covers the whole
   transitive blocked-by set and applies both when the call is made and when a
   blocker fails while an agent is already suspended.
+- The issue is live again by the time the agent resumes. Whatever settled it has
+  since been undone, so the issue is ordinary unfinished work. gg names the state
+  it is in and invites the agent to wait again.
 - A [gg defect](/gg/execution-limits/#ggs-own-defects) ended the run. Every
   suspended wait in the run is released, whatever it was waiting on, and each
   agent then winds down at the turn boundary it reaches.

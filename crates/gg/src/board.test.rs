@@ -701,6 +701,50 @@ fn a_failed_blocker_makes_every_issue_behind_it_unsatisfiable() {
     );
 }
 
+/// **Which unsatisfiable blocker is reported is decided by the issue, not by the walk.**
+///
+/// An issue stalled behind two failures is the ordinary shape of a board that has gone wrong — one
+/// agent's work fails, and the issues filed against it name every prerequisite they have — so the
+/// walk has to pick one of them. That answer leaves gg: it is the sentence a
+/// [waiting agent](crate::agent) is refused with, the id it is told to drop or refile, and a line
+/// in the run's recorded tree. A pick that followed the traversal's own convenience rather than the
+/// board would give two otherwise identical runs two different reasons for the same stall, and the
+/// comparison those runs exist for would be between gg's iteration order and itself.
+///
+/// So it is pinned as a mirrored pair: the same two failed issues, declared in opposite orders by
+/// two boards that are otherwise identical. Each must name the blocker *its* issue declares first.
+/// One board alone proves nothing — every wrong order gets half of them right — and the pair also
+/// rules out the answer being decided by the ids or by the order the blockers were filed in, since
+/// those are the same on both boards.
+#[test]
+fn the_unsatisfiable_blocker_reported_is_the_one_the_issue_declares_first() {
+    for swapped in [false, true] {
+        let mut store = store();
+        let first = add_issue(&mut store, "first", &[]);
+        let second = add_issue(&mut store, "second", &[]);
+        store.assign_issue(&first);
+        store.assign_issue(&second);
+        assert!(store.fail_issue(&first));
+        assert!(store.fail_issue(&second));
+
+        // The only difference between the two boards, and the only thing the answer may follow.
+        let declared: [&str; 2] = if swapped {
+            [&second, &first]
+        } else {
+            [&first, &second]
+        };
+        let dependent = add_issue(&mut store, "dependent", &declared);
+
+        assert_eq!(
+            store.unsatisfiable_blocker(&dependent).as_deref(),
+            Some(declared[0]),
+            "the issue declares `{}` before `{}`, so that is the blocker it is stalled on",
+            declared[0],
+            declared[1]
+        );
+    }
+}
+
 /// A blocker that is merely slow is not a blocker that is finished with, and neither is one whose
 /// own attempt is still running: only a terminal-but-not-done blocker settles anything.
 #[test]

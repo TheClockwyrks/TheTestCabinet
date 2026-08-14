@@ -158,7 +158,7 @@ async fn an_undeclared_incarnation_profile_ends_the_session_with_internal_error(
         "the agent must not take a turn as somebody else"
     );
     assert!(
-        is_failure_status(end.status),
+        end.status.is_failure(),
         "a run stopped by a gg defect is a failure, not a ceiling"
     );
     let errors = error_messages(&sink.events());
@@ -753,6 +753,63 @@ async fn an_issue_assigned_to_an_undeclared_profile_fails_rather_than_dispatchin
     assert!(
         fault.contains(&issue_id) && fault.contains("`Ghost`"),
         "the run-level diagnostic must name the issue and the assignee: {fault}"
+    );
+}
+
+/// **An issue agent whose credential is refused fails its issue and leaves the run alone.**
+///
+/// The board dispatch draws the same split every other site that resolves a client draws, and this
+/// is the half that costs a *healthy* run when it goes wrong. A missing API key is the operator's
+/// to supply: gg read its configuration correctly, the issue is honestly failed because nobody
+/// worked it, and the run around it is still a run the model produced. Filing it as gg's defect
+/// instead would latch the run's [fault](crate::fault), end the session on `internal_error` and
+/// exit non-zero — discarding a whole run over an environment variable, and telling the operator
+/// their key is our bug.
+///
+/// Its opposite number — a provider that will not build, which *is* gg's — is driven through the
+/// real entry point further down this file. Both directions have to be held or the split survives
+/// as a coin toss that happens to be landing the right way up.
+#[tokio::test]
+async fn an_issue_agent_with_no_credential_fails_the_issue_alone() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(
+        Some("run-issue-keyless".to_string()),
+        Box::new(sink.clone()),
+    );
+    // Assigned to the root's own profile, which is declared and bound: the name resolves and the
+    // model binds, so the credential is the only thing left to refuse — the arm the undeclared and
+    // unbindable cases above can never reach.
+    let orch = orchestrator_with(dir.path(), board_set(), Arc::new(KeylessFactory), &emitter);
+    let issue_id = file_issue(&orch, ROOT_AGENT, &[]);
+
+    orch.spawn_issue_agent(
+        "agent-keyless-1".to_string(),
+        issue_id.clone(),
+        "Implement it.".to_string(),
+        0,
+        &emitter,
+    );
+
+    assert_eq!(
+        orch.board.issue_status(&issue_id),
+        Some(IssueStatus::Failed),
+        "an issue gg could not stand an agent up for is not an issue somebody worked"
+    );
+    assert_eq!(
+        orch.fault.raised(),
+        None,
+        "a refused credential is the operator's to supply, and must never disqualify a run gg was \
+         working correctly"
+    );
+    let errors = error_messages(&sink.events());
+    assert!(
+        errors.iter().any(|message| message.contains(&issue_id)),
+        "the operator is still told which issue went unworked: {errors:?}"
+    );
+    assert!(
+        !errors.iter().any(|message| message.contains("gg defect")),
+        "and told it in gg's words for somebody else's problem, not for one of ours: {errors:?}"
     );
 }
 

@@ -168,6 +168,15 @@ impl FaultLatch {
     /// This is the half of the latch a **suspended** agent reads: something that is awaited beside
     /// whatever else it is waiting for, so that a wait gg's own defect has made unsatisfiable ends
     /// anyway. See [`wake`](Self::wake) for why a turn boundary cannot serve that agent.
+    ///
+    /// **No test holds the ordering below, and none can.** The window it closes is the few
+    /// instructions between the read and the registration, and the only thing that fits in it is a
+    /// [`latch`](Self::latch) running on another thread at that instant. Reversing the two lines
+    /// leaves every *observable* behaviour of this future identical — a `Notified` that was never
+    /// enabled registers on its first poll, which is inside the same uninterrupted poll as the
+    /// read — so a caller cannot tell the versions apart by polling, and there is no seam to
+    /// schedule the race at. What holds it is the argument, which is why the argument is written
+    /// out rather than left to a test name.
     pub async fn until_raised(&self) {
         // Registered *before* the latch is read: `Notify::notify_waiters` wakes only the waiters
         // registered at the instant it fires, so a fault raised between the read and the

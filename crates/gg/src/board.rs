@@ -1077,6 +1077,12 @@ impl BoardStore {
     ///
     /// A blocker that is not on the board at all is reported the same way, because
     /// [`is_ready`](Self::is_ready) treats it the same way: only a `Done` blocker clears an edge.
+    /// That arm is **defensive rather than live**, which is why no test covers it: this store
+    /// admits no dangling edge. [`create_issue`](Self::create_issue) and
+    /// [`set_issue_blocked_by`](Self::set_issue_blocked_by) both refuse a blocker id the board does
+    /// not carry, and [`remove_issue`](Self::remove_issue) strips the removed id out of every
+    /// blocked-by set on its way past. It is kept because the alternative reading — an unknown id
+    /// as *satisfied* — would answer a waiter with work that is not merely unfinished but absent.
     ///
     /// The walk is depth-first in each issue's declared blocker order, and reports the first such
     /// blocker it meets — the answer must not depend on a traversal order that varies per process,

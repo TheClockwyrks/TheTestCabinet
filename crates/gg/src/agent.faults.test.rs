@@ -13,10 +13,14 @@
 //! interesting cases are therefore the non-root ones, since a host fault strikes whichever agent
 //! was taking a turn and most agents are not the root.
 //!
-//! The last section is the one fault an agent cannot report for itself: a task that **panicked**,
-//! whose frame is being unwound rather than arriving at a turn boundary to read the latch. Its
-//! tests are therefore about what happens *around* the agent — the run's status, and whoever was
-//! waiting on it.
+//! Then comes the one fault an agent cannot report for itself: a task that **panicked**, whose
+//! frame is being unwound rather than arriving at a turn boundary to read the latch. Its tests are
+//! therefore about what happens *around* the agent — the run's status, and whoever was waiting on
+//! it.
+//!
+//! The last two sections are the same rule read at the two records of one event: the **turn** a gg
+//! defect failed under, and the **ending** an agent took while the run was already broken. Both are
+//! places where what happened, read on its own, looks like somebody else's failure.
 //!
 //! Every [fatal fault](FatalFault) is driven through the live loop, since that is where the
 //! classification is: the sandbox's own suite proves which failures are gg's, and only the loop can
@@ -95,7 +99,7 @@ async fn an_artifact_defect_ends_the_agent_with_internal_error() {
         "artifact drift is gg's own defect, not a model turn that failed"
     );
     assert!(
-        is_failure_status(end.status),
+        end.status.is_failure(),
         "an agent gg's defect stopped has failed, whoever's fault it is"
     );
     assert_eq!(end.turns, 1, "the turn the fault landed on still happened");
@@ -1152,6 +1156,261 @@ async fn a_panic_during_a_wait_gives_back_no_slot() {
     );
 }
 
+/// [`persistent_subagent_set`] with a live [board](crate::board) on the root, for the issue agent
+/// the case below tears down.
+///
+/// An [issue agent](AgentRole::Issue) ends through the board as well as through the scheduler — it
+/// fails the issue it was working before it gives its slot back — so a run with the capability
+/// switched off would have no issue for the teardown to touch and would exercise half the path.
+fn persistent_issue_set() -> GgCapabilitySet {
+    let mut set = persistent_subagent_set();
+    crate::tools::grant_configured(
+        &mut set.agents[0],
+        GgCapabilityConfig {
+            params: json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_AGENT }),
+            ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
+        },
+    );
+    set
+}
+
+/// File one issue for `agent` **straight onto the store** and claim it, so the board carries the
+/// in-progress issue an [issue agent](AgentRole::Issue) is dispatched against.
+///
+/// Filed rather than dispatched because what is under test is the teardown: the issue only has to
+/// exist and be live, and driving a model to file it would put a whole session between the setup
+/// and the one call being made.
+fn issue_in_progress(orch: &Orchestrator, agent: &str) -> String {
+    let store = orch.board.store();
+    let mut store = store.lock().expect("board store lock");
+    let id = store
+        .create_issue(board::NewIssue {
+            title: "the widget",
+            in_scope: "Build the widget.",
+            out_of_scope: "Nothing else.",
+            completion_criteria: "It works.",
+            agent,
+            ..board::NewIssue::default()
+        })
+        .expect("the issue is filed");
+    store.assign_issue(&id);
+    id
+}
+
+/// **An issue agent that panics while suspended gives back nothing either.**
+///
+/// The same rule as the case above, on the role that reaches it through a different line of code. A
+/// spawned subagent's slot goes back inside the *signal* to its spawner, so the [hold](SlotHold) is
+/// read where that signal is chosen; the [root](TeardownRole::Root) and an
+/// [issue agent](AgentRole::Issue) answer to nobody and go out through
+/// [`released`](AgentTeardown::released) instead, whose guard is a line of its own. Both must hold,
+/// and the case above drives only the first of them.
+///
+/// The issue role is also the one most likely to be suspended when it is torn down. Its
+/// characteristic wait is `wait_for_issue` — on work it was told is a prerequisite of its own — and
+/// the board dispatches these agents in parallel, so a run doing project management has several of
+/// them suspended at once. A wind-down that over-released one would hand its slot to an agent the cap
+/// should have held back, and free the [exclusivity key](crate::persistence) a second instance of a
+/// persistent profile is running under, on the run somebody is trying to read a fault from.
+#[tokio::test]
+async fn a_panic_during_an_issue_agents_wait_gives_back_no_slot() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-issue-slot".to_string()), Box::new(sink.clone()));
+    let mut warnings = Vec::new();
+    let orch = Arc::new(
+        Orchestrator::build(
+            &invocation(dir.path(), persistent_issue_set()),
+            &emitter,
+            Arc::new(ScriptedFactory::new()),
+            crate::tools::real_shell(),
+            WorktreesSetup {
+                baseline_commit: None,
+                root: None,
+            },
+            &mut warnings,
+        )
+        .expect("a set with no machines builds an orchestrator"),
+    );
+    let issue_id = issue_in_progress(&orch, PERSISTENT);
+
+    // The issue's agent, dispatched under the persistent profile and running.
+    let agent = Agent {
+        id: format!("{issue_id}.0i"),
+        parent_id: None,
+        depth: 0,
+        slot: PERSISTENT.to_string(),
+        fsm: None,
+    };
+    let mut role = AgentRole::Issue {
+        brief: "Build the widget.".to_string(),
+        issue_id: issue_id.clone(),
+        retry: 0,
+    };
+    let origin = GgSessionAgentOrigin::IssueAttempt {
+        issue: issue_id.clone(),
+        attempt: 0,
+    };
+    let mut teardown = AgentTeardown::new(&orch, &agent, &origin, &mut role);
+    assert_eq!(
+        teardown.exclusive(),
+        Some(PERSISTENT),
+        "a persistent profile's slot is held under its own name, which is what makes the second \
+         release observable"
+    );
+    orch.scheduler
+        .acquire_start(teardown.exclusive(), teardown.hold())
+        .await;
+
+    // It suspends — on another issue, in practice, which is the wait this role is dispatched into.
+    let (_token, _rx) = orch
+        .scheduler
+        .block_and_release(teardown.exclusive(), teardown.hold());
+
+    // The next instance of the profile takes the slot and the key it gave up.
+    let successor = SlotHold::default();
+    orch.scheduler
+        .acquire_start(Some(PERSISTENT), &successor)
+        .await;
+    assert!(orch.scheduler.holds(PERSISTENT));
+
+    // Now the suspended agent's task panics.
+    let payload: Box<dyn Any + Send> = Box::new(PANIC_SITE);
+    let end = teardown.panicked(payload.as_ref());
+
+    assert_eq!(
+        end.status, STATUS_INTERNAL_ERROR,
+        "the panic is still gg's defect and still ends the agent"
+    );
+    assert_eq!(
+        orch.board.issue_status(&issue_id),
+        Some(IssueStatus::Failed),
+        "the issue arm still does its own half of the ending: nobody is going to finish this work"
+    );
+    assert_eq!(
+        orch.scheduler.running(),
+        1,
+        "but the slot behind that work is the successor's, and a second release would tell the \
+         scheduler the run has nobody running at all"
+    );
+    assert!(
+        orch.scheduler.holds(PERSISTENT),
+        "the profile belongs to the instance that is running it; freeing it here would let a third \
+         instance start beside that one"
+    );
+    assert!(
+        successor.held(),
+        "and the instance that holds the slot must still believe it does"
+    );
+}
+
+/// **An agent that panics after answering its spawner does not give its slot back twice.**
+///
+/// A return is the one ending that hands the slot over inside the *signal* to the spawner rather
+/// than by releasing it, so the [hold](SlotHold) is given up as part of the answer instead of by a
+/// release. Nothing reads it again on the way out, which is what makes that line easy to lose: its
+/// one reader is [`AgentTeardown::panicked`]'s arm for an agent that has **already answered** — the
+/// arm that finds no spawner left to signal and releases instead. That arm exists because a panic
+/// after the answer is a thing gg expects; this line is the whole of what makes it correct.
+///
+/// And the second release is not a no-op, which is why it is worth a test rather than a comment. By
+/// the time it happens the slot is somebody else's: it went back to the scheduler with the answer
+/// and was granted to whatever was queued for it — so the run winds down over its own parallelism
+/// cap, with two instances of a [persistent](crate::persistence) profile running at once.
+#[tokio::test]
+async fn a_panic_after_an_agent_answered_its_spawner_gives_back_no_slot() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-return-slot".to_string()), Box::new(sink.clone()));
+    let mut warnings = Vec::new();
+    let orch = Arc::new(
+        Orchestrator::build(
+            &invocation(dir.path(), persistent_subagent_set()),
+            &emitter,
+            Arc::new(ScriptedFactory::new()),
+            crate::tools::real_shell(),
+            WorktreesSetup {
+                baseline_commit: None,
+                root: None,
+            },
+            &mut warnings,
+        )
+        .expect("a set with no machines builds an orchestrator"),
+    );
+
+    let agent = Agent {
+        id: "agent-0".to_string(),
+        parent_id: Some(ROOT_AGENT_ID.to_string()),
+        depth: 1,
+        slot: PERSISTENT.to_string(),
+        fsm: None,
+    };
+    let (result_tx, _result_rx) = oneshot::channel();
+    let mut role = AgentRole::Sub {
+        brief: "Do the work.".to_string(),
+        issue_id: None,
+        worktree: None,
+        ending: EndingRole::Standard,
+        inherited: InheritedModules::default(),
+        seed: None,
+        link: Some(SpawnerLink {
+            parent_wait: Arc::new(ParentWait::new()),
+            result: result_tx,
+            finished: Arc::new(AtomicBool::new(false)),
+        }),
+    };
+    let origin = GgSessionAgentOrigin::Spawn {
+        parent: ROOT_AGENT_ID.to_string(),
+        ordinal: 0,
+    };
+    let mut teardown = AgentTeardown::new(&orch, &agent, &origin, &mut role);
+    orch.scheduler
+        .acquire_start(teardown.exclusive(), teardown.hold())
+        .await;
+
+    // It finishes and answers its spawner, which is what returns its slot and its key.
+    teardown.returned(AgentReturn {
+        summary: "Did the work.".to_string(),
+        status: STATUS_COMPLETED,
+        ending: None,
+    });
+    assert_eq!(
+        orch.scheduler.running(),
+        0,
+        "the answer carried the release with it"
+    );
+
+    // So the next instance of the profile starts.
+    let successor = SlotHold::default();
+    orch.scheduler
+        .acquire_start(Some(PERSISTENT), &successor)
+        .await;
+    assert!(orch.scheduler.holds(PERSISTENT));
+
+    // And only then does the finished agent's task panic — anywhere past the answer, which is the
+    // state the teardown's already-answered arm is written for.
+    let payload: Box<dyn Any + Send> = Box::new(PANIC_SITE);
+    let end = teardown.panicked(payload.as_ref());
+
+    assert_eq!(
+        end.status, STATUS_INTERNAL_ERROR,
+        "a panic after the answer is still gg's defect and still ends the run"
+    );
+    assert_eq!(
+        orch.scheduler.running(),
+        1,
+        "but the slot it would return has been the successor's since it answered"
+    );
+    assert!(
+        orch.scheduler.holds(PERSISTENT),
+        "and so has the key: a second free of it would let a third instance run beside the second"
+    );
+    assert!(
+        successor.held(),
+        "the instance actually running the profile must still believe it holds the slot"
+    );
+}
+
 // ---------------------------------------------------------------------------------------------
 // The turn a gg defect *failed*, as opposed to the turn it ended
 // ---------------------------------------------------------------------------------------------
@@ -1279,5 +1538,111 @@ async fn a_turn_gg_broke_under_is_recorded_as_ggs_rather_than_the_models() {
         summary.errors.turns > 0,
         "the turn is still counted in the denominator so the accounting stays whole: {:?}",
         summary.errors
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// The *ending* a gg defect broke, as opposed to the turn
+// ---------------------------------------------------------------------------------------------
+
+/// A client that **breaks the run while its own call is in flight**, and then fails the call.
+///
+/// The one thing standing between a turn's attribution and an agent's ending is a few lines, and
+/// this is the window they cover: gg breaking in some *other* agent between the boundary this agent
+/// read the latch at and the model call it then made. That is not exotic — a run with forty agents
+/// in it has one of them faulting while the others are mid-request as the ordinary case — and a
+/// client is where a test can put it deterministically, because nothing else in the loop happens
+/// between the two.
+///
+/// The failure it returns afterwards is an ordinary provider refusal, which is the point: read on
+/// its own it is a model error, and it is only the run's state around it that says otherwise.
+struct FaultingClient {
+    /// The run's latch, raised from inside the call.
+    fault: FaultLatch,
+}
+
+#[async_trait::async_trait]
+impl ModelClient for FaultingClient {
+    async fn complete(
+        &self,
+        _messages: &[Message],
+        _tools: &[ToolDefinition],
+    ) -> Result<ModelResponse, ModelError> {
+        self.fault.in_agent("agent-7", "reviewer", PANIC_SITE);
+        Err(ModelError::Fatal {
+            status: 503,
+            message: "the provider is unavailable".to_string(),
+        })
+    }
+
+    fn model_id(&self) -> &str {
+        "mock/primary"
+    }
+}
+
+/// **An agent's ending on a run gg broke is gg's, and says so in the sentence it hands back.**
+///
+/// The turn-level attribution landed first and covered the turn alone: the record said `fatal`
+/// while the agent's own ending three lines later still said `model_error`, computed from the
+/// provider's status as if the run around it were fine. That reaches readers. It is the terminal
+/// status on the agent's provenance row, and — through `final_text` — the sentence a spawner's
+/// **model** is handed as this agent's last word, which is gg's defect written into a prompt and
+/// attributed to whoever was bound to the run.
+///
+/// Both records of the one event are asserted here, because agreeing is the property: a turn that
+/// says gg and an ending that says the model cannot both be the account of what happened.
+#[tokio::test]
+async fn an_ending_taken_while_the_run_is_broken_is_ggs_rather_than_the_models() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
+    let fault = FaultLatch::default();
+    let mut limits = no_limits(3);
+    limits.fault = fault.clone();
+
+    // Code mode, because that is the path whose `final_text` gg writes itself — and therefore the
+    // path where a stale status is not merely recorded but phrased. No program is ever run: the
+    // turn dies at the model call, so this test pays no component compile.
+    let end = drive_root(
+        &FaultingClient { fault },
+        dir.path(),
+        &registry,
+        &emitter,
+        limits,
+        code_on(),
+    )
+    .await;
+
+    assert_eq!(
+        end.status, STATUS_INTERNAL_ERROR,
+        "a provider failure on a run gg had already broken is not evidence about the model"
+    );
+    let final_text = end
+        .final_text
+        .expect("a stopped agent still says how it ended");
+    assert!(
+        final_text.contains(STATUS_INTERNAL_ERROR) && !final_text.contains(STATUS_MODEL_ERROR),
+        "the agent's last word is put in front of a model, so it must not name the model's \
+         status: {final_text}"
+    );
+    // Read off every turn in the stream rather than by agent: a `drive` test emits on an unscoped
+    // stream, and there is exactly one agent in it anyway.
+    let outcomes: Vec<_> = sink
+        .events()
+        .iter()
+        .filter_map(|event| match &event.kind {
+            GgTelemetryKind::TurnOutcome {
+                outcome,
+                error_type,
+                ..
+            } => Some((*outcome, *error_type)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        outcomes,
+        vec![(GgTurnOutcome::Fatal, None)],
+        "and the turn agrees with it: one event, one account of whose failure it was"
     );
 }

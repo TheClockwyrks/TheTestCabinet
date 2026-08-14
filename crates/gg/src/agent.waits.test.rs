@@ -18,8 +18,20 @@
 //!   issue behind a failed blocker stays open forever: never done, never failed, never dispatchable.
 //!   A wait on it is refused with the blocker named, and the run carries on.
 //!
-//! Every test here is bounded ([`bounded`]), because the failure mode of the defect they cover is a
-//! test that does not finish rather than one that fails.
+//! The third section is the mirror image of both, and the reason a wait is answered from the board
+//! rather than from whatever woke it: a wait that *was* released for one of those reasons, on a run
+//! that had repaired itself by the time the agent got a slot to resume on. Reporting a wake-up as an
+//! answer tells an agent its wait completed on work nobody has done.
+//!
+//! The last section is what happens when the first two conditions arrive **together**, which is not
+//! an edge case but the ordinary shape of a wind-down: gg breaks, and the wind-down then fails the
+//! very issue somebody was suspended on. Both of the wait's exits are open on the same poll, and
+//! which one it reports has to be a property of gg rather than of a random pick, or two runs of one
+//! configuration disagree in the record about why they stopped.
+//!
+//! Every test here is bounded, because the failure mode of the defect they cover is a test that
+//! does not finish rather than one that fails: a scripted session through [`bounded`], and the
+//! hand-driven ones through [`until`] and a timeout on the wait's own task.
 
 use super::*;
 
@@ -437,4 +449,300 @@ async fn a_wait_on_an_already_unreachable_issue_is_refused_on_the_call() {
         !waits[1].0 && waits[1].1.contains(FIRST_ISSUE),
         "the wait behind it is refused on the call, naming the blocker: {waits:?}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// A wake-up is not an answer
+// ---------------------------------------------------------------------------
+
+/// Poll `ready` until it holds, failing the test rather than spinning for ever.
+///
+/// The waits below are driven by hand — the whole point is to hold the run still in a window a
+/// scripted session races through — so each step has to be observed rather than awaited. A bare
+/// loop would hang CI on the very regression these are here to catch, which is the failure mode
+/// [`bounded`] exists to rule out for the scripted ones.
+async fn until(what: &str, mut ready: impl FnMut() -> bool) {
+    tokio::time::timeout(WAIT_TEST_TIMEOUT, async {
+        while !ready() {
+            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("{what}"));
+}
+
+/// File one issue for [`IMPLEMENTER`], behind `blockers`, straight onto the board's store.
+///
+/// Filed rather than driven through a model's tool calls, because what these tests are about is
+/// what happens to a wait *after* it is suspended — the run has to be held still at a point a
+/// scripted session passes through in microseconds, and a model filing the work would put a whole
+/// session between the setup and the moment under test.
+fn file_onto(store: &mut board::BoardStore, title: &str, blockers: &[String]) -> String {
+    store
+        .create_issue(board::NewIssue {
+            title,
+            in_scope: "Do the work.",
+            out_of_scope: "Nothing else.",
+            completion_criteria: "It works.",
+            agent: IMPLEMENTER,
+            blocked_by: blockers,
+            ..board::NewIssue::default()
+        })
+        .expect("the issue is filed")
+}
+
+/// The board these hand-driven tests file: `blocker`, and `dependent` behind it.
+fn blocked_pair(orch: &Orchestrator) -> (String, String) {
+    let store = orch.board.store();
+    let mut store = store.lock().expect("board store lock");
+    let blocker = file_onto(&mut store, "groundwork", &[]);
+    let dependent = file_onto(&mut store, "the widget", std::slice::from_ref(&blocker));
+    (blocker, dependent)
+}
+
+/// An orchestrator over [`one_slot_board`], for a test that drives the board and the scheduler by
+/// hand instead of scripting a model.
+fn hand_driven_orchestrator(dir: &TempDir, emitter: &Emitter) -> Arc<Orchestrator> {
+    let mut warnings = Vec::new();
+    Arc::new(
+        Orchestrator::build(
+            &invocation(dir.path(), one_slot_board()),
+            emitter,
+            Arc::new(ScriptedFactory::new()),
+            crate::tools::real_shell(),
+            WorktreesSetup {
+                baseline_commit: None,
+                root: None,
+            },
+            &mut warnings,
+        )
+        .expect("a set with no machines builds an orchestrator"),
+    )
+}
+
+/// **A wait must not report completion on work that is still to be done.**
+///
+/// A waiter is woken when its issue *settles* — including when it settles into "nothing can ever
+/// finish this", which is what a failed blocker does to everything behind it. But being woken is
+/// not resuming: the agent is marked ready and then queues for a running slot, and until one frees
+/// up every other agent in the run is still working. One of them can undo exactly what settled the
+/// issue — `update_issue` accepts any status, so a failed blocker can go back to `Open`, and a
+/// dependency can be dropped outright.
+///
+/// The wait then resumed on an issue that was open, unblocked, and every bit as unfinished as when
+/// it started waiting — and answered `ok`: "Issue `X` is open." An agent told its wait *completed*
+/// goes on to build on work nobody has done, which is the one outcome this whole family of
+/// refusals exists to prevent. Nothing here is broken and nothing is racing gg: it is a healthy
+/// run, a scheduler doing its job, and two agents.
+///
+/// Driven by hand because that window — woken, not yet granted a slot — is a few instructions wide
+/// in a scripted run, and a test that hoped to land in it would prove nothing on the runs it
+/// missed.
+#[tokio::test]
+async fn a_wait_resumed_on_a_revived_issue_is_refused_rather_than_reported_complete() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-wait-revived".to_string()), Box::new(sink.clone()));
+    let orch = hand_driven_orchestrator(&dir, &emitter);
+    let (blocker, dependent) = blocked_pair(&orch);
+
+    // The waiting agent, running on the board's only slot.
+    let hold = SlotHold::default();
+    orch.scheduler.acquire_start(None, &hold).await;
+    let project = ProjectContext {
+        orch: Arc::clone(&orch),
+        assigned_issue: None,
+        hold: hold.clone(),
+    };
+    let board = orch.board.shared();
+    let awaited = dependent.clone();
+    let waiting = tokio::spawn({
+        let emitter = emitter.clone();
+        async move {
+            wait_for_issue_by_id(
+                &project,
+                &Agent::root(ROOT_AGENT),
+                &board,
+                &emitter,
+                &awaited,
+            )
+            .await
+        }
+    });
+    until("the agent must suspend itself on the dependent", || {
+        !orch
+            .issue_waits
+            .lock()
+            .expect("issue waits lock")
+            .get(&dependent)
+            .is_none_or(Vec::is_empty)
+    })
+    .await;
+
+    // Somebody else takes the freed slot — which is what makes the waiter's resumption a *later*
+    // event than its wake-up, exactly as a run with any other work in it does.
+    let occupant = SlotHold::default();
+    orch.scheduler.acquire_start(None, &occupant).await;
+
+    // The blocker fails, so nothing can ever finish the dependent: the waiter is woken, and waits
+    // for a slot.
+    orch.board.fail_issue(&blocker);
+    orch.wake_settled_issue_waiters();
+
+    // …and then the run repairs itself. The blocker is open again, so the dependent is ordinary
+    // unfinished work with an agent's name on it, and the reason the waiter was woken is gone.
+    orch.board
+        .store()
+        .lock()
+        .expect("board store lock")
+        .update_issue(
+            &blocker,
+            board::IssueUpdate {
+                status: Some(IssueStatus::Open),
+                ..board::IssueUpdate::default()
+            },
+        )
+        .expect("a failed issue can be re-opened");
+    assert_eq!(
+        orch.board.unsatisfiable_blocker(&dependent),
+        None,
+        "the board is healthy again: nothing about the awaited issue is settled"
+    );
+
+    // Only now does the waiter get a slot back and resume.
+    orch.scheduler.release(None);
+    let outcome = tokio::time::timeout(WAIT_TEST_TIMEOUT, waiting)
+        .await
+        .expect("the resumed wait must answer rather than hang")
+        .expect("the wait task must not panic");
+
+    assert!(
+        !outcome.ok,
+        "the awaited work has not happened, so the wait did not complete: {outcome:?}"
+    );
+    assert!(
+        outcome.output.contains(&dependent) && !outcome.output.contains("is done"),
+        "the refusal names the issue that is still open and claims nothing about it: {}",
+        outcome.output
+    );
+    assert_eq!(
+        orch.board.issue_status(&dependent),
+        Some(IssueStatus::Open),
+        "and the board is left exactly as it was: a wait reports, it does not move issues"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Both answers at once
+// ---------------------------------------------------------------------------
+
+/// How many times the coincidence below is staged.
+///
+/// One staging cannot tell a deliberate choice from a lucky one: the two arms of the wait's
+/// `select!` are both ready, and an unbiased `select!` picks between ready branches at random, so it
+/// answers correctly half the time. Repetition is what turns "it happened to be right" into
+/// evidence — an unbiased pick survives this many rounds with probability 2⁻³², which is not a flake
+/// anybody will ever see. The count is affordable because a round is a fresh board and a fresh
+/// suspended agent and nothing else: no model is driven, and no turn is taken.
+const COINCIDENT_ROUNDS: usize = 32;
+
+/// **A wait released by gg's own defect reports the defect, even when its issue settled too.**
+///
+/// This is not a corner: it is what *every* wind-down looks like from inside a wait. gg's teardown
+/// of a panicked agent latches the run's [fault](crate::fault) and then fails the issue that agent
+/// was implementing and wakes its waiters — so an agent suspended on that issue finds both of its
+/// exits open on the same poll, every time. The board's answer is true and useless: the issue is
+/// failed *because* the run broke, and reporting it says the model's work ran out of retries when in
+/// fact gg fell over underneath it.
+///
+/// The consequence is not confined to one tool result. That result is the last thing the waiting
+/// agent records, so the run's tree carries either the cause or the consequence at that node — and
+/// the pick would be made afresh on every run, from a `select!` that chooses at random among ready
+/// branches. Two identical runs of one configuration would disagree about why they stopped, which
+/// is the one thing a recorded, compared artefact may not do.
+///
+/// Driven by hand, and with no `await` between the latch and the wake, because the coincidence is
+/// the test: a session that raced for it would stage the interesting case on some runs and not
+/// others.
+#[tokio::test]
+async fn a_wait_released_by_a_fault_reports_it_even_when_its_issue_settled_too() {
+    for round in 0..COINCIDENT_ROUNDS {
+        let dir = TempDir::new().unwrap();
+        let sink = CollectingSink::new();
+        let emitter = Emitter::with_sink(Some("run-wait-both".to_string()), Box::new(sink.clone()));
+        let orch = hand_driven_orchestrator(&dir, &emitter);
+        let awaited = {
+            let store = orch.board.store();
+            let mut store = store.lock().expect("board store lock");
+            file_onto(&mut store, "the widget", &[])
+        };
+
+        // The waiting agent, running on the board's only slot, suspends on the issue.
+        let hold = SlotHold::default();
+        orch.scheduler.acquire_start(None, &hold).await;
+        let project = ProjectContext {
+            orch: Arc::clone(&orch),
+            assigned_issue: None,
+            hold: hold.clone(),
+        };
+        let board = orch.board.shared();
+        let waiting = tokio::spawn({
+            let emitter = emitter.clone();
+            let awaited = awaited.clone();
+            async move {
+                wait_for_issue_by_id(
+                    &project,
+                    &Agent::root(ROOT_AGENT),
+                    &board,
+                    &emitter,
+                    &awaited,
+                )
+                .await
+            }
+        });
+        until("the agent must suspend itself on the issue", || {
+            !orch
+                .issue_waits
+                .lock()
+                .expect("issue waits lock")
+                .get(&awaited)
+                .is_none_or(Vec::is_empty)
+        })
+        .await;
+
+        // The wind-down, in the order [`AgentTeardown`] performs it: the fault is latched, and the
+        // panicked agent's issue is failed and its waiters woken immediately after. There is no
+        // `await` between them, so the suspended agent is not polled until both are true — which is
+        // exactly the state it is in when a real teardown wakes it.
+        orch.fault.in_agent(
+            &format!("{awaited}.0i"),
+            IMPLEMENTER,
+            "its task panicked: the widget exploded",
+        );
+        orch.board.fail_issue(&awaited);
+        orch.wake_issue_waiters(&awaited);
+        assert_eq!(
+            orch.board.issue_status(&awaited),
+            Some(IssueStatus::Failed),
+            "round {round}: the board really does have a terminal answer to give, which is what \
+             makes the choice a choice"
+        );
+
+        let outcome = tokio::time::timeout(WAIT_TEST_TIMEOUT, waiting)
+            .await
+            .expect("the released wait must answer rather than hang")
+            .expect("the wait task must not panic");
+
+        assert!(
+            !outcome.ok,
+            "round {round}: an issue failed by the wind-down is not a wait that completed: \
+             {outcome:?}"
+        );
+        assert!(
+            outcome.output.contains("the widget exploded"),
+            "round {round}: the wait must report what broke the run, not what the break did to the \
+             board: {}",
+            outcome.output
+        );
+    }
 }

@@ -255,9 +255,13 @@ impl AgentTeardown {
         self.orch
             .fault
             .in_agent(&self.agent.id, &self.agent.slot, &detail);
+        // Stated against the latch this teardown has just raised, exactly as the loop's own endings
+        // are — so the one ending that could safely have hard-coded gg's status is not the one
+        // ending that sits outside the [attribution seam](super::attribution).
+        let status = TerminalStatus::attributed(STATUS_INTERNAL_ERROR, &self.orch.fault);
 
         let end = LoopEnd {
-            status: STATUS_INTERNAL_ERROR,
+            status,
             // Not "this agent took no turns": the count, the tokens and the cost died with the
             // frame that was keeping them. See the module docs for what still reports them.
             turns: 0,
@@ -266,8 +270,10 @@ impl AgentTeardown {
             slot: self.agent.slot.clone(),
             // The agent's last word, phrased for any of the three roles: this value reaches a
             // spawner only through a return that a panicked agent never makes, so what reads it is
-            // the run's own epilogue when the panicked agent was the root.
-            final_text: Some(format!("(agent ended: {STATUS_INTERNAL_ERROR}; {detail})")),
+            // the run's own epilogue when the panicked agent was the root. Rendered from the status
+            // above through the loop's own [phrasing](super::stopped_text), so an agent gg tore
+            // down says what it ended as in the same words as one that ended itself.
+            final_text: stopped_text(status, Some(&detail)),
             ending: None,
             limit: None,
             handoff: None,

@@ -282,6 +282,11 @@ const STATUS_CANCELED: &str = "canceled";
 /// failing is never any of those, and ends the agent on [`STATUS_INTERNAL_ERROR`] instead — a
 /// run's output is attribution data, and our defect filed in the model's column is not a degraded
 /// measurement but a wrong one that reads like a real one.
+///
+/// That holds for a request gg broke *under* as much as for one it never made: a turn that failed
+/// while the run's [fault latch](crate::fault) was already up is not evidence about the model
+/// either, so this status is one of the three the [ending attribution](attribution) upgrades. The
+/// far side of the request is only the whole of it on a run that is still whole.
 const STATUS_MODEL_ERROR: &str = "model_error";
 
 /// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for a session whose
@@ -326,6 +331,11 @@ const STATUS_HOOK_ERROR: &str = "hook_error";
 /// defect in the model's column of the attribution data the run exists to produce. A run scored
 /// against a model has to be a run that model produced, and a fault of ours recorded under its name
 /// is not a degraded result but a wrong one that reads like a real one.
+///
+/// Which is why no ending path decides that for itself: every terminal status is stated through the
+/// [attribution seam](attribution), which turns *any* failure ending taken on a run gg had already
+/// broken into this one. A rule that held only where somebody remembered it is how an agent's
+/// ending came to say `model_error` on a run whose own turn record said gg.
 ///
 /// It **ends** the agent's loop instead of carrying on because in neither family is there anything
 /// to carry on as. The only substitute for a profile is some *other* profile, and running an agent
@@ -1228,7 +1238,7 @@ pub(crate) async fn run_with_seams(
     let fault = orch.fault.raised();
     let status = match fault {
         Some(_) => STATUS_INTERNAL_ERROR,
-        None => end.status,
+        None => end.status.as_str(),
     };
     // Say what broke on the **root's** stream, wherever in the tree it happened. The agent that met
     // the defect already reported it on its own, and every agent that wound down repeated it on
@@ -1261,7 +1271,7 @@ pub(crate) async fn run_with_seams(
         format!(
             "root agent `{ROOT_AGENT_ID}` (profile `{root_profile}`) {status}.",
             root_profile = end.slot,
-            status = if is_failure_status(end.status) {
+            status = if end.status.is_failure() {
                 "failed"
             } else {
                 "done"
@@ -1341,6 +1351,8 @@ pub(crate) async fn run_with_seams(
     // where a defect that happened to strike a subagent produces a scoreable run and the same
     // defect in the root does not.
     if end.status == STATUS_AUTH_ERROR || status == STATUS_INTERNAL_ERROR {
+        // (The `auth_error` half can only be read on a healthy run: on a broken one the root's own
+        // ending has already been attributed to gg, and the second condition is what fires.)
         return SessionOutcome::HarnessError;
     }
     SessionOutcome::Ran
@@ -1513,7 +1525,7 @@ fn record_session_agent(
         // The same two states the agent-tree telemetry reports, and read from the same predicate,
         // so a record and a stream cannot disagree about how an agent ended.
         terminal_status: terminal.map(|end| {
-            if is_failure_status(end.status) {
+            if end.status.is_failure() {
                 GgAgentStatus::Failed
             } else {
                 GgAgentStatus::Done
@@ -2809,6 +2821,10 @@ impl Orchestrator {
     /// agent is told exactly that instead, which is an answer it can act on and a board it can
     /// still repair.
     ///
+    /// Which is the reason waking is not answering: somebody may repair that board before the woken
+    /// agent has a slot to resume on, and the wait is then [answered](issue_wait_result) on the
+    /// board as it stands rather than on the state that woke it.
+    ///
     /// The walk is in issue-id order, because [`issue_waits`](Self::issue_waits) is ordered — see
     /// the note there. This is the one place gg's own state was walked rather than looked up, and
     /// so the one place a hasher's seed reached a run's behaviour.
@@ -2827,8 +2843,16 @@ impl Orchestrator {
         }
     }
 
-    /// Mark every agent waiting on `issue_id` ready to resume (its wait condition — the issue is
-    /// terminal — is met), removing them from the registry.
+    /// Mark every agent waiting on `issue_id` ready to resume, removing them from the registry.
+    ///
+    /// It says only that `issue_id` has moved in a way worth resuming for — it went terminal, or it
+    /// [settled](Self::wake_settled_issue_waiters) into a state nothing can carry it out of. It does
+    /// **not** say what the wait will report, and it is not the moment the wait's condition is
+    /// judged: a waiter marked ready here resumes when the scheduler grants it a slot, which is
+    /// later, and in the meantime any agent still running can move the issue again — reviving a
+    /// failed blocker, re-opening a finished issue. What a resumed wait reports is therefore read
+    /// off the board at the moment it resumes ([`issue_wait_result`]), never inferred from the fact
+    /// that something once woke it.
     fn wake_issue_waiters(&self, issue_id: &str) {
         let tokens = self
             .issue_waits
@@ -2923,11 +2947,13 @@ enum IssueWaitOutcome {
 /// [cyclic dependency](crate::board), so waiting can never deadlock on a cycle; a failed issue is
 /// terminal, so a wait on one that ultimately fails resolves rather than hanging.
 ///
-/// Two things end the wait without the issue ever becoming terminal, and each is
+/// Three things end the wait without the issue ever becoming terminal, and each is
 /// [refused](ToolFailure) rather than dressed up as a resolution — the awaited work did not happen,
 /// and a caller that cannot tell the difference will go on to report as done work nobody did. The
-/// issue [can never get past a blocker](BoardRuntime::unsatisfiable_blocker) of its own, or gg
-/// [broke](crate::fault) and the run is ending.
+/// issue [can never get past a blocker](BoardRuntime::unsatisfiable_blocker) of its own; gg
+/// [broke](crate::fault) and the run is ending; or the thing that woke this agent was
+/// [undone](unsettled_wait_result) before it got a slot to resume on, leaving an issue as live as
+/// when it started waiting.
 async fn handle_wait_for_issue(
     project: &ProjectContext,
     agent: &Agent,
@@ -2955,7 +2981,7 @@ async fn handle_wait_for_issue(
 /// [`handle_wait_for_issue`]; and the responses-as-code loop, which performs the *deferred* waits a
 /// program [registered](code::LoopToolApi::register_issue_wait) once that program has ended, calling this
 /// directly for each recorded id. Both share the self-issue guard, the not-found check, the
-/// already-terminal short-circuit, the two refusals that answer a wait nothing can satisfy, and the
+/// already-terminal short-circuit, the refusals that answer a wait nothing settled, and the
 /// slot-freeing block, so neither can drift from the other.
 async fn wait_for_issue_by_id(
     project: &ProjectContext,
@@ -2979,13 +3005,14 @@ async fn wait_for_issue_by_id(
         );
     };
     if status.is_terminal() {
-        return issue_wait_result(issue_id, status);
+        return issue_wait_result(board, issue_id);
     }
-    // Neither of the two conditions that end a wait without resolving it is worth suspending for.
-    // The unsatisfiable one is checked here as well as on the wake-up because a blocker can already
+    // Neither condition that is knowable *before* suspending is worth suspending for. The
+    // unsatisfiable one is checked here as well as on the wake-up because a blocker can already
     // have failed when the call is made, and the fault one because a run that has broken will never
     // move this issue: an agent that blocked anyway would have to be released again immediately,
-    // having freed and re-taken its slot for nothing.
+    // having freed and re-taken its slot for nothing. (The third — an issue that goes live again —
+    // is a property of the resumption and cannot be seen from here.)
     if let Some(blocker) = board.unsatisfiable_blocker(issue_id) {
         return unsatisfiable_wait_result(issue_id, &blocker);
     }
@@ -3033,19 +3060,10 @@ async fn wait_for_issue_by_id(
             }
         }
     }
-    // Report what the wait settled on: a terminal state, an issue that left the board, or one that
-    // can no longer reach either.
-    match board.issue_status(issue_id) {
-        Some(status) if status.is_terminal() => issue_wait_result(issue_id, status),
-        Some(status) => match board.unsatisfiable_blocker(issue_id) {
-            Some(blocker) => unsatisfiable_wait_result(issue_id, &blocker),
-            None => issue_wait_result(issue_id, status),
-        },
-        None => ToolOutcome::ok(
-            format!("issue `{issue_id}` is no longer on the board."),
-            format!("waited for issue `{issue_id}` (removed)"),
-        ),
-    }
+    // Report what the board says **now**, which is the only thing this agent can honestly report.
+    // What woke it is not an answer: a wake-up says the issue moved once, and this agent resumed
+    // later, when a slot came free.
+    issue_wait_result(board, issue_id)
 }
 
 /// The refusal a wait on an issue that can never become terminal returns: `issue_id` sits behind
@@ -3082,10 +3100,30 @@ fn faulted_wait_result(issue_id: &str, fault: &str) -> ToolOutcome {
     )
 }
 
-/// The [`ToolOutcome`] `wait_for_issue` returns once its awaited issue is terminal (or was found
-/// already terminal): a success either way — the wait *completed* — that reports whether the issue
-/// was accepted or failed, so the waiting agent can branch on it.
-fn issue_wait_result(issue_id: &str, status: IssueStatus) -> ToolOutcome {
+/// What a `wait_for_issue` on `issue_id` reports, read off `board` **at the moment the wait is
+/// answered** — the one place that decision is made, for a wait that never suspended and for one
+/// that resumed hours later alike.
+///
+/// A success means the wait *completed*: the issue is terminal and the caller is told which way, so
+/// it can branch on it, or the issue left the board entirely, which is as settled as an issue gets.
+/// Anything else is a [refusal](unsettled_wait_result), because the awaited work has not happened —
+/// and an agent told its wait completed on work nobody did will go on to report that work as done.
+///
+/// It reads the board rather than taking a status because a status is a snapshot and the two
+/// callers hold theirs at different distances from this line. The resuming one is the reason: it was
+/// [marked ready](Orchestrator::wake_issue_waiters) when its issue settled, but it resumes only once
+/// the scheduler grants it a slot, and in that window any agent still running can move the issue
+/// again — `update_issue` accepts every status, so a `Failed` blocker can go back to `Open` and a
+/// wait released because nothing could ever finish it wakes to an issue somebody is about to work
+/// on after all. Passing the old snapshot in is how such a wait came to answer "Issue X is open."
+/// as a success.
+fn issue_wait_result(board: &BoardRuntime, issue_id: &str) -> ToolOutcome {
+    let Some(status) = board.issue_status(issue_id) else {
+        return ToolOutcome::ok(
+            format!("issue `{issue_id}` is no longer on the board."),
+            format!("waited for issue `{issue_id}` (removed)"),
+        );
+    };
     match status {
         IssueStatus::Done => ToolOutcome::ok(
             format!("Issue `{issue_id}` is done."),
@@ -3098,16 +3136,45 @@ fn issue_wait_result(issue_id: &str, status: IssueStatus) -> ToolOutcome {
             ),
             format!("issue `{issue_id}` failed"),
         ),
-        // Only ever called with a terminal status; a non-terminal one means the issue was replaced
-        // between checks, which is reported honestly rather than asserted away.
-        IssueStatus::Open | IssueStatus::InProgress | IssueStatus::InReview => ToolOutcome::ok(
-            format!("Issue `{issue_id}` is {}.", status_word(status)),
-            format!("issue `{issue_id}` {}", status_word(status)),
-        ),
+        // Still live. Whether that is worth waiting for again is the difference between the two
+        // refusals: an issue behind a blocker that will never be done is a board to repair, and one
+        // that is merely unfinished is work still in flight.
+        IssueStatus::Open | IssueStatus::InProgress | IssueStatus::InReview => {
+            match board.unsatisfiable_blocker(issue_id) {
+                Some(blocker) => unsatisfiable_wait_result(issue_id, &blocker),
+                None => unsettled_wait_result(issue_id, status),
+            }
+        }
     }
 }
 
-/// A human word for an [`IssueStatus`], for the `wait_for_issue` fallback message.
+/// The refusal a wait returns when it is answered on an issue that is **still live**: not terminal,
+/// not gone, and not stuck behind anything — so nothing about it has been settled.
+///
+/// It is reachable in one way, and on a perfectly healthy run. The waiter was woken because its
+/// issue had settled — behind a failed blocker, say — and by the time the scheduler granted it a
+/// slot another agent had moved the board back: the blocker re-opened, the dependency dropped, the
+/// issue re-filed. What settled it is gone, and the issue is now ordinary open work that somebody
+/// may well be about to do.
+///
+/// Reported as a refusal, and phrased as an invitation to wait again, because the caller's question
+/// — "is this finished?" — has no answer yet, and the ways of getting one wrong are both bad: a
+/// success would tell an agent to build on work nobody has done, and silently re-suspending would
+/// spend the run's parallelism on a wait whose reason to exist has changed since it was made.
+fn unsettled_wait_result(issue_id: &str, status: IssueStatus) -> ToolOutcome {
+    ToolOutcome::failed(
+        ToolFailure::Conflict,
+        format!(
+            "the wait on issue `{issue_id}` ended without it finishing: it is {} again, and \
+             nothing about it is settled — whatever stopped it has since been undone. Wait on it \
+             again if it still matters.",
+            status_word(status)
+        ),
+    )
+}
+
+/// A human word for an [`IssueStatus`], for the [refusal](unsettled_wait_result) that names the
+/// state a wait was answered on.
 fn status_word(status: IssueStatus) -> &'static str {
     match status {
         IssueStatus::Open => "open",
@@ -3524,7 +3591,7 @@ async fn drive_agent(
             orch.fault.in_agent(&agent.id, &agent.slot, detail);
             break (
                 LoopEnd {
-                    status: STATUS_INTERNAL_ERROR,
+                    status: TerminalStatus::attributed(STATUS_INTERNAL_ERROR, &orch.fault),
                     turns: turns_taken,
                     tokens: TokenCounts::default(),
                     cost: None,
@@ -4112,7 +4179,7 @@ async fn drive_agent(
             orch.fault.in_agent(&agent.id, &agent.slot, detail);
             break (
                 LoopEnd {
-                    status: STATUS_INTERNAL_ERROR,
+                    status: TerminalStatus::attributed(STATUS_INTERNAL_ERROR, &orch.fault),
                     handoff: None,
                     ..end
                 },
@@ -4159,7 +4226,7 @@ async fn drive_agent(
                 }
                 break (
                     LoopEnd {
-                        status: unresolved.status,
+                        status: TerminalStatus::attributed(unresolved.status, &orch.fault),
                         handoff: None,
                         ..end
                     },
@@ -4236,7 +4303,7 @@ async fn drive_agent(
     };
     let emitter = &agent_emitter;
 
-    let failed = is_failure_status(end.status);
+    let failed = end.status.is_failure();
     // Whether the loop ended in a *completion* — the model signalled it was done with its
     // [ending call](crate::completion) — rather than on a ceiling, a breached limit, or an
     // error. It is what finishes an [issue](crate::board) this agent was dispatched to implement.
@@ -4300,7 +4367,7 @@ async fn drive_agent(
             // the spawner is woken its collect finds the result ready.
             teardown.returned(AgentReturn {
                 summary,
-                status: end.status,
+                status: end.status.as_str(),
                 ending: end.ending.clone(),
             });
         }
@@ -6089,8 +6156,12 @@ fn parse_string_array(args: &Value, key: &str) -> Vec<String> {
 
 /// How a driven turn loop ended, plus the usage it accumulated.
 struct LoopEnd {
-    /// The terminal [`SessionEnded`](GgTelemetryKind::SessionEnded) status.
-    status: &'static str,
+    /// The terminal [`SessionEnded`](GgTelemetryKind::SessionEnded) status — the one this agent
+    /// **really** ends on, which is not always the one the ending path had in view. A
+    /// [`TerminalStatus`] rather than a bare status word because every ending of an agent is read
+    /// against the run's [fault latch](crate::fault) on its way here: see [`attribution`] for why a
+    /// run gg broke cannot have an agent in it whose ending blames somebody else.
+    status: TerminalStatus,
     /// Turns actually executed (model calls made).
     turns: usize,
     /// Running total of token usage across the session.
@@ -6416,7 +6487,9 @@ impl Agent {
                     .await
                 {
                     Ok(run) => opening_notes.extend(run.insertion()),
-                    Err(failure) => return hook_failed(self, emitter, failure, turn_base),
+                    Err(failure) => {
+                        return hook_failed(self, emitter, &limits.fault, failure, turn_base);
+                    }
                 }
             }
             if hooks.runtime.has(GgHookEvent::AgentStart) {
@@ -6433,7 +6506,9 @@ impl Agent {
                     .await
                 {
                     Ok(run) => opening_notes.extend(run.insertion()),
-                    Err(failure) => return hook_failed(self, emitter, failure, turn_base),
+                    Err(failure) => {
+                        return hook_failed(self, emitter, &limits.fault, failure, turn_base);
+                    }
                 }
             }
             for note in opening_notes {
@@ -6589,10 +6664,11 @@ impl Agent {
             //
             // Every agent reads the same latch, so a defect met by any one of them stops all of
             // them — see [`crate::fault`] for why a run gg broke in cannot be allowed to finish.
-            if let Some(fault) = limits.fault.raised() {
+            if let Some(diagnostic) = limits.fault.raised() {
                 return self.stop_on_fault(
                     emitter,
-                    fault,
+                    &limits.fault,
+                    diagnostic,
                     turn,
                     total_tokens,
                     total_cost,
@@ -6604,6 +6680,7 @@ impl Agent {
             if canceled {
                 return self.stop_on_cancel(
                     emitter,
+                    &limits.fault,
                     turn,
                     total_tokens,
                     total_cost,
@@ -6618,6 +6695,7 @@ impl Agent {
             if let Some(breach) = limits.check_deadline(&self.id, agent_limits.turns_recorded()) {
                 return self.stop_on_limit(
                     emitter,
+                    &limits.fault,
                     breach,
                     turn,
                     total_tokens,
@@ -6636,6 +6714,7 @@ impl Agent {
             if let Some(breach) = limits.check_cost(&self.id, agent_limits.turns_recorded()) {
                 return self.stop_on_limit(
                     emitter,
+                    &limits.fault,
                     breach,
                     turn,
                     total_tokens,
@@ -6732,7 +6811,7 @@ impl Agent {
                         )
                         .await
                         {
-                            return hook_failed(self, emitter, failure, turn);
+                            return hook_failed(self, emitter, &limits.fault, failure, turn);
                         }
                         let (request, fallback) =
                             compaction::condense_out_of_band(context, client, &compaction).await;
@@ -6762,7 +6841,7 @@ impl Agent {
                         )
                         .await
                         {
-                            return hook_failed(self, emitter, failure, turn);
+                            return hook_failed(self, emitter, &limits.fault, failure, turn);
                         }
                     }
                     Some(pending) => {
@@ -6861,7 +6940,7 @@ impl Agent {
             {
                 Ok(response) => response,
                 Err(err) => {
-                    // Surface the failure loudly — a `Log(error)` and a `model_error`
+                    // Surface the failure loudly — a `Log(error)` and a failed
                     // session end — rather than discarding the run silently. A
                     // retry-exhausted transient failure and a fatal one both end the
                     // session here; the client has already exhausted its own retries, so
@@ -6905,14 +6984,22 @@ impl Agent {
                             _ => 0,
                         },
                     );
-                    let status = if err.is_auth_failure() {
-                        // An auth failure is the run's credential being refused, not the model
-                        // failing at its work, so it ends the session under its own status — which
-                        // the session runner turns into a launch failure.
-                        STATUS_AUTH_ERROR
-                    } else {
-                        STATUS_MODEL_ERROR
-                    };
+                    let status = TerminalStatus::attributed(
+                        if err.is_auth_failure() {
+                            // An auth failure is the run's credential being refused, not the model
+                            // failing at its work, so it ends the session under its own status —
+                            // which the session runner turns into a launch failure.
+                            STATUS_AUTH_ERROR
+                        } else {
+                            STATUS_MODEL_ERROR
+                        },
+                        // …unless gg broke under this call, which the turn recorded a line above has
+                        // already been attributed to. Whose failure the far side of a request was is
+                        // not answerable from the error alone once the run itself is broken, and an
+                        // ending that answered it separately from the turn is how the two records of
+                        // one event came to disagree.
+                        &limits.fault,
+                    );
                     return LoopEnd {
                         status,
                         turns: turn + 1,
@@ -7113,7 +7200,7 @@ impl Agent {
                 )
                 .await
                 {
-                    return hook_failed(self, emitter, failure, turn + 1);
+                    return hook_failed(self, emitter, &limits.fault, failure, turn + 1);
                 }
                 // The turn did exactly the work it was asked for, so it counts as progress — not as
                 // an error, and not as the completion a tool-less reply would otherwise be.
@@ -7126,6 +7213,7 @@ impl Agent {
                 ) {
                     return self.stop_on_limit(
                         emitter,
+                        &limits.fault,
                         breach,
                         turn + 1,
                         total_tokens,
@@ -7223,7 +7311,10 @@ impl Agent {
                             Err(failure) => {
                                 emitter.emit(log("error", failure.to_string()));
                                 return LoopEnd {
-                                    status: STATUS_HOOK_ERROR,
+                                    status: TerminalStatus::attributed(
+                                        STATUS_HOOK_ERROR,
+                                        &limits.fault,
+                                    ),
                                     turns: turn + 1,
                                     tokens: total_tokens,
                                     cost: total_cost,
@@ -7296,7 +7387,7 @@ impl Agent {
                             }
                         }
                         return LoopEnd {
-                            status: STATUS_COMPLETED,
+                            status: TerminalStatus::attributed(STATUS_COMPLETED, &limits.fault),
                             turns: turn + 1,
                             tokens: total_tokens,
                             cost: total_cost,
@@ -7328,18 +7419,15 @@ impl Agent {
                         // — and the tree that came back from a run with a hole in it cannot be
                         // compared with one from a run without.
                         limits.fault.in_agent(&self.id, &self.slot, message);
+                        let status =
+                            TerminalStatus::attributed(STATUS_INTERNAL_ERROR, &limits.fault);
                         return LoopEnd {
-                            status: STATUS_INTERNAL_ERROR,
+                            status,
                             turns: turn + 1,
                             tokens: total_tokens,
                             cost: total_cost,
                             slot: self.slot.clone(),
-                            final_text: ended_text(
-                                true,
-                                STATUS_INTERNAL_ERROR,
-                                last_report.as_deref(),
-                                last_text,
-                            ),
+                            final_text: ended_text(true, status, last_report.as_deref(), last_text),
                             ending: None,
                             limit: None,
                             handoff: None,
@@ -7414,6 +7502,7 @@ impl Agent {
                         if let Some(breach) = breach {
                             return self.stop_on_limit(
                                 emitter,
+                                &limits.fault,
                                 breach,
                                 turn + 1,
                                 total_tokens,
@@ -7496,7 +7585,13 @@ impl Agent {
                                 )
                                 .await
                                 {
-                                    return hook_failed(self, emitter, failure, turn + 1);
+                                    return hook_failed(
+                                        self,
+                                        emitter,
+                                        &limits.fault,
+                                        failure,
+                                        turn + 1,
+                                    );
                                 }
                             }
                             // Not satisfied: the compaction stays pending and the next program is
@@ -7520,7 +7615,7 @@ impl Agent {
                         // way round: the compaction was of work already done.
                         if let Some(handoff) = turn_handoff {
                             return LoopEnd {
-                                status: STATUS_COMPLETED,
+                                status: TerminalStatus::attributed(STATUS_COMPLETED, &limits.fault),
                                 turns: turn + 1,
                                 tokens: total_tokens,
                                 cost: total_cost,
@@ -7576,6 +7671,7 @@ impl Agent {
                 if let Some(breach) = breach {
                     return self.stop_on_limit(
                         emitter,
+                        &limits.fault,
                         breach,
                         turn + 1,
                         total_tokens,
@@ -7610,6 +7706,7 @@ impl Agent {
                 if let Some(breach) = breach {
                     return self.stop_on_limit(
                         emitter,
+                        &limits.fault,
                         breach,
                         turn + 1,
                         total_tokens,
@@ -7910,7 +8007,7 @@ impl Agent {
                     loop_aborts,
                 );
                 return LoopEnd {
-                    status: STATUS_HOOK_ERROR,
+                    status: TerminalStatus::attributed(STATUS_HOOK_ERROR, &limits.fault),
                     turns: turn + 1,
                     tokens: total_tokens,
                     cost: total_cost,
@@ -7961,7 +8058,7 @@ impl Agent {
                 // instance's record standing.
                 persistence.record(context);
                 return LoopEnd {
-                    status: STATUS_COMPLETED,
+                    status: TerminalStatus::attributed(STATUS_COMPLETED, &limits.fault),
                     turns: turn + 1,
                     tokens: total_tokens,
                     cost: total_cost,
@@ -8005,7 +8102,7 @@ impl Agent {
                     )
                     .await
                     {
-                        return hook_failed(self, emitter, failure, turn + 1);
+                        return hook_failed(self, emitter, &limits.fault, failure, turn + 1);
                     }
                 }
                 (None, Some(pending)) => context.push(
@@ -8041,7 +8138,7 @@ impl Agent {
                     loop_aborts,
                 );
                 return LoopEnd {
-                    status: STATUS_COMPLETED,
+                    status: TerminalStatus::attributed(STATUS_COMPLETED, &limits.fault),
                     turns: turn + 1,
                     tokens: total_tokens,
                     cost: total_cost,
@@ -8068,6 +8165,7 @@ impl Agent {
             ) {
                 return self.stop_on_limit(
                     emitter,
+                    &limits.fault,
                     breach,
                     turn + 1,
                     total_tokens,
@@ -8094,6 +8192,7 @@ impl Agent {
         };
         self.stop_on_limit(
             emitter,
+            &limits.fault,
             breach,
             turn_bound,
             total_tokens,
@@ -8214,10 +8313,17 @@ impl Agent {
     /// property of the ceiling: the turn and runtime ceilings keep the statuses they have always
     /// had, and the three new ones share [`STATUS_LIMIT_EXCEEDED`]. A caller that chose its own
     /// could disagree with the breach it is carrying.
+    ///
+    /// It reads the run's `fault` latch on the way to its status like every other ending does, and
+    /// in practice never changes anything: no ceiling ends an agent on a failure status, and the
+    /// loop reads the latch at its boundary *before* it measures a ceiling anyway. It goes through
+    /// the same seam regardless, because [an ending whose status is decided somewhere
+    /// else](attribution) is what this exists to make impossible.
     #[allow(clippy::too_many_arguments)]
     fn stop_on_limit(
         &self,
         emitter: &Emitter,
+        fault: &FaultLatch,
         breach: GgLimitBreach,
         turns: usize,
         tokens: TokenCounts,
@@ -8226,7 +8332,7 @@ impl Agent {
         last_report: Option<&str>,
         last_text: Option<String>,
     ) -> LoopEnd {
-        let status = status_for_breach(breach.limit);
+        let status = TerminalStatus::attributed(status_for_breach(breach.limit), fault);
         emitter.emit(log("warn", breach_message(&breach)));
         emitter.emit(GgTelemetryKind::LimitExceeded {
             breach: breach.clone(),
@@ -8256,6 +8362,7 @@ impl Agent {
     fn stop_on_cancel(
         &self,
         emitter: &Emitter,
+        fault: &FaultLatch,
         turns: usize,
         tokens: TokenCounts,
         cost: Option<Cost>,
@@ -8263,6 +8370,7 @@ impl Agent {
         last_report: Option<&str>,
         last_text: Option<String>,
     ) -> LoopEnd {
+        let status = TerminalStatus::attributed(STATUS_CANCELED, fault);
         emitter.emit(log(
             "warn",
             format!(
@@ -8272,12 +8380,12 @@ impl Agent {
             ),
         ));
         LoopEnd {
-            status: STATUS_CANCELED,
+            status,
             turns,
             tokens,
             cost,
             slot: self.slot.clone(),
-            final_text: ended_text(code_mode, STATUS_CANCELED, last_report, last_text),
+            final_text: ended_text(code_mode, status, last_report, last_text),
             ending: None,
             limit: None,
             handoff: None,
@@ -8302,7 +8410,8 @@ impl Agent {
     fn stop_on_fault(
         &self,
         emitter: &Emitter,
-        fault: &str,
+        fault: &FaultLatch,
+        diagnostic: &str,
         turns: usize,
         tokens: TokenCounts,
         cost: Option<Cost>,
@@ -8310,22 +8419,26 @@ impl Agent {
         last_report: Option<&str>,
         last_text: Option<String>,
     ) -> LoopEnd {
+        // Stated as the ending every other path states it, against the very latch that is stopping
+        // this agent — rather than asserted, which would leave the one ending that is *always* gg's
+        // as the one ending nothing checks.
+        let status = TerminalStatus::attributed(STATUS_INTERNAL_ERROR, fault);
         emitter.emit(log(
             "error",
             format!(
-                "agent `{}` stopped at a turn boundary after {turns} turns: {fault}. The whole run \
-                 ends here, because a tree a gg defect stopped is not a tree the model produced \
+                "agent `{}` stopped at a turn boundary after {turns} turns: {diagnostic}. The whole \
+                 run ends here, because a tree a gg defect stopped is not a tree the model produced \
                  and must not be scored as one.",
                 self.id
             ),
         ));
         LoopEnd {
-            status: STATUS_INTERNAL_ERROR,
+            status,
             turns,
             tokens,
             cost,
             slot: self.slot.clone(),
-            final_text: ended_text(code_mode, STATUS_INTERNAL_ERROR, last_report, last_text),
+            final_text: ended_text(code_mode, status, last_report, last_text),
             ending: None,
             limit: None,
             handoff: None,
@@ -8393,9 +8506,14 @@ fn breach_message(breach: &GgLimitBreach) -> String {
 /// [`stopped_text`]'s reason for existing. In tool calling the last assistant message is a sentence,
 /// and it has always been what a stopped agent hands back. Under
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) it is a page of program source.
+///
+/// The `status` is a [`TerminalStatus`] rather than a status word for the reason the code-mode half
+/// makes obvious: on that path the text gg writes **names** the status, so a text rendered from
+/// anything other than the value the record carries is a sentence that contradicts it — and it is a
+/// sentence handed to a spawner's model, not merely written to a log.
 fn ended_text(
     code_mode: bool,
-    status: &str,
+    status: TerminalStatus,
     last_report: Option<&str>,
     last_text: Option<String>,
 ) -> Option<String> {
@@ -8412,7 +8530,7 @@ fn ended_text(
 /// Every assistant message on that path is a program, so the loop's `last_text` would
 /// hand a subagent's spawner — and the run record — a page of source instead of an answer. This is the answer gg can honestly give instead: how the agent
 /// ended, and what its last turn actually produced.
-fn stopped_text(status: &str, report: Option<&str>) -> Option<String> {
+fn stopped_text(status: TerminalStatus, report: Option<&str>) -> Option<String> {
     Some(match report {
         Some(report) => format!("(agent ended: {status}; {report})"),
         None => format!("(agent ended: {status}; it produced no program)"),
@@ -8691,10 +8809,20 @@ async fn fire_post_compact(
 /// same terminal shape: the failure named on the operator log, and a [`LoopEnd`] carrying
 /// [`STATUS_HOOK_ERROR`] so the run is recorded as stopped by its own machinery rather than by the
 /// model.
-fn hook_failed(agent: &Agent, emitter: &Emitter, failure: HookFailure, turns: usize) -> LoopEnd {
+///
+/// An operator's broken script is still a **failure** ending, so on a run gg had already broken it
+/// is [attributed](attribution) to gg like any other: a hook that failed while the run was winding
+/// down is a script gg stopped feeding, and its exit code is not what disqualified this run.
+fn hook_failed(
+    agent: &Agent,
+    emitter: &Emitter,
+    fault: &FaultLatch,
+    failure: HookFailure,
+    turns: usize,
+) -> LoopEnd {
     emitter.emit(log("error", failure.to_string()));
     LoopEnd {
-        status: STATUS_HOOK_ERROR,
+        status: TerminalStatus::attributed(STATUS_HOOK_ERROR, fault),
         turns,
         tokens: TokenCounts::default(),
         cost: None,
@@ -10831,6 +10959,11 @@ fn session_ended(status: impl Into<String>) -> GgTelemetryKind {
         status: status.into(),
     }
 }
+
+#[path = "agent.attribution.rs"]
+mod attribution;
+
+use attribution::TerminalStatus;
 
 #[path = "agent.code.rs"]
 mod code;

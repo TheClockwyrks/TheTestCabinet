@@ -385,6 +385,21 @@ so the accounting stays whole, charged to no ceiling, and attributed to gg. A
 run that both broke and failed a turn is recorded under the fault, since that is
 the fact which disqualifies it.
 
+### An ending taken on a broken run
+
+An agent's terminal status is judged against the latch at the one seam that
+produces it, on the same rule the turn is judged on. Every failure status an
+agent can end under is gg's when the run was already broken, so `model_error`,
+`auth_error` and `hook_error` all become `internal_error`, and the record of the
+turn and the record of the agent agree about whose failure it was. An agent's
+final word is written from the status it actually ended under, since a spawner
+reads that sentence as its child's answer.
+
+An agent that completed, that spent a ceiling, or that a host killed keeps the
+status it earned. The run's own terminal status comes from the latch, so a run
+gg broke is disqualified once, at the session, rather than restated on every
+agent that had already finished.
+
 ## What a stopped run leaves behind
 
 1. Nothing is aborted mid-turn. A cost or deadline breach is detected before a
