@@ -22,6 +22,7 @@ import {
 } from "./constants";
 import { Game, OVER_ITEMS, PAUSE_ITEMS, TITLE_ITEMS } from "./game";
 import type { Bullet, EnemyBullet, Rock, Saucer, Vec } from "./types";
+import { viewX, viewY } from "./physics";
 
 // The canvas 2D context, with the (widely-supported, sometimes untyped)
 // letterSpacing property available.
@@ -162,9 +163,9 @@ function drawStar(ctx: Ctx, alpha = 1): void {
 
 // ---- Bodies ------------------------------------------------------------
 
-function drawRock(ctx: Ctx, rock: Rock, alpha = 1): void {
+function drawRock(ctx: Ctx, rock: Rock, alpha = 1, ra = 0): void {
   const n = rock.verts.length;
-  drawWrapped(rock.x, rock.y, rock.radius, (px, py) => {
+  drawWrapped(viewX(rock, ra), viewY(rock, ra), rock.radius, (px, py) => {
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.shadowColor = "rgba(154, 167, 189, 0.35)";
@@ -256,7 +257,7 @@ function drawShip(
 // rather than discrete dots. Because the samples span a fixed slice of time, the
 // ribbon's length is proportional to the bullet's speed. The ribbon is cut at a
 // wrap seam so it never smears across the field.
-function drawTrail(ctx: Ctx, b: Bullet): void {
+function drawTrail(ctx: Ctx, b: Bullet, ra = 0): void {
   // Newest -> oldest, stopping at a wrap seam: a jump larger than half the field
   // between samples means the bullet wrapped, so the trail ends there.
   const pts: Vec[] = [];
@@ -272,6 +273,18 @@ function drawTrail(ctx: Ctx, b: Bullet): void {
     pts.push(p);
   }
   if (pts.length < 2) return;
+
+  // The head rides the bullet the renderer is actually drawing rather than the
+  // position the last completed step left it at, so the comet stays attached to
+  // it between steps. Skipped across a seam, where the two are a field apart.
+  const hx = viewX(b, ra);
+  const hy = viewY(b, ra);
+  if (
+    Math.abs(hx - pts[0].x) <= FIELD_W / 2 &&
+    Math.abs(hy - pts[0].y) <= FIELD_H / 2
+  ) {
+    pts[0] = { x: hx, y: hy };
+  }
 
   const head = pts[0];
   const tail = pts[pts.length - 1];
@@ -316,8 +329,8 @@ function drawTrail(ctx: Ctx, b: Bullet): void {
   ctx.restore();
 }
 
-function drawBullet(ctx: Ctx, b: Bullet): void {
-  drawWrapped(b.x, b.y, BULLET_R + 4, (px, py) => {
+function drawBullet(ctx: Ctx, b: Bullet, ra = 0): void {
+  drawWrapped(viewX(b, ra), viewY(b, ra), BULLET_R + 4, (px, py) => {
     ctx.save();
     ctx.shadowColor = "rgba(242, 245, 247, 0.9)";
     ctx.shadowBlur = 8;
@@ -329,8 +342,8 @@ function drawBullet(ctx: Ctx, b: Bullet): void {
   });
 }
 
-function drawEnemyBullet(ctx: Ctx, b: EnemyBullet): void {
-  drawWrapped(b.x, b.y, BULLET_R + 4, (px, py) => {
+function drawEnemyBullet(ctx: Ctx, b: EnemyBullet, ra = 0): void {
+  drawWrapped(viewX(b, ra), viewY(b, ra), BULLET_R + 4, (px, py) => {
     ctx.save();
     ctx.shadowColor = "rgba(255, 92, 138, 0.9)";
     ctx.shadowBlur = 8;
@@ -342,8 +355,8 @@ function drawEnemyBullet(ctx: Ctx, b: EnemyBullet): void {
   });
 }
 
-function drawSaucer(ctx: Ctx, s: Saucer): void {
-  drawWrapped(s.x, s.y, SAUCER_R + 6, (px, py) => {
+function drawSaucer(ctx: Ctx, s: Saucer, ra = 0): void {
+  drawWrapped(viewX(s, ra), viewY(s, ra), SAUCER_R + 6, (px, py) => {
     ctx.save();
     ctx.translate(px, py);
     ctx.shadowColor = "rgba(255, 92, 138, 0.7)";
@@ -514,14 +527,18 @@ function drawOverlay(ctx: Ctx, opacity: number): void {
 // The live field: star, rocks, bullets, saucer, the ship, and the HUD.
 function drawPlayScene(ctx: Ctx, game: Game): void {
   drawStar(ctx);
-  for (const r of game.rocks) drawRock(ctx, r);
-  for (const b of game.bullets) drawTrail(ctx, b);
-  for (const b of game.bullets) drawBullet(ctx, b);
-  for (const b of game.enemyBullets) drawEnemyBullet(ctx, b);
-  if (game.saucer) drawSaucer(ctx, game.saucer);
+  for (const r of game.rocks) drawRock(ctx, r, 1, game.renderAlpha);
+  for (const b of game.bullets) drawTrail(ctx, b, game.renderAlpha);
+  for (const b of game.bullets) drawBullet(ctx, b, game.renderAlpha);
+  for (const b of game.enemyBullets) drawEnemyBullet(ctx, b, game.renderAlpha);
+  if (game.saucer) drawSaucer(ctx, game.saucer, game.renderAlpha);
   drawVignette(ctx);
   if (game.shipVisible()) {
-    drawShip(ctx, game.ship.x, game.ship.y, game.ship.angle, game.thrusting);
+    drawShip(
+      ctx,
+      viewX(game.ship, game.renderAlpha),
+      viewY(game.ship, game.renderAlpha),
+      game.ship.angle, game.thrusting);
   }
   drawHud(ctx, game);
   drawWaveBanner(ctx, game);
@@ -530,8 +547,12 @@ function drawPlayScene(ctx: Ctx, game: Game): void {
 function drawTitle(ctx: Ctx, game: Game): void {
   // Dimmed field furniture behind the menu.
   drawStar(ctx, 0.32);
-  for (const r of game.rocks) drawRock(ctx, r, 0.32);
-  drawShip(ctx, game.ship.x, game.ship.y, game.ship.angle, false, 0.32);
+  for (const r of game.rocks) drawRock(ctx, r, 0.32, game.renderAlpha);
+  drawShip(
+      ctx,
+      viewX(game.ship, game.renderAlpha),
+      viewY(game.ship, game.renderAlpha),
+      game.ship.angle, false, 0.32);
   drawVignette(ctx);
 
   drawText(ctx, "SHATTER", FIELD_W / 2, 248, {
@@ -647,20 +668,24 @@ function drawPause(ctx: Ctx, game: Game): void {
 // reads as frozen).
 function drawPlaySceneFrozen(ctx: Ctx, game: Game): void {
   drawStar(ctx);
-  for (const r of game.rocks) drawRock(ctx, r);
-  for (const b of game.bullets) drawTrail(ctx, b);
-  for (const b of game.bullets) drawBullet(ctx, b);
-  for (const b of game.enemyBullets) drawEnemyBullet(ctx, b);
-  if (game.saucer) drawSaucer(ctx, game.saucer);
+  for (const r of game.rocks) drawRock(ctx, r, 1, game.renderAlpha);
+  for (const b of game.bullets) drawTrail(ctx, b, game.renderAlpha);
+  for (const b of game.bullets) drawBullet(ctx, b, game.renderAlpha);
+  for (const b of game.enemyBullets) drawEnemyBullet(ctx, b, game.renderAlpha);
+  if (game.saucer) drawSaucer(ctx, game.saucer, game.renderAlpha);
   drawVignette(ctx);
-  drawShip(ctx, game.ship.x, game.ship.y, game.ship.angle, false);
+  drawShip(
+      ctx,
+      viewX(game.ship, game.renderAlpha),
+      viewY(game.ship, game.renderAlpha),
+      game.ship.angle, false);
   drawHud(ctx, game);
 }
 
 function drawGameOver(ctx: Ctx, game: Game): void {
   // A dimmed, frozen final field behind the result panel.
   drawStar(ctx, 0.3);
-  for (const r of game.rocks) drawRock(ctx, r, 0.3);
+  for (const r of game.rocks) drawRock(ctx, r, 0.3, game.renderAlpha);
   drawVignette(ctx);
   drawOverlay(ctx, 0.72);
 

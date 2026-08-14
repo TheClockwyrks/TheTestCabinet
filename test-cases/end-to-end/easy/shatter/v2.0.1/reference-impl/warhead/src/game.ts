@@ -80,6 +80,7 @@ import {
   angleDiff,
   gravityAccel,
   shortestDelta,
+  stampBody,
   sweptHit,
   turnToward,
   wrap,
@@ -305,6 +306,18 @@ export class Game {
 
   // ---- Fixed-timestep update --------------------------------------------
 
+  // ---- Render interpolation ---------------------------------------------
+  // The simulation advances in whole FIXED_STEP ticks, but a frame is presented
+  // whenever the display asks for one, and the two rates do not divide evenly.
+  // Each body stamps where it stood when the step began (stampBody, called as
+  // it is integrated), and the animation loop sets `renderAlpha` to the
+  // fraction of the next step the wall clock has already covered; render.ts
+  // draws between the two (physics.viewX / physics.viewY). Nothing here feeds
+  // back into the simulation — these are written by the step and read by the
+  // renderer, never the other way about, so the same tick sequence produces the
+  // same state whatever the frame rate.
+  renderAlpha = 0;
+
   fixedStep(dt: number): void {
     if (this.state === "title") {
       this.stepTitle(dt);
@@ -370,6 +383,7 @@ export class Game {
       ship.vy *= k;
     }
 
+    stampBody(ship);
     ship.x += ship.vx * dt;
     ship.y += ship.vy * dt;
     wrapBody(ship);
@@ -428,6 +442,8 @@ export class Game {
     this.bullets.push({
       x: nose.x,
       y: nose.y,
+      prevX: nose.x,
+      prevY: nose.y,
       vx: this.ship.vx + c * MUZZLE_SPEED,
       vy: this.ship.vy + s * MUZZLE_SPEED,
       life: BULLET_LIFE,
@@ -461,6 +477,8 @@ export class Game {
     this.torpedo = {
       x: nose.x,
       y: nose.y,
+      prevX: nose.x,
+      prevY: nose.y,
       vx: Math.cos(angle) * TORPEDO_SPEED,
       vy: Math.sin(angle) * TORPEDO_SPEED,
       angle,
@@ -485,6 +503,7 @@ export class Game {
     }
     t.vx = Math.cos(t.angle) * TORPEDO_SPEED;
     t.vy = Math.sin(t.angle) * TORPEDO_SPEED;
+    stampBody(t);
     t.x += t.vx * dt;
     t.y += t.vy * dt;
     wrapBody(t);
@@ -520,6 +539,7 @@ export class Game {
       const g = gravityAccel(b.x, b.y);
       b.vx += g.ax * dt;
       b.vy += g.ay * dt;
+      stampBody(b);
       b.x += b.vx * dt;
       b.y += b.vy * dt;
       wrapBody(b);
@@ -535,6 +555,7 @@ export class Game {
       const g = gravityAccel(r.x, r.y);
       r.vx += g.ax * dt;
       r.vy += g.ay * dt;
+      stampBody(r);
       r.x += r.vx * dt;
       r.y += r.vy * dt;
       wrapBody(r);
@@ -549,6 +570,7 @@ export class Game {
       const g = gravityAccel(b.x, b.y);
       b.vx += g.ax * dt;
       b.vy += g.ay * dt;
+      stampBody(b);
       b.x += b.vx * dt;
       b.y += b.vy * dt;
       wrapBody(b);
@@ -580,6 +602,7 @@ export class Game {
       s.vy = away * SAUCER_WEAVE_SPEED * 1.5;
     }
 
+    stampBody(s);
     s.x += s.vx * dt;
     s.y += s.vy * dt;
     wrapBody(s);
@@ -609,6 +632,8 @@ export class Game {
     this.enemyBullets.push({
       x: s.x,
       y: s.y,
+      prevX: s.x,
+      prevY: s.y,
       vx: s.vx + Math.cos(aim) * SAUCER_BULLET_SPEED,
       vy: s.vy + Math.sin(aim) * SAUCER_BULLET_SPEED,
       life: SAUCER_BULLET_LIFE,
@@ -986,6 +1011,8 @@ export class Game {
     this.bullets.push({
       x,
       y,
+      prevX: x,
+      prevY: y,
       vx: state.vx ?? 0,
       vy: state.vy ?? 0,
       life: BULLET_LIFE,

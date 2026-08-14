@@ -63,6 +63,15 @@ function frame(now: number): void {
     accumulator = 0; // don't bank real time while manual
   }
 
+  // What is left in the accumulator is time the display is showing but the
+  // simulation has not stepped through yet. Hand it to the renderer as a
+  // fraction of a step so it can draw between the last two states: the tick rate
+  // and the refresh rate do not divide evenly, so the number of steps per frame
+  // varies, and drawing the raw state would move every body by a different
+  // distance each frame. Zero while the debug API holds the clock, so a posed
+  // scenario is drawn exactly as it was stepped.
+  game.renderAlpha = game.autoStep ? accumulator / FIXED_STEP : 0;
+
   // Render in logical space; the transform maps it to the backing store.
   const sx = canvas.width / FIELD_W;
   const sy = canvas.height / FIELD_H;

@@ -14,6 +14,23 @@ import {
 export interface Body {
   x: number;
   y: number;
+  prevX: number;
+  prevY: number;
+}
+
+// Stamp where a body stands as the current step begins; the renderer draws
+// between this and the post-step position (see Game.renderAlpha).
+export function stampBody(b: Body): void {
+  b.prevX = b.x;
+  b.prevY = b.y;
+}
+
+export function viewX(b: Body, alpha: number): number {
+  return b.prevX + (b.x - b.prevX) * alpha;
+}
+
+export function viewY(b: Body, alpha: number): number {
+  return b.prevY + (b.y - b.prevY) * alpha;
 }
 
 // Keep a coordinate within the field by wrapping it on the torus.
@@ -24,8 +41,15 @@ export function wrap(value: number, size: number): number {
 }
 
 export function wrapBody(b: Body): void {
-  b.x = wrap(b.x, FIELD_W);
-  b.y = wrap(b.y, FIELD_H);
+  const nx = wrap(b.x, FIELD_W);
+  const ny = wrap(b.y, FIELD_H);
+  // Crossing a seam is a relabelling, not travel: carry the interpolation
+  // window across with the body so the delta it spans stays the real one step
+  // of motion, rather than a jump back across the whole field.
+  b.prevX += nx - b.x;
+  b.prevY += ny - b.y;
+  b.x = nx;
+  b.y = ny;
 }
 
 // The shortest vector from a to b across the wrap seams (a torus), so bodies
