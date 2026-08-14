@@ -29,6 +29,65 @@ use test_cabinet_core::gg::GgTelemetryKind;
 
 use crate::telemetry::Emitter;
 
+/// Where a turn's elapsed milliseconds are read from.
+///
+/// A run reads the wall clock, which is the only honest source for a real turn. A **test** must
+/// not. What is worth testing here is the arithmetic — which boundary fixes which phase, how a
+/// phase that was never closed is accounted for, that the three always sum to the whole — and a
+/// test that produces its elapsed figures by sleeping is not testing that arithmetic; it is
+/// testing how loaded the machine is. Such a test has only two settings, and both are bad: bounds
+/// wide enough to survive a saturated CI runner are wide enough to pass with the arithmetic
+/// removed, and bounds tight enough to mean something fail whenever the box is busy. So the timer
+/// reads its elapsed time from this, and a test hands it a clock it steps by hand and asserts
+/// exact figures.
+enum Clock {
+    /// The wall clock, running since the turn began.
+    Wall(Instant),
+    /// A clock that reads whatever it was last set to. Test-only, by construction: nothing outside
+    /// a test can build one.
+    #[cfg(test)]
+    Stepped(SteppedClock),
+}
+
+impl Clock {
+    /// Milliseconds since the turn began, saturating rather than wrapping on the (unreachable)
+    /// overflow of a turn longer than 584 million years.
+    fn elapsed_ms(&self) -> u64 {
+        match self {
+            Self::Wall(started) => u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            #[cfg(test)]
+            Self::Stepped(clock) => clock.read_ms(),
+        }
+    }
+}
+
+/// A clock a test drives by hand: it reads whatever [`set_ms`](Self::set_ms) last put on it.
+///
+/// Shared with the [`TurnTimer`] that holds it, so a test can move it on while the timer is alive
+/// — including after the last boundary and before the drop, which is where the turn's total is
+/// taken.
+#[cfg(test)]
+#[derive(Clone, Default)]
+pub struct SteppedClock(std::sync::Arc<std::sync::atomic::AtomicU64>);
+
+#[cfg(test)]
+impl SteppedClock {
+    /// A clock reading zero — the instant the turn began.
+    pub fn started() -> Self {
+        Self::default()
+    }
+
+    /// Move it to `ms` milliseconds after the turn began.
+    pub fn set_ms(&self, ms: u64) {
+        self.0.store(ms, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// What it currently reads.
+    fn read_ms(&self) -> u64 {
+        self.0.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
 /// One turn's phase accounting, which emits the turn's
 /// [`TurnTiming`](GgTelemetryKind::TurnTiming) when it is dropped.
 ///
@@ -41,8 +100,9 @@ use crate::telemetry::Emitter;
 pub struct TurnTimer<'a> {
     /// Where the turn's timing is emitted, on drop.
     emitter: &'a Emitter,
-    /// When the turn began — the instant the timer was created, just after `TurnStarted`.
-    started: Instant,
+    /// How long the turn has been running, counted from the moment the timer was created just
+    /// after `TurnStarted`.
+    clock: Clock,
     /// How long prompt assembly took, fixed when the model call was dispatched. `None` while the
     /// turn is still assembling, and for a turn that never reached the model at all.
     prompt_ms: Option<u64>,
@@ -54,9 +114,21 @@ pub struct TurnTimer<'a> {
 impl<'a> TurnTimer<'a> {
     /// Start accounting for a turn that begins **now**, reporting to `emitter` when dropped.
     pub fn start(emitter: &'a Emitter) -> Self {
+        Self::on(emitter, Clock::Wall(Instant::now()))
+    }
+
+    /// Start accounting for a turn whose elapsed time comes from a hand-stepped clock rather than
+    /// the wall clock — see [`Clock`] for why the tests measure nothing.
+    #[cfg(test)]
+    pub fn stepped(emitter: &'a Emitter, clock: SteppedClock) -> Self {
+        Self::on(emitter, Clock::Stepped(clock))
+    }
+
+    /// Start accounting against `clock`, which is reading zero.
+    fn on(emitter: &'a Emitter, clock: Clock) -> Self {
         Self {
             emitter,
-            started: Instant::now(),
+            clock,
             prompt_ms: None,
             request_ms: None,
         }
@@ -70,7 +142,7 @@ impl<'a> TurnTimer<'a> {
     /// the latency the turn actually paid.)
     pub fn model_call_started(&mut self) {
         self.prompt_ms
-            .get_or_insert_with(|| elapsed_ms(self.started));
+            .get_or_insert_with(|| self.clock.elapsed_ms());
     }
 
     /// Close the model-call phase with the call's measured latency, in milliseconds — the same
@@ -84,7 +156,7 @@ impl<'a> TurnTimer<'a> {
 
 impl Drop for TurnTimer<'_> {
     fn drop(&mut self) {
-        let total = elapsed_ms(self.started);
+        let total = self.clock.elapsed_ms();
         // A turn that never reached the model spent all of itself assembling; one whose call never
         // returned spent nothing after it. Both clamp to the turn's real duration so the partition
         // holds even when the phases are cut short.
@@ -97,12 +169,6 @@ impl Drop for TurnTimer<'_> {
             response_ms: total - prompt_ms - request_ms,
         });
     }
-}
-
-/// Milliseconds since `start`, saturating rather than wrapping on the (unreachable) overflow of a
-/// turn longer than 584 million years.
-fn elapsed_ms(start: Instant) -> u64 {
-    u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
 #[cfg(test)]

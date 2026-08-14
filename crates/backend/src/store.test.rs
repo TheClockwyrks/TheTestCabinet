@@ -8,6 +8,19 @@ fn temp_store() -> (TempDir, DefinitionStore) {
     (dir, store)
 }
 
+/// Give `slug`'s `version` directory a modification time of `unix_secs` seconds past the epoch.
+///
+/// For the tests that assert ordering is *not* taken from the filesystem: a test that wants two
+/// directories in a known mtime order has to say so, rather than write them in one order and hope
+/// the clock moved far enough between the writes to make the difference visible.
+fn stamp_mtime(store: &DefinitionStore, slug: &str, version: &str, unix_secs: u64) {
+    let dir = store.version_dir(slug, version);
+    let when = std::time::UNIX_EPOCH + std::time::Duration::from_secs(unix_secs);
+    std::fs::File::open(&dir)
+        .and_then(|handle| handle.set_modified(when))
+        .unwrap_or_else(|error| panic!("stamping {}: {error}", dir.display()));
+}
+
 fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
     StoredManifest {
         slug: slug.to_string(),
@@ -346,22 +359,22 @@ fn validation_files_lists_the_whole_script_directory_recursively() {
 #[test]
 fn versions_are_listed_oldest_to_newest_by_semantic_version() {
     let (_dir, store) = temp_store();
-    // Write the *newer* version first so its directory has the *earlier* mtime:
-    // this proves ordering follows the semantic version, not directory mtime.
-    // Mtime order is not a reliable proxy for version order across environments
-    // (a fresh checkout or re-ingest touches version dirs in an arbitrary order),
-    // which is what made the reported "latest version" environment-dependent.
-    store
-        .write_manifest(&sample_manifest("snake", "v1.10.0"))
-        .unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(20));
-    store
-        .write_manifest(&sample_manifest("snake", "v1.9.0"))
-        .unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(20));
-    store
-        .write_manifest(&sample_manifest("snake", "v1.0.0"))
-        .unwrap();
+    for version in ["v1.10.0", "v1.9.0", "v1.0.0"] {
+        store
+            .write_manifest(&sample_manifest("snake", version))
+            .unwrap();
+    }
+    // Stamp the version directories so their mtimes run in the exact *reverse* of the expected
+    // order: ordering follows the semantic version, not the directory's age, and mtime order is
+    // not a reliable proxy for version order across environments (a fresh checkout or a re-ingest
+    // touches version dirs in an arbitrary order) — which is what made the reported "latest
+    // version" environment-dependent in the first place. Stamped rather than produced by writing
+    // them in one order and sleeping between: a sleep buys the same inversion only on a filesystem
+    // whose timestamps are finer than the nap, and silently buys nothing on one that is not.
+    for (version, at) in [("v1.10.0", 1_000), ("v1.9.0", 2_000), ("v1.0.0", 3_000)] {
+        stamp_mtime(&store, "snake", version, at);
+    }
+
     let versions = store.list_versions("snake").unwrap();
     // Component-wise: v1.0.0 < v1.9.0 < v1.10.0 (not the lexical v1.10.0 < v1.9.0),
     // newest listed last per the catalog contract.
@@ -429,7 +442,6 @@ fn a_case_keeps_its_non_experimental_versions_when_filtered() {
     let mut v1 = sample_manifest("mixed", "v1.0.0");
     v1.experimental = true;
     store.write_manifest(&v1).unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(20));
     store
         .write_manifest(&sample_manifest("mixed", "v1.1.0"))
         .unwrap();

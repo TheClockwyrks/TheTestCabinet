@@ -734,8 +734,16 @@ pub struct DaemonCommand {
     stderr: PathBuf,
 }
 
-/// The counter that makes every daemon's tree unique.
+/// The counter that separates one daemon's tree from the next in **this** process.
 static NEXT_DAEMON: AtomicU64 = AtomicU64::new(0);
+
+/// Milliseconds since the epoch, or `0` on the clock going backwards — a name needs a number, not
+/// the truth. See [`daemon`] for what it is doing in a directory name.
+fn started_at_ms() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_millis())
+}
 
 /// Point a long-lived compiler process at `program`, on ground of its own.
 ///
@@ -744,14 +752,27 @@ static NEXT_DAEMON: AtomicU64 = AtomicU64::new(0);
 /// from something that only exists for one call. What it *is* rooted in is a tree with the same
 /// redirection every compiler here gets, so a toolchain that caches under `HOME` caches inside a
 /// directory that dies with the daemon.
+///
+/// # Why the tree's name has three parts
+///
+/// It has to be unique against three different collisions, and each part answers one of them: the
+/// counter separates two daemons in this process, the pid separates two processes running at once,
+/// and the **clock** separates this process from a dead one whose pid the OS has since handed back.
+/// That last one is not theoretical. A tree is removed by [`CompilerDaemon`]'s drop, and plenty of
+/// endings never run it — a `SIGKILL`ed test binary, or an ordinary exit with the daemon still
+/// parked in a `static` pool. Either leaves `<pid>-0` standing under a temp root shared by every
+/// process on the machine, and the next process the OS hands that pid to then fails to start its
+/// first daemon at all, on a `create_dir` that finds the directory already there. Naming a tree
+/// after the moment it was made costs nothing and makes those leftovers inert.
 pub fn daemon(program: impl AsRef<OsStr>) -> Result<DaemonCommand, String> {
     let program = program.as_ref();
     let parent = std::env::temp_dir().join("gg-daemon");
     std::fs::create_dir_all(&parent)
         .map_err(|error| format!("could not create {}: {error}", parent.display()))?;
     let tree = parent.join(format!(
-        "{}-{}",
+        "{}-{}-{}",
         std::process::id(),
+        started_at_ms(),
         NEXT_DAEMON.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir(&tree).map_err(|error| {
