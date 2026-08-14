@@ -17,16 +17,27 @@ import styles from "./RunDetailPages.module.scss";
 // `failedOnly` narrows to the scripts that failed the debug-API gate (`ran: false`)
 // — used on the failure branch to explain exactly which contracts broke. `heading`,
 // when given, titles the whole section.
+//
+// `collapsible` (which needs a `heading` to toggle) turns the whole list into a
+// disclosure that starts CLOSED. Used where the list has something BELOW it that a
+// reader still needs: on the Verdict tab it sits above the reviewer's own review
+// summary and its actions, and the tables are tall enough that leaving them open
+// buries those behind a screenful of scrolling. Where the list ends the surface
+// (the Metadata tab), it stays expanded — its height pushes nothing out of reach.
 export function DebugScriptList({
   scripts,
   failedOnly = false,
   heading,
+  collapsible = false,
 }: {
   scripts: DebugScriptResult[];
   failedOnly?: boolean;
   heading?: string;
+  collapsible?: boolean;
 }) {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  // The disclosure's own state, separate from the per-row expansion above.
+  const [open, setOpen] = useState(false);
   const shown = failedOnly ? scripts.filter((s) => !s.ran) : scripts;
   if (shown.length === 0) return null;
 
@@ -61,53 +72,80 @@ export function DebugScriptList({
       return next;
     });
 
+  // A collapsible list needs a heading to hang its toggle off; without one there
+  // is nothing to click, so it stays a plain, open list.
+  const disclosure = collapsible && !!heading;
+
   return (
     <div className={styles.section}>
-      {heading && <h3 className={styles.checkName}>{heading}</h3>}
-      {groups.map((group) => (
-        <div key={group.key} className={styles.validationGroup}>
-          <h4 className={styles.validationCategory}>{group.title}</h4>
-          <table className={styles.checks}>
-            <thead>
-              <tr>
-                <th scope="col">Item</th>
-                <th scope="col">Path</th>
-                <th scope="col">Pass</th>
-              </tr>
-            </thead>
-            <tbody>
-              {group.scripts.map((script) => {
-                const key = rowKey(script);
-                // "Pass" is the check's outcome: it ran to completion and every
-                // verdict it decided passed. A script that never ran (the debug-API
-                // gate broke) has no outcome to show.
-                const passed =
-                  script.ran &&
-                  script.verdicts.length > 0 &&
-                  script.verdicts.every((v) => v.pass);
-                // The assertions across every verdict this script decided — the
-                // proof to reveal on expand (both the parts that held and any that
-                // failed).
-                const assertions = script.verdicts.flatMap((v) => v.assertions);
-                const canExpand =
-                  Boolean(script.detail) || assertions.length > 0;
-                const isOpen = canExpand && expanded.has(key);
-                return (
-                  <ExpandableRows
-                    key={key}
-                    script={script}
-                    passed={passed}
-                    assertions={assertions}
-                    canExpand={canExpand}
-                    isOpen={isOpen}
-                    onToggle={() => toggle(key)}
-                  />
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      ))}
+      {heading &&
+        (disclosure ? (
+          <h3 className={`${styles.checkName} ${styles.disclosureHeading}`}>
+            <button
+              type="button"
+              className={styles.disclosureToggle}
+              aria-expanded={open}
+              onClick={() => setOpen((value) => !value)}
+            >
+              <span className={styles.twisty} aria-hidden="true">
+                {open ? "▾" : "▸"}
+              </span>
+              {heading}
+              <span className={styles.disclosureCount}>
+                {shown.length} check{shown.length === 1 ? "" : "s"}
+              </span>
+            </button>
+          </h3>
+        ) : (
+          <h3 className={styles.checkName}>{heading}</h3>
+        ))}
+      {(!disclosure || open) &&
+        groups.map((group) => (
+          <div key={group.key} className={styles.validationGroup}>
+            <h4 className={styles.validationCategory}>{group.title}</h4>
+            <table className={styles.checks}>
+              <thead>
+                <tr>
+                  <th scope="col">Item</th>
+                  <th scope="col">Path</th>
+                  <th scope="col">Pass</th>
+                </tr>
+              </thead>
+              <tbody>
+                {group.scripts.map((script) => {
+                  const key = rowKey(script);
+                  // "Pass" is the check's outcome: it ran to completion and every
+                  // verdict it decided passed. A script that never ran (the debug-API
+                  // gate broke) has no outcome to show.
+                  const passed =
+                    script.ran &&
+                    script.verdicts.length > 0 &&
+                    script.verdicts.every((v) => v.pass);
+                  // The assertions across every verdict this script decided — the
+                  // proof to reveal on expand (both the parts that held and any that
+                  // failed).
+                  const assertions = script.verdicts.flatMap(
+                    (v) => v.assertions,
+                  );
+                  const canExpand =
+                    Boolean(script.detail) || assertions.length > 0;
+                  const isOpen = canExpand && expanded.has(key);
+                  return (
+                    <ExpandableRows
+                      key={key}
+                      script={script}
+                      passed={passed}
+                      assertions={assertions}
+                      canExpand={canExpand}
+                      isOpen={isOpen}
+                      onToggle={() => toggle(key)}
+                    />
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ))}
     </div>
   );
 }
