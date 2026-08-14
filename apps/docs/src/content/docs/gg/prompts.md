@@ -121,6 +121,12 @@ does not carry fails rather than rendering a blank. The struct is the documented
 list of what a template may reference, and the crate's tests render every
 template with the capability sections both on and off.
 
+An operator's per-agent override is held to that same contract. gg parses it at
+launch, and one that does not parse refuses the launch alongside every other
+value in the capability set gg cannot honour exactly as written. An override that
+parses and then fails to render against a live context ends the run as a gg
+defect, because the prompt an agent runs under is the prompt its profile wrote.
+
 ## Template selection
 
 `prompts::render_system` selects the template from the run's execution mode and,

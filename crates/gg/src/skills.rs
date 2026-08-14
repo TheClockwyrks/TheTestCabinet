@@ -44,6 +44,7 @@ use crate::modules::{
 };
 use crate::prompts::SkillView;
 use crate::sandbox::ProgramLanguage;
+use crate::validate::{LaunchDefect, LaunchReport};
 
 /// The default directory skills are loaded from, relative to the run workspace, when the
 /// capability does not configure one via its `dir` param. `core`'s workspace seeding may
@@ -52,10 +53,6 @@ pub const DEFAULT_SKILLS_DIR: &str = ".gg/skills";
 
 /// The file extension a skill file must have to be loaded from a skills directory.
 const SKILL_EXTENSION: &str = "md";
-
-/// Placeholder description used for a skill file whose front matter omits `description`
-/// (or has no front matter at all), so the catalog still lists it with *something*.
-const MISSING_DESCRIPTION: &str = "(no description provided)";
 
 /// One parsed skill: the front-matter [`name`](Self::name)/[`description`](Self::description)
 /// shown to the model up front, the [`body`](Self::body) (front matter stripped) that
@@ -204,39 +201,110 @@ impl SkillLibrary {
     ///   * `on-use.<ext>` — optional. The script gg runs once, when the skill is first read.
     ///     Resolved per language exactly as the module is.
     ///
-    /// A directory without a `skill.md` is not a skill and is ignored: the name and the description
-    /// are what the index is made of, and inventing them from a file name would put a line in front
-    /// of the model that says nothing.
+    /// # Every entry must load, exactly as it is written
     ///
-    /// A missing or unreadable directory yields an [`empty`](Self::empty) library (skills are
-    /// optional); an individual file that cannot be read is skipped. The result is ordered by skill
-    /// name, and a duplicate name keeps the first entry seen in path order.
-    pub fn load(dir: &Path) -> Self {
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            return Self::empty();
+    /// A skills directory is **authored**, and it is authored to be read: a skill that silently did
+    /// not load is a skill the model was never offered, in a run whose configuration says it was.
+    /// Nothing downstream can tell that run from one where the model had the guide and did not reach
+    /// for it. So every entry gg cannot load is [reported](crate::validate) and refuses the launch —
+    /// a directory with no `skill.md`, front matter that is absent, unclosed or missing a field, two
+    /// entries claiming one name, a blank code file, an unreadable file, and an entry that is
+    /// neither of the two shapes. They are reported *together*, because an author fixing a directory
+    /// wants the whole list in one pass.
+    ///
+    /// Two things are deliberately not defects. An entry whose name begins with a **dot** is
+    /// tooling's (`.gitkeep`, `.DS_Store`), never an authored skill, and is skipped in silence. And
+    /// a **missing** directory yields an [`empty`](Self::empty) library: skills are optional, and the
+    /// default `.gg/skills` is absent from every workspace that authored none. A `dir` the
+    /// capability explicitly **named** and gg cannot open is a different thing entirely, and the
+    /// [workspace gate](crate::validate::validate_workspace) refuses it.
+    ///
+    /// The result is ordered by skill name.
+    pub fn load(dir: &Path, report: &mut LaunchReport) -> Self {
+        let entries = match std::fs::read_dir(dir) {
+            Ok(entries) => entries,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Self::empty(),
+            Err(err) => {
+                report.report(defect(
+                    dir,
+                    "",
+                    format!("gg cannot read the run's skills directory: {err}."),
+                ));
+                return Self::empty();
+            }
         };
 
-        // Collect the entries first, then load in a stable (path-sorted) order so a duplicate
-        // front-matter name resolves deterministically to the first one.
-        let mut paths: Vec<std::path::PathBuf> = entries
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .collect();
+        // Collect the entries first, then load in a stable (path-sorted) order, so a directory with
+        // several problems in it reports them in the order an author reads the directory.
+        let mut paths: Vec<std::path::PathBuf> = Vec::new();
+        for entry in entries {
+            match entry {
+                Ok(entry) => paths.push(entry.path()),
+                Err(err) => report.report(defect(
+                    dir,
+                    "",
+                    format!("gg cannot read one of the skills directory's entries: {err}."),
+                )),
+            }
+        }
         paths.sort();
 
         let mut skills: Vec<Skill> = Vec::new();
         for path in &paths {
-            let Some(skill) = load_one(path) else {
+            // A dotfile is tooling's, not an author's: `.gitkeep` is how an empty directory is
+            // committed at all, and refusing a launch over one would be gg holding a directory to a
+            // rule about *skills* that the entry never claimed to be.
+            if path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with('.'))
+            {
+                continue;
+            }
+            let Some(skill) = load_one(path, report) else {
                 continue;
             };
-            // Keep the first entry to claim a given name; ignore later duplicates.
-            if !skills.iter().any(|existing| existing.name == skill.name) {
-                skills.push(skill);
+            if let Some(existing) = skills.iter().find(|existing| existing.name == skill.name) {
+                report.report(defect(
+                    path,
+                    &skill.name,
+                    format!(
+                        "two entries of the skills directory claim the name `{}`; a skill is \
+                         listed and read by name, so one of them could never be reached and the \
+                         model would be offered one line for two guides. Rename one.",
+                        existing.name,
+                    ),
+                ));
+                continue;
             }
+            skills.push(skill);
         }
 
         skills.sort_by(|a, b| a.name.cmp(&b.name));
         Self { skills }
+    }
+
+    /// [`load`](Self::load) for the tests, which author the directories they read and so expect
+    /// every entry in them to load.
+    ///
+    /// It panics on a defect rather than discarding one, because a fixture gg could not read would
+    /// otherwise make a test assert against an empty library while reading as though it had asserted
+    /// against a full one.
+    #[cfg(test)]
+    pub fn loaded(dir: &Path) -> Self {
+        let mut report = LaunchReport::collecting();
+        let library = Self::load(dir, &mut report);
+        let defects = report.into_defects();
+        assert!(
+            defects.is_empty(),
+            "this fixture skills directory does not load: {}",
+            defects
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("; ")
+        );
+        library
     }
 
     /// This library with `builtins` added — gg's own skills, one per family of functions the agent
@@ -627,43 +695,135 @@ fn code_extensions() -> BTreeSet<&'static str> {
     extensions
 }
 
-/// The `<stem>.<ext>` files present under `dir`, one entry per extension that has one.
-fn read_code_files(dir: &Path, stem: &str) -> CodeFiles {
-    code_extensions()
-        .into_iter()
-        .filter_map(|extension| {
-            let source = std::fs::read_to_string(dir.join(format!("{stem}.{extension}"))).ok()?;
-            Some((extension.to_string(), source))
-        })
-        .collect()
+/// One thing in the skills directory gg could not load, as a [launch defect](LaunchDefect).
+///
+/// The **path** is the locus, rather than a field of the capability set: an author fixing this is
+/// about to open that file, and no part of the configuration document is wrong.
+fn defect(path: &Path, found: &str, message: String) -> LaunchDefect {
+    LaunchDefect::run_level(path.display().to_string(), found, message)
 }
 
-/// One entry of a skills directory, as a [`Skill`] — or `None` for an entry that is not one.
-fn load_one(path: &Path) -> Option<Skill> {
+/// The `<stem>.<ext>` files present under `dir`, one entry per extension that has one.
+///
+/// A file that is present and **blank** is a defect rather than a dropped entry. An author who
+/// wrote `skill.ts` meant the agent to get a module; an empty one binds `lib.<key>` to nothing, so
+/// the agent's programs would meet a name that exists and exports nothing — and the arm the
+/// directory was authored for silently becomes the arm without it. A file gg cannot read at all is
+/// a defect for the same reason, one step earlier.
+fn read_code_files(dir: &Path, stem: &str, report: &mut LaunchReport) -> CodeFiles {
+    let mut files = CodeFiles::new();
+    for extension in code_extensions() {
+        let path = dir.join(format!("{stem}.{extension}"));
+        let source = match std::fs::read_to_string(&path) {
+            Ok(source) => source,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(err) => {
+                report.report(defect(
+                    &path,
+                    "",
+                    format!("gg cannot read this skill's `{stem}.{extension}`: {err}."),
+                ));
+                continue;
+            }
+        };
+        if source.trim().is_empty() {
+            let consequence = if stem == SKILL_MODULE_STEM {
+                "gg would bind the agent a module that exports nothing"
+            } else {
+                "gg would run nothing when the skill is first used"
+            };
+            report.report(defect(
+                &path,
+                "",
+                format!(
+                    "this skill's `{stem}.{extension}` is empty; {consequence}, which is that half \
+                     of the skill switched off rather than written."
+                ),
+            ));
+            continue;
+        }
+        files.insert(extension.to_string(), source);
+    }
+    files
+}
+
+/// One entry of a skills directory, as a [`Skill`] — or `None`, having
+/// [reported](crate::validate) why it is not one.
+///
+/// Every `None` is a defect: the two shapes below are the whole of what a skills directory holds,
+/// so an entry that is neither was authored to be a skill and is not one.
+fn load_one(path: &Path, report: &mut LaunchReport) -> Option<Skill> {
     if path.is_dir() {
-        let raw = std::fs::read_to_string(path.join(SKILL_MANIFEST)).ok()?;
-        let fallback = path
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        return Some(parse_skill(&raw, &fallback).with_code(
-            read_code_files(path, SKILL_MODULE_STEM),
-            read_code_files(path, SKILL_ON_USE_STEM),
-        ));
+        let manifest = path.join(SKILL_MANIFEST);
+        let raw = match std::fs::read_to_string(&manifest) {
+            Ok(raw) => raw,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                report.report(defect(
+                    path,
+                    "",
+                    format!(
+                        "a skill directory must carry a `{SKILL_MANIFEST}`; the name and the \
+                         description in its front matter are what the catalogue the model reads is \
+                         made of, and gg will not invent them from a directory name."
+                    ),
+                ));
+                return None;
+            }
+            Err(err) => {
+                report.report(defect(
+                    &manifest,
+                    "",
+                    format!("gg cannot read this skill's `{SKILL_MANIFEST}`: {err}."),
+                ));
+                return None;
+            }
+        };
+        // The two code halves are read even when the manifest does not parse, so one pass over the
+        // directory reports everything wrong with it rather than the first thing.
+        let code = read_code_files(path, SKILL_MODULE_STEM, report);
+        let on_use = read_code_files(path, SKILL_ON_USE_STEM, report);
+        return match parse_skill(&raw) {
+            Ok(skill) => Some(skill.with_code(code, on_use)),
+            Err(problem) => {
+                report.report(defect(&manifest, "", problem));
+                None
+            }
+        };
     }
     if !path.is_file()
         || !path
             .extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case(SKILL_EXTENSION))
     {
+        report.report(defect(
+            path,
+            "",
+            format!(
+                "this is neither a `<name>.{SKILL_EXTENSION}` prose skill nor a skill directory, \
+                 so gg would load nothing from it; a guide written here would be one the model is \
+                 never offered."
+            ),
+        ));
         return None;
     }
-    let raw = std::fs::read_to_string(path).ok()?;
-    let fallback = path
-        .file_stem()
-        .map(|stem| stem.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    Some(parse_skill(&raw, &fallback))
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(err) => {
+            report.report(defect(
+                path,
+                "",
+                format!("gg cannot read this skill: {err}."),
+            ));
+            return None;
+        }
+    };
+    match parse_skill(&raw) {
+        Ok(skill) => Some(skill),
+        Err(problem) => {
+            report.report(defect(path, "", problem));
+            None
+        }
+    }
 }
 
 /// The `name` and `description` fields parsed from a skill's YAML front matter. Any other
@@ -674,64 +834,90 @@ struct FrontMatter {
     description: Option<String>,
 }
 
-/// Parse a skill file into a [`Skill`], stripping its front matter from the body.
+/// Parse a skill file into a [`Skill`], stripping its front matter from the body — or say, in an
+/// author's terms, why it is not a skill.
 ///
-/// `fallback_name` (typically the file stem) names the skill when the front matter omits
-/// `name`; a missing `description` falls back to a placeholder. Exposed to the loop via
-/// [`SkillLibrary::load`]; the front-matter split itself is [`split_front_matter`].
-pub(crate) fn parse_skill(raw: &str, fallback_name: &str) -> Skill {
-    let (front, body) = split_front_matter(raw);
-    let name = front
-        .name
-        .map(|name| name.trim().to_string())
-        .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| fallback_name.trim().to_string());
-    let description = front
-        .description
-        .map(|description| description.trim().to_string())
-        .filter(|description| !description.is_empty())
-        .unwrap_or_else(|| MISSING_DESCRIPTION.to_string());
-    Skill {
-        name,
-        description,
+/// **Both front-matter fields are required.** gg used to fill a missing `name` from the file stem
+/// and a missing `description` from a placeholder, which put a line reading
+/// `release-checklist — (no description provided)` in front of the model: the catalogue is the only
+/// thing that tells a model a skill is worth reading, and an entry that says nothing is an entry it
+/// will not open. The file is right there to be fixed, so the launch is refused instead.
+///
+/// The front-matter split itself is [`split_front_matter`]; the [built-ins](builtin) go through here
+/// too, so there is exactly one way a skill comes into being.
+pub(crate) fn parse_skill(raw: &str) -> Result<Skill, String> {
+    let (front, body) = split_front_matter(raw)?;
+    let field = |value: Option<String>, key: &str| -> Result<String, String> {
+        value
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                format!(
+                    "this skill's front matter carries no `{key}`; a skill is listed to the model \
+                     by its name and its description, and gg will not invent either."
+                )
+            })
+    };
+    Ok(Skill {
+        name: field(front.name, "name")?,
+        description: field(front.description, "description")?,
         body: body.trim().to_string(),
         code: CodeFiles::new(),
         on_use: CodeFiles::new(),
-    }
+    })
 }
 
 /// Split a skill file into its parsed [`FrontMatter`] and its body.
 ///
 /// Front matter is a leading block delimited by a line containing exactly `---` on both
 /// sides (a leading UTF-8 BOM is tolerated), the convention markdown authoring tools use.
-/// A file that does not open with a `---` fence, or whose fence is never closed, has no
-/// front matter: the whole file is the body and the fields are empty. Front-matter fields
-/// are parsed line by line as `key: value`; only `name` and `description` are retained.
+/// Front-matter fields are parsed line by line as `key: value`; only `name` and `description`
+/// are retained.
+///
+/// **A file with no front matter, or with a fence that is never closed, is not a skill.** It used
+/// to be read as one whose body was the whole file, named after its own file — which is how an
+/// author who typed `--` or forgot the closing fence got a skill in the catalogue described as
+/// "(no description provided)", with its front matter shown to the model as prose. There is no
+/// reading of such a file that is the one it was written to have, so it is refused and named.
 ///
 /// This is a **minimal** parser sufficient for the two scalar fields the skills capability
 /// needs — not a general YAML implementation — so no YAML dependency is pulled in.
-fn split_front_matter(raw: &str) -> (FrontMatter, String) {
+fn split_front_matter(raw: &str) -> Result<(FrontMatter, String), String> {
     let raw = raw.strip_prefix('\u{feff}').unwrap_or(raw);
     // `lines()` drops line terminators; the body is rejoined with `\n`, which is fine for
     // markdown skill bodies (exact original terminators are not load-bearing).
     let lines: Vec<&str> = raw.lines().collect();
     let is_fence = |line: &str| line.trim() == "---";
 
-    if lines.first().is_some_and(|line| is_fence(line)) {
-        // The closing fence is the first `---` line after the opening one.
-        if let Some(offset) = lines.iter().skip(1).position(|line| is_fence(line)) {
-            let close = offset + 1;
-            let front = parse_front_matter_fields(&lines[1..close]);
-            let body = lines[close + 1..].join("\n");
-            return (front, body);
-        }
+    if !lines.first().is_some_and(|line| is_fence(line)) {
+        return Err(
+            "this skill has no front matter; a skill opens with a `---` block naming it (`name`) \
+             and saying what it is for (`description`), which is the line the model is offered."
+                .to_string(),
+        );
     }
-
-    (FrontMatter::default(), raw.to_string())
+    // The closing fence is the first `---` line after the opening one.
+    let Some(offset) = lines.iter().skip(1).position(|line| is_fence(line)) else {
+        return Err(
+            "this skill's front-matter block is never closed; gg cannot tell where the fields end \
+             and the body begins, so add the closing `---` line."
+                .to_string(),
+        );
+    };
+    let close = offset + 1;
+    Ok((
+        parse_front_matter_fields(&lines[1..close]),
+        lines[close + 1..].join("\n"),
+    ))
 }
 
 /// Parse the `key: value` lines of a front-matter block, retaining only `name` and
 /// `description`. A line without a colon, or with an unrecognized key, is ignored.
+///
+/// Deliberately lenient about **other** keys: the block is YAML by convention and an authoring tool
+/// may put a `title` or a `tags` in it, so a key gg does not steer on is one it has no business
+/// refusing. The two keys it does steer on are required, and [`parse_skill`] refuses a file that
+/// omits either.
 fn parse_front_matter_fields(lines: &[&str]) -> FrontMatter {
     let mut front = FrontMatter::default();
     for line in lines {

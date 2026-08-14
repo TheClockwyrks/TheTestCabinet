@@ -104,15 +104,16 @@ itself and supplies the windows a launch would have.
 ### Narrowing the window
 
 `windowLimit` may only make the window smaller. The model's real window is a
-hard limit, so a larger value is clamped back down to the catalog's figure
-rather than rejected, and a study that misjudged a window still runs. Narrowing
-is how a study exercises compaction against a million-token model without
-spending a million tokens of input per boundary: give the run a 100k window and
-the same summarize-and-restart behaviour plays out an order of magnitude sooner.
+hard limit, so a value above it refuses the launch, on the same rule an
+unresolvable window is refused under. A `windowLimit` of `0` refuses the launch
+too, since an override that narrows nothing is an override the run records and
+never applied. Narrowing is how a study exercises compaction against a
+million-token model without spending a million tokens of input per boundary:
+give the run a 100k window and the same summarize-and-restart behaviour plays
+out an order of magnitude sooner.
 
 Narrowing is its own capability, Context Window Override, off by default, so a
-normal run is measured against the model's full window. A `windowLimit` of `0`,
-or a disabled override, narrows nothing.
+normal run is measured against the model's full window.
 
 ## Reading the graph
 

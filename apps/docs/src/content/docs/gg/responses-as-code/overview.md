@@ -40,19 +40,25 @@ The capability id is `responses-as-code`. It is the responses-as-code agent
 type's settings panel in the [configuration](/gg/configurations/) editor, and
 the agent-type selector is its switch. Six parameters are read:
 
-| Param | Default | Meaning |
+| Param | Default when absent | Meaning |
 | --- | --- | --- |
 | `language` | `typescript` | The program language this agent writes in. |
 | `timeoutSecs` | `30` | Guest-execution ceiling for one program, in seconds. A fraction is honoured. |
-| `maxMemoryBytes` | `268435456` | Guest linear-memory ceiling for one program. A fraction truncates towards zero. |
+| `maxMemoryBytes` | `268435456` | Guest linear-memory ceiling for one program, as a whole number of bytes. |
 | `docViewTypes` | `return` | Which SDK types opening a function's documentation opens beside it: `return`, `return-and-parameters` or `off`. |
 | `healing` | per-strategy defaults | Which [response-healing](/gg/response-healing/) repairs are armed. |
 | `assistantMessages` | `none` | How the assistant turn is recorded: `none` records the reply as the model sent it, `response-healing` records the healed program that ran. |
 
-The two numeric params fall back to their default when the value is absent,
-non-numeric or non-positive, and neither is clamped. A value gg cannot read for
-`language`, `docViewTypes`, `healing` or `assistantMessages` changes nothing and
-is reported at launch.
+Each param takes the default above when it is absent, and neither numeric param
+is clamped. A value that is present and unhonourable refuses the launch: a
+`timeoutSecs` that is not a positive number, a `maxMemoryBytes` that is not a
+positive whole number of bytes, and a `language`, `docViewTypes`, `healing` or
+`assistantMessages` outside its own vocabulary. The refusal names every such
+value in the configuration, so one pass fixes them all.
+
+JSON has no integer type, so `5e8` and `500000000` are one `maxMemoryBytes`
+declaration. `500000000.5` names no count of bytes and is refused, since
+rounding it would run the guest at a ceiling nobody wrote.
 
 All six resolve per agent, from that agent's own profile. The language and the
 documentation-type mode land on that agent's `agent_surface`

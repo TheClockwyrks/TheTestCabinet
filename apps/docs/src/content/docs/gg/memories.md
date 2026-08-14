@@ -26,8 +26,8 @@ A slug is up to 64 characters of letters, digits, `-`, `_` and `.`.
 ## The three strategies
 
 The capability's `implementation` selects the memory strategy. The strategies
-differ in what is always in the context window. An unrecognized name resolves to
-`scratchpad`.
+differ in what is always in the context window. A name gg does not recognize
+refuses the launch, naming the three that exist.
 
 | Strategy | Always in context | Tools |
 | --- | --- | --- |
@@ -86,8 +86,9 @@ One slider sits in the capability's Features box, per agent.
 ## Limits
 
 Every limit is set through the capability's `params`, and `0` disables it. A
-param a strategy does not use is ignored, so one sweep can hand every arm the
-same params block.
+param a strategy does not use is accepted, so one sweep can hand every arm the
+same params block. A param name the capability does not know refuses the launch,
+as does a value gg cannot read as a whole count.
 
 | Param | Applies to | Default |
 | --- | --- | --- |
@@ -211,10 +212,10 @@ param binds the instance differently.
 }
 ```
 
-`scope` is meaningful only where the capability is enabled, and setting it on a
-disabled capability is reported as a launch warning. A value gg does not
-recognize falls back to `isolated` and warns, like every other unrecognized
-capability value.
+A value gg does not recognize refuses the launch, and the refusal names every
+such value in the configuration at once. Setting `scope` on a capability that is
+switched **off** does not: a disabled capability records the configuration the
+arm would have used, so the on and off arms of one comparison stay symmetric.
 
 Two rules make the four coherent. `read-only` restricts an inherited handle and
 nothing else: an agent that ends up with an instance of its own under `read-only`
@@ -258,10 +259,11 @@ Under `scratchpad` a read-only holder gets no memory tools at all. That strategy
 has no read call, because its memories are the pinned block; it reads them by
 having them in its window.
 
-An agent configured for [`memory-compaction`](/gg/compaction/) that holds its
-memories read-only is demoted to the default compaction strategy, with a warning.
-It has no call that could satisfy a memory compaction, and a run that could never
-satisfy its own compaction gate would wedge against a full window.
+A profile configured for [`memory-compaction`](/gg/compaction/) that declares its
+memories read-only refuses the launch. It has no call that could satisfy a memory
+compaction, and a run that could never satisfy its own compaction gate would
+wedge against a full window. An instance whose live scope resolves read-only
+under that strategy is gg's own defect and ends the run under `internal_error`.
 
 ### Forking
 
@@ -272,10 +274,20 @@ the original and its copy hold one store, and each is told what the other writes
 
 ### Inheritance and the strategy
 
-A store is read by the calls its own strategy offers, so a child organizing its
-memories differently from its spawner gets an instance of its own. gg reports the
-pairing as a launch warning rather than leaving it to be inferred from a notebook
-that stayed empty.
+A store is read by the calls its own strategy offers, so an `inherited` or
+`read-only` agent organizes its memories the way its spawner does.
+
+An inheriting profile that names **no** `implementation` takes exactly that: it
+binds its spawner's store however that store is organized, and its memory calls
+are that store's strategy's. This is the ordinary shape, and it is the one case
+where "absent" does not mean `scratchpad` — an agent whose whole configuration
+is "work in my spawner's notebook" has said nothing about how the notebook is
+kept.
+
+A profile that *does* name one is asking for a store organized that way. A roster
+pairing whose two profiles both name a strategy and name different ones refuses
+the launch. Where only the live spawner settles the pairing, a disagreement is
+gg's own defect and ends the run under `internal_error`.
 
 ### Resolved scopes in the console
 

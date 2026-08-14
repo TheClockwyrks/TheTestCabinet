@@ -253,30 +253,29 @@ In the [configuration editor](/gg/configurations/) it is a per-agent fieldset,
 in the same place as the prompt-cache lifetime: a switch that arms it plus the
 five knobs, each left empty to take gg's default.
 
-Resolution is total. An unusable knob warns and launches, on the same terms the
-[execution ceilings](/gg/execution-limits/#configuring-them) are resolved under.
+An absent knob takes gg's default. A knob that is present is armed exactly as
+written, and one gg cannot arm that way refuses the launch, on the same terms
+the [execution ceilings](/gg/execution-limits/#configuring-them) are resolved
+under. A knob is judged as written whether or not the detector is armed.
 
-| Declaration | Resolves to | Warning |
-| --- | --- | --- |
-| `loopDetection` absent, or `enabled: false` | detector off, transport buffered | — |
-| `enabled: true` with no knobs | gg's defaults | — |
-| `windowWords: 0` | `256` | a window of no words has nothing to look back over |
-| `repeatThreshold: 0` | `32` | every word would count as an offender |
-| `minOffenders: 0` | `2` | a window with no offenders would count as saturated |
-| `minOffenders` > `windowWords` | armed as declared | only the length backstop can fire |
-| `minSaturatedRun: 0` | `0`, the plain frequency rule | — |
-| `maxResponseChars: 0` | the backstop is off | — |
+| Declaration | Result |
+| --- | --- |
+| `loopDetection` absent, or `enabled: false` | detector off, transport buffered |
+| `enabled: true` with no knobs | gg's defaults |
+| `minSaturatedRun: 0` | `0`, the plain frequency rule |
+| `maxResponseChars: 0` | the backstop is off |
+| `minOffenders` > `windowWords` | armed as declared, warned that only the length backstop can fire |
+| `windowWords: 0`, `repeatThreshold: 0` or `minOffenders: 0` | refused |
+| a knob gg cannot read as the number it is | refused |
 
-The two zeroes that are not warned about are the two that mean something. The
-cross-knob row is warned about but armed rather than defaulted, on the same
-terms `errorRateWindow` ≥ `maxTurns` is: which of the two knobs the operator
-meant is not knowable, and silently replacing one of them would hide the mistake
-rather than report it. A declaration with `enabled: false` produces no warnings
-whatever its knobs say.
+The two zeroes in the table are the two that mean something. The cross-knob row
+is armed rather than refused, on the same terms `errorRateWindow` ≥ `maxTurns`
+is: which of the two knobs the operator meant is not knowable, and gg arms
+exactly what the declaration says.
 
-Warnings are named with the agent that declared them (``agent `Implementer`:
-…``), because a configuration with eight profiles gives an unattributed warning
-nowhere to land.
+A refusal and a warning are both named with the agent that declared the knob
+(``agent `Implementer`: …``), because a configuration with eight profiles gives
+an unattributed message nowhere to land.
 
 ## Reading it
 

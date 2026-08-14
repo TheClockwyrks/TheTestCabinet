@@ -418,11 +418,13 @@ impl Module for ArchiveRuntime {
             return Err(AdoptError::Disabled);
         }
         self.enabled = true;
+        // Re-resolved for the adopting profile against a discarding sink: the launch pass read
+        // this same `ownership` and refused the run if it could not honour it.
         self.ownership = crate::modules::resolve_ownership(
             profile,
             test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT,
-        )
-        .0;
+            &mut crate::validate::LaunchReport::Discarding,
+        );
         self.ids = Arc::clone(ctx.ids);
         self.origin = GgModuleOrigin::Transferred;
         Ok(())

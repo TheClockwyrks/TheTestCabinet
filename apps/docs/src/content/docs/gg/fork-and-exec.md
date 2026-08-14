@@ -172,21 +172,25 @@ Each is also individually grantable through an agent's
 [allowlist](/gg/configurations/#granting-calls), on the same terms as every other
 call.
 
-## What is warned at launch
+## What is refused at launch
 
-Each of these leaves the run runnable and a call simply absent, which is the one
+Each of the three configurations below leaves a call absent, which is the one
 misconfiguration a model can never report: it never makes the call, and the
-record reads as an agent that chose not to. Each warning names the capability
-that will come up short, so an agent that enables only `fork` is never told about
-a roster it has no use for.
+record reads as an agent that chose not to. Each refuses the launch and names the
+capability that comes up short, so an operator fixing an agent that enables only
+`fork` reads about `fork` alone.
 
 - A profile enabling `exec` with an empty roster. There is nothing for it to
   become.
-- A profile enabling `fork` without `subagents`. There would be no
-  `wait_for_subagents` and no `send_message` to collect a copy with, so `fork` is
-  withheld.
+- A profile enabling `fork` without `subagents`. `wait_for_subagents` and
+  `send_message` are what collect a copy, and both come from `subagents`.
 - A profile enabling `exec` that a declared machine runs as one of its states.
-  `exec` is withheld there; `fork` is unaffected.
+  Inside a process the next move belongs to the process, so a state profile
+  carries `transition_state` instead.
+
+The refusal is part of gg's one launch check, which names every value in the
+capability set gg cannot honour exactly as written, so one pass over the
+configuration fixes them all. An absent value takes the documented default.
 
 ## Telemetry
 

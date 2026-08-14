@@ -68,8 +68,7 @@ whoever put it to work cannot tell the difference.
 A machine has no model, so the agent dispatched onto one resolves its client from
 the entry state's profile, which is also the model a run whose root is a machine
 is recorded under. A launch collects no model for a machine, the editor offers it
-no such field, and a hand-written set that binds one anyway is told at launch
-that it will not be read.
+no such field, and a hand-written set that binds one anyway refuses the launch.
 
 ## How a transition happens
 
@@ -154,14 +153,12 @@ rows. Renaming a state carries its inbound edges, so every transition pointing a
 the old name follows it.
 
 The editor refuses to save a machine gg would refuse to launch, in the same words
-and beside the row that has to change, and shows the non-blocking cases as
-warnings. A machine that fails at launch fails after the run container is up and
-the model is bound.
+and beside the row that has to change.
 
 ## What is refused at launch
 
-These are launch failures, in the same class as a roster reference naming an
-undeclared profile.
+A machine gg cannot run exactly as it is written refuses the launch, and one
+refusal names every offending declaration at once.
 
 - An enabled `fsm` capability whose `states` is absent, unparseable, or empty.
 - A state with an empty name, or two states with the same name.
@@ -169,17 +166,15 @@ undeclared profile.
 - A transition whose `to` names a state the machine does not declare.
 - An FSM shell named as a state's `agent`. A machine cannot be a state of another
   machine.
-
-These are warnings: the machine still runs, and what it will actually do is
-stated on the root agent's stream before the first turn.
-
-- A `transfer` entry naming something that is not a module kind. It carries
-  nothing.
-- A state unreachable from the entry state. It is kept, and nothing can enter it.
+- A `transfer` entry naming something that is not a module kind.
+- A `transfer` entry naming a module the outgoing state's own agent does not
+  hold. The successor would open with an empty one under a configuration that
+  says it continues.
+- A state unreachable from the entry state. The machine would run a strictly
+  smaller process than the one written.
 - An FSM shell declaring any of a worker's configuration: a model binding, a
-  prompt, a roster, or capabilities other than `fsm`. Each part is named and
-  ignored. The editor offers a machine none of these fields, so this is a
-  hand-written set.
+  prompt, a roster, or capabilities other than `fsm`. The editor offers a machine
+  none of these fields, so this is a hand-written set.
 
 ## Telemetry
 

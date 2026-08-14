@@ -6,6 +6,27 @@ use serde_json::json;
 use tempfile::TempDir;
 
 use crate::tools::{Tool, ToolContext};
+use crate::validate::{LaunchDefect, LaunchReport};
+
+/// The policy `implementation`/`params` resolve to, asserting gg honoured them exactly as written.
+fn policy(implementation: Option<&str>, params: &serde_json::Value) -> ReadPolicy {
+    let mut report = LaunchReport::collecting();
+    let policy = ReadPolicy::resolve(implementation, params, &mut report);
+    let defects = report.into_defects();
+    assert!(defects.is_empty(), "unexpected refusals: {defects:?}");
+    policy
+}
+
+/// Everything resolving `implementation`/`params` reports, for the cases whose subject is the
+/// refusal.
+fn reported(
+    implementation: Option<&str>,
+    params: &serde_json::Value,
+) -> (ReadPolicy, Vec<LaunchDefect>) {
+    let mut report = LaunchReport::collecting();
+    let policy = ReadPolicy::resolve(implementation, params, &mut report);
+    (policy, report.into_defects())
+}
 
 /// The [`FileTextData`] an outcome carries, or a failure naming what it carried instead.
 fn text_data(outcome: &ToolOutcome) -> &FileTextData {
@@ -38,12 +59,12 @@ fn tool(policy: ReadPolicy) -> ReadFileTool {
 fn resolve_defaults_to_unlimited() {
     // No implementation at all — the historical behavior.
     assert_eq!(
-        ReadPolicy::resolve(None, &json!({})),
+        policy(None, &json!({})),
         ReadPolicy::Unlimited,
         "an unconfigured read-file capability reads whole files"
     );
     assert_eq!(
-        ReadPolicy::resolve(Some(READ_MODE_UNLIMITED), &json!({ "lineCap": 10 })),
+        policy(Some(READ_MODE_UNLIMITED), &json!({ "lineCap": 10 })),
         ReadPolicy::Unlimited,
         "the unlimited mode ignores a line cap"
     );
@@ -52,36 +73,61 @@ fn resolve_defaults_to_unlimited() {
 #[test]
 fn resolve_reads_the_line_cap_for_the_capped_mode() {
     assert_eq!(
-        ReadPolicy::resolve(Some(READ_MODE_DEFAULT_CAP), &json!({ "lineCap": 120 })),
+        policy(Some(READ_MODE_DEFAULT_CAP), &json!({ "lineCap": 120 })),
+        ReadPolicy::DefaultCap(120)
+    );
+    // JSON has no integer type, so an integral float names the same count.
+    assert_eq!(
+        policy(Some(READ_MODE_DEFAULT_CAP), &json!({ "lineCap": 120.0 })),
         ReadPolicy::DefaultCap(120)
     );
 }
 
+/// An **absent** cap is the documented default, and that is not a fallback: a capped mode with
+/// nothing to say about its ceiling gets gg's.
 #[test]
-fn resolve_falls_back_to_the_default_cap_when_the_param_is_missing_or_absurd() {
-    for params in [
-        json!({}),
-        json!({ "lineCap": 0 }),
-        json!({ "lineCap": "250" }),
-    ] {
+fn an_absent_line_cap_takes_the_default() {
+    for params in [json!({}), json!({ "lineCap": null })] {
         assert_eq!(
-            ReadPolicy::resolve(Some(READ_MODE_DEFAULT_CAP), &params),
+            policy(Some(READ_MODE_DEFAULT_CAP), &params),
             ReadPolicy::DefaultCap(DEFAULT_READ_LINE_CAP),
-            "params {params} should fall back to the default cap"
+            "params {params}"
         );
     }
 }
 
+/// A `lineCap` gg cannot honour **refuses the launch**: a cap of no lines would make every read
+/// return nothing, and reading it as gg's 250 would page the agent at a ceiling nobody wrote.
 #[test]
-fn resolve_treats_an_unknown_mode_as_unlimited() {
-    // A typo'd arm must not silently enforce a cap nobody configured: an unrecognized mode
-    // reads whole files rather than inventing a ceiling.
-    for implementation in ["hardcap", "default_cap"] {
+fn an_unusable_line_cap_is_refused() {
+    for value in [json!(0), json!("250"), json!(-1), json!(12.5), json!([250])] {
+        let params = json!({ "lineCap": value });
+        let (resolved, defects) = reported(Some(READ_MODE_DEFAULT_CAP), &params);
         assert_eq!(
-            ReadPolicy::resolve(Some(implementation), &json!({ "lineCap": 10 })),
-            ReadPolicy::Unlimited,
-            "`{implementation}` is not a mode gg offers"
+            resolved,
+            ReadPolicy::DefaultCap(DEFAULT_READ_LINE_CAP),
+            "{params}: the resolver stays total"
         );
+        assert_eq!(defects.len(), 1, "{params} -> {defects:?}");
+        assert_eq!(defects[0].locus, "read-file.params.lineCap", "{params}");
+    }
+}
+
+/// **A mode gg does not recognize refuses the launch**, and this is the sharpest case of the rule
+/// in gg: the implementation is the arm selector, so a typo'd `default_cap` used to hand its agent
+/// **unlimited** reads while the run's record named the capped arm — the two arms run as one.
+#[test]
+fn an_unknown_read_mode_is_refused() {
+    for implementation in ["hardcap", "default_cap"] {
+        let (resolved, defects) = reported(Some(implementation), &json!({ "lineCap": 10 }));
+        assert_eq!(
+            resolved,
+            ReadPolicy::Unlimited,
+            "`{implementation}`: the resolver stays total"
+        );
+        assert_eq!(defects.len(), 1, "`{implementation}` -> {defects:?}");
+        assert_eq!(defects[0].locus, "read-file.implementation");
+        assert_eq!(defects[0].known, READ_MODES);
     }
 }
 

@@ -108,8 +108,12 @@ pub fn is_persistent(profile: &GgAgentConfig) -> bool {
 /// and with no other profile.
 ///
 /// Taken off the **resolved** profile rather than a name, so it cannot disagree with the profile the
-/// agent actually runs under: an agent naming a profile the set does not declare runs under the root's,
-/// and must therefore hold the root's key when the root is the persistent one.
+/// agent actually runs under. There is no case in which the two could differ by *substitution*: an
+/// agent naming a profile the set does not declare is refused at launch, and one that reached a run
+/// anyway [ends as gg's own defect](test_cabinet_core::gg::GgCapabilitySet::root_name) rather than
+/// being run as the root. What this signature buys is that the key cannot be computed from a name
+/// somebody spelled twice — the caller has already resolved the profile, so the key is the one the
+/// agent really holds.
 pub fn exclusive_key(profile: &GgAgentConfig) -> Option<String> {
     is_persistent(profile).then(|| profile.name.clone())
 }

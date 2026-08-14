@@ -502,10 +502,12 @@ fn modules(configuration: &Configuration) -> CapabilityModules {
         }
         modules = modules.with(match kind {
             ModuleAxis::Skills => ModuleHandle::Skills(SkillsRuntime::new(Arc::new(
-                SkillLibrary::empty().with_builtins(vec![parse_skill(
-                    &format!("---\nname: {PLACEHOLDER_SKILL}\ndescription: A skill.\n---\n"),
-                    PLACEHOLDER_SKILL,
-                )]),
+                SkillLibrary::empty().with_builtins(vec![
+                    parse_skill(&format!(
+                        "---\nname: {PLACEHOLDER_SKILL}\ndescription: A skill.\n---\n"
+                    ))
+                    .expect("the placeholder skill's front matter is well formed"),
+                ]),
             ))),
             ModuleAxis::Memories => {
                 let memories = MemoriesRuntime::new(

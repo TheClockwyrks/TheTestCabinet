@@ -82,6 +82,14 @@ harness becomes a laboratory. It must be:
   [configuration](/gg/configurations/) and picked by name when a run is
   launched. The run records that name, so a study is a sweep over
   configurations.
+- Honoured exactly as written. gg checks the whole set before the first turn,
+  and a value it cannot honour refuses the launch. One refusal names every such
+  value in the set, so one pass over the configuration fixes them all. A value
+  left absent takes its capability's documented default.
+
+That last property is what makes the recorded configuration the configuration a
+result was produced under: every run that produced a result ran the set its
+record carries.
 
 The set carries two things that are not capabilities. The first is the run's
 [execution limits](/gg/execution-limits/), the ceilings on turns, wall clock,

@@ -308,16 +308,15 @@ and session summary record the root agent's resolved set.
 | `false` | every strategy off, the master switch |
 | `{ "strip-prose": false }` | `strip-prose` off, the rest at their defaults |
 | `{ "drop-doubled-response": true }` | `drop-doubled-response` on, the rest at their defaults |
-| `{ "strip-prose": 0 }` | `strip-prose` at its default, since a non-boolean is not a toggle, and the key is reported |
-| `{ "stripProse": false }` | the defaults, and `healing.stripProse` is reported as unreadable |
-| `5`, `"off"`, `[]` | the defaults, and `healing` is reported as unreadable |
+| `{ "strip-prose": 0 }` | refused, since a non-boolean is not a toggle |
+| `{ "stripProse": false }` | refused: `healing.stripProse` names no strategy |
+| `5`, `"off"`, `[]` | refused: `healing` is a boolean or an object of toggles |
 
-An unreadable key is reported at `warn` on the run's own stream before the first
-turn and changes nothing. `{"stripFences": false}` would otherwise run the
-default arm under the disabled arm's name, and every number that comparison
-produced would measure the wrong thing. No such warning fails a launch, since a
-sweep's one shared configuration document has to stay interpretable by every
-arm.
+A `healing` value gg cannot honour exactly as written refuses the launch, before
+the first turn and before any model spend. `{"stripFences": false}` would
+otherwise run the default arm under the disabled arm's name, and every number
+that comparison produced would measure the wrong thing. The refusal names every
+such value in the configuration, so one pass fixes them all.
 
 In the [configuration editor](/gg/configurations/) the strategies are switches
 on the capability, and only the ones moved off their default are written into

@@ -7,6 +7,18 @@ use test_cabinet_core::gg::GgTelemetryKind;
 
 use super::*;
 
+/// A sink that **asserts nothing is reported** — for the values gg honours exactly as written.
+fn honoured() -> LaunchReport {
+    LaunchReport::Discarding
+}
+
+/// Everything `read` reports, for the cases whose subject is the refusal.
+fn reported(read: impl FnOnce(&mut LaunchReport)) -> Vec<LaunchDefect> {
+    let mut report = LaunchReport::collecting();
+    read(&mut report);
+    report.into_defects()
+}
+
 /// A markdown store with the documented defaults.
 fn markdown_store() -> MemoryStore {
     let strategy = MemoryStrategy::Markdown;
@@ -26,32 +38,55 @@ fn keyword_store() -> MemoryStore {
 #[test]
 fn strategy_resolves_from_the_implementation() {
     assert_eq!(
-        MemoryStrategy::resolve(Some("markdown")),
+        MemoryStrategy::resolve(Some("markdown"), &mut honoured()),
         MemoryStrategy::Markdown
     );
     assert_eq!(
-        MemoryStrategy::resolve(Some("  keyword-search  ")),
+        MemoryStrategy::resolve(Some("  keyword-search  "), &mut honoured()),
         MemoryStrategy::KeywordSearch
     );
     assert_eq!(
-        MemoryStrategy::resolve(Some("scratchpad")),
+        MemoryStrategy::resolve(Some("scratchpad"), &mut honoured()),
         MemoryStrategy::Scratchpad
     );
 }
 
-/// An unrecognized (or absent) strategy resolves to the default rather than failing the run, so a
-/// sweep may name a strategy a later gg will add.
+/// An **absent** (or `null`, or empty) strategy takes the documented default. Absent is not
+/// unrecognized, and that is what this case pins.
 #[test]
-fn an_unknown_strategy_falls_back_to_the_default() {
-    assert_eq!(MemoryStrategy::resolve(None), MemoryStrategy::Scratchpad);
-    assert_eq!(
-        MemoryStrategy::resolve(Some("")),
-        MemoryStrategy::Scratchpad
-    );
-    assert_eq!(
-        MemoryStrategy::resolve(Some("vector-index")),
-        MemoryStrategy::Scratchpad
-    );
+fn an_absent_strategy_takes_the_default() {
+    for absent in [None, Some(""), Some("  ")] {
+        assert_eq!(
+            MemoryStrategy::resolve(absent, &mut honoured()),
+            MemoryStrategy::Scratchpad,
+            "{absent:?}"
+        );
+    }
+}
+
+/// A strategy gg does not offer is **refused**. Each one offers a different set of calls and pins a
+/// different thing in the window, so a run that quietly took the scratchpad while its record said
+/// `vector-index` would be a memories study measuring the arm it did not configure.
+#[test]
+fn an_unknown_strategy_is_refused() {
+    for unknown in ["vector-index", "markdwon", "Markdown"] {
+        let defects = reported(|report| {
+            assert_eq!(
+                MemoryStrategy::resolve(Some(unknown), report),
+                MemoryStrategy::Scratchpad,
+                "the resolver stays total"
+            );
+        });
+        assert_eq!(defects.len(), 1, "{unknown} -> {defects:?}");
+        assert_eq!(defects[0].found, unknown);
+        assert_eq!(defects[0].locus, "memories.implementation");
+        assert_eq!(
+            defects[0].known,
+            MemoryStrategy::ALL
+                .map(|strategy| strategy.id().to_string())
+                .to_vec()
+        );
+    }
 }
 
 #[test]
@@ -76,6 +111,7 @@ fn keyword_search_resolves_its_own_params() {
     let caps = MemoryCaps::resolve(
         MemoryStrategy::KeywordSearch,
         &json!({ "maxCount": 40, "maxLenPerMemory": 500, "maxResults": 5 }),
+        &mut honoured(),
     );
     assert_eq!(caps.max_count, Some(40));
     assert_eq!(caps.max_len_per_memory, Some(500));
@@ -89,6 +125,7 @@ fn markdown_limits_can_be_disabled_individually() {
     let caps = MemoryCaps::resolve(
         MemoryStrategy::Markdown,
         &json!({ "maxLenIndex": 0, "maxLenPerMemory": 0 }),
+        &mut honoured(),
     );
     assert_eq!(caps.max_len_index, None);
     assert_eq!(caps.max_len_per_memory, None);

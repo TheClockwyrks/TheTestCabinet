@@ -35,6 +35,13 @@ A hook declared in the other list's place fails the launch, naming the move that
 fixes it. So does a `built-in` hook whose script id gg does not ship, with the
 error naming the ids that exist.
 
+A gate that silently does not run is worse than no gate, so the same rule covers
+every part of a hook's action gg would otherwise read past: a blank `command`
+(which would run nothing, exit 0 and pass every operation it gates), a `custom`
+hook carrying no `source`, an `output` mode that is not one of the shell's, and a
+`timeoutSecs` that is not a positive number of seconds. Each of them refuses the
+launch rather than falling back to gg's own default.
+
 ```jsonc
 {
   // The run's own two ends.

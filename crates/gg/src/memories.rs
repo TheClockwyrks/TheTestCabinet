@@ -80,6 +80,7 @@ use crate::tools::{
     CREATE_MEMORY_TOOL, DELETE_MEMORY_TOOL, EDIT_MEMORY_TOOL, READ_MEMORY_TOOL, UPDATE_MEMORY_TOOL,
     WRITE_MEMORY_TOOL,
 };
+use crate::validate::{LaunchDefect, LaunchReport};
 
 /// Which memory instance a holder binds to, re-exported from the contract so gg and the
 /// configurations it reads name the same four things. See
@@ -92,7 +93,10 @@ mod search;
 #[path = "memories.scope.rs"]
 mod scope;
 
-pub use scope::{MemoryRegistry, launch_warnings, resolve_scope, run_inherits_memories};
+pub use scope::{
+    MemoryRegistry, check_scoping, inherited_strategy_conflict, resolve_scope,
+    run_inherits_memories,
+};
 pub use search::MemoryHit;
 
 use scope::{links, notice_entries};
@@ -161,18 +165,18 @@ pub const MEMORY_MUTATIONS: &[OperationId] = &[
 ];
 
 /// The memories capability param naming the [maximum count](MemoryCaps::max_count).
-const PARAM_MAX_COUNT: &str = "maxCount";
+pub(crate) const PARAM_MAX_COUNT: &str = "maxCount";
 /// The memories capability param naming the [per-memory limit](MemoryCaps::max_len_per_memory).
-const PARAM_MAX_LEN_PER_MEMORY: &str = "maxLenPerMemory";
+pub(crate) const PARAM_MAX_LEN_PER_MEMORY: &str = "maxLenPerMemory";
 /// The memories capability param naming the [aggregate limit](MemoryCaps::max_total_len).
-const PARAM_MAX_TOTAL_LEN: &str = "maxTotalLen";
+pub(crate) const PARAM_MAX_TOTAL_LEN: &str = "maxTotalLen";
 /// The memories capability param naming the [index limit](MemoryCaps::max_len_index).
-const PARAM_MAX_LEN_INDEX: &str = "maxLenIndex";
+pub(crate) const PARAM_MAX_LEN_INDEX: &str = "maxLenIndex";
 /// The memories capability param naming the
 /// [description limit](MemoryCaps::max_len_description).
-const PARAM_MAX_LEN_DESCRIPTION: &str = "maxLenDescription";
+pub(crate) const PARAM_MAX_LEN_DESCRIPTION: &str = "maxLenDescription";
 /// The memories capability param naming the [search page size](MemoryCaps::max_results).
-const PARAM_MAX_RESULTS: &str = "maxResults";
+pub(crate) const PARAM_MAX_RESULTS: &str = "maxResults";
 
 /// The characters a memory's [slug](Memory::name) may be made of, beyond ASCII alphanumerics:
 /// the three separators a file name conventionally uses. Everything else — whitespace, path
@@ -188,8 +192,9 @@ const MAX_SLUG_LEN: usize = 64;
 /// [`implementation`](test_cabinet_core::gg::GgCapabilityConfig::implementation), and the single
 /// switch behind which tools are offered, which limits apply, and what the window carries.
 ///
-/// A run naming a strategy gg does not recognize resolves to [`Scratchpad`](Self::Scratchpad)
-/// rather than failing to launch, so a sweep may name a strategy a later gg will add.
+/// A run naming a strategy gg does not offer is [refused at launch](crate::validate): the strategy
+/// decides which calls exist and what the window carries, so resolving a typo to the default would
+/// run one arm of a memories study under another's name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MemoryStrategy {
     /// Every memory's body is pinned in the window and crosses a compaction boundary verbatim.
@@ -205,14 +210,39 @@ pub enum MemoryStrategy {
 }
 
 impl MemoryStrategy {
+    /// Every strategy gg offers — the vocabulary an
+    /// [`implementation`](test_cabinet_core::gg::GgCapabilityConfig::implementation) is read
+    /// against, and what a refusal offers the operator back.
+    pub const ALL: [Self; 3] = [Self::Scratchpad, Self::Markdown, Self::KeywordSearch];
+
     /// The strategy an [implementation](test_cabinet_core::gg::GgCapabilityConfig::implementation)
-    /// names: `markdown` or `keyword-search`, with everything else — absent, empty, or a name gg
-    /// does not know — resolving to the default [`Scratchpad`](Self::Scratchpad).
-    pub fn resolve(implementation: Option<&str>) -> Self {
+    /// names: `markdown` or `keyword-search`, with absent, `null`, empty or `scratchpad` taking the
+    /// documented default [`Scratchpad`](Self::Scratchpad).
+    ///
+    /// A name gg does not offer is **not** the default: it is reported into `report` and refuses the
+    /// launch. Each strategy offers a different set of calls and pins a different thing in the
+    /// window, so a run that quietly took the scratchpad while its record said `keyword-search`
+    /// would be a memories study measuring the arm it did not configure.
+    pub fn resolve(implementation: Option<&str>, report: &mut LaunchReport) -> Self {
         match implementation.map(str::trim) {
+            None | Some("") | Some(MEMORY_STRATEGY_SCRATCHPAD) => Self::Scratchpad,
             Some(MEMORY_STRATEGY_MARKDOWN) => Self::Markdown,
             Some(MEMORY_STRATEGY_KEYWORD_SEARCH) => Self::KeywordSearch,
-            _ => Self::Scratchpad,
+            Some(other) => {
+                report.report(
+                    LaunchDefect::run_level(
+                        crate::validate::implementation_locus(CAPABILITY_MEMORIES),
+                        other,
+                        format!(
+                            "`{other}` is not a way gg can organize memories; the strategy decides \
+                             which calls the agent is offered and what its window carries, so gg \
+                             will not pick one for it."
+                        ),
+                    )
+                    .known(Self::ALL.map(Self::id)),
+                );
+                Self::Scratchpad
+            }
         }
     }
 
@@ -372,43 +402,54 @@ impl MemoryCaps {
 
     /// Resolve the limits `strategy` uses from a memories-capability `params` object.
     ///
-    /// Each param overrides its default when present as a non-negative integer, with **`0`
-    /// meaning unlimited**; a missing or non-integer value keeps the default. A param a strategy
-    /// does not use is ignored rather than rejected, so one sweep can hand every arm the same
-    /// params block.
-    pub fn resolve(strategy: MemoryStrategy, params: &Value) -> Self {
+    /// Each param overrides its default when present as a whole non-negative number, with **`0`
+    /// meaning unlimited**; absent or `null` keeps the default. A value that names no such number is
+    /// reported and [refuses the launch](crate::validate) — a limit is what a memories arm is
+    /// *bounded* by, and one silently reverted to gg's default is a run whose numbers cannot be
+    /// compared with the arm beside it.
+    ///
+    /// A param a strategy **does not use** is neither read nor reported, which is the one deliberate
+    /// exception: one sweep hands every arm the same params block, and `maxResults` under
+    /// `scratchpad` is inert rather than wrong.
+    pub fn resolve(strategy: MemoryStrategy, params: &Value, report: &mut LaunchReport) -> Self {
         let default = Self::for_strategy(strategy);
         Self {
             max_count: default.max_count.resolve_limit(
                 params,
                 PARAM_MAX_COUNT,
                 strategy != MemoryStrategy::Markdown,
+                report,
             ),
             max_len_per_memory: default.max_len_per_memory.resolve_limit(
                 params,
                 PARAM_MAX_LEN_PER_MEMORY,
                 true,
+                report,
             ),
             max_total_len: default.max_total_len.resolve_limit(
                 params,
                 PARAM_MAX_TOTAL_LEN,
                 strategy == MemoryStrategy::Scratchpad,
+                report,
             ),
             max_len_index: default.max_len_index.resolve_limit(
                 params,
                 PARAM_MAX_LEN_INDEX,
                 strategy.has_index(),
+                report,
             ),
             // Every strategy has descriptions, so this one applies everywhere.
             max_len_description: default.max_len_description.resolve_limit(
                 params,
                 PARAM_MAX_LEN_DESCRIPTION,
                 true,
+                report,
             ),
             max_results: default.max_results.resolve_limit(
                 params,
                 PARAM_MAX_RESULTS,
                 strategy.has_search(),
+                report,
             ),
         }
     }
@@ -431,22 +472,58 @@ impl MemoryCaps {
 /// Reading one optional limit out of a params object, in the one spelling every limit uses.
 trait ResolveLimit {
     /// This default, overridden by `key` in `params` when the strategy `applies` the limit at all:
-    /// a positive integer caps it, `0` disables it, anything else keeps the default. A limit the
-    /// strategy does not apply resolves to `None` whatever the params say.
-    fn resolve_limit(self, params: &Value, key: &str, applies: bool) -> Option<usize>;
+    /// a positive whole number caps it, `0` lifts the cap, absent or `null` keeps the default, and
+    /// anything else is [reported](crate::validate::count_param) and refuses the launch.
+    ///
+    /// A limit the strategy does not apply resolves to `None` whatever the params say, and is not
+    /// read at all — so a value gg could not have honoured on a key the selected arm never consults
+    /// is not reported either. That is the "one shared params block per sweep" case, and the arm
+    /// that *does* use the key is where the operator hears about it.
+    fn resolve_limit(
+        self,
+        params: &Value,
+        key: &str,
+        applies: bool,
+        report: &mut LaunchReport,
+    ) -> Option<usize>;
 }
 
 impl ResolveLimit for Option<usize> {
-    fn resolve_limit(self, params: &Value, key: &str, applies: bool) -> Option<usize> {
+    fn resolve_limit(
+        self,
+        params: &Value,
+        key: &str,
+        applies: bool,
+        report: &mut LaunchReport,
+    ) -> Option<usize> {
         if !applies {
             return None;
         }
-        match params.get(key).and_then(Value::as_u64) {
+        match crate::validate::count_param(params, CAPABILITY_MEMORIES, key, report) {
             Some(0) => None,
-            Some(limit) => Some(limit as usize),
+            Some(limit) => Some(usize::try_from(limit).unwrap_or(usize::MAX)),
             None => self,
         }
     }
+}
+
+/// Read every memories value **one profile** declares, reporting each one gg cannot honour: the
+/// [strategy](MemoryStrategy::resolve) it organizes them by, the [limits](MemoryCaps::resolve) it
+/// bounds them with, and the [scope](resolve_scope) that decides whose store it binds.
+///
+/// Read whether or not the capability is switched on. A disabled capability still records the
+/// configuration the arm *would* have used, so a typo in it is one an operator wants told about now
+/// rather than on the launch where they flip the switch.
+///
+/// The checks that need more than one profile in hand — a scope on a profile that has no memories,
+/// a child inheriting from a spawner that organizes them differently — are [`check_scoping`]'s.
+pub fn check_launch(profile: &GgAgentConfig, report: &mut LaunchReport) {
+    let Some(capability) = profile.capability(CAPABILITY_MEMORIES) else {
+        return;
+    };
+    let strategy = MemoryStrategy::resolve(capability.implementation.as_deref(), report);
+    MemoryCaps::resolve(strategy, &capability.params, report);
+    resolve_scope(profile, report);
 }
 
 /// The two **code** halves a memory may carry beside its body, and the shape a write hands them in.
@@ -1810,12 +1887,18 @@ impl MemoriesRuntime {
             return Self::disabled();
         }
         let capability = profile.capability(CAPABILITY_MEMORIES);
-        let strategy =
-            MemoryStrategy::resolve(capability.and_then(|cap| cap.implementation.as_deref()));
+        // Every value below was read — and, where it could not be honoured, refused — by
+        // [`check_launch`] before the first turn, so this re-resolution reports into a discarding
+        // sink: anything arriving in it would mean gg read one document two different ways.
+        let report = &mut LaunchReport::Discarding;
+        let strategy = MemoryStrategy::resolve(
+            capability.and_then(|cap| cap.implementation.as_deref()),
+            report,
+        );
         let caps = capability
-            .map(|cap| MemoryCaps::resolve(strategy, &cap.params))
+            .map(|cap| MemoryCaps::resolve(strategy, &cap.params, report))
             .unwrap_or_else(|| MemoryCaps::for_strategy(strategy));
-        let scope = resolve_scope(profile).0;
+        let scope = resolve_scope(profile, report);
 
         // The [origin](GgModuleOrigin) is the *resolved* answer to the question the scope asks, and
         // the two can disagree: an `inherited` profile with no spawner to inherit from falls back
@@ -1835,7 +1918,16 @@ impl MemoriesRuntime {
                 )
             }
             MemoryScope::Inherited | MemoryScope::ReadOnly => {
-                match ctx.inherited.memories_organized_as(strategy) {
+                // A profile that **names** a strategy is offered its spawner's store only when the
+                // spawner organizes it that way; one that names none organizes its memories the way
+                // its spawner does, which is what inheriting means, and takes whatever it is
+                // handed. The launch pass refuses every naming pair the roster shows, so a
+                // mismatch reaching here is the run's own defect and is reported as one.
+                let offered = match scope::declared_strategy(profile) {
+                    Some(named) => ctx.inherited.memories_organized_as(named),
+                    None => ctx.inherited.offered(),
+                };
+                match offered {
                     Some(parent) => (
                         parent.shared(),
                         if scope == MemoryScope::ReadOnly {
@@ -2315,8 +2407,13 @@ impl Module for MemoriesRuntime {
             return Err(AdoptError::Disabled);
         }
         let capability = profile.capability(CAPABILITY_MEMORIES);
-        let strategy =
-            MemoryStrategy::resolve(capability.and_then(|cap| cap.implementation.as_deref()));
+        // Re-resolved for the adopting profile, against a discarding sink: the launch pass proved
+        // this same document honourable before the run began.
+        let report = &mut LaunchReport::Discarding;
+        let strategy = MemoryStrategy::resolve(
+            capability.and_then(|cap| cap.implementation.as_deref()),
+            report,
+        );
         let held = self.strategy();
         if strategy != held {
             return Err(AdoptError::Incompatible(format!(
@@ -2328,9 +2425,9 @@ impl Module for MemoriesRuntime {
             )));
         }
         let caps = capability
-            .map(|cap| MemoryCaps::resolve(strategy, &cap.params))
+            .map(|cap| MemoryCaps::resolve(strategy, &cap.params, report))
             .unwrap_or_else(|| MemoryCaps::for_strategy(strategy));
-        let scope = resolve_scope(profile).0;
+        let scope = resolve_scope(profile, report);
         // A `shared`-scoped successor is bound to its **own** profile's registry entry, which is
         // very often a different store than the one it was handed — so the id moves with it, and
         // the transition reports two ids rather than pretending the notebook travelled.

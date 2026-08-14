@@ -38,7 +38,10 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use test_cabinet_core::gg::{SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_INLINE, SHELL_OUTPUT_OFFLOAD};
+use test_cabinet_core::gg::{
+    CAPABILITY_SHELL, SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_INLINE, SHELL_OUTPUT_MODES,
+    SHELL_OUTPUT_OFFLOAD,
+};
 use test_cabinet_core::gg_session_record::GgShellOrigin;
 
 use super::{
@@ -140,25 +143,46 @@ impl Default for OffloadPolicy {
 }
 
 impl OffloadPolicy {
-    /// Resolve the policy from the shell capability's `implementation` and `params`.
-    ///
-    /// An absent implementation resolves to [`Adaptive`](Self::Adaptive), the default — as does an
-    /// unrecognized one, which is a misconfiguration rather than an instruction and so falls back to
-    /// the same mode a config that said nothing would have got. `inline` and `offload` are the two
-    /// explicit alternatives.
-    /// This policy under an explicit `mode` — one of [`SHELL_OUTPUT_MODES`](test_cabinet_core::gg::SHELL_OUTPUT_MODES) — keeping whatever
+    /// This policy under an explicit `mode` — one of [`SHELL_OUTPUT_MODES`] — keeping whatever
     /// [limits](OffloadLimits) `fallback` carries.
     ///
-    /// What a [hook](crate::hooks) reads its own `output` override through. The limits come from
-    /// the agent rather than from the hook because they are a property of the *window* the output
-    /// lands in, not of the command that produced it: an operator overriding the mode is saying
-    /// "keep this one inline", not "and size it differently from everything else".
-    pub fn for_mode(mode: &str, fallback: &Self) -> Self {
+    /// What a [hook](crate::hooks) reads its own `output` override through, and `locus` is where
+    /// that override sits in the configuration document, because a hook is the one place this is
+    /// read from something other than the shell capability itself. The limits come from the agent
+    /// rather than from the hook because they are a property of the *window* the output lands in,
+    /// not of the command that produced it: an operator overriding the mode is saying "keep this one
+    /// inline", not "and size it differently from everything else".
+    ///
+    /// A mode gg does not recognize [refuses the launch](crate::validate). It used to resolve to
+    /// [`Adaptive`](Self::Adaptive) and was the one hook field no launch diagnostic ever read, so a
+    /// hook written to keep its build output inline was silently withholding it instead.
+    pub fn for_mode(
+        mode: &str,
+        fallback: &Self,
+        locus: &str,
+        report: &mut crate::validate::LaunchReport,
+    ) -> Self {
         let limits = fallback.offload_limits().cloned().unwrap_or_default();
         match mode.trim() {
             SHELL_OUTPUT_INLINE => Self::Inline,
             SHELL_OUTPUT_OFFLOAD => Self::Offload(limits),
-            _ => Self::Adaptive(limits),
+            SHELL_OUTPUT_ADAPTIVE => Self::Adaptive(limits),
+            unknown => {
+                report.report(
+                    crate::validate::LaunchDefect::run_level(
+                        locus.to_string(),
+                        unknown,
+                        format!(
+                            "the `output` field names where a hook command's output goes; gg has \
+                             no such mode, and running the hook under \
+                             `{SHELL_OUTPUT_ADAPTIVE}` would withhold the output of every hook \
+                             command that passed."
+                        ),
+                    )
+                    .known(SHELL_OUTPUT_MODES),
+                );
+                Self::Adaptive(limits)
+            }
         }
     }
 
@@ -171,12 +195,45 @@ impl OffloadPolicy {
         }
     }
 
-    pub fn resolve(implementation: Option<&str>, params: &Value) -> Self {
+    /// Resolve the policy from the shell capability's `implementation` and `params`.
+    ///
+    /// An **absent** implementation resolves to [`Adaptive`](Self::Adaptive), the default;
+    /// `inline` and `offload` are the two explicit alternatives. One gg does not recognize
+    /// [refuses the launch](crate::validate) rather than resolving to the default, because the
+    /// implementation is the arm selector of the offloading experiment and a run measured on the
+    /// adaptive arm under the inline arm's name is the study answering a question nobody asked.
+    /// `Adaptive` still comes back, to keep the resolver total for the mid-run calls that re-read a
+    /// profile.
+    ///
+    /// The [limits](OffloadLimits) are read whichever arm is selected — including
+    /// [`Inline`](Self::Inline), which does not carry them — so a `maxLines` gg cannot honour is
+    /// refused in the same pass rather than in whichever launch first happens to select a truncating
+    /// mode.
+    pub fn resolve(
+        implementation: Option<&str>,
+        params: &Value,
+        report: &mut crate::validate::LaunchReport,
+    ) -> Self {
+        let limits = OffloadLimits::from_params(params, report);
         match implementation.map(str::trim) {
             Some(SHELL_OUTPUT_INLINE) => Self::Inline,
-            Some(SHELL_OUTPUT_OFFLOAD) => Self::Offload(OffloadLimits::from_params(params)),
-            Some(SHELL_OUTPUT_ADAPTIVE) | Some(_) | None => {
-                Self::Adaptive(OffloadLimits::from_params(params))
+            Some(SHELL_OUTPUT_OFFLOAD) => Self::Offload(limits),
+            Some(SHELL_OUTPUT_ADAPTIVE) | Some("") | None => Self::Adaptive(limits),
+            Some(unknown) => {
+                report.report(
+                    crate::validate::LaunchDefect::run_level(
+                        crate::validate::implementation_locus(CAPABILITY_SHELL),
+                        unknown,
+                        format!(
+                            "the `{CAPABILITY_SHELL}` capability's implementation names how much \
+                             of a command's output comes back inline; gg has no such mode, and \
+                             running the default `{SHELL_OUTPUT_ADAPTIVE}` instead would run one \
+                             arm of the offloading experiment under another's name."
+                        ),
+                    )
+                    .known(SHELL_OUTPUT_MODES),
+                );
+                Self::Adaptive(limits)
             }
         }
     }
@@ -230,9 +287,9 @@ impl OffloadLimits {
     /// ceiling on the axis it left out. Only a config that names **neither** takes the
     /// [defaults](DEFAULT_MAX_LINES), since a truncating mode with nothing to truncate past would
     /// silently be the inline mode wearing another name.
-    fn from_params(params: &Value) -> Self {
-        let max_lines = positive_param(params, PARAM_MAX_LINES);
-        let max_chars = positive_param(params, PARAM_MAX_CHARS);
+    fn from_params(params: &Value, report: &mut crate::validate::LaunchReport) -> Self {
+        let max_lines = positive_param(params, PARAM_MAX_LINES, report);
+        let max_chars = positive_param(params, PARAM_MAX_CHARS, report);
         match (max_lines, max_chars) {
             (None, None) => Self::default(),
             _ => Self {
@@ -244,15 +301,47 @@ impl OffloadLimits {
     }
 }
 
-/// One `params` entry read as a positive count, or `None` when it is absent, non-numeric, or zero
-/// (a zero ceiling would return no output at all, which is not a thing anybody configures on
-/// purpose).
-fn positive_param(params: &Value, key: &str) -> Option<usize> {
-    params
-        .get(key)
-        .and_then(Value::as_u64)
-        .filter(|&n| n > 0)
-        .map(|n| usize::try_from(n).unwrap_or(usize::MAX))
+/// One `params` entry read as a positive count, or `None` when it is **absent or `null`** — in which
+/// case the axis has no ceiling (or, when neither is named, both take their
+/// [defaults](DEFAULT_MAX_LINES)).
+///
+/// A value that is present and names no count — a string, a zero, a fraction, a negative — is
+/// [reported](crate::validate) and refuses the launch. A zero ceiling would return no output at all,
+/// which is not a thing anybody configures on purpose, and silently reading it as "no ceiling on
+/// this axis" is the opposite of what it says.
+fn positive_param(
+    params: &Value,
+    key: &str,
+    report: &mut crate::validate::LaunchReport,
+) -> Option<usize> {
+    crate::validate::positive_count_param(
+        params,
+        CAPABILITY_SHELL,
+        key,
+        "a ceiling of nothing would return none of the command's output",
+        report,
+    )
+    .map(|count| usize::try_from(count).unwrap_or(usize::MAX))
+}
+
+/// The shell half of one profile's contribution to the
+/// [launch pass](crate::validate::validate_launch): the [output mode](OffloadPolicy) and the two
+/// inline ceilings it declares, read exactly as the run will read them.
+///
+/// Read whether the capability is switched on or off, on the terms the pass reads every other
+/// capability's: a disabled capability records the configuration the arm would have used, so a typo
+/// in it is a typo now rather than on the launch that flips the switch.
+pub fn check_launch(
+    profile: &test_cabinet_core::gg::GgAgentConfig,
+    report: &mut crate::validate::LaunchReport,
+) {
+    if let Some(capability) = profile.capability(CAPABILITY_SHELL) {
+        OffloadPolicy::resolve(
+            capability.implementation.as_deref(),
+            &capability.params,
+            report,
+        );
+    }
 }
 
 /// Runs a shell command in the workspace via `sh -c`, under an [output policy](OffloadPolicy).

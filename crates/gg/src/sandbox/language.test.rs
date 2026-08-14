@@ -12,6 +12,23 @@ use test_cabinet_core::gg::{
 use super::fixture::fixture_language;
 use super::*;
 use crate::sandbox::operations::VIEWS_OPEN_DOCS_VIEW;
+use crate::validate::{LaunchDefect, LaunchReport};
+
+/// The language `profile` resolves to, asserting gg honoured its configuration exactly as written.
+fn language_of(profile: &GgAgentConfig) -> GgProgramLanguage {
+    let mut report = LaunchReport::collecting();
+    let language = resolve_program_language(profile, &mut report);
+    let defects = report.into_defects();
+    assert!(defects.is_empty(), "unexpected refusals: {defects:?}");
+    language
+}
+
+/// Everything resolving `profile` reports, for the cases whose subject is the refusal.
+fn reported(profile: &GgAgentConfig) -> (GgProgramLanguage, Vec<LaunchDefect>) {
+    let mut report = LaunchReport::collecting();
+    let language = resolve_program_language(profile, &mut report);
+    (language, report.into_defects())
+}
 
 /// TypeScript, named explicitly wherever an assertion is about **TypeScript's** own answers rather
 /// than about whichever language happens to be the default.
@@ -184,7 +201,7 @@ fn every_language_writes_the_program_that_opens_a_documentation_view() {
     );
 }
 
-/// **A run that names no language gets the default**, whether the capability is off, on with no
+/// **A run that names no language gets the default**, whether the capability is absent, on with no
 /// params, or on with a null one — and none of those is reported as an unreadable setting.
 #[test]
 fn an_unconfigured_agent_writes_the_default_language() {
@@ -192,52 +209,88 @@ fn an_unconfigured_agent_writes_the_default_language() {
         GgAgentConfig::root(),
         code_agent(true, json!({})),
         code_agent(true, json!({ "language": null })),
-        // A capability that is present but *disabled* configures nothing at all — not even a
-        // complaint about the value it carries, which nothing is going to read.
-        code_agent(false, json!({ "language": "brainfuck" })),
+        code_agent(false, json!({})),
     ] {
-        let resolved = resolve_program_language(&profile);
-        assert_eq!(resolved.language, GgProgramLanguage::default());
-        assert!(resolved.unknown_params.is_empty(), "{resolved:?}");
+        assert_eq!(language_of(&profile), GgProgramLanguage::default());
     }
+}
+
+/// **A disabled capability's `language` is read like any other param.** It changes nothing about the
+/// run — an agent without responses-as-code writes no programs, so the language it resolved to is
+/// never asked for — and it is read anyway, on the rule the whole params table follows: a disabled
+/// capability records the configuration the arm would have used, so the two arms of one comparison
+/// stay symmetric, and a typo skipped because a switch happened to be off is a typo that surfaces on
+/// the launch where it is flipped. `language` is the axis a cross-language study slices on, which
+/// makes it the last param that should have been exempt.
+#[test]
+fn a_disabled_capabilitys_language_is_still_read() {
+    assert_eq!(
+        language_of(&code_agent(false, json!({ "language": "python" }))),
+        GgProgramLanguage::Python
+    );
+    let mut report = crate::validate::LaunchReport::collecting();
+    resolve_program_language(
+        &code_agent(false, json!({ "language": "pythn" })),
+        &mut report,
+    );
+    let defects = report.into_defects();
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(defects[0].locus, "responses-as-code.params.language");
 }
 
 /// **A language gg knows is honoured**, spelled exactly as the id is.
 #[test]
 fn a_named_language_is_honoured() {
     for &id in GgProgramLanguage::ALL {
-        let resolved = resolve_program_language(&code_agent(true, json!({ "language": id.id() })));
-        assert_eq!(resolved.language, id);
-        assert!(resolved.unknown_params.is_empty());
+        assert_eq!(
+            language_of(&code_agent(true, json!({ "language": id.id() }))),
+            id
+        );
     }
 }
 
-/// **A `language` gg cannot read changes nothing and is reported.**
+/// **A `language` gg cannot read refuses the launch.**
 ///
-/// Both halves matter, and the second is the one that is easy to lose: falling back silently would
-/// record the run under a language nobody chose, which is precisely the axis a cross-language study
-/// slices on. A wrong spelling, a wrong case, and a value that is not a string at all are all one
-/// answer.
+/// Falling back silently would record the run under a language nobody chose, which is precisely the
+/// axis a cross-language study slices on — so a wrong spelling, a wrong case, and a value that is
+/// not a string at all are all one answer, and the answer is that the run does not start. The
+/// default still comes back, because the resolver has to stay total for the per-turn calls that
+/// re-read a profile.
 #[test]
-fn an_unreadable_language_falls_back_and_says_so() {
+fn an_unreadable_language_is_refused() {
     for value in [
         json!({ "language": "brainfuck" }),
         json!({ "language": "TypeScript" }),
         json!({ "language": 3 }),
         json!({ "language": ["typescript"] }),
     ] {
-        let resolved = resolve_program_language(&code_agent(true, value.clone()));
+        let (language, defects) = reported(&code_agent(true, value.clone()));
         assert_eq!(
-            resolved.language,
+            language,
             GgProgramLanguage::default(),
-            "{value} must change nothing"
+            "{value}: the resolver stays total"
         );
+        assert_eq!(defects.len(), 1, "{value} -> {defects:?}");
         assert_eq!(
-            resolved.unknown_params,
-            vec!["language".to_string()],
-            "{value} must be reported"
+            defects[0].locus, "responses-as-code.params.language",
+            "{value}"
+        );
+        assert!(
+            defects[0].known.contains(&"typescript".to_string()),
+            "{value}: a refusal offers the languages gg can drive"
         );
     }
+}
+
+/// A language written with stray whitespace around it is the language it names — the one liberty
+/// taken with a vocabulary otherwise read literally, since whitespace is not part of what an
+/// operator wrote.
+#[test]
+fn surrounding_whitespace_does_not_hide_a_language() {
+    assert_eq!(
+        language_of(&code_agent(true, json!({ "language": " python " }))),
+        GgProgramLanguage::Python
+    );
 }
 
 /// **Every model-facing call resolves in every registered language's catalogue.**

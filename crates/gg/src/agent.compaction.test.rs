@@ -413,3 +413,92 @@ async fn handoff_compaction_reads_the_compaction_models_compact_call() {
         "the working model never calls `compact` under a handoff"
     );
 }
+
+/// A factory that builds every client but the **compaction** one.
+///
+/// The only honest way to reach the handoff's failure arm: the model id is one of the set's bound
+/// models, so the launch pass has already proved the catalog knows it, and what is left is a
+/// credential or a provider that will not answer at run time.
+struct NoCompactionClient;
+
+impl ClientFactory for NoCompactionClient {
+    fn client_for(&self, binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, ModelError> {
+        if binding.slot == COMPACTION_SLOT {
+            return Err(ModelError::Fatal {
+                status: 500,
+                message: "the compaction provider could not be built".to_string(),
+            });
+        }
+        Ok(Box::new(MockClient::new(
+            &binding.model_id,
+            vec![stop_response()],
+        )))
+    }
+}
+
+/// **A handoff model that will not resolve ends the run.**
+///
+/// gg used to warn and leave the second client unset, after which `CompactionSetup::client` handed
+/// back the agent's *own* client: the run then condensed on the working model while its capability
+/// set, its record and its per-slot cost split all named the handoff arm — and "which model
+/// condensed the thread" is the entire question a handoff study asks. There is no answer here that
+/// is the run that was configured, so there is no answer: the agent's loop ends, and the run with
+/// it, under gg's own status.
+#[tokio::test]
+async fn a_handoff_model_that_will_not_resolve_ends_the_run() {
+    let dir = TempDir::new().unwrap();
+    seed_default_skill(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(
+        Some("run-handoff-unresolved".to_string()),
+        Box::new(sink.clone()),
+    );
+
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    crate::tools::grant_configured(
+        &mut set.agents[0],
+        GgCapabilityConfig {
+            id: CAPABILITY_COMPACTION.to_string(),
+            enabled: true,
+            implementation: Some(
+                test_cabinet_core::gg::COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION.to_string(),
+            ),
+            params: json!({ test_cabinet_core::gg::COMPACTION_PARAM_MODEL: "mock/compactor" }),
+        },
+    );
+    let inv = invocation(dir.path(), set);
+    // The handoff model is one of the run's bound models, so the launch pass required — and got —
+    // a context window for it. That is the static half of this failure, and it passed.
+    assert!(inv.model_windows.contains_key("mock/compactor"));
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(NoCompactionClient)).await,
+        SessionOutcome::HarnessError,
+    );
+
+    let events = sink.events();
+    let terminal = events.iter().rev().find_map(|event| match &event.kind {
+        GgTelemetryKind::SessionEnded { status } => Some(status.clone()),
+        _ => None,
+    });
+    assert_eq!(
+        terminal.as_deref(),
+        Some(STATUS_INTERNAL_ERROR),
+        "gg's defect, not the model's"
+    );
+    let errors: Vec<&String> = events
+        .iter()
+        .filter_map(|event| match &event.kind {
+            GgTelemetryKind::Log { level, message } if level == "error" => Some(message),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        errors
+            .iter()
+            .any(|message| message.contains("mock/compactor") && message.contains("ends here")),
+        "the run says which model it could not reach: {errors:?}"
+    );
+    // No boundary was crossed on the working model, which is the substitution that used to happen.
+    assert!(boundaries(&events).is_empty());
+}

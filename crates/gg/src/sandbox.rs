@@ -105,8 +105,8 @@ pub(crate) mod signatures;
 
 pub use invoker::ToolApi;
 pub use language::{
-    FileWindow, PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage, UnreachableTail,
-    all_languages, language, resolve_program_language, spell,
+    FileWindow, PARAM_LANGUAGE, PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage,
+    UnreachableTail, all_languages, language, resolve_program_language, spell,
 };
 
 // gg's own name for each model-facing call, for the code outside this module that has to *quote*
@@ -146,8 +146,7 @@ pub use operations::{
 #[allow(unused_imports)]
 pub use language::{
     CompilerCommand, CompilerDaemon, CompilerPool, CompilerReport, PrepareContext, PrepareError,
-    PromptDialect, ResolvedProgramLanguage, Workspace, daemon, place, place_tree,
-    shared_toolchain_dir,
+    PromptDialect, Workspace, daemon, place, place_tree, shared_toolchain_dir,
 };
 
 // The seam's second implementation, which exists only under test. Re-exported for the one consumer
@@ -197,6 +196,28 @@ pub use availability::granted_operations;
 pub(crate) use operations::OPERATIONS;
 
 pub use limits::SandboxLimits;
+
+/// The sandbox's whole contribution to one profile's half of the
+/// [launch pass](crate::validate::validate_launch): the
+/// [program language](language::resolve_program_language) it writes in and the two
+/// [ceilings](limits::resolve_sandbox_limits) its programs run under, read exactly as the run will
+/// read them.
+///
+/// One entry point rather than two re-exported `check_launch`es, because the pass reads a capability
+/// and not a source file: `responses-as-code` is one capability whose params happen to be resolved by
+/// two modules in here.
+pub fn check_launch(
+    profile: &test_cabinet_core::gg::GgAgentConfig,
+    report: &mut crate::validate::LaunchReport,
+) {
+    language::check_launch(profile, report);
+    limits::check_launch(profile, report);
+}
+
+// The two sandbox ceilings' param names, so the [launch check](crate::validate::CAPABILITY_PARAMS)
+// that reads a `params` object against its capability's vocabulary names the same constant the
+// resolver reads, rather than a second spelling of the same string.
+pub use limits::{PARAM_MAX_MEMORY_BYTES, PARAM_TIMEOUT_SECS};
 
 // The table's own types, which nothing outside `sandbox` names *yet* and which are exported all the
 // same because they are what `operation_of` hands back and what its fields are: an `Operation`

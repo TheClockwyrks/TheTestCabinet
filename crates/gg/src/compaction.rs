@@ -78,11 +78,12 @@ use crate::model::{ImageContent, Message, ModelClient, Role};
 use crate::prompts::{self, CompactionPromptContext};
 use crate::sandbox::{CONTEXT_COMPACT, ProgramLanguage, spell};
 use crate::tools::{COMPACT_TOOL, CompactTool, Tool, parse_compact_request};
+use crate::validate::{LaunchDefect, LaunchReport};
 
 /// The compaction capability param naming the
 /// [summary headroom](CompactionPolicy::summary_headroom) — a `0.0..=0.9` fraction of the
 /// model's window held back from the agent so the summarization call fits.
-const PARAM_SUMMARY_HEADROOM: &str = "summaryHeadroom";
+pub(crate) const PARAM_SUMMARY_HEADROOM: &str = "summaryHeadroom";
 
 /// The default [`summary_headroom`](CompactionPolicy::summary_headroom): reserve 20% of the
 /// model's window for the summarization round-trip.
@@ -90,7 +91,7 @@ const DEFAULT_SUMMARY_HEADROOM: f64 = 0.2;
 
 /// The largest accepted [`summary_headroom`](CompactionPolicy::summary_headroom). Reserving
 /// more than 90% of the window would leave the agent no room to work at all, so a larger
-/// value is treated as a misconfiguration and ignored.
+/// value is one gg cannot honour and [refuses the launch](crate::validate) over.
 const MAX_SUMMARY_HEADROOM: f64 = 0.9;
 
 /// The line the [summarization prompt](handoff_summary_system_prompt) closes with, by which the
@@ -171,9 +172,9 @@ fn memory_compaction_summary() -> &'static str {
 /// separate handoff model out of band. *What*: free prose, a [`compact`](COMPACT_TOOL) call that
 /// also names the files to re-read, or [memories](CAPABILITY_MEMORIES) instead of a summary at all.
 ///
-/// A run naming a strategy gg does not recognize resolves to
-/// [`SelfSummarization`](Self::SelfSummarization) rather than failing to launch, so a sweep can
-/// reference a not-yet-built one.
+/// A run naming a strategy gg does not offer is [refused at launch](crate::validate): the
+/// strategy is the capability's whole experimental variable, so resolving a typo to the default
+/// would measure one arm and record another.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompactionStrategy {
     /// The agent writes its own summary, in its own thread, when gg asks it to. The default.
@@ -190,11 +191,25 @@ pub enum CompactionStrategy {
 }
 
 impl CompactionStrategy {
+    /// Every strategy gg offers, in the order the documentation lists them — the vocabulary an
+    /// [`implementation`](test_cabinet_core::gg::GgCapabilityConfig::implementation) is read
+    /// against, and what a refusal offers the operator back.
+    pub const ALL: [Self; 5] = [
+        Self::SelfSummarization,
+        Self::SelfCompaction,
+        Self::HandoffSummarization,
+        Self::HandoffCompaction,
+        Self::Memory,
+    ];
+
     /// The strategy an [implementation](test_cabinet_core::gg::GgCapabilityConfig::implementation)
     /// string names.
     ///
-    /// [`SelfSummarization`](Self::SelfSummarization) covers `self-summarization`/empty/`None`
-    /// **and** any unrecognized name, so a study naming a not-yet-built strategy still launches.
+    /// Absent, `null` or empty is the documented default,
+    /// [`SelfSummarization`](Self::SelfSummarization). A name gg does not offer is **not**: it is
+    /// reported into `report` and refuses the launch, because the strategy is the capability's one
+    /// experimental variable and a run that condensed in prose while its record said
+    /// `handoff-compaction` is an experiment whose answer belongs to a different question.
     ///
     /// `memories_writable` demotes [`Memory`](Self::Memory) to the default when the agent has no
     /// memories it can write — the one strategy with a hard prerequisite. That is *writable*, not
@@ -203,13 +218,48 @@ impl CompactionStrategy {
     /// it to record its state with calls it does not have and
     /// [`MemoryWrites`](PendingCompaction::MemoryWrites) could never be satisfied — leaving the run
     /// wedged against a full window, which is a far worse outcome than condensing in prose.
-    pub fn resolve(implementation: Option<&str>, memories_writable: bool) -> Self {
+    ///
+    /// The demotion is **not** reported here, and that is the one thing about this resolver worth
+    /// reading twice. Whether an agent may write its memories is not always a property of the
+    /// document: a profile scoped [`inherited`](crate::memories::MemoryScope::Inherited) is writable
+    /// or not according to who spawned it. The half that *is* decidable from the document — the
+    /// memories capability switched off, or a `read-only` scope declared on the profile — is
+    /// [refused by the launch pass](crate::validate) as the cross-capability contradiction it is;
+    /// the half that is not becomes a mid-run diagnostic. Reporting it from here would fire on every
+    /// re-resolution of a perfectly valid document.
+    pub fn resolve(
+        implementation: Option<&str>,
+        memories_writable: bool,
+        report: &mut LaunchReport,
+    ) -> Self {
         match implementation.map(str::trim) {
+            None | Some("") | Some(COMPACTION_STRATEGY_SELF_SUMMARIZATION) => {
+                Self::SelfSummarization
+            }
             Some(COMPACTION_STRATEGY_SELF_COMPACTION) => Self::SelfCompaction,
             Some(COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION) => Self::HandoffSummarization,
             Some(COMPACTION_STRATEGY_HANDOFF_COMPACTION) => Self::HandoffCompaction,
-            Some(COMPACTION_STRATEGY_MEMORY) if memories_writable => Self::Memory,
-            _ => Self::SelfSummarization,
+            Some(COMPACTION_STRATEGY_MEMORY) => {
+                if memories_writable {
+                    Self::Memory
+                } else {
+                    Self::SelfSummarization
+                }
+            }
+            Some(other) => {
+                report.report(
+                    LaunchDefect::run_level(
+                        crate::validate::implementation_locus(CAPABILITY_COMPACTION),
+                        other,
+                        format!(
+                            "`{other}` is not a compaction strategy gg offers; the strategy is what \
+                             a compaction study varies, so gg will not pick one for it."
+                        ),
+                    )
+                    .known(Self::ALL.map(Self::id)),
+                );
+                Self::SelfSummarization
+            }
         }
     }
 
@@ -705,18 +755,55 @@ impl Default for CompactionPolicy {
 }
 
 impl CompactionPolicy {
-    /// Resolve the policy from a compaction-capability `params` object: `summaryHeadroom`
-    /// overrides its default when present as a number in `[0.0, 0.9]`; anything else keeps
-    /// the default (a negative or absurd value would leave the agent no window at all, so it
-    /// is ignored). The fullness [trigger](Self::trigger_fullness) is not a separate param —
-    /// it is defined by the headroom.
-    pub fn resolve(params: &Value) -> Self {
-        let summary_headroom = params
+    /// Resolve the policy from a compaction-capability `params` object.
+    ///
+    /// [`summaryHeadroom`](PARAM_SUMMARY_HEADROOM) overrides its default when present as a number in
+    /// `[0.0, 0.9]`. Absent or `null` takes [the default](DEFAULT_SUMMARY_HEADROOM). Anything else —
+    /// a string, a negative, `1.5`, a NaN — is reported and refuses the launch: this one number sets
+    /// both the [trigger](Self::trigger_fullness) *and* the [working
+    /// window](Self::working_window), so a run that silently kept 0.2 while its record said `0.45`
+    /// would differ from the configured arm in when it compacted **and** in how much window the
+    /// agent ever had.
+    ///
+    /// The fullness trigger is not a separate param — it is defined by the headroom.
+    pub fn resolve(params: &Value, report: &mut LaunchReport) -> Self {
+        let Some(raw) = params
             .get(PARAM_SUMMARY_HEADROOM)
-            .and_then(Value::as_f64)
-            .filter(|&f| (0.0..=MAX_SUMMARY_HEADROOM).contains(&f))
-            .unwrap_or(DEFAULT_SUMMARY_HEADROOM);
-        Self { summary_headroom }
+            .filter(|value| !value.is_null())
+        else {
+            return Self::default();
+        };
+        let defect = |found: String, message: String| {
+            LaunchDefect::run_level(
+                crate::validate::param_locus(CAPABILITY_COMPACTION, PARAM_SUMMARY_HEADROOM),
+                found,
+                message,
+            )
+        };
+        let Some(headroom) = raw.as_f64().filter(|value| value.is_finite()) else {
+            report.report(defect(
+                raw.to_string(),
+                format!(
+                    "`{PARAM_SUMMARY_HEADROOM}` is the fraction of the window held back for the \
+                     summarization call, so it must be a number."
+                ),
+            ));
+            return Self::default();
+        };
+        if !(0.0..=MAX_SUMMARY_HEADROOM).contains(&headroom) {
+            report.report(defect(
+                headroom.to_string(),
+                format!(
+                    "`{PARAM_SUMMARY_HEADROOM}` must be a fraction between 0.0 and \
+                     {MAX_SUMMARY_HEADROOM}; reserving more than that would leave the agent no \
+                     window to work in, and reserving a negative share is not a thing gg can do."
+                ),
+            ));
+            return Self::default();
+        }
+        Self {
+            summary_headroom: headroom,
+        }
     }
 
     /// The window-fullness fraction at (or above) which a compaction fires, defined as
@@ -752,12 +839,12 @@ impl CompactionPolicy {
 /// `window` tokens: [reduced by the summary headroom](CompactionPolicy::working_window) when
 /// [compaction](CAPABILITY_COMPACTION) is on, and `window` unchanged when it is off (nothing
 /// needs to be reserved for a summarization call that will never happen).
-pub fn working_window(set: &GgCapabilitySet, window: u64) -> u64 {
+pub fn working_window(set: &GgCapabilitySet, window: u64, report: &mut LaunchReport) -> u64 {
     if !set.is_enabled(CAPABILITY_COMPACTION) {
         return window;
     }
     set.capability(CAPABILITY_COMPACTION)
-        .map(|cap| CompactionPolicy::resolve(&cap.params))
+        .map(|cap| CompactionPolicy::resolve(&cap.params, report))
         .unwrap_or_default()
         .working_window(window)
 }
@@ -800,15 +887,20 @@ impl CompactionSetup {
     /// The [handoff client](Self::handoff_client) is **not** resolved here — building a model
     /// client needs the run's client factory, which this pure resolution does not have. The loop's
     /// launch path fills it in ([`handoff_model_id`]).
-    pub fn resolve(set: &GgAgentConfig, memories_writable: bool) -> Self {
+    pub fn resolve(
+        set: &GgAgentConfig,
+        memories_writable: bool,
+        report: &mut LaunchReport,
+    ) -> Self {
         let capability = set.capability(CAPABILITY_COMPACTION);
         let enabled = set.is_enabled(CAPABILITY_COMPACTION);
         let policy = capability
-            .map(|cap| CompactionPolicy::resolve(&cap.params))
+            .map(|cap| CompactionPolicy::resolve(&cap.params, report))
             .unwrap_or_default();
         let strategy = CompactionStrategy::resolve(
             capability.and_then(|cap| cap.implementation.as_deref()),
             memories_writable,
+            report,
         );
         Self {
             enabled,
@@ -822,10 +914,12 @@ impl CompactionSetup {
     /// The client an out-of-band condensation runs on: the resolved
     /// [compaction model](Self::handoff_client) for a handoff, else the agent's own `client`.
     ///
-    /// The fallback is deliberate. A handoff run whose named model could not be resolved has a
-    /// misconfiguration, not a reason to stop compacting — and a run that stopped compacting would
-    /// overflow its window a few turns later, which is a far worse failure than a summary written
-    /// by the wrong model. The launch path says so in a `warn` when it happens.
+    /// A handoff that names no model, names a blank one, or still defers to an unbound
+    /// [model slot](COMPACTION_PARAM_MODEL_SLOT) never reaches here: [`handoff_model_id`] reports
+    /// each of those and the [launch is refused](crate::validate). What is left is the residue —
+    /// a model id gg cannot **resolve a client for** at run time, which is an auth failure or a
+    /// provider outage rather than a configured value, and which the loop's launch path is what
+    /// decides about.
     pub fn client<'a>(&'a self, client: &'a dyn ModelClient) -> &'a dyn ModelClient {
         match &self.handoff_client {
             Some(handoff) => handoff.as_ref(),
@@ -835,54 +929,109 @@ impl CompactionSetup {
 }
 
 /// The model id a [handoff](CompactionStrategy::is_handoff) run condenses with — its capability's
-/// [`model`](COMPACTION_PARAM_MODEL) param — or `None` when the strategy is not a handoff or the
-/// param is absent/blank.
-pub fn handoff_model_id(set: &GgAgentConfig) -> Option<String> {
+/// [`model`](COMPACTION_PARAM_MODEL) param — or `None` when the capability is off or the strategy
+/// is not a handoff.
+///
+/// A `model` on a **non-handoff** strategy is not read and not reported: it is a key the capability
+/// knows and the selected arm does not use, which is the deliberate "one shared params block per
+/// sweep" case.
+///
+/// Under a handoff strategy the param is load-bearing. **Absent or `null`** is still the documented
+/// default — the handoff condenses on the agent's own model, which is what a key nobody wrote means
+/// (see [`COMPACTION_PARAM_MODEL`]). **Present and unreadable** is a different thing entirely: a
+/// blank string, or a value that is not a string at all, is a `model` somebody meant to write and
+/// gg cannot use, and resolving it to the agent's own client would condense on the working model
+/// while the record named the handoff arm — with the cost split as the only place it ever showed.
+/// So it is reported and the launch is refused.
+///
+/// A model id that is well-formed here and cannot be **resolved** — no window in the catalog, or a
+/// client that will not build at run time — is not this function's business: the first is a launch
+/// check over the run's bound models, the second a mid-run failure.
+pub fn handoff_model_id(set: &GgAgentConfig, report: &mut LaunchReport) -> Option<String> {
     let capability = set
         .capability(CAPABILITY_COMPACTION)
         .filter(|cap| cap.enabled)?;
+    // The `implementation` is read into an [already-reported](LaunchReport::already_reported) sink,
+    // never into `report`: at launch [`check_launch`] resolves it a few lines above and owns the
+    // refusal, and mid-run the launch pass has already proved it readable. Reporting it here too
+    // would name one typo twice in the same refusal.
     let strategy = CompactionStrategy::resolve(
         capability.implementation.as_deref(),
         set.is_enabled(CAPABILITY_MEMORIES),
+        &mut LaunchReport::already_reported(),
     );
     if !strategy.is_handoff() {
         return None;
     }
-    capability
+    let raw = capability
         .params
         .get(COMPACTION_PARAM_MODEL)
-        .and_then(Value::as_str)
+        .filter(|value| !value.is_null())?;
+    let model = raw
+        .as_str()
         .map(str::trim)
         .filter(|model| !model.is_empty())
-        .map(str::to_string)
+        .map(str::to_string);
+    if model.is_none() {
+        report.report(LaunchDefect::run_level(
+            crate::validate::param_locus(CAPABILITY_COMPACTION, COMPACTION_PARAM_MODEL),
+            crate::validate::as_written(raw),
+            format!(
+                "`{COMPACTION_PARAM_MODEL}` must be the id of the model the `{}` strategy hands \
+                 the thread to; gg reads nothing here, and condensing on the agent's own model \
+                 instead would record one arm and run another.",
+                strategy.id(),
+            ),
+        ));
+    }
+    model
 }
 
-/// The [model slot](COMPACTION_PARAM_MODEL_SLOT) a handoff compaction is still deferring to — a
-/// slot the launcher was supposed to fill in and did not, so the handoff model is unset and the
-/// agent will condense on its own model instead.
+/// Read every compaction value on `profile`, reporting each one gg cannot honour — the compaction
+/// capability's whole contribution to the [launch refusal](crate::validate).
 ///
-/// `None` for every set that launched normally: binding writes the collected model to
-/// [`model`](COMPACTION_PARAM_MODEL) and drops the slot key. Reported at launch rather than
-/// resolved here, because gg has no slot table to resolve it against — the models were bound before
-/// the run started.
-pub fn unbound_handoff_slot(set: &GgAgentConfig) -> Option<String> {
-    let capability = set
-        .capability(CAPABILITY_COMPACTION)
-        .filter(|cap| cap.enabled)?;
-    let strategy = CompactionStrategy::resolve(
+/// It is here rather than in the pass so the vocabulary and the reader stay the same lines of code:
+/// the strategy list, the headroom bounds and the two model params are read by the resolvers just
+/// above, and a check written anywhere else would be a second copy of them.
+///
+/// `memories_writable` is the **statically** decidable answer — the memories capability is on and no
+/// `read-only` scope is declared on the profile — because that is all a document can say. It is
+/// passed through to [`CompactionStrategy::resolve`] so a `memory-compaction` profile that could
+/// never satisfy one is read here exactly as the run will read it.
+pub fn check_launch(profile: &GgAgentConfig, memories_writable: bool, report: &mut LaunchReport) {
+    let Some(capability) = profile.capability(CAPABILITY_COMPACTION) else {
+        return;
+    };
+    // Read whether or not the capability is switched on. A disabled capability still records the
+    // arm the run *would* have used, so a typo in it is a typo now rather than on the launch where
+    // the switch is flipped.
+    CompactionStrategy::resolve(
         capability.implementation.as_deref(),
-        set.is_enabled(CAPABILITY_MEMORIES),
+        memories_writable,
+        report,
     );
-    if !strategy.is_handoff() {
-        return None;
-    }
-    capability
+    CompactionPolicy::resolve(&capability.params, report);
+    handoff_model_id(profile, report);
+    // Binding a model to a slot writes the collected id to `model` and **drops the slot key**, so a
+    // surviving one means the launcher never bound it. gg has no slot table in the container to
+    // resolve it against, and nothing downstream will ever look at it again — the key is inert, and
+    // the run it describes is not the run that would happen.
+    if let Some(slot) = capability
         .params
         .get(COMPACTION_PARAM_MODEL_SLOT)
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|slot| !slot.is_empty())
-        .map(str::to_string)
+        .filter(|value| !value.is_null())
+    {
+        report.report(LaunchDefect::run_level(
+            crate::validate::param_locus(CAPABILITY_COMPACTION, COMPACTION_PARAM_MODEL_SLOT),
+            crate::validate::as_written(slot),
+            format!(
+                "a bound launch replaces `{COMPACTION_PARAM_MODEL_SLOT}` with the model it \
+                 collected; one still on the document means the slot was never filled, and gg has \
+                 no slot table to fill it from. Bind it at launch, or name the model outright in \
+                 `{COMPACTION_PARAM_MODEL}`."
+            ),
+        ));
+    }
 }
 
 /// The pinned-state counts carried into a compaction so they can be reported as the

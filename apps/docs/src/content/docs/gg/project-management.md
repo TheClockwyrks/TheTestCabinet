@@ -127,7 +127,11 @@ requires naming a `mergeAgent`: the agent profile gg dispatches into the main
 workspace, with the conflicted merge left in place, to resolve the conflict and
 finish the merge. It must have the [shell](/gg/shell/) capability, since
 resolving a merge means running `git`. A set that names no merge agent, names
-one that is not declared, or names one without a shell is refused at launch.
+one that is not declared, or names one without a shell is refused at launch. The
+board is the run's, so it has one merge agent: writing the same name on several
+profiles is fine and is what the editor does, while writing two different names —
+or one gg cannot read as a name at all — refuses the launch rather than letting
+whichever profile comes first decide.
 
 The merge counts as resolved only when git agrees it is no longer in progress. A
 merge the agent could not finish is aborted, leaving the main workspace exactly
@@ -260,6 +264,10 @@ Board tools: `create_epic`, `create_issue`, `update_issue`,
 | `maxRetries` | 1 | Re-dispatches of a failed assignment before the issue is marked failed; may be 0 for one attempt only. A review round is not a retry. |
 | `reviewers` | off | The Reviewers required feature above. |
 | `ownership` | `owned` | `unowned` keeps the board tools and drops the pinned block and the prompt section. |
+
+An absent param takes its default above. A param carrying a value gg cannot
+honour exactly as written refuses the launch, alongside every other such value in
+the capability set.
 
 Switched off, there are no board tools, no prompt text, no context block, no
 board telemetry, and no auto-dispatch.

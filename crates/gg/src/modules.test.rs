@@ -40,7 +40,7 @@ fn library(dir: &std::path::Path) -> Arc<SkillLibrary> {
         "---\nname: guide\ndescription: how the thing is done.\n---\nthe body of the guide.",
     )
     .expect("the fixture skill is written");
-    Arc::new(SkillLibrary::load(dir))
+    Arc::new(SkillLibrary::loaded(dir))
 }
 
 /// The resolve context these tests build sets against: a skills runtime, a run-global board, and
@@ -176,8 +176,10 @@ fn an_unowned_module_contributes_no_pinned_block() {
 /// **The task list has no ownership to configure.** It is what an agent steers its work by from
 /// turn to turn, so it is always carried in its holder's prompt as its own message.
 ///
-/// A configuration that names `ownership` on `tasks` resolves an owned list all the same, and earns
-/// no warning: the key is one gg does not know, exactly like any other.
+/// A configuration that names `ownership` on `tasks` resolves an owned list all the same — and is a
+/// **launch refusal**, because the key configures nothing there: the
+/// [params table](crate::validate) offers `ownership` on the two capabilities that have one and
+/// nowhere else.
 #[test]
 fn a_task_list_is_owned_whatever_the_profile_declares() {
     let skills = SkillsRuntime::disabled();
@@ -188,9 +190,19 @@ fn a_task_list_is_owned_whatever_the_profile_declares() {
     let modules =
         CapabilityModules::resolve(&profile, &ctx(&skills, &board, &registry, &inherited, &ids));
     assert_eq!(modules.tasks().ownership(), Ownership::Owned);
+    let mut report = LaunchReport::collecting();
+    check_ownership(&profile, &mut report);
     assert!(
-        ownership_warnings(&profile).is_empty(),
-        "an `ownership` key on tasks is not a value gg reads, so there is nothing to warn about"
+        report.is_empty(),
+        "the `tasks` capability has no ownership for this check to read"
+    );
+
+    let mut set = test_cabinet_core::gg::GgCapabilitySet::minimal("mock/echo");
+    set.agents[0] = profile;
+    assert!(
+        crate::validate::refusal(&set)
+            .expect_err("a key on a capability that has no ownership is refused")
+            .contains("ownership")
     );
 }
 
@@ -221,44 +233,75 @@ fn a_profile_without_the_board_capability_holds_it_unowned() {
     assert_eq!(modules.board().ownership(), Ownership::Owned);
 }
 
-/// The `ownership` param is read off each module-backed capability, and an **unrecognized** value
-/// falls back to `owned` with a launch warning naming it — never a launch failure, in line with how
-/// gg treats every other unrecognized capability value.
+/// The `ownership` param is read off each module-backed capability. A recognized value is honoured
+/// and an absent one takes the default, silently — absent is not unrecognized.
 #[test]
-fn the_ownership_param_resolves_and_warns() {
-    let profile = profile_with(vec![
-        (
-            CAPABILITY_PROJECT_MANAGEMENT,
-            json!({ "ownership": "unowned" }),
-        ),
-        (CAPABILITY_AGENT_MANAGED_CONTEXT, json!({ "ownership": 7 })),
-    ]);
-
-    assert_eq!(
-        resolve_ownership(&profile, CAPABILITY_PROJECT_MANAGEMENT),
-        (Ownership::Unowned, None)
-    );
-    // An absent param is the default, silently.
+fn the_ownership_param_resolves() {
+    let profile = profile_with(vec![(
+        CAPABILITY_PROJECT_MANAGEMENT,
+        json!({ "ownership": "unowned" }),
+    )]);
     assert_eq!(
         resolve_ownership(
-            &profile_with(vec![(CAPABILITY_PROJECT_MANAGEMENT, json!({}))]),
-            CAPABILITY_PROJECT_MANAGEMENT
+            &profile,
+            CAPABILITY_PROJECT_MANAGEMENT,
+            &mut LaunchReport::Discarding
         ),
-        (Ownership::Owned, None)
+        Ownership::Unowned
     );
+    for absent in [json!({}), json!({ "ownership": null })] {
+        assert_eq!(
+            resolve_ownership(
+                &profile_with(vec![(CAPABILITY_PROJECT_MANAGEMENT, absent)]),
+                CAPABILITY_PROJECT_MANAGEMENT,
+                &mut LaunchReport::Discarding
+            ),
+            Ownership::Owned
+        );
+    }
+}
 
-    let (ownership, warning) = resolve_ownership(&profile, CAPABILITY_AGENT_MANAGED_CONTEXT);
-    assert_eq!(ownership, Ownership::Owned);
-    assert!(
-        warning
-            .expect("a non-string value warns")
-            .contains("string"),
-        "the warning says what it could not read"
-    );
+/// An `ownership` gg cannot read is **refused**. It is the knob that decides whether an agent is
+/// told what it holds every turn or has to look it up, so a typo resolved to `owned` would put a
+/// board in every request of an agent whose configuration says it should cost nothing.
+#[test]
+fn an_unreadable_ownership_is_refused() {
+    for value in [json!(7), json!("Unowned"), json!("none")] {
+        let profile = profile_with(vec![(
+            CAPABILITY_AGENT_MANAGED_CONTEXT,
+            json!({ "ownership": value }),
+        )]);
+        let mut report = LaunchReport::collecting();
+        assert_eq!(
+            resolve_ownership(&profile, CAPABILITY_AGENT_MANAGED_CONTEXT, &mut report),
+            Ownership::Owned,
+            "the resolver stays total"
+        );
+        let defects = report.into_defects();
+        assert_eq!(defects.len(), 1, "{value} -> {defects:?}");
+        assert_eq!(defects[0].locus, "agent-managed-context.params.ownership");
+        assert_eq!(defects[0].known, ["owned", "unowned"]);
+    }
+}
 
-    let warnings = ownership_warnings(&profile);
-    assert_eq!(warnings.len(), 1, "one per unreadable value: {warnings:?}");
-    assert!(warnings.iter().all(|w| w.starts_with("agent `Root`:")));
+/// The check reads a **disabled** capability too. A disabled capability still records the
+/// configuration the arm would have used, and a typo skipped because a switch happened to be off is
+/// a typo that surfaces on the launch where it is flipped — by which point nobody is looking at the
+/// document that has it.
+#[test]
+fn a_disabled_capabilitys_ownership_is_checked_too() {
+    let mut profile = profile_with(vec![(
+        CAPABILITY_PROJECT_MANAGEMENT,
+        json!({ "ownership": "shared" }),
+    )]);
+    for capability in &mut profile.capabilities {
+        capability.enabled = false;
+    }
+    let mut report = LaunchReport::collecting();
+    check_ownership(&profile, &mut report);
+    let defects = report.into_defects();
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(defects[0].found, "shared");
 }
 
 // ---------------------------------------------------------------------------
@@ -764,8 +807,15 @@ fn an_explicit_transfer_carries_only_what_it_names() {
 /// A transfer list naming a module the outgoing agent never held is a **warning**, not a failure:
 /// the transition's author asked for something the source state did not have, and gg says so rather
 /// than silently carrying nothing.
+/// **A transfer list naming a module the outgoing agent does not hold is gg's own defect.**
+///
+/// The successor was configured to continue with that module's state and would start with an empty
+/// one, which downstream reads exactly like a state that chose to put nothing in it. The
+/// statically decidable half — a kind the profiles on either side of the edge do not both enable —
+/// refuses the launch, so a defect reaching here is gg reading one configuration two ways, and the
+/// agent's loop (and the run) ends on it.
 #[test]
-fn a_transfer_list_naming_an_absent_module_warns() {
+fn a_transfer_list_naming_an_absent_module_is_a_defect() {
     let skills = SkillsRuntime::disabled();
     let board = BoardRuntime::disabled();
     let (registry, inherited, ids) = plain();
@@ -777,8 +827,8 @@ fn a_transfer_list_naming_an_absent_module_warns() {
         &TransferPlan::Explicit(vec![ModuleKind::Memories]),
         &ctx(&skills, &board, &registry, &inherited, &ids),
     );
-    assert_eq!(report.warnings.len(), 1, "{report:?}");
-    assert!(report.warnings[0].contains("`memories`"));
+    assert_eq!(report.defects.len(), 1, "{report:?}");
+    assert!(report.defects[0].contains("`memories`"));
 }
 
 /// An incompatible carried module is dropped, **re-initialized**, and the reason is put where the

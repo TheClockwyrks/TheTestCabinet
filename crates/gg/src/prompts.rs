@@ -855,23 +855,38 @@ fn system_template_name(language: Option<GgProgramLanguage>) -> &'static str {
 /// `template_override` is an agent profile's
 /// [full-template override](test_cabinet_core::gg::GgAgentConfig::system_prompt_template): when
 /// present (and non-blank) it is rendered against the same [`SystemContext`] instead of the
-/// built-in template. A malformed override — one that references a variable the context does not
-/// carry — falls back to the built-in template for the run's mode rather than aborting the run,
-/// since it is operator-authored input, not an embedded artifact the tests pin.
-pub fn render_system(context: &SystemContext, template_override: Option<&str>) -> String {
-    // A tool-calling run has no program language, and a code run whose context did not name one
-    // gets the default rather than a panic: the field is `#[serde(skip)]` decoration on a struct
-    // several call sites build literally, and rendering the wrong *language* is a far smaller
-    // failure than rendering nothing at all. The `debug_assert` is what keeps that leniency from
-    // hiding a construction site that forgot the field: a silent default is exactly how a second
-    // language would come to behave like TypeScript, so it fails a test build rather than a run.
-    debug_assert!(
-        !context.responses_as_code || context.language.is_some(),
-        "a responses-as-code SystemContext must name its program language"
-    );
-    let program_language = context
-        .responses_as_code
-        .then(|| context.language.unwrap_or_default());
+/// built-in template.
+///
+/// # Both failures are the run's
+///
+/// This returns `Err` for exactly two things, and neither of them may be recovered from:
+///
+/// - **An override that does not render.** [`check_launch`] has already proved it *parses*, so what
+///   is left is a template referencing a variable this context does not carry. gg used to swap in
+///   the built-in template here, with no log line at all — which quietly replaced the one thing the
+///   run was configured to vary. The system prompt an agent reasons under **is** the experiment; a
+///   run conducted under gg's prompt while its record names the operator's is not a result, so the
+///   session ends as gg's own defect instead.
+/// - **A responses-as-code context that names no [program language](SystemContext::language).** It
+///   was a `debug_assert!` that compiled out of release, above a default: a silent default is
+///   exactly how a second language would come to behave like TypeScript, in the release builds that
+///   are the only ones that ever run a study. Nothing can produce it but a construction site of
+///   ours, so it is gg's defect wherever it is met — and it is met in every build.
+pub fn render_system(
+    context: &SystemContext,
+    template_override: Option<&str>,
+) -> Result<String, String> {
+    let program_language = match (context.responses_as_code, context.language) {
+        (true, None) => {
+            return Err(
+                "a responses-as-code system prompt was built without naming its program language, \
+                 so gg cannot tell which arm's contract to state"
+                    .to_string(),
+            );
+        }
+        (true, Some(language)) => Some(language),
+        (false, _) => None,
+    };
     let builtin = system_template_name(program_language);
     // The artifact facts are the code arm's: a tool-calling run has no program language, so it has
     // no artifact and no library list. The empty list it gets instead is what makes an override
@@ -885,12 +900,60 @@ pub fn render_system(context: &SystemContext, template_override: Option<&str>) -
     };
     let spelled = Spelled { context, spellings };
     let rendered = match template_override.map(str::trim).filter(|t| !t.is_empty()) {
-        Some(template) => engine()
-            .render_template(template, &spelled)
-            .unwrap_or_else(|_| render(builtin, &spelled)),
+        Some(template) => engine().render_template(template, &spelled).map_err(|err| {
+            format!(
+                "the agent's `{SYSTEM_PROMPT_TEMPLATE_FIELD}` override parsed at launch and would \
+                 not render against this agent's context: {err}"
+            )
+        })?,
         None => render(builtin, &spelled),
     };
-    tidy(&rendered)
+    Ok(tidy(&rendered))
+}
+
+/// The [capability set](test_cabinet_core::gg::GgAgentConfig::system_prompt_template) field a
+/// system-prompt override is written in, named in the two diagnostics about it so an operator can
+/// find the thing they have to edit.
+const SYSTEM_PROMPT_TEMPLATE_FIELD: &str = "systemPromptTemplate";
+
+/// This module's contribution to the [launch refusal](crate::validate): a per-agent
+/// [system-prompt override](test_cabinet_core::gg::GgAgentConfig::system_prompt_template) that does
+/// not **parse** as a Handlebars template.
+///
+/// Parsing is the half of the contract a document can be held to on its own, with no live context
+/// and no model bound, so it is checked here — before the container has spent anything — rather
+/// than left to the render. What a parse cannot settle is whether the variables the template names
+/// exist, which needs a [`SystemContext`] this pass does not have; that half is
+/// [`render_system`]'s, and it ends the run.
+///
+/// An absent or blank override is the ordinary case and takes the built-in template for the agent's
+/// mode. It is not a fallback: nothing was written.
+pub(crate) fn check_launch(
+    profile: &test_cabinet_core::gg::GgAgentConfig,
+    report: &mut crate::validate::LaunchReport,
+) {
+    let Some(template) = profile
+        .system_prompt_template
+        .as_deref()
+        .map(str::trim)
+        .filter(|template| !template.is_empty())
+    else {
+        return;
+    };
+    let Err(err) = handlebars::Template::compile(template) else {
+        return;
+    };
+    report.report(crate::validate::LaunchDefect::run_level(
+        SYSTEM_PROMPT_TEMPLATE_FIELD,
+        // The template itself, not an excerpt: it is one field of one profile, an operator reading
+        // the refusal is about to edit it, and a Handlebars parse error is reported by position.
+        template,
+        format!(
+            "the `{SYSTEM_PROMPT_TEMPLATE_FIELD}` override is not a Handlebars template ({err}); \
+             gg would have to run this agent under its own built-in prompt instead, which is the \
+             one thing an overriding profile is configured not to do."
+        ),
+    ));
 }
 
 /// Render the responses-as-code system prompt for one [language](crate::sandbox::ProgramLanguage)

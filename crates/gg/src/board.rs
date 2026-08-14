@@ -166,13 +166,13 @@ pub const BOARD_MUTATIONS: &[OperationId] = &[
 ];
 
 /// The project-management capability param naming the [epic ceiling](BoardCaps::max_epics).
-const PARAM_MAX_EPICS: &str = "maxEpics";
+pub(crate) const PARAM_MAX_EPICS: &str = "maxEpics";
 
 /// The project-management capability param naming the [issue ceiling](BoardCaps::max_issues).
-const PARAM_MAX_ISSUES: &str = "maxIssues";
+pub(crate) const PARAM_MAX_ISSUES: &str = "maxIssues";
 
 /// The project-management capability param naming the [retry ceiling](BoardCaps::max_retries).
-const PARAM_MAX_RETRIES: &str = "maxRetries";
+pub(crate) const PARAM_MAX_RETRIES: &str = "maxRetries";
 
 /// The project-management capability param switching the **reviewers** feature on: when true,
 /// this agent cannot file an issue without naming at least one
@@ -207,34 +207,66 @@ impl Default for BoardCaps {
 }
 
 impl BoardCaps {
-    /// Resolve the caps from a project-management-capability `params` object: `maxEpics` /
-    /// `maxIssues` / `maxRetries` override the defaults when present as integers; a missing or
-    /// non-integer value keeps the default. `maxEpics`/`maxIssues` additionally require a
-    /// positive value (a board must be able to hold at least one), while `maxRetries` accepts
-    /// zero (no retry).
-    pub fn resolve(params: &Value) -> Self {
+    /// Resolve the caps from a project-management-capability `params` object.
+    ///
+    /// An absent key takes the default beside it. A present one is honoured exactly as written, and
+    /// one gg cannot honour is [reported](crate::validate) and refuses the launch rather than
+    /// reverting: a board silently bounded by a number nobody wrote refuses the model's calls at a
+    /// ceiling the configuration does not name, and the run reads as one whose model stopped filing.
+    ///
+    /// `maxEpics` and `maxIssues` must be **positive** — a board that may hold no epic offers
+    /// `create_epic` and refuses every use of it — while `maxRetries` accepts `0`, which means what
+    /// it says: one attempt, no re-dispatch.
+    pub fn resolve(params: &Value, report: &mut crate::validate::LaunchReport) -> Self {
         let default = Self::default();
         Self {
-            max_epics: positive_usize(params, PARAM_MAX_EPICS).unwrap_or(default.max_epics),
-            max_issues: positive_usize(params, PARAM_MAX_ISSUES).unwrap_or(default.max_issues),
-            max_retries: nonnegative_usize(params, PARAM_MAX_RETRIES)
-                .unwrap_or(default.max_retries),
+            max_epics: positive_usize(
+                params,
+                PARAM_MAX_EPICS,
+                "a board that may hold no epic offers a call whose every use is refused",
+                report,
+            )
+            .unwrap_or(default.max_epics),
+            max_issues: positive_usize(
+                params,
+                PARAM_MAX_ISSUES,
+                "a board that may hold no issue has nothing to dispatch",
+                report,
+            )
+            .unwrap_or(default.max_issues),
+            max_retries: crate::validate::count_param(
+                params,
+                CAPABILITY_PROJECT_MANAGEMENT,
+                PARAM_MAX_RETRIES,
+                report,
+            )
+            .map_or(default.max_retries, narrow),
         }
     }
 }
 
-/// A positive-integer param value, or `None` when absent, zero, or non-integer.
-fn positive_usize(params: &Value, key: &str) -> Option<usize> {
-    params
-        .get(key)
-        .and_then(Value::as_u64)
-        .filter(|&n| n > 0)
-        .map(|n| n as usize)
+/// A param value that must name a count of one or more, or `None` when it is absent — and a
+/// [reported defect](crate::validate) when it is present and neither.
+fn positive_usize(
+    params: &Value,
+    key: &str,
+    consequence: &str,
+    report: &mut crate::validate::LaunchReport,
+) -> Option<usize> {
+    crate::validate::positive_count_param(
+        params,
+        CAPABILITY_PROJECT_MANAGEMENT,
+        key,
+        consequence,
+        report,
+    )
+    .map(narrow)
 }
 
-/// A non-negative-integer param value (zero allowed), or `None` when absent or non-integer.
-fn nonnegative_usize(params: &Value, key: &str) -> Option<usize> {
-    params.get(key).and_then(Value::as_u64).map(|n| n as usize)
+/// A resolved count as this platform's `usize`. Saturating, and unreachable: a `usize` is 64 bits
+/// wide on every host gg runs on, and a board ceiling past that bounds nothing either way.
+fn narrow(count: u64) -> usize {
+    usize::try_from(count).unwrap_or(usize::MAX)
 }
 
 /// The **per-agent** rules on filing an issue, resolved from one agent's own configuration.
@@ -254,7 +286,7 @@ pub struct IssuePolicy {
     /// The profiles this agent may assign an issue to — its roster entries carrying the
     /// [implementer](GgSubagentScope::Implementer) scope, in declaration order. Empty means it may
     /// file no issue at all, which is why a configuration that lets an agent create issues without
-    /// giving it any implementers is [refused at launch](crate::agent).
+    /// giving it any implementers is [refused at launch](crate::validate).
     pub implementers: Vec<String>,
     /// The profiles this agent may name as an issue's reviewers — its roster entries carrying the
     /// [reviewer](GgSubagentScope::Reviewer) scope, in declaration order.
@@ -268,15 +300,11 @@ impl IssuePolicy {
     /// [reviewer](GgSubagentScope::Reviewer) halves of its [roster](GgAgentConfig::subagents), and
     /// whether its project-management configuration switches the [reviewers](PARAM_REVIEWERS)
     /// feature on.
-    pub fn resolve(agent: &GgAgentConfig) -> Self {
+    pub fn resolve(agent: &GgAgentConfig, report: &mut crate::validate::LaunchReport) -> Self {
         Self {
             implementers: names(agent, GgSubagentScope::Implementer),
             reviewers: names(agent, GgSubagentScope::Reviewer),
-            require_reviewers: agent
-                .capability(CAPABILITY_PROJECT_MANAGEMENT)
-                .and_then(|cap| cap.params.get(PARAM_REVIEWERS))
-                .and_then(Value::as_bool)
-                .unwrap_or(false),
+            require_reviewers: resolve_require_reviewers(agent, report),
         }
     }
 
@@ -303,12 +331,73 @@ impl IssuePolicy {
     }
 }
 
+/// Whether `agent` must name at least one reviewer on every issue it files — the
+/// [reviewers](PARAM_REVIEWERS) feature switch.
+///
+/// A switch is a boolean, and a value that is not one is [reported](crate::validate) rather than
+/// read as `false`. That arm is the reason this is its own function: reading `"true"` as *off* would
+/// not merely lose the feature, it would walk straight past the
+/// [launch check](crate::validate) that refuses an agent required to name
+/// reviewers with no reviewer in its roster — the one gate the misconfiguration exists to trip.
+fn resolve_require_reviewers(
+    agent: &GgAgentConfig,
+    report: &mut crate::validate::LaunchReport,
+) -> bool {
+    let Some(declared) = agent
+        .capability(CAPABILITY_PROJECT_MANAGEMENT)
+        .map(|cap| &cap.params)
+        .and_then(|params| params.get(PARAM_REVIEWERS))
+        .filter(|value| !value.is_null())
+    else {
+        return false;
+    };
+    match declared.as_bool() {
+        Some(required) => required,
+        None => {
+            report.report(
+                crate::validate::LaunchDefect::run_level(
+                    crate::validate::param_locus(CAPABILITY_PROJECT_MANAGEMENT, PARAM_REVIEWERS),
+                    crate::validate::as_written(declared),
+                    format!(
+                        "the `{CAPABILITY_PROJECT_MANAGEMENT}` capability's `{PARAM_REVIEWERS}` \
+                         switches a feature on or off, so gg reads it as `true` or `false`; \
+                         reading this as `false` would leave the agent filing issues with no \
+                         reviewer while the configuration says it may not."
+                    ),
+                )
+                .known(["true", "false"]),
+            );
+            false
+        }
+    }
+}
+
 /// Whether `agent`'s project-management configuration switches the [reviewers](PARAM_REVIEWERS)
-/// feature on — i.e. whether it must name at least one reviewer on every issue it files. Exposed
-/// for [launch validation](crate::agent), which refuses an agent that is required to name reviewers
-/// but has none in its roster.
+/// feature on. Exposed for the [launch pass](crate::validate), which refuses an agent that is
+/// required to name reviewers but has none in its roster — and which has already refused a value gg
+/// could not read as a switch, so this reads it through a discarding sink.
 pub fn requires_reviewers(agent: &GgAgentConfig) -> bool {
-    IssuePolicy::resolve(agent).require_reviewers
+    resolve_require_reviewers(
+        agent,
+        &mut crate::validate::LaunchReport::already_reported(),
+    )
+}
+
+/// The project-management capability's whole contribution to the
+/// [launch pass](crate::validate::validate_launch): the board ceilings and the reviewers switch
+/// `profile` declares, read exactly as the run will read them.
+///
+/// Read whether the capability is switched on or off, on the terms the pass reads every other
+/// capability's params: a disabled capability records the configuration the arm would have used.
+pub fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) {
+    let Some(params) = profile
+        .capability(CAPABILITY_PROJECT_MANAGEMENT)
+        .map(|cap| &cap.params)
+    else {
+        return;
+    };
+    BoardCaps::resolve(params, report);
+    resolve_require_reviewers(profile, report);
 }
 
 /// The names, in declaration order, of the profiles `agent`'s roster lists in `scope`.
@@ -1955,11 +2044,16 @@ impl Module for BoardRuntime {
         if profile.is_enabled(CAPABILITY_PROJECT_MANAGEMENT) {
             let caps = profile
                 .capability(CAPABILITY_PROJECT_MANAGEMENT)
-                .map(|cap| BoardCaps::resolve(&cap.params))
+                .map(|cap| {
+                    BoardCaps::resolve(&cap.params, &mut crate::validate::LaunchReport::Discarding)
+                })
                 .unwrap_or_default();
             self.store.lock().expect("board store lock").set_caps(caps);
-            self.ownership =
-                crate::modules::resolve_ownership(profile, CAPABILITY_PROJECT_MANAGEMENT).0;
+            self.ownership = crate::modules::resolve_ownership(
+                profile,
+                CAPABILITY_PROJECT_MANAGEMENT,
+                &mut crate::validate::LaunchReport::Discarding,
+            );
         } else {
             self.ownership = Ownership::Unowned;
         }

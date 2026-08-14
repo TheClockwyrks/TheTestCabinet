@@ -271,7 +271,7 @@ fn an_unbound_module_grants_none_of_its_capability() {
     .expect("the skill is written");
     let held = CapabilityModules::inert()
         .with(ModuleHandle::Skills(SkillsRuntime::new(Arc::new(
-            SkillLibrary::load(dir.path()),
+            SkillLibrary::loaded(dir.path()),
         ))))
         .with(ModuleHandle::Tasks(TasksRuntime::new(100)))
         .with(ModuleHandle::Board(BoardRuntime::new(BoardCaps::default())));

@@ -163,6 +163,8 @@ fn serviceable(
             // Writable, not merely enabled: a read-only memory holder cannot satisfy a memory
             // compaction, so its run condenses in prose and gets the call that goes with that.
             profile.is_enabled(CAPABILITY_MEMORIES) && modules.memories().is_writable(),
+            // Mid-run: the launch pass already read this profile's `implementation`.
+            &mut crate::validate::LaunchReport::Discarding,
         )
         .offers_compact_tool(profile.is_enabled(CAPABILITY_RESPONSES_AS_CODE)),
 

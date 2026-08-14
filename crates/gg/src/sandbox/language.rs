@@ -909,20 +909,13 @@ pub enum PrepareFailure {
     Toolchain(String),
 }
 
-/// A resolved [program language](GgProgramLanguage) together with the `language` value gg could not
-/// read, if any — the same shape [`ResolvedHealing`](crate::healing::ResolvedHealing) takes, and
-/// reported the same way at launch.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResolvedProgramLanguage {
-    /// The language this agent's programs are written in.
-    pub language: GgProgramLanguage,
-    /// The bare `language` key, when its value named no language gg has. Reported at `warn` when the
-    /// run starts.
-    pub unknown_params: Vec<String>,
-}
+/// The [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability param naming the language an
+/// agent writes its programs in. Absent takes [`GgProgramLanguage::default`].
+pub const PARAM_LANGUAGE: &str = "language";
 
 /// Resolve the [program language](GgProgramLanguage) from the
-/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `language` param.
+/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's [`language`](PARAM_LANGUAGE)
+/// param.
 ///
 /// | `params.language` | Language |
 /// | --- | --- |
@@ -937,43 +930,72 @@ pub struct ResolvedProgramLanguage {
 /// | `"swift"` | [`Swift`](GgProgramLanguage::Swift) — compiled by `swiftc`, byte for byte, into the wasm component the turn is evaluated by |
 /// | `"cpp"` | [`Cpp`](GgProgramLanguage::Cpp) — compiled by `clang++`, byte for byte, into the wasm component the turn is evaluated by |
 /// | `"csharp"` | [`CSharp`](GgProgramLanguage::CSharp) — compiled by `csc`, byte for byte, into the IL assembly a committed Mono interpreter loads |
-/// | anything else | [`TypeScript`](GgProgramLanguage::TypeScript), and the value is reported |
+/// | anything else | **refused** — the launch does not start |
 ///
-/// Read literally and reported on mismatch for the same reason
-/// [`resolve_assistant_messages`](crate::healing::resolve_assistant_messages) is: the value is
-/// contract-visible (the console's capability catalogue writes it, persisted run data records it),
-/// so a typo must change *nothing* silently rather than quietly run an arm the study did not ask
-/// for. Reading `"pythn"` as Python would be bad; reading it as TypeScript **without saying so**
-/// would be worse, because the run would then be recorded under a language nobody chose.
+/// Read literally — with only surrounding whitespace forgiven — and [refused](crate::validate) on
+/// mismatch, for a sharper version of the reason
+/// [`resolve_assistant_messages`](crate::healing::resolve_assistant_messages) is: reading `"pythn"`
+/// as Python would be bad, but reading it as TypeScript would record the run under a language nobody
+/// chose — and the language is the very axis a cross-language study slices on. The default comes
+/// back anyway to keep the resolver total for the per-turn calls that re-read it.
+///
+/// The vocabulary a refusal offers back is read off the [registry](all_languages) rather than off
+/// the enum, so an operator is told the languages gg can actually drive rather than the ones it
+/// merely knows the names of.
 ///
 /// Per **agent**, like [`resolve_sandbox_limits`](super::resolve_sandbox_limits) and
 /// [`resolve_healing`](crate::healing::resolve_healing): responses-as-code is a per-agent
-/// capability, so one run may drive a root in one language and a reviewer in another. A capability
-/// that is present but **disabled** configures nothing.
-pub fn resolve_program_language(profile: &GgAgentConfig) -> ResolvedProgramLanguage {
-    let mut resolved = ResolvedProgramLanguage {
-        language: GgProgramLanguage::default(),
-        unknown_params: Vec::new(),
+/// capability, so one run may drive a root in one language and a reviewer in another.
+///
+/// The value is read whether the capability is switched **on or off**, like every other param in
+/// the set — a disabled capability records the configuration the arm would have used, so the two
+/// arms of one comparison stay symmetric, and a typo skipped because a switch happened to be off is
+/// a typo that surfaces on the launch where it is flipped. It changes nothing about what the run
+/// does: an agent without responses-as-code writes no programs, so the language it resolved to is
+/// never asked for.
+pub fn resolve_program_language(
+    profile: &GgAgentConfig,
+    report: &mut crate::validate::LaunchReport,
+) -> GgProgramLanguage {
+    let Some(capability) = profile.capability(CAPABILITY_RESPONSES_AS_CODE) else {
+        return GgProgramLanguage::default();
     };
-    let Some(capability) = profile
-        .capability(CAPABILITY_RESPONSES_AS_CODE)
-        .filter(|capability| capability.enabled)
-    else {
-        return resolved;
+    let Some(value) = capability.params.get(PARAM_LANGUAGE) else {
+        return GgProgramLanguage::default();
     };
-    let Some(value) = capability.params.get("language") else {
-        return resolved;
+
+    let unreadable = |written: String, report: &mut crate::validate::LaunchReport| {
+        report.report(
+            crate::validate::LaunchDefect::run_level(
+                crate::validate::param_locus(CAPABILITY_RESPONSES_AS_CODE, PARAM_LANGUAGE),
+                written,
+                format!(
+                    "the `{PARAM_LANGUAGE}` param names the language this agent writes its \
+                     programs in; gg cannot drive that one, and writing {} instead would record \
+                     the run under a language nobody chose.",
+                    language(GgProgramLanguage::default()).display_name()
+                ),
+            )
+            .known(all_languages().map(|language| language.id().id())),
+        );
+        GgProgramLanguage::default()
     };
 
     match value {
-        serde_json::Value::Null => {}
-        serde_json::Value::String(id) => match GgProgramLanguage::from_id(id) {
-            Some(language) => resolved.language = language,
-            None => resolved.unknown_params.push("language".to_string()),
+        serde_json::Value::Null => GgProgramLanguage::default(),
+        serde_json::Value::String(id) => match GgProgramLanguage::from_id(id.trim()) {
+            Some(language) => language,
+            None => unreadable(id.clone(), report),
         },
-        _ => resolved.unknown_params.push("language".to_string()),
+        other => unreadable(other.to_string(), report),
     }
-    resolved
+}
+
+/// The language half of one profile's contribution to the
+/// [launch pass](crate::validate::validate_launch): the [program language](GgProgramLanguage) it
+/// declares, read exactly as the run will read it.
+pub fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) {
+    resolve_program_language(profile, report);
 }
 
 #[cfg(test)]

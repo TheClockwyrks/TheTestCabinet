@@ -136,9 +136,16 @@ vocabulary:
 
 The two vocabularies are scoped. A tool name is never callable from a program and
 an operation id is never callable as a tool, so a name written under the wrong
-field, or one gg does not have at all, is reported as an error when the run
-starts. The API surface is strictly the larger of the two: every tool has an
-operation behind it, and operations exist that no tool does.
+field, or one gg does not have at all, refuses the launch — and the refusal says
+which of the two lists the name does belong in, when it belongs in one. It cannot
+be resolved to the other list's spelling, and an agent narrowed by a typo reads
+exactly like one narrowed on purpose. A name that *is* in the right vocabulary but
+that this agent's capabilities do not offer is silently fine: it grants nothing,
+and one shared configuration document naming a call only some of its agents hold
+is ordinary.
+
+The API surface is strictly the larger of the two: every tool has an operation
+behind it, and operations exist that no tool does.
 
 A granted call is withheld when the run cannot service it. The capability and the
 allowlist are properties of the configuration; whether the agent holds a bound
@@ -160,10 +167,13 @@ Features sliders take back one bundle at a time, such as evicting file views,
 revising memories or creating issues. Each capability page states the sliders it
 offers.
 
-An enabled capability that grants none of its calls for the agent's type is
-warned about on its card in the editor. Such a configuration is still saved and
-still launches; the warning exists because the resulting run is indistinguishable
-from one where the model was offered the capability and left it alone.
+An enabled capability that grants none of its calls for the agent's type is named
+on its card in the editor, since the resulting run is indistinguishable from one
+where the model was offered the capability and left it alone. It is the editor's
+to point out rather than the launch's: several capabilities contribute exactly one
+call, so refusing it would make "narrow the allowlist to nothing" and "switch the
+capability off" the same edit, and a run's
+[agent surface](/gg/telemetry/agent-surface/) exists to record the difference.
 
 Studying a narrower surface is therefore a comparison of two configurations:
 duplicate the arm, take the calls out of the copy, and run both against the same
@@ -308,6 +318,38 @@ mode:
   appears here.
 - The submission goes to gg's own enqueue endpoint (`POST /gg/runs`) with the
   resolved capability set rather than the flat launch body.
+
+A launch refuses a capability set carrying any value gg cannot honour exactly as
+written, and names every one of them at once, so a single pass over the
+configuration fixes them all. A value left absent takes the documented default
+for its capability. The check runs at the top of gg's own session frame, inside
+the run container and before the first turn, so a refusal costs no model spend.
+It lives there and nowhere else on purpose: it is the one place that can call
+gg's own resolvers, and a second copy of the vocabulary anywhere else is exactly
+the drift these refusals exist to delete.
+
+Every value is read whether its capability is switched **on or off**. A disabled
+capability still records the configuration the arm would have used — which is
+what keeps the on and off arms of one comparison symmetric, and is what the
+editor writes — so a typo in it is a typo an operator hears about now rather than
+on the launch where they flip the switch.
+
+Four of those refusals are about the **shape** of a set rather than about one
+value, and each of them is a declaration gg would otherwise read past:
+
+- A capability id declared twice on one agent. A capability is looked up by id
+  and the first declaration answers, so the second one's switch, arm and params
+  would configure nothing while the run's record carried them.
+- An `implementation` on a capability that offers no implementations to choose
+  between. Only Compaction, Memories, Read File, Shell and Autoload
+  Specifications have arms; anywhere else the name selects nothing.
+- A run-level param written on an agent that is not the first. The skills
+  directory and the subagent recursion bound are read once for the whole run,
+  off the first profile. Writing the *same* value on every profile is fine and
+  is what the editor does; writing a *different* one is a document that says two
+  things.
+- Two agents naming two different merge agents, or one naming something gg
+  cannot read as a name. The board is the run's, so it has one merge agent.
 
 The [orchestrator](/orchestrators/overview/) dimension does not apply to a gg
 run (see [Overview](/gg/overview/#how-gg-fits-into-the-test-cabinet)). gg is

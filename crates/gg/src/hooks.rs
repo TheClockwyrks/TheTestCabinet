@@ -269,18 +269,36 @@ impl HookOwner<'_> {
         }
     }
 
+    /// One of [`problems`]'s sentences as a standalone line: which hook, and — for an agent's site
+    /// — whose.
+    ///
+    /// Only [`resolve`](HookRuntime::resolve) needs this. The
+    /// [launch pass](crate::validate::validate_launch) carries the same two facts structurally, in
+    /// the [defect](crate::validate::LaunchDefect)'s agent and locus, and would print them twice.
+    fn attribute(self, label: &str, message: &str) -> String {
+        match self {
+            Self::Session => format!("hook `{label}`: {message}"),
+            Self::Agent(name) => format!("agent `{name}`: hook `{label}`: {message}"),
+        }
+    }
+
     /// The error for a hook declared here whose event belongs to the other site — phrased as the
     /// move that fixes it, since "wrong place" is only useful beside the right one.
-    fn misplaced(self, label: &str, event: GgHookEvent) -> String {
+    ///
+    /// The sentence names neither the hook nor the agent: both are attribution, and both are
+    /// carried by whatever reports it — a [`LaunchDefect`](crate::validate::LaunchDefect)'s agent
+    /// and locus at launch, [`resolve`](HookRuntime::resolve)'s own prefix in the gg-defect string
+    /// it builds.
+    fn misplaced(self, event: GgHookEvent) -> String {
         match self {
             Self::Session => format!(
-                "hook `{label}`: `{}` fires for a particular agent, so it is declared on an agent \
-                 rather than on the run. Move it to the agent (or agents) it should hold.",
+                "`{}` fires for a particular agent, so it is declared on an agent rather than on \
+                 the run. Move it to the agent (or agents) it should hold.",
                 event.as_str(),
             ),
-            Self::Agent(name) => format!(
-                "agent `{name}`: hook `{label}` fires on `{}`, which happens once per run rather \
-                 than for any one agent. Move it to the configuration's own hooks.",
+            Self::Agent(_) => format!(
+                "`{}` happens once per run rather than for any one agent. Move it to the \
+                 configuration's own hooks.",
                 event.as_str(),
             ),
         }
@@ -321,46 +339,31 @@ impl HookRuntime {
 
     /// Resolve one declaration site's hooks, or report the configuration errors that stop the run.
     ///
-    /// Two things can fail here, and both fail the launch rather than being skipped, on the rule a
-    /// gate has to follow: a hook that silently does not run is worse than no hook, because an
-    /// operator believes they have one.
-    ///
-    ///  * A [built-in](GgHookAction::BuiltIn) naming a script gg does not ship.
-    ///  * A hook declared in the wrong place for its event — a session event on an agent, or an
-    ///    agent event on the run. gg could guess what was meant in either direction, and both
-    ///    guesses are wrong often enough to be worse than the error: a `pre-write` hook hoisted to
-    ///    the run would gate agents its author never named, and a `session-end` hook pushed down to
-    ///    an agent would fire once per profile, or not at all.
+    /// The errors are [`problems`]'s, one string apiece with the hook named — and getting here with
+    /// any of them means the [launch pass](crate::validate::validate_launch) accepted a document
+    /// this reads as unresolvable, which is a **gg defect**. The caller says so in those words and
+    /// ends the session: a declaration site whose hooks were dropped is a run whose gates are not
+    /// there, and a gate that silently does not run is worse than no gate because an operator
+    /// believes they have one.
     fn resolve(
         hooks: &[GgHook],
         owner: HookOwner<'_>,
         workspace_dir: &Path,
     ) -> Result<Self, Vec<String>> {
+        let problems = problems(hooks, owner);
+        if !problems.is_empty() {
+            return Err(problems
+                .into_iter()
+                .map(|(label, message)| owner.attribute(&label, &message))
+                .collect());
+        }
         let mut by_event: BTreeMap<GgHookEvent, Vec<ResolvedHook>> = BTreeMap::new();
-        let mut errors = Vec::new();
         for (index, hook) in hooks.iter().enumerate() {
-            let label = hook_label(hook, index);
-            if hook.event.is_session() != owner.wants_session() {
-                errors.push(owner.misplaced(&label, hook.event));
-                continue;
-            }
-            if let GgHookAction::BuiltIn { script } = &hook.action
-                && builtin_source(script).is_none()
-            {
-                errors.push(format!(
-                    "hook `{label}`: `{script}` is not a built-in hook script. gg ships: {}.",
-                    GG_BUILTIN_HOOKS.join(", "),
-                ));
-                continue;
-            }
             by_event.entry(hook.event).or_default().push(ResolvedHook {
-                label,
+                label: hook_label(hook, index),
                 action: hook.action.clone(),
                 event: hook.event,
             });
-        }
-        if !errors.is_empty() {
-            return Err(errors);
         }
         Ok(Self {
             by_event,
@@ -608,7 +611,14 @@ async fn run_command_hook(
     // almost always what an operator means: the reason a run offloads its command output is that
     // its commands are noisy, and a hook running `npm test` is the noisiest of them.
     let policy = match output_mode {
-        Some(mode) => OffloadPolicy::for_mode(mode, offload),
+        // A discarding sink: the launch pass read every hook's `output` through this same resolver
+        // and refused the run if any named a mode gg does not have.
+        Some(mode) => OffloadPolicy::for_mode(
+            mode,
+            offload,
+            &hook_output_locus(&hook.label),
+            &mut crate::validate::LaunchReport::Discarding,
+        ),
         None => offload.clone(),
     };
     // Derived from the agent's context rather than built fresh, so a hook that declares a `cwd`
@@ -707,6 +717,188 @@ fn hook_label(hook: &GgHook, index: usize) -> String {
         GgHookAction::BuiltIn { script } => script.trim().to_string(),
         GgHookAction::Custom { .. } => format!("{} #{}", hook.event.as_str(), index + 1),
     }
+}
+
+/// **Every hook on one declaration site gg could not arm**, each as its [label](hook_label) and the
+/// sentence that says what to do about it.
+///
+/// Two things can be wrong with a hook's declaration, and both **refuse the launch** rather than
+/// being skipped, on the rule a gate has to follow: a hook that silently does not run is worse than
+/// no hook, because an operator believes they have one. Worse still is what a *skipped site* used to
+/// mean — one typo'd built-in id disarmed every other hook declared beside it, including the
+/// blocking `pre-write`, `pre-shell` and `agent-stop` gates.
+///
+///  * A [built-in](GgHookAction::BuiltIn) naming a script gg does not ship.
+///  * A hook declared in the wrong place for its event — a session event on an agent, or an agent
+///    event on the run. gg could guess what was meant in either direction, and both guesses are
+///    wrong often enough to be worse than the refusal: a `pre-write` hook hoisted to the run would
+///    gate agents its author never named, and a `session-end` hook pushed down to an agent would
+///    fire once per profile, or not at all.
+///
+/// Every offending hook is returned, not the first: an operator fixing a document wants the whole
+/// list.
+fn problems(hooks: &[GgHook], owner: HookOwner<'_>) -> Vec<(String, String)> {
+    let mut problems = Vec::new();
+    for (index, hook) in hooks.iter().enumerate() {
+        let label = hook_label(hook, index);
+        if hook.event.is_session() != owner.wants_session() {
+            problems.push((label, owner.misplaced(hook.event)));
+            continue;
+        }
+        if let GgHookAction::BuiltIn { script } = &hook.action
+            && builtin_source(script).is_none()
+        {
+            problems.push((
+                label,
+                format!(
+                    "`{script}` is not a built-in hook script. gg ships: {}.",
+                    GG_BUILTIN_HOOKS.join(", "),
+                ),
+            ));
+        }
+    }
+    problems
+}
+
+/// Where one hook sits in the configuration document, keyed by its [label](hook_label).
+fn hook_locus(label: &str) -> String {
+    format!("hooks[{label}]")
+}
+
+/// Where one hook's [`output`](GgHookAction::Command::output) override sits in the configuration
+/// document, keyed by the hook's [label](ResolvedHook::label) rather than by its index.
+///
+/// The label is what every other diagnostic about a hook names and what an operator recognises; the
+/// index is a number they would have to count out. The launch check and the firing site build the
+/// locus the same way, from the same label, so a refusal and a mid-run assertion name one place.
+fn hook_output_locus(label: &str) -> String {
+    format!("hooks[{label}].output")
+}
+
+/// The hooks' contribution to the [launch pass](crate::validate::validate_launch), on the run's own
+/// [session hooks](GgCapabilitySet::hooks) and on every profile's
+/// [agent hooks](GgAgentConfig::hooks) alike:
+///
+///  * every declaration [`resolve`](HookRuntime::resolve) would refuse — see [`problems`];
+///  * every [`output`](GgHookAction::Command::output) override, the one hook field resolution does
+///    not judge. Resolution proves the *shape* of a declaration and leaves the command's own fields
+///    to the things that read them; `output` is read by the shell's
+///    [offload policy](OffloadPolicy::for_mode), and until this check existed it was read there with
+///    no launch diagnostic anywhere behind it.
+///
+/// The first group is what makes the hooks contract true rather than aspirational: `resolve` has
+/// always returned these as errors, and the launch is what acts on them. By the time a runtime is
+/// built the pass has already proved there are none, so `resolve`'s `Err` there is a gg defect.
+///
+/// A session hook's defect is run-level and an agent hook's is attributed to its profile, because
+/// that is where an operator has to go and edit it.
+pub fn check_launch(set: &GgCapabilitySet, report: &mut crate::validate::LaunchReport) {
+    for (label, message) in problems(&set.hooks, HookOwner::Session) {
+        report.report(crate::validate::LaunchDefect::run_level(
+            hook_locus(&label),
+            "",
+            message,
+        ));
+    }
+    check_actions(&set.hooks, report);
+    for profile in &set.agents {
+        report.for_agent(&profile.name, |report| {
+            for (label, message) in problems(&profile.hooks, HookOwner::Agent(&profile.name)) {
+                report.report(crate::validate::LaunchDefect::run_level(
+                    hook_locus(&label),
+                    "",
+                    message,
+                ));
+            }
+            check_actions(&profile.hooks, report);
+        });
+    }
+}
+
+/// Every field of one declaration site's hook **actions** that gg reads and could fail to honour:
+/// the [`output`](GgHookAction::Command::output) mode, the
+/// [`timeoutSecs`](GgHookAction::Command::timeout_secs) ceiling, and the two ways an action can name
+/// nothing to run at all.
+///
+/// [`problems`] proves a hook is *declared* in a place gg can arm it. This proves the action itself
+/// is one gg can perform, which is the other half of "a hook that silently does not run is worse
+/// than no hook": a hook armed on a blank command line runs `sh -c '   '`, exits 0 and prints
+/// nothing, which is a `pre-write` gate that always passes.
+fn check_actions(hooks: &[GgHook], report: &mut crate::validate::LaunchReport) {
+    for (index, hook) in hooks.iter().enumerate() {
+        let label = hook_label(hook, index);
+        match &hook.action {
+            GgHookAction::Command {
+                command,
+                timeout_secs,
+                output,
+                ..
+            } => {
+                if command.trim().is_empty() {
+                    report.report(crate::validate::LaunchDefect::run_level(
+                        format!("hooks[{label}].command"),
+                        command.clone(),
+                        "a command hook runs a command line, and this one is blank; it would run \
+                         `sh -c` on nothing, exit 0 and print nothing — a gate that always passes."
+                            .to_string(),
+                    ));
+                }
+                check_timeout(&label, *timeout_secs, report);
+                if let Some(mode) = output {
+                    OffloadPolicy::for_mode(
+                        mode,
+                        &OffloadPolicy::default(),
+                        &hook_output_locus(&label),
+                        report,
+                    );
+                }
+            }
+            GgHookAction::Custom { source } => {
+                if source.trim().is_empty() {
+                    report.report(crate::validate::LaunchDefect::run_level(
+                        format!("hooks[{label}].source"),
+                        "",
+                        "a custom hook is the script the configuration carries, and this one \
+                         carries none; gg would write an empty file, run it, and end the run \
+                         because it printed no decision — on the first operation the hook gates."
+                            .to_string(),
+                    ));
+                }
+            }
+            GgHookAction::BuiltIn { .. } => {}
+        }
+    }
+}
+
+/// One command hook's [`timeoutSecs`](GgHookAction::Command::timeout_secs), read exactly as
+/// [`run_command_hook`] reads it.
+///
+/// Absent takes [`DEFAULT_HOOK_TIMEOUT`], which is the documented default and generous because a
+/// hook command is typically a build. A declared one that is not a positive, finite number of
+/// seconds is refused: it is a ceiling, and a ceiling gg quietly replaced with its own is the
+/// failure the whole refusal policy exists for — an operator who wrote `0` to make a gate fail fast
+/// would instead get five minutes nobody asked for, with nothing anywhere saying so.
+fn check_timeout(
+    label: &str,
+    timeout_secs: Option<f64>,
+    report: &mut crate::validate::LaunchReport,
+) {
+    let Some(secs) = timeout_secs else {
+        return;
+    };
+    if secs.is_finite() && secs > 0.0 {
+        return;
+    }
+    report.report(crate::validate::LaunchDefect::run_level(
+        format!("hooks[{label}].timeoutSecs"),
+        format!("{secs}"),
+        format!(
+            "a hook's `timeoutSecs` is how long its command may run before it is killed, so it must \
+             be a positive number of seconds; gg's own default of {}s would otherwise stand in for \
+             a ceiling the operator wrote.",
+            DEFAULT_HOOK_TIMEOUT.as_secs(),
+        ),
+    ));
 }
 
 /// The filename a hook's script is materialized under — its event and its position among that

@@ -37,7 +37,7 @@
 use std::collections::BTreeSet;
 
 use serde_json::Value;
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_core::gg::{CAPABILITY_SKILLS, GgProgramLanguage};
 
 use super::{CodeFiles, Skill, parse_skill};
 use crate::ending::EndingRole;
@@ -226,7 +226,9 @@ pub fn builtin_skills(
     program_language: Option<GgProgramLanguage>,
     params: &Value,
 ) -> Vec<Skill> {
-    let off = switched_off(params);
+    // A discarding sink: `check_launch` read this same param, through this same resolver, before
+    // the run started and refused the launch if any toggle was one gg could not honour.
+    let off = switched_off(params, &mut crate::validate::LaunchReport::Discarding);
     let offered: BTreeSet<&str> = offered.iter().map(String::as_str).collect();
     let docs = program_language.map(|language| {
         crate::docs::DocsRuntime::new(capabilities.to_vec(), role, operations, language)
@@ -247,21 +249,80 @@ pub fn builtin_skills(
 
 /// The ids an operator switched **off** in the `builtIns` param.
 ///
-/// The same shape every toggle set uses: an object whose `false` entries are the withheld ones. A
-/// param of any other shape is ignored rather than rejected, in line with how gg reads every other
-/// capability value it cannot make sense of.
-fn switched_off(params: &Value) -> BTreeSet<String> {
-    params
-        .get(PARAM_BUILT_INS)
-        .and_then(Value::as_object)
-        .map(|toggles| {
-            toggles
-                .iter()
-                .filter(|(_, on)| on.as_bool() == Some(false))
-                .map(|(id, _)| id.clone())
-                .collect()
-        })
-        .unwrap_or_default()
+/// The same shape every toggle set uses: an object whose `false` entries are the withheld ones, so
+/// an absent or `null` param offers every family. An `id` that names no family gg ships, a value
+/// that is not a toggle, and a `builtIns` that is not an object all
+/// [refuse the launch](crate::validate): each of them switches **nothing** off while reading as an
+/// instruction that something was, and a run offered a skill its configuration says it withheld is
+/// the wrong-arm failure in its purest form — the skills experiment measured on the arm it was
+/// written to exclude.
+fn switched_off(params: &Value, report: &mut crate::validate::LaunchReport) -> BTreeSet<String> {
+    let Some(value) = params.get(PARAM_BUILT_INS) else {
+        return BTreeSet::new();
+    };
+    if value.is_null() {
+        return BTreeSet::new();
+    }
+    let locus = || crate::validate::param_locus(CAPABILITY_SKILLS, PARAM_BUILT_INS);
+    let Some(toggles) = value.as_object() else {
+        report.report(
+            crate::validate::LaunchDefect::run_level(
+                locus(),
+                crate::validate::as_written(value),
+                format!(
+                    "the `{PARAM_BUILT_INS}` param withholds built-in skills by name, as an object \
+                     of `{{ \"<id>\": false }}`; there is nothing here gg can read a set of \
+                     families from."
+                ),
+            )
+            .known(FAMILIES.iter().map(|family| family.id)),
+        );
+        return BTreeSet::new();
+    };
+    let mut off = BTreeSet::new();
+    for (id, on) in toggles {
+        let known = FAMILIES.iter().any(|family| family.id == id.trim());
+        match (known, on.as_bool()) {
+            (true, Some(false)) => {
+                off.insert(id.trim().to_string());
+            }
+            (true, Some(true)) => {}
+            (true, None) => report.report(crate::validate::LaunchDefect::run_level(
+                format!("{}.{id}", locus()),
+                crate::validate::as_written(on),
+                format!(
+                    "a built-in skill is withheld with `false` and offered with `true`; gg cannot \
+                     read this as either, and offering `{id}` anyway would hand the agent a skill \
+                     this line was written to take away."
+                ),
+            )),
+            (false, _) => report.report(
+                crate::validate::LaunchDefect::run_level(
+                    format!("{}.{id}", locus()),
+                    crate::validate::as_written(on),
+                    format!(
+                        "`{id}` names no built-in skill family, so it withholds nothing; the agent \
+                         would be offered every family while the configuration says one was held \
+                         back."
+                    ),
+                )
+                .known(FAMILIES.iter().map(|family| family.id)),
+            ),
+        }
+    }
+    off
+}
+
+/// The skills capability's built-ins half of the [launch pass](crate::validate::validate_launch):
+/// the [`builtIns`](PARAM_BUILT_INS) toggles `profile` declares, read exactly as the run will read
+/// them.
+pub fn check_launch(
+    profile: &test_cabinet_core::gg::GgAgentConfig,
+    report: &mut crate::validate::LaunchReport,
+) {
+    if let Some(capability) = profile.capability(CAPABILITY_SKILLS) {
+        switched_off(&capability.params, report);
+    }
 }
 
 /// The native-tool-calling arm: a plain-text body, one section per tool the agent really has, built
@@ -388,12 +449,17 @@ fn skill(family: &Family, body: String, on_use: Option<(&'static str, String)>) 
         "---\nname: {}\ndescription: {}\n---\n{body}",
         family.id, family.description
     );
-    parse_skill(&raw, family.id).with_code(
-        CodeFiles::new(),
-        on_use
-            .map(|(extension, source)| CodeFiles::from([(extension.to_string(), source)]))
-            .unwrap_or_default(),
-    )
+    // `expect` rather than a report: the front matter above is *generated* two lines up from two
+    // constants of gg's own, so a failure here is an unreachable defect in this function rather
+    // than anything an operator wrote — the same footing the embedded prompt templates are on.
+    parse_skill(&raw)
+        .expect("a built-in skill's generated front matter parses")
+        .with_code(
+            CodeFiles::new(),
+            on_use
+                .map(|(extension, source)| CodeFiles::from([(extension.to_string(), source)]))
+                .unwrap_or_default(),
+        )
 }
 
 #[cfg(test)]

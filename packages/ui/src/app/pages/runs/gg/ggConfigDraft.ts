@@ -1765,11 +1765,10 @@ export function runLimitsError(limits: GgRunLimitsDraft): string | null {
       return `${spec.label} cannot be negative.`;
     }
   }
-  const rate = limits.maxErrorRate.trim();
-  const window = limits.errorRateWindow.trim();
-  if (Boolean(rate) !== Boolean(window)) {
-    return "An error-rate ceiling needs both a rate and a window — either one alone is no ceiling at all.";
-  }
+  // A half-declared error-rate ceiling is well-formed: gg arms the half that is written
+  // exactly as written and takes its own default for the other, the same way it does when
+  // neither is written. Refusing to save one here would make the editor stricter than the
+  // contract and hide a ceiling the API accepts.
   return null;
 }
 
@@ -1783,7 +1782,6 @@ export function runLimitsError(limits: GgRunLimitsDraft): string | null {
 export function runLimitsWarning(limits: GgRunLimitsDraft): string | null {
   const window = Number(limits.errorRateWindow.trim());
   if (!limits.errorRateWindow.trim() || !Number.isFinite(window)) return null;
-  if (!limits.maxErrorRate.trim()) return null;
   if (!limits.maxTurns.trim()) return null;
   const turns = Number(limits.maxTurns.trim());
   if (!Number.isFinite(turns) || window < turns) return null;

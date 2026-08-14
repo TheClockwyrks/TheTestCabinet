@@ -27,16 +27,19 @@
 //!
 //! 1. scope the emitter to the [root agent](ROOT_AGENT_ID) and emit
 //!    [`SessionStarted`](GgTelemetryKind::SessionStarted);
-//! 2. run the launch checks — [the agent profiles are well-formed and there is a root to
-//!    run](validate_agents), [every bound model declares a context window](validate_model_windows),
+//! 2. run the launch checks — [every configured value can be honoured exactly as
+//!    written](crate::validate::validate_launch), [every bound model declares a context
+//!    window](validate_model_windows),
 //!    the root's [profile binding](profile_binding) resolves to a concrete [`ModelClient`]
 //!    (mock or OpenRouter), and the [orchestrator](Orchestrator::build) can be built at all.
 //!    Failing any of them is a **launch failure**: it emits a
-//!    [`Log`](GgTelemetryKind::Log)`(error)` and
+//!    [`Log`](GgTelemetryKind::Log)`(error)` per reason and
 //!    [`SessionEnded`](GgTelemetryKind::SessionEnded)`{status:"error"}` and returns
 //!    [`SessionOutcome::HarnessError`] so the process exits non-zero. The first three are things a
 //!    configuration can get wrong; the fourth is a gg defect, reported in those words because only
-//!    we can fix one. A *subagent's* client is resolved at spawn time instead, where the failure
+//!    we can fix one. The first names **every** offending value rather than the first, because an
+//!    operator fixing a sweep's one shared configuration document wants every typo in one pass. A
+//!    *subagent's* client is resolved at spawn time instead, where the failure
 //!    belongs to that agent and not the run;
 //! 3. emit [`AgentSpawned`](GgTelemetryKind::AgentSpawned) for the root, assemble the offered
 //!    [toolset](ToolRegistry) from the root profile's enabled capabilities, and drive the root
@@ -135,13 +138,12 @@ use serde_json::{Value, json};
 use test_cabinet_core::gg::{
     ALL_HOOK_EVENTS, AUTOLOAD_LOCKED_IMPL, CAPABILITY_AGENT_MANAGED_CONTEXT,
     CAPABILITY_AUTOLOAD_SPECS, CAPABILITY_COMPACTION, CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
-    CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_RESPONSES_AS_CODE,
-    CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS, GgAgentApi, GgAgentApiFunction,
-    GgAgentConfig, GgAgentStatus, GgAgentTransitionKind, GgCapabilitySet, GgContextAction,
-    GgContextSource, GgHealingStrategy, GgHookAgentKind, GgHookEvent, GgIssueReviewPhase,
-    GgLimitBreach, GgLimitKind, GgProgramLanguage, GgResponseHealing, GgReviewer, GgRunLimits,
-    GgSlotBinding, GgSubagentScope, GgTelemetryKind, GgToolFailure,
-    PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_MODES,
+    CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SKILLS,
+    CAPABILITY_SUBAGENTS, GgAgentApi, GgAgentApiFunction, GgAgentConfig, GgAgentStatus,
+    GgAgentTransitionKind, GgCapabilitySet, GgContextAction, GgContextSource, GgHealingStrategy,
+    GgHookAgentKind, GgHookEvent, GgIssueReviewPhase, GgLimitBreach, GgLimitKind,
+    GgProgramLanguage, GgResponseHealing, GgReviewer, GgRunLimits, GgSlotBinding, GgSubagentScope,
+    GgTelemetryKind, GgToolFailure, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
 };
 use test_cabinet_core::gg_session_journal::GG_SESSION_JOURNAL_PATH;
 use test_cabinet_core::gg_session_record::{
@@ -152,7 +154,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
 use crate::archive::ArchiveStore;
-use crate::board::{self, BoardCaps, BoardRuntime, IssuePolicy, IssueStatus};
+use crate::board::{BoardCaps, BoardRuntime, IssuePolicy, IssueStatus};
 use crate::cancel::CancelWatch;
 use crate::capture::{GgRecorder, RecordedSeed, RecordingClient};
 use crate::client::{AgentIdentity, ClientFactory, DefaultClientFactory, provider_for};
@@ -202,11 +204,11 @@ use crate::tasks::TasksRuntime;
 use crate::telemetry::Emitter;
 use crate::tools::VisionContext;
 use crate::tools::{
-    ARCHIVE_THREAD_TOOL, AgentFacts, AgentStatusData, COMPACT_TOOL, CREATE_ISSUE_TOOL,
-    EVICT_FILE_VIEW_TOOL, EXEC_TOOL, FORK_TOOL, OffloadPolicy, READ_FILE_TOOL, READ_SKILL_TOOL,
-    ReadFileTool, ReadPolicy, ReclaimData, SEND_MESSAGE_TOOL, SHELL_TOOL, SPAWN_SUBAGENT_TOOL,
-    ShellRunner, SubagentHandleData, SubagentResultData, TRANSITION_STATE_TOOL, Tool, ToolContext,
-    ToolData, ToolFailure, ToolOutcome, ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL,
+    ARCHIVE_THREAD_TOOL, AgentFacts, AgentStatusData, COMPACT_TOOL, EVICT_FILE_VIEW_TOOL,
+    EXEC_TOOL, FORK_TOOL, OffloadPolicy, READ_FILE_TOOL, READ_SKILL_TOOL, ReadFileTool, ReadPolicy,
+    ReclaimData, SEND_MESSAGE_TOOL, SHELL_TOOL, SPAWN_SUBAGENT_TOOL, ShellRunner,
+    SubagentHandleData, SubagentResultData, TRANSITION_STATE_TOOL, Tool, ToolContext, ToolData,
+    ToolFailure, ToolOutcome, ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL,
     is_board_tool, is_memory_tool, is_subagent_tool, is_task_tool, parse_archive_ranges,
     parse_compact_request, parse_evict_path, read_policy, real_shell, saturating_u32,
     saturating_u64, shell_offload, ungranted_tools,
@@ -220,12 +222,12 @@ use crate::vision::VisionSupport;
 /// — so a larger value is clamped to it, and a value of `0` or a non-integer is ignored.
 /// Narrowing it is how a study exercises compaction against a 1M-token model without paying
 /// for a million tokens of input. Read only when the capability is enabled.
-const PARAM_WINDOW_LIMIT: &str = "windowLimit";
+pub(crate) const PARAM_WINDOW_LIMIT: &str = "windowLimit";
 
 /// Skills capability param naming the directory authored skills are loaded from. A
 /// relative value is resolved against the run workspace; an absolute one is used as
 /// given. When absent, [`DEFAULT_SKILLS_DIR`] under the workspace is used.
-const PARAM_SKILLS_DIR: &str = "dir";
+pub(crate) const PARAM_SKILLS_DIR: &str = "dir";
 
 /// The [slot](GgSlotBinding) name a [handoff compaction](crate::compaction::CompactionStrategy::is_handoff)'s second
 /// client is bound under, so the tokens it spends are attributed to the compaction model rather
@@ -312,7 +314,8 @@ const STATUS_AUTH_ERROR: &str = "auth_error";
 const STATUS_HOOK_ERROR: &str = "hook_error";
 
 /// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for a session **gg itself** broke in,
-/// in either of the two ways it can: gg reached a state [launch validation](validate_agents) proves
+/// in either of the two ways it can: gg reached a state [launch
+/// validation](crate::validate::validate_launch) proves
 /// is unreachable — an agent whose [profile](GgAgentConfig) this run does not declare — or gg's own
 /// machinery failed under a turn, which is a [fatal sandbox fault](FatalFault): a guest artifact
 /// that will not compile or instantiate, the wasm host itself falling over, or a program gg read,
@@ -624,7 +627,8 @@ fn profile_binding(set: &GgCapabilitySet, profile: &str) -> Result<GgSlotBinding
 enum DispatchFault {
     /// gg's own: an issue with no assignee, or an assignee profile this run does not declare or
     /// binds no model to. Every one of them is refused by the board's own tools and by
-    /// [launch validation](validate_agents), so reaching one means gg read its configuration two
+    /// [launch validation](crate::validate::validate_launch), so reaching one means gg read its
+    /// configuration two
     /// different ways.
     Gg,
     /// The run's credential was refused for the assignee's model. Nothing is broken: a key is
@@ -677,7 +681,8 @@ impl UnresolvedProfile {
 ///   in a healthy build: a run whose root binds a mock model launches with no credential at all,
 ///   and the first agent to bind a live one then finds there is none;
 /// * anything else ([`STATUS_INTERNAL_ERROR`]) — a profile the set does not declare, a machine with
-///   no readable entry state, a profile with no model bound. [`validate_agents`] rejects every one
+///   no readable entry state, a profile with no model bound.
+///   [`validate_launch`](crate::validate::validate_launch) rejects every one
 ///   of those before a session starts, so meeting one here means gg's own validation was wrong
 ///   about the configuration it accepted.
 ///
@@ -710,150 +715,11 @@ fn resolve_agent_client(
         })
 }
 
-/// Validate a run's [agent profiles](GgAgentConfig) before launch: the set must declare at least
-/// one profile (its [root](GgCapabilitySet::root) — the run has no model otherwise), every profile
-/// must have a non-empty name and — unless it is an [FSM shell](crate::fsm::is_shell), which runs
-/// no model — a resolved one, no name may be declared twice, every
-/// [roster reference](GgAgentConfig::subagents) must name a declared profile, no profile may
-/// be able to **file [issues](crate::board)** without anyone to assign them to, and a run with
-/// [project management](CAPABILITY_PROJECT_MANAGEMENT) on must name a shell-capable
-/// [merge agent](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT). Returns a
-/// human-readable error on the first problem, so a misconfiguration fails loudly at launch rather
-/// than surfacing mid-run. Pure, so it is unit tested directly.
-fn validate_agents(set: &GgCapabilitySet) -> Result<(), String> {
-    // The root is the *first* profile, whatever it is called — an operator may rename it or
-    // promote another profile to it — so what has to be true here is that there is one at all.
-    // Checked up front because everything below (and `GgCapabilitySet::root`) assumes it.
-    if set.agents.is_empty() {
-        return Err("no agent profiles are declared; there is no model to run".to_string());
-    }
-    let mut seen: Vec<&str> = Vec::with_capacity(set.agents.len());
-    for agent in &set.agents {
-        let name = agent.name.trim();
-        if name.is_empty() {
-            return Err("an agent profile has an empty name".to_string());
-        }
-        // An FSM shell is exempt from both model checks below, and from nothing else: a machine
-        // takes no turns, so a model on it would be a value nothing reads rather than the thing
-        // that makes it runnable. Its states' profiles are checked as the workers they are.
-        if !crate::fsm::is_shell(agent) {
-            if agent
-                .model_slot
-                .as_deref()
-                .is_some_and(|_| !agent.is_resolved())
-            {
-                // A configuration is launched, not run: whoever launched it was supposed to bind a
-                // model to every deferred profile. One left over means the launch skipped it.
-                return Err(format!(
-                    "the `{name}` agent still defers to a model slot; launching must bind a model \
-                     to it"
-                ));
-            }
-            if !agent.is_resolved() {
-                return Err(format!("the `{name}` agent is bound to an empty model id"));
-            }
-        }
-        if seen.contains(&name) {
-            return Err(format!("the `{name}` agent is declared more than once"));
-        }
-        seen.push(name);
-    }
-    for agent in &set.agents {
-        for reference in &agent.subagents {
-            if set.agent(&reference.agent).is_none() {
-                return Err(format!(
-                    "the `{}` agent lists `{}` in its roster, which is not a declared agent profile",
-                    agent.name, reference.agent
-                ));
-            }
-        }
-        // An issue names the profile gg dispatches it under, drawn from the filer's own
-        // *implementers* — so an agent that may file issues but lists none could never write a
-        // valid one. Refuse the configuration rather than offer a tool whose every call would be
-        // rejected; withholding `create_issue` (read-only board access) is the intended way to
-        // have one. The same argument applies to an agent that must name reviewers but has none.
-        if agent.is_enabled(CAPABILITY_PROJECT_MANAGEMENT)
-            && grants_call(agent, CREATE_ISSUE_TOOL, sandbox::BOARD_CREATE_ISSUE)
-        {
-            if agent
-                .agents_in_scope(GgSubagentScope::Implementer)
-                .is_empty()
-            {
-                return Err(format!(
-                    "the `{}` agent may create issues but its roster lists no `implementer` to \
-                     assign them to; give one of its agents the implementer scope, or switch its \
-                     issue-creation feature off for read-only board access",
-                    agent.name
-                ));
-            }
-            if board::requires_reviewers(agent)
-                && agent.agents_in_scope(GgSubagentScope::Reviewer).is_empty()
-            {
-                return Err(format!(
-                    "the `{}` agent must name reviewers on every issue but its roster lists no \
-                     `reviewer`; give one of its agents the reviewer scope, or switch the \
-                     `reviewers` requirement off",
-                    agent.name
-                ));
-            }
-        }
-    }
-    validate_merge_agent(set)?;
-    // Every [machine](crate::fsm) the set declares, checked structurally: an FSM shell with no
-    // states, a state naming a profile nobody declared, an edge leading nowhere. These belong here
-    // rather than among the launch *warnings* for the same reason a roster reference to an
-    // undeclared profile does — a run carrying one is not a differently-configured run, it is an
-    // unrunnable one.
-    crate::fsm::validate(set)?;
-    Ok(())
-}
-
-/// Validate the [merge agent](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT) a
-/// [project-management](CAPABILITY_PROJECT_MANAGEMENT) run must name.
-///
-/// Every issue works in its own worktree, so an accepted issue's branch has to be merged back — and
-/// with issues running concurrently a conflicting merge is an ordinary event. gg therefore refuses
-/// to launch a board without somebody to hand that conflict to. The named profile must be declared,
-/// and must have the [shell](CAPABILITY_SHELL) capability: resolving a merge means running `git`,
-/// which an agent without a shell cannot do.
-fn validate_merge_agent(set: &GgCapabilitySet) -> Result<(), String> {
-    if !set
-        .agents
-        .iter()
-        .any(|agent| agent.is_enabled(CAPABILITY_PROJECT_MANAGEMENT))
-    {
-        return Ok(());
-    }
-    let named = merge_agent_name(set);
-    let Some(name) = named else {
-        return Err(format!(
-            "project management is enabled but no merge agent is named; set the \
-             `{PROJECT_MANAGEMENT_PARAM_MERGE_AGENT}` param of the \
-             `{CAPABILITY_PROJECT_MANAGEMENT}` capability to an agent that can resolve a merge \
-             conflict when an accepted issue's work does not apply cleanly"
-        ));
-    };
-    let Some(profile) = set.agent(&name) else {
-        return Err(format!(
-            "the `{PROJECT_MANAGEMENT_PARAM_MERGE_AGENT}` names `{name}`, which is not a declared \
-             agent profile"
-        ));
-    };
-    if !profile.is_enabled(CAPABILITY_SHELL) {
-        return Err(format!(
-            "the merge agent `{name}` does not have the `{CAPABILITY_SHELL}` capability; resolving \
-             a merge conflict means running `git` in the workspace, so a merge agent must have a \
-             shell"
-        ));
-    }
-    Ok(())
-}
-
 /// The [merge agent](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT) `set` names, from the first profile that
 /// configures one — the board is run-global, so its merge agent is too, and reading the first
 /// declaration keeps a set that names it on a non-Root profile working rather than silently
 /// ignored.
-fn merge_agent_name(set: &GgCapabilitySet) -> Option<String> {
+pub(crate) fn merge_agent_name(set: &GgCapabilitySet) -> Option<String> {
     set.agents
         .iter()
         .filter_map(|agent| agent.capability(CAPABILITY_PROJECT_MANAGEMENT))
@@ -973,9 +839,28 @@ pub(crate) async fn run_with_seams(
         capability_set: Box::new(set.clone()),
     });
 
-    // Launch check 1: the agent profiles must be well-formed, and there must be a root to run.
-    if let Err(err) = validate_agents(set) {
-        root_emitter.emit(log("error", err));
+    // Launch check 1: **the refusal** — every configured value this run declares must be one gg can
+    // honour exactly as written. Run here, after `SessionStarted` so a console still shows what was
+    // attempted, and before any model client is resolved so a configuration typo is never masked by
+    // a credential error. Every defect is named, not the first: an operator fixing a sweep's one
+    // shared configuration document wants every typo in one pass.
+    if let Err(defects) = crate::validate::validate_launch(invocation) {
+        for defect in &defects {
+            root_emitter.emit(log("error", defect.to_string()));
+        }
+        root_emitter.emit(session_ended("error"));
+        return SessionOutcome::HarnessError;
+    }
+    // Launch check 2: **the workspace**. Two capabilities are configured in the document and
+    // satisfied by the seeded workspace — the skills library an agent reads from, and the
+    // specifications autoload promises it in full — and neither can be proved from the document
+    // alone. The workspace is fully seeded before gg's process starts, so this still runs before the
+    // first turn and before a token is spent; it is second because a configuration typo should not
+    // be reported as a missing file.
+    if let Err(defects) = crate::validate::validate_workspace(invocation) {
+        for defect in &defects {
+            root_emitter.emit(log("error", defect.to_string()));
+        }
         root_emitter.emit(session_ended("error"));
         return SessionOutcome::HarnessError;
     }
@@ -990,7 +875,7 @@ pub(crate) async fn run_with_seams(
         }
     };
 
-    // Launch check 2: every bound model must have a context window to be measured against. gg
+    // Launch check 3: every bound model must have a context window to be measured against. gg
     // has no fallback to guess one with, by design, so this is a hard launch failure rather
     // than a run with silently mis-scaled context accounting.
     if let Err(err) = validate_model_windows(set, &invocation.model_windows) {
@@ -999,7 +884,7 @@ pub(crate) async fn run_with_seams(
         return SessionOutcome::HarnessError;
     }
 
-    // Launch check 3: the root's model client must resolve (a missing credential fails here). A
+    // Launch check 4: the root's model client must resolve (a missing credential fails here). A
     // subagent's client is resolved at spawn time instead, where a failure is reported to its
     // spawner rather than failing the whole process.
     let client = match factory
@@ -1031,6 +916,14 @@ pub(crate) async fn run_with_seams(
     // and shared spend, the worktree isolation state, and the spawned-task registry the session
     // joins on before ending.
     let mut launch_warnings = Vec::new();
+    // The sink `build`'s resolvers report an unhonourable value into. It is **discarding**, and that
+    // is the assertion rather than an oversight: launch check 1 above ran this same document through
+    // the same resolvers with a collecting sink and refused the run if anything came back, so a
+    // defect arriving here would mean gg read one configuration two different ways. `LaunchReport`
+    // debug-asserts exactly that. Resolvers migrate off `launch_warnings` and onto this parameter
+    // one at a time, each in the same change that teaches `validate_launch` to run it — which is
+    // what makes the migration incremental rather than a flag day.
+    let mut launch_report = crate::validate::LaunchReport::Discarding;
     let orch = match Orchestrator::build(
         invocation,
         emitter,
@@ -1038,22 +931,23 @@ pub(crate) async fn run_with_seams(
         shell,
         worktrees,
         &mut launch_warnings,
+        &mut launch_report,
     ) {
         Ok(orch) => Arc::new(orch),
-        // The one way building an orchestrator fails, and it is **ours**: launch check 1 above
-        // parsed the same machines and refuses a set carrying one that will not build, so getting
-        // here means gg read one configuration two different ways. Said in those words on the
-        // root's stream — nobody but us can act on it — and the session ends before its first turn
-        // rather than coming up with an empty machine table, which would run every FSM shell in
-        // the set as an ordinary agent with no states while the record still called it a machine.
+        // The only ways building an orchestrator fails are **ours**: launch check 1 above read the
+        // same machines and the same hook declarations and refuses a set carrying one that will not
+        // build, so getting here means gg read one configuration two different ways. Said in those
+        // words on the root's stream — nobody but us can act on it — and the session ends before its
+        // first turn rather than coming up with an empty machine table (every FSM shell running as
+        // an ordinary agent with no states while the record still calls it a machine) or a
+        // declaration site with no hooks (every gate an operator configured silently absent).
         Err(err) => {
             root_emitter.emit(log(
                 "error",
                 format!(
-                    "gg could not build this run's state machines ({err}), after its own launch \
-                     validation accepted them. This is a gg defect, not a problem with the \
-                     configuration: the session ends here rather than running each machine's \
-                     shell as an ordinary agent."
+                    "gg could not build this run ({err}), after its own launch validation accepted \
+                     the configuration. This is a gg defect, not a problem with the configuration: \
+                     the session ends here rather than running with part of what was declared."
                 ),
             ));
             root_emitter.emit(session_ended("error"));
@@ -1068,21 +962,23 @@ pub(crate) async fn run_with_seams(
     // Anything it could not carry joins the launch warnings printed immediately below.
     record_session_seed(&orch, invocation);
 
-    // Every declaration gg could not act on, named on the root's stream before the first turn:
-    // a ceiling that cannot bound anything, an unreachable state in a machine, a healing key that
-    // names nothing. None of them ever fails a launch — a sweep's one shared
-    // configuration document must stay interpretable by every arm — so being loud here is the whole
-    // of the defence against a typo silently running the wrong experiment.
+    // The residual **advisory** channel, and it is now only that: what is said out loud about a
+    // configuration gg is honouring exactly as written. A launch this far along has already been
+    // proved honourable — anything gg could not act on refused it at launch check 1, before a token
+    // was spent — so nothing on this channel is a fallback being announced, and nothing on it is a
+    // value gg substituted something else for.
+    //
+    // What is left, and the whole of what may ever be added: a ceiling armed exactly as declared
+    // whose window can only close on the last turn, a detector armed exactly as declared and
+    // provably inert, and a capture journal that could not be opened (a debugging artifact, which
+    // must not fail a paid run). An allowlist entry naming a real gg call this agent's capabilities
+    // do not offer is the fourth, and it is *silent* rather than said — it grants nothing, it is not
+    // a typo, and it is how one shared document describes several configurations.
+    //
+    // A new occupant of this channel needs the same defence: gg does what the document says, and the
+    // line exists only because a reader would want to know. Anything else is a refusal.
     for warning in launch_warnings {
         root_emitter.emit(log("warn", warning));
-    }
-    // ...and, at `error` rather than `warn`, every allowlist entry that grants nothing. It is louder
-    // than the rest because it is the one misconfiguration whose effect is *silence*: a ceiling that
-    // cannot bound anything leaves a run that behaves like an unbounded one, but an allowlist entry
-    // gg cannot read leaves an agent that behaves exactly like an agent deliberately narrowed to
-    // less. See [`allowlist_problems`].
-    for problem in allowlist_problems(set) {
-        root_emitter.emit(log("error", problem));
     }
     // ...and the ceilings that *are* in force, including the turn ceiling's default, so "what was
     // this run bounded by?" is answerable from the operator log as well as from the summary.
@@ -1466,7 +1362,17 @@ fn captured_model_windows(orch: &Orchestrator, invocation: &GgInvocation) -> BTr
     replay_model_ids(invocation)
         .into_iter()
         .filter_map(|model_id| {
-            resolve_window_limit(&orch.caps, &orch.model_windows, &model_id)
+            // The narrowing is per agent, and this map is per model, so the window recorded for a
+            // model is the one resolved for the profile that binds it — falling back to the root
+            // for a model no profile does (a compaction handoff's), which is the only profile a
+            // reconstruction could attribute it to.
+            let profile = orch
+                .caps
+                .agents
+                .iter()
+                .find(|agent| agent.resolved_model_id() == Some(model_id.as_str()))
+                .unwrap_or_else(|| orch.caps.root());
+            resolve_window_limit(&orch.caps, profile, &orch.model_windows, &model_id)
                 .map(|window| (model_id, window))
         })
         .collect()
@@ -1892,18 +1798,28 @@ impl Orchestrator {
     /// estimator once and resolving the run-wide ceilings, deadline, healing strategies and
     /// subagent caps.
     ///
-    /// `warnings` collects every operator-facing diagnostic the resolution produced — a ceiling that
-    /// cannot bound anything, a stale `maxTurns` left on a capability, a `healing` key gg does not
-    /// know. They are returned rather than emitted because this function is handed the run's
-    /// **unscoped** emitter (the one it clones for every agent), while a launch diagnostic belongs
-    /// on the root agent's stream alongside the rest of them; the caller has that stream and emits
-    /// them there, before the first turn.
+    /// `warnings` collects every operator-facing diagnostic the resolution produced that gg is none
+    /// the less **honouring exactly as written** — an armed ceiling that can only fire on the last
+    /// turn, a detector armed and provably inert. They are returned rather than emitted because this
+    /// function is handed the run's **unscoped** emitter (the one it clones for every agent), while a
+    /// launch diagnostic belongs on the root agent's stream alongside the rest of them; the caller
+    /// has that stream and emits them there, before the first turn.
     ///
-    /// Fails only on a run whose [machines](crate::fsm) will not build — a **gg defect** rather than
-    /// a misconfiguration, because [`validate_agents`] has already refused every set that carries
-    /// one. It is an error rather than another warning because an orchestrator without them is not
-    /// a degraded version of this run but a different one, in which every machine is an ordinary
-    /// agent; the reasoning is at the machine table itself.
+    /// `report` is the [launch sink](crate::validate::LaunchReport) for a value gg **cannot** honour.
+    /// The caller hands it a [discarding](crate::validate::LaunchReport::Discarding) one, and that is
+    /// the invariant rather than a shortcut: [`validate_launch`](crate::validate::validate_launch)
+    /// has already run this document through these resolvers with a collecting sink and refused the
+    /// run if anything came back. Nothing on `warnings` is a substituted default any more — a
+    /// resolver that finds one reports it, and a run carrying one never reaches this function.
+    ///
+    /// Fails only where this run's declared structure will not build — a
+    /// [machine](crate::fsm) that does not parse, a [hook](crate::hooks) declaration site that does
+    /// not resolve. Both are **gg defects** rather than misconfigurations, because
+    /// [`validate_launch`](crate::validate::validate_launch) has already refused every set that
+    /// carries one. They are errors rather than more warnings because an orchestrator without those
+    /// pieces is not a degraded version of this run but a different one — every machine an ordinary
+    /// agent, every gate absent — and the whole point of the refusal is that such a run must not
+    /// start.
     fn build(
         invocation: &GgInvocation,
         emitter: &Emitter,
@@ -1911,23 +1827,18 @@ impl Orchestrator {
         shell: Arc<dyn ShellRunner>,
         worktrees: WorktreesSetup,
         warnings: &mut Vec<String>,
+        report: &mut crate::validate::LaunchReport,
     ) -> Result<Self, String> {
         let set = &invocation.capability_set;
         // Load the skills library once (empty when the capability is off or nothing is seeded) and
         // share its Arc across agents; each agent keeps its own read-state runtime over it.
         let skills = resolve_skills(set, &invocation.workspace_dir);
-        let limits = resolve_run_limits(set, warnings);
-        // Every profile's [module](crate::modules) configuration, checked once here rather than
-        // per agent at spawn: a mis-spelled `ownership` value must be reported before the first
-        // turn, not discovered by an agent that quietly stopped being shown its own task list.
-        for agent in &set.agents {
-            warnings.extend(crate::modules::ownership_warnings(agent));
-        }
-        warnings.extend(crate::fsm::launch_warnings(set));
+        let limits = resolve_run_limits(set, report, warnings);
         // Every machine the run declares, parsed once here and shared by every instance each of
         // them runs.
         //
-        // The only way this fails is [`validate_agents`] having accepted a set whose machines will
+        // The only way this fails is [`crate::validate::validate_launch`] having accepted a set
+        // whose machines will
         // not build, which would mean gg read one configuration two different ways — so it is
         // reported and the launch abandoned. An empty table is emphatically not a harmless
         // stand-in: every FSM shell in the set would come up as an ordinary agent with no states,
@@ -1935,172 +1846,47 @@ impl Orchestrator {
         // record still calls it a machine. That is the silent wrong-experiment failure the whole
         // of this file's validation exists to prevent.
         let machines = crate::fsm::machines(set)?;
-        // Memory scoping is checked for the same reason ownership is, and one reason more: a scope
-        // decides which agents share a notebook, so a configuration that says something gg cannot
-        // honour — an unreadable value, a scope on an agent with no memories, a child that inherits
-        // from a spawner organizing memories differently — would otherwise run as an entirely
-        // different experiment from the one it describes.
-        warnings.extend(crate::memories::launch_warnings(set));
-        // Succession is checked here rather than at the call for a reason peculiar to it: every one
-        // of its diagnostics is a *tool that will not be offered*, and an absent tool is the one
-        // misconfiguration a model can never report — it simply never makes the call, and the run
-        // reads as one where the agent chose not to.
-        warnings.extend(transitions::launch_warnings(set));
         // The run's hooks, resolved once per declaration site: the session's, and each profile's
         // own. A resolution error — a built-in id gg does not ship, or a hook declared on the wrong
-        // side of the session/agent split — is reported as a warning with *that site's* hooks
-        // dropped rather than refusing the launch: a run that cannot start says nothing about the
-        // model, and an operator reading "gg ships: trace, refuse-empty-write, …" on the first line
-        // of the log has what they need to fix it. Every other hook misconfiguration is the
-        // script's own to report, at the firing.
+        // side of the session/agent split — **refused this launch** at check 1, through the same
+        // `problems` scan this resolution runs; reaching one here means gg read one configuration
+        // two different ways, so it is reported as ours and the session ends.
         //
-        // Dropping only the offending site is what keeps the report honest: a typo in the
-        // reviewer's hooks must not quietly disarm the implementer's.
-        let resolve_hooks = |result: Result<HookRuntime, Vec<String>>,
-                             warnings: &mut Vec<String>| {
-            Arc::new(match result {
-                Ok(runtime) => runtime,
-                Err(errors) => {
-                    warnings.extend(errors);
-                    HookRuntime::default()
-                }
-            })
+        // It is emphatically not a warning with that site's hooks dropped, which is what it used to
+        // be: one typo'd built-in id disarmed every other hook declared beside it — including the
+        // blocking `pre-write`, `pre-shell` and `agent-stop` gates — and a run whose gates are
+        // silently absent looks exactly like a run whose gates never had anything to say. Every
+        // other hook misconfiguration is the script's own to report, at the firing.
+        let resolve_hooks = |result: Result<HookRuntime, Vec<String>>| {
+            result.map(Arc::new).map_err(|errors| errors.join("; "))
         };
-        let session_hooks = resolve_hooks(
-            HookRuntime::resolve_session(set, &invocation.workspace_dir),
-            warnings,
-        );
-        let agent_hooks: BTreeMap<String, Arc<HookRuntime>> = set
-            .agents
-            .iter()
-            .map(|profile| {
-                let runtime = resolve_hooks(
-                    HookRuntime::resolve_agent(profile, &invocation.workspace_dir),
-                    warnings,
-                );
-                (profile.name.clone(), runtime)
-            })
-            .collect();
+        let session_hooks =
+            resolve_hooks(HookRuntime::resolve_session(set, &invocation.workspace_dir))?;
+        let mut agent_hooks: BTreeMap<String, Arc<HookRuntime>> = BTreeMap::new();
+        for profile in &set.agents {
+            let runtime = resolve_hooks(HookRuntime::resolve_agent(
+                profile,
+                &invocation.workspace_dir,
+            ))?;
+            agent_hooks.insert(profile.name.clone(), runtime);
+        }
         let deadline = limits.max_runtime.map(|budget| Instant::now() + budget);
         // The Root agent's code setup: responses-as-code is per-agent, but the Root's is what the
-        // run-level launch log and the sandbox warm-up decision key on.
-        let healing = healing::resolve_healing(set.root());
-        // An unreadable `healing` key is reported rather than guessed at: `{"stripFences": false}`
-        // would otherwise run the default arm under the disabled arm's name, and every number an
-        // narrowing produced would be a measurement of the wrong thing.
-        for unknown in &healing.unknown_params {
-            warnings.push(format!(
-                "the `{CAPABILITY_RESPONSES_AS_CODE}` capability declares `{unknown}`, which gg \
-                 could not read as a healing setting; it changes nothing. The strategies are {}, \
-                 each set to `true` or `false`.",
-                HealingStrategy::ALL.map(HealingStrategy::id).join(", ")
-            ));
-        }
-        // A `shell` output mode gg does not recognize is read as the default rather than as an
-        // instruction, which would run the default arm under another arm's name — the same silent
-        // wrong-experiment failure a mistyped healing key is, so it is reported on the same terms.
-        for agent in &set.agents {
-            let Some(mode) = agent
-                .capability(CAPABILITY_SHELL)
-                .filter(|capability| capability.enabled)
-                .and_then(|capability| capability.implementation.as_deref())
-                .map(str::trim)
-                .filter(|mode| !mode.is_empty() && !SHELL_OUTPUT_MODES.contains(mode))
-            else {
-                continue;
-            };
-            warnings.push(format!(
-                "agent `{}`: the `{CAPABILITY_SHELL}` capability names the output mode `{mode}`, \
-                 which gg does not recognize; it runs the default `{SHELL_OUTPUT_ADAPTIVE}` mode \
-                 instead. The modes are {}.",
-                agent.name,
-                SHELL_OUTPUT_MODES.join(", "),
-            ));
-        }
-        // A compaction still deferring its handoff model to a model slot reached gg with that slot
-        // unfilled — the launcher was supposed to bind it. gg cannot resolve it here (the slot table
-        // lives on the launch form, not in the container), so the run condenses on the agent's own
-        // model; that is a different experiment from the one the configuration describes, so it is
-        // said out loud rather than left to be inferred from the cost split.
-        for agent in &set.agents {
-            let Some(slot) = compaction::unbound_handoff_slot(agent) else {
-                continue;
-            };
-            warnings.push(format!(
-                "agent `{}`: the `{CAPABILITY_COMPACTION}` capability defers its handoff model to \
-                 the `{slot}` model slot, which this run never bound; compaction runs on the \
-                 agent's own model. Bind the slot at launch, or name a model outright.",
-                agent.name,
-            ));
-        }
-        // A `language` gg cannot read is reported on exactly the terms the healing keys are, and
-        // for a sharper version of the same reason: reading `pythn` as Python would be bad, but
-        // reading it as TypeScript *without saying so* would record the run under a language nobody
-        // chose — and the language is the very axis a cross-language study slices on. The set it
-        // names is read off the registry rather than off the enum, so an operator is told the
-        // languages gg can actually drive rather than the ones it merely knows the names of.
-        let registered = sandbox::all_languages()
-            .map(|language| language.id().id())
-            .collect::<Vec<_>>()
-            .join(", ");
-        for agent in &set.agents {
-            for unknown in &sandbox::resolve_program_language(agent).unknown_params {
-                warnings.push(format!(
-                    "agent `{}`: the `{CAPABILITY_RESPONSES_AS_CODE}` capability declares \
-                     `{unknown}`, which gg could not read as a program language; it changes \
-                     nothing and the agent writes {}. The languages are {registered}.",
-                    agent.name,
-                    sandbox::language(GgProgramLanguage::default()).display_name(),
-                ));
-            }
-        }
-        // The `docViewTypes` mode, per agent because it is a per-agent knob: two agents in one run
-        // may open documentation differently, so a typo has to be reported against the agent that
-        // carries it rather than against the run.
-        for agent in &set.agents {
-            for unknown in &crate::docs::resolve_doc_view_types(agent).unknown_params {
-                warnings.push(format!(
-                    "agent `{}`: the `{CAPABILITY_RESPONSES_AS_CODE}` capability declares \
-                     `{unknown}`, which gg could not read as a documentation-view type mode; it \
-                     changes nothing and the agent opens `{}`. Set it to `\"off\"`, `\"return\"` or \
-                     `\"return-and-parameters\"`.",
-                    agent.name,
-                    DocViewTypes::default().id(),
-                ));
-            }
-        }
-        // The `assistantMessages` mode is read literally and reported on mismatch for the same reason
-        // healing keys are: a typo would otherwise pick a mode the study did not ask for, silently.
-        for unknown in &healing::resolve_assistant_messages(set.root()).unknown_params {
-            warnings.push(format!(
-                "the `{CAPABILITY_RESPONSES_AS_CODE}` capability declares `{unknown}`, which gg \
-                 could not read as an assistant-message mode; it changes nothing. Set it to \
-                 `\"none\"` (record the reply as sent) or `\"response-healing\"` (record the healed \
-                 program)."
-            ));
-        }
-        // A `keep` gg could not read is reported on exactly the terms the two above are: a retention
-        // silently reverting to the default is a run holding a different number of programs than the
-        // configuration says, which is unrecoverable from the data afterwards.
-        for agent in &set.agents {
-            for unknown in &crate::programs::resolve_program_library(agent).unknown_params {
-                warnings.push(format!(
-                    "agent `{}`: the `{CAPABILITY_PROGRAM_LIBRARY}` capability declares \
-                     `{unknown}`, which gg could not read as a retention; it keeps the default {} \
-                     most recent programs. Set it to a whole number, or to `0` to keep every \
-                     program of the session.",
-                    agent.name,
-                    crate::programs::DEFAULT_KEEP,
-                ));
-            }
-        }
+        // run-level launch log and the sandbox warm-up decision key on. Every value read here was
+        // read by `validate_launch` first, through these same resolvers, and refused the run if it
+        // was one gg could not honour — so the sink is discarding and nothing is reformatted here.
+        let healing = healing::resolve_healing(set.root(), report);
         // Loop detection is per agent, so every profile's declaration is read here — not just the
-        // root's — and each one's warnings are stamped with the agent they belong to. A knob that
-        // cannot bound anything reverts to gg's default, which would otherwise leave a study
-        // measuring the default detector under the name of the one it thought it configured.
+        // root's — and each one's advisory warning is stamped with the agent it belongs to. What
+        // survives as a warning is only the one cross-knob relationship gg arms exactly as declared
+        // and which is provably inert; a knob gg cannot arm at all refused this run at launch.
+        //
+        // Only the **root's** resolved detector is kept, and only for the launch line that names it:
+        // every agent's client resolves its own from the binding built for its profile, so a
+        // subagent is watched on its own terms rather than the root's.
         let mut loop_guard = None;
         for (index, agent) in set.agents.iter().enumerate() {
-            let resolved = crate::loopguard::resolve_loop_guard(&agent.loop_detection);
+            let resolved = crate::loopguard::resolve_loop_guard(&agent.loop_detection, report);
             warnings.extend(
                 resolved
                     .warnings
@@ -2113,6 +1899,17 @@ impl Orchestrator {
                 loop_guard = resolved.config;
             }
         }
+        // Nothing above may have found a value gg cannot honour: `validate_launch` read this same
+        // document through these same resolvers before the first turn and refused the run if
+        // anything came back, so a defect reaching a discarding sink here is gg reading one
+        // configuration two different ways. Asserted rather than handled — by the time an
+        // orchestrator is being built the launch is already past the point where a refusal is the
+        // right answer, and the assertion is what stops a resolver being migrated onto `report`
+        // without `validate_launch` learning to run it.
+        debug_assert!(
+            report.is_empty(),
+            "the orchestrator's resolvers reported a launch defect the launch pass had accepted"
+        );
         // The run's module id mint, built before anything it identifies: the board below is the
         // run's single board module, and it takes its id from here.
         let module_ids: ModuleIds = Arc::new(ModuleIdMint::default());
@@ -2131,11 +1928,11 @@ impl Orchestrator {
                 .flatten(),
             code: CodeSetup {
                 enabled: set.root().is_enabled(CAPABILITY_RESPONSES_AS_CODE),
-                language: sandbox::resolve_program_language(set.root()).language,
-                limits: sandbox::resolve_sandbox_limits(set.root()),
-                healing: healing.config,
-                assistant_messages: healing::resolve_assistant_messages(set.root()).mode,
-                doc_view_types: crate::docs::resolve_doc_view_types(set.root()).mode,
+                language: sandbox::resolve_program_language(set.root(), report),
+                limits: sandbox::resolve_sandbox_limits(set.root(), report),
+                healing,
+                assistant_messages: healing::resolve_assistant_messages(set.root(), report),
+                doc_view_types: crate::docs::resolve_doc_view_types(set.root(), report),
             },
             issue_worktrees: Mutex::new(BTreeMap::new()),
             issue_reviews: Mutex::new(BTreeMap::new()),
@@ -2147,15 +1944,18 @@ impl Orchestrator {
             issue_waits: Mutex::new(BTreeMap::new()),
             git_lock: tokio::sync::Mutex::new(()),
             merge_lock: tokio::sync::Mutex::new(()),
-            config: SubagentConfig::resolve(set),
-            scheduler: Scheduler::new(SubagentConfig::resolve(set).max_parallel),
+            config: SubagentConfig::resolve(set, report),
+            scheduler: Scheduler::new(SubagentConfig::resolve(set, report).max_parallel),
             persistence: AgentPersistence::new(),
             accounting: Mutex::new(SlotAccounting::default()),
             base_emitter: emitter.clone(),
             factory,
             shell,
             skills_library: skills.library(),
-            skills_enabled: set.is_enabled(CAPABILITY_SKILLS),
+            // Any profile: the library is the run's, and a run whose *reviewer* alone reads
+            // skills is still a run with skills. Whether a given agent is offered them is that
+            // agent's own switch, read by `CapabilityModules::resolve`.
+            skills_enabled: set.any_agent_enabled(CAPABILITY_SKILLS),
             estimator: Arc::new(BpeTokenEstimator::new()),
             model_windows: invocation.model_windows.clone(),
             vision: Arc::new(VisionSupport::new(invocation.model_modalities.clone())),
@@ -2186,8 +1986,12 @@ impl Orchestrator {
         self.machines.get(profile)
     }
 
-    /// This agent's skills runtime over the shared library (a fresh read-state runtime per agent),
-    /// or a disabled one when the capability is off.
+    /// The run's skills runtime over the shared library (a fresh read-state runtime per agent), or
+    /// a disabled one when **no** profile in the run reads skills.
+    ///
+    /// Run-level on purpose: it holds the one library, loaded once from the one directory. Whether a
+    /// *particular* agent is offered it is that agent's own switch, applied where every other
+    /// per-profile capability is — [`CapabilityModules::resolve`](crate::modules::CapabilityModules::resolve).
     fn skills_runtime(&self) -> SkillsRuntime {
         if self.skills_enabled {
             SkillsRuntime::new_in(Arc::clone(&self.skills_library), &self.module_ids)
@@ -2196,13 +2000,16 @@ impl Orchestrator {
         }
     }
 
-    /// The context accounting for an agent running `model_id`: the shared estimator and the
-    /// model's window limit (its catalog window, narrowed by an enabled
-    /// [context-window override](CAPABILITY_CONTEXT_WINDOW_OVERRIDE)).
-    fn context_setup(&self, model_id: &str) -> ContextSetup {
+    /// The context accounting for an agent running `profile` on `model_id`: the shared estimator
+    /// and the model's window limit (its catalog window, narrowed by an enabled
+    /// [context-window override](CAPABILITY_CONTEXT_WINDOW_OVERRIDE) **on that profile**).
+    ///
+    /// Per profile, like every other capability this loop reads: a run may narrow its implementer's
+    /// window and measure its reviewer against the model's own.
+    fn context_setup(&self, profile: &GgAgentConfig, model_id: &str) -> ContextSetup {
         ContextSetup {
             estimator: Arc::clone(&self.estimator),
-            window_limit: resolve_window_limit(&self.caps, &self.model_windows, model_id),
+            window_limit: resolve_window_limit(&self.caps, profile, &self.model_windows, model_id),
         }
     }
 
@@ -2270,7 +2077,8 @@ impl Orchestrator {
     /// run declares no profile by that name.
     ///
     /// Absence is a **gg defect**, not a condition to recover from, which is why this hands the
-    /// question back rather than answering it. [Launch validation](validate_agents) rejects every
+    /// question back rather than answering it. [Launch
+    /// validation](crate::validate::validate_launch) rejects every
     /// roster reference to an undeclared profile before a single agent is built, the board
     /// constrains an issue's assignee to the filer's own
     /// [implementers](crate::board::IssuePolicy::implementers) at file time, and every caller here
@@ -2329,13 +2137,17 @@ impl Orchestrator {
     /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), and the sandbox ceilings and [healing]
     /// strategies its own responses-as-code config resolves to.
     fn code_setup(&self, profile: &GgAgentConfig) -> CodeSetup {
+        // A discarding sink: `validate_launch` read every one of these values off this same profile,
+        // through these same resolvers, before the first turn and refused the run if any could not
+        // be honoured.
+        let report = &mut crate::validate::LaunchReport::Discarding;
         CodeSetup {
             enabled: profile.is_enabled(CAPABILITY_RESPONSES_AS_CODE),
-            language: sandbox::resolve_program_language(profile).language,
-            limits: sandbox::resolve_sandbox_limits(profile),
-            healing: healing::resolve_healing(profile).config,
-            assistant_messages: healing::resolve_assistant_messages(profile).mode,
-            doc_view_types: crate::docs::resolve_doc_view_types(profile).mode,
+            language: sandbox::resolve_program_language(profile, report),
+            limits: sandbox::resolve_sandbox_limits(profile, report),
+            healing: healing::resolve_healing(profile, report),
+            assistant_messages: healing::resolve_assistant_messages(profile, report),
+            doc_view_types: crate::docs::resolve_doc_view_types(profile, report),
         }
     }
 
@@ -2450,7 +2262,8 @@ impl Orchestrator {
     /// As everywhere else a profile name is resolved, an undeclared one is a **gg defect** rather
     /// than a condition to recover from: the board holds a filer's reviewers to its own
     /// [reviewer roster](crate::board::IssuePolicy::reviewers) at file time, and [launch
-    /// validation](validate_agents) rejects a roster naming a profile the set does not declare — so
+    /// validation](crate::validate::validate_launch) rejects a roster naming a profile the set does
+    /// not declare — so
     /// no configuration and no model can produce a name this fails on.
     fn reviewer_slots(&self, issue_id: &str) -> Result<Vec<String>, String> {
         let reviewers = self.board.issue_reviewers(issue_id);
@@ -2814,7 +2627,7 @@ impl Orchestrator {
     /// has no waiters left).
     ///
     /// The second half is the board change nothing else answers. Failing an issue does not
-    /// [cascade](board::BoardStore::fail_issue), so an issue behind it stays open and stops being
+    /// [cascade](crate::board::BoardStore::fail_issue), so an issue behind it stays open and stops
     /// dispatchable for the rest of the run: it will never be done, and it will never be failed
     /// either, so a wait that resolves only on a terminal state resolves never. That is a hang on
     /// an otherwise healthy run — the awaited work simply is not going to happen — and the waiting
@@ -3656,7 +3469,7 @@ async fn drive_agent(
         // that call tools with agents that write programs. Resolved here, ahead of the modules,
         // because the window it opens is armed by it.
         let code = orch.code_setup(&profile);
-        let context_setup = orch.context_setup(&model_id);
+        let context_setup = orch.context_setup(&profile, &model_id);
         let history = HistorySetup {
             estimator: Arc::clone(&context_setup.estimator),
             window_limit: context_setup.window_limit,
@@ -3691,6 +3504,40 @@ async fn drive_agent(
                     agent_id: &agent.id,
                     ids: &orch.module_ids,
                 };
+                // The one binding question the document cannot answer: an agent configured to work
+                // in its spawner's notebook, spawned by an agent that organizes memories some other
+                // way. Every pairing a roster shows is refused at launch, so this is a spawner gg
+                // chose at run time — and gg's old answer, a private notebook nothing in the record
+                // distinguishes from the inherited one, is precisely the substitution this
+                // remediation deletes.
+                if let Some(detail) =
+                    crate::memories::inherited_strategy_conflict(&profile, &module_ctx)
+                {
+                    emitter.emit(log(
+                        "error",
+                        format!(
+                            "{detail}. This is a gg defect, not a problem with the configuration: \
+                             giving this agent a private notebook instead would leave the run's \
+                             record saying it shared its spawner's while it never read a word of \
+                             it. This agent's loop ends here, and the run with it."
+                        ),
+                    ));
+                    orch.fault.in_agent(&agent.id, &agent.slot, &detail);
+                    break (
+                        LoopEnd {
+                            status: TerminalStatus::attributed(STATUS_INTERNAL_ERROR, &orch),
+                            turns: turns_taken,
+                            tokens: TokenCounts::default(),
+                            cost: None,
+                            slot: agent.slot.clone(),
+                            final_text: Some(detail),
+                            ending: None,
+                            limit: None,
+                            handoff: None,
+                        },
+                        agent_emitter,
+                    );
+                }
                 (ModuleSet::resolve(&profile, &module_ctx), Opening::Fresh)
             }
         };
@@ -3885,7 +3732,22 @@ async fn drive_agent(
         // memory compaction, so the strategy is demoted for it rather than leaving the run to wedge
         // against a full window it has no call to clear.
         let memories_writable = modules.caps().memories().is_writable();
-        let mut compaction = CompactionSetup::resolve(&profile, memories_writable);
+        // The launch pass read this profile's compaction configuration — its strategy, its
+        // headroom, its handoff model — with a collecting sink and refused the run if any of it
+        // could not be honoured, so this re-resolution reports into a discarding one.
+        let mut compaction = CompactionSetup::resolve(
+            &profile,
+            memories_writable,
+            &mut crate::validate::LaunchReport::Discarding,
+        );
+        // What is left of the memory-compaction demotion once the launch pass has had it, and it
+        // **ends the run**. The declared half — the memories capability off, or a `read-only` scope
+        // written on the profile — refuses the launch before the first turn, so reaching here means
+        // this *instance* was handed a read-only view of somebody else's store by whoever spawned
+        // it, which no document could have shown. The demotion itself is the thing that cannot
+        // stand: `memory-compaction` asks the agent to condense by writing its working state into
+        // its memories, and an agent that cannot write them condenses in prose instead — so the run
+        // would answer a question about self-summarization while its record named the memory arm.
         if !memories_writable
             && profile
                 .capability(CAPABILITY_COMPACTION)
@@ -3894,25 +3756,53 @@ async fn drive_agent(
                 .map(str::trim)
                 == Some(test_cabinet_core::gg::COMPACTION_STRATEGY_MEMORY)
         {
+            let detail = format!(
+                "agent `{}` compacts with the `{}` strategy but was spawned holding its memories \
+                 read-only, so it has no call that could satisfy one",
+                agent.slot,
+                test_cabinet_core::gg::COMPACTION_STRATEGY_MEMORY,
+            );
             emitter.emit(log(
-                "warn",
+                "error",
                 format!(
-                    "agent `{}` compacts with the `{}` strategy but holds \
-                     its memories read-only, so it has no call that could satisfy one; it condenses \
-                     with the `{}` strategy instead.",
-                    agent.slot,
-                    test_cabinet_core::gg::COMPACTION_STRATEGY_MEMORY,
+                    "{detail}; condensing with the `{}` strategy instead would run one arm of a \
+                     compaction study under the other's name. This agent's loop ends here, and the \
+                     run with it — give the profile writable memories, or name a strategy that \
+                     condenses in prose.",
                     compaction.strategy.id(),
                 ),
             ));
+            orch.fault.in_agent(&agent.id, &agent.slot, &detail);
+            break (
+                LoopEnd {
+                    status: TerminalStatus::attributed(STATUS_INTERNAL_ERROR, &orch),
+                    turns: turns_taken,
+                    tokens: TokenCounts::default(),
+                    cost: None,
+                    slot: agent.slot.clone(),
+                    final_text: Some(detail),
+                    ending: None,
+                    limit: None,
+                    handoff: None,
+                },
+                agent_emitter,
+            );
         }
         // A handoff strategy condenses on a **second** model, resolved through the same factory
-        // every agent's own model is. A named model that will not resolve is a misconfiguration, not
-        // a reason to stop compacting — a run that stopped compacting would overflow its window a
-        // few turns later — so it is reported loudly and the agent's own client stands in. This
-        // binding keeps the standard prompt-cache lifetime whatever the agent chose: a handoff is a
-        // one-shot summary request, so an extended entry would be paid for and never read.
-        if let Some(model) = compaction::handoff_model_id(&profile) {
+        // every agent's own model is. This binding keeps the standard prompt-cache lifetime whatever
+        // the agent chose: a handoff is a one-shot summary request, so an extended entry would be
+        // paid for and never read.
+        //
+        // A named model that will not resolve **ends the run**. gg used to warn and leave
+        // `handoff_client` unset, after which `CompactionSetup::client` handed back the agent's own
+        // client: the run then condensed on the working model while its record, its capability set
+        // and its per-slot cost split all named the handoff arm — and "which model condensed the
+        // thread" is the entire question a handoff study asks. The model **id** is proved against
+        // the catalog at launch (it is one of the set's bound models), so what is left here is a
+        // credential or a provider that failed at run time, which no fallback can honour.
+        if let Some(model) =
+            compaction::handoff_model_id(&profile, &mut crate::validate::LaunchReport::Discarding)
+        {
             let binding = GgSlotBinding::new(COMPACTION_SLOT, &model);
             // Resolved under the **compaction** role of this agent's identity, not under a second
             // identity of its own: it is the same agent's second client. Without the role a
@@ -3946,13 +3836,35 @@ async fn drive_agent(
                         ));
                     }
                 }
-                Err(err) => emitter.emit(log(
-                    "warn",
-                    format!(
-                        "compaction names the handoff model `{model}`, which could not be resolved \
-                         ({err}); compacting on this agent's own model instead."
-                    ),
-                )),
+                Err(err) => {
+                    let detail = format!(
+                        "compaction hands off to the model `{model}`, which could not be resolved \
+                         ({err}); there is no second model to condense this agent's thread with"
+                    );
+                    emitter.emit(log(
+                        "error",
+                        format!(
+                            "{detail}, and compacting on this agent's own model instead would run \
+                             the self-summarization arm while every record of this run named the \
+                             handoff one. This agent's loop ends here, and the run with it."
+                        ),
+                    ));
+                    orch.fault.in_agent(&agent.id, &agent.slot, &detail);
+                    break (
+                        LoopEnd {
+                            status: TerminalStatus::attributed(STATUS_INTERNAL_ERROR, &orch),
+                            turns: turns_taken,
+                            tokens: TokenCounts::default(),
+                            cost: None,
+                            slot: agent.slot.clone(),
+                            final_text: Some(detail),
+                            ending: None,
+                            limit: None,
+                            handoff: None,
+                        },
+                        agent_emitter,
+                    );
+                }
             }
         }
         let amc = AmcSetup::resolve(
@@ -3962,7 +3874,8 @@ async fn drive_agent(
             archive_id,
             code.enabled.then_some(code.language),
         );
-        let autoload = AutoloadSetup::resolve(&profile);
+        let autoload =
+            AutoloadSetup::resolve(&profile, &mut crate::validate::LaunchReport::Discarding);
         // This agent's persistence: whether its instances are serialized and carry their open file
         // views, bound to the run-global record every instance of its profile shares.
         let persistence = PersistenceSetup::resolve(&profile, Arc::clone(&orch.persistence));
@@ -4238,7 +4151,9 @@ async fn drive_agent(
         let successor_id = orch.next_agent_id();
         let successor_history = HistorySetup {
             estimator: Arc::clone(&orch.estimator),
-            window_limit: orch.context_setup(successor_client.model_id()).window_limit,
+            window_limit: orch
+                .context_setup(&successor_profile, successor_client.model_id())
+                .window_limit,
             program_language: successor_code.enabled.then_some(successor_code.language),
         };
         let (successor_modules, report) = {
@@ -4254,8 +4169,33 @@ async fn drive_agent(
             };
             crate::modules::transfer(modules, &successor_profile, &handoff.plan, &module_ctx)
         };
-        for warning in &report.warnings {
-            emitter.emit(log("warn", warning.clone()));
+        // A transfer that could not carry what it was told to carry ends the run. The successor is
+        // the same session continuing under another profile, and one that opens with an empty
+        // module where its configuration says it continues with a live one is not a differently
+        // configured run — it is this run with a hole in it, in the one place nothing downstream
+        // could see. Reported before the transition event, so the last thing on the stream is the
+        // reason rather than the handoff that went ahead anyway.
+        if let Some(detail) = report.defects.first() {
+            for defect in &report.defects {
+                emitter.emit(log(
+                    "error",
+                    format!(
+                        "{defect}. This is a gg defect: every transfer list a machine declares is \
+                         read at launch against the module set the outgoing state's profile holds, \
+                         and one naming a module that profile does not hold refuses the run before \
+                         its first turn."
+                    ),
+                ));
+            }
+            orch.fault.in_agent(&agent.id, &agent.slot, detail);
+            break (
+                LoopEnd {
+                    status: TerminalStatus::attributed(STATUS_INTERNAL_ERROR, &orch),
+                    handoff: None,
+                    ..end
+                },
+                agent_emitter,
+            );
         }
         emitter.emit(GgTelemetryKind::AgentTransition {
             kind: handoff.reason.kind(),
@@ -4389,7 +4329,11 @@ fn program_languages(agents: &[GgAgentConfig]) -> BTreeSet<GgProgramLanguage> {
     agents
         .iter()
         .filter(|agent| agent.is_enabled(CAPABILITY_RESPONSES_AS_CODE))
-        .map(|agent| sandbox::resolve_program_language(agent).language)
+        // A discarding sink: the launch pass read every profile's language, through this same
+        // resolver, and refused the run if any named a language gg cannot drive.
+        .map(|agent| {
+            sandbox::resolve_program_language(agent, &mut crate::validate::LaunchReport::Discarding)
+        })
         .collect()
 }
 
@@ -6321,7 +6265,10 @@ impl Agent {
         // three things that must agree about whether the library exists (the object bound into a
         // program's scope, the functions a doc lookup will describe, and the section the system
         // prompt renders) all read this one value.
-        let mut programs = crate::programs::resolve_program_library(profile).library;
+        let mut programs = crate::programs::resolve_program_library(
+            profile,
+            &mut crate::validate::LaunchReport::Discarding,
+        );
         // **What this agent was granted on the API surface**, resolved once for the whole session
         // and handed to every reader of it: the documentation runtime below, the prompt's API
         // section, and the per-turn code scope the membrane builds its own grant from. Three
@@ -6334,8 +6281,8 @@ impl Agent {
         // somewhere in a machine — and those facts live in the modules and the position, not in the
         // configuration document.
         //
-        // The unresolvable half of the allowlist is dropped here; the launch reported it by name
-        // before the first turn (see `allowlist_problems`).
+        // There is no unresolvable half to worry about here: an allowlist entry gg cannot read
+        // refused this launch before the first turn (see `check_allowlists`).
         let granted_capabilities = enabled_capabilities(profile);
         let (granted_operations, _) = crate::sandbox::granted_operations(
             profile,
@@ -6359,7 +6306,8 @@ impl Agent {
         // reviewers are demanded. The native `create_issue` tool carries these already (the registry
         // built it from the same profile); a code turn rebuilds the tool per call, so it needs them
         // too.
-        let issue_policy = IssuePolicy::resolve(profile);
+        let issue_policy =
+            IssuePolicy::resolve(profile, &mut crate::validate::LaunchReport::Discarding);
         // Whether the pinned board block belongs in *this* agent's window: the run has a board and
         // this agent's own profile carries the capability to author it. The same conjunction gates
         // the prompt's board section (see `system_prompt`), so what an agent is told about the board
@@ -6409,6 +6357,14 @@ impl Agent {
                 .and_then(|project| project.assigned_issue.as_deref()),
             fences_are_stripped: code.healing.enabled(HealingStrategy::StripFences),
         });
+        // The prompt an agent reasons under **is** the experiment, so there is no second prompt to
+        // fall back to: gg used to swap its own built-in template in for an override that would not
+        // render, silently, and a run conducted under gg's prompt while its record names the
+        // operator's answers a question nobody asked.
+        let system = match system {
+            Ok(system) => system,
+            Err(detail) => return setup_broke(self, emitter, &limits, turn_base, detail),
+        };
         // This agent's own system prompt, set unconditionally — on a fresh window and on one it
         // inherited alike. It is not a thread item: it sits in a slot of its own that renders first
         // on every request (see `ContextModel::set_system`), and a window arrives from a succession
@@ -6524,16 +6480,18 @@ impl Agent {
         // test case's provided files (its specs and reference images) into the opening context as
         // though the model had already `read_file`d each — before the first turn, so the model
         // starts with the whole brief in the window. Locked pins them across compaction.
-        if autoload.enabled && !carried {
-            autoload_specifications(
+        if autoload.enabled
+            && !carried
+            && let Err(detail) = autoload_specifications(
                 context,
                 provided_files,
                 tool_ctx,
                 code.language,
                 autoload.locked,
-                emitter,
             )
-            .await;
+            .await
+        {
+            return setup_broke(self, emitter, &limits, turn_base, detail);
         }
 
         // Re-open the views this agent's profile had open when one of its instances last finished —
@@ -8640,7 +8598,7 @@ struct ContextSetup {
 
 /// The [agent-managed-context](CAPABILITY_AGENT_MANAGED_CONTEXT) param naming how many individual
 /// files the context-usage signal's file-view breakdown lists, most expensive first.
-const PARAM_TOP_FILE_VIEWS: &str = "topFileViews";
+pub(crate) const PARAM_TOP_FILE_VIEWS: &str = "topFileViews";
 
 /// How many files that breakdown names when the capability configures no
 /// [`PARAM_TOP_FILE_VIEWS`]. Enough that the reads actually worth dropping are in the list, short
@@ -8705,11 +8663,12 @@ impl AmcSetup {
             can_evict: registry.offers(EVICT_FILE_VIEW_TOOL),
             program_language: code_language,
             can_archive: registry.offers(ARCHIVE_THREAD_TOOL),
-            top_file_views: profile
-                .capability(CAPABILITY_AGENT_MANAGED_CONTEXT)
-                .and_then(|cap| cap.params.get(PARAM_TOP_FILE_VIEWS))
-                .and_then(Value::as_u64)
-                .map_or(DEFAULT_TOP_FILE_VIEWS, |n| n as usize),
+            // Discarding: `resolve_top_file_views` read this same param at launch, with a collecting
+            // sink, and refused the run if it named no count.
+            top_file_views: resolve_top_file_views(
+                profile,
+                &mut crate::validate::LaunchReport::Discarding,
+            ),
         }
     }
 
@@ -8722,6 +8681,35 @@ impl AmcSetup {
             top_file_views: self.top_file_views,
         }
     }
+}
+
+/// How many individual files the [context-usage signal](ContextModel::refresh_context_usage_signal)
+/// names, from `profile`'s [`PARAM_TOP_FILE_VIEWS`] param.
+///
+/// Absent takes [`DEFAULT_TOP_FILE_VIEWS`]. A present value gg cannot read as a count, or a `0` —
+/// which leaves the signal telling an agent its window is full of file reads and naming none of
+/// them, so the `evict_file_view` call it is being steered towards has no path to take — is
+/// [reported](crate::validate) and refuses the launch. How many reads a window holds at once differs
+/// enormously between agents, which is exactly why the number has to be the one the profile wrote.
+fn resolve_top_file_views(
+    profile: &GgAgentConfig,
+    report: &mut crate::validate::LaunchReport,
+) -> usize {
+    profile
+        .capability(CAPABILITY_AGENT_MANAGED_CONTEXT)
+        .and_then(|capability| {
+            crate::validate::positive_count_param(
+                &capability.params,
+                CAPABILITY_AGENT_MANAGED_CONTEXT,
+                PARAM_TOP_FILE_VIEWS,
+                "a signal that names no file at all leaves the agent it is steering with nothing \
+                 to evict",
+                report,
+            )
+        })
+        .map_or(DEFAULT_TOP_FILE_VIEWS, |top| {
+            usize::try_from(top).unwrap_or(usize::MAX)
+        })
 }
 
 /// Whether — and how — an agent's opening context is seeded with the test case's
@@ -8744,18 +8732,46 @@ struct AutoloadSetup {
 
 impl AutoloadSetup {
     /// Resolve the autoload behavior from `profile`: on when it enables
-    /// [`CAPABILITY_AUTOLOAD_SPECS`], locked when that capability's exact
-    /// [implementation](GgAgentConfig::capability) is [`AUTOLOAD_LOCKED_IMPL`] (the default, empty,
-    /// or any unrecognized value leaves the views ephemeral).
-    fn resolve(profile: &GgAgentConfig) -> Self {
+    /// [`CAPABILITY_AUTOLOAD_SPECS`], and **locked** when that capability's
+    /// [implementation](GgAgentConfig::capability) is [`AUTOLOAD_LOCKED_IMPL`].
+    ///
+    /// Absent or empty is the capability's documented default — ordinary ephemeral file reads that
+    /// compaction may summarize and agent-managed context may evict. Anything else is
+    /// [reported](crate::validate) and refuses the launch: `lock`, `Locked` and `pinned` are not
+    /// this arm, and the exact-match comparison that decides it would otherwise read every one of
+    /// them as *unlocked*, running the droppable arm on a launch that asked for the pinned one.
+    fn resolve(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) -> Self {
         let enabled = profile.is_enabled(CAPABILITY_AUTOLOAD_SPECS);
-        let locked = enabled
-            && profile
-                .capability(CAPABILITY_AUTOLOAD_SPECS)
-                .and_then(|cap| cap.implementation.as_deref())
-                .map(str::trim)
-                == Some(AUTOLOAD_LOCKED_IMPL);
-        Self { enabled, locked }
+        let locked = match profile
+            .capability(CAPABILITY_AUTOLOAD_SPECS)
+            .and_then(|capability| capability.implementation.as_deref())
+            .map(str::trim)
+        {
+            Some(AUTOLOAD_LOCKED_IMPL) => true,
+            None | Some("") => false,
+            Some(other) => {
+                report.report(
+                    crate::validate::LaunchDefect::run_level(
+                        crate::validate::implementation_locus(CAPABILITY_AUTOLOAD_SPECS),
+                        other,
+                        format!(
+                            "the `{CAPABILITY_AUTOLOAD_SPECS}` capability has one lever, and \
+                             `{other}` is not it; reading it as the default would leave the \
+                             seeded specifications droppable on a run that asked for them pinned."
+                        ),
+                    )
+                    .known([AUTOLOAD_LOCKED_IMPL]),
+                );
+                false
+            }
+        };
+        // The switch decides whether anything is autoloaded at all; the implementation is read
+        // either way, so a typo on a profile that has the capability switched off is still a typo
+        // an operator hears about now.
+        Self {
+            enabled,
+            locked: enabled && locked,
+        }
     }
 }
 
@@ -8863,6 +8879,51 @@ async fn fire_post_compact(
         );
     }
     Ok(())
+}
+
+/// End this agent's loop — **and the run** — because gg could not stand the agent up as its
+/// configuration describes it.
+///
+/// The counterpart to [`hook_failed`] for our own defects rather than an operator's script, and the
+/// same shape for the same reason: setting an agent up asks several questions that can only be
+/// answered once the workspace and the spawner are real (does this profile's system prompt render
+/// against this context? did the specifications the capability promises actually arrive?), and each
+/// of them has to end the same way. Not by carrying on with a substitute, which is the thing this
+/// whole remediation deletes: an agent running under gg's built-in prompt while its profile names an
+/// override, or opening on half a specification, produces a tree indistinguishable from a clean one
+/// and is scored as though it were.
+///
+/// So: the detail on this agent's stream, the run's [fault latch](crate::fault) raised so every
+/// other agent winds down at its next turn boundary, and [`STATUS_INTERNAL_ERROR`] — which keeps
+/// gg's defect out of the model's column of the run's attribution data.
+fn setup_broke(
+    agent: &Agent,
+    emitter: &Emitter,
+    limits: &LimitsSetup,
+    turns: usize,
+    detail: impl std::fmt::Display,
+) -> LoopEnd {
+    let detail = detail.to_string();
+    emitter.emit(log(
+        "error",
+        format!(
+            "{detail}. This is a gg defect, not a problem with the configuration: this agent's \
+             loop ends here — and the run with it — rather than running it under something other \
+             than what it was configured as."
+        ),
+    ));
+    limits.fault.in_agent(&agent.id, &agent.slot, &detail);
+    LoopEnd {
+        status: TerminalStatus::attributed(STATUS_INTERNAL_ERROR, limits),
+        turns,
+        tokens: TokenCounts::default(),
+        cost: None,
+        slot: agent.slot.clone(),
+        final_text: Some(detail),
+        ending: None,
+        limit: None,
+        handoff: None,
+    }
 }
 
 /// End this agent's loop because one of the run's [hooks](crate::hooks) broke.
@@ -9497,9 +9558,9 @@ fn describe_turns(turns: &[u64]) -> String {
 ///    model, [pushed in with the invocation](GgInvocation::model_windows) — **narrowed** by
 ///    the [context-window-override](CAPABILITY_CONTEXT_WINDOW_OVERRIDE) capability's
 ///    [`PARAM_WINDOW_LIMIT`], when that capability is enabled. The override may only make the
-///    window *smaller*: the model's real window is a hard limit, so a larger "override" is not
-///    a configuration gg can honor — it is clamped rather than rejected, so a study that
-///    raises a window it misjudged still runs.
+///    window *smaller*, and one that would not is [refused at launch](check_window_limits)
+///    rather than clamped: a run recording a narrowing it never applied measures the model's
+///    full window under the narrowed arm's name.
 /// 2. **The working window**, [reduced by the summary headroom](crate::compaction::working_window)
 ///    when compaction is on, reserving room for the summarization call itself.
 ///
@@ -9509,31 +9570,253 @@ fn describe_turns(turns: &[u64]) -> String {
 /// the agent's own fullness signal. A run whose window cannot be resolved must not start —
 /// [`validate_model_windows`] refuses it at launch, so this `None` is unreachable once a
 /// session is running.
+///
+/// Read off `profile`, the agent this window belongs to, rather than off the root: every capability
+/// in gg is per agent, and a run may narrow its implementer's window while measuring its reviewer
+/// against the model's own.
 pub(crate) fn resolve_window_limit(
     set: &GgCapabilitySet,
+    profile: &GgAgentConfig,
     windows: &BTreeMap<String, u64>,
     model_id: &str,
 ) -> Option<u64> {
     let model_window = windows.get(model_id).copied()?;
-    // The narrowing override is a property of the context-window-override capability's
-    // configuration and applies only when that capability is enabled — a disabled override
+    // The narrowing override applies only when the capability is enabled — a disabled override
     // records the window it *would* have narrowed to (keeping two configurations' on/off
     // symmetric) without narrowing anything. Execution ceilings moved to
     // `capabilitySet.limits`; this window narrowing stays a capability param because it is
     // genuinely a lever a study toggles, not a run-wide ceiling.
-    let configured = set
-        .root()
-        .capability(CAPABILITY_CONTEXT_WINDOW_OVERRIDE)
-        .filter(|capability| capability.enabled)
-        .and_then(|capability| {
-            capability
-                .params
-                .get(PARAM_WINDOW_LIMIT)
-                .and_then(Value::as_u64)
-        })
-        .filter(|&n| n > 0)
+    //
+    // Discarding: `check_window_limits` read this same param at launch against this same model
+    // window, and refused the run if it was not a narrowing gg could apply.
+    let configured = window_limit(profile, &mut crate::validate::LaunchReport::Discarding)
+        .filter(|_| profile.is_enabled(CAPABILITY_CONTEXT_WINDOW_OVERRIDE))
         .map_or(model_window, |limit| limit.min(model_window));
-    Some(compaction::working_window(set, configured))
+    Some(compaction::working_window(
+        set,
+        configured,
+        &mut crate::validate::LaunchReport::Discarding,
+    ))
+}
+
+/// The [narrowed window](PARAM_WINDOW_LIMIT) `profile` declares, in tokens, or `None` when it
+/// declares none.
+///
+/// A `0` is refused rather than read as "no override": an override that narrows nothing is an
+/// override the run records and never applied, which is precisely the configuration the
+/// [context-window override](CAPABILITY_CONTEXT_WINDOW_OVERRIDE) study cannot survive — its two arms
+/// would be the same arm.
+fn window_limit(
+    profile: &GgAgentConfig,
+    report: &mut crate::validate::LaunchReport,
+) -> Option<u64> {
+    let capability = profile.capability(CAPABILITY_CONTEXT_WINDOW_OVERRIDE)?;
+    crate::validate::positive_count_param(
+        &capability.params,
+        CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
+        PARAM_WINDOW_LIMIT,
+        "a window of no tokens holds not even the system prompt, and an override that narrows to \
+         nothing is one the run records and never applies",
+        report,
+    )
+}
+
+/// Every profile's [window override](PARAM_WINDOW_LIMIT), read against the window of the model
+/// bound to it — the launch check that makes the narrowing exact.
+///
+/// The override **may only make the window smaller**. A value above the model's own window used to
+/// be clamped, silently, which left a run recording a narrowing it never applied and measuring the
+/// model's full window under the narrowed arm's name; it is refused now, on the same rule an
+/// unresolvable window is refused under. A profile whose model has no window at all is left alone —
+/// [`validate_model_windows`] owns that refusal, and reporting it twice would name one defect as
+/// two.
+fn check_window_limits(
+    set: &GgCapabilitySet,
+    windows: &BTreeMap<String, u64>,
+    report: &mut crate::validate::LaunchReport,
+) {
+    for profile in &set.agents {
+        report.for_agent(&profile.name, |report| {
+            let Some(limit) = window_limit(profile, report) else {
+                return;
+            };
+            let Some(model_window) = profile
+                .resolved_model_id()
+                .and_then(|model_id| windows.get(model_id))
+                .copied()
+            else {
+                return;
+            };
+            if limit > model_window {
+                report.report(crate::validate::LaunchDefect::run_level(
+                    crate::validate::param_locus(
+                        CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
+                        PARAM_WINDOW_LIMIT,
+                    ),
+                    limit.to_string(),
+                    format!(
+                        "the `{CAPABILITY_CONTEXT_WINDOW_OVERRIDE}` capability may only make a \
+                         window smaller, and this agent's model holds {model_window} tokens. \
+                         Narrowing to the model's own window instead would record an override the \
+                         run never applied."
+                    ),
+                ));
+            }
+        });
+    }
+}
+
+/// One agent profile's contribution to the [launch pass](crate::validate::validate_launch) from this
+/// module: the per-agent levers whose resolvers live beside the loop that reads them.
+///
+/// The window override is deliberately **not** here — it needs the run's model windows, which are on
+/// the invocation rather than on the profile, so it is checked by [`check_window_limits`] once the
+/// whole invocation is in hand.
+pub(crate) fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) {
+    resolve_top_file_views(profile, report);
+    AutoloadSetup::resolve(profile, report);
+    check_allowlists(profile, report);
+}
+
+/// The run-wide half of this module's [launch pass](crate::validate::validate_launch)
+/// contribution — everything that needs more of the invocation than one profile.
+pub(crate) fn check_invocation(
+    invocation: &GgInvocation,
+    report: &mut crate::validate::LaunchReport,
+) {
+    check_window_limits(
+        &invocation.capability_set,
+        &invocation.model_windows,
+        report,
+    );
+    resolve_skills_dir(
+        &invocation.capability_set,
+        &invocation.workspace_dir,
+        report,
+    );
+}
+
+/// This module's contribution to the [workspace gate](crate::validate::validate_workspace): the
+/// run's [skills library](SkillLibrary), read off the seeded workspace as the first turn will find
+/// it.
+///
+/// Three questions, and each of them needs the filesystem rather than the document:
+///
+/// 1. A `dir` the capability **named** must be a directory gg can open. A configured path that is
+///    not there is a typo (or a workspace that never seeded what it was meant to), and loading
+///    `.gg/skills` instead would hand the agent a set of skills nobody configured. The **default**
+///    directory being absent is not this: it is absent from every workspace that authored no
+///    skills, and an empty library is exactly right there.
+/// 2. Every entry under it must load — [`SkillLibrary::load`] reports each one that does not.
+/// 3. A skill carrying **code** must carry it in a language some agent that could read the skill
+///    actually writes. A directory authored `skill.ts` on a Python run binds nothing: the skill
+///    reads as prose, the run looks like the arm without code skills, and the only trace is a
+///    warning on a turn nobody re-reads.
+pub(crate) fn check_workspace(
+    invocation: &GgInvocation,
+    report: &mut crate::validate::LaunchReport,
+) {
+    let set = &invocation.capability_set;
+    // Any profile, not just the root: the library is loaded once for the run, and a run in which
+    // only a subagent reads skills still has to have them.
+    if !set.any_agent_enabled(CAPABILITY_SKILLS) {
+        return;
+    }
+    // Already reported: the launch pass read this param and refused a `dir` that is not a path.
+    let dir = resolve_skills_dir(
+        set,
+        &invocation.workspace_dir,
+        &mut crate::validate::LaunchReport::already_reported(),
+    );
+    if configures_skills_dir(set) && !dir.is_dir() {
+        report.report(crate::validate::LaunchDefect::run_level(
+            crate::validate::param_locus(CAPABILITY_SKILLS, PARAM_SKILLS_DIR),
+            dir.display().to_string(),
+            format!(
+                "the `{CAPABILITY_SKILLS}` capability names this directory as the one the run's \
+                 skills are loaded from, and there is no such directory in the workspace; every \
+                 agent would open with a library nobody authored."
+            ),
+        ));
+        return;
+    }
+    let library = SkillLibrary::load(&dir, report);
+    check_skill_languages(set, &dir, &library, report);
+}
+
+/// Whether the [skills](CAPABILITY_SKILLS) capability **names** its directory, as opposed to taking
+/// [the default](DEFAULT_SKILLS_DIR).
+///
+/// The distinction is the whole of why a missing skills directory is sometimes a refusal and
+/// sometimes the ordinary case: a path an operator wrote is a promise about the workspace, and an
+/// unwritten one is the absence that takes a documented default.
+fn configures_skills_dir(set: &GgCapabilitySet) -> bool {
+    set.capability(CAPABILITY_SKILLS)
+        .and_then(|capability| capability.params.get(PARAM_SKILLS_DIR))
+        .is_some_and(|value| !value.is_null())
+}
+
+/// Every skill that carries code must carry it in a language some agent that could read it writes.
+///
+/// The reading agent's language is what decides which of a skill directory's `skill.<ext>` files it
+/// gets, so a directory serving several arms carries a spelling for each. One that carries only
+/// spellings nobody in the run writes is an authoring mistake with no symptom: the skill still
+/// reads, its prose still arrives, and the module the author wrote is simply never bound — which is
+/// indistinguishable from the arm that has no code skills at all.
+///
+/// Checked against the agents that could actually be handed the module: skills enabled **and**
+/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) on, since a tool-calling agent has no programs
+/// for a module to be bound into and is shown a skill's prose half by design.
+fn check_skill_languages(
+    set: &GgCapabilitySet,
+    dir: &Path,
+    library: &SkillLibrary,
+    report: &mut crate::validate::LaunchReport,
+) {
+    let readers: Vec<GgProgramLanguage> = set
+        .agents
+        .iter()
+        .filter(|agent| {
+            agent.is_enabled(CAPABILITY_SKILLS) && agent.is_enabled(CAPABILITY_RESPONSES_AS_CODE)
+        })
+        .map(|agent| {
+            // Already reported: the launch pass resolved each profile's language and refused one it
+            // could not read.
+            sandbox::resolve_program_language(
+                agent,
+                &mut crate::validate::LaunchReport::already_reported(),
+            )
+        })
+        .collect();
+    if readers.is_empty() {
+        return;
+    }
+    for skill in library.skills() {
+        if !skill.has_code()
+            || readers.iter().any(|language| {
+                let language = sandbox::language(*language);
+                skill.code(language).is_some() || skill.on_use(language).is_some()
+            })
+        {
+            continue;
+        }
+        report.report(crate::validate::LaunchDefect::run_level(
+            dir.join(skill.name()).display().to_string(),
+            skill
+                .code_spellings()
+                .iter()
+                .map(|extension| format!(".{extension}"))
+                .collect::<Vec<_>>()
+                .join(", "),
+            format!(
+                "the skill `{}` carries code spelled only this way, and no agent in this run \
+                 writes a language that reads it; the skill would load as prose and its module \
+                 would never be bound, which is indistinguishable from a run with no code skills \
+                 at all.",
+                skill.name(),
+            ),
+        ));
+    }
 }
 
 /// Check that every model `set` binds has a [context window](GgInvocation::model_windows) —
@@ -9570,30 +9853,70 @@ fn validate_model_windows(
     ))
 }
 
-/// Build the run's [`SkillsRuntime`] from the capability set and workspace: when the
-/// [`skills`](CAPABILITY_SKILLS) capability is enabled, load the library from the resolved
+/// Build the run's [`SkillsRuntime`] from the capability set and workspace: when **any** profile
+/// enables the [`skills`](CAPABILITY_SKILLS) capability, load the library from the resolved
 /// [skills directory](resolve_skills_dir); otherwise the runtime is
-/// [disabled](SkillsRuntime::disabled) (a configuration with the capability off) and offers
-/// nothing.
+/// [disabled](SkillsRuntime::disabled) (a configuration with the capability off everywhere) and
+/// offers nothing.
+///
+/// Any profile rather than the root's, because the library is the *run's*: it is loaded once from
+/// one directory, and a run whose reviewer alone reads skills is a run with skills. Which agents are
+/// offered it is each profile's own switch, applied by
+/// [`CapabilityModules::resolve`](crate::modules::CapabilityModules::resolve) — reading the root's
+/// there would leave a profile that switched skills on holding none, with nothing in the record to
+/// tell that apart from the arm with skills off.
 fn resolve_skills(set: &GgCapabilitySet, workspace_dir: &Path) -> SkillsRuntime {
-    if !set.is_enabled(CAPABILITY_SKILLS) {
+    if !set.any_agent_enabled(CAPABILITY_SKILLS) {
         return SkillsRuntime::disabled();
     }
-    let dir = resolve_skills_dir(set, workspace_dir);
-    SkillsRuntime::new(Arc::new(SkillLibrary::load(&dir)))
+    // Discarding, twice over. `check_invocation` read this same param at launch and refused the run
+    // if gg could not read a path from it, and the [workspace gate](crate::validate::validate_workspace)
+    // then walked this same directory — over the workspace as the run's first turn will find it —
+    // and refused the run if any entry in it would not load. So this load can report nothing.
+    let report = &mut crate::validate::LaunchReport::Discarding;
+    let dir = resolve_skills_dir(set, workspace_dir, report);
+    SkillsRuntime::new(Arc::new(SkillLibrary::load(&dir, report)))
 }
 
 /// Resolve the directory skills are loaded from: the skills capability's
 /// [`dir`](PARAM_SKILLS_DIR) param when set (relative to the workspace, or absolute as
 /// given), else [`DEFAULT_SKILLS_DIR`] under the workspace.
-fn resolve_skills_dir(set: &GgCapabilitySet, workspace_dir: &Path) -> PathBuf {
-    let configured = set
+///
+/// An absent `dir` takes the default. A present one that is not a path — a number, an object, a
+/// string of nothing but whitespace — is [reported](crate::validate) and refuses the launch. It is
+/// the quietest of all these defects otherwise: the default directory is very likely to exist, the
+/// library loads from it, and the run proceeds with a set of skills nobody configured. Whether the
+/// resolved directory can actually be **read** is a different question, and one the workspace
+/// answers rather than the document; it is checked after seeding, not here.
+fn resolve_skills_dir(
+    set: &GgCapabilitySet,
+    workspace_dir: &Path,
+    report: &mut crate::validate::LaunchReport,
+) -> PathBuf {
+    let declared = set
         .capability(CAPABILITY_SKILLS)
-        .and_then(|cap| cap.params.get(PARAM_SKILLS_DIR))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|dir| !dir.is_empty())
-        .unwrap_or(DEFAULT_SKILLS_DIR);
+        .map(|capability| &capability.params)
+        .and_then(|params| params.get(PARAM_SKILLS_DIR))
+        .filter(|value| !value.is_null());
+    let configured = match declared {
+        None => DEFAULT_SKILLS_DIR,
+        Some(value) => match value.as_str().map(str::trim).filter(|dir| !dir.is_empty()) {
+            Some(dir) => dir,
+            None => {
+                report.report(crate::validate::LaunchDefect::run_level(
+                    crate::validate::param_locus(CAPABILITY_SKILLS, PARAM_SKILLS_DIR),
+                    crate::validate::as_written(value),
+                    format!(
+                        "the `{CAPABILITY_SKILLS}` capability's `{PARAM_SKILLS_DIR}` names the \
+                         directory the run's skills are loaded from, and gg cannot read a path \
+                         here; loading `{DEFAULT_SKILLS_DIR}` instead would give the agent a set \
+                         of skills nobody configured."
+                    ),
+                ));
+                DEFAULT_SKILLS_DIR
+            }
+        },
+    };
     let path = Path::new(configured);
     if path.is_absolute() {
         path.to_path_buf()
@@ -9678,7 +10001,7 @@ fn resolve_board(set: &GgCapabilitySet, ids: &ModuleIds) -> BoardRuntime {
     };
     let caps = owner
         .capability(CAPABILITY_PROJECT_MANAGEMENT)
-        .map(|cap| BoardCaps::resolve(&cap.params))
+        .map(|cap| BoardCaps::resolve(&cap.params, &mut crate::validate::LaunchReport::Discarding))
         .unwrap_or_default();
     BoardRuntime::new_in(caps, ids)
 }
@@ -9889,7 +10212,7 @@ struct PromptInputs<'a> {
 /// For the launch checks, which have a profile and no registry: what a *running* agent may call is
 /// asked of its [registry](ToolRegistry) or its [grant](crate::sandbox::Grants), which are the same
 /// answer arrived at with the modules and the role in hand.
-fn grants_call(agent: &GgAgentConfig, tool: &str, operation: OperationId) -> bool {
+pub(crate) fn grants_call(agent: &GgAgentConfig, tool: &str, operation: OperationId) -> bool {
     if agent.is_enabled(CAPABILITY_RESPONSES_AS_CODE) {
         agent.grants_operation(&operation.to_string())
     } else {
@@ -9912,55 +10235,73 @@ fn enabled_capabilities(profile: &GgAgentConfig) -> Vec<String> {
         .collect()
 }
 
-/// **Every allowlist entry in `set` that grants nothing**, one sentence apiece, in agent order —
-/// the launch report that stands between a mistyped allowlist and an agent that quietly never got
-/// the call its operator meant to hand it.
+/// **Every allowlist entry on `profile` that grants nothing** — the refusal that stands between a
+/// mistyped allowlist and an agent that quietly never got the call its operator meant to hand it.
 ///
 /// The two allowlists are **scoped**: [`tools`](GgAgentConfig::tools) is validated against gg's tool
 /// vocabulary and [`operations`](GgAgentConfig::operations) against the
-/// [operations table](crate::sandbox::Operation), and neither accepts the other's
-/// spelling. That is the whole reason this reports rather than repairs: the surfaces are
-/// independent, so a name in the wrong list is not a synonym gg can resolve — the agent that would
-/// have used it writes programs and was handed a tool name, or calls tools and was handed an
-/// operation id, and in both cases what was asked for cannot be given. Naming which vocabulary the
-/// entry *does* belong to is the whole of the help that can be offered.
+/// [operations table](crate::sandbox::Operation), and neither accepts the other's spelling. That is
+/// the whole reason this refuses rather than repairs: the surfaces are independent, so a name in the
+/// wrong list is not a synonym gg can resolve — the agent that would have used it writes programs
+/// and was handed a tool name, or calls tools and was handed an operation id, and in both cases what
+/// was asked for cannot be given. Naming which vocabulary the entry *does* belong to is the whole of
+/// the help that can be offered, and the refusal carries it.
 ///
-/// Reported at `error` and never fatal, on the rule every launch diagnostic follows: one shared
-/// configuration document has to stay interpretable by every configuration it describes, so being
-/// loud is the whole of the defence. An entry that *is* in the right vocabulary but that this
-/// agent's capabilities do not offer is silently fine — it grants nothing, and a document naming a
-/// call only some of its agents hold is ordinary.
-fn allowlist_problems(set: &GgCapabilitySet) -> Vec<String> {
-    let mut problems = Vec::new();
-    for agent in &set.agents {
-        for name in ungranted_tools(agent) {
-            let hint = if crate::sandbox::operation_by_id(&name).is_some() {
-                "; it is an operation id, which belongs in this agent's `operations` allowlist"
-            } else {
-                ""
-            };
-            problems.push(format!(
-                "agent `{}`: `{name}` is not a gg tool{hint}. The `tools` allowlist grants nothing \
-                 for it.",
-                agent.name
-            ));
+/// A refusal rather than the loud launch line it used to be, because this is the misconfiguration
+/// whose effect is **silence**: an entry gg cannot read leaves an agent that behaves exactly like an
+/// agent deliberately narrowed to less, and no reading of the run afterwards can tell the two apart.
+/// The contract has said so all along — *"one that is not a gg tool … is an error, not a silently
+/// inert entry"* — and only the disposition was ever missing.
+///
+/// An entry that *is* in the right vocabulary but that this agent's capabilities do not offer stays
+/// **silent**, and that is the deliberate exception: it grants nothing, it is not a typo, and one
+/// shared configuration document naming a call only some of the configurations it describes enable
+/// is the ordinary way a sweep is written.
+fn check_allowlists(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) {
+    // Both bad-name lists come from the readers that own the two vocabularies, so the check and the
+    // grant cannot disagree about what a name means. Each entry keeps its **index** as its locus:
+    // an allowlist has no other handle on one of its rows, and the same typo written twice is two
+    // rows to delete.
+    let ungranted = ungranted_tools(profile);
+    for (index, name) in profile.tools.iter().enumerate() {
+        if !ungranted.contains(name) {
+            continue;
         }
-        let (_, unknown) =
-            crate::sandbox::resolve_operations(agent.operations.iter().map(String::as_str));
-        for name in unknown {
-            let hint = if crate::tools::ALL_TOOL_NAMES.contains(&name.as_str()) {
-                "; it is a tool name, which belongs in this agent's `tools` allowlist"
-            } else {
-                ""
-            };
-            problems.push(format!(
-                "agent `{}`: `{name}` is not a gg operation{hint}. The `operations` allowlist \
-                 grants nothing for it.",
-                agent.name
-            ));
-        }
+        let hint = if crate::sandbox::operation_by_id(name).is_some() {
+            "; it is an operation id, which belongs in this agent's `operations` allowlist"
+        } else {
+            ""
+        };
+        report.report(crate::validate::LaunchDefect::run_level(
+            format!("tools[{index}]"),
+            name,
+            format!(
+                "`{name}` is not a gg tool{hint}. The `tools` allowlist grants nothing for it, and \
+                 an agent narrowed by accident is indistinguishable from one narrowed on purpose."
+            ),
+        ));
     }
-    problems
+    let (_, unknown) =
+        crate::sandbox::resolve_operations(profile.operations.iter().map(String::as_str));
+    for (index, name) in profile.operations.iter().enumerate() {
+        if !unknown.contains(name) {
+            continue;
+        }
+        let hint = if crate::tools::ALL_TOOL_NAMES.contains(&name.as_str()) {
+            "; it is a tool name, which belongs in this agent's `tools` allowlist"
+        } else {
+            ""
+        };
+        report.report(crate::validate::LaunchDefect::run_level(
+            format!("operations[{index}]"),
+            name,
+            format!(
+                "`{name}` is not a gg operation{hint}. The `operations` allowlist grants nothing \
+                 for it, and an agent narrowed by accident is indistinguishable from one narrowed \
+                 on purpose."
+            ),
+        ));
+    }
 }
 
 /// The capability modules a code program has this run, in the catalogue's own order, each with the
@@ -10256,7 +10597,14 @@ fn roster(profile: &GgAgentConfig, scope: GgSubagentScope) -> Vec<SpawnableAgent
         .collect()
 }
 
-fn system_prompt(inputs: PromptInputs<'_>) -> String {
+/// This agent's rendered system prompt, or the reason gg could not render one.
+///
+/// `Err` is always **gg's own defect**: the launch pass proved a profile's
+/// [override](GgAgentConfig::system_prompt_template) parses, so what is left is a template naming a
+/// variable this context does not carry, or a code-mode context built without its program language.
+/// Either way the agent would have to reason under a prompt other than the one its profile wrote,
+/// and the prompt is the experiment — see [`prompts::render_system`].
+fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
     let PromptInputs {
         registry,
         skills,
@@ -10431,7 +10779,11 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
                         max_epics: caps.max_epics,
                         max_issues: caps.max_issues,
                         max_retries: caps.max_retries,
-                        reviewers_required: IssuePolicy::resolve(profile).require_reviewers,
+                        reviewers_required: IssuePolicy::resolve(
+                            profile,
+                            &mut crate::validate::LaunchReport::Discarding,
+                        )
+                        .require_reviewers,
                         issue_agents,
                         reviewer_agents,
                     }
@@ -10520,18 +10872,26 @@ fn ending_view(role: EndingRole, program_language: Option<GgProgramLanguage>) ->
 /// otherwise the views are ordinary ephemeral reads that compaction may summarize and agent-managed
 /// context may evict. The synthesized assistant turn is always ephemeral — only the file view is
 /// ever locked — mirroring how a read skill pins the body but not the `read_skill` call that fetched
-/// it. A file that cannot be read (a reference that failed to seed) is skipped with a warning rather
-/// than failing the run, and never appears in the synthesized program.
+/// it.
+///
+/// # A file that cannot be read ends the run
+///
+/// The capability's promise is the **full** specification, so there is no such thing as seeding most
+/// of it. A skipped file used to be a warning, and the synthesized program was then written from the
+/// files that *did* arrive — so the transcript showed a complete opening move over an incomplete
+/// brief, and the run measured a specification nobody wrote against the arm that was configured.
+/// The [workspace gate](crate::validate::validate_workspace) proves every one of these files
+/// readable before the first turn, so an `Err` here is gg's own defect (or a file the run itself has
+/// since removed) and the agent — and the run — ends on it.
 async fn autoload_specifications(
     context: &mut ContextModel,
     provided_files: &[PathBuf],
     tool_ctx: &ToolContext,
     language: GgProgramLanguage,
     locked: bool,
-    emitter: &Emitter,
-) {
+) -> Result<(), String> {
     if provided_files.is_empty() {
-        return;
+        return Ok(());
     }
     let reader = ReadFileTool::new(ReadPolicy::Unlimited);
     let retention = if locked {
@@ -10549,16 +10909,14 @@ async fn autoload_specifications(
         let rel = path.to_string_lossy().into_owned();
         let outcome = reader.invoke(json!({ "path": rel }), tool_ctx).await;
         if !outcome.ok {
-            emitter.emit(log(
-                "warn",
-                format!("autoload skipped `{rel}`: {}", outcome.output),
+            return Err(format!(
+                "the `{CAPABILITY_AUTOLOAD_SPECS}` capability seeds this agent's opening context \
+                 with the whole of what the test case provided, and `{rel}` could not be read \
+                 ({}); opening on part of the brief would measure a specification nobody wrote",
+                outcome.output.trim(),
             ));
-            continue;
         }
         seeded.push((rel, outcome));
-    }
-    if seeded.is_empty() {
-        return;
     }
 
     if context.code_mode() {
@@ -10572,7 +10930,7 @@ async fn autoload_specifications(
         for (rel, outcome) in seeded {
             context.seed_file_view(rel, outcome.output, outcome.images, retention);
         }
-        return;
+        return Ok(());
     }
 
     for (index, (rel, outcome)) in seeded.into_iter().enumerate() {
@@ -10596,6 +10954,7 @@ async fn autoload_specifications(
             retention,
         );
     }
+    Ok(())
 }
 
 /// The program gg synthesizes to open `paths` on a [code-mode](ContextModel::code_mode) agent's

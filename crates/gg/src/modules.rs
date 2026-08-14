@@ -58,9 +58,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
-    CAPABILITY_SKILLS, CAPABILITY_TASKS, GgAgentConfig, GgAgentModule, GgContextSource,
-    GgMemoryScope, GgModuleDisposition, GgModuleOrigin, GgProgramLanguage, GgTelemetryKind,
-    GgTransitionModule, MODULE_PARAM_OWNERSHIP,
+    CAPABILITY_SKILLS, CAPABILITY_TASKS, GgAgentConfig, GgAgentModule, GgCapabilitySet,
+    GgContextSource, GgMemoryScope, GgModuleDisposition, GgModuleOrigin, GgProgramLanguage,
+    GgTelemetryKind, GgTransitionModule, MODULE_PARAM_OWNERSHIP,
 };
 
 use crate::archive::ArchiveRuntime;
@@ -71,6 +71,7 @@ use crate::memories::{MemoriesRuntime, MemoryRegistry, MemoryStrategy};
 use crate::model::Message;
 use crate::skills::SkillsRuntime;
 use crate::tasks::TasksRuntime;
+use crate::validate::{LaunchDefect, LaunchReport};
 
 /// The closed set of module kinds, re-exported from the contract so gg and the configurations it
 /// reads name the same six things. See [`GgModuleKind`](test_cabinet_core::gg::GgModuleKind) for
@@ -721,59 +722,117 @@ impl InheritedModules {
         }
     }
 
+    /// The offered memories, however they are organized — what a child that **names** no strategy
+    /// of its own binds.
+    ///
+    /// An inheriting profile that names a strategy is asking for a store organized that way, and
+    /// gets one only if that is what the spawner keeps ([`memories_organized_as`](Self::memories_organized_as)).
+    /// One that names none is asking for its spawner's notebook, whatever it is: the calls it is
+    /// offered are the store's own strategy's, because they are built from the module it bound.
+    pub fn offered(&self) -> Option<&MemoriesRuntime> {
+        self.memories.as_ref()
+    }
+
     /// The offered memories, but only if they are organized by `strategy` — otherwise `None`.
     ///
     /// A store is read by the calls its own strategy offers: a scratchpad handed to an agent
     /// configured for a markdown index would be a set it has no call to read and an index it
-    /// cannot see. gg gives such a child a private instance instead, and
-    /// [says so at launch](crate::memories::launch_warnings) rather than leaving it to be
-    /// inferred from a notebook that stayed empty.
+    /// cannot see. A pairing the roster makes visible is
+    /// [refused at launch](crate::memories::check_scoping); a pairing only the live spawner settles
+    /// is caught by [`memories_organized_differently`](Self::memories_organized_differently) and
+    /// ends the run. So `None` here means the spawner keeps no memories at all — the one documented
+    /// case, in which the child gets a private instance of its own.
     pub fn memories_organized_as(&self, strategy: MemoryStrategy) -> Option<&MemoriesRuntime> {
         self.memories
             .as_ref()
             .filter(|memories| memories.strategy() == strategy)
     }
+
+    /// The strategy the offered memories are organized by, when it is **not** `strategy` — the
+    /// spawn-time disagreement no configuration document could have shown.
+    ///
+    /// An agent scoped [`inherited`](crate::memories::MemoryScope::Inherited) or `read-only` is
+    /// configured to work in its spawner's notebook. If the spawner organizes it differently, gg
+    /// cannot honour that: the calls the child is offered are its own strategy's, and they cannot
+    /// read the store it was pointed at. Giving it a fresh private notebook instead — which is what
+    /// gg did until this remediation — leaves a run whose record says two agents shared a store and
+    /// whose behaviour is two agents that never saw each other's memories, with nothing anywhere
+    /// saying which.
+    ///
+    /// A spawner that keeps **no** memories is not this: it is the documented arm in which an
+    /// inheriting child gets its own store, and it returns `None`.
+    pub fn memories_organized_differently(
+        &self,
+        strategy: MemoryStrategy,
+    ) -> Option<MemoryStrategy> {
+        self.memories
+            .as_ref()
+            .map(MemoriesRuntime::strategy)
+            .filter(|inherited| *inherited != strategy)
+    }
 }
 
-/// Resolve a module-backed capability's [`ownership`](MODULE_PARAM_OWNERSHIP) param, returning the
-/// resolved value and, for an unrecognized one, the launch warning that names it.
+/// The two values [`ownership`](MODULE_PARAM_OWNERSHIP) takes, as they are spelled in a
+/// configuration — the vocabulary a refusal offers back.
+const OWNERSHIPS: [&str; 2] = ["owned", "unowned"];
+
+/// Resolve a module-backed capability's [`ownership`](MODULE_PARAM_OWNERSHIP) param.
 ///
-/// An unrecognized value falls back to the default and warns rather than failing the launch, in
-/// line with how gg treats every other unrecognized capability *value*: a sweep's one shared
-/// configuration document must stay interpretable by every arm, and being loud is the whole of the
-/// defence against a typo silently running the wrong experiment.
-pub fn resolve_ownership(profile: &GgAgentConfig, capability: &str) -> (Ownership, Option<String>) {
+/// Absent or `null` takes the documented default, [`Owned`](Ownership::Owned). A value gg cannot
+/// read is reported into `report` and [refuses the launch](crate::validate): ownership is the knob
+/// that decides whether the agent is *told* what it holds every turn or has to look it up, so a
+/// typo resolved to `owned` would run a configuration nobody wrote — and the agent whose board was
+/// meant to cost it nothing would carry it in every request it made.
+pub fn resolve_ownership(
+    profile: &GgAgentConfig,
+    capability: &str,
+    report: &mut LaunchReport,
+) -> Ownership {
     let Some(raw) = profile
         .capability(capability)
         .and_then(|cap| cap.params.get(MODULE_PARAM_OWNERSHIP))
+        .filter(|value| !value.is_null())
     else {
-        return (Ownership::Owned, None);
+        return Ownership::Owned;
+    };
+    let defect = |found: String, message: String| {
+        LaunchDefect::run_level(
+            crate::validate::param_locus(capability, MODULE_PARAM_OWNERSHIP),
+            found,
+            message,
+        )
+        .known(OWNERSHIPS)
     };
     match raw {
-        Value::String(value) => match value.as_str() {
-            "owned" => (Ownership::Owned, None),
-            "unowned" => (Ownership::Unowned, None),
-            other => (
-                Ownership::Owned,
-                Some(format!(
-                    "capability `{capability}` sets `{MODULE_PARAM_OWNERSHIP}` to `{other}`, which \
-                     is not a module ownership gg knows (`owned` or `unowned`); the module is \
-                     owned, as if the param were absent."
-                )),
-            ),
+        Value::String(value) => match value.trim() {
+            "owned" => Ownership::Owned,
+            "unowned" => Ownership::Unowned,
+            other => {
+                report.report(defect(
+                    other.to_string(),
+                    format!(
+                        "`{MODULE_PARAM_OWNERSHIP}` decides whether the `{capability}` module is \
+                         carried in its holder's prompt or reachable only through its calls, and \
+                         `{other}` names neither."
+                    ),
+                ));
+                Ownership::Owned
+            }
         },
-        other => (
-            Ownership::Owned,
-            Some(format!(
-                "capability `{capability}` sets `{MODULE_PARAM_OWNERSHIP}` to `{other}`, which is \
-                 not a string; the module is owned, as if the param were absent."
-            )),
-        ),
+        other => {
+            report.report(defect(
+                crate::validate::as_written(other),
+                format!(
+                    "`{MODULE_PARAM_OWNERSHIP}` on the `{capability}` capability must be a string."
+                ),
+            ));
+            Ownership::Owned
+        }
     }
 }
 
 /// Every capability whose module's ownership is **configurable**, paired with the kind it backs —
-/// the list [`ownership_warnings`] validates and the console's editor offers an `ownership` picker
+/// the list [`check_ownership`] validates and the console's editor offers an `ownership` picker
 /// for.
 ///
 /// Four kinds are absent, and every absence is load-bearing.
@@ -791,26 +850,27 @@ pub fn resolve_ownership(profile: &GgAgentConfig, capability: &str) -> (Ownershi
 /// being handed its name, which is not an arm of a study, it is the capability disabled with extra
 /// steps.
 ///
-/// An `ownership` param on any of the four is read by nothing: neither resolved nor warned about,
-/// exactly like any other key gg does not know.
+/// An `ownership` param on any of the four is therefore a key on a capability that has no ownership
+/// to configure. It is read by nothing, and it is a **launch refusal** — the
+/// [params table](crate::validate) knows the key on these two capabilities and nowhere else, so
+/// writing it on `memories`, `skills` or `tasks` refuses the run rather than configuring an arm
+/// that does not exist. That it once passed silently is the whole reason the table exists.
 const MODULE_CAPABILITIES: [(&str, ModuleKind); 2] = [
     (CAPABILITY_PROJECT_MANAGEMENT, ModuleKind::Board),
     (CAPABILITY_AGENT_MANAGED_CONTEXT, ModuleKind::Archive),
 ];
 
-/// Every launch warning `profile`'s module configuration earns — today, one per module-backed
-/// capability whose [`ownership`](MODULE_PARAM_OWNERSHIP) param gg could not read.
+/// Read `profile`'s module configuration — today, the [`ownership`](MODULE_PARAM_OWNERSHIP) param of
+/// each module-backed capability — reporting every value gg cannot honour.
 ///
-/// Collected at launch, across every declared profile, so a typo in a configuration is reported
-/// once, before the first turn, rather than discovered by an agent that quietly failed to see its
-/// own task list.
-pub fn ownership_warnings(profile: &GgAgentConfig) -> Vec<String> {
-    MODULE_CAPABILITIES
-        .iter()
-        .filter(|(capability, _)| profile.is_enabled(capability))
-        .filter_map(|(capability, _)| resolve_ownership(profile, capability).1)
-        .map(|warning| format!("agent `{}`: {warning}", profile.name))
-        .collect()
+/// Read whether or not the capability is switched **on**, which is the one thing to notice here. A
+/// disabled capability still records the configuration the arm would have used, and a typo skipped
+/// because a switch happened to be off is a typo that surfaces on the launch where it is flipped —
+/// by which point the operator is no longer looking at the document that has it.
+pub fn check_ownership(profile: &GgAgentConfig, report: &mut LaunchReport) {
+    for (capability, _) in MODULE_CAPABILITIES {
+        resolve_ownership(profile, capability, report);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -854,7 +914,11 @@ impl CapabilityModules {
     /// and no reason to go looking through for work other than the job it was given.
     pub fn resolve(profile: &GgAgentConfig, ctx: &ModuleResolveCtx<'_>) -> Self {
         let board_ownership = if profile.is_enabled(CAPABILITY_PROJECT_MANAGEMENT) {
-            resolve_ownership(profile, CAPABILITY_PROJECT_MANAGEMENT).0
+            resolve_ownership(
+                profile,
+                CAPABILITY_PROJECT_MANAGEMENT,
+                &mut LaunchReport::Discarding,
+            )
         } else {
             Ownership::Unowned
         };
@@ -865,10 +929,22 @@ impl CapabilityModules {
             // The board is the run's, however a holder came by it — see
             // [`Module::origin_when_forked`].
             board: ctx.board.shared().with_ownership(board_ownership),
-            skills: ctx.skills.forked(),
+            // Per profile, like every other capability module: the runtime in `ctx` is the run's
+            // library and is enabled if *any* profile reads skills, so an agent whose own switch is
+            // off must be given a disabled module rather than a fork of it. Reading the run's
+            // switch here instead would let one profile's `skills: false` still carry a catalogue,
+            // and one profile's `skills: true` under a root that has it off carry none.
+            skills: if profile.is_enabled(CAPABILITY_SKILLS) {
+                ctx.skills.forked()
+            } else {
+                SkillsRuntime::disabled()
+            },
             archive: if profile.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT) {
-                ArchiveRuntime::new_in(ctx.ids)
-                    .with_ownership(resolve_ownership(profile, CAPABILITY_AGENT_MANAGED_CONTEXT).0)
+                ArchiveRuntime::new_in(ctx.ids).with_ownership(resolve_ownership(
+                    profile,
+                    CAPABILITY_AGENT_MANAGED_CONTEXT,
+                    &mut LaunchReport::Discarding,
+                ))
             } else {
                 ArchiveRuntime::disabled()
             },
@@ -1331,6 +1407,24 @@ impl TransferPlan {
     }
 }
 
+/// **Whether an agent running `profile` in this `set` would hold a module of `kind`** — the
+/// statically decidable form of [`ModuleSet::has`], for the [launch pass](crate::validate).
+///
+/// It has to answer the same question `has` does, and `has` is not simply "the profile enables the
+/// capability": the **board** is the run's single work queue, so every agent in a run that has one
+/// holds it — unowned where the profile cannot author it, but held — and the window is not a
+/// capability at all. Everything else is the profile's own switch.
+///
+/// It is exact for a *transferred* set too, and that is what makes the launch check sound. A module
+/// a transfer could not adopt is dropped and the successor keeps the one it resolved fresh from its
+/// own profile, so every live set's answer is this function's answer for the profile it is running.
+pub fn would_hold(set: &GgCapabilitySet, profile: &GgAgentConfig, kind: ModuleKind) -> bool {
+    match kind {
+        ModuleKind::Board => set.any_agent_enabled(CAPABILITY_PROJECT_MANAGEMENT),
+        other => enables(profile, other),
+    }
+}
+
 /// Whether `profile` enables the capability behind `kind`. The window is not a capability, so it is
 /// always enabled.
 fn enables(profile: &GgAgentConfig, kind: ModuleKind) -> bool {
@@ -1362,8 +1456,20 @@ pub struct TransferReport {
     /// the successor's opening note, so a reset is something it is told rather than something it
     /// discovers.
     pub notes: Vec<String>,
-    /// Warnings for the operator log: a transfer list naming a module the source state never held.
-    pub warnings: Vec<String>,
+    /// **gg's own defects**, in kind order: a transfer list naming a module the outgoing instance
+    /// does not hold.
+    ///
+    /// It is a defect rather than a warning because there is nothing gg can do about it that does
+    /// not silently narrow the run. The successor was configured to continue with that module's
+    /// state and starts with an empty one instead, so a machine written to carry a board across a
+    /// state boundary runs its second state against a board with nothing on it — which reads,
+    /// downstream, exactly like a state that chose to file nothing.
+    ///
+    /// The statically decidable half of the same question — a transfer naming a kind the *profile*
+    /// on either side of the edge does not enable — refuses the launch, so what reaches here is the
+    /// live outgoing set disagreeing with the document: gg reading one configuration two ways. The
+    /// caller ends the agent, and the run with it.
+    pub defects: Vec<String>,
 }
 
 impl TransferReport {
@@ -1409,7 +1515,8 @@ impl TransferReport {
 ///
 /// 1. **Carried?** The plan says so ([`Intersection`](TransferPlan::Intersection): present in `old`
 ///    *and* enabled on `profile`; [`Explicit`](TransferPlan::Explicit): named *and* present in
-///    `old`). A named kind the outgoing set does not hold is skipped with a warning.
+///    `old`). A named kind the outgoing set does not hold is a
+///    [defect](TransferReport::defects) that ends the run.
 /// 2. **Carried and adoptable?** [`Module::adopt`] decides. `Ok` moves the live module into the
 ///    successor's set, re-resolved against the receiving profile.
 ///    [`Disabled`](AdoptError::Disabled) drops it — a profile that turns a capability off gets
@@ -1433,9 +1540,10 @@ pub fn transfer(
     if let TransferPlan::Explicit(kinds) = plan {
         for kind in kinds {
             if !old.has(*kind) {
-                report.warnings.push(format!(
-                    "transfer list names the `{kind}` module, which the outgoing agent does not \
-                     hold; nothing is carried for it."
+                report.defects.push(format!(
+                    "the transfer list names the `{kind}` module, which the outgoing agent does \
+                     not hold, so the successor would start with an empty one under a \
+                     configuration that says it continues"
                 ));
             }
         }

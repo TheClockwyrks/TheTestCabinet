@@ -258,9 +258,39 @@ fn a_toggle_set_that_switches_nothing_off_offers_everything() {
     assert_eq!(skills.len(), 1);
 }
 
+/// A `builtIns` gg cannot read as a set of toggles **refuses the launch**: it withholds nothing
+/// while reading as an instruction that something was withheld, so a run offered every family would
+/// be the skills experiment measured on the arm the configuration was written to exclude.
 #[test]
-fn a_params_object_of_the_wrong_shape_is_ignored_rather_than_obeyed() {
-    // In line with how gg reads every other capability value it cannot make sense of.
-    let skills = native(&["read_file"], json!({ "builtIns": "gg-filesystem" }));
-    assert_eq!(skills.len(), 1);
+fn a_builtins_param_gg_cannot_read_is_refused() {
+    for params in [
+        // Not a set of toggles at all.
+        json!({ "builtIns": "gg-filesystem" }),
+        json!({ "builtIns": ["gg-filesystem"] }),
+        // A family gg does not ship — the case that used to switch off nothing, silently.
+        json!({ "builtIns": { "gg-fileystem": false } }),
+        // A value that is not a toggle.
+        json!({ "builtIns": { "gg-filesystem": 0 } }),
+    ] {
+        let mut report = crate::validate::LaunchReport::collecting();
+        let off = switched_off(&params, &mut report);
+        assert!(off.is_empty(), "{params}: the resolver stays total");
+        let defects = report.into_defects();
+        assert_eq!(defects.len(), 1, "{params} -> {defects:?}");
+        assert!(
+            defects[0].locus.starts_with("skills.params.builtIns"),
+            "{params} -> {defects:?}"
+        );
+    }
+}
+
+/// An **absent** or `null` param offers every family, and that is the documented default rather
+/// than a fallback.
+#[test]
+fn an_absent_builtins_param_offers_everything() {
+    for params in [json!({}), json!({ "builtIns": null })] {
+        let mut report = crate::validate::LaunchReport::collecting();
+        assert!(switched_off(&params, &mut report).is_empty(), "{params}");
+        assert!(report.is_empty(), "{params}");
+    }
 }

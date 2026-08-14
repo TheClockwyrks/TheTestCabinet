@@ -20,6 +20,7 @@ use test_cabinet_core::gg::{
 use super::{LoggedRevision, MemoryCaps, MemoryChange, MemoryScope, MemoryStore, MemoryStrategy};
 use crate::modules::{ModuleIds, ModuleKind, ModuleResolveCtx};
 use crate::prompts::MemoryNoticeEntry;
+use crate::validate::{LaunchDefect, LaunchReport};
 
 /// One registry entry: the profile-bound store and its
 /// [module id](crate::modules::Module::instance_id), which are minted together and handed out
@@ -73,46 +74,67 @@ impl MemoryRegistry {
     }
 }
 
-/// Resolve the [`scope`](MEMORY_PARAM_SCOPE) param on `profile`'s memories capability, returning
-/// the resolved value and, for a value gg could not read, the launch warning that names it.
+/// Resolve the [`scope`](MEMORY_PARAM_SCOPE) param on `profile`'s memories capability.
 ///
-/// An unrecognized value falls back to [`Isolated`](MemoryScope::Isolated) — today's behaviour,
-/// and the one that cannot silently entangle two agents' notebooks — and warns rather than failing
-/// the launch, in line with how gg treats every other unrecognized capability *value*.
-pub fn resolve_scope(profile: &GgAgentConfig) -> (MemoryScope, Option<String>) {
+/// Absent or `null` takes the documented default, [`Isolated`](MemoryScope::Isolated). A value gg
+/// cannot read is reported into `report` and [refuses the launch](crate::validate): the scope is what
+/// decides *whose notebook this agent holds*, so reading an unrecognized one as `isolated` would give
+/// a run in which two agents were meant to curate one store two stores that never meet — and the
+/// evidence for it is a notebook that stayed empty.
+///
+/// The resolved value still comes back, and is still the default, because the resolver is
+/// [total](crate::validate#the-resolver-contract): it is re-read at every spawn, where the launch
+/// pass has already proved there is nothing to report.
+pub fn resolve_scope(profile: &GgAgentConfig, report: &mut LaunchReport) -> MemoryScope {
     let Some(raw) = profile
         .capability(CAPABILITY_MEMORIES)
         .and_then(|capability| capability.params.get(MEMORY_PARAM_SCOPE))
+        .filter(|value| !value.is_null())
     else {
-        return (MemoryScope::default(), None);
+        return MemoryScope::default();
     };
     let known = |value: &str| {
         MemoryScope::ALL
             .into_iter()
             .find(|scope| scope.as_str() == value)
     };
+    let defect = |found: String, message: String| {
+        LaunchDefect::run_level(
+            crate::validate::param_locus(CAPABILITY_MEMORIES, MEMORY_PARAM_SCOPE),
+            found,
+            message,
+        )
+    };
     match raw {
         Value::String(value) => match known(value.trim()) {
-            Some(scope) => (scope, None),
-            None => (
-                MemoryScope::default(),
-                Some(format!(
-                    "the `{CAPABILITY_MEMORIES}` capability sets `{MEMORY_PARAM_SCOPE}` to \
-                     `{value}`, which is not a memory scope gg knows ({}); memories are \
-                     `{}`, as if the param were absent.",
-                    scope_list(),
-                    MemoryScope::default(),
-                )),
-            ),
+            Some(scope) => scope,
+            None => {
+                report.report(
+                    defect(
+                        value.clone(),
+                        format!(
+                            "`{MEMORY_PARAM_SCOPE}` decides which memory instance this agent \
+                             binds, and `{value}` names none of them."
+                        ),
+                    )
+                    .known(MemoryScope::ALL.map(|scope| scope.as_str())),
+                );
+                MemoryScope::default()
+            }
         },
-        other => (
-            MemoryScope::default(),
-            Some(format!(
-                "the `{CAPABILITY_MEMORIES}` capability sets `{MEMORY_PARAM_SCOPE}` to `{other}`, \
-                 which is not a string; memories are `{}`, as if the param were absent.",
-                MemoryScope::default(),
-            )),
-        ),
+        other => {
+            report.report(
+                defect(
+                    crate::validate::as_written(other),
+                    format!(
+                        "`{MEMORY_PARAM_SCOPE}` names a memory instance to bind, so it must be \
+                             a string."
+                    ),
+                )
+                .known(MemoryScope::ALL.map(|scope| scope.as_str())),
+            );
+            MemoryScope::default()
+        }
     }
 }
 
@@ -129,7 +151,8 @@ pub fn resolve_scope(profile: &GgAgentConfig) -> (MemoryScope, Option<String>) {
 /// always say no.
 pub fn run_inherits_memories(set: &GgCapabilitySet) -> bool {
     set.agents.iter().any(|profile| {
-        profile.is_enabled(CAPABILITY_MEMORIES) && resolve_scope(profile).0.is_inherited()
+        profile.is_enabled(CAPABILITY_MEMORIES)
+            && resolve_scope(profile, &mut LaunchReport::Discarding).is_inherited()
     })
 }
 
@@ -143,47 +166,32 @@ pub fn links(profile: &GgAgentConfig, scope: MemoryScope, ctx: &ModuleResolveCtx
     scope.may_link() || (ctx.inheritable && profile.is_enabled(CAPABILITY_SUBAGENTS))
 }
 
-/// The scopes, as a prose list — the vocabulary every scope diagnostic offers back.
-fn scope_list() -> String {
-    MemoryScope::ALL
-        .map(|scope| format!("`{scope}`"))
-        .join(", ")
-}
-
-/// Every launch warning `set`'s **memory scoping** earns, across every declared profile.
+/// **The memory-scoping contradiction** a set can contain — a configuration in which every value is
+/// individually readable and the document as a whole still asks for something gg cannot do.
 ///
-/// Three things are reported, all of them configurations that describe an intent gg cannot honour
-/// and would otherwise carry out as something else:
+/// The per-profile values themselves ([`resolve_scope`], the strategy, the limits) are read by
+/// [`check_launch`](super::check_launch); this is only what needs more than one profile in hand at
+/// once: **an [`inherited`](MemoryScope::Inherited) or [`read-only`](MemoryScope::ReadOnly) profile
+/// that names a [strategy](MemoryStrategy) its spawner does not**. A store is read by the calls its
+/// strategy offers, so such a child cannot take its spawner's instance: it gets a private one, and
+/// the inheritance the configuration describes never happens. The evidence would otherwise be a
+/// notebook that stayed empty.
 ///
-/// 1. a [`scope`](MEMORY_PARAM_SCOPE) gg could not read (falls back to
-///    [`isolated`](MemoryScope::Isolated));
-/// 2. a `scope` on a profile whose memories capability is **off** — scoping decides which instance
-///    an agent binds, and an agent with no memories binds none;
-/// 3. an [`inherited`](MemoryScope::Inherited) or [`read-only`](MemoryScope::ReadOnly) profile
-///    whose spawner organizes memories by a **different** [strategy](MemoryStrategy). A store is
-///    read by the calls its strategy offers, so such a child cannot take its spawner's instance
-///    and silently gets one of its own — which is worth saying before the run rather than
-///    inferring afterwards from a notebook that stayed empty.
+/// A child that names **no** strategy is not that. An inheriting agent organizes its memories the
+/// way its spawner does, so an absent `implementation` is the documented default *for an inheriting
+/// profile* — it agrees with whatever it is handed, and [`MemoriesRuntime::resolve`](super::MemoriesRuntime::resolve)
+/// binds the spawner's store whatever strategy it is organized by. Only two profiles that both
+/// speak, and disagree, are a contradiction.
 ///
-/// Collected at launch beside the other per-profile diagnostics, so a typo is reported before the
-/// first turn.
-pub fn launch_warnings(set: &GgCapabilitySet) -> Vec<String> {
-    let mut warnings = Vec::new();
+/// This is the **statically decidable half** of the question. A child spawned by a profile the
+/// roster does not name — a machine's successor, a dynamically chosen spawner — is not decidable
+/// from the document, and is the run's own to report.
+///
+/// A profile whose memories capability is **off** is skipped rather than refused for its
+/// [`scope`](MEMORY_PARAM_SCOPE): a disabled capability still records the configuration the arm
+/// *would* have used, which is what keeps the on and off arms of one comparison symmetric.
+pub fn check_scoping(set: &GgCapabilitySet, report: &mut LaunchReport) {
     for agent in &set.agents {
-        if let Some(warning) = resolve_scope(agent).1 {
-            warnings.push(format!("agent `{}`: {warning}", agent.name));
-        }
-        let declares_scope = agent
-            .capability(CAPABILITY_MEMORIES)
-            .is_some_and(|capability| capability.params.get(MEMORY_PARAM_SCOPE).is_some());
-        if declares_scope && !agent.is_enabled(CAPABILITY_MEMORIES) {
-            warnings.push(format!(
-                "agent `{}`: the `{CAPABILITY_MEMORIES}` capability sets \
-                 `{MEMORY_PARAM_SCOPE}` but is not enabled; a scope decides which memory \
-                 instance an agent binds, and an agent with no memories binds none.",
-                agent.name,
-            ));
-        }
         if !agent.is_enabled(CAPABILITY_MEMORIES) {
             continue;
         }
@@ -193,8 +201,9 @@ pub fn launch_warnings(set: &GgCapabilitySet) -> Vec<String> {
                 continue;
             };
             if !child.is_enabled(CAPABILITY_MEMORIES)
+                || declared_strategy(child).is_none()
                 || !matches!(
-                    resolve_scope(child).0,
+                    resolve_scope(child, &mut LaunchReport::already_reported()),
                     MemoryScope::Inherited | MemoryScope::ReadOnly
                 )
             {
@@ -202,29 +211,100 @@ pub fn launch_warnings(set: &GgCapabilitySet) -> Vec<String> {
             }
             let child_strategy = strategy_of(child);
             if child_strategy != strategy {
-                warnings.push(format!(
-                    "agent `{}` inherits memories but organizes them as `{}`, while its spawner \
-                     `{}` organizes them as `{}`; a store is read by the calls its strategy \
-                     offers, so `{}` gets an instance of its own instead of its spawner's.",
-                    child.name,
+                report.report(LaunchDefect::on_agent(
+                    &child.name,
+                    crate::validate::implementation_locus(CAPABILITY_MEMORIES),
                     child_strategy.id(),
-                    agent.name,
-                    strategy.id(),
-                    child.name,
+                    format!(
+                        "`{}` inherits its memories from `{}`, which organizes them as `{}`; a \
+                         store is read by the calls its strategy offers, so gg could only give \
+                         `{}` an instance of its own — which is not the run this configuration \
+                         describes. Organize both the same way, or scope `{}` `{}`.",
+                        child.name,
+                        agent.name,
+                        strategy.id(),
+                        child.name,
+                        child.name,
+                        MemoryScope::default(),
+                    ),
                 ));
             }
         }
     }
-    warnings
 }
 
-/// The [strategy](MemoryStrategy) `profile` organizes its memories by.
+/// **The half of [`check_scoping`] no document could decide**: an instance about to bind its
+/// spawner's memories that **names** a [strategy](MemoryStrategy) its spawner does not organize them
+/// by.
+///
+/// `Some(detail)` is a **gg defect** and ends the agent — and the run with it. It is not a
+/// configuration an operator can fix from the refusal, because the pairing is not in the
+/// configuration: the roster pairings are all refused at launch, so what reaches here is a spawner
+/// gg chose at run time (a machine's successor, a dynamically dispatched agent). What must not
+/// happen is the old answer — a fresh private notebook — which leaves the run's record saying two
+/// agents shared a store while they never saw each other's memories.
+///
+/// `None` covers the three ordinary cases: an agent that is not inheriting at all, an inheriting
+/// agent whose spawner keeps no memories (the documented arm in which the child gets its own), and
+/// an inheriting agent that names **no** strategy — which organizes its memories the way its spawner
+/// does, whatever way that is, and so can never disagree with one.
+pub fn inherited_strategy_conflict(
+    profile: &GgAgentConfig,
+    ctx: &ModuleResolveCtx<'_>,
+) -> Option<String> {
+    if !profile.is_enabled(CAPABILITY_MEMORIES) {
+        return None;
+    }
+    // Discarding: every value read here was read — and refused — by the launch pass, through these
+    // same resolvers.
+    let scope = resolve_scope(profile, &mut LaunchReport::Discarding);
+    if !matches!(scope, MemoryScope::Inherited | MemoryScope::ReadOnly) {
+        return None;
+    }
+    let strategy = declared_strategy(profile)?;
+    let spawner = ctx.inherited.memories_organized_differently(strategy)?;
+    Some(format!(
+        "agent `{}` is scoped `{scope}` and organizes its memories as `{}`, but the agent that \
+         spawned it organizes them as `{}`; a store is read by the calls its own strategy offers, \
+         so there is no handle onto it this agent could be given",
+        profile.name,
+        strategy.id(),
+        spawner.id(),
+    ))
+}
+
+/// The [strategy](MemoryStrategy) `profile` organizes its memories by, **naming one or not**: the
+/// documented default ([`Scratchpad`](MemoryStrategy::Scratchpad)) where it names none.
+///
+/// Read into an [already-reported](LaunchReport::already_reported) sink: the profile's own
+/// `implementation` is read — and refused — by [`check_launch`](super::check_launch) a few lines
+/// earlier in the same pass, so reporting it again here would name one typo twice.
 fn strategy_of(profile: &GgAgentConfig) -> MemoryStrategy {
     MemoryStrategy::resolve(
         profile
             .capability(CAPABILITY_MEMORIES)
             .and_then(|capability| capability.implementation.as_deref()),
+        &mut LaunchReport::already_reported(),
     )
+}
+
+/// The [strategy](MemoryStrategy) `profile` **names**, or `None` when it names none.
+///
+/// That distinction is the whole of an inheriting profile's contract. A profile that names a
+/// strategy has said how its notebook is organized, and one that names none organizes it however
+/// whoever hands it one does — so it agrees with every spawner, and there is nothing for gg to
+/// refuse or to report. A blank string names nothing (it is how an editor spells "unset"), so it
+/// reads exactly as an absent key does.
+pub(super) fn declared_strategy(profile: &GgAgentConfig) -> Option<MemoryStrategy> {
+    let named = profile
+        .capability(CAPABILITY_MEMORIES)
+        .and_then(|capability| capability.implementation.as_deref())
+        .map(str::trim)
+        .filter(|named| !named.is_empty())?;
+    Some(MemoryStrategy::resolve(
+        Some(named),
+        &mut LaunchReport::already_reported(),
+    ))
 }
 
 /// The [notice](super::MemoriesRuntime::notice) lines `fresh` deserves, from the point of view of the

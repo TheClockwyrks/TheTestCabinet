@@ -423,6 +423,40 @@ fn local_mode_errors_when_no_binary_is_found() {
     assert!(matches!(err, Error::HarnessUnavailable { .. }));
 }
 
+/// An install mode gg does not recognize is **refused**, exactly as a `TCAB_GG_BINARY` pointing at
+/// a missing file is.
+///
+/// Auto-detection is what an *unset* variable gets. An operator who wrote `TCAB_GG_INSTALL=relase`
+/// asked for a specific install and would otherwise silently get whichever one this machine happens
+/// to have — which on a developer box is a local build and in the cluster is a download, so the
+/// same typo means two different things and neither is visible afterwards.
+#[test]
+fn an_unrecognized_install_mode_is_refused() {
+    // A local build is present, so auto-detection would happily have succeeded.
+    let exists = |_: &Path| true;
+    for mode in ["relase", "locall", "true", "auto"] {
+        let pairs = [("TCAB_GG_INSTALL", mode)];
+        let env = env_map(&pairs);
+        let err = resolve_install_with(env, exists, "0.7.0", "x86_64")
+            .expect_err("an unrecognized install mode must not fall through to auto-detection");
+        let Error::HarnessUnavailable { detail, .. } = &err else {
+            panic!("{mode:?}: expected a harness-unavailable error, got {err:?}");
+        };
+        assert!(
+            detail.contains("TCAB_GG_INSTALL") && detail.contains("local, release"),
+            "{mode:?}: the diagnostic must name the variable and the modes it accepts: {detail}"
+        );
+    }
+
+    // Case and surrounding whitespace are still normalized away, so the two real modes keep
+    // working when they are written untidily.
+    let env = env_map(&[("TCAB_GG_INSTALL", " RELEASE ")]);
+    assert!(matches!(
+        resolve_install_with(env, |_: &Path| true, "0.7.0", "x86_64").unwrap(),
+        GgInstall::Release { .. }
+    ));
+}
+
 #[test]
 fn release_download_command_builds_the_expected_url_and_script() {
     let script = release_download_command(

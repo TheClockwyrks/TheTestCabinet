@@ -14,6 +14,23 @@ use test_cabinet_core::gg::{
 use super::*;
 use crate::ending::EndingRole;
 use crate::sandbox::{capability_operations, gating_capabilities};
+use crate::validate::{LaunchDefect, LaunchReport};
+
+/// The mode `profile` resolves to, asserting gg honoured its configuration exactly as written.
+fn mode_of(profile: &GgAgentConfig) -> DocViewTypes {
+    let mut report = LaunchReport::collecting();
+    let mode = resolve_doc_view_types(profile, &mut report);
+    let defects = report.into_defects();
+    assert!(defects.is_empty(), "unexpected refusals: {defects:?}");
+    mode
+}
+
+/// Everything resolving `profile` reports, for the cases whose subject is the refusal.
+fn reported(profile: &GgAgentConfig) -> (DocViewTypes, Vec<LaunchDefect>) {
+    let mut report = LaunchReport::collecting();
+    let mode = resolve_doc_view_types(profile, &mut report);
+    (mode, report.into_defects())
+}
 
 /// An agent whose responses-as-code capability is on and carries `params`.
 fn set_with(params: serde_json::Value) -> GgAgentConfig {
@@ -76,14 +93,13 @@ fn on(capabilities: &[&str], language: GgProgramLanguage) -> DocsRuntime {
 #[test]
 fn absent_doc_view_types_is_return_only() {
     for params in [json!({}), json!({ "docViewTypes": null })] {
-        let resolved = resolve_doc_view_types(&set_with(params.clone()));
-        assert_eq!(resolved.mode, DocViewTypes::ReturnOnly, "{params}");
-        assert!(resolved.unknown_params.is_empty(), "{params}");
+        assert_eq!(
+            mode_of(&set_with(params.clone())),
+            DocViewTypes::ReturnOnly,
+            "{params}"
+        );
     }
-    assert_eq!(
-        resolve_doc_view_types(&GgAgentConfig::root()).mode,
-        DocViewTypes::ReturnOnly
-    );
+    assert_eq!(mode_of(&GgAgentConfig::root()), DocViewTypes::ReturnOnly);
 }
 
 /// Each named mode resolves to its variant, and each round-trips through its own id — the string a
@@ -95,28 +111,47 @@ fn each_named_mode_resolves_and_round_trips_through_its_id() {
         ("return", DocViewTypes::ReturnOnly),
         ("return-and-parameters", DocViewTypes::ReturnAndParameters),
     ] {
-        let resolved = resolve_doc_view_types(&set_with(json!({ "docViewTypes": spelling })));
-        assert_eq!(resolved.mode, mode, "{spelling}");
-        assert!(resolved.unknown_params.is_empty(), "{spelling}");
+        let resolved = mode_of(&set_with(json!({ "docViewTypes": spelling })));
+        assert_eq!(resolved, mode, "{spelling}");
         assert_eq!(mode.id(), spelling);
     }
 }
 
-/// A value naming no mode gg knows falls back to the default and is **reported**, never guessed at:
-/// a mode is a lever a study slices on, so a typo must change nothing silently.
+/// A value naming no mode gg knows **refuses the launch**, never guessed at: a mode is a lever a
+/// study slices on, and the [agent surface](crate::telemetry) records the *resolved* mode, so a typo
+/// read as the default would leave a run whose every record says it ran the arm it did not.
 #[test]
-fn an_unknown_doc_view_types_value_is_reported() {
+fn an_unknown_doc_view_types_value_is_refused() {
     for unreadable in [json!("returns"), json!(true), json!(2), json!([])] {
-        let resolved = resolve_doc_view_types(&set_with(json!({ "docViewTypes": unreadable })));
-        assert_eq!(resolved.mode, DocViewTypes::ReturnOnly);
-        assert_eq!(resolved.unknown_params, vec!["docViewTypes"]);
+        let (mode, defects) = reported(&set_with(json!({ "docViewTypes": unreadable.clone() })));
+        assert_eq!(mode, DocViewTypes::ReturnOnly, "the resolver stays total");
+        assert_eq!(defects.len(), 1, "{unreadable} -> {defects:?}");
+        assert_eq!(
+            defects[0].locus, "responses-as-code.params.docViewTypes",
+            "{unreadable}"
+        );
+        assert_eq!(defects[0].known, DocViewTypes::ALL, "{unreadable}");
     }
 }
 
-/// A present but **disabled** capability configures nothing: an agent that writes no programs opens
-/// no documentation views, so honouring the param would record an intention that had no effect.
+/// A mode written with stray whitespace around it is the mode it names. gg reads the vocabulary
+/// literally in every other respect — `"returns"` is refused — but a value's surrounding
+/// whitespace is not part of what an operator wrote.
 #[test]
-fn doc_view_types_on_a_disabled_capability_is_ignored() {
+fn surrounding_whitespace_does_not_hide_a_mode() {
+    assert_eq!(
+        mode_of(&set_with(json!({ "docViewTypes": " off " }))),
+        DocViewTypes::Off
+    );
+}
+
+/// **A disabled capability's param is still read.** It changes nothing about the run — an agent that
+/// writes no programs opens no documentation views — and it is read anyway, on the rule the whole
+/// params table follows: a disabled capability records the configuration the arm would have used, so
+/// the on and off arms of one comparison stay symmetric, and a typo skipped because a switch
+/// happened to be off is a typo that surfaces on the launch where it is flipped.
+#[test]
+fn a_disabled_capabilitys_doc_view_types_is_still_read() {
     let set = GgAgentConfig {
         capabilities: vec![GgCapabilityConfig {
             params: json!({ "docViewTypes": "off" }),
@@ -124,9 +159,24 @@ fn doc_view_types_on_a_disabled_capability_is_ignored() {
         }],
         ..GgAgentConfig::root()
     };
-    let resolved = resolve_doc_view_types(&set);
-    assert_eq!(resolved.mode, DocViewTypes::ReturnOnly);
-    assert!(resolved.unknown_params.is_empty());
+    assert_eq!(mode_of(&set), DocViewTypes::Off);
+}
+
+/// …and a value it cannot read is refused, rather than waiting for the launch that flips the switch.
+#[test]
+fn a_disabled_capabilitys_unreadable_doc_view_types_is_refused() {
+    let set = GgAgentConfig {
+        capabilities: vec![GgCapabilityConfig {
+            params: json!({ "docViewTypes": "returns" }),
+            ..GgCapabilityConfig::disabled(CAPABILITY_RESPONSES_AS_CODE)
+        }],
+        ..GgAgentConfig::root()
+    };
+    let mut report = LaunchReport::collecting();
+    resolve_doc_view_types(&set, &mut report);
+    let defects = report.into_defects();
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(defects[0].locus, "responses-as-code.params.docViewTypes");
 }
 
 // ---------------------------------------------------------------------------

@@ -24,11 +24,13 @@ by is done, and the rendered list marks each open task as ready or as blocked by
 the specific tasks still holding it up.
 
 The `maxTasks` param bounds how many tasks the list may hold at once. The default
-is 100, and an add beyond the ceiling is refused.
+is 100, and an add beyond the ceiling is refused. A `maxTasks` gg cannot read as
+a whole count refuses the launch.
 
 ## Modes
 
-A `mode` param sets how much structure a task carries.
+A `mode` param sets how much structure a task carries. A `mode` gg does not
+recognize refuses the launch, naming the two that exist.
 
 - `simple` (the default): a title and an optional description.
 - `issues`: a task carries the same structured sections as a

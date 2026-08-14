@@ -23,7 +23,23 @@ A skill has two halves and may carry either or both:
 Skills are loaded once, at launch, from the run's skills directory: `.gg/skills`
 under the workspace by default, or wherever the capability's `dir` param points.
 A relative path is joined onto the workspace and an absolute one is used as
-given. Each entry in that directory is one of two shapes.
+given. The library is the run's, so the directory is read off the first agent
+profile; a *different* `dir` on another profile refuses the launch rather than
+being read by nothing. Which agents are offered the library is a separate
+question, and each profile's own switch answers it — a run whose reviewer alone
+reads skills is a run with skills. A `dir` param that names no readable
+directory refuses the launch, as does every entry below that gg cannot load
+exactly as it is written. One refusal names them all, so a single pass over the
+directory fixes it.
+
+The **default** directory is different, and only because it is the default:
+nothing seeds `.gg/skills`, so a workspace that authored no skills simply has
+none there and the run opens with gg's own built-ins. A path an operator wrote is
+a promise about the workspace; an unwritten one is an absence.
+
+Each entry in that directory is one of two shapes. An entry whose name begins with
+a dot is tooling's — a `.gitkeep`, a `.DS_Store` — and is passed over rather than
+held to a rule about skills it never claimed to be.
 
 ```text
 .gg/skills/
@@ -35,15 +51,15 @@ given. Each entry in that directory is one of two shapes.
 ```
 
 - `<name>.md` is a prose skill: a small YAML front-matter block naming it
-  (`name`, `description`), then the body. A skill whose front matter omits a
-  description is listed with a placeholder one.
+  (`name`, `description`), then the body. Front matter that is absent, unclosed,
+  or missing either field refuses the launch.
 - `<name>/` is a skill directory, which is how a skill carries code. `skill.md`
   is required, because the name and the description are what the catalogue is
-  made of; a directory without one is ignored. A body in it is optional, so a
-  skill may be pure code.
+  made of, so a directory without one refuses the launch. A body in it is
+  optional, so a skill may be pure code.
 
-The catalogue is ordered by skill name, and a duplicate name keeps the first
-entry in path order.
+The catalogue is ordered by skill name, and two entries claiming one name refuse
+the launch.
 
 The two code files are named for the [program
 language](/gg/languages/overview/) they are written in: `skill.ts` and
@@ -55,9 +71,9 @@ the same text for all of them. Where two languages share one module runtime,
 each accepts the other's spelling and prefers its own: a `skill.ts` reaches a
 JavaScript agent too.
 
-A skill whose code is spelled in no language the reading agent writes is read as
-prose. The body arrives as it always does, nothing is bound, and the operator is
-told which spellings the directory carried.
+A skill directory carrying code in no language the reading agent writes refuses
+the launch, naming the spellings the directory holds. A directory serving several
+language arms carries a spelling for each.
 
 Reading a skill differs from reading a plain file in two ways: it strips the
 front matter and returns only the body, and that body is added to the window as
@@ -74,7 +90,7 @@ tool calling is shown the prose half of a skill and nothing else, since there
 are no programs for a module to be bound into.
 
 Both halves are prepared at the read, in the reading agent's own language. A
-whitespace-only file is dropped rather than bound.
+whitespace-only code file refuses the launch.
 
 ### Bound modules
 
@@ -187,7 +203,11 @@ unconfigured run gets all of them:
 ```
 
 Switching one off withholds the manual and leaves the functions: the family
-still works, and the agent is not handed a description of it.
+still works, and the agent is not handed a description of it. A key naming none
+of the twelve refuses the launch, as does a value that is not `true` or `false`
+and a `builtIns` that is not an object of toggles. A key naming a family this
+agent is not offered is accepted, since it is a real skill id and one
+configuration is written for a whole sweep.
 
 The built-ins are resolved against what this agent may call, so two agents in one
 run hold catalogues that agree about every authored skill and differ exactly

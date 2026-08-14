@@ -592,11 +592,14 @@ fn an_agent_less_capability_set_still_builds_a_document() {
 }
 
 #[test]
-fn a_capability_outside_the_catalog_is_still_queryable() {
-    // The catalog is the floor, not the ceiling: an externally supplied capability
-    // must not vanish from the document just because core has never heard of it —
-    // including one only a subagent declares, which a root-only union would have
-    // dropped from the document entirely rather than merely reported as false.
+fn a_stored_capability_outside_the_catalog_is_still_queryable() {
+    // No *run* can record one: `GG_CAPABILITY_CATALOG` is the closed vocabulary a set is read
+    // against and an id outside it refuses the launch. This is the builder's totality over what a
+    // record actually carries — a hand-written or corrupted row reaching the backend's document
+    // indexer, where dropping the field (or panicking) would leave the very record that needs
+    // finding unfindable. It reports what is stored; it does not bless it, and the run that would
+    // have written it never started. The subagent-declared id is the same argument one level down:
+    // a root-only union would have dropped it from the document entirely rather than reported it.
     let mut record = gg_record();
     let set = record.subject.gg_capability_set.as_mut().expect("set");
     set.agents[0]

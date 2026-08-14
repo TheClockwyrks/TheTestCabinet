@@ -120,8 +120,8 @@ pub use data::{
 /// collapse into one blob-pool entry. Neither is part of the tool API.
 pub(crate) use filesystem::READ_FILE_CAP;
 pub use filesystem::{
-    EditFileTool, ListDirTool, READ_FILE_TOOL, READ_MODE_DEFAULT_CAP, READ_MODE_UNLIMITED,
-    ReadFileTool, ReadPolicy, WriteFileTool,
+    EditFileTool, ListDirTool, PARAM_LINE_CAP, READ_FILE_TOOL, READ_MODE_DEFAULT_CAP,
+    READ_MODE_UNLIMITED, ReadFileTool, ReadPolicy, WriteFileTool,
 };
 pub use memories::{
     CREATE_MEMORY_TOOL, CreateMemoryTool, DELETE_MEMORY_TOOL, DeleteMemoryTool, EDIT_MEMORY_TOOL,
@@ -129,7 +129,7 @@ pub use memories::{
     UPDATE_MEMORY_TOOL, UpdateMemoryTool, WRITE_MEMORY_TOOL, WriteMemoryTool, is_memory_tool,
     read_only_refusal,
 };
-pub use shell::{OffloadPolicy, SHELL_TOOL};
+pub use shell::{OffloadPolicy, PARAM_MAX_CHARS, PARAM_MAX_LINES, SHELL_TOOL};
 pub(crate) use shell::{
     ShellExecution, ShellRequest, ShellRunner, ShellStatus, real_shell, run_command,
 };
@@ -149,10 +149,9 @@ pub use transitions::{EXEC_TOOL, FORK_TOOL, TRANSITION_STATE_TOOL};
 ///
 /// A name in a run's `tools` that is **not** in this set is unknown — a typo, a tool that no longer
 /// exists, or an [operation id](crate::sandbox::OperationId) written where a tool name belongs —
-/// and is reported at launch as an error rather than silently granting nothing. A name that *is*
-/// here but that the run's enabled capabilities do not offer grants nothing and is not flagged, so
-/// one shared configuration document can name a tool only some of the configurations it describes
-/// enable.
+/// and **refuses the launch** rather than silently granting nothing. A name that *is* here but that
+/// the run's enabled capabilities do not offer grants nothing and is not flagged, so one shared
+/// configuration document can name a tool only some of the configurations it describes enable.
 ///
 /// This list is the single source of truth for the vocabulary, and it is deliberately **not** the
 /// [operations table](crate::sandbox::Operation)'s: the two surfaces are scoped, so gg
@@ -284,10 +283,10 @@ pub fn capability_tools<'a>(capabilities: impl IntoIterator<Item = &'a str>) -> 
 /// The names in an agent's [tool allowlist](GgAgentConfig::tools) that grant **nothing** — not a
 /// tool gg can offer at all, validated against [`ALL_TOOL_NAMES`].
 ///
-/// The loop reports each of these at launch as an **error**, because an allowlist that quietly
-/// ignores what it cannot read is an allowlist nobody can tell is wrong: an entry that grants
-/// nothing looks exactly like a deliberate narrowing, so nothing but a launch-time complaint can
-/// tell an operator that the call they meant to hand over never arrived. A name that *is* a gg tool
+/// Each of these **refuses the launch**, because an allowlist that quietly ignores what it cannot
+/// read is an allowlist nobody can tell is wrong: an entry that grants nothing looks exactly like a
+/// deliberate narrowing, so nothing gg could say afterwards would tell an operator that the call
+/// they meant to hand over never arrived. A name that *is* a gg tool
 /// yet is not offered by this configuration's enabled capabilities is deliberately not flagged — one
 /// shared configuration document may name a tool only some of the configurations it describes
 /// enable.
@@ -312,8 +311,34 @@ pub fn ungranted_tools(capabilities: &GgAgentConfig) -> Vec<String> {
 pub fn read_policy(capabilities: &GgAgentConfig) -> ReadPolicy {
     capabilities
         .capability(CAPABILITY_READ_FILE)
-        .map(|cap| ReadPolicy::resolve(cap.implementation.as_deref(), &cap.params))
+        // A discarding sink: the launch pass read this same capability, through this same resolver,
+        // and refused the run if its mode or its cap was one gg could not honour.
+        .map(|cap| {
+            ReadPolicy::resolve(
+                cap.implementation.as_deref(),
+                &cap.params,
+                &mut crate::validate::LaunchReport::Discarding,
+            )
+        })
         .unwrap_or_default()
+}
+
+/// The tools' contribution to one profile's half of the
+/// [launch pass](crate::validate::validate_launch): the [read policy](ReadPolicy) and the
+/// [shell output policy](OffloadPolicy) it declares, read exactly as the run will read them.
+///
+/// The read capability's params are read whether it is switched on or off, on the terms the pass
+/// reads every other capability's: a disabled capability records the configuration the arm would
+/// have used, so a typo in it is a typo now rather than on the launch that flips the switch.
+pub fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) {
+    if let Some(capability) = profile.capability(CAPABILITY_READ_FILE) {
+        ReadPolicy::resolve(
+            capability.implementation.as_deref(),
+            &capability.params,
+            report,
+        );
+    }
+    shell::check_launch(profile, report);
 }
 
 /// The [output policy](OffloadPolicy) `shell` runs under for a capability set: the
@@ -337,8 +362,14 @@ pub fn shell_offload(capabilities: &GgAgentConfig) -> OffloadPolicy {
     capabilities
         .capability(CAPABILITY_SHELL)
         .filter(|capability| capability.enabled)
+        // A discarding sink: the launch pass read this same capability, through this same resolver,
+        // and refused the run if its mode or its ceilings were ones gg could not honour.
         .map(|capability| {
-            OffloadPolicy::resolve(capability.implementation.as_deref(), &capability.params)
+            OffloadPolicy::resolve(
+                capability.implementation.as_deref(),
+                &capability.params,
+                &mut crate::validate::LaunchReport::Discarding,
+            )
         })
         .unwrap_or(OffloadPolicy::Inline)
 }
@@ -786,7 +817,7 @@ impl ToolRegistry {
             tools.push(Box::new(board::CreateEpicTool::new(Arc::clone(board))));
             tools.push(Box::new(board::CreateIssueTool::new(
                 Arc::clone(board),
-                IssuePolicy::resolve(capabilities),
+                IssuePolicy::resolve(capabilities, &mut crate::validate::LaunchReport::Discarding),
             )));
             tools.push(Box::new(board::UpdateIssueTool::new(Arc::clone(board))));
             tools.push(Box::new(board::SetIssueBlockedByTool::new(Arc::clone(
@@ -827,6 +858,8 @@ impl ToolRegistry {
             // compaction, so its run condenses in prose and is offered the tool that goes with
             // that — see `CompactionStrategy::resolve`.
             capabilities.is_enabled(CAPABILITY_MEMORIES) && modules.memories().is_writable(),
+            // Mid-run: the launch pass already read this profile's `implementation`.
+            &mut crate::validate::LaunchReport::Discarding,
         )
         .offers_compact_tool(capabilities.is_enabled(CAPABILITY_RESPONSES_AS_CODE))
             && capabilities.is_enabled(CAPABILITY_COMPACTION)

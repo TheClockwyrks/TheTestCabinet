@@ -72,10 +72,10 @@ it. See [compilation](/gg/languages/compilation/).
 ## Configuring and recording the language
 
 The language is the `language` param of the `responses-as-code` capability,
-defaulting to `typescript` and resolved per agent. One run may therefore drive
-its root in one language and a reviewer subagent in another. A value gg cannot
-read as a registered id changes nothing and is reported at launch, so a typo
-never runs an arm the study did not ask for.
+taking `typescript` when absent and resolved per agent. One run may therefore
+drive its root in one language and a reviewer subagent in another. A value that
+is not a registered id refuses the launch, naming the ids gg registers, so a
+typo never runs an arm the study did not ask for.
 
 The answer is recorded as a scalar in two places, so a
 [query](/gg/analysis/query-language/) slices arms on it with no new vocabulary:

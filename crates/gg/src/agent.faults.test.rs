@@ -33,6 +33,7 @@
 use std::any::Any;
 
 use super::*;
+use crate::board;
 use test_cabinet_core::gg::{CAPABILITY_AGENT_PERSISTENCE, GgTurnErrorType, GgTurnOutcome};
 
 /// Responses-as-code on, over the [tool-calling default](no_code): these tests need a turn that
@@ -550,6 +551,7 @@ async fn a_faulted_run_claims_no_further_issue() {
                 root: None,
             },
             &mut warnings,
+            &mut crate::validate::LaunchReport::Discarding,
         )
         .expect("a board set builds an orchestrator"),
     );
@@ -894,6 +896,7 @@ async fn an_issue_whose_worktree_checkout_panicked_fails_rather_than_hanging() {
                 root: None,
             },
             &mut warnings,
+            &mut crate::validate::LaunchReport::Discarding,
         )
         .expect("a board set builds an orchestrator"),
     );
@@ -993,6 +996,7 @@ async fn a_task_that_panicked_outside_its_loop_is_caught_by_the_join() {
                 root: None,
             },
             &mut warnings,
+            &mut crate::validate::LaunchReport::Discarding,
         )
         .expect("a set with no machines builds an orchestrator"),
     );
@@ -1072,6 +1076,7 @@ async fn a_panic_during_a_wait_gives_back_no_slot() {
                 root: None,
             },
             &mut warnings,
+            &mut crate::validate::LaunchReport::Discarding,
         )
         .expect("a set with no machines builds an orchestrator"),
     );
@@ -1229,6 +1234,7 @@ async fn a_panic_during_an_issue_agents_wait_gives_back_no_slot() {
                 root: None,
             },
             &mut warnings,
+            &mut crate::validate::LaunchReport::Discarding,
         )
         .expect("a set with no machines builds an orchestrator"),
     );
@@ -1334,6 +1340,7 @@ async fn a_panic_after_an_agent_answered_its_spawner_gives_back_no_slot() {
                 root: None,
             },
             &mut warnings,
+            &mut crate::validate::LaunchReport::Discarding,
         )
         .expect("a set with no machines builds an orchestrator"),
     );

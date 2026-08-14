@@ -22,9 +22,12 @@ and one the timeout killed.
 
 Under [responses as code](/gg/responses-as-code/overview/) a program calls
 `gg.shell.shell(command, { timeoutSecs })` and is handed back the `exitCode`, the
-merged `output`, and whether that output was `truncated`. The requested timeout
-is clamped to 24 hours and then to whatever is left of the run's wall-clock
-budget, since a host call cannot be cut short once it is in flight. The system
+merged `output`, and whether that output was `truncated`. An omitted
+`timeoutSecs` takes the default; one that is not a positive number of seconds is
+an `invalid-argument` refusal, the same answer the tool surface gives. The
+requested timeout is clamped to 24 hours and then to whatever is left of the
+run's wall-clock budget, since a host call cannot be cut short once it is in
+flight. The system
 prompt renders one line for this capability when the agent is offered it, saying
 that a program can run a command in the workspace and that the exit code and
 output come back to the program.
@@ -92,11 +95,12 @@ gg's 16 KiB byte cap applies behind them under every mode.
 
 Either ceiling alone is a complete instruction and leaves the other axis
 uncapped. A mode that names neither takes gg's defaults of 250 lines and 4096
-characters.
+characters. A ceiling that is present and unreadable as a count refuses the
+launch.
 
-A mode gg does not recognize runs as `adaptive`, and gg reports it as a launch
-warning naming the modes it does recognize. The launch still proceeds, so a
-sweep's one shared configuration document stays interpretable by every arm.
+A mode gg does not recognize refuses the launch, naming the modes it does
+recognize. The refusal names every value in the configuration gg cannot honour
+exactly as written, so one pass fixes them all.
 
 ### The truncation note
 
@@ -125,8 +129,9 @@ of re-running the command with a narrower filter.
 One function applies the policy, so a JSON tool call and a program's
 `gg.shell.shell(…)` are governed identically. gg's [hook](/gg/hooks/) runner
 reaches the same function: a command hook's output is offloaded on the agent's
-policy unless that hook names its own `output` mode. A script hook's stdout is
-its verdict and is always read whole.
+policy unless that hook names its own `output` mode. That mode is read from the
+same vocabulary and refuses the launch on the same terms. A script hook's stdout
+is its verdict and is always read whole.
 
 The policy is read only from an enabled `shell` capability. An absent or
 disabled one resolves to `inline`.

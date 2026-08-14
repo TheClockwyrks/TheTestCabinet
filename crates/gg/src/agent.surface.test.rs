@@ -25,7 +25,8 @@ use super::*;
 use crate::client::MockClient;
 use crate::telemetry::{CollectingSink, Emitter};
 use test_cabinet_core::gg::{
-    GgAgentApi, GgCapabilitySet, GgProgramLanguage, GgTelemetryEvent, ROOT_AGENT,
+    CAPABILITY_PROGRAM_LIBRARY, GgAgentApi, GgCapabilitySet, GgProgramLanguage, GgTelemetryEvent,
+    ROOT_AGENT,
 };
 
 use super::{ScriptedFactory, invocation, subagent_set};

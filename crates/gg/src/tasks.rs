@@ -67,21 +67,30 @@ use crate::prompts::{self, TaskItemView, TasksBlockContext};
 pub const DEFAULT_MAX_TASKS: usize = 100;
 
 /// The tasks capability param naming the [maximum number of tasks](TaskStore::max_tasks).
-const PARAM_MAX_TASKS: &str = "maxTasks";
+pub(crate) const PARAM_MAX_TASKS: &str = "maxTasks";
 
 /// The tasks capability param naming the list [mode](TaskMode).
-const PARAM_MODE: &str = "mode";
+pub(crate) const PARAM_MODE: &str = "mode";
 
-/// Resolve the task-count ceiling from a tasks-capability `params` object: `maxTasks`
-/// overrides [`DEFAULT_MAX_TASKS`] when present as a positive integer; a missing, zero, or
-/// non-integer value keeps the default.
-pub fn resolve_max_tasks(params: &Value) -> usize {
-    params
-        .get(PARAM_MAX_TASKS)
-        .and_then(Value::as_u64)
-        .filter(|&n| n > 0)
-        .map(|n| n as usize)
-        .unwrap_or(DEFAULT_MAX_TASKS)
+/// Resolve the task-count ceiling from a tasks-capability `params` object.
+///
+/// An absent `maxTasks` takes [`DEFAULT_MAX_TASKS`]. A present one is honoured exactly as written,
+/// and one gg cannot honour — a value it cannot read as a whole count, or a `0`, which would give
+/// the model a list it may never add to — is [reported](crate::validate) and refuses the launch. A
+/// list bounded by a number nobody wrote is the same wrong-experiment failure a mistyped
+/// `implementation` is: every `add_task` past the ceiling is refused, and a study reading the run
+/// afterwards sees a model that stopped planning.
+pub fn resolve_max_tasks(params: &Value, report: &mut crate::validate::LaunchReport) -> usize {
+    crate::validate::positive_count_param(
+        params,
+        CAPABILITY_TASKS,
+        PARAM_MAX_TASKS,
+        "a list the model may never add a task to offers a call whose every use is refused",
+        report,
+    )
+    .map_or(DEFAULT_MAX_TASKS, |max| {
+        usize::try_from(max).unwrap_or(usize::MAX)
+    })
 }
 
 /// The shape a [task](Task) takes, selected by the tasks capability's `mode` param.
@@ -106,12 +115,35 @@ pub enum TaskMode {
 }
 
 impl TaskMode {
-    /// Parse a `mode` param token, tolerating a couple of natural spellings. An unknown or absent
-    /// value keeps the default ([`Simple`](Self::Simple)).
-    pub fn parse(raw: &str) -> Self {
+    /// The two modes, in the spelling a refusal offers back — the canonical name of each, not the
+    /// alternates [`parse`](Self::parse) also accepts.
+    pub const ALL: [&'static str; 2] = ["simple", "issues"];
+
+    /// Parse a `mode` param token, tolerating a couple of natural spellings.
+    ///
+    /// A token gg does not recognize is [reported](crate::validate) and refuses the launch;
+    /// [`Simple`](Self::Simple) comes back so the parse stays total, and by then the run is over.
+    /// Reading `isues` as `simple` would hold every task in the run to the wrong shape while the
+    /// record named the other arm.
+    pub fn parse(raw: &str, report: &mut crate::validate::LaunchReport) -> Self {
         match raw.trim().to_ascii_lowercase().as_str() {
             "issues" | "issue" | "structured" => TaskMode::Issues,
-            _ => TaskMode::Simple,
+            "simple" | "" => TaskMode::Simple,
+            _ => {
+                report.report(
+                    crate::validate::LaunchDefect::run_level(
+                        crate::validate::param_locus(CAPABILITY_TASKS, PARAM_MODE),
+                        raw,
+                        format!(
+                            "the `{CAPABILITY_TASKS}` capability's `{PARAM_MODE}` names a list \
+                             shape gg does not have; reading it as the default would hold every \
+                             task in the run to a shape nobody configured."
+                        ),
+                    )
+                    .known(Self::ALL),
+                );
+                TaskMode::Simple
+            }
         }
     }
 
@@ -122,13 +154,44 @@ impl TaskMode {
 }
 
 /// Resolve the list [mode](TaskMode) from a tasks-capability `params` object: `mode` selects
-/// `simple` (the default) or `issues`; a missing or unrecognized value keeps `simple`.
-pub fn resolve_task_mode(params: &Value) -> TaskMode {
-    params
-        .get(PARAM_MODE)
-        .and_then(Value::as_str)
-        .map(TaskMode::parse)
-        .unwrap_or_default()
+/// `simple` (the default) or `issues`.
+///
+/// Absent or `null` takes the default. Anything else is read as the token it must be — a value that
+/// is not even a string is [reported](crate::validate) here, and one that is a string gg does not
+/// recognize by [`TaskMode::parse`].
+pub fn resolve_task_mode(params: &Value, report: &mut crate::validate::LaunchReport) -> TaskMode {
+    match params.get(PARAM_MODE) {
+        None | Some(Value::Null) => TaskMode::default(),
+        Some(Value::String(raw)) => TaskMode::parse(raw, report),
+        Some(other) => {
+            report.report(
+                crate::validate::LaunchDefect::run_level(
+                    crate::validate::param_locus(CAPABILITY_TASKS, PARAM_MODE),
+                    crate::validate::as_written(other),
+                    format!(
+                        "the `{CAPABILITY_TASKS}` capability's `{PARAM_MODE}` names a list shape, \
+                         which gg reads as a string; there is nothing here it can read one from."
+                    ),
+                )
+                .known(TaskMode::ALL),
+            );
+            TaskMode::default()
+        }
+    }
+}
+
+/// The tasks capability's whole contribution to the [launch pass](crate::validate::validate_launch):
+/// the ceiling and the mode `profile` declares, read exactly as the run will read them.
+///
+/// The params are read whether the capability is switched **on** or off, on the terms the pass reads
+/// every other capability's: a disabled capability records the configuration the arm would have
+/// used, so a typo in it is a typo now rather than on the launch that flips the switch.
+pub fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) {
+    let Some(params) = profile.capability(CAPABILITY_TASKS).map(|cap| &cap.params) else {
+        return;
+    };
+    resolve_max_tasks(params, report);
+    resolve_task_mode(params, report);
 }
 
 /// The lifecycle status of a [`Task`].
@@ -863,9 +926,16 @@ impl TasksRuntime {
         if !profile.is_enabled(CAPABILITY_TASKS) {
             return Self::disabled();
         }
+        // A discarding sink: `check_launch` read these same params, through these same resolvers,
+        // before the run started and refused it if either was unhonourable.
+        let report = &mut crate::validate::LaunchReport::Discarding;
         let params = profile.capability(CAPABILITY_TASKS).map(|cap| &cap.params);
-        let max_tasks = params.map(resolve_max_tasks).unwrap_or(DEFAULT_MAX_TASKS);
-        let mode = params.map(resolve_task_mode).unwrap_or_default();
+        let max_tasks = params.map_or(DEFAULT_MAX_TASKS, |params| {
+            resolve_max_tasks(params, report)
+        });
+        let mode = params.map_or_else(TaskMode::default, |params| {
+            resolve_task_mode(params, report)
+        });
         Self::with_mode_in(max_tasks, mode, ctx.ids)
     }
 
@@ -1030,9 +1100,16 @@ impl Module for TasksRuntime {
         if !profile.is_enabled(CAPABILITY_TASKS) {
             return Err(AdoptError::Disabled);
         }
+        // A discarding sink: `check_launch` read these same params, through these same resolvers,
+        // before the run started and refused it if either was unhonourable.
+        let report = &mut crate::validate::LaunchReport::Discarding;
         let params = profile.capability(CAPABILITY_TASKS).map(|cap| &cap.params);
-        let max_tasks = params.map(resolve_max_tasks).unwrap_or(DEFAULT_MAX_TASKS);
-        let mode = params.map(resolve_task_mode).unwrap_or_default();
+        let max_tasks = params.map_or(DEFAULT_MAX_TASKS, |params| {
+            resolve_max_tasks(params, report)
+        });
+        let mode = params.map_or_else(TaskMode::default, |params| {
+            resolve_task_mode(params, report)
+        });
         self.store
             .lock()
             .expect("task store lock")

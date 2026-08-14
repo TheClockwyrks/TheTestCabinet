@@ -4,7 +4,25 @@
 use serde_json::json;
 use test_cabinet_core::gg::{GgAgentConfig, GgCapabilityConfig};
 
+use crate::validate::{LaunchDefect, LaunchReport};
+
 use super::*;
+
+/// The library `profile` resolves to, asserting gg honoured its retention exactly as written.
+fn library(profile: &GgAgentConfig) -> ProgramLibrary {
+    let mut report = LaunchReport::collecting();
+    let library = resolve_program_library(profile, &mut report);
+    let defects = report.into_defects();
+    assert!(defects.is_empty(), "unexpected refusals: {defects:?}");
+    library
+}
+
+/// Everything `read` reports, for the cases whose subject is the refusal.
+fn reported(read: impl FnOnce(&mut LaunchReport)) -> Vec<LaunchDefect> {
+    let mut report = LaunchReport::collecting();
+    read(&mut report);
+    report.into_defects()
+}
 
 /// An agent profile enabling the library with `params`.
 fn profile(params: serde_json::Value) -> GgAgentConfig {
@@ -116,50 +134,62 @@ fn a_failed_program_is_still_kept_because_fixing_it_is_the_point() {
 
 #[test]
 fn an_absent_capability_resolves_to_no_library() {
-    let resolved = resolve_program_library(&GgAgentConfig::root());
-
-    assert!(!resolved.library.is_enabled());
-    assert!(resolved.unknown_params.is_empty());
+    assert!(!library(&GgAgentConfig::root()).is_enabled());
 }
 
 #[test]
 fn a_disabled_capability_configures_nothing() {
-    let resolved = resolve_program_library(&GgAgentConfig {
-        capabilities: vec![GgCapabilityConfig::disabled(CAPABILITY_PROGRAM_LIBRARY)],
-        ..GgAgentConfig::root()
-    });
-
-    assert!(!resolved.library.is_enabled());
+    assert!(
+        !library(&GgAgentConfig {
+            capabilities: vec![GgCapabilityConfig::disabled(CAPABILITY_PROGRAM_LIBRARY)],
+            ..GgAgentConfig::root()
+        })
+        .is_enabled()
+    );
 }
 
 #[test]
 fn keep_defaults_and_zero_means_unlimited() {
-    assert_eq!(
-        resolve_program_library(&profile(json!({}))).library.keep,
-        Some(DEFAULT_KEEP)
-    );
-    assert_eq!(
-        resolve_program_library(&profile(json!({ "keep": 3 })))
-            .library
-            .keep,
-        Some(3)
-    );
-    assert_eq!(
-        resolve_program_library(&profile(json!({ "keep": 0 })))
-            .library
-            .keep,
-        None
-    );
+    assert_eq!(library(&profile(json!({}))).keep, Some(DEFAULT_KEEP));
+    assert_eq!(library(&profile(json!({ "keep": 3 }))).keep, Some(3));
+    assert_eq!(library(&profile(json!({ "keep": 0 }))).keep, None);
+    // An integral float names the same retention — JSON has no integer type, and refusing `3.0`
+    // would be a usability failure rather than a fallback fix.
+    assert_eq!(library(&profile(json!({ "keep": 3.0 }))).keep, Some(3));
 }
 
 #[test]
-fn an_unreadable_keep_is_reported_and_changes_nothing() {
+fn an_unreadable_keep_is_refused() {
     // Silently reverting to the default would run one arm of a study under another arm's name,
-    // which is exactly what the report exists to prevent.
-    let resolved = resolve_program_library(&profile(json!({ "keep": "5" })));
+    // which is exactly what the refusal exists to prevent.
+    let defects = reported(|report| {
+        resolve_program_library(&profile(json!({ "keep": "5" })), report);
+    });
 
-    assert_eq!(resolved.library.keep, Some(DEFAULT_KEEP));
-    assert_eq!(resolved.unknown_params, vec![PARAM_KEEP.to_string()]);
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(defects[0].locus, "program-library.params.keep");
+}
+
+/// The retention of a **disabled** capability is judged too. It has no library to build, so the
+/// resolver never reads it — the launch check does, because a switched-off capability still records
+/// the retention the off arm would have kept.
+#[test]
+fn a_disabled_capabilitys_retention_is_judged_at_launch() {
+    let defects = reported(|report| {
+        check_launch(
+            &GgAgentConfig {
+                capabilities: vec![GgCapabilityConfig {
+                    enabled: false,
+                    params: json!({ "keep": "5" }),
+                    ..GgCapabilityConfig::enabled(CAPABILITY_PROGRAM_LIBRARY)
+                }],
+                ..GgAgentConfig::root()
+            },
+            report,
+        );
+    });
+
+    assert_eq!(defects.len(), 1, "{defects:?}");
 }
 
 #[test]

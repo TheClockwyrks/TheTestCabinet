@@ -599,7 +599,7 @@ async fn a_transitions_module_list_names_the_instance_on_both_sides() {
 /// A machine gg cannot build **refuses the launch**, rather than being absorbed into an empty
 /// table.
 ///
-/// Unreachable through the production path — [`validate_agents`] parses the very same machines and
+/// Unreachable through the production path — [`crate::validate::validate_launch`] parses the very same machines and
 /// refuses this set before an orchestrator exists — so it is provoked the only way it can be, by
 /// building one directly. What it guards is that the impossible case is *reported*: an empty table
 /// is not a smaller version of the right answer, it is a different run. Every shell in the set
@@ -612,7 +612,7 @@ fn a_machine_that_will_not_build_refuses_the_launch() {
     let set = machine_set(json!("not a state table"));
     // The production launch check refuses it first — this is the belt behind that brace.
     assert!(
-        validate_agents(&set).is_err(),
+        crate::validate::refusal(&set).is_err(),
         "launch validation is what makes the case below unreachable"
     );
 
@@ -629,6 +629,7 @@ fn a_machine_that_will_not_build_refuses_the_launch() {
             root: None,
         },
         &mut warnings,
+        &mut crate::validate::LaunchReport::Discarding,
     ) else {
         panic!("a machine that will not build has no orchestrator to return");
     };

@@ -107,9 +107,10 @@ ceilings that end a run whose model has stopped making progress.
   has taken 50 turns, more than 40% of its recent turns being errors ends it.
 
 Runtime and cost stay off when unset. `maxParallel` defaults to 16 and
-`replayMaxBytes` to 256 MiB. A ceiling that is set replaces its default. A
-partially declared error rate warns and arms nothing rather than filling in the
-missing half, whether it is a rate without a window or a window without a rate.
+`replayMaxBytes` to 256 MiB. A ceiling that is set replaces its default, and each
+error-rate half replaces its own: a set declaring only `maxErrorRate` arms it
+over the default window of 50, and one declaring only `errorRateWindow` judges it
+against the default rate of 0.4.
 
 The run records the ceilings that were in force on the session summary, beside
 the breach if there was one, including an unset turn ceiling recorded as
@@ -171,9 +172,12 @@ It is evaluated after every recorded outcome, including a good one. A good turn
 can be the turn that fills the window, and a window that becomes judgeable at
 three errors in four is judged then.
 
-Both halves are needed. A rate with no window has nothing to measure over, and a
-window with no rate has no threshold. Either alone is a startup warning and no
-ceiling.
+Each half stands on its own. Both are absent by default and both have one, so a
+set that declares only the rate arms it over gg's default window, and one that
+declares only the window judges it against gg's default rate — the same reading
+as the set that declares neither. Filling in the half that was not written
+substitutes for nothing; what refuses the launch is a half gg cannot arm as
+written.
 
 ### `maxCost`
 
@@ -269,11 +273,31 @@ building and driving an implementation the run was told to stop writing. See the
 ## gg's own defects
 
 A failure of gg's own machinery stops the whole run, whichever agent met it.
-Four failures are of that kind: a state gg's launch validation proves
-unreachable, such as an agent whose profile the run does not declare; a
-[fatal sandbox fault](/gg/responses-as-code/programs/) under a turn the model
-answered; a [program language](/gg/languages/overview/)'s compiler failing to
-finish; and an agent task that panics.
+Failures of that kind are:
+
+- a state gg's launch validation proves unreachable, such as an agent whose
+  profile the run does not declare;
+- a [fatal sandbox fault](/gg/responses-as-code/programs/) under a turn the model
+  answered;
+- a [program language](/gg/languages/overview/)'s compiler failing to finish;
+- an agent task that panics; and
+- a value the run cannot honour that only becomes visible once the agent is being
+  stood up. Every configured value gg can read from the document
+  [refuses the launch](/gg/configurations/) instead, so what is left here is the
+  handful of questions a document cannot answer: a
+  [handoff compaction](/gg/compaction/) model that resolves in the catalog and
+  cannot be reached at run time, a
+  [system-prompt override](/gg/prompts/) that will not render against a live
+  context, an [autoloaded specification](/gg/autoload-specifications/) that
+  cannot be read, an [inheriting agent](/gg/memories/) whose live spawner
+  organizes memories another way, and a [transfer](/gg/modules/) meeting a module
+  its predecessor does not hold.
+
+Each of them has one thing in common: the only alternative to stopping is
+substituting something for what was configured — gg's prompt for the operator's,
+the working model for the handoff model, a private notebook for an inherited one
+— and a run that measures the substitute while its record names the
+configuration is worse than no run.
 
 The run's output is attribution data: the tree it leaves is scored against the
 model that produced it and compared against the tree another configuration
@@ -456,29 +480,24 @@ configuration round-trips unchanged. In the console the limits are a Run limits
 fieldset above the capability groups in the
 [configuration](/gg/configurations/) editor, one field per key. A fresh
 configuration shows gg's defaults in the fields that have one, so an empty
-parallelism, error-ceiling or journal field falls back to that default, while an
-empty `maxTurns`, `maxRuntimeSecs` or `maxCost` leaves that ceiling off.
+parallelism, error-ceiling or journal field takes that default, while an empty
+`maxTurns`, `maxRuntimeSecs` or `maxCost` leaves that ceiling off.
 
-Resolution is total: an unset, zero, negative or nonsensical declaration becomes
-"the ceiling is off" plus a warning, never a launch error. A sweep's one shared
-configuration document has to stay interpretable by every arm.
+An absent key takes its default. A key that is present is armed exactly as
+written, and one gg cannot arm that way refuses the launch. The refusal names
+every such key in the set at once, so a single pass over the document fixes them
+all. A count declared as an integral JSON number is read as that integer, so
+`60` and `60.0` are one declaration.
 
-| Declaration | Resolves to | Warning |
-| --- | --- | --- |
-| `limits` absent | every default above | — |
-| `maxParallel: 0` or absent | `16` | — |
-| `maxTurns: 0` or absent | unbounded | — |
-| `maxRuntimeSecs: 0` or absent | no budget | — |
-| `maxConsecutiveErrors` absent | `5` | — |
-| `maxConsecutiveErrors: 0` | off | it would stop a run before its first turn |
-| both error-rate halves absent | `0.4` over `50` | — |
-| a rate with no window, or a window with no rate | off | neither half means anything |
-| `maxErrorRate` outside `0.0..=1.0`, or not finite | off | it could never be exceeded |
-| `errorRateWindow: 0` | off | it has no turns to measure |
-| `errorRateWindow` ≥ a set `maxTurns` | armed | it can fire only on the last turn |
-| `maxCost` ≤ 0, or not finite | off | it must be greater than zero |
-| `replayMaxBytes` absent | 256 MiB | — |
-| `replayMaxBytes: 0` | off; capture unbounded | it would stop capture at once |
+| Declaration | Result |
+| --- | --- |
+| `limits`, or any key in it, absent | the defaults above |
+| one error-rate half declared, the other not | the declared half armed as written, over the other's default |
+| `maxErrorRate: 0.0` | armed: any error at all, once the window is full |
+| `errorRateWindow` ≥ a set `maxTurns` | armed as declared, warned that it can fire only on the last turn |
+| any key but `maxErrorRate` declared `0` or negative | refused |
+| `maxErrorRate` outside `0.0..=1.0`, or a float that is not finite | refused |
+| a key gg cannot read as the number it is | refused |
 
 Every ceiling is declared in `capabilitySet.limits`. A capability's params bound
 that capability alone, so the subagents capability's `maxDepth` is the only

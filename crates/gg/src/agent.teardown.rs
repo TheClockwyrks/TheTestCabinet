@@ -81,7 +81,7 @@ pub(super) struct SpawnerLink {
 /// panicked agent ends the same way a returning one does.
 pub(super) struct AgentTeardown {
     /// The run this agent belongs to: its [fault latch](crate::fault), its
-    /// [scheduler](Scheduler) and — for an issue agent — its [board].
+    /// [scheduler](Scheduler) and — for an issue agent — its [board](crate::board).
     orch: Arc<Orchestrator>,
     /// The agent as it stands **now**, re-pointed at each [succession](Handoff) so a diagnostic
     /// names the instance that actually panicked rather than the one that started.

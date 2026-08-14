@@ -29,7 +29,8 @@ round-trip runs in. Against a 200k model at the default headroom the agent works
 against 160k.
 
 `summaryHeadroom` is the capability's one tuning parameter. It accepts `0.0` to
-`0.9` and defaults to `0.2`; a value outside that range keeps the default. The
+`0.9` and defaults to `0.2`. A value outside that range, or one gg cannot read
+as a fraction, refuses the launch, and an absent one takes the default. The
 fullness threshold that fires a compaction is `1 - summaryHeadroom`, so at the
 default the trigger is `0.8` and fires at roughly 128k of that 160k working
 window. Setting the headroom to `0` hands the agent the whole window and
@@ -81,8 +82,9 @@ describes it in the summary itself.
 ## Compaction strategies
 
 Who condenses the thread, and what the restarted context is rebuilt from, is the
-capability's `implementation`. Five strategies ship, and a run naming an
-unrecognized one resolves to the default.
+capability's `implementation`. Five strategies ship. An `implementation` naming
+anything else refuses the launch, with the error naming the five that exist, and
+an absent one takes `self-summarization`.
 
 ### In-loop strategies
 
@@ -106,8 +108,10 @@ wanted.
   requires the agent to record its working state as [memories](/gg/memories/),
   which are retained verbatim, and accepts only memory calls until one whole
   reply's calls have all succeeded. The strategy requires memories the agent may
-  write: an agent with none, or one holding somebody else's read-only memories,
-  resolves to the default with a warning instead.
+  write, so a profile that names it without the memories capability, or with a
+  read-only memory scope, refuses the launch. An instance whose
+  live scope resolves to read-only ends the run under
+  [`internal_error`](/gg/execution-limits/#ggs-own-defects).
 
 ### Handoff strategies
 
@@ -131,9 +135,13 @@ assistant messages, the working model's turns read to the compaction model as
 its own prior output, and it would then write a first-person account of work it
 never did.
 
-A handoff whose named model cannot be resolved condenses on the agent's own
-model and says so in a `warn`. A run that stopped compacting would overflow its
-window a few turns later.
+The `model` parameter is resolved at launch against the model catalog every
+agent's own binding is resolved against, so a handoff strategy naming a model gg
+cannot resolve refuses the launch. A model that resolves and then cannot be
+reached during the run ends the run under
+[`internal_error`](/gg/execution-limits/#ggs-own-defects), since a run that
+condensed on a different model than the one it records is a run whose strategy
+was never measured.
 
 #### Picking the compaction model at launch
 
@@ -146,9 +154,8 @@ launching writes the collected id to `model` and drops `modelSlot`, so the set a
 run records is fully pinned and one configuration can sweep the summarizer
 across models.
 
-A set that reaches gg still carrying `modelSlot` named a slot nobody bound. gg
-warns on the root stream and treats the handoff model as unset, so the agent
-condenses on its own model.
+A set that reaches gg still carrying `modelSlot` named a slot nobody bound, and
+refuses the launch.
 
 ## Failed condensations
 

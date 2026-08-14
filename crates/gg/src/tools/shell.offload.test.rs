@@ -6,6 +6,27 @@ use serde_json::json;
 use tempfile::TempDir;
 
 use crate::tools::{Tool, ToolContext};
+use crate::validate::{LaunchDefect, LaunchReport};
+
+/// The policy `implementation`/`params` resolve to, asserting gg honoured them exactly as written.
+fn resolved(implementation: Option<&str>, params: &serde_json::Value) -> OffloadPolicy {
+    let mut report = LaunchReport::collecting();
+    let policy = OffloadPolicy::resolve(implementation, params, &mut report);
+    let defects = report.into_defects();
+    assert!(defects.is_empty(), "unexpected refusals: {defects:?}");
+    policy
+}
+
+/// Everything resolving `implementation`/`params` reports, for the cases whose subject is the
+/// refusal.
+fn reported(
+    implementation: Option<&str>,
+    params: &serde_json::Value,
+) -> (OffloadPolicy, Vec<LaunchDefect>) {
+    let mut report = LaunchReport::collecting();
+    let policy = OffloadPolicy::resolve(implementation, params, &mut report);
+    (policy, report.into_defects())
+}
 
 /// An offloading policy with the given ceilings, writing into `dir`.
 fn offloading(dir: &TempDir, max_lines: Option<usize>, max_chars: Option<usize>) -> OffloadPolicy {
@@ -67,7 +88,7 @@ fn shell_data(outcome: &ToolOutcome) -> &ShellData {
 /// capability set says nothing about output.
 #[test]
 fn an_unconfigured_capability_is_adaptive_at_the_defaults() {
-    let policy = OffloadPolicy::resolve(None, &json!({}));
+    let policy = resolved(None, &json!({}));
     assert_eq!(policy, OffloadPolicy::default());
     assert!(policy.withholds_on_success());
     let limits = policy.limits().expect("armed");
@@ -112,7 +133,7 @@ async fn offload_dir_is_not_under_the_gg_binary() {
 #[test]
 fn the_inline_mode_is_the_opt_out() {
     assert_eq!(
-        OffloadPolicy::resolve(Some(SHELL_OUTPUT_INLINE), &json!({ "maxLines": 10 })),
+        resolved(Some(SHELL_OUTPUT_INLINE), &json!({ "maxLines": 10 })),
         OffloadPolicy::Inline,
     );
     assert!(OffloadPolicy::Inline.limits().is_none());
@@ -124,30 +145,27 @@ fn the_inline_mode_is_the_opt_out() {
 #[test]
 fn either_ceiling_alone_arms_a_truncating_mode() {
     for mode in [SHELL_OUTPUT_OFFLOAD, SHELL_OUTPUT_ADAPTIVE] {
-        let lines = OffloadPolicy::resolve(Some(mode), &json!({ "maxLines": 40 }));
+        let lines = resolved(Some(mode), &json!({ "maxLines": 40 }));
         let limits = lines.limits().expect("armed");
         assert_eq!((limits.max_lines, limits.max_chars), (Some(40), None));
 
-        let chars = OffloadPolicy::resolve(Some(mode), &json!({ "maxChars": 900 }));
+        let chars = resolved(Some(mode), &json!({ "maxChars": 900 }));
         let limits = chars.limits().expect("armed");
         assert_eq!((limits.max_lines, limits.max_chars), (None, Some(900)));
 
-        let both = OffloadPolicy::resolve(Some(mode), &json!({ "maxLines": 40, "maxChars": 900 }));
+        let both = resolved(Some(mode), &json!({ "maxLines": 40, "maxChars": 900 }));
         let limits = both.limits().expect("armed");
         assert_eq!((limits.max_lines, limits.max_chars), (Some(40), Some(900)));
     }
 }
 
-/// A truncating mode that names **no** usable ceiling takes the defaults rather than quietly
-/// becoming the inline mode under another name.
+/// A truncating mode that names **neither** ceiling takes the defaults rather than quietly becoming
+/// the inline mode under another name. An **absent** value is the documented default, which is not a
+/// fallback.
 #[test]
 fn a_truncating_mode_without_a_ceiling_takes_the_defaults() {
-    for params in [
-        json!({}),
-        json!({ "maxLines": 0 }),
-        json!({ "maxChars": "lots" }),
-    ] {
-        let policy = OffloadPolicy::resolve(Some(SHELL_OUTPUT_OFFLOAD), &params);
+    for params in [json!({}), json!({ "maxLines": null, "maxChars": null })] {
+        let policy = resolved(Some(SHELL_OUTPUT_OFFLOAD), &params);
         assert_eq!(
             policy,
             OffloadPolicy::Offload(OffloadLimits::default()),
@@ -157,19 +175,90 @@ fn a_truncating_mode_without_a_ceiling_takes_the_defaults() {
     }
 }
 
-/// An unrecognized mode is a misconfiguration, not an instruction: it reads as the default mode
-/// (what an unconfigured run does), not as one of the arms nobody named. The launch log warns about
-/// it separately, so it is never silent.
+/// A ceiling gg cannot honour **refuses the launch**. A `0` returns none of the command's output and
+/// a `"lots"` names no number at all; reading either as "no ceiling on this axis" says the opposite
+/// of what was written, and taking gg's default says something else again.
+///
+/// Read whichever arm is selected — including `inline`, which does not carry the ceilings — so a
+/// typo is refused in this pass rather than in whichever launch first happens to select a truncating
+/// mode.
 #[test]
-fn an_unknown_mode_reads_as_the_default() {
+fn an_unusable_ceiling_is_refused() {
+    for (key, value) in [
+        ("maxLines", json!(0)),
+        ("maxChars", json!("lots")),
+        ("maxLines", json!(-1)),
+        ("maxChars", json!(4.5)),
+    ] {
+        for mode in [SHELL_OUTPUT_OFFLOAD, SHELL_OUTPUT_INLINE] {
+            let params = json!({ key.to_string(): value.clone() });
+            let (_, defects) = reported(Some(mode), &params);
+            assert_eq!(defects.len(), 1, "{mode} {params} -> {defects:?}");
+            assert_eq!(defects[0].locus, format!("shell.params.{key}"));
+        }
+    }
+}
+
+/// **An integral float is a count.** JSON has no integer type, so a sweep generated from JavaScript
+/// writes `40.0` as readily as `40`.
+#[test]
+fn an_integral_float_is_a_ceiling() {
+    let policy = resolved(Some(SHELL_OUTPUT_OFFLOAD), &json!({ "maxLines": 40.0 }));
+    assert_eq!(policy.limits().expect("armed").max_lines, Some(40));
+}
+
+/// **A mode gg does not recognize refuses the launch.** Reading it as the default would run the
+/// adaptive arm under the arm nobody named, which is the offloading experiment answering a question
+/// it was not asked.
+#[test]
+fn an_unknown_mode_is_refused() {
+    let (policy, defects) = reported(Some("offlaod"), &json!({ "maxLines": 5 }));
     assert_eq!(
-        OffloadPolicy::resolve(Some("offlaod"), &json!({ "maxLines": 5 })),
+        policy,
         OffloadPolicy::Adaptive(OffloadLimits {
             max_lines: Some(5),
             max_chars: None,
             dir: PathBuf::from(OFFLOAD_DIR),
-        })
+        }),
+        "the resolver stays total"
     );
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(defects[0].locus, "shell.implementation");
+    assert_eq!(defects[0].known, SHELL_OUTPUT_MODES);
+}
+
+/// A hook's own `output` override travels the same vocabulary, and a mode gg does not recognize
+/// there refuses the launch too — the one hook field that used to be read with no launch diagnostic
+/// anywhere behind it, so a hook written to keep its build output inline silently withheld it.
+#[test]
+fn an_unknown_hook_output_mode_is_refused() {
+    let mut report = LaunchReport::collecting();
+    let policy = OffloadPolicy::for_mode(
+        "inlien",
+        &OffloadPolicy::default(),
+        "hooks[build].output",
+        &mut report,
+    );
+    assert!(
+        matches!(policy, OffloadPolicy::Adaptive(_)),
+        "the resolver stays total"
+    );
+    let defects = report.into_defects();
+    assert_eq!(defects.len(), 1, "{defects:?}");
+    assert_eq!(defects[0].locus, "hooks[build].output");
+    assert_eq!(defects[0].known, SHELL_OUTPUT_MODES);
+
+    // Each of the three real modes is honoured, and reports nothing.
+    for mode in SHELL_OUTPUT_MODES {
+        let mut report = LaunchReport::collecting();
+        OffloadPolicy::for_mode(
+            mode,
+            &OffloadPolicy::default(),
+            "hooks[build].output",
+            &mut report,
+        );
+        assert!(report.is_empty(), "`{mode}` is a mode gg offers");
+    }
 }
 
 /// The ceilings read the same way in the tool description, the system prompt, and the truncation

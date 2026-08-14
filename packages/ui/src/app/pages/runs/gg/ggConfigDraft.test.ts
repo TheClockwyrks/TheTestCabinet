@@ -976,12 +976,16 @@ describe("gg run limits", () => {
     expect(runLimitsWarning(draft.limits)).toBeNull();
   });
 
-  it("refuses to save half an error-rate ceiling", () => {
+  it("saves half an error-rate ceiling, which gg arms over the other half's default", () => {
     const draft = emptyDraft();
     // Clear the seeded default window so only the rate is set — the half-declared case.
+    // Each half has a documented default, so the written one is armed as written and the
+    // absent one takes gg's; refusing the save here would make the editor stricter than
+    // the contract.
     draft.limits.errorRateWindow = "";
     draft.limits.maxErrorRate = "0.5";
-    expect(draftSaveError(draft)).toContain("both a rate and a window");
+    expect(draftSaveError(draft)).toBeNull();
+    draft.limits.maxErrorRate = "";
     draft.limits.errorRateWindow = "10";
     expect(draftSaveError(draft)).toBeNull();
   });

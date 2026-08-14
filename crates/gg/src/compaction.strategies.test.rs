@@ -57,6 +57,18 @@ fn set_with(
     set
 }
 
+/// A sink that **asserts nothing is reported** — for the values gg honours exactly as written.
+fn honoured() -> LaunchReport {
+    LaunchReport::Discarding
+}
+
+/// Everything `read` reports, for the cases whose subject is the refusal.
+fn reported(read: impl FnOnce(&mut LaunchReport)) -> Vec<LaunchDefect> {
+    let mut report = LaunchReport::collecting();
+    read(&mut report);
+    report.into_defects()
+}
+
 /// A context model with a code-mode flag, for the heading assertions.
 fn model(code_mode: bool) -> ContextModel {
     ContextModel::new(
@@ -71,29 +83,55 @@ fn model(code_mode: bool) -> ContextModel {
 // ---------------------------------------------------------------------------
 
 /// Every strategy id resolves to its strategy and round-trips through [`CompactionStrategy::id`],
-/// and an unrecognized name falls back to the default rather than failing to launch — so a sweep can
-/// reference a not-yet-built strategy.
+/// and an absent, `null` or empty implementation takes the documented default. **Absent is not
+/// unrecognized**, and that half of the policy is what this case pins.
 #[test]
-fn every_strategy_id_round_trips_and_an_unknown_one_falls_back() {
-    for strategy in [
-        CompactionStrategy::SelfSummarization,
-        CompactionStrategy::SelfCompaction,
-        CompactionStrategy::HandoffSummarization,
-        CompactionStrategy::HandoffCompaction,
-        CompactionStrategy::Memory,
-    ] {
+fn every_strategy_id_round_trips_and_an_absent_one_takes_the_default() {
+    for strategy in CompactionStrategy::ALL {
         assert_eq!(
-            CompactionStrategy::resolve(Some(strategy.id()), true),
+            CompactionStrategy::resolve(Some(strategy.id()), true, &mut honoured()),
             strategy,
             "{} round-trips",
             strategy.id()
         );
     }
-    for unknown in [None, Some(""), Some("default"), Some("not-a-strategy")] {
+    for absent in [None, Some(""), Some("  ")] {
         assert_eq!(
-            CompactionStrategy::resolve(unknown, true),
+            CompactionStrategy::resolve(absent, true, &mut honoured()),
             CompactionStrategy::SelfSummarization,
-            "{unknown:?} falls back to the default"
+            "{absent:?} takes the default"
+        );
+    }
+}
+
+/// A strategy gg does not offer is **refused**, not resolved to the default. The strategy is the
+/// compaction capability's one experimental variable: a run that condensed in prose while its record
+/// said `handoff-compaction` would answer a question nobody asked, and nothing in its data would say
+/// so.
+#[test]
+fn an_unknown_strategy_is_refused() {
+    for unknown in [
+        "default",
+        "not-a-strategy",
+        "self-compation",
+        "Self-Summarization",
+    ] {
+        let defects = reported(|report| {
+            assert_eq!(
+                CompactionStrategy::resolve(Some(unknown), true, report),
+                CompactionStrategy::SelfSummarization,
+                "the resolver stays total"
+            );
+        });
+        assert_eq!(defects.len(), 1, "{unknown} -> {defects:?}");
+        assert_eq!(defects[0].found, unknown);
+        assert_eq!(defects[0].locus, "compaction.implementation");
+        assert!(
+            defects[0]
+                .known
+                .contains(&COMPACTION_STRATEGY_HANDOFF_COMPACTION.to_string()),
+            "the refusal offers the vocabulary back: {:?}",
+            defects[0].known
         );
     }
 }
@@ -104,18 +142,21 @@ fn every_strategy_id_round_trips_and_an_unknown_one_falls_back() {
 #[test]
 fn memory_compaction_requires_memories() {
     assert_eq!(
-        CompactionStrategy::resolve(Some("memory-compaction"), true),
+        CompactionStrategy::resolve(Some("memory-compaction"), true, &mut honoured()),
         CompactionStrategy::Memory
     );
     assert_eq!(
-        CompactionStrategy::resolve(Some("memory-compaction"), false),
-        CompactionStrategy::SelfSummarization
+        CompactionStrategy::resolve(Some("memory-compaction"), false, &mut honoured()),
+        CompactionStrategy::SelfSummarization,
+        "the demotion is not reported here — whether an instance may write its memories is not \
+         always a property of the document, and the half that is is refused by the launch pass"
     );
     // …and the same through a whole capability set.
     assert_eq!(
         CompactionSetup::resolve(
             set_with(Some("memory-compaction"), json!({}), false).root(),
-            false
+            false,
+            &mut honoured(),
         )
         .strategy,
         CompactionStrategy::SelfSummarization
@@ -123,11 +164,27 @@ fn memory_compaction_requires_memories() {
     assert_eq!(
         CompactionSetup::resolve(
             set_with(Some("memory-compaction"), json!({}), true).root(),
-            true
+            true,
+            &mut honoured(),
         )
         .strategy,
         CompactionStrategy::Memory
     );
+}
+
+/// …and the half of that prerequisite a **document** can decide is a launch refusal rather than a
+/// demotion. A profile that names `memory-compaction` with no memories capability at all could never
+/// satisfy one, so gg will not start the run and quietly measure self-summarization under its name.
+#[test]
+fn memory_compaction_without_memories_is_refused_at_launch() {
+    let set = set_with(Some("memory-compaction"), json!({}), false);
+    let refusal = crate::validate::refusal(&set).expect_err("the set is refused");
+    assert!(refusal.contains("memory-compaction"), "{refusal}");
+    assert!(refusal.contains("memories"), "{refusal}");
+
+    // The same profile with memories on launches: the prerequisite is met.
+    let met = set_with(Some("memory-compaction"), json!({}), true);
+    assert!(crate::validate::refusal(&met).is_ok());
 }
 
 /// The prerequisite is *writable* memories, not merely enabled ones.
@@ -143,7 +200,8 @@ fn memory_compaction_demotes_for_a_read_only_holder() {
     assert_eq!(
         CompactionSetup::resolve(
             set_with(Some("memory-compaction"), json!({}), true).root(),
-            false
+            false,
+            &mut honoured(),
         )
         .strategy,
         CompactionStrategy::SelfSummarization
@@ -218,26 +276,23 @@ fn the_handoff_model_is_read_only_for_a_handoff_strategy() {
         false,
     );
     assert_eq!(
-        handoff_model_id(handoff.root()),
+        handoff_model_id(handoff.root(), &mut honoured()),
         Some("openrouter/cheap".to_string())
     );
     assert!(
-        CompactionSetup::resolve(handoff.root(), true)
+        CompactionSetup::resolve(handoff.root(), true, &mut honoured())
             .strategy
             .is_handoff()
     );
 
-    // The same param on a non-handoff strategy names nothing to resolve.
+    // The same param on a non-handoff strategy names nothing to resolve — and is *accepted*: it is
+    // a key the capability knows and this arm does not use, which is the shared-params-block case.
     let same_model = set_with(
         Some("self-compaction"),
         json!({ "model": "openrouter/cheap" }),
         false,
     );
-    assert_eq!(handoff_model_id(same_model.root()), None);
-
-    // A handoff with no (or a blank) model falls back to the agent's own client.
-    let unnamed = set_with(Some("handoff-compaction"), json!({ "model": "  " }), false);
-    assert_eq!(handoff_model_id(unnamed.root()), None);
+    assert_eq!(handoff_model_id(same_model.root(), &mut honoured()), None);
 
     // A disabled capability names nothing at all.
     let mut disabled = GgCapabilitySet::minimal("mock/x");
@@ -250,28 +305,54 @@ fn the_handoff_model_is_read_only_for_a_handoff_strategy() {
             params: json!({ "model": "openrouter/cheap" }),
         },
     );
-    assert_eq!(handoff_model_id(disabled.root()), None);
+    assert_eq!(handoff_model_id(disabled.root(), &mut honoured()), None);
+}
+
+/// An **absent** `model` is the documented default — the handoff condenses on the agent's own model,
+/// which is what a key nobody wrote means. Absent is not unrecognized, and that half of the policy is
+/// what this case pins.
+#[test]
+fn a_handoff_with_no_model_param_condenses_on_the_agents_own() {
+    for params in [json!({}), json!({ "model": null })] {
+        let set = set_with(Some("handoff-compaction"), params.clone(), false);
+        assert_eq!(
+            handoff_model_id(set.root(), &mut honoured()),
+            None,
+            "{params}"
+        );
+    }
+}
+
+/// A `model` that is **present and unreadable** is refused. Somebody meant to name the model that
+/// condenses the thread; resolving a blank or a number to the agent's own client would run
+/// self-summarization under the handoff arm's name, with a cost split nobody reads as the only trace.
+#[test]
+fn a_handoff_model_gg_cannot_read_is_refused() {
+    for params in [json!({ "model": "  " }), json!({ "model": 7 })] {
+        let set = set_with(Some("handoff-compaction"), params.clone(), false);
+        let defects = reported(|report| {
+            assert_eq!(handoff_model_id(set.root(), report), None);
+        });
+        assert_eq!(defects.len(), 1, "{params} -> {defects:?}");
+        assert_eq!(defects[0].locus, "compaction.params.model");
+    }
 }
 
 /// A handoff still deferring its model to a slot reached gg unbound — the launcher was supposed to
-/// fill it in. gg cannot resolve it here (the slot table lives on the launch form), so it is
-/// reported rather than resolved, and the run condenses on the agent's own model.
+/// fill it in and drop the key. gg has no slot table in the container to resolve it against, so the
+/// **presence of the key is the refusal**: everything downstream would ignore it, and the run it
+/// describes is not the run that would happen.
 #[test]
-fn an_unbound_model_slot_is_reported_rather_than_resolved() {
+fn an_unbound_model_slot_is_refused() {
     let deferred = set_with(
         Some("handoff-summarization"),
         json!({ "modelSlot": "summarizer" }),
         false,
     );
-    assert_eq!(
-        unbound_handoff_slot(deferred.root()),
-        Some("summarizer".to_string())
-    );
-    assert_eq!(
-        handoff_model_id(deferred.root()),
-        None,
-        "an unbound slot names no model, so the agent condenses on its own"
-    );
+    let refusal = crate::validate::refusal(&deferred).expect_err("the set is refused");
+    assert!(refusal.contains("modelSlot"), "{refusal}");
+    assert!(refusal.contains("summarizer"), "{refusal}");
+    assert_eq!(refusal.lines().count(), 1, "{refusal}");
 
     // A slot that *was* bound leaves only the model behind, which is the ordinary case.
     let bound = set_with(
@@ -279,12 +360,16 @@ fn an_unbound_model_slot_is_reported_rather_than_resolved() {
         json!({ "model": "openrouter/cheap" }),
         false,
     );
-    assert_eq!(unbound_handoff_slot(bound.root()), None);
+    assert!(crate::validate::refusal(&bound).is_ok());
 
-    // A non-handoff strategy resolves no second model at all, so a stale slot on one is not
-    // something the run is doing anything with.
+    // A stale slot on a **non**-handoff strategy is refused on the same terms: nothing resolves it
+    // there either, and a key gg will never read is not something to carry into a run.
     let self_summarizing = set_with(None, json!({ "modelSlot": "summarizer" }), false);
-    assert_eq!(unbound_handoff_slot(self_summarizing.root()), None);
+    assert!(
+        crate::validate::refusal(&self_summarizing)
+            .expect_err("the set is refused")
+            .contains("modelSlot")
+    );
 }
 
 // ---------------------------------------------------------------------------
