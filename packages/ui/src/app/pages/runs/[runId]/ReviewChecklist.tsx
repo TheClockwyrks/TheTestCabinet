@@ -415,7 +415,10 @@ function ChecklistRow({
           <span className={styles.secondary}>{description}</span>
         )}
         {verdict?.note && (
-          <span className={styles.verdictNote}>{verdict.note}</span>
+          <span className={styles.verdictNote}>
+            <span className={styles.verdictNoteLabel}>Reviewer</span>
+            <span>{verdict.note}</span>
+          </span>
         )}
       </span>
     </div>

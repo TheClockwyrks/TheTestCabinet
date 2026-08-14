@@ -59,6 +59,27 @@ const ACTIVE_SLOT_STATES: [&str; 3] = ["dispatched", "starting", "running"];
 /// they are left for the dispatcher to drain once it reconnects.
 const REAPABLE_STATES: [&str; 3] = ["dispatched", "starting", "running"];
 
+/// The publish-job states that mean a release is already under way for a run: it is
+/// waiting to be claimed, or a `tcab-publisher` Job is carrying it out. A run with
+/// one of these must not enqueue a second publish — a publish is **not** idempotent
+/// on the Cloudflare side (`wrangler pages deploy` mints a brand-new deployment on
+/// every invocation), so a duplicate job leaves an orphaned public build behind.
+/// The `gh` side hides the problem by reusing an existing repo, which is why the
+/// duplication only ever shows up as extra Pages deployments.
+const ACTIVE_PUBLISH_STATES: [&str; 2] = ["queued", "dispatched"];
+
+/// How long a `dispatched` publish job may go without an update before it stops
+/// blocking a fresh publish.
+///
+/// Nothing reaps a publish job whose publisher pod died before reporting — the run
+/// queue has a startup reconciliation ([`Db::fail_in_flight_jobs`]) but the publish
+/// queue has no equivalent, so such a job sits in `dispatched` forever. Without this
+/// cutoff the enqueue-time dedup would wedge that run's publishing permanently,
+/// which is a worse failure than the duplicate deploy it prevents. A real publish
+/// takes minutes, so an hour only ever releases a job whose publisher is genuinely
+/// gone.
+const PUBLISH_JOB_STALE_AFTER: time::Duration = time::Duration::hours(1);
+
 /// A stored run: the full record, its reviews, and its links. This is the shape
 /// `GET /runs/{id}` and the snapshot's per-run file are built from. A run may be
 /// pushed (private, [`published`](Self::published) false) or published; it may
@@ -1366,6 +1387,28 @@ async fn gate_publishable<C: ConnectionTrait>(
     Ok(())
 }
 
+/// Whether a publish job has gone quiet long enough to be treated as **abandoned**
+/// — its publisher died without ever reporting a terminal result, so it must stop
+/// blocking new publishes for its run (see [`PUBLISH_JOB_STALE_AFTER`]).
+///
+/// Only a `dispatched` job can be abandoned: a `queued` one has no publisher yet and
+/// the dispatcher will claim it, however long it has waited. A timestamp that does
+/// not parse is treated as *not* abandoned, so a malformed row fails closed —
+/// blocking a duplicate publish rather than silently permitting one.
+fn is_abandoned_publish_job(job: &publish_job::Model, now: &str) -> bool {
+    if job.state != "dispatched" {
+        return false;
+    }
+    use time::format_description::well_known::Rfc3339;
+    let (Ok(updated), Ok(now)) = (
+        time::OffsetDateTime::parse(&job.updated_at, &Rfc3339),
+        time::OffsetDateTime::parse(now, &Rfc3339),
+    ) else {
+        return false;
+    };
+    now - updated > PUBLISH_JOB_STALE_AFTER
+}
+
 /// Decode a `review` row into the in-memory [`StoredReview`], parsing its
 /// JSON-backed ratings/checklist columns.
 fn stored_review(model: review::Model) -> Result<StoredReview> {
@@ -2459,8 +2502,48 @@ impl Db {
         gate_publishable(&self.conn(), run_id, &run.run_state).await
     }
 
+    /// The publish job already releasing `run_id` — one that is `queued`, or
+    /// `dispatched` recently enough that its publisher may still be running — or
+    /// `None` when the run has no release under way.
+    ///
+    /// This is the enqueue-time idempotency check: `POST /runs/{id}/publish` answers
+    /// with the job this finds instead of inserting a second one, so a double-click,
+    /// a second console tab, or a retry after a dropped live stream re-attaches to
+    /// the publish already running rather than starting another. That matters
+    /// because each publish job deploys a *new* Cloudflare Pages deployment, so a
+    /// duplicate leaves an orphaned public build behind.
+    ///
+    /// Terminal (`succeeded`/`failed`) jobs never block — a failed publish must stay
+    /// retryable — and neither does a `dispatched` job gone quiet long enough to be
+    /// treated as abandoned, since nothing reaps one whose publisher died before
+    /// reporting. `now` is the RFC 3339 instant that staleness is measured against.
+    /// The oldest still-live job wins, so the caller re-attaches to the publish that
+    /// started first.
+    pub async fn active_publish_job_for_run(
+        &self,
+        run_id: &str,
+        now: &str,
+    ) -> Result<Option<publish_job::Model>> {
+        let candidates = publish_job::Entity::find()
+            .filter(publish_job::Column::RunId.eq(run_id))
+            .filter(publish_job::Column::State.is_in(ACTIVE_PUBLISH_STATES))
+            .order_by_asc(publish_job::Column::CreatedAt)
+            .order_by_asc(publish_job::Column::Id)
+            .all(&self.conn())
+            .await?;
+
+        Ok(candidates
+            .into_iter()
+            .find(|job| !is_abandoned_publish_job(job, now)))
+    }
+
     /// Enqueue a publish job: insert it in the `queued` state for the dispatcher to
     /// claim. Mirrors [`Db::enqueue_job`] for the publish path.
+    ///
+    /// Callers gate with [`Db::active_publish_job_for_run`] first; a partial unique
+    /// index on `run_id` (where the state is `queued`) backs that check in the
+    /// database, so two concurrent enqueues cannot both land a queued job for the
+    /// same run even if they race past the application-level check.
     pub async fn enqueue_publish_job(&self, new: NewPublishJob) -> Result<()> {
         publish_job::Entity::insert(publish_job::ActiveModel {
             id: Set(new.id),

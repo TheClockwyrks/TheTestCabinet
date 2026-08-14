@@ -154,6 +154,32 @@ fn missing_version_is_not_found() {
 }
 
 #[test]
+fn a_fresh_store_is_not_populated() {
+    // The state a pod with an ephemeral /state boots into: the readiness latch must
+    // read this as "do not serve yet".
+    let (_dir, store) = temp_store();
+    assert!(!store.is_populated());
+}
+
+#[test]
+fn a_store_with_a_version_is_populated() {
+    let (_dir, store) = temp_store();
+    store
+        .write_manifest(&sample_manifest("pong", "v1.0.0"))
+        .unwrap();
+    assert!(store.is_populated());
+}
+
+#[test]
+fn a_slug_directory_without_a_manifest_is_not_populated() {
+    // `list_versions` only counts a version with a manifest, so a half-built or
+    // pruned-empty slug shell must not read as a servable catalog.
+    let (dir, store) = temp_store();
+    std::fs::create_dir_all(dir.path().join("test-cases").join("pong").join("v1.0.0")).unwrap();
+    assert!(!store.is_populated());
+}
+
+#[test]
 fn artifact_traversal_is_rejected() {
     let (_dir, store) = temp_store();
     store

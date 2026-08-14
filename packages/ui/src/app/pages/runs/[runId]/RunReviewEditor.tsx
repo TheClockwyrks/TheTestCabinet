@@ -41,39 +41,12 @@ import {
   type Rating,
 } from "../../../data/ratings";
 import { ReviewList } from "./ReviewList";
+import {
+  autoVerdictMap,
+  overriddenAutoVerdictIds,
+  type VerdictDraft,
+} from "./autoVerdicts";
 import styles from "../RunExec.module.scss";
-
-/**
- * One auto-decided verdict from a run's debug scripts, keyed for pre-fill lookup by
- * verdict id (a review item's own id, or the `<item>.<sub>` composite).
- */
-interface AutoVerdictInfo {
-  status: VerdictStatus;
-  note: string;
-}
-
-/**
- * The auto verdicts a run's debug scripts decided, keyed by verdict id. The
- * reviewer's checklist pre-fills from these (binary pass/fail), shown desaturated
- * until the reviewer overrides one. Empty when the case declares no automated
- * validation.
- */
-function autoVerdictMap(run: RunRecord): Map<string, AutoVerdictInfo> {
-  const map = new Map<string, AutoVerdictInfo>();
-  for (const script of run.validation.debugScripts ?? []) {
-    for (const v of script.verdicts) {
-      // The reviewer's note is left blank: a verdict's proof is its assertions,
-      // shown in the automated-validation list, not stuffed into the note field.
-      map.set(v.id, { status: v.pass ? "pass" : "fail", note: "" });
-    }
-  }
-  return map;
-}
-
-interface VerdictDraft {
-  status: VerdictStatus | "";
-  note: string;
-}
 
 const STATUSES: VerdictStatus[] = ["pass", "fail"];
 
@@ -367,21 +340,25 @@ export function RunReviewEditor({
         // Verdicts are keyed by verdict id — the item's own id when it is graded
         // as a whole, or a `<item>.<sub>` composite per sub-item. Seed each draft
         // from, in precedence: the account's own prior verdict of the same id (a
-        // re-review keeps the reviewer's earlier call, a manual value); otherwise
-        // this run's auto verdict (pre-filled and marked auto-set); otherwise unset.
+        // re-review keeps the reviewer's earlier call); otherwise this run's auto
+        // verdict (pre-filled); otherwise unset. Either way a draft that agrees
+        // with what validation decided is marked auto-set, so re-opening a review
+        // shows at a glance which points still stand on the machine's call and
+        // which the reviewer overrode.
         const drafts: Record<string, VerdictDraft> = {};
         const autoIds = new Set<string>();
         for (const item of loaded) {
           for (const vid of verdictIdsForItem(item)) {
+            const autoVerdict = auto.get(vid);
             const existing = prior.get(vid);
             if (existing) {
               drafts[vid] = {
                 status: existing.status,
                 note: existing.note ?? "",
               };
+              if (autoVerdict?.status === existing.status) autoIds.add(vid);
               continue;
             }
-            const autoVerdict = auto.get(vid);
             if (autoVerdict) {
               drafts[vid] = { ...autoVerdict };
               autoIds.add(vid);
@@ -498,6 +475,58 @@ export function RunReviewEditor({
         },
       };
     });
+  }
+
+  // Put the given verdicts back to what this run's validation decided, undoing the
+  // reviewer's overrides. The machine's calls live in the immutable run record, not
+  // in the review, so they stay recoverable however many edits later — this is the
+  // only way back once an override has been submitted, since a stored verdict keeps
+  // no memory of having been auto-set.
+  //
+  // Only the pass/fail is restored: validation writes no note, so a note is the
+  // reviewer's own prose and is left for them to clear (or keep, where it still
+  // explains the point). Each restored verdict re-joins the auto-set group and so
+  // reads desaturated again.
+  function restoreAutoVerdicts(ids: string[]) {
+    if (ids.length === 0) return;
+    setVerdicts((prev) => {
+      const next = { ...prev };
+      for (const id of ids) {
+        const decided = auto.get(id);
+        if (!decided) continue;
+        next[id] = { status: decided.status, note: prev[id]?.note ?? "" };
+      }
+      return next;
+    });
+    setAutoVerdictIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) if (auto.has(id)) next.add(id);
+      return next;
+    });
+  }
+
+  // The declared points whose answer currently differs from what validation decided
+  // — the reviewer's overrides. Drives both the per-verdict Restore control and the
+  // rail's bulk restore, so the two never disagree about what there is to undo.
+  const overriddenIds = useMemo(
+    () => overriddenAutoVerdictIds(items, auto, verdicts),
+    [items, auto, verdicts],
+  );
+  const overriddenSet = useMemo(() => new Set(overriddenIds), [overriddenIds]);
+
+  // Restore every overridden point at once, from the rail. Confirmed first because
+  // it discards the reviewer's own calls wholesale — the mirror image of "Mark
+  // unplayable", which overwrites them wholesale.
+  function restoreAllAutoVerdicts() {
+    const n = overriddenIds.length;
+    if (n === 0) return;
+    if (
+      !window.confirm(
+        `Restore ${n} overridden ${n === 1 ? "verdict" : "verdicts"} to what this run's automated validation decided? Your own Pass/Fail on ${n === 1 ? "that point" : "those points"} will be discarded; notes are kept.`,
+      )
+    )
+      return;
+    restoreAutoVerdicts(overriddenIds);
   }
 
   // The pass/fail control (and its optional note) for one gradable unit, keyed by
@@ -630,6 +659,20 @@ export function RunReviewEditor({
             placeholder="note (optional)"
             disabled={disabled}
           />
+          {/* Offered only where the reviewer's answer differs from a verdict
+              validation actually decided — so it never appears as a no-op, and
+              never on a point the machine left to human judgement. */}
+          {!disabled && overriddenSet.has(verdictId) && (
+            <button
+              type="button"
+              className={styles.verdictRestore}
+              onClick={() => restoreAutoVerdicts([verdictId])}
+              title={`Restore this verdict to ${VERDICT_META[auto.get(verdictId)!.status].label} — what this run's debug script decided. Your note is kept.`}
+              aria-label="Restore this verdict to the automated validation's result"
+            >
+              Restore
+            </button>
+          )}
         </div>
       </>
     );
@@ -998,9 +1041,16 @@ export function RunReviewEditor({
           verdicts, so surfacing it while the review is still being written only buries
           the form the reviewer is here to complete. Show it only once *this* reviewer
           has submitted their own review, where it stands as evidence behind their
-          verdict — another reviewer's review must not reveal it early. */}
+          verdict — another reviewer's review must not reveal it early. Even then it
+          stays folded away: by that point the reviewer has already made the call, so
+          an expanded table here is a screenful of scrolling between them and the
+          review summary and actions below. */}
       {debugScripts.length > 0 && (ownReview || submittedThisSession) && (
-        <DebugScriptList scripts={debugScripts} heading="Automated validation" />
+        <DebugScriptList
+          scripts={debugScripts}
+          heading="Automated validation"
+          collapsible
+        />
       )}
 
       {/* The review form proper — the checklist questions, the writeup, and the
@@ -1107,6 +1157,30 @@ export function RunReviewEditor({
                 >
                   Mark unplayable
                 </button>
+                {/* Put every overridden point back to the machine's call. Shown
+                    only for a run that carries automated verdicts at all, and
+                    inert until at least one is overridden — so it reads as the
+                    undo it is rather than a mystery control. */}
+                {auto.size > 0 && (
+                  <button
+                    type="button"
+                    className={styles.restoreAuto}
+                    onClick={restoreAllAutoVerdicts}
+                    disabled={busy || overriddenIds.length === 0}
+                    title={
+                      overriddenIds.length === 0
+                        ? "Every automatically-decided verdict already matches this run's validation"
+                        : `Discard your Pass/Fail on ${overriddenIds.length} overridden ${
+                            overriddenIds.length === 1 ? "point" : "points"
+                          } and restore what this run's validation decided`
+                    }
+                  >
+                    Restore validator verdicts
+                    {overriddenIds.length > 0
+                      ? ` (${overriddenIds.length})`
+                      : ""}
+                  </button>
+                )}
                 {/* An accordion of categories. Each category is a header row; the
                 one holding the current review item expands to list its items, and
                 selecting an item shows that item — one at a time — in the panel. A

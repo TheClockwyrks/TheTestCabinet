@@ -48,43 +48,29 @@ name: Build containers
 # (base, every asset-generation kind including blender, adversarial, and performance).
 # A newly-added image needs this the first time it is published.
 on:
+  # DELIBERATELY UNFILTERED, for the same reason as build-service-images.yml: every
+  # push to master/staging must leave a COMPLETE `:<git-sha>` run-image set behind,
+  # because the deployments pin the run images by the sha of a commit
+  # (TCAB_CONTAINER_TAG in the azure-staging/azure-prod overlays), not by "the last
+  # sha that happened to build". With a path filter, most release shas had no run
+  # images at all, which is why the two pins drifted apart for entire release trains
+  # — the overlays sat on a months-old TCAB_CONTAINER_TAG while the service images
+  # moved ahead, and every roll had to first go hunting for a sha at which this
+  # workflow actually published.
+  #
+  # The filter was also a standing correctness trap on its own: it hand-enumerated
+  # the crates baked into the images, so it silently went stale every time an image
+  # gained a source. It had already drifted — it listed every `foray-*` crate for the
+  # adversarial image but NONE of the `lattice-*` crates the performance image bakes,
+  # so a change to the Lattice engine shipped a stale performance image with no
+  # signal. A filter that has to be maintained in lockstep with every Dockerfile is
+  # a filter that will be wrong again. Do not reintroduce `paths:`.
+  #
+  # The cost is real here (these images compile Rust and wasm, uncached), but
+  # master/staging only move at rc/release cadence, and a stale or missing run image
+  # is paid for by every run that lands on it.
   push:
     branches: [master, staging]
-    # The asset-generation and adversarial images bake binaries compiled from
-    # `crates/` (the `draw`/`draw-sheet` tools, the `voxel`/`voxel-anim` tools, and
-    # the Foray CLI + buildkit + reference modules), so a change to those crates
-    # must rebuild the images too — not just a change under `containers/`.
-    paths:
-      - "containers/**"
-      - "crates/draw/**"
-      - "crates/voxel/**"
-      - "crates/voxel-anim/**"
-      - "crates/voxel-mesh/**"
-      - "crates/model-core/**"
-      - "crates/mc/**"
-      - "crates/mc-anim/**"
-      - "crates/sn/**"
-      - "crates/sn-anim/**"
-      - "crates/dc/**"
-      - "crates/dc-anim/**"
-      - "crates/paint/**"
-      - "crates/model-skin/**"
-      - "crates/mc-skin/**"
-      - "crates/sn-skin/**"
-      - "crates/dc-skin/**"
-      - "crates/particle-core/**"
-      - "crates/particle-2d/**"
-      - "crates/particle-3d/**"
-      - "crates/audio-core/**"
-      - "crates/sfx-synth/**"
-      - "crates/sfx-sample/**"
-      - "crates/music/**"
-      - "crates/foray-core/**"
-      - "crates/foray-controller-sdk/**"
-      - "crates/foray-cli/**"
-      - "crates/foray-host/**"
-      - "crates/foray-ref-*/**"
-      - ".github/workflows/build-containers.yml"
   workflow_dispatch:
 
 permissions:

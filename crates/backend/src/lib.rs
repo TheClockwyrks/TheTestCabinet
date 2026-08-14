@@ -31,6 +31,7 @@ pub mod metrics;
 pub mod model_seed;
 pub mod publish_relay;
 pub mod publisher;
+pub mod readiness;
 pub mod relay;
 pub mod render;
 pub mod snapshot;
@@ -173,9 +174,22 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     let price_refresher = crate::bootstrap::spawn_price_refresher(Arc::clone(&db), prices.clone());
 
     let bind = config.bind.clone();
+    // Every test-case resolution reads the definition store, and on a deployment
+    // whose /state is ephemeral it starts EMPTY — the ingest sidecar refills it, but
+    // that takes minutes on a cold catalog. Hold the backend out of its Service until
+    // then, or every run launched in the gap dies on a spurious "is not ingested"
+    // 404. A store that already holds versions has nothing to wait for.
+    let readiness = crate::readiness::Readiness::new(store.is_populated());
+    if !readiness.is_ready() {
+        tracing::info!(
+            store = %store.root().display(),
+            "definition store is empty; staying unready until an ingest populates it"
+        );
+    }
     let state = AppState {
         db,
         store,
+        ready: readiness,
         publisher,
         auth,
         relay: crate::relay::Relay::new(),

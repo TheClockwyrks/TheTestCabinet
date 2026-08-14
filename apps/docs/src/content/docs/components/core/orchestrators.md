@@ -74,9 +74,31 @@ prompt. The harness's output flows back through the runner script's stream, wher
 it is parsed for usage and translated into events exactly as a single session is.
 
 The wrapper emits a sentinel line around each session so the run can **segment
-the stream into sessions** and sum each session's reported usage into the run's
+the output into sessions** and sum each session's reported usage into the run's
 totals. A single-session (`one-shot`) run has exactly one segment, so its metrics
 are identical to a run with no orchestration layer at all.
+
+#### Where the usage is read from
+
+The wrapper writes each session's stdout, sentinels and all, to a **session log
+inside the container** (`~/.tcab/sessions.log`) as well as streaming it back. The
+streamed copy is what produces live [events](/components/core/events/); the log is
+what the run's [usage and cost](/components/core/metrics/) are read from, once the
+runner has exited.
+
+The two carry the same bytes, so this makes no difference to a healthy run — but
+an exec stream can close as the runner exits and lose its last lines, and the last
+line is exactly where most harnesses report the session's totals. When that
+happened, the closing sentinel went missing too, the session was discarded whole,
+and the run was recorded with **no** token usage and a cost of `$0.00` — a
+confident claim of a free run, on a run that had cost real money. Reading the
+totals off the container's own disk removes the dependency on the stream
+surviving.
+
+If the log cannot be read the streamed copy stands in, and either way a session
+that arrives without its closing sentinel is reported as a warning on the run's
+event stream rather than silently costed at zero: the tokens are recorded as
+unknown, not as none.
 
 ### Runner environment contract
 

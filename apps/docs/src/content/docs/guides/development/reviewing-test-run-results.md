@@ -101,6 +101,25 @@ Add a short note alongside a verdict to record what you observed. The verdicts a
 the items' weights produce the run's **score** — the earned weight over the total
 declared weight. The per-domain ratings below remain your own call.
 
+### Overriding and restoring an automated verdict
+
+A point the case [instruments](/testing/end-to-end/instrumentation/) arrives
+already answered by validation, shown **desaturated** to mark it as the machine's
+call rather than yours. Click it to override where the build clearly does the right
+thing regardless; the option fills in full color to show the verdict is now yours.
+
+An override is undoable at any time, including in a later edit of an
+already-submitted review: an overridden point grows a **Restore** control beside its
+note, and the checklist rail offers **Restore validator verdicts** to put every
+overridden point back at once. Both restore only the pass/fail — validation writes
+no notes, so yours are kept, and yours to clear. The controls appear only where your
+answer actually differs from a verdict validation decided; a subjective point, or one
+whose check could not run, has no machine value to restore and is never touched.
+
+This works however many edits later because the machine's verdicts live in the
+run record, which never changes, rather than in the review — a stored verdict itself
+keeps no memory of having been auto-set.
+
 ## Write the review
 
 Create `runs/<id>/writeup.md`, beside the run's `run-record.json`, with a rating

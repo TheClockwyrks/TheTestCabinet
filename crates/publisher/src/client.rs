@@ -15,6 +15,7 @@
 //! the terminal result is the durable, must-land call.
 
 use reqwest::Client;
+use serde::Deserialize;
 use test_cabinet_core::{PublishProgress, PublishResult};
 
 /// A failure talking to the backend's publish-job API.
@@ -48,6 +49,38 @@ fn body_suffix(body: &str) -> String {
     } else {
         format!(": {}", body.trim())
     }
+}
+
+/// The links a run already carries when the publisher's preflight finds it
+/// **already published** — the answer to "has this run been released before?".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublishedRun {
+    /// The public source-repo URL the earlier release produced, if any.
+    pub source_repo: Option<String>,
+    /// The playable-build URL the earlier release deployed, if any.
+    pub playable_build: Option<String>,
+}
+
+/// The slice of `GET /runs/{id}` the preflight reads. The endpoint returns the whole
+/// stored run; everything but the publication state and links is ignored here.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RunPublicationOut {
+    /// Whether the run is already published (in the public snapshot).
+    published: bool,
+    /// The links the run carries. Absent links deserialize to `None`.
+    #[serde(default)]
+    links: RunLinksOut,
+}
+
+/// The `links` object of `GET /runs/{id}`.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RunLinksOut {
+    #[serde(default)]
+    source_repo: Option<String>,
+    #[serde(default)]
+    playable_build: Option<String>,
 }
 
 /// A client streaming one publish job's progress + terminal result back to the
@@ -98,6 +131,57 @@ impl PublishJobClient {
                 source,
             })?;
         Self::check(response, "events").await
+    }
+
+    /// Whether run `run_id` is **already published**, and if so the links it already
+    /// carries (`GET /runs/{id}` — an unauthenticated read, so no token is presented).
+    ///
+    /// The publisher calls this *before* doing any external work. Publishing is not
+    /// idempotent on the Cloudflare side: `wrangler pages deploy` mints a brand-new
+    /// deployment on every invocation, so a job that runs against an already-published
+    /// run leaves a second, orphaned public build behind — the failure this preflight
+    /// exists to prevent. (The `gh` side reuses an existing repository, which is why
+    /// the duplication only ever shows up as extra Pages deployments.)
+    ///
+    /// `Some` means the run is published and the release must be skipped; `None` means
+    /// it still needs releasing. An unreachable backend is an error rather than a
+    /// fall-through to publishing: this call cannot confirm the release is *needed*,
+    /// and the terminal result could not be reported over that same backend anyway, so
+    /// failing here costs nothing and keeps the irreversible external work gated.
+    pub async fn published_run(&self, run_id: &str) -> Result<Option<PublishedRun>, ClientError> {
+        let response = self
+            .http
+            .get(format!("{}/runs/{run_id}", self.base_url))
+            .send()
+            .await
+            .map_err(|source| ClientError::Transport {
+                what: "run",
+                source,
+            })?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ClientError::Status {
+                what: "run",
+                status,
+                body,
+            });
+        }
+
+        let run: RunPublicationOut =
+            response
+                .json()
+                .await
+                .map_err(|source| ClientError::Transport {
+                    what: "run",
+                    source,
+                })?;
+
+        Ok(run.published.then_some(PublishedRun {
+            source_repo: run.links.source_repo,
+            playable_build: run.links.playable_build,
+        }))
     }
 
     /// Report the terminal outcome of the release (`POST /publish-jobs/{id}/result`).

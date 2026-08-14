@@ -114,7 +114,9 @@ export function RunValidationSection({ run }: { run: RunRecord }) {
       )}
       {/* The instrumentation debug scripts a case's automated-validation items
           declare, if any: which ran to completion against a conformant build (the
-          debug-API gate) and the detail of any failure. */}
+          debug-API gate) and the detail of any failure. Left expanded here: it is
+          the last thing on the tab, so its height pushes nothing out of reach —
+          unlike the Verdict tab's copy, which sits above the review. */}
       {debugScripts.length > 0 && (
         <DebugScriptList scripts={debugScripts} heading="Debug scripts" />
       )}

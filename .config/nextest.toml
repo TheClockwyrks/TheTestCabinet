@@ -1,5 +1,6 @@
 [profile.default]
-retries = 1
+retries = 2
+flaky-result = "fail"
 fail-fast = false
 
 # Hard cap on any single test's execution. nextest marks a test "slow" after
