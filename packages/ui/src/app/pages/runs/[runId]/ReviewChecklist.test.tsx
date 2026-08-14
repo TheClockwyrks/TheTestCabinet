@@ -79,8 +79,10 @@ describe("ReviewChecklist (verdict mode)", () => {
     );
     expect(screen.getAllByText("Pass").length).toBeGreaterThan(0);
     expect(screen.getByText("Fail")).toBeTruthy();
-    // The reviewer's note rides beneath its row.
+    // The reviewer's note rides beneath its row, labelled so it reads as review
+    // text rather than as more of the point's own description.
     expect(screen.getByText("sticky")).toBeTruthy();
+    expect(screen.getByText("Reviewer")).toBeTruthy();
     // The un-judged Mouse sub-item is not rendered in verdict mode.
     expect(screen.queryByText(/Mouse/)).toBeNull();
     // The sub-itemed parent shows its passed/total tally (0 of 1 judged passed).

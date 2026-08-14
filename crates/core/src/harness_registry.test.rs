@@ -41,6 +41,52 @@ fn codex_subtracts_cached_from_inclusive_input_and_keeps_reasoning() {
 }
 
 #[test]
+fn output_carrying_no_usage_event_reports_nothing_rather_than_zero() {
+    // Codex reports usage only on its terminal `turn.completed`. A session whose
+    // output was cut short before that event says nothing about its usage, so
+    // every class is unknown. Reporting `Some(0)` here would assert a run that
+    // used no tokens — and price it, confidently, at $0.00.
+    let stream = concat!(
+        r#"{"type":"thread.started","thread_id":"abc"}"#,
+        "\n",
+        r#"{"type":"item.completed","item":{"type":"agent_message","text":"working"}}"#,
+    );
+    let usage = parse_usage(&stdout(stream), shape_for(HarnessSlug::Codex));
+    assert_eq!(usage.tokens.uncached_input, None);
+    assert_eq!(usage.tokens.cached_input, None);
+    assert_eq!(usage.tokens.output, None);
+    assert_eq!(usage.tokens.reasoning, None);
+    assert_eq!(usage.tokens.total(), None);
+}
+
+#[test]
+fn a_reported_zero_stays_distinct_from_nothing_reported() {
+    // A harness that does report usage, and reports zero for a class it declares,
+    // records `Some(0)` — the genuine-zero case the unreported case must not be
+    // confused with.
+    let line = r#"{"type":"turn.completed","usage":{"input_tokens":1000,"cached_input_tokens":0,"output_tokens":200,"reasoning_output_tokens":0}}"#;
+    let usage = parse_usage(&stdout(line), shape_for(HarnessSlug::Codex));
+    assert_eq!(usage.tokens.uncached_input, Some(1000));
+    assert_eq!(usage.tokens.cached_input, Some(0));
+    assert_eq!(usage.tokens.reasoning, Some(0));
+}
+
+#[test]
+fn a_truncated_incremental_stream_keeps_the_steps_that_arrived() {
+    // A harness that reports per-step deltas (OpenCode sums `step_finish` events)
+    // still has real usage in a session that was cut short: everything up to the
+    // truncation counts, rather than the whole session being written off.
+    let stream = concat!(
+        r#"{"type":"step_finish","part":{"tokens":{"input":50,"output":10,"cache":{"read":500,"write":0}}}}"#,
+        "\n",
+        r#"{"type":"step_finish","part":{"tokens":{"input":20,"output":4,"cache":{"read":100,"write":0}}}}"#,
+    );
+    let usage = parse_usage(&stdout(stream), shape_for(HarnessSlug::Opencode));
+    assert_eq!(usage.tokens.output, Some(14));
+    assert_eq!(usage.tokens.cached_input, Some(600));
+}
+
+#[test]
 fn claude_takes_the_last_cumulative_event() {
     let stream = concat!(
         r#"{"type":"assistant","usage":{"input_tokens":10,"output_tokens":1}}"#,

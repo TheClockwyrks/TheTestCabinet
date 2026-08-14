@@ -105,6 +105,13 @@ pub async fn add_review(
 /// the publisher reports a terminal success (see [`crate::api::publish_jobs`]).
 /// Requires a bearer token. `404` for an unknown run. Returns `202 Accepted` with
 /// the publish-job id and the live URL to observe it on.
+///
+/// **Idempotent while a release is under way.** When the run already has a live
+/// publish job ([`crate::db::Db::active_publish_job_for_run`]) this answers with
+/// *that* job instead of enqueuing another, so repeated calls re-attach to the
+/// running publish rather than starting a second one. That is load-bearing rather
+/// than a nicety: every publish job deploys a brand-new Cloudflare Pages
+/// deployment, so a duplicate silently leaves an orphaned public build behind.
 #[tracing::instrument(
     name = "runs.publish",
     skip(state, _user),
@@ -125,11 +132,38 @@ pub async fn publish(
         .await
         .map_err(ApiError::from)?;
 
-    let publish_job_id = Uuid::new_v4().to_string();
-    let job_token = Uuid::new_v4().to_string();
     let created_at = OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .map_err(|e| ApiError::internal(format!("formatting created_at: {e}")))?;
+
+    // Idempotency: a run whose release is already under way answers with *that*
+    // publish job rather than enqueuing a second one. A publish is not idempotent
+    // externally — every job runs `wrangler pages deploy`, which mints a brand-new
+    // Cloudflare Pages deployment — so a duplicate job leaves an orphaned public
+    // build behind (the `gh` side reuses the repo, so only the Pages side shows it).
+    // A double-click, a second console tab, or a retry after the live stream dropped
+    // therefore re-attaches to the publish already running.
+    if let Some(existing) = state
+        .db
+        .active_publish_job_for_run(&id, &created_at)
+        .await
+        .map_err(ApiError::from)?
+    {
+        tracing::info!(
+            publish_job.id = %existing.id,
+            publish_job.state = %existing.state,
+            "publish already under way for this run; re-attaching to it"
+        );
+        let publish_job_id = existing.id;
+        let body = PublishResponse {
+            live_url: format!("/publish-jobs/{publish_job_id}/live"),
+            publish_job_id,
+        };
+        return Ok((StatusCode::ACCEPTED, Json(body)).into_response());
+    }
+
+    let publish_job_id = Uuid::new_v4().to_string();
+    let job_token = Uuid::new_v4().to_string();
 
     state
         .db

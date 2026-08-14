@@ -146,7 +146,14 @@ impl Cost {
     /// class carries tokens but its per-token price is unknown, the whole cost is
     /// unknown rather than under-counted. A class with zero tokens needs no
     /// price.
+    ///
+    /// Counts with **no** class reported at all ([`TokenCounts::total`] is `None`)
+    /// give an unknown cost, not `$0.00`. Treating every class's "not reported" as
+    /// "zero tokens, and so zero cost" would price a run whose usage never reached
+    /// us as confidently free — the exact conflation the optional classes exist to
+    /// prevent.
     pub fn comparable_from(counts: &TokenCounts, prices: &TokenPrices) -> Option<f64> {
+        counts.total()?;
         // A priced class contributes `tokens * price`; zero tokens contribute
         // nothing regardless of price, but a nonzero count with an unknown price
         // makes the whole total unknown.
@@ -177,3 +184,7 @@ pub struct RunMetrics {
     /// Cost, recorded as comparable and actual.
     pub cost: Cost,
 }
+
+#[cfg(test)]
+#[path = "metrics.test.rs"]
+mod tests;

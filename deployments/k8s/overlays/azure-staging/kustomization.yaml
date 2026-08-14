@@ -143,11 +143,13 @@ patches:
 # (patch-backend-ingest.yaml).
 #
 # The run-container images are pinned SEPARATELY via TCAB_CONTAINER_TAG in
-# patch-dispatcher-driver-image.yaml (a different cadence) — nothing since v0.6.0-beta4 has
-# run `build-containers` on `staging`, so the run-container tag stays pinned at beta4
-# (e6afbee6) while the service images move ahead to v0.6.1-rc5, widening the
-# service-vs-run-container divergence. It stays benign: nothing under containers/ has changed
-# on `staging` since e6afbee6, so the beta4 run images are still content-current.
+# patch-dispatcher-driver-image.yaml, because that tag decides the image every future RUN
+# executes inside. It sits at v0.6.0-beta4 (e6afbee6) while the service images are at
+# v0.6.1-rc5 — a leftover of `build-containers` having been path-filtered, so nothing since
+# beta4 published run images to pin to. It stayed benign only because containers/ happened
+# not to change in that window. Both image workflows now run unfiltered on every
+# master/staging push, so every sha carries run images too and this can be re-pinned
+# alongside the service images at the next rc.
 images:
   - name: REPLACE_REGISTRY/tcab-backend
     newName: ghcr.io/theclockwyrks/tcab-backend

@@ -185,6 +185,50 @@
   }
 }
 
+// The heading of a collapsible automated-validation list — the whole set of
+// category tables folded behind one line. It starts closed everywhere it is used,
+// so the default height of the section is this single row rather than a screenful
+// of tables the reader has to scroll past.
+.disclosureHeading {
+  margin: 0;
+}
+
+// The heading's toggle: a full-width button reset to read as the heading's own
+// text, with the twisty on the left and the check count pinned right.
+.disclosureToggle {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-xs;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-accent;
+  }
+}
+
+// The right-aligned count of checks folded away, so the closed row still says how
+// much is behind it.
+.disclosureCount {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: t.$font-sm;
+  font-weight: 400;
+  color: t.$color-text-muted;
+}
+
+// The tables of a collapsible list, once open: set them off from the heading the
+// way the closed row's own line spacing does not.
+.disclosureHeading + .validationGroup {
+  margin-top: t.$space-sm;
+}
+
 // Automated-validation: one table per review category. The category heading sits
 // above its table; groups after the first get a little breathing room.
 .validationGroup + .validationGroup {
@@ -509,8 +553,31 @@ $verdict-gutter: 3.5rem;
   vertical-align: middle;
 }
 
+// A reviewer's note on a point. It sits directly beneath the point's description,
+// which comes from the case definition — so styling the two alike (both plain
+// muted text) left no way to tell authored review text from the rubric's own
+// prose. The note reads as a quoted annotation instead: an accent rule and tinted
+// ground mark it as something a person wrote, and full-strength text keeps it
+// from receding behind the muted description above it.
 .verdictNote {
-  color: t.$color-text-muted;
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  color: t.$color-text;
+  background: t.$color-surface-2;
+  border-left: 2px solid t.$color-accent;
+  border-radius: 0 t.$radius-sm t.$radius-sm 0;
+  padding: t.$space-xs t.$space-sm;
+}
+
+// Names the note's author role, so the block is legible as review text even at a
+// glance or for a reader who cannot pick up the accent rule by color alone.
+.verdictNoteLabel {
+  flex: none;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: t.$color-accent;
 }
 
 .verdictPass {

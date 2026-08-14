@@ -53,30 +53,25 @@ name: Build service images
 # pull them unauthenticated; otherwise reference them through an imagePullSecret
 # (see deployments/k8s/base/secrets.example.yaml).
 on:
+  # DELIBERATELY UNFILTERED: every push to master/staging rebuilds, whether or not
+  # it touched a source path. The `:<git-sha>` tag is not a convenience — it is the
+  # contract every consumer pins by, and each of them pins by the sha of a COMMIT,
+  # not by "the last sha that happened to build":
+  #   - release.yml bakes TCAB_DESKTOP_IMAGE_TAG=<github.sha> into the desktop app,
+  #     which is the tag its self-contained k3d cluster pulls all six services at.
+  #     No images at the release sha => a shipped installer that cannot pull
+  #     anything and dies at bootstrap.
+  #   - the azure-staging/azure-prod overlays pin `images:` + TCAB_DRIVER_IMAGE to a
+  #     release sha, so a roll needs that sha to exist.
+  # A path filter makes that contract conditional on the release merge's contents:
+  # a merge touching only test-cases/, game-jams/, or apps/docs/ (an entirely normal
+  # release) published NOTHING, and the only thing standing between that and a broken
+  # release was remembering to dispatch this workflow by hand. Rebuilding an
+  # unchanged tree is cheap here — the per-image, per-arch GHA cache below makes it a
+  # near-no-op — and master/staging only move at rc/release cadence, so the wasted
+  # work is small and the guarantee is absolute. Do not reintroduce `paths:`.
   push:
     branches: [master, staging]
-    # The Rust images compile the backend/auth/dispatcher/driver/artifacts crates
-    # (and their workspace dependencies) from source, so any change under crates/ or
-    # to the workspace manifests must rebuild them — not just a change to the
-    # Dockerfiles. The tcab-web image instead builds the npm console, so its sources
-    # (apps/web + the packages it bundles) and the npm manifests/lockfile rebuild it.
-    # That bundle includes packages reached transitively, not just apps/web's direct
-    # deps: the console bundles @test-cabinet/ui, which pulls in voxel-runtime and
-    # particle-runtime (and all pull in run-record), so every one of those package
-    # paths belongs here.
-    paths:
-      - "crates/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "apps/web/**"
-      - "packages/ui/**"
-      - "packages/voxel-runtime/**"
-      - "packages/particle-runtime/**"
-      - "packages/run-record/**"
-      - "package.json"
-      - "package-lock.json"
-      - "deployments/images/**"
-      - ".github/workflows/build-service-images.yml"
   workflow_dispatch:
 
 permissions:
