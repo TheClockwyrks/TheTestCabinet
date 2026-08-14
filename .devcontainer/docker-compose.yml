@@ -1,5 +1,5 @@
 x-devcontainer-build-args: &devcontainer-build-args
-  USERNAME: ${DEVCONTAINER_USERNAME:-vscode}
+  USERNAME: ${DEVCONTAINER_USERNAME:-ttc}
   USER_UID: ${DEVCONTAINER_UID:-1000}
   USER_GID: ${DEVCONTAINER_GID:-1000}
   DOCKER_GID: ${DOCKER_GID:-999}
