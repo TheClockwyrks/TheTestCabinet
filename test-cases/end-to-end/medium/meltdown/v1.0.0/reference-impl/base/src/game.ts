@@ -366,6 +366,26 @@ export class Game {
 
   // ---- Fixed-timestep simulation -----------------------------------------
 
+  // ---- Render interpolation ---------------------------------------------
+  // The simulation advances in whole FIXED_STEP ticks, but a frame is presented
+  // whenever the display asks for one, and the two rates do not divide evenly.
+  // `syncView` stamps where the units stood when the displayed step began, and
+  // the animation loop sets `renderAlpha` to the fraction of the next step the
+  // wall clock has already covered; render.ts draws between the two. Towers and
+  // the field are static and need none of it. Nothing here feeds back into the
+  // simulation — these are written by the step and read by the renderer, never
+  // the other way about, so the same tick sequence produces the same state
+  // whatever the frame rate.
+  renderAlpha = 0;
+
+  // Stamp the interpolation window. Called once per displayed step by the
+  // animation loop — fast-forward runs several simulation steps per displayed
+  // step, and the window has to span the whole group so the drawn motion is
+  // continuous across it.
+  syncView(): void {
+    for (const u of this.surge) u.syncView();
+  }
+
   fixedStep(dt: number): void {
     if (this.state !== "playing") return;
 

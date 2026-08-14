@@ -157,7 +157,7 @@ export function render(ctx: Ctx, game: Game): void {
   for (const t of game.towers) drawTower(ctx, game, t);
   drawRangeRings(ctx, game);
   drawPreview(ctx, game);
-  for (const u of game.surge) drawSurge(ctx, u);
+  for (const u of game.surge) drawSurge(ctx, u, game.renderAlpha);
   drawShots(ctx, game);
   drawPanel(ctx, game);
 
@@ -458,10 +458,14 @@ function drawPreview(ctx: Ctx, game: Game): void {
 
 // ---- Surge ----------------------------------------------------------------
 
-function drawSurge(ctx: Ctx, u: import("./surge").Surge): void {
+function drawSurge(
+  ctx: Ctx,
+  u: import("./surge").Surge,
+  alpha: number,
+): void {
   const d = u.def;
-  const x = u.x;
-  const y = u.y;
+  const x = u.viewX(alpha);
+  const y = u.viewY(alpha);
   ctx.save();
   ctx.shadowBlur = 8;
   switch (u.type) {

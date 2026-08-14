@@ -18,7 +18,8 @@ in whole steps, decoupled from rendering. Two properties make it drivable from c
 
 - Render-free core. Game state advances by stepping the simulation and must not depend
   on a canvas, on `requestAnimationFrame`, or on wall-clock time to make progress.
-  Rendering reads the state, never the other way around.
+  The dependency runs one way: the simulation never reads from, waits on, or is
+  driven by the renderer.
 - Seeded randomness. Any randomness the game uses (which vent each unit of a wave
   enters from, the spawn timing jitter within a wave, and any variation the special
   modes introduce) runs off a seedable generator, so reseeding and replaying the same

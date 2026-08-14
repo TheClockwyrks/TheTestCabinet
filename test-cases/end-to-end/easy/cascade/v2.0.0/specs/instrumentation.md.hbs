@@ -18,8 +18,8 @@ time, steppable. Two properties make it driveable from code:
 
 - Render-free core. Game state (the piles, a move, the win check, and the victory
   cascade) advances without depending on a canvas, on `requestAnimationFrame`, or
-  on wall-clock time to make progress. Rendering reads the state, never the other
-  way around.
+  on wall-clock time to make progress. The dependency runs one way: the
+  simulation never reads from, waits on, or is driven by the renderer.
 - Seeded randomness. The randomness the game uses, the deal shuffle and the
   cascade's launch velocities, runs off a seedable generator. Seeding it and
   replaying the same calls reproduces the same result exactly. Normal play seeds

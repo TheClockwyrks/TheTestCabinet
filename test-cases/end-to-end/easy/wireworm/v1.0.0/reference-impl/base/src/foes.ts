@@ -27,6 +27,8 @@ function newFoe(kind: Foe["kind"], x: number, y: number): Foe {
     kind,
     x,
     y,
+    prevX: x,
+    prevY: y,
     vx: 0,
     vy: 0,
     turnTimer: 0,
@@ -67,6 +69,9 @@ const boardBottom = BOARD_Y + ROWS * 32;
 
 // Advance one foe. Returns false when it has left the board and should despawn.
 export function updateFoe(game: Game, f: Foe, dt: number): boolean {
+  // Where the foe stood before this step, for the renderer to interpolate from.
+  f.prevX = f.x;
+  f.prevY = f.y;
   switch (f.kind) {
     case "glitch": {
       f.turnTimer -= dt;
@@ -80,9 +85,11 @@ export function updateFoe(game: Game, f: Foe, dt: number): boolean {
       // Bounce off the side edges rather than leaving through them.
       if (f.x < 16) {
         f.x = 16;
+        f.prevX = f.x;
         f.vx = Math.abs(f.vx);
       } else if (f.x > STAGE_W - 16) {
         f.x = STAGE_W - 16;
+        f.prevX = f.x;
         f.vx = -Math.abs(f.vx);
       }
       // Eat any node under it (of any charge — defusing charge you were building).

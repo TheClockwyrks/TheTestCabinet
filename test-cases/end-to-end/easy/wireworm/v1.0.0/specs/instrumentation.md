@@ -18,7 +18,8 @@ properties make that possible:
 
 - Render-free core. Game state advances by stepping the simulation and must not
   depend on a canvas, on `requestAnimationFrame`, or on wall-clock time to make
-  progress. Rendering reads the state, never the other way around.
+  progress. The dependency runs one way: the simulation never reads from, waits
+  on, or is driven by the renderer.
 - Seeded randomness. Every source of randomness the game uses, the starting node
   scatter, which edge the worm enters from, and when and where the foes spawn, runs
   off a seedable generator, so reseeding and replaying the same calls reproduces

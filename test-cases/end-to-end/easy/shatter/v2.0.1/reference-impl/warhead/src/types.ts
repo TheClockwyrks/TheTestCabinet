@@ -20,6 +20,11 @@ export interface Vec {
 export interface Bullet {
   x: number;
   y: number;
+  // Where this body stood when the current step began, so the renderer can draw
+  // between that and (x, y) — see Game.renderAlpha. Written by the step and read
+  // by the renderer, never the other way about.
+  prevX: number;
+  prevY: number;
   vx: number;
   vy: number;
   life: number; // seconds remaining before it expires
@@ -33,6 +38,11 @@ export interface Bullet {
 export interface Rock {
   x: number;
   y: number;
+  // Where this body stood when the current step began, so the renderer can draw
+  // between that and (x, y) — see Game.renderAlpha. Written by the step and read
+  // by the renderer, never the other way about.
+  prevX: number;
+  prevY: number;
   vx: number;
   vy: number;
   size: RockSize;
@@ -50,6 +60,11 @@ export interface Rock {
 export interface Torpedo {
   x: number;
   y: number;
+  // Where this body stood when the current step began, so the renderer can draw
+  // between that and (x, y) — see Game.renderAlpha. Written by the step and read
+  // by the renderer, never the other way about.
+  prevX: number;
+  prevY: number;
   vx: number;
   vy: number;
   angle: number; // current heading, radians (velocity always follows this)
@@ -60,6 +75,11 @@ export interface Torpedo {
 export interface Saucer {
   x: number;
   y: number;
+  // Where this body stood when the current step began, so the renderer can draw
+  // between that and (x, y) — see Game.renderAlpha. Written by the step and read
+  // by the renderer, never the other way about.
+  prevX: number;
+  prevY: number;
   vx: number;
   vy: number;
   fireTimer: number; // seconds until the next shot
@@ -72,6 +92,11 @@ export interface Saucer {
 export interface EnemyBullet {
   x: number;
   y: number;
+  // Where this body stood when the current step began, so the renderer can draw
+  // between that and (x, y) — see Game.renderAlpha. Written by the step and read
+  // by the renderer, never the other way about.
+  prevX: number;
+  prevY: number;
   vx: number;
   vy: number;
   life: number;

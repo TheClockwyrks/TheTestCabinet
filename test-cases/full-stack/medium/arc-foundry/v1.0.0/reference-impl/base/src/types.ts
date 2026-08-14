@@ -202,6 +202,11 @@ export interface Unit {
   radius: number; // visual/collision radius (logical px)
   x: number; // current position in logical-pixel space
   y: number;
+  // Where this stood when the current step began, so the renderer can draw
+  // between that and (x, y) — see Game.renderAlpha. Written by the step and read
+  // by the renderer, never the other way about.
+  prevX: number;
+  prevY: number;
   wpIndex: number; // index into the full chain [E, WP1…WPk, C] of the node it heads to next
   route: Pt[]; // the current leg's tile-center route around the walls (empty for flyers)
   routeStep: number; // index of the next node in `route`
@@ -239,6 +244,11 @@ export interface Projectile {
   dmg: number;
   x: number;
   y: number;
+  // Where this stood when the current step began, so the renderer can draw
+  // between that and (x, y) — see Game.renderAlpha. Written by the step and read
+  // by the renderer, never the other way about.
+  prevX: number;
+  prevY: number;
   angle: number; // heading, for the sprite's rotation
   speed: number;
   targetId: number; // the homed unit
