@@ -5,10 +5,9 @@ import { Pagination } from "@test-cabinet/ui";
 import { PromptHeader } from "../../components/PromptHeader";
 import { RunLog, sortStateToQuery, useRunTable } from "../../components/RunLog";
 import { RunsTabs } from "./RunsTabs";
-import {
-  usePagedSearchParams,
-  useResetPageOnChange,
-} from "../../components/usePagedSearchParams";
+import { RunFilters } from "../../components/RunFilters";
+import { useRunFilters } from "../../components/useRunFilters";
+import { useResetPageOnChange } from "../../components/usePagedSearchParams";
 import { useFindModel } from "../../data/useModels";
 import type { ModelSummary } from "../../data/models";
 import { useGalleryData, type InProgressRun } from "../../data/galleryContext";
@@ -28,7 +27,7 @@ const PAGE_SIZE = 20;
 // here the full history is browsable a page at a time. Each page is a server query
 // (the console's backend offset endpoint, the static site's in-memory index), so
 // only one page of summaries is ever held: a header sort re-queries in that order,
-// and the debounced search narrows by test case, harness, or model server-side. An
+// and the filter bar's debounced search and equality facets narrow server-side. An
 // unpublished (and so unreviewed) run takes its place in that one sorted, paged
 // order — the consoles draw from the backend's `any` slice rather than merging a
 // locally-held worklist in ahead of it. Only in-progress runs, which have no record
@@ -38,8 +37,8 @@ export function RunsPage() {
     useGalleryData();
   const { inProgress } = useRunsRuntime();
   const findModel = useFindModel();
-  const { page, setPage, query, setQuery, committedQuery } =
-    usePagedSearchParams();
+  const filters = useRunFilters();
+  const { page, setPage, committedQuery, facets, latestVersions } = filters;
   const [result, setResult] = useState<RunQueryResult>({
     summaries: [],
     total: 0,
@@ -48,15 +47,24 @@ export function RunsPage() {
 
   const needle = committedQuery.trim().toLowerCase();
 
-  // Runs still executing, narrowed by the same search so it behaves uniformly.
-  // Only the consoles have these (the static site's runtime is always empty).
+  // Runs still executing, narrowed by the same search and facets so the list
+  // behaves uniformly. Only the consoles have these (the static site's runtime is
+  // always empty).
+  //
+  // The current-version toggle is deliberately not applied: an in-progress run has
+  // no recorded cohort to measure against, and a run launched a minute ago —
+  // whatever version it targets — is exactly what this list exists to show.
   const activeRuns = useMemo(() => {
     if (!canExecute) return [];
-    if (!needle) return inProgress;
-    return inProgress.filter((run) =>
-      activeSearchText(run, findModel).includes(needle),
+    return inProgress.filter(
+      (run) =>
+        (!needle || activeSearchText(run, findModel).includes(needle)) &&
+        (!facets.testCase || run.testCaseSlug === facets.testCase) &&
+        (!facets.version || run.testCaseVersion === facets.version) &&
+        (!facets.harness || run.harnessSlug === facets.harness) &&
+        (!facets.model || run.modelId === facets.model),
     );
-  }, [canExecute, inProgress, needle, findModel]);
+  }, [canExecute, inProgress, needle, findModel, facets]);
 
   // The table renders the server-ordered page as-is (externalOrder) but still owns
   // the sort state, so its headers drive the re-query below.
@@ -81,6 +89,11 @@ export function RunsPage() {
       offset: page * PAGE_SIZE,
       limit: PAGE_SIZE,
       q: needle || undefined,
+      testCase: facets.testCase || undefined,
+      version: facets.version || undefined,
+      harness: facets.harness || undefined,
+      model: facets.model || undefined,
+      latestVersions,
       sort,
       dir,
     })
@@ -97,11 +110,11 @@ export function RunsPage() {
     return () => {
       active = false;
     };
-  }, [queryRunSummaries, page, needle, sort, dir]);
+  }, [queryRunSummaries, page, needle, facets, latestVersions, sort, dir]);
 
-  // A new search resets to the first page inside the paged-params hook (it drops
-  // the page param as it commits the filter); a re-sort of the whole history
-  // reshapes the result set the same way, so jump back to the first page here.
+  // A new search or facet resets to the first page as it is committed (both drop
+  // the page param); a re-sort of the whole history reshapes the result set the
+  // same way, so jump back to the first page here.
   useResetPageOnChange(setPage, `${sort}:${dir}`);
 
   const pageCount = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
@@ -141,13 +154,11 @@ export function RunsPage() {
 
       <div className={styles.controls}>
         <RunsTabs active="runs" />
-        <input
-          className={styles.search}
-          type="search"
-          placeholder="Search by test case, harness, or model…"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          aria-label="Search runs"
+        <RunFilters
+          state={filters}
+          facets={["testCase", "version", "harness", "model"]}
+          searchPlaceholder="Search by test case, harness, or model…"
+          searchLabel="Search runs"
         />
       </div>
 
@@ -156,8 +167,8 @@ export function RunsPage() {
           <p className={styles.empty}>Loading runs…</p>
         ) : (
           <p className={styles.empty}>
-            {needle
-              ? "No runs match that search."
+            {filters.activeCount > 0
+              ? "No runs match those filters."
               : "No runs have been published yet."}
           </p>
         )

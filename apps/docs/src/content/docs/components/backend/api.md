@@ -454,9 +454,23 @@ List stored runs, newest first. A `state` query parameter selects which runs:
 
 The offset mode additionally accepts:
 
-- **Filters** `testCase`, `model`, `harness`, and `variant` — each narrows to runs
-  matching that lifted subject value. A variant slug is unique only within its
-  case, so `variant` is paired with `testCase` (the case-detail Runs tab's slice).
+- **Filters** `testCase`, `model`, `harness`, `variant`, and `version` — each
+  narrows to runs matching that lifted subject value, and they **AND** together
+  (so `testCase=carom&model=…` is expressible, which the free-text `q` alone
+  cannot do). A variant slug is unique only within its case, so `variant` is
+  paired with `testCase` (the case-detail Runs tab's slice), as `version`
+  normally is.
+- **Current versions** `latestVersions=true` — restrict every run to its case's
+  **current** `major.minor`: the newest one that case has a run for *within the
+  selected `state` slice*. A case version is frozen once it has runs, so an older
+  minor is a different spec whose runs are not comparable with the current one's;
+  this is the console listings' default. The current version is read off the runs
+  rather than the definition store, so a newly authored version does not blank the
+  listing before anything has run against it, and the static gallery — which has
+  only its run index — answers the identical question from the same data.
+  `latestVersions` is **ignored** when `version` names an exact version: an
+  explicit version is the more specific instruction, and AND'ing the two would
+  silently empty the listing whenever the picked version is not the current one.
 - **Search** `q` — a free-text match across the lifted subject columns (test case
   slug, model id, harness slug, variant). It matches the **raw** recorded ids, not
   a model's resolved display name.

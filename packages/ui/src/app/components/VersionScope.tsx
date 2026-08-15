@@ -7,6 +7,7 @@
 import { useId, useState } from "react";
 import { SegmentedControl, type SegmentedOption } from "@test-cabinet/ui";
 import type { TestCaseSummary } from "../data/testCases";
+import { parseVersion } from "../data/versions";
 import styles from "./VersionScope.module.scss";
 
 // Which versions of the case a tab draws from, all relative to the case's
@@ -23,28 +24,6 @@ const SCOPE_OPTIONS: ReadonlyArray<SegmentedOption<VersionScope>> = [
   { value: "specific", label: "Specific" },
   { value: "all", label: "All" },
 ];
-
-// A version's numeric parts. Versions are `v<major>.<minor>.<revision>` strings
-// (e.g. `v1.2.0`); there is no shared semver parser, so the scopes parse the two
-// they compare on the fly.
-interface Semver {
-  major: number;
-  minor: number;
-  revision: number;
-}
-
-// Parse a `v1.2.0`-style version into its numeric parts, or null when it doesn't
-// match (a scope then falls back to an exact string compare rather than silently
-// matching nothing).
-function parseVersion(version: string): Semver | null {
-  const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(version);
-  if (!match) return null;
-  return {
-    major: Number(match[1]),
-    minor: Number(match[2]),
-    revision: Number(match[3]),
-  };
-}
 
 // Whether a run's `testCaseVersion` falls within the selected scope, measured
 // against the case's latest version (or, for `specific`, the picked version).

@@ -163,8 +163,9 @@ export interface BackendClient {
    * - The **numbered-pager** window (console listings): pass an `offset` (0-based;
    *   its presence selects this mode) with an optional `limit`, `state` (including
    *   `any`, the published + unpublished union the console listings draw from), the
-   *   equality filters (`testCase`/`model`/`harness`/`variant`), a free-text `q`,
-   *   and `sort`/`dir`. Resolves the windowed summaries plus the `total` count of
+   *   equality filters (`testCase`/`model`/`harness`/`variant`/`version`), the
+   *   `latestVersions` current-version restriction, a free-text `q`, and
+   *   `sort`/`dir`. Resolves the windowed summaries plus the `total` count of
    *   all matching rows (`nextCursor` is `null`).
    */
   listRunSummaries(opts?: {
@@ -176,6 +177,8 @@ export interface BackendClient {
     model?: string;
     harness?: string;
     variant?: string;
+    version?: string;
+    latestVersions?: boolean;
     q?: string;
     sort?: RunSort;
     dir?: SortDir;

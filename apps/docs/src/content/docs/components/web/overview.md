@@ -73,7 +73,21 @@ returned `total`. Search (debounced, then sent as `q`), the page-scoped filters 
 model id on the model-runs page, a case slug and variant on the case/jam Runs
 tab), and column-header sort are sent as query params, so filtering and sorting
 happen in the backend, not client-side; changing any of them re-queries and resets
-to page 0. Those listings draw from the
+to page 0.
+
+Every run listing carries the same **filter bar**: the free-text field plus the
+equality facets its route does not already pin — test case, version, harness, and
+model — and the **Current versions only** toggle, which is **on by default**. The
+facets exist because `q` alone is one substring OR'd across the recorded identity
+columns, so it can express neither "this case *and* this model" nor a test-case
+version at all; each facet is its own server-side equality filter, so they AND with
+each other and with the search. The toggle scopes every case's runs to its current
+`major.minor` — a case version is frozen once it has runs, so an older minor is a
+different spec whose runs are not comparable with the current one's — and steps
+aside when an exact version is picked (see
+[`latestVersions`](/components/backend/api/#get-runs)). All of it lives in the URL
+(`?q=`, `?case=`, `?version=`, `?harness=`, `?model=`, `?latest=0`, `?page=`), so a
+narrowed listing is a link someone else can open. Those listings draw from the
 [`state=any`](/components/backend/api/#get-runs) slice, so a produced —
 unpublished, and so unreviewed — run sorts and pages among the published ones
 rather than being pinned ahead of them; only **in-progress** runs, which have no

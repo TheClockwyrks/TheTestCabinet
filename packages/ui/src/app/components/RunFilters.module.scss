@@ -1,0 +1,116 @@
+@use "../styles/tokens" as t;
+@use "../styles/surfaces" as s;
+@use "../styles/breakpoints" as bp;
+@use "../styles/forms" as f;
+
+// The filter bar: a full-width search field with the facet row beneath it. The
+// facets wrap, so a narrow viewport stacks them rather than scrolling sideways.
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+// Mirrors the Test Cases search field so every index page reads identically.
+.search {
+  width: 100%;
+  padding: t.$space-sm t.$space-md;
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+  color: t.$color-text;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+
+  &::placeholder {
+    color: t.$color-text-muted;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: t.$color-accent;
+    box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 40%, transparent);
+  }
+}
+
+.facets {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+}
+
+// Mirrors the version-scope picker so the two families of dropdown read as one.
+.facet {
+  font: inherit;
+  font-size: t.$font-sm;
+  padding: t.$space-xs t.$space-sm;
+  color: t.$color-text;
+  background-color: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  // After `padding`, so the mixin's chevron room (padding-right) wins.
+  @include f.select-control;
+
+  // A facet that is actually narrowing the listing is drawn as engaged, so the
+  // bar shows at a glance which of four dropdowns is doing something.
+  &[data-set="true"] {
+    color: t.$color-accent;
+    border-color: t.$color-accent;
+  }
+
+  &:disabled {
+    color: t.$color-text-muted;
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    border-color: t.$color-accent;
+  }
+
+  @include bp.below(t.$bp-md) {
+    padding-block: t.$space-sm;
+    padding-left: t.$space-sm;
+  }
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  cursor: pointer;
+  user-select: none;
+
+  input {
+    accent-color: t.$color-accent;
+    cursor: pointer;
+  }
+
+  &:has(input:checked) {
+    color: t.$color-text;
+  }
+}
+
+// Sits inline after the toggle rather than being pushed to the far edge: with the
+// facets wrapping, an auto margin strands it alone on a line of its own.
+.clear {
+  font: inherit;
+  font-size: t.$font-sm;
+  padding: t.$space-xs t.$space-sm;
+  color: t.$color-text-muted;
+  background: none;
+  border: t.$border-hairline solid transparent;
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-accent;
+    border-color: t.$color-border;
+    outline: none;
+  }
+}

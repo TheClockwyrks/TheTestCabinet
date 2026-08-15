@@ -15,9 +15,13 @@ import { RunsPage } from "./RunsPage";
 function summary(
   id: string,
   slug: string,
-  opts: { published?: boolean; startedAt?: string } = {},
+  opts: { published?: boolean; startedAt?: string; version?: string } = {},
 ): RunSummary {
-  const { published = true, startedAt = "2026-01-01T00:00:00Z" } = opts;
+  const {
+    published = true,
+    startedAt = "2026-01-01T00:00:00Z",
+    version = "v1.0.0",
+  } = opts;
   return {
     id,
     publishedAt: published ? "2026-01-02T00:00:00Z" : "",
@@ -25,7 +29,7 @@ function summary(
     finishedAt: startedAt,
     subject: {
       testCaseSlug: slug,
-      testCaseVersion: "1.0.0",
+      testCaseVersion: version,
       testType: "end-to-end",
       variant: "base",
       harnessSlug: "claude",
@@ -48,9 +52,21 @@ function summary(
 }
 
 const TEST_CASES = [
-  { slug: "alpha", name: "Alpha" },
-  { slug: "beta", name: "Beta" },
-  { slug: "gamma", name: "Gamma" },
+  // Alpha is the only multi-version case, so its versions are what the version
+  // facet must offer once Alpha is selected.
+  {
+    slug: "alpha",
+    name: "Alpha",
+    versions: ["v2.0.0", "v1.0.0"],
+    latestVersion: "v2.0.0",
+  },
+  { slug: "beta", name: "Beta", versions: ["v1.0.0"], latestVersion: "v1.0.0" },
+  {
+    slug: "gamma",
+    name: "Gamma",
+    versions: ["v1.0.0"],
+    latestVersion: "v1.0.0",
+  },
 ] as unknown as TestCaseSummary[];
 
 // The cabinet this fake host holds: two published runs and — newest — one still
@@ -62,11 +78,17 @@ const PUBLISHED_NEW = summary("r-gamma", "gamma", {
 const UNPUBLISHED = summary("r-alpha", "alpha", {
   published: false,
   startedAt: "2026-01-02T00:00:00Z",
+  version: "v2.0.0",
+});
+// Alpha's superseded v1: in the cabinet, but out of scope by default.
+const PUBLISHED_STALE = summary("r-alpha-old", "alpha", {
+  startedAt: "2026-01-04T00:00:00Z",
+  version: "v1.0.0",
 });
 const PUBLISHED_OLD = summary("r-beta", "beta", {
   startedAt: "2026-01-01T00:00:00Z",
 });
-const ALL_RUNS = [PUBLISHED_NEW, UNPUBLISHED, PUBLISHED_OLD];
+const ALL_RUNS = [PUBLISHED_NEW, UNPUBLISHED, PUBLISHED_OLD, PUBLISHED_STALE];
 
 // A host that answers a summary query the way the backend does: the `any` slice
 // sees every run, `published` only the published ones. Records each query so a
@@ -170,5 +192,81 @@ describe("RunsPage", () => {
       expect(queries.at(-1)).toMatchObject({ state: "any", q: "alpha" }),
     );
     await waitFor(() => expect(rowNames()).toEqual(["Alpha"]));
+  });
+
+  it("scopes to each case's current version by default, and can be widened", async () => {
+    const queries: RunQuery[] = [];
+    renderPage(queries);
+
+    // Alpha is on v2, so its superseded v1 run is out of scope even though it is
+    // the newest run in the cabinet — a run against a different spec is not
+    // comparable with the current one's.
+    await waitFor(() => expect(rowNames()).toEqual(["Gamma", "Alpha", "Beta"]));
+    expect(queries[0]).toMatchObject({ latestVersions: true });
+
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /current versions only/i }),
+    );
+
+    // Widened: the stale v1 run reappears, newest-first.
+    await waitFor(() =>
+      expect(queries.at(-1)).toMatchObject({ latestVersions: false }),
+    );
+    await waitFor(() =>
+      expect(rowNames()).toEqual(["Alpha", "Gamma", "Alpha", "Beta"]),
+    );
+  });
+
+  it("filters by an exact version once a case narrows the choice", async () => {
+    const queries: RunQuery[] = [];
+    renderPage(queries);
+    await waitFor(() => expect(rowNames()).toHaveLength(3));
+
+    // A version only means something within a case, so the facet waits for one.
+    expect(screen.getByRole("combobox", { name: "Version" })).toBeDisabled();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Test case" }), {
+      target: { value: "alpha" },
+    });
+    await waitFor(() =>
+      expect(queries.at(-1)).toMatchObject({ testCase: "alpha" }),
+    );
+
+    const version = screen.getByRole("combobox", { name: "Version" });
+    expect(version).toBeEnabled();
+    fireEvent.change(version, { target: { value: "v1.0.0" } });
+
+    // The exact version overrides the current-version toggle — asking for an older
+    // version must show it, not silently empty the listing.
+    await waitFor(() =>
+      expect(queries.at(-1)).toMatchObject({
+        testCase: "alpha",
+        version: "v1.0.0",
+      }),
+    );
+    await waitFor(() => expect(rowNames()).toEqual(["Alpha"]));
+  });
+
+  it("clears every filter back to the default view", async () => {
+    const queries: RunQuery[] = [];
+    renderPage(queries);
+    await waitFor(() => expect(rowNames()).toHaveLength(3));
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Harness" }), {
+      target: { value: "codex" },
+    });
+    await waitFor(() =>
+      expect(queries.at(-1)).toMatchObject({ harness: "codex" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+
+    await waitFor(() =>
+      expect(queries.at(-1)).toMatchObject({
+        harness: undefined,
+        latestVersions: true,
+      }),
+    );
+    await waitFor(() => expect(rowNames()).toEqual(["Gamma", "Alpha", "Beta"]));
   });
 });

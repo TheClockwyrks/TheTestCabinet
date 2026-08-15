@@ -269,6 +269,8 @@ pub async fn list(
             model: params.model.clone(),
             harness: params.harness.clone(),
             variant: params.variant.clone(),
+            version: params.version.clone(),
+            latest_versions: params.latest_versions.unwrap_or(false),
             q: params.q.clone(),
         };
         let sort = parse_sort(params.sort.as_deref());
@@ -669,6 +671,16 @@ pub struct ListParams {
     /// Filter to one variant slug (summary + offset path only). Paired with
     /// `testCase` — a variant slug is only unique within its case.
     variant: Option<String>,
+    /// Filter to one exact test-case version (summary + offset path only).
+    /// Normally paired with `testCase`, since a version only means something
+    /// within a case.
+    version: Option<String>,
+    /// Restrict every run to its case's current `major.minor` — the newest one
+    /// that case has a run for in the selected `state` slice (summary + offset
+    /// path only). Ignored when `version` names an exact version. Wire:
+    /// `latestVersions`.
+    #[serde(rename = "latestVersions")]
+    latest_versions: Option<bool>,
     /// Case-insensitive free-text query across the lifted identity columns (summary
     /// + offset path only).
     q: Option<String>,
