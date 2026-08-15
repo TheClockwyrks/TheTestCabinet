@@ -404,8 +404,12 @@ fn every_sandbox_error() -> Vec<SandboxError> {
         SandboxError::Instantiate("missing import".into()),
         SandboxError::Timeout {
             limit: Duration::from_secs(42),
+            said: String::new(),
         },
-        SandboxError::OutOfMemory { limit: 42 },
+        SandboxError::OutOfMemory {
+            limit: 42,
+            said: String::new(),
+        },
         SandboxError::Trap("unreachable".into()),
     ]
 }
@@ -653,8 +657,13 @@ fn only_the_engine_and_host_failures_are_ggs_own_fault() {
 }
 
 /// Every error renders into a sentence a model (or an operator reading a log) can act on. The two
-/// resource failures name their ceiling, and the memory one names the guest's floor as well —
-/// otherwise a cap set below ~10 MiB looks like a mysterious instantiation failure.
+/// resource failures name their ceiling, and both put **what the guest said** first. The exit's own
+/// sentence is asserted where it is composed, in the classifier's tests.
+///
+/// The memory sentence is asserted for what it does **not** say as hard as for what it does. It used
+/// to name the sandbox's JavaScript engine and its ~10 MiB floor, which is true of one arm out of
+/// eleven: on Rust, Swift, C# and C++ a model was told its program had outgrown a heap belonging to
+/// an engine that is not in its guest at all. What replaced it is true of every arm.
 #[test]
 fn every_sandbox_error_renders_something_actionable() {
     assert_eq!(
@@ -675,14 +684,58 @@ fn every_sandbox_error_renders_something_actionable() {
     );
     assert_eq!(
         SandboxError::Timeout {
-            limit: Duration::from_secs(30)
+            limit: Duration::from_secs(30),
+            said: String::new(),
         }
         .to_string(),
         "the program ran longer than its 30s execution timeout and was stopped"
     );
-    let memory = SandboxError::OutOfMemory { limit: 4_194_304 }.to_string();
+    let memory = SandboxError::OutOfMemory {
+        limit: 4_194_304,
+        said: String::new(),
+    }
+    .to_string();
     assert!(memory.contains("4194304-byte memory cap"), "{memory}");
-    assert!(memory.contains("10 MiB"), "{memory}");
+    assert!(
+        !memory.contains("JavaScript") && !memory.contains("10 MiB"),
+        "the memory sentence names one arm's engine and one arm's floor to eleven arms: {memory}"
+    );
+    assert!(
+        memory.contains("language runtime"),
+        "the memory sentence must still say why a program well under the cap can reach it: {memory}"
+    );
+    // **What the guest said comes first**, on every failure it can have spoken before. A model reads
+    // the first line, and on an arm with no exception mechanism that line is the only account of the
+    // failure that exists.
+    for (error, sentence) in [
+        (
+            SandboxError::Timeout {
+                limit: Duration::from_secs(30),
+                said: "Fatal error: Range requires lowerBound <= upperBound".into(),
+            },
+            "ran longer than its 30s execution timeout",
+        ),
+        (
+            SandboxError::OutOfMemory {
+                limit: 4_194_304,
+                said: "Fatal error: failed to allocate 33554440 bytes of memory".into(),
+            },
+            "exceeded its 4194304-byte memory cap",
+        ),
+    ] {
+        let rendered = error.to_string();
+        let (first, rest) = rendered.split_once("\n\n").unwrap_or_else(|| {
+            panic!("the guest's words and gg's account must be separate: {rendered}")
+        });
+        assert!(
+            first.starts_with("Fatal error") || first.starts_with("Traceback"),
+            "the guest's own account must lead: {rendered}"
+        );
+        assert!(
+            rest.contains(sentence),
+            "gg's account must follow: {rendered}"
+        );
+    }
     assert_eq!(
         SandboxError::Trap("wasm trap: unreachable".into()).to_string(),
         "the sandbox trapped: wasm trap: unreachable"

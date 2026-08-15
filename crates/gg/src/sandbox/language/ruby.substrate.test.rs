@@ -604,6 +604,73 @@ end
         "the failure names the call and the wire's own code: {}",
         error.message
     );
+
+    // A raise inside a CODE MODULE is located at the line of the model's own program that reached
+    // into it, and at no other line at all.
+    //
+    // A module is compiled on its own and carries its OWN source map, so the frame it raises from
+    // is a position in a unit the program's map says nothing about. Reading it through the
+    // program's map anyway is what this guest used to do, and what came out depended on nothing but
+    // how long the model's program happened to be — which is the tell that the number never meant
+    // anything. Both halves were measured before the fix: a 63-line program calling
+    // `lib.helpers.boom` on its line 62 was told `line 10`, which was `a9 = 9`; the program below
+    // fell off the end of the same map and was told nothing at all.
+    //
+    // The frames are told apart by name now (`//# sourceURL`), so the program's own frame is the
+    // one that is mapped. It is also the line the model can act on: `lib.helpers.boom` is where its
+    // program met the skill's failure.
+    let (outcome, _log) = run_with(
+        r##"
+def summarise(rows)
+  rows.map { |row| row.strip }.reject(&:empty?)
+end
+
+rows = [" alpha ", "", "beta"]
+summary = summarise(rows)
+puts summary.join(",")
+puts "kept #{summary.size}"
+
+widths = summary.map { |word| word.size }
+puts widths.sum
+longest = summary.max_by { |word| word.size }
+puts longest
+initials = summary.map { |word| word[0] }
+puts initials.join
+table = Hash[summary.zip(widths)]
+puts table.size
+
+lib.helpers.boom
+puts "unreachable"
+"##,
+        &[],
+        &[CodeModule {
+            name: "helpers".to_string(),
+            source: prepare_module(
+                r##"
+def boom
+  raise ArgumentError, "the skill raised this"
+end
+"##,
+            ),
+        }],
+        canned_outcome,
+    );
+    let error = program_error(&outcome);
+    assert!(
+        error.message.contains("ArgumentError") && error.message.contains("the skill raised this"),
+        "the module's own exception reaches the model: {}",
+        error.message
+    );
+    assert_eq!(
+        error.location.as_deref(),
+        Some("line 20"),
+        "a module's raise is located at the model's own call into it, never at a line read through \
+         the wrong unit's source map"
+    );
+    assert_eq!(
+        outcome.logs,
+        ["alpha,beta", "kept 2", "9", "alpha", "ab", "2"]
+    );
 }
 
 #[test]

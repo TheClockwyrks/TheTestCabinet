@@ -161,7 +161,10 @@ toolchain failure rather than the model's fault, reported as
 At run time the target has no unwinder, so a panic aborts and traps the store,
 and a trap alone carries no message or location. `gg::program::begin` installs a
 panic hook that completes `feedback.report-error` with the panic's message and
-the model's own line and column, out of `std::panic::Location`. The host prefers
+the model's own line and column, out of `std::panic::Location`. A location is
+reported only for a panic the hook can place inside the model's own lines, after
+the one-line offset is subtracted; a panic earned by gg's wrapper or by another
+file is reported with its message alone. The host prefers
 what the program reported over the trap that followed it, while a ceiling gg
 imposed, such as a timeout, still wins. `-Cstrip=symbols` leaves `Location`
 intact, since it is static data.

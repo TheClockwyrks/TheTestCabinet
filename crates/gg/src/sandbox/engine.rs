@@ -9,12 +9,14 @@ use std::time::{Duration, Instant};
 use test_cabinet_core::gg::GgProgramLanguage;
 use wasmtime::component::Component;
 use wasmtime::{Config, Engine, OptLevel, Store, WasmBacktraceDetails};
+use wasmtime_wasi::I32Exit;
 
 use super::SandboxError;
 use super::invoker::ToolApi;
 use super::language::ProgramLanguage;
 use super::limits::SandboxLimits;
 use super::membrane::MembraneState;
+use super::outcome::with_guest_stderr;
 
 /// The process-wide wasm engine.
 static ENGINE: OnceLock<Engine> = OnceLock::new();
@@ -320,6 +322,20 @@ pub(crate) fn component_bytes(language: &'static dyn ProgramLanguage) -> &'stati
 /// and carry on. Reading a stale denial would blame the memory cap for whatever the program
 /// eventually did wrong instead.
 ///
+/// Both ceilings are read before the error itself, because both are things **gg** did to a program
+/// that was still running and neither leaves a distinguishable trap behind. Only then is the error
+/// asked whether it is an explicit [`exit`](wasmtime_wasi::I32Exit) — which a program chose, and
+/// which arrives as a trap carrying a backtrace and no mention of the word "exit" or the status. It
+/// is named by [`exit_message`] and reported as a [`Trap`](SandboxError::Trap) whichever phase it
+/// came from, because a guest that exited is a program that stopped itself and never the artifact
+/// drift `fallback` names on the instantiate path.
+///
+/// [What the guest said](MembraneState::stderr_tail) rides on **every** one of those paths. It used
+/// to ride on the last one alone, so the two early returns above threw it away: a Swift program
+/// stopped at the memory cap had already written `Fatal error: failed to allocate 33554440 bytes of
+/// memory with alignment 4`, and gg had already located it at `main.swift:3:32`, and the model was
+/// shown neither.
+///
 /// `fallback` is what an unclassified failure becomes, and it differs by phase — an error from
 /// [`instantiate`](wasmtime::component::Linker) means the embedded artifact and the membrane have
 /// drifted apart, while one from the call is an ordinary trap — so the caller names it.
@@ -329,35 +345,63 @@ pub(crate) fn classify<A: ToolApi>(
     err: &wasmtime::Error,
     fallback: fn(String) -> SandboxError,
 ) -> SandboxError {
+    let said = store.data().stderr_tail();
     if store.data().timed_out() {
         return SandboxError::Timeout {
             limit: limits.timeout,
+            said,
         };
     }
     if store.data().memory_denied() {
         return SandboxError::OutOfMemory {
             limit: limits.max_memory_bytes,
+            said,
         };
     }
-    fallback(with_guest_stderr(
-        err.to_string(),
-        store.data().stderr_tail(),
-    ))
+    if let Some(exit) = err.downcast_ref::<I32Exit>() {
+        return SandboxError::Trap(with_guest_stderr(exit_message(exit.0), &said));
+    }
+    fallback(with_guest_stderr(failure_reason(err), &said))
 }
 
-/// What the guest said about itself, in front of the engine's account of what happened to it.
+/// What a program that called its language's `exit` is told, in place of the backtrace that carried
+/// neither the word "exit" nor the status.
 ///
-/// The order is the point. On a guest with an exception mechanism the engine's account is the whole
-/// story, because a throw was caught, reported and never became a trap. On one without — the
-/// [Swift](super::language::swift) arm, where an index out of range, a force-unwrapped `nil` and a
-/// `fatalError` are all unrecoverable by design — the *only* description of the failure is the line
-/// the runtime wrote to stderr on its way down, and burying it under a wasm backtrace would be
-/// showing a model the machinery instead of the fault. See
-/// [`GuestStderr`](MembraneState::stderr_tail).
-fn with_guest_stderr(error: String, said: String) -> String {
-    match said.is_empty() {
-        true => error,
-        false => format!("{said}\n\n{error}"),
+/// Two facts, because they are the two a model can act on: which status it exited with, and that
+/// returning is how a program ends. `exit(0)` is not spared — it is a program that stopped before
+/// its own last statement, and the status is what separates the two cases in the sentence.
+///
+/// It is composed here rather than being a [`SandboxError`] variant of its own for the reason
+/// [`Trap`](SandboxError::Trap) states: a recordable variant is one-to-one with a **published** turn
+/// error type, and minting `sandbox_exit` is a contract change rather than a classification fix.
+fn exit_message(status: i32) -> String {
+    format!("the program called exit({status}) instead of returning; nothing after the call ran")
+}
+
+/// **Why** a wasmtime error happened, in front of the frames it happened in.
+///
+/// A [`wasmtime::Error`] is an `anyhow`-shaped chain, and wasmtime attaches the wasm backtrace as
+/// the **outermost** context with the reason as its source. `Display` renders the outermost link
+/// alone, so reporting `err.to_string()` — which is what this replaced — showed a model `error while
+/// executing at wasm backtrace:` and a wall of frames, while `wasm trap: integer divide by zero`,
+/// `wasm trap: call stack exhausted` and `out of bounds memory access` sat in the chain and reached
+/// nobody. Measured that way on the C++, Swift and Rust arms.
+///
+/// `{err:#}` prints the whole chain, and in that same order: the frames lead and the reason lands
+/// last, behind them. A model reads the first line, so this walks the chain and leads with the
+/// **innermost** cause — the reason — putting the outer links after it, blank-line separated.
+///
+/// The backtrace is kept rather than dropped because on a compiled arm it is the only line and
+/// column a program failure has: [`WasmBacktraceDetails::Enable`] symbolicates it out of the guest's
+/// own DWARF for exactly that, and on the Swift arm the runtime's message is encoded in an inlined
+/// frame's name and lives nowhere else.
+fn failure_reason(err: &wasmtime::Error) -> String {
+    // Outermost first, and never empty — the error is always its own first link.
+    let mut chain: Vec<String> = err.chain().map(ToString::to_string).collect();
+    let reason = chain.pop().unwrap_or_else(|| err.to_string());
+    match chain.is_empty() {
+        true => reason,
+        false => format!("{reason}\n\n{}", chain.join("\n\n")),
     }
 }
 

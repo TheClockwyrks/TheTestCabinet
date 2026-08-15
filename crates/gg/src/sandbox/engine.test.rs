@@ -6,10 +6,238 @@
 //! cranelift pins and ~7.6 s without them. That is the whole reason the end-to-end tests in
 //! `sandbox.test.rs` are consolidated into a handful of functions instead of one per behaviour.
 
+use wasmtime::ResourceLimiter;
+use wasmtime_wasi::I32Exit;
+
 use super::*;
 use crate::ending::EndingRole;
 use crate::sandbox::fake::{CallLog, FakeToolApi, process_isolated, typescript};
-use crate::sandbox::{ProgramScope, RunEnding, SandboxLimits, run_program};
+use crate::sandbox::membrane::MembraneState;
+use crate::sandbox::{ProgramScope, RunEnding, SandboxLimits, bounded_store, run_program};
+
+/// A store shaped exactly as a turn's, with **nothing compiled**.
+///
+/// [`classify`] reads the membrane state and the error it is handed, and never the guest, so every
+/// path through it can be driven here without paying the ~1.2 s component compile the rest of this
+/// file pays. That is what lets these be one test per property instead of one consolidated function.
+fn classifiable_store(limits: SandboxLimits) -> Store<MembraneState<FakeToolApi>> {
+    let log = CallLog::default();
+    bounded_store(
+        MembraneState::new(
+            FakeToolApi::new(&log),
+            typescript(),
+            ProgramScope {
+                capabilities: &[],
+                operations: &[],
+                modules: &[],
+                ending: RunEnding::Role(EndingRole::Standard),
+            },
+            limits,
+            None,
+        ),
+        limits,
+    )
+}
+
+/// A wasmtime error shaped the way a real trap is: the reason innermost, the wasm backtrace attached
+/// **over** it as context. That ordering is wasmtime's, not a convenience of this test — see
+/// [`failure_reason`] — and it is the whole reason `Display` alone reported the frames and dropped
+/// the reason.
+fn trap_error(reason: &str) -> wasmtime::Error {
+    wasmtime::Error::msg(reason.to_string()).context(
+        "error while executing at wasm backtrace:\n    0: 0x1a2b - program.wasm!main\n    1: \
+         0x3c4d - program.wasm!_start",
+    )
+}
+
+/// **The reason a program failed reaches the model, and reaches it FIRST.**
+///
+/// wasmtime hangs the wasm backtrace off the error as its outermost context, so the `to_string()`
+/// this replaced reported the frames and nothing else: `wasm trap: integer divide by zero`, `wasm
+/// trap: call stack exhausted` and `out of bounds memory access` were all present in the error and
+/// none of them reached the model, measured on the C++, Swift and Rust arms. `{err:#}` would have
+/// carried the reason but put it last, behind the frames — and a model reads the first line.
+///
+/// Driven through [`classify`] rather than through [`failure_reason`] alone, because what is being
+/// gated is what the **model** is handed: a renderer that leads with the reason and a classifier
+/// that goes on reporting `err.to_string()` would leave the defect exactly where it was.
+#[test]
+fn a_traps_reason_leads_and_its_frames_follow() {
+    let limits = SandboxLimits::default();
+    let store = classifiable_store(limits);
+
+    for reason in [
+        "wasm trap: integer divide by zero",
+        "wasm trap: call stack exhausted",
+        "out of bounds memory access",
+    ] {
+        let error = trap_error(reason);
+        assert!(
+            !error.to_string().contains(reason),
+            "this test proves nothing unless `Display` alone really does drop the reason: {error}"
+        );
+
+        let rendered = classify(&store, limits, &error, SandboxError::Trap).to_string();
+        let first = rendered.lines().next().unwrap_or_default();
+        assert_eq!(
+            first,
+            format!("the sandbox trapped: {reason}"),
+            "the reason must be on the first line the model reads: {rendered}"
+        );
+        assert!(
+            rendered.contains("program.wasm!main"),
+            "the frames are the only line and column a compiled arm has, and must survive: \
+             {rendered}"
+        );
+    }
+}
+
+/// An error with nothing wrapped around it is reported as itself, with no blank line implying a
+/// section that was omitted.
+#[test]
+fn an_unwrapped_failure_is_reported_as_itself() {
+    let limits = SandboxLimits::default();
+    let store = classifiable_store(limits);
+    let error = wasmtime::Error::msg("unknown import `test-cabinet:gg/board`");
+
+    assert_eq!(
+        classify(&store, limits, &error, SandboxError::Instantiate).to_string(),
+        "the sandbox component failed to instantiate: unknown import `test-cabinet:gg/board`"
+    );
+}
+
+/// **An explicit `exit` is named, with its status, instead of being shown as a wall of frames.**
+///
+/// A program that calls its language's `exit` traps through WASI's `proc_exit`, and what wasmtime
+/// hands back is a backtrace containing neither the word "exit" nor the status — so the model was
+/// shown the machinery over a program that had simply stopped on purpose.
+///
+/// `exit(0)` is named too. It is still a failure — the program stopped before its own last statement
+/// — and the status is what separates the two cases in the sentence.
+#[test]
+fn an_explicit_exit_is_named_with_its_status() {
+    let limits = SandboxLimits::default();
+    let store = classifiable_store(limits);
+
+    for status in [3, 0] {
+        let error = wasmtime::Error::new(I32Exit(status))
+            .context("error while executing at wasm backtrace:\n    0: 0x1a2b - program.wasm!main");
+        assert!(
+            !error.to_string().contains("exit"),
+            "this test proves nothing unless the error really does hide the exit: {error}"
+        );
+
+        let rendered = classify(&store, limits, &error, SandboxError::Trap).to_string();
+        assert_eq!(
+            rendered,
+            format!(
+                "the sandbox trapped: the program called exit({status}) instead of returning; \
+                 nothing after the call ran"
+            )
+        );
+    }
+}
+
+/// An exit reaching the **instantiate** path is still the program's, never the artifact drift the
+/// caller's `fallback` names there. A guest that exited stopped itself, and reporting it as
+/// [`Instantiate`](SandboxError::Instantiate) would end the run as a defect in the committed
+/// component.
+#[test]
+fn an_exit_is_never_an_artifact_defect() {
+    let limits = SandboxLimits::default();
+    let store = classifiable_store(limits);
+    let error = classify(
+        &store,
+        limits,
+        &wasmtime::Error::new(I32Exit(1)),
+        SandboxError::Instantiate,
+    );
+    assert!(
+        !error.is_artifact_defect(),
+        "a program that exited must not end the run as artifact drift: {error}"
+    );
+}
+
+/// **A guest that spoke on its way down is heard on the ceiling paths too.**
+///
+/// The timeout and the memory cap return before the fallback does, and used to return before
+/// anything read the guest's stderr — so on Swift a program stopped at the cap had already written
+/// `Fatal error: failed to allocate 33554440 bytes of memory with alignment 4`, with a
+/// `main.swift:3:32` located for it, and both were discarded in favour of a location-free sentence
+/// about a JavaScript engine.
+#[test]
+fn the_ceilings_report_what_the_guest_said() {
+    let limits = SandboxLimits::default();
+    let said = "Fatal error: failed to allocate 33554440 bytes of memory with alignment 4";
+
+    let mut store = classifiable_store(limits);
+    store.data().note_stderr(said);
+    store.data_mut().mark_timed_out();
+    let timeout = classify(
+        &store,
+        limits,
+        &trap_error("wasm trap: unreachable"),
+        SandboxError::Trap,
+    );
+    assert!(
+        matches!(timeout, SandboxError::Timeout { .. }),
+        "the ceiling still classifies the failure: {timeout}"
+    );
+    assert!(
+        timeout.to_string().starts_with(said),
+        "the guest's own words must lead: {timeout}"
+    );
+
+    let mut store = classifiable_store(limits);
+    store.data().note_stderr(said);
+    // Trip the limiter exactly as a `memory.grow` past the cap does, which is the only thing that
+    // sets the denial flag `classify` reads.
+    let denied = store
+        .data_mut()
+        .limiter()
+        .memory_growing(0, limits.max_memory_bytes + 1, None)
+        .expect("the limiter answers rather than failing");
+    assert!(!denied, "a growth past the cap must be refused");
+    let memory = classify(
+        &store,
+        limits,
+        &trap_error("wasm trap: unreachable"),
+        SandboxError::Trap,
+    );
+    assert!(
+        matches!(memory, SandboxError::OutOfMemory { .. }),
+        "the ceiling still classifies the failure: {memory}"
+    );
+    assert!(
+        memory.to_string().starts_with(said),
+        "the guest's own words must lead: {memory}"
+    );
+
+    // And an exit is the third path that returns before the fallback. It composes its message the
+    // way an ordinary trap does, so what leads is the trap's body rather than the whole sentence.
+    let store = classifiable_store(limits);
+    store
+        .data()
+        .note_stderr("Traceback (most recent call last): RuntimeError: no");
+    let exit = classify(
+        &store,
+        limits,
+        &wasmtime::Error::new(I32Exit(1)),
+        SandboxError::Trap,
+    )
+    .to_string();
+    assert!(
+        exit.starts_with("the sandbox trapped: Traceback"),
+        "the guest's own words must lead: {exit}"
+    );
+    assert!(
+        exit.ends_with(
+            "the program called exit(1) instead of returning; nothing after the call \
+                        ran"
+        ),
+        "gg's account must follow: {exit}"
+    );
+}
 
 /// **HR2: the component is compiled once per process, never per turn.**
 ///

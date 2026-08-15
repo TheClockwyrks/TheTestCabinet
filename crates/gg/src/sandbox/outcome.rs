@@ -406,21 +406,46 @@ pub enum SandboxError {
     /// set far longer than any honest program's execution needs. Time parked in a bridged tool call
     /// is excluded from the measurement, so a program waiting on a long `shell` build is never
     /// stopped by it.
-    #[error("the program ran longer than its {limit:?} execution timeout and was stopped")]
+    #[error("{}", with_guest_stderr(
+        format!("the program ran longer than its {limit:?} execution timeout and was stopped"),
+        said,
+    ))]
     Timeout {
         /// The timeout that was reached, so the feedback can name it.
         limit: Duration,
+        /// What the guest wrote to standard error before it was stopped, empty when it wrote
+        /// nothing. It is rendered in FRONT of the sentence above, for the reason the module's
+        /// `with_guest_stderr` gives.
+        said: String,
     },
     /// The guest's linear memory grew past the cap.
-    #[error(
-        "the program exceeded its {limit}-byte memory cap (the sandbox's JavaScript engine needs \
-         about 10 MiB of heap before a program runs at all)"
-    )]
+    ///
+    /// The cap bounds the guest's **whole** linear memory, so what the parenthetical says is true of
+    /// every arm. It used to name the sandbox's JavaScript engine and its ~10 MiB floor, which is a
+    /// fact about one arm out of eleven and reads as misdirection on the ten compiled and
+    /// interpreted arms that have no JavaScript engine in them at all.
+    #[error("{}", with_guest_stderr(
+        format!(
+            "the program exceeded its {limit}-byte memory cap (the cap covers the language runtime \
+             the program runs in as well as the program's own data)"
+        ),
+        said,
+    ))]
     OutOfMemory {
         /// The cap that was exceeded, in bytes.
         limit: usize,
+        /// What the guest wrote to standard error before it was stopped, empty when it wrote
+        /// nothing. It is rendered in FRONT of the sentence above, for the reason the module's
+        /// `with_guest_stderr` gives.
+        said: String,
     },
     /// The guest trapped for some other reason.
+    ///
+    /// An explicit `exit` is one of them, and it is **named** rather than being left to a wasm
+    /// backtrace — see the classifier's `exit_message`. It shares this variant rather than getting
+    /// one of its own because a recordable variant is one-to-one with a
+    /// [turn error type](Self::turn_error_type), and that is a type the run record **publishes**:
+    /// minting `sandbox_exit` is a contract change, and it is made in the documentation first.
     #[error("the sandbox trapped: {0}")]
     Trap(String),
     /// gg's own plumbing failed: the sandbox's blocking task did not complete (a panic inside it),
@@ -432,6 +457,25 @@ pub enum SandboxError {
     /// up rewriting a correct program to appease a bug in the harness.
     #[error("the code sandbox did not complete: {0}")]
     Host(String),
+}
+
+/// What the guest said about itself, in front of gg's account of what happened to it.
+///
+/// The order is the point. On a guest with an exception mechanism gg's account is the whole story,
+/// because a throw was caught, reported and never became a trap. On one without — the
+/// [Swift](super::language::swift) arm, where an index out of range, a force-unwrapped `nil` and a
+/// `fatalError` are all unrecoverable by design — the *only* description of the failure is the line
+/// the runtime wrote to stderr on its way down, and burying it under a wasm backtrace, or under a
+/// sentence about a ceiling, would be showing a model the machinery instead of the fault.
+///
+/// It lives here rather than beside the classifier because both renderers need it: the classifier
+/// composes the message an unclassified failure carries, and the two ceilings above render their own
+/// in [`Display`](std::fmt::Display), so a guest that spoke on its way down is heard on every path.
+pub(super) fn with_guest_stderr(error: String, said: &str) -> String {
+    match said.is_empty() {
+        true => error,
+        false => format!("{said}\n\n{error}"),
+    }
 }
 
 impl SandboxError {

@@ -272,6 +272,39 @@ function renderLog(arg) {
 // ------------------------------------------------------------------------------------------------
 
 /**
+ * The name the **program's** compiled JavaScript is evaluated under, so that its stack frames say
+ * which unit they came from.
+ *
+ * Everything this guest evaluates goes through the `Function` constructor, and the engine files
+ * every one of them under the same name — `Function` — so a frame from a code module and a frame
+ * from the program were indistinguishable. That is not a cosmetic gap: a module is compiled
+ * separately and carries its **own** source map, so a raise inside `lib.<key>` mapped through the
+ * program's map produced a Ruby line number that was plausible, was in the model's own file, and
+ * was wrong. `//# sourceURL` renames the unit, and a frame therefore carries where it is from.
+ */
+const PROGRAM_UNIT = "gg-program";
+
+/**
+ * What a code module's compiled JavaScript is evaluated under. Never [`PROGRAM_UNIT`].
+ *
+ * A module's binding key is `[a-z0-9_]` by the time gg sends it, so it cannot end the comment this
+ * name is written into or introduce a line of its own.
+ */
+function moduleUnit(name) {
+  return `gg-module-${name}`;
+}
+
+/**
+ * `source`, named so that the engine files the frames of everything in it under `unit`.
+ *
+ * Appended rather than prepended, because a line added above the body would move every line of it
+ * and falsify the map the compile emitted.
+ */
+function named(source, unit) {
+  return `${source}\n//# sourceURL=${unit}\n`;
+}
+
+/**
  * How many lines the `Function` constructor puts in front of a body, calibrated once per
  * instantiation. Measured at 2 on this engine; calibrated anyway so an engine update costs nothing.
  */
@@ -281,20 +314,30 @@ function lineOffset() {
   if (bodyLineOffset !== undefined) return bodyLineOffset;
   bodyLineOffset = 2;
   try {
-    new Function("throw new Error('calibrate')")();
+    new Function(named("throw new Error('calibrate')", PROGRAM_UNIT))();
   } catch (thrown) {
-    const frame = firstProgramFrame(thrown);
+    const frame = firstFrameIn(thrown, PROGRAM_UNIT);
     if (frame) bodyLineOffset = frame.line - 1;
   }
   return bodyLineOffset;
 }
 
-/** The first stack frame inside the constructed function, if the engine recorded one. */
-function firstProgramFrame(thrown) {
+/**
+ * The innermost stack frame belonging to `unit`, if the engine recorded one.
+ *
+ * Innermost **of that unit**, rather than innermost of the stack: a raise inside a code module, or
+ * inside Opal's baked corelib, leaves frames of its own above the program's, and the one this
+ * guest can honestly locate is the program's own — the line the model wrote that led there. A
+ * frame from anywhere else is skipped rather than mapped, because the map it would be mapped
+ * through is not the map it was compiled with.
+ */
+function firstFrameIn(thrown, unit) {
   const stack = thrown === null || thrown === undefined ? undefined : thrown.stack;
   if (typeof stack !== "string") return undefined;
+  // `unit` is one of this file's own constants, so it carries no regular-expression syntax.
+  const marker = new RegExp(`${unit}:(\\d+):(\\d+)`);
   for (const frame of stack.split("\n")) {
-    const match = /Function:(\d+):(\d+)/.exec(frame);
+    const match = marker.exec(frame);
     if (match) return { line: Number(match[1]), column: Number(match[2]) };
   }
   return undefined;
@@ -367,9 +410,14 @@ function sourceMap(program) {
  * The frame is a position in the compiled JavaScript, so it is mapped through the source map the
  * compile emitted; a program with no map, or a frame the map does not cover, reports no location
  * at all rather than a line of a file nobody wrote.
+ *
+ * The frame is the program's own, [by name](firstFrameIn), and `program`'s map is therefore the map
+ * that unit was compiled with. A raise inside a code module is located at the line of the model's
+ * program that called into it — which is a line the model wrote and can act on — rather than at the
+ * module's own line read through somebody else's map.
  */
 function locate(thrown, program) {
-  const frame = firstProgramFrame(thrown);
+  const frame = firstFrameIn(thrown, PROGRAM_UNIT);
   if (!frame) return undefined;
   const generated = frame.line - lineOffset();
   const mappings = sourceMap(program);
@@ -491,7 +539,10 @@ export function run(program, modules, _enabled, _ending, _library) {
     Opal.send(gg("Lib"), "reset");
     for (const module of modules) {
       try {
-        new Function(module.source)();
+        // Named, so that a frame raised inside this module later — while the program is running,
+        // through `lib.<key>` — is recognisable as not the program's and is not read through the
+        // program's source map.
+        new Function(named(module.source, moduleUnit(module.name)))();
       } catch (thrown) {
         const klass = thrown && thrown.$$class ? `${String(thrown.$$class.$$name)}: ` : "";
         const message = thrown && thrown.$$class
@@ -507,7 +558,10 @@ export function run(program, modules, _enabled, _ending, _library) {
     const lib = Opal.send(gg("Scope"), "install_lib");
 
     try {
-      new Function(program)();
+      // Named for the same reason the modules above are, and it is the half that matters: a frame
+      // this guest locates has to be a frame of THIS unit, because `program`'s source map is the
+      // only map it has.
+      new Function(named(program, PROGRAM_UNIT))();
     } catch (thrown) {
       feedback.reportError(report(thrown, program, bound, lib));
     }

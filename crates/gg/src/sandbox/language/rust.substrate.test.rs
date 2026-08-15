@@ -411,6 +411,65 @@ let missing = values[7];
         error.message
     );
     assert_eq!(error.location.as_deref(), Some("line 2, column 17"));
+
+    // The model's OWN first line, which is the boundary the one line of wrapper decides: it is line
+    // 2 of the file gg compiled, and the same subtraction one line further up is the one that used
+    // to produce an impossible number.
+    let outcome = run("panic!(\"on the first line the model wrote\");\n");
+    assert_eq!(
+        program_error(&outcome).location.as_deref(),
+        Some("line 1, column 1"),
+        "the model's first line is line 1 of the model's program"
+    );
+
+    // And a panic in a line that is NOT the model's has no line of the model's program to name, so
+    // it names none. It used to name `line 0` — a line no file has, over code the model did not
+    // write — because the guest subtracted gg's one-line prologue from a file line of 1 and
+    // reported the 0 that came out. The `checked_sub` that looked like a guard was not one:
+    // underflow needs a file line of 0, which no file has.
+    //
+    // Reached here the one way a turn can reach it, and the vehicle is a second defect rather than
+    // a contrivance. A code module is compiled into `module_<key>.rs`, and the guest decides
+    // whether a panic is the model's by asking whether the file name ENDS WITH `program.rs` — so a
+    // skill bound under the key `program` is compiled into `module_program.rs`, which passes.
+    // A panic on that file's first line is then attributed to the model's program at 1 - 1. That
+    // the check admits it at all is filed separately (it also silently discards the location of
+    // every module whose key does not end that way); both readings agree on this case, because for
+    // a panic raised in somebody else's file NO location is the honest answer.
+    let modules = [CodeModule {
+        name: "program".to_string(),
+        source: "pub fn boom() -> u32 { ::core::option::Option::<u32>::None.unwrap() }\n"
+            .to_string(),
+    }];
+    let component = crate::sandbox::prepare_program(
+        crate::sandbox::language(GgProgramLanguage::Rust),
+        "let _ = lib::program::boom();\n",
+        &modules,
+    )
+    .expect("a program compiles against the module in its scope")
+    .component
+    .expect("a compiled arm hands back a component");
+    let (outcome, _log) = evaluate(
+        &component,
+        &[],
+        &modules,
+        RunEnding::None,
+        false,
+        canned_outcome,
+    );
+    let error = program_error(&outcome);
+    assert!(
+        error
+            .message
+            .contains("called `Option::unwrap()` on a `None` value"),
+        "the panic itself still reaches the model: {:?}",
+        error.message
+    );
+    assert_eq!(
+        error.location, None,
+        "a panic gg cannot place in the model's own text is reported with no location, never with \
+         an impossible one"
+    );
 }
 
 #[test]

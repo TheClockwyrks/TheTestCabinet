@@ -518,7 +518,7 @@ fn the_limits_stop_a_runaway_program() {
         canned_outcome,
     );
     match outcome.result {
-        Err(SandboxError::Timeout { limit }) => assert_eq!(limit, short_timeout.timeout),
+        Err(SandboxError::Timeout { limit, .. }) => assert_eq!(limit, short_timeout.timeout),
         other => panic!("expected an execution timeout, got {other:?}"),
     }
     assert!(
@@ -557,7 +557,7 @@ fn the_limits_stop_a_runaway_program() {
         canned_outcome,
     );
     match outcome.result {
-        Err(SandboxError::OutOfMemory { limit }) => assert_eq!(limit, 4 * 1024 * 1024),
+        Err(SandboxError::OutOfMemory { limit, .. }) => assert_eq!(limit, 4 * 1024 * 1024),
         other => panic!("expected the memory cap, got {other:?}"),
     }
 

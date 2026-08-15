@@ -85,6 +85,18 @@ pub fn begin(program_file: &'static str, line_offset: u32) {
 /// rule: `#[track_caller]` is on `Option::unwrap`, `Result::unwrap`, `expect`, slice indexing and
 /// the arithmetic checks, so the panic a program actually causes is attributed to the program's own
 /// call.
+///
+/// # Why the first `line_offset` lines of the file are *not* the model's either
+///
+/// The model's first line is the line **after** gg's wrapper, so a panic attributed to file line
+/// `line_offset` or above it happened in the prologue gg wrote, which is one physical line
+/// declaring the export and calling the program. There is no line of the model's program that such
+/// a panic is *at*, so it is reported with no location rather than with a line the model could go
+/// and edit.
+///
+/// The subtraction alone will not say that, which is why the guard is written out. `checked_sub`
+/// only refuses an underflow, and an underflow needs a file line of 0 — a line no file has. File
+/// line 1 subtracts cleanly to 0, and `line 0` is what the model was told.
 fn located(
     location: Option<&std::panic::Location<'_>>,
     program_file: &str,
@@ -94,7 +106,10 @@ fn located(
     if !location.file().ends_with(program_file) {
         return None;
     }
-    let line = location.line().checked_sub(line_offset)?;
+    let line = location
+        .line()
+        .checked_sub(line_offset)
+        .filter(|line| *line > 0)?;
     Some(format!("line {line}, column {}", location.column()))
 }
 

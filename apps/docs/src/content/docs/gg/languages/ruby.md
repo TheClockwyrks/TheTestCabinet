@@ -131,7 +131,11 @@ the SDK's functions, since Opal's corelib arrives already compiled with the
 check off.
 
 At run time an uncaught exception ends the program and is reported with its
-class, its message and the line of the model's own Ruby. Opal's `sleep` is a
+class, its message and the line of the model's own Ruby. The program and each
+code module are evaluated under a name of their own, so the guest locates the
+program's own frame and maps it through the program's own map. A raise inside a
+code module is therefore reported at the line of the program that called into
+it. Opal's `sleep` is a
 busy wait rather than a park in a host call, so the execution deadline reaches
 it as it reaches any other runaway.
 

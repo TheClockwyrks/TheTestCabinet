@@ -623,6 +623,20 @@ impl<A: ToolApi> MembraneState<A> {
         self.stderr.tail()
     }
 
+    /// Put `text` on the guest's stderr, exactly as a language runtime writing to fd 2 does.
+    ///
+    /// The seam [`classify`](super::engine::classify)'s own tests drive: what they are asserting is
+    /// that a guest which spoke on its way down is heard on **every** classification path, and the
+    /// alternative way to arm that is to compile an arm's toolchain and provoke a real runtime
+    /// failure — which is a per-arm substrate test costing seconds, not a property of the classifier.
+    ///
+    /// `#[cfg(test)]` because production writes here only through the WASI stream: a host-side
+    /// caller that could invent a guest's diagnostics is exactly what this channel must not have.
+    #[cfg(test)]
+    pub(crate) fn note_stderr(&self, text: &str) {
+        self.stderr.append(text.as_bytes());
+    }
+
     /// The memory limiter, for [`Store::limiter`](wasmtime::Store::limiter) to consult before each
     /// `memory.grow`.
     pub(crate) fn limiter(&mut self) -> &mut MemoryLimiter {
