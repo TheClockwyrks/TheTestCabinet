@@ -191,7 +191,7 @@ fn the_opening_program_is_top_level_statements() {
 /// over C#'s grammar rather than over anything about isolation.
 #[test]
 fn the_isolation_subject_for_a_module_is_a_public_member() {
-    let module = csharp().isolation_module("gg-isolation-000-marker");
+    let module = csharp().gate_module("gg-isolation-000-marker");
     assert_eq!(
         module,
         "public static string Marker() => \"gg-isolation-000-marker\";\n"

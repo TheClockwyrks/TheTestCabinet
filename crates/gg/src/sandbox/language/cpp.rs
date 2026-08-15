@@ -334,7 +334,7 @@ impl ProgramLanguage for Cpp {
     /// the `name` rides in as a returned **string literal** — which is where the module's one export
     /// hands it back.
     #[cfg(test)]
-    fn isolation_module(&self, name: &str) -> String {
+    fn gate_module(&self, name: &str) -> String {
         format!(
             "std::string marker() {{\n  return {};\n}}\n",
             serde_json::Value::String(name.to_string())

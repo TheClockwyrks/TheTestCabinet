@@ -312,7 +312,7 @@ pub use std::fmt::Debug;
 /// marker where the module's single export hands it back.
 #[test]
 fn the_isolation_subject_is_a_module_rather_than_a_program() {
-    let module = rust().isolation_module("gg-isolation-7");
+    let module = rust().gate_module("gg-isolation-7");
     assert_eq!(
         module,
         "pub fn marker() -> &'static str {\n    \"gg-isolation-7\"\n}\n"

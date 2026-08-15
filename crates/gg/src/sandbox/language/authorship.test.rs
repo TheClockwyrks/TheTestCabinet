@@ -1,0 +1,182 @@
+//! **The authorship gate's own tests** — the eleven-arm run, and the proof that the classification
+//! behind it has teeth.
+//!
+//! The gate is one assertion over every registered arm. Everything else here is about the
+//! classification itself: a gate whose verdict nothing has ever exercised is a gate nobody knows
+//! reports the truth, and this one decides whether an arm is recorded as a defect.
+
+use test_cabinet_core::gg::GgProgramLanguage;
+
+use super::{Did, Half, UNCONVERTED, audit, classify};
+
+/// **Every registered arm compiles the bytes it was handed, or says in [`UNCONVERTED`] what it does
+/// instead.**
+///
+/// The gate. It drives each arm's program step and module step through that arm's real preparation —
+/// its real compiler, where it has one — and reports every arm whose verdict and row disagree, in
+/// either direction.
+#[test]
+fn every_registered_arm_compiles_the_bytes_it_was_handed_or_records_what_it_does_instead() {
+    let failures = audit();
+    assert!(
+        failures.is_empty(),
+        "{} of the twenty-two preparation steps fail the authorship gate:\n\n{}",
+        failures.len(),
+        failures
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n\n---\n\n")
+    );
+}
+
+/// **A preparation that hands back what it was given is `Kept`** — including one that adds nothing
+/// but the trailing newline a file ends with.
+///
+/// The newline is deliberate rather than incidental: an arm writes a model's reply to a file and a
+/// file ends in a newline, and calling that a wrapper would put every arm in the table and make the
+/// table meaningless.
+#[test]
+fn a_preparation_that_hands_its_source_back_kept_it() {
+    let source = "docs.search(\"\", module=\"gg.files\", limit=200)\n";
+    for produced in [
+        vec![source.to_string()],
+        vec![source.trim_end().to_string()],
+        vec![format!("{source}\n")],
+        // Something unrelated beside it changes nothing: an SDK file in the same workspace is not a
+        // version of the model's program.
+        vec![
+            source.to_string(),
+            "public interface Files {}\n".to_string(),
+        ],
+    ] {
+        let verdict = classify(source, &produced).expect("the source is there to be found");
+        assert_eq!(verdict.did, Did::Kept, "produced: {produced:?}");
+    }
+}
+
+/// **A preparation that puts the source inside something larger `Wrapped` it**, whatever the
+/// something is.
+#[test]
+fn a_preparation_that_completes_the_source_wrapped_it() {
+    let source = "docs.search(\"\", module=\"gg.files\", limit=200)\n";
+    for produced in [
+        format!("fn main() {{\n{source}}}\n"),
+        format!("use gg::prelude::*;\n{source}"),
+        format!("{source};\nOk(())\n"),
+    ] {
+        let verdict =
+            classify(source, std::slice::from_ref(&produced)).expect("the source is inside it");
+        assert_eq!(verdict.did, Did::Wrapped, "produced: {produced:?}");
+    }
+}
+
+/// **A preparation that moved a byte of the source `Rewrote` it** — an indent, a re-print, a hoisted
+/// line.
+///
+/// Each of these keeps every statement the source had. That is the point: the model's program still
+/// runs, and the text a diagnostic is reported against is no longer the text the model wrote.
+#[test]
+fn a_preparation_that_moved_a_byte_rewrote_the_source() {
+    let source = "const modules = [\"gg.files\"];\nfor (const path of modules) search(path);\n";
+    for produced in [
+        // Indented into a body.
+        "function body() {\n    const modules = [\"gg.files\"];\n    for (const path of modules) \
+         search(path);\n}\n",
+        // A line of gg's own put between two of the model's.
+        "const modules = [\"gg.files\"];\nconst gg = globalThis.gg;\nfor (const path of modules) \
+         search(path);\n",
+        // Re-printed by a code generator, which broke the loop over three lines.
+        "const modules = [\"gg.files\"];\nfor (const path of modules) {\n\tsearch(path);\n}\n",
+    ] {
+        let verdict = classify(source, &[produced.to_string()]).expect("it is still that program");
+        assert_eq!(verdict.did, Did::Rewritten, "produced: {produced:?}");
+    }
+}
+
+/// **The verdict is the least faithful thing the preparation produced**, so an arm that hands its
+/// compiler the model's own file and its guest a re-print of it is reported on the re-print.
+///
+/// This is the shape a most-faithful rule would miss, and it is a real one: a type strip checks the
+/// file the model wrote and evaluates a printed copy of it.
+#[test]
+fn one_faithful_copy_does_not_excuse_a_rewrite_beside_it() {
+    let source =
+        "const modules = [\n  \"gg.files\",\n];\nfor (const path of modules) search(path);\n";
+    let verdict = classify(
+        source,
+        &[
+            source.to_string(),
+            "const modules = [\"gg.files\"];\nfor (const path of modules) search(path);\n"
+                .to_string(),
+        ],
+    )
+    .expect("both are versions of that program");
+    assert_eq!(verdict.did, Did::Rewritten);
+}
+
+/// **A preparation that produced nothing resembling its input is classified as nothing at all**, so
+/// the gate reports it as a preparation whose program vanished rather than as a rewrite.
+///
+/// The line threshold is what makes this possible: an SDK header and a compiler's own bundle share
+/// braces and keywords with every program ever written, and a classification that counted those
+/// would call each of them a version of the model's program.
+#[test]
+fn a_text_that_shares_no_line_of_the_source_is_not_a_version_of_it() {
+    let source = "docs.search(\"\", module=\"gg.files\", limit=200)\n";
+    assert!(
+        classify(
+            source,
+            &[
+                "}\n".to_string(),
+                "  }\n}\n".to_string(),
+                "public interface Docs {\n  void search(String query);\n}\n".to_string(),
+            ]
+        )
+        .is_none(),
+        "an unrelated file was read as a version of the model's program"
+    );
+}
+
+/// **No two rows describe the same cell**, so a row cannot be satisfied by a duplicate of itself and
+/// a deletion cannot leave a copy behind.
+#[test]
+fn no_two_rows_record_the_same_arm_and_half() {
+    let mut seen: Vec<(GgProgramLanguage, Half)> = Vec::new();
+    for row in UNCONVERTED {
+        let cell = (row.arm, row.half);
+        assert!(
+            !seen.contains(&cell),
+            "{:?} {} has two rows in `UNCONVERTED`",
+            row.arm,
+            row.half.label()
+        );
+        seen.push(cell);
+    }
+}
+
+/// **Every row records a cell the gate actually drives**, and never
+/// [`Kept`](Did::Kept) — a row saying an arm keeps its bytes is a row that can only ever fail.
+#[test]
+fn every_row_records_a_cell_the_gate_drives() {
+    for row in UNCONVERTED {
+        assert!(
+            GgProgramLanguage::ALL.contains(&row.arm),
+            "`UNCONVERTED` holds a row for {:?}, which is not a registered arm",
+            row.arm
+        );
+        assert_ne!(
+            row.did,
+            Did::Kept,
+            "{:?} {}'s row records that it keeps its bytes, which is what having no row means",
+            row.arm,
+            row.half.label()
+        );
+        assert!(
+            !row.adds.is_empty() && !row.instead.is_empty(),
+            "{:?} {}'s row says nothing about what it does instead",
+            row.arm,
+            row.half.label()
+        );
+    }
+}

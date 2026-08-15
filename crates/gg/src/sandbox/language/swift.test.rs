@@ -160,7 +160,7 @@ fn the_opening_program_writes_every_call_with_try() {
 /// language's own documentation program, is not a Swift module at all.
 #[test]
 fn a_code_module_is_declarations_rather_than_statements() {
-    let module = swift().isolation_module("marker-1");
+    let module = swift().gate_module("marker-1");
     assert_eq!(
         module,
         "public func marker() -> String {\n    \"marker-1\"\n}\n"

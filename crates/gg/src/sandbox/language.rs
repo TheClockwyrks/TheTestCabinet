@@ -182,6 +182,16 @@ mod isolation;
 // arm must now be added to, and `gg-artifact-build` checks that list against what the build really
 // wrote, which is the same forcing function one layer up and on the right side of the gap.
 
+/// The **authorship gate**: the assertion that the bytes an arm compiles are the bytes it was
+/// handed, held against the table of the arms that do something else.
+///
+/// `#[cfg(test)]` for the reason [`isolation`] is — it drives every registered arm's real
+/// preparation, compilers and all. Its module documentation carries what the measurement cannot
+/// see, and why the table fails in both directions.
+#[cfg(test)]
+#[path = "language/authorship.rs"]
+mod authorship;
+
 /// **Gate G8**: the assertion that a runtime failure reaches the model — on every arm, for all five
 /// shapes a failure takes.
 ///
@@ -568,12 +578,13 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     }
 
     /// A **code module** in this language's own syntax, carrying `name` somewhere its prepared
-    /// artifact will still hold it — the subject the isolation gate (`language/isolation.rs`) drives this
-    /// language's [module step](Self::prepare_module) with.
+    /// artifact will still hold it — the subject the gates over this seam drive this language's
+    /// [module step](Self::prepare_module) with: the isolation gate (`language/isolation.rs`) and
+    /// the authorship gate (`language/authorship.rs`).
     ///
-    /// That gate drives *both* preparation steps sixteen ways, so it needs a source valid for each,
-    /// and it takes the shorter of the two whole programs the seam guarantees, which is the one that
-    /// carries a name it can look for afterwards:
+    /// The isolation gate drives *both* preparation steps sixteen ways, so it needs a source valid
+    /// for each, and it takes the shorter of the two whole programs the seam guarantees, which is
+    /// the one that carries a name it can look for afterwards:
     /// [`open_docs_views_statement`](Self::open_docs_views_statement). Wherever a code module is
     /// **ordinary source of the language** — which is every arm but one — that program is a module
     /// too, so it is the default and no language has to answer this.
@@ -590,7 +601,7 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// preparation's own diagnostic. A language for which the default is wrong finds out on the
     /// first run of the gate rather than by review.
     #[cfg(test)]
-    fn isolation_module(&self, name: &str) -> String {
+    fn gate_module(&self, name: &str) -> String {
         self.open_docs_views_statement(&[name])
     }
 

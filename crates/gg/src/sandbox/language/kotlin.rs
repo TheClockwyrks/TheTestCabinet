@@ -263,7 +263,7 @@ impl ProgramLanguage for Kotlin {
     /// constant folding nor TeaVM's reachability pruning can drop it: it is the value the module's
     /// one export hands back.
     #[cfg(test)]
-    fn isolation_module(&self, name: &str) -> String {
+    fn gate_module(&self, name: &str) -> String {
         format!(
             "fun marker(): String = {}\n",
             serde_json::Value::String(name.to_string())

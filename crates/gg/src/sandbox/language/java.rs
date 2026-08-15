@@ -268,7 +268,7 @@ impl ProgramLanguage for Java {
     /// where neither javac's constant folding nor TeaVM's reachability pruning can drop it: it is
     /// the value the module's one export hands back.
     #[cfg(test)]
-    fn isolation_module(&self, name: &str) -> String {
+    fn gate_module(&self, name: &str) -> String {
         format!(
             "public static String marker() {{ return {}; }}\n",
             serde_json::Value::String(name.to_string())

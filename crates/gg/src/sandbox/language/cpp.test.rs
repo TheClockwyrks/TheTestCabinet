@@ -324,7 +324,7 @@ int nested_is_still_a_name() { return 1; }
 /// the module's single export hands it back.
 #[test]
 fn the_isolation_subject_is_a_module_rather_than_a_program() {
-    let module = cpp().isolation_module("gg-isolation-7");
+    let module = cpp().gate_module("gg-isolation-7");
     assert_eq!(
         module,
         "std::string marker() {\n  return \"gg-isolation-7\";\n}\n"

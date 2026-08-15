@@ -277,7 +277,7 @@ impl ProgramLanguage for Rust {
     /// as a syntax error. The `name` rides in as a returned **string literal**, which is where the
     /// module's one export hands it back.
     #[cfg(test)]
-    fn isolation_module(&self, name: &str) -> String {
+    fn gate_module(&self, name: &str) -> String {
         format!(
             "pub fn marker() -> &'static str {{
     {}

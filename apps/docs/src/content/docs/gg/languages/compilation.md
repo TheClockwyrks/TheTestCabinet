@@ -4,8 +4,9 @@ title: "Compilation and diagnostics"
 
 A program language turns a model's reply into something its guest can evaluate,
 and that step is allowed to spend real time. This page states what it costs, how
-the cost is recorded, the two ways it fails, the isolation every language
-honours while it runs, and how much of a compiler's output reaches the model.
+the cost is recorded, the two ways it fails, what it may do to the bytes it was
+handed, the isolation every language honours while it runs, and how much of a
+compiler's output reaches the model.
 
 ## Checkers
 
@@ -130,6 +131,30 @@ The same split holds on the other thing gg compiles. A code skill or code memory
 goes through the same prepare step: a rejection hands the author's diagnostic
 back on the read, and a compiler that could not finish ends the run with the
 crash detail on the operator's stream.
+
+## Authorship
+
+The bytes a language compiles are the bytes it was handed. A preparation writes
+no prologue, no epilogue, no entry point and no import around a model's reply,
+and it reaches a line number through a source map or reports none. Making the
+SDK available to a compiler is packaging and is allowed, while a name a program
+can write with no line the model wrote is not. The
+[invariants](/gg/responses-as-code/invariants/) state the rule, and this section
+states how it is held.
+
+The authorship gate drives every registered language's program step and module
+step with a whole program of that language's own, and reports what the
+preparation did to the bytes: kept them, wrapped them in something larger, or
+rewrote them. It reads what the preparation wrote into its own workspace and the
+source it handed the guest, and takes the least faithful relation either of them
+has to what it was given. The arms that do not keep their bytes are recorded in
+a table the gate holds them to, so an arm that starts keeping them fails until
+its rows are deleted, and an arm that stops fails because nothing records it.
+
+A byte comparison leaves three shapes to each arm's own preparation step: an SDK
+reaching a program through a compiler flag, a second compilation unit that names
+the model's, and a transform that fires only on a construct gg's own generated
+program does not contain.
 
 ## Per-agent compiler isolation
 

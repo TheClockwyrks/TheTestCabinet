@@ -308,7 +308,7 @@ impl ProgramLanguage for Swift {
     /// the [JVM](super::jvm) arms and [Rust](super::rust) do, and the `name` rides in as a returned
     /// **string literal** — which is where the module's one export hands it back.
     #[cfg(test)]
-    fn isolation_module(&self, name: &str) -> String {
+    fn gate_module(&self, name: &str) -> String {
         format!(
             "public func marker() -> String {{
     {}

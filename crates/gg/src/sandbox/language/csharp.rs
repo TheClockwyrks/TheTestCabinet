@@ -364,7 +364,7 @@ impl ProgramLanguage for CSharp {
     /// **string literal** — which is where the module's one export hands it back, and where
     /// [`wrap_module`](self::source::wrap_module) finds a `public` member to bind.
     #[cfg(test)]
-    fn isolation_module(&self, name: &str) -> String {
+    fn gate_module(&self, name: &str) -> String {
         format!(
             "public static string Marker() => {};\n",
             serde_json::Value::String(name.to_string())
