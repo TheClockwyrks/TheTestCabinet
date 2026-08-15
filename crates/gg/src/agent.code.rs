@@ -434,6 +434,10 @@ pub(super) async fn run_code_turn(
         // threw — and a model that believes its replacement ran would spend its next turn reasoning
         // about work that never happened.
         .chain(handover_notice(code.language, &chain, &outcome).map(CodeFeedback::notice))
+        // A skill's or memory's code that failed to load. Its `lib` binding is empty, and a name
+        // that is not bound is indistinguishable from one the run never granted, so a model reading
+        // the silence would fix the wrong thing.
+        .chain(module_error_notice(&outcome.module_errors).map(CodeFeedback::notice))
         .collect();
 
     let decision = match &outcome.result {
@@ -890,6 +894,33 @@ fn unreachable_notice(tail: &UnreachableTail) -> String {
         tail.line,
         tail.excerpt,
     )
+}
+
+/// The [`Notice`](GgContextSource::System) for code modules that failed, or `None` when every one
+/// this turn brought into use loaded and ran.
+///
+/// The counterpart of [`unreachable_notice`] and there for the same reason: nothing the program can
+/// observe reveals it. A skill or memory whose code threw while it was being loaded leaves its
+/// `lib` binding empty, and a model calling into that binding reads a name that does not exist
+/// rather than a broken one — so without this the model spends its next turn on a call it has no
+/// way to know was never available.
+///
+/// It is a notice rather than an error because the fault is not the model's: the source is gg's or
+/// the workspace's, and the model has never been shown it. It names which skill or memory failed
+/// and what the failure said, and never the source, on the same rule.
+fn module_error_notice(errors: &[(String, String)]) -> Option<String> {
+    if errors.is_empty() {
+        return None;
+    }
+    let lines: Vec<String> = errors
+        .iter()
+        .map(|(name, message)| format!("{name}: {message}"))
+        .collect();
+    Some(format!(
+        "{} did not load, so nothing it declares is bound:\n{}",
+        plural(errors.len(), "code module"),
+        lines.join("\n"),
+    ))
 }
 
 /// Whether the turn's program ran to its end, and the error it ended with when it did not — what the

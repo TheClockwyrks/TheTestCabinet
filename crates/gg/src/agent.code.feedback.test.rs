@@ -209,6 +209,43 @@ fn each_kind_of_message_goes_in_its_own_band() {
     }
 }
 
+/// A turn whose code modules all loaded says nothing about them, which is nearly every turn.
+#[test]
+fn a_turn_with_no_broken_module_gets_no_notice() {
+    assert!(module_error_notice(&quiet_outcome().module_errors).is_none());
+}
+
+/// **A code module that failed to load is named, with what the failure said.**
+///
+/// The binding is simply absent afterwards, and an absent name reads exactly like one this run
+/// never granted — so silence here sends the model to fix a capability grant over a skill whose
+/// code threw. Every failure is named rather than the first: they came from different skills, and a
+/// model told about one of three would meet the next one next turn.
+#[test]
+fn every_module_that_failed_to_load_is_named_with_its_failure() {
+    let notice = module_error_notice(&[
+        (
+            "skill `layout`".to_string(),
+            "ReferenceError: grid is not defined".to_string(),
+        ),
+        (
+            "memory `palette`".to_string(),
+            "its on-use script failed: TypeError: hues.map is not a function".to_string(),
+        ),
+    ])
+    .expect("two broken modules speak");
+
+    assert!(notice.contains("2 code modules"), "{notice}");
+    assert!(notice.contains("skill `layout`"), "{notice}");
+    assert!(notice.contains("grid is not defined"), "{notice}");
+    assert!(notice.contains("memory `palette`"), "{notice}");
+    assert!(notice.contains("hues.map is not a function"), "{notice}");
+
+    let one = module_error_notice(&[("skill `layout`".to_string(), "boom".to_string())])
+        .expect("one broken module speaks");
+    assert!(one.contains("1 code module did not load"), "{one}");
+}
+
 /// A turn that made no hand-over says nothing about one — the ordinary turn, and the one this must
 /// stay silent on.
 #[test]

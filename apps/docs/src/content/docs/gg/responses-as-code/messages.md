@@ -78,6 +78,12 @@ own messages live.
 - A `gg.programs.rerun` hand-over gg did not run. Three wordings, one per
   reason: the program failed afterwards, the program also ended the session, or
   the turn had already run as many programs as it may.
+- A [skill](/gg/skills/) or [memory](/gg/memories/) whose code failed to load, by
+  name and with what the failure said. Its `lib` binding is empty, and a name
+  that is not bound reads exactly like one the run never granted, so a model that
+  was not told would fix the wrong thing. The source is gg's or the workspace's
+  and the model has never been shown it, which is why this is a notice rather
+  than an error and why the source is not quoted.
 - The compiler-could-not-finish notice.
 - An ending an [agent-stop hook](/gg/hooks/) rejected, and the results of a
   deferred `wait_for_issue`.
