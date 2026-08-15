@@ -31,7 +31,7 @@ use test_cabinet_core::review::{DomainRating, ReviewDiff, ReviewRevision, Review
 use test_cabinet_core::run_record::{
     HarnessFamily, HarnessSlug, PriorGameJamEntry, RunLinks, RunRecord,
 };
-use test_cabinet_core::test_case::TestType;
+use test_cabinet_core::test_case::{TestType, version_key};
 use test_cabinet_entities::{
     case_reference_build, case_reference_sheet, coverage_group, coverage_plan, harness_config, job,
     model, model_alias, model_price, publish_job, review, review_plan, review_revision, run,
@@ -834,15 +834,20 @@ impl Db {
         limit: usize,
         offset: usize,
     ) -> Result<(Vec<StoredRun>, usize)> {
+        // Resolve the current-version allowlist once (it costs its own query) and
+        // hand it to both halves below, so COUNT and page share one predicate.
+        let scope = self.resolve_version_scope(filter).await?;
+        let scope = scope.as_deref();
+
         // The same predicate drives both the COUNT and the page; count first (no
         // limit/offset), then order + window the page.
-        let total = summary_query(filter).count(&self.conn()).await? as usize;
+        let total = summary_query(filter, scope).count(&self.conn()).await? as usize;
 
         let order = match dir {
             SortDir::Asc => Order::Asc,
             SortDir::Desc => Order::Desc,
         };
-        let rows = apply_summary_sort(summary_query(filter), sort, order.clone())
+        let rows = apply_summary_sort(summary_query(filter, scope), sort, order.clone())
             // A stable final tiebreak on the primary key so paging is deterministic
             // even when the sort column ties.
             .order_by(run::Column::Id, order)
@@ -853,6 +858,45 @@ impl Db {
 
         let runs = self.assemble(rows).await?;
         Ok((runs, total))
+    }
+
+    /// The per-case current-version allowlist a filter asks for, or `None` when it
+    /// does not (the toggle is off, or an exact [`SummaryFilter::version`] overrides
+    /// it — see that field).
+    async fn resolve_version_scope(
+        &self,
+        filter: &SummaryFilter,
+    ) -> Result<Option<Vec<CaseVersions>>> {
+        let exact = filter.version.as_deref().is_some_and(|s| !s.is_empty());
+        if !filter.latest_versions || exact {
+            return Ok(None);
+        }
+        Ok(Some(self.current_case_versions(filter.state).await?))
+    }
+
+    /// For every test case with a run in the `state` slice, the versions sharing
+    /// that case's greatest `major.minor` — the allowlist a
+    /// [`SummaryFilter::latest_versions`] listing is narrowed to.
+    ///
+    /// The current version is read off the **runs**, not the definition store, for
+    /// two reasons: a listing can then say "the newest spec anyone has actually run"
+    /// rather than emptying itself the moment a new version is authored but not yet
+    /// run, and the static gallery — which has no store, only its run index — can
+    /// answer the identical question from the same data (see the console UI's
+    /// `runSummaryPage`). Both hosts therefore page identically.
+    ///
+    /// One `SELECT DISTINCT (test_case_slug, test_case_version)` covered by
+    /// `idx_run_case`; the result is one row per case/version, not per run.
+    pub async fn current_case_versions(&self, state: SummaryState) -> Result<Vec<CaseVersions>> {
+        let pairs: Vec<(String, String)> = state_slice(state)
+            .select_only()
+            .column(run::Column::TestCaseSlug)
+            .column(run::Column::TestCaseVersion)
+            .distinct()
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        Ok(current_versions(pairs))
     }
 
     /// List the runs an account has reviewed, newest-first by *when they reviewed*
@@ -1958,9 +2002,37 @@ pub struct SummaryFilter {
     /// the case-detail Runs tab's slice — a variant slug is only unique within its
     /// case.
     pub variant: Option<String>,
+    /// Restrict to one exact test-case version (`test_case_version`). A version
+    /// string is only meaningful within a case, so this is normally paired with
+    /// [`Self::test_case`] — but it is a plain equality filter, so on its own it
+    /// selects that version of *every* case.
+    pub version: Option<String>,
+    /// Restrict every run to its case's **current** version — the greatest
+    /// `major.minor` that case has a run for within this filter's
+    /// [`state`](Self::state) slice (see [`Db::current_case_versions`]). This is
+    /// the listings' "only show runs against the current spec" toggle: a case is
+    /// frozen once it has runs, so an older `major.minor` is a different spec whose
+    /// runs are not comparable with the current one's.
+    ///
+    /// Ignored when [`Self::version`] names an exact version — an explicit version
+    /// is the more specific instruction, and AND'ing the two would silently empty
+    /// the listing whenever the picked version is not the current one.
+    pub latest_versions: bool,
     /// Free-text query matched case-insensitively (LIKE `%q%`) across
     /// `test_case_slug`, `model_id`, `harness_slug`, and `variant`.
     pub q: Option<String>,
+}
+
+/// One case's in-scope versions for a [`SummaryFilter::latest_versions`] query:
+/// every version of `slug` sharing its greatest `major.minor` (a case can carry
+/// several revisions of one minor, e.g. `v1.2.0` and `v1.2.1`, and all of them are
+/// the same spec).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CaseVersions {
+    /// The test-case slug.
+    pub slug: String,
+    /// Its current versions, ascending.
+    pub versions: Vec<String>,
 }
 
 /// The sort column for [`Db::list_summaries`], mapped to a lifted `run` column (or,
@@ -2001,12 +2073,13 @@ pub enum SortDir {
     Asc,
 }
 
-/// Build the filtered `run` query shared by [`Db::list_summaries`]'s COUNT and its
-/// page: the lifecycle-state predicate AND'd with the optional equality filters and
-/// the free-text query. No ordering, limit, or offset — the caller adds those.
-fn summary_query(filter: &SummaryFilter) -> Select<run::Entity> {
-    let mut query = run::Entity::find();
-    query = match filter.state {
+/// The `run` query narrowed to one lifecycle slice and nothing else — the base
+/// both [`summary_query`] and the current-version resolution start from, so the
+/// versions a `latest_versions` query is measured against come from exactly the
+/// slice that query lists.
+fn state_slice(state: SummaryState) -> Select<run::Entity> {
+    let query = run::Entity::find();
+    match state {
         SummaryState::Published => query.filter(run::Column::Published.eq(true)),
         SummaryState::Review => query.filter(run::Column::RunState.is_in(["completed"])),
         SummaryState::Failures => {
@@ -2019,7 +2092,25 @@ fn summary_query(filter: &SummaryFilter) -> Select<run::Entity> {
             .filter(run::Column::TestType.is_not_in(AUTO_GRADED_TEST_TYPES)),
         // Every stored run: no lifecycle predicate at all.
         SummaryState::Any => query,
-    };
+    }
+}
+
+/// Build the filtered `run` query shared by [`Db::list_summaries`]'s COUNT and its
+/// page: the lifecycle-state predicate AND'd with the optional equality filters and
+/// the free-text query. No ordering, limit, or offset — the caller adds those.
+///
+/// `scope` is the already-resolved [`SummaryFilter::latest_versions`] allowlist
+/// ([`Db::current_case_versions`]), or `None` when the caller did not ask for one.
+/// It is passed in rather than resolved here because resolving it costs a query,
+/// and this builder is called twice (COUNT, then page) per listing.
+fn summary_query(filter: &SummaryFilter, scope: Option<&[CaseVersions]>) -> Select<run::Entity> {
+    let mut query = state_slice(filter.state);
+    if let Some(scope) = scope {
+        query = query.filter(current_versions_condition(scope));
+    }
+    if let Some(version) = filter.version.as_deref().filter(|s| !s.is_empty()) {
+        query = query.filter(run::Column::TestCaseVersion.eq(version));
+    }
     if let Some(test_case) = filter.test_case.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(run::Column::TestCaseSlug.eq(test_case));
     }
@@ -2045,6 +2136,64 @@ fn summary_query(filter: &SummaryFilter) -> Select<run::Entity> {
         query = query.filter(text);
     }
     query
+}
+
+/// The `latest_versions` predicate: a run is in scope when its
+/// `(test_case_slug, test_case_version)` pair appears in `scope` — an OR of one
+/// per-case term, each pinning a slug to its current versions.
+///
+/// An empty `scope` means the slice holds no runs at all, so the condition is a
+/// literal false rather than an empty (and therefore vacuously true) `OR`.
+fn current_versions_condition(scope: &[CaseVersions]) -> Condition {
+    if scope.is_empty() {
+        return Condition::all().add(Expr::value(false));
+    }
+    scope.iter().fold(Condition::any(), |condition, case| {
+        condition.add(
+            Condition::all()
+                .add(run::Column::TestCaseSlug.eq(case.slug.as_str()))
+                .add(run::Column::TestCaseVersion.is_in(case.versions.iter().map(String::as_str))),
+        )
+    })
+}
+
+/// A version's `(major, minor)` pair, using the catalog's own component-wise
+/// [`version_key`] so `v1.10.0` orders after `v1.9.0` (a lexical compare gets that
+/// backwards). Missing or non-numeric components read as `0`, matching
+/// [`version_key`]'s own tolerance.
+fn major_minor(version: &str) -> (u64, u64) {
+    let key = version_key(version);
+    (
+        key.first().copied().unwrap_or(0),
+        key.get(1).copied().unwrap_or(0),
+    )
+}
+
+/// Group `(slug, version)` pairs into each case's **current** versions: those
+/// sharing the greatest `major.minor` the case has a pair for. Pure, so the
+/// grouping is covered without a database.
+fn current_versions(pairs: Vec<(String, String)>) -> Vec<CaseVersions> {
+    let mut by_case: HashMap<String, Vec<String>> = HashMap::new();
+    for (slug, version) in pairs {
+        by_case.entry(slug).or_default().push(version);
+    }
+    let mut scope: Vec<CaseVersions> = by_case
+        .into_iter()
+        .map(|(slug, mut versions)| {
+            let current = versions
+                .iter()
+                .map(|v| major_minor(v))
+                .max()
+                .unwrap_or((0, 0));
+            versions.retain(|version| major_minor(version) == current);
+            versions.sort_by(|a, b| version_key(a).cmp(&version_key(b)).then_with(|| a.cmp(b)));
+            CaseVersions { slug, versions }
+        })
+        .collect();
+    // `HashMap` iteration is unordered; sort so the built condition (and anything
+    // asserting on it) is deterministic.
+    scope.sort_by(|a, b| a.slug.cmp(&b.slug));
+    scope
 }
 
 /// Apply the primary sort key (in `order`) to a summary query. The caller appends

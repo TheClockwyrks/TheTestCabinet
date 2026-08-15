@@ -6,10 +6,9 @@ import {
   sortStateToQuery,
   useRunTable,
 } from "../../../components/RunLog";
-import {
-  usePagedSearchParams,
-  useResetPageOnChange,
-} from "../../../components/usePagedSearchParams";
+import { RunFilters } from "../../../components/RunFilters";
+import { useRunFilters } from "../../../components/useRunFilters";
+import { useResetPageOnChange } from "../../../components/usePagedSearchParams";
 import { useGalleryData } from "../../../data/galleryContext";
 import type { RunQueryResult } from "../../../data/runQuery";
 import type { TestCaseSummary, VariantSummary } from "../../../data/testCases";
@@ -50,12 +49,15 @@ export function RunsContent({
   variant: VariantSummary;
 }) {
   const { localIds, writeups, queryRunSummaries } = useGalleryData();
-  const { page, setPage } = usePagedSearchParams();
+  const filters = useRunFilters({ testCase: testCase.slug });
+  const { page, setPage, committedQuery, facets, latestVersions } = filters;
   const [result, setResult] = useState<RunQueryResult>({
     summaries: [],
     total: 0,
   });
   const [loading, setLoading] = useState(true);
+
+  const needle = committedQuery.trim().toLowerCase();
 
   // The table renders the server-ordered page as-is (externalOrder) but still owns
   // the sort state, so its headers drive the re-query below.
@@ -80,6 +82,11 @@ export function RunsContent({
       variant: variant.slug,
       offset: page * PAGE_SIZE,
       limit: PAGE_SIZE,
+      q: needle || undefined,
+      version: facets.version || undefined,
+      harness: facets.harness || undefined,
+      model: facets.model || undefined,
+      latestVersions,
       sort,
       dir,
     })
@@ -96,10 +103,21 @@ export function RunsContent({
     return () => {
       active = false;
     };
-  }, [queryRunSummaries, testCase.slug, variant.slug, page, sort, dir]);
+  }, [
+    queryRunSummaries,
+    testCase.slug,
+    variant.slug,
+    page,
+    needle,
+    facets,
+    latestVersions,
+    sort,
+    dir,
+  ]);
 
   // Switching cases or variants swaps the whole run set, and re-sorting reshapes
-  // it, so jump back to the first page in any of those cases.
+  // it, so jump back to the first page in any of those cases. (A new search or
+  // facet drops the page param as it is committed.)
   useResetPageOnChange(
     setPage,
     `${testCase.slug}:${variant.slug}:${sort}:${dir}`,
@@ -116,27 +134,47 @@ export function RunsContent({
       setPage(pageCount - 1, { replace: true });
   }, [loading, page, pageCount, setPage]);
 
-  if (result.summaries.length === 0) {
-    return (
-      <section className={styles.section}>
-        <Panel>
-          {loading ? (
-            <LoadingState size="section" label="Loading runs…" />
-          ) : (
-            <p className={styles.empty}>No runs of {variant.name} yet.</p>
-          )}
-        </Panel>
-      </section>
-    );
-  }
-
   return (
     <section
       className={styles.section}
       aria-busy={loading ? "true" : undefined}
     >
-      <RunLog rows={table.rows} controls={table.controls} />
-      <Pagination page={current} pageCount={pageCount} onPageChange={setPage} />
+      {/* The case is pinned by the route, so the bar offers the version this tab
+          could not reach before, plus the harness/model axes a case's history is
+          actually compared along. It stays put when the result set empties, so an
+          over-narrow filter can be widened again. */}
+      <div className={styles.controls}>
+        <RunFilters
+          state={filters}
+          facets={["version", "harness", "model"]}
+          versions={testCase.versions}
+          searchPlaceholder="Search these runs by harness or model…"
+          searchLabel={`Search ${testCase.name} runs`}
+        />
+      </div>
+
+      {result.summaries.length === 0 ? (
+        <Panel>
+          {loading ? (
+            <LoadingState size="section" label="Loading runs…" />
+          ) : filters.activeCount > 0 ? (
+            <p className={styles.empty}>
+              No runs of {variant.name} match those filters.
+            </p>
+          ) : (
+            <p className={styles.empty}>No runs of {variant.name} yet.</p>
+          )}
+        </Panel>
+      ) : (
+        <>
+          <RunLog rows={table.rows} controls={table.controls} />
+          <Pagination
+            page={current}
+            pageCount={pageCount}
+            onPageChange={setPage}
+          />
+        </>
+      )}
     </section>
   );
 }

@@ -10,6 +10,7 @@ import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import type { RunSort, SortDir } from "../../client/clients";
 import { RATINGS } from "../../ratings";
 import { totalTokens } from "../format";
+import { currentMajorMinor, majorMinorKey } from "./versions";
 
 export type { RunSort, SortDir };
 
@@ -40,6 +41,21 @@ export interface RunQuery {
   /** Filter to one variant slug (an empty string is ignored). Paired with
    * {@link testCase} — a variant slug is unique only within its case. */
   variant?: string;
+  /** Filter to one exact test-case version (an empty string is ignored). A version
+   * only means something within a case, so this is normally paired with
+   * {@link testCase}; on its own it is a plain equality filter and selects that
+   * version of every case. */
+  version?: string;
+  /** Restrict every run to its case's **current** version — the greatest
+   * `major.minor` that case has a run for within this query's {@link state} slice.
+   * A case version is frozen once it has runs, so an older minor is a different
+   * spec whose runs are not comparable with the current one's; the console
+   * listings default this on.
+   *
+   * Ignored when {@link version} names an exact version: an explicit version is
+   * the more specific instruction, and AND'ing the two would silently empty the
+   * listing whenever the picked version is not the current one. */
+  latestVersions?: boolean;
   /** Case-insensitive substring across testCase/model/harness/variant. */
   q?: string;
   /** The sort column (default `date`). */
@@ -81,21 +97,30 @@ function cmpNum(a: number | null, b: number | null): number {
   return av < bv ? -1 : av > bv ? 1 : 0;
 }
 
+// Does the query's lifecycle slice hold anything at all here? Split from the rest
+// of the predicate because the current-version scope below is resolved over the
+// slice *before* the other filters narrow it — exactly as the backend resolves it
+// from its own `state_slice`.
+//
+// The static index is entirely published runs, so `any` (the published +
+// unpublished union) collapses to `published`; any other slice matches nothing, so
+// this is a property of the query alone rather than of a given row.
+function sliceIsPublished(query: RunQuery): boolean {
+  return !query.state || query.state === "published" || query.state === "any";
+}
+
 // Does `summary` match the query's filters? Mirrors the backend's `summary_query`
-// predicate: the `published`-only state slice (the site holds nothing else), the
-// equality filters (empty strings ignored), and the lowercased substring `q`
-// across the searchable identity columns.
+// predicate: the equality filters (empty strings ignored) and the lowercased
+// substring `q` across the searchable identity columns. The state slice is
+// {@link sliceIsPublished}; the current-version scope is
+// {@link currentVersionScope}.
 function matches(summary: RunSummary, query: RunQuery): boolean {
-  // The static index is entirely published runs, so `any` (the published +
-  // unpublished union) collapses to `published` here; any other slice matches none.
-  if (query.state && query.state !== "published" && query.state !== "any") {
-    return false;
-  }
   const { subject } = summary;
   if (query.testCase && subject.testCaseSlug !== query.testCase) return false;
   if (query.model && subject.modelId !== query.model) return false;
   if (query.harness && subject.harnessSlug !== query.harness) return false;
   if (query.variant && subject.variant !== query.variant) return false;
+  if (query.version && subject.testCaseVersion !== query.version) return false;
   const q = query.q?.trim().toLowerCase();
   if (q) {
     const haystack = [
@@ -107,6 +132,44 @@ function matches(summary: RunSummary, query: RunQuery): boolean {
     if (!haystack.some((s) => s.includes(q))) return false;
   }
   return true;
+}
+
+// The `latestVersions` scope: each case's current `major.minor`, resolved from the
+// runs in the state slice (never from the narrowed set, so which cohort is
+// "current" does not shift as other filters are applied). Null when the query did
+// not ask for it, or when an exact `version` overrides it — see
+// {@link RunQuery.latestVersions}. Mirrors the backend's `current_case_versions`.
+function currentVersionScope(
+  inSlice: readonly RunSummary[],
+  query: RunQuery,
+): ReadonlyMap<string, string> | null {
+  if (!query.latestVersions || query.version) return null;
+  const versions = new Map<string, string[]>();
+  for (const { subject } of inSlice) {
+    const seen = versions.get(subject.testCaseSlug);
+    if (seen) seen.push(subject.testCaseVersion);
+    else versions.set(subject.testCaseSlug, [subject.testCaseVersion]);
+  }
+  const scope = new Map<string, string>();
+  for (const [slug, all] of versions) {
+    const current = currentMajorMinor(all);
+    if (current !== null) scope.set(slug, current);
+  }
+  return scope;
+}
+
+// Is a run's version the current `major.minor` of its case? A case the scope has
+// never seen cannot happen (the scope is built from the same set), so an unknown
+// slug is out of scope rather than silently admitted.
+function inVersionScope(
+  summary: RunSummary,
+  scope: ReadonlyMap<string, string> | null,
+): boolean {
+  if (!scope) return true;
+  const { subject } = summary;
+  return (
+    scope.get(subject.testCaseSlug) === majorMinorKey(subject.testCaseVersion)
+  );
 }
 
 // Compare two summaries by the chosen sort key and direction, mirroring
@@ -188,7 +251,13 @@ export function runSummaryPage(
   const sort = query.sort ?? "date";
   const dir = query.dir ?? "desc";
   const offset = query.offset ?? 0;
-  const filtered = summaries.filter((s) => matches(s, query));
+  // The state slice first, so the current-version scope is measured against the
+  // same set the backend measures it against, then the rest of the predicate.
+  const inSlice = sliceIsPublished(query) ? summaries : [];
+  const scope = currentVersionScope(inSlice, query);
+  const filtered = inSlice.filter(
+    (s) => matches(s, query) && inVersionScope(s, scope),
+  );
   filtered.sort((a, b) => compare(a, b, sort, dir));
   const window =
     query.limit == null

@@ -2291,6 +2291,187 @@ async fn list_summaries_filters_by_test_case_model_and_harness() {
     );
 }
 
+/// Push an unpublished run of `test_case` at `version`, varying nothing else. For
+/// the version-filter tests, whose ordering key is the id tiebreak.
+async fn seed_version(db: &Db, id: &str, test_case: &str, version: &str) {
+    let mut r = record(id);
+    r.subject.test_case_slug = test_case.to_string();
+    r.subject.test_case_version = version.to_string();
+    db.push(&r, &links(), None).await.unwrap();
+}
+
+#[test]
+fn current_versions_keeps_each_cases_greatest_major_minor() {
+    // Every revision of the greatest minor survives (`v1.2.0` and `v1.2.1` are one
+    // spec); older minors and majors are dropped, per case independently.
+    let scope = current_versions(vec![
+        ("pong".into(), "v1.0.0".into()),
+        ("pong".into(), "v1.2.0".into()),
+        ("pong".into(), "v1.2.1".into()),
+        ("pong".into(), "v1.1.0".into()),
+        ("snake".into(), "v3.0.0".into()),
+        ("snake".into(), "v2.9.0".into()),
+    ]);
+    assert_eq!(
+        scope,
+        vec![
+            CaseVersions {
+                slug: "pong".into(),
+                versions: vec!["v1.2.0".into(), "v1.2.1".into()],
+            },
+            CaseVersions {
+                slug: "snake".into(),
+                versions: vec!["v3.0.0".into()],
+            },
+        ]
+    );
+}
+
+#[test]
+fn current_versions_orders_components_numerically_not_lexically() {
+    // `v1.10.0` is newer than `v1.9.0`; a string compare gets that backwards.
+    let scope = current_versions(vec![
+        ("pong".into(), "v1.9.0".into()),
+        ("pong".into(), "v1.10.0".into()),
+    ]);
+    assert_eq!(
+        scope,
+        vec![CaseVersions {
+            slug: "pong".into(),
+            versions: vec!["v1.10.0".into()],
+        }]
+    );
+}
+
+#[tokio::test]
+async fn list_summaries_filters_by_exact_version() {
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_version(&db, "a", "pong", "v1.0.0").await;
+    seed_version(&db, "b", "pong", "v2.0.0").await;
+    seed_version(&db, "c", "snake", "v1.0.0").await;
+
+    // A bare version is a plain equality filter — it selects that version of every
+    // case…
+    let filter = SummaryFilter {
+        version: Some("v1.0.0".to_string()),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await,
+        ["a", "c"]
+    );
+
+    // …and paired with a case, exactly that case's version.
+    let filter = SummaryFilter {
+        test_case: Some("pong".to_string()),
+        version: Some("v2.0.0".to_string()),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await,
+        ["b"]
+    );
+
+    // An empty version is ignored, like the other equality filters.
+    let filter = SummaryFilter {
+        version: Some(String::new()),
+        ..unpublished_filter()
+    };
+    let (_, total) = db
+        .list_summaries(&filter, SummarySort::Date, SortDir::Asc, 50, 0)
+        .await
+        .unwrap();
+    assert_eq!(total, 3);
+}
+
+#[tokio::test]
+async fn list_summaries_latest_versions_narrows_per_case() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // pong is on v1.2.x (two revisions of the current minor); snake on v3.0.0.
+    seed_version(&db, "a", "pong", "v1.0.0").await;
+    seed_version(&db, "b", "pong", "v1.2.0").await;
+    seed_version(&db, "c", "pong", "v1.2.1").await;
+    seed_version(&db, "d", "snake", "v2.0.0").await;
+    seed_version(&db, "e", "snake", "v3.0.0").await;
+
+    let filter = SummaryFilter {
+        latest_versions: true,
+        ..unpublished_filter()
+    };
+    let (runs, total) = db
+        .list_summaries(&filter, SummarySort::Date, SortDir::Asc, 50, 0)
+        .await
+        .unwrap();
+    assert_eq!(run_ids(&runs), ["b", "c", "e"]);
+    // The total is counted under the same predicate, so the pager stays honest.
+    assert_eq!(total, 3);
+
+    // It ANDs with the other filters rather than replacing them.
+    let filter = SummaryFilter {
+        test_case: Some("pong".to_string()),
+        latest_versions: true,
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await,
+        ["b", "c"]
+    );
+}
+
+#[tokio::test]
+async fn list_summaries_exact_version_overrides_latest_versions() {
+    // Asking for an older version explicitly must show it, not silently empty the
+    // listing because it is not the current one.
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_version(&db, "a", "pong", "v1.0.0").await;
+    seed_version(&db, "b", "pong", "v2.0.0").await;
+
+    let filter = SummaryFilter {
+        version: Some("v1.0.0".to_string()),
+        latest_versions: true,
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await,
+        ["a"]
+    );
+}
+
+#[tokio::test]
+async fn latest_versions_is_measured_within_the_state_slice() {
+    // The current version is resolved from the slice the listing draws from, so a
+    // published-only listing is not narrowed by a version only an unpublished run
+    // has reached.
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_version(&db, "old", "pong", "v1.0.0").await;
+    db.add_review("old", &review_by("u1", Rating::Great), None)
+        .await
+        .unwrap();
+    db.publish("old", "2026-06-18T00:00:00Z").await.unwrap();
+    seed_version(&db, "new", "pong", "v2.0.0").await;
+
+    let published = SummaryFilter {
+        state: SummaryState::Published,
+        latest_versions: true,
+        ..SummaryFilter::default()
+    };
+    assert_eq!(
+        summary_ids(&db, &published, SummarySort::Date, SortDir::Asc).await,
+        ["old"]
+    );
+
+    // The consoles' `any` slice sees the v2 run, so v1 falls out of scope there.
+    let any = SummaryFilter {
+        state: SummaryState::Any,
+        latest_versions: true,
+        ..SummaryFilter::default()
+    };
+    assert_eq!(
+        summary_ids(&db, &any, SummarySort::Date, SortDir::Asc).await,
+        ["new"]
+    );
+}
+
 #[tokio::test]
 async fn list_summaries_failures_slice_covers_the_publishable_failure_tiers() {
     // The `fields=summary&state=failures` path must surface exactly the publishable

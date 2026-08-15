@@ -677,6 +677,10 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       if (opts?.model) params.set("model", opts.model);
       if (opts?.harness) params.set("harness", opts.harness);
       if (opts?.variant) params.set("variant", opts.variant);
+      if (opts?.version) params.set("version", opts.version);
+      // Only sent when on: the backend defaults it off, so the common URL stays
+      // free of a redundant `latestVersions=false`.
+      if (opts?.latestVersions) params.set("latestVersions", "true");
       if (opts?.q) params.set("q", opts.q);
       if (opts?.sort) params.set("sort", opts.sort);
       if (opts?.dir) params.set("dir", opts.dir);
