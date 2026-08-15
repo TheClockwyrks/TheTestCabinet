@@ -91,6 +91,16 @@ repos:
         always_run: true
         pass_filenames: false
 
+      - id: no-nul-bytes
+        name: NUL bytes in text files
+        description: Reject a NUL byte in a file git reads as text, which makes grep and rg report zero matches in it.
+        entry: scripts/hooks/no-nul-bytes.sh
+        language: script
+        # Takes the staged paths and skips the ones .gitattributes declares a
+        # binary format, so the committed wasm components, MIDI and icons are
+        # excused by a declaration rather than by a list here that would rot.
+        types: [file]
+
       - id: rust-fmt
         name: cargo fmt (--check)
         description: Enforce rustfmt formatting across the workspace.
