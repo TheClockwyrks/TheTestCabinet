@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
-import type { Erratum, TestCaseSummary } from "../../../data/testCases";
+import type { Erratum, TestCaseDetail } from "../../../data/testCases";
 import { routePatterns, routes } from "../../../routes";
 import { TestCaseErrataPage } from "./TestCaseErrataPage";
 
@@ -12,9 +12,15 @@ vi.mock("../../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
-const useTestCases = vi.fn();
-vi.mock("../../../data/useTestCases", () => ({
-  useTestCases: () => useTestCases(),
+const catalog = vi.fn<() => { testCases: TestCaseDetail[]; status: string }>();
+// The layout resolves the case it is about through `useTestCase` (a per-slug
+// fetch), so the stub answers from the fixture catalog each test seeds — the same
+// lookup the real hook performs against the host.
+vi.mock("../../../data/useTestCase", () => ({
+  useTestCase: (slug: string | undefined) => {
+    const { testCases, status } = catalog();
+    return { testCase: testCases.find((c) => c.slug === slug), status };
+  },
 }));
 vi.mock("../../../data/galleryContext", () => ({
   useGalleryData: () => ({ canExecute: false, arena: undefined }),
@@ -35,7 +41,7 @@ function erratum(extra: Partial<Erratum> = {}): Erratum {
   };
 }
 
-function testCase(extra: Partial<TestCaseSummary> = {}): TestCaseSummary {
+function testCase(extra: Partial<TestCaseDetail> = {}): TestCaseDetail {
   return {
     slug: "carom",
     name: "Carom",
@@ -50,7 +56,7 @@ function testCase(extra: Partial<TestCaseSummary> = {}): TestCaseSummary {
     changelog: [],
     errata: [],
     ...extra,
-  } as TestCaseSummary;
+  } as TestCaseDetail;
 }
 
 function renderErrata(slug = "carom") {
@@ -68,7 +74,7 @@ function renderErrata(slug = "carom") {
 
 describe("TestCaseErrataPage", () => {
   it("lists a version's errata with their badges", () => {
-    useTestCases.mockReturnValue({
+    catalog.mockReturnValue({
       testCases: [
         testCase({
           errata: [{ version: "v1.0.0", errata: [erratum()] }],
@@ -90,7 +96,7 @@ describe("TestCaseErrataPage", () => {
   });
 
   it("shows an empty state when no errata are recorded", () => {
-    useTestCases.mockReturnValue({
+    catalog.mockReturnValue({
       testCases: [testCase({ errata: [] })],
       status: "ready",
     });

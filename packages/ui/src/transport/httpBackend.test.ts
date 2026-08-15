@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createBackendExec } from "./httpBackend";
+import { createBackendExec, createHttpBackend } from "./httpBackend";
 
 const BACKEND = "https://backend.example";
 const AUTH = "https://auth.example";
@@ -96,5 +96,73 @@ describe("createBackendExec build-link resolution", () => {
     const run = await client.readRun("run-4");
 
     expect(run.record.links.playableBuild).toBe("https://pages.example/run-4/");
+  });
+});
+
+describe("createBackendExec catalog listing", () => {
+  // The listing is what a catalog page renders from, and it must be ONE request:
+  // the fan-out this endpoint's metadata replaced (resolve every version of every
+  // case, then every variant's specs) is the whole reason the fields are here.
+  it("reads the whole listing from a single request", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        testCases: [
+          {
+            slug: "carom",
+            versions: ["v1.0.0", "v1.0.1"],
+            name: "Carom",
+            testType: "end-to-end",
+            assetKind: "sprite",
+            difficulty: "easy",
+            tags: ["arcade"],
+            summary: "A duel of angles.",
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const cases = await createHttpBackend(BACKEND).listTestCases();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(cases).toEqual([
+      {
+        slug: "carom",
+        versions: ["v1.0.0", "v1.0.1"],
+        name: "Carom",
+        testType: "end-to-end",
+        assetKind: "sprite",
+        difficulty: "easy",
+        tags: ["arcade"],
+        summary: "A duel of angles.",
+      },
+    ]);
+  });
+
+  // A backend that predates the asset-shape field must not make the catalog's
+  // asset tabs undefined-sensitive; it reads as "no asset shape" instead.
+  it("reports a missing asset shape as null", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          testCases: [
+            {
+              slug: "carom",
+              versions: ["v1.0.0"],
+              name: "Carom",
+              testType: "end-to-end",
+              difficulty: "easy",
+              tags: [],
+              summary: null,
+            },
+          ],
+        }),
+      ),
+    );
+
+    const cases = await createHttpBackend(BACKEND).listTestCases();
+
+    expect(cases[0]!.assetKind).toBeNull();
   });
 });

@@ -111,7 +111,18 @@ export function useStaticGallery(): GalleryDataInput {
     referencedModelSlugs.has(model.slug),
   );
 
+  // The snapshot inlines each case in full at build time, so this host holds both
+  // halves of the catalog contract: the listing summaries and, behind
+  // `readTestCase`, the detail a case page needs. There is nothing to fetch —
+  // `readTestCase` just resolves out of the same in-memory array — but supplying
+  // it is what keeps the detail pages working here, since they no longer read
+  // variants and errata off the listing.
   const testCases = catalogTestCases;
+  const readTestCase = useCallback(
+    async (slug: string) =>
+      catalogTestCases.find((entry) => entry.slug === slug) ?? null,
+    [],
+  );
 
   // Local previews take precedence over the published framing on id collision.
   const writeups = { ...publishedWriteups, ...localWriteups };
@@ -278,6 +289,7 @@ export function useStaticGallery(): GalleryDataInput {
     queryRunSummaries,
     testCases,
     testCasesStatus: "ready",
+    readTestCase,
     // The model catalog is baked into the snapshot at build time, so it is always
     // resolved; the site has no backend to mutate it, so the config affordances
     // hide (no `createModel` on any client here). Narrowed above to the models a

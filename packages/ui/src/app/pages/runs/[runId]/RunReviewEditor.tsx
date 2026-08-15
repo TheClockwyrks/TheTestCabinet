@@ -17,6 +17,7 @@ import {
   useGalleryData,
   type ValidationMedia,
 } from "../../../data/galleryContext";
+import { useTestCase } from "../../../data/useTestCase";
 import { MediaView } from "../../../components/MediaView";
 import { ReviewItemAssets } from "./AssetResultSection";
 import { DebugScriptList } from "./DebugScriptList";
@@ -199,12 +200,15 @@ export function RunReviewEditor({
   // the run's case identity — the worker doesn't serve the catalog.
   const { client: backend } = useBackend();
   const gallery = useGalleryData();
-  // The case's scoring domains, rated independently; the run's overall rating is
-  // the worst across them. Resolved from the catalog the host holds.
-  const domains = useMemo(
-    () => gallery.reviewModelFor(subject).domains,
-    [gallery, subject],
+  // The run's case, fetched by slug — the source of both the scoring domains
+  // (rated independently; the run's overall rating is the worst across them) and
+  // the variant's reference media below.
+  const { testCase } = useTestCase(subject.testCaseSlug);
+  const variant = useMemo(
+    () => testCase?.variants.find((v) => v.slug === subject.variant),
+    [testCase, subject.variant],
   );
+  const domains = variant?.domains ?? testCase?.domains ?? [];
   // The current account's own prior review (when any) among the run's reviews —
   // the seed for re-reviewing. The reviews arrive from the run-detail layout,
   // fetched with the record.
@@ -248,14 +252,12 @@ export function RunReviewEditor({
   // The expected reference media (by view) and the submitted proof media (by id)
   // for this run, resolved from the gallery data so each question can show both.
   const referencesByView = useMemo(() => {
-    const tc = gallery.testCases.find((c) => c.slug === subject.testCaseSlug);
-    const variant = tc?.variants.find((v) => v.slug === subject.variant);
     const map = new Map<string, ReferenceShot>();
     for (const ref of variant?.referenceScreenshots ?? []) {
       map.set(ref.view, { view: ref.view, kind: ref.kind, url: ref.url });
     }
     return map;
-  }, [gallery.testCases, subject.testCaseSlug, subject.variant]);
+  }, [variant]);
 
   const proofsById = useMemo(() => {
     const map = new Map<string, ProofMedia>();

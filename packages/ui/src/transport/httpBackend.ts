@@ -95,10 +95,19 @@ interface CatalogResponse {
   testCases: CatalogEntry[];
 }
 
-// One entry of `GET /test-cases`.
+// One entry of `GET /test-cases`: the case's versions plus the display metadata
+// a catalog card renders, resolved server-side from the latest visible version.
+// It is what lets a listing render from this single request instead of resolving
+// every version of every case first.
 interface CatalogEntry {
   slug: string;
   versions: string[];
+  name: string;
+  testType: TestType;
+  assetKind?: AssetKind | null;
+  difficulty: string;
+  tags: string[];
+  summary: string | null;
 }
 
 // `GET /test-cases/{slug}/versions` — the versions for one case, wrapped in
@@ -339,7 +348,16 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         baseUrl,
         "/test-cases",
       );
-      return testCases.map((e) => ({ slug: e.slug, versions: e.versions }));
+      return testCases.map((e) => ({
+        slug: e.slug,
+        versions: e.versions,
+        name: e.name,
+        testType: e.testType,
+        assetKind: e.assetKind ?? null,
+        difficulty: e.difficulty,
+        tags: e.tags,
+        summary: e.summary,
+      }));
     },
 
     async listVersions(slug: string): Promise<string[]> {

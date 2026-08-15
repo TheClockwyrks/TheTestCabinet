@@ -10,7 +10,7 @@ import { EventFeed } from "../../../components/EventFeed";
 import { KillRunControl } from "../../../components/KillRunControl";
 import { PageLayout } from "../../../components/PageLayout";
 import { PromptHeader } from "../../../components/PromptHeader";
-import { useGalleryData } from "../../../data/galleryContext";
+import { useTestCase } from "../../../data/useTestCase";
 import { routes } from "../../../routes";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
 import { useAppSettings } from "../../../store/appSettings";
@@ -37,7 +37,6 @@ export function RunMonitorPage() {
   const { runId } = useParams<{ runId: string }>();
   const { active: worker } = useWorkers();
   const runtime = useRunsRuntime();
-  const gallery = useGalleryData();
   const [events, setEvents] = useState<HarnessEvent[]>([]);
   // The latest live drawing frame per frame index, for an asset-generation run,
   // plus the frame last drawn into. Empty for every other run type.
@@ -58,9 +57,9 @@ export function RunMonitorPage() {
   // slots the asset view shows as soon as the page loads, before the model has
   // drawn anything.
   const inProgress = runtime.inProgress.find((r) => r.runId === runId);
-  const caseSummary = gallery.testCases.find(
-    (c) => c.slug === inProgress?.testCaseSlug,
-  );
+  // The declared slots come off the case's `sheet`/`model`, which are detail —
+  // not part of the catalog listing — so the run's own case is fetched by slug.
+  const { testCase: caseSummary } = useTestCase(inProgress?.testCaseSlug);
   // Treat the run as asset-generation when its case says so, or once any drawing
   // preview has streamed (covers a run not in the in-progress list — e.g. after a
   // reload — whose case can't be resolved).

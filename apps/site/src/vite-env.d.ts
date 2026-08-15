@@ -6,7 +6,7 @@
 declare module "virtual:tcab-snapshot" {
   import type { RunSummary } from "@test-cabinet/run-record/snapshot";
   import type { StoredReview } from "@test-cabinet/ui/client";
-  import type { TestCaseSummary } from "@test-cabinet/ui/app";
+  import type { TestCaseDetail } from "@test-cabinet/ui/app";
   import type { Model } from "@test-cabinet/ui/client";
 
   /**
@@ -22,8 +22,13 @@ declare module "virtual:tcab-snapshot" {
   export const writeups: Record<string, string>;
   /** Each published run's individual reviews, keyed by run id. */
   export const reviews: Record<string, StoredReview[]>;
-  /** Published test-case catalog metadata. */
-  export const testCases: TestCaseSummary[];
+  /**
+   * The published test-case catalog, inlined in FULL at build time. The site has
+   * no backend to fetch a case from, so each entry carries the detail
+   * (variants, changelog, errata) a case page needs as well as the listing
+   * fields; `staticGallery` serves both halves of the contract from this array.
+   */
+  export const testCases: TestCaseDetail[];
   /** The composed model catalog (wire `Model` shape); mapped via `toModelSummary`. */
   export const models: Model[];
   /**

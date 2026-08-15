@@ -163,14 +163,39 @@ rather than a local checkout.
 ### `GET /test-cases`
 
 The catalog: every ingested case and its available versions, under `testCases`.
+Each entry also carries the **display metadata a listing renders** — the name,
+test type, asset shape, difficulty, tags, and summary — read from the case's
+latest visible version.
 
 ```jsonc
 {
   "testCases": [
-    { "slug": "carom", "versions": ["v1.0.0", "v1.1.0"] }
+    {
+      "slug": "carom",
+      "versions": ["v1.0.0", "v1.1.0"],
+      "name": "Carom",
+      "testType": "end-to-end",
+      "assetKind": "sprite",
+      "difficulty": "easy",
+      "tags": ["arcade"],
+      "summary": "A duel of angles."
+    }
   ]
 }
 ```
+
+This is the **summary** half of the catalog contract, and it is deliberately
+self-sufficient: a client renders a whole catalog grid from this one request.
+Anything heavier than a card — the description, the variants with their prompts,
+seeded specs, references and checklists, plus the changelog and errata — lives on
+[`GET /test-cases/{slug}/versions/{version}`](#get-test-casesslugversionsversion)
+and is fetched only for the case a visitor opens. Folding that detail into the
+listing costs a request per version *and* per variant, for every case in the
+catalog, before the grid can paint.
+
+A case whose latest manifest cannot be read is omitted from this listing rather
+than failing it, so one unreadable sidecar costs that case's card and not the
+whole catalog.
 
 Schema:
 [`backend-api/test-case-catalog.schema.json`](https://docs.testcabinet.ai/schema/backend-api/test-case-catalog.schema.json).
