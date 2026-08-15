@@ -7,7 +7,11 @@ import type { RunQuery, RunQueryResult } from "./runQuery";
 // tabs fetch them in one bounded, case-scoped query rather than draining the whole
 // cabinet. This caps a single request; a case with more runs than this is drained
 // a window at a time (still bounded to the one case).
-const CASE_PAGE_LIMIT = 1000;
+// Matches the backend's own per-request ceiling (`MAX_LIMIT` in api/runs.rs), which
+// it clamps to silently. Asking for more than it will serve does not get more rows
+// — it just makes the requested window a lie, which is how the drain below used to
+// skip runs.
+const CASE_PAGE_LIMIT = 200;
 
 export interface CaseRunSummariesState {
   /** Every summary for the case, produced (unpublished) first then published. */
@@ -25,12 +29,13 @@ export interface CaseRunSummariesState {
 // matter). Host-agnostic: the console forwards each window to the backend's offset
 // endpoint, the static site slices its in-memory index — same param shape, same
 // result.
-async function drainCaseSummaries(
+export async function drainCaseSummaries(
   query: (q: RunQuery) => Promise<RunQueryResult>,
   slug: string,
 ): Promise<RunSummary[]> {
   const acc: RunSummary[] = [];
-  for (let offset = 0; ; offset += CASE_PAGE_LIMIT) {
+  let offset = 0;
+  for (;;) {
     const { summaries, total } = await query({
       state: "published",
       testCase: slug,
@@ -38,6 +43,12 @@ async function drainCaseSummaries(
       limit: CASE_PAGE_LIMIT,
     });
     acc.push(...summaries);
+    // Advance by what ARRIVED, never by what was asked for. A host free to return
+    // fewer rows than requested (the backend clamps the limit) would otherwise
+    // leave a hole: the window returns its clamped page, the offset jumps the full
+    // requested stride, and every run in between is silently dropped from the
+    // leaderboard and the metrics computed off this set.
+    offset += summaries.length;
     if (summaries.length === 0 || acc.length >= total) break;
   }
   return acc;
@@ -76,15 +87,11 @@ export function useCaseRunSummaries(slug: string): CaseRunSummariesState {
   }, [queryRunSummaries, slug]);
 
   const producedForCase = useMemo(
-    () =>
-      producedSummaries.filter((s) => s.subject.testCaseSlug === slug),
+    () => producedSummaries.filter((s) => s.subject.testCaseSlug === slug),
     [producedSummaries, slug],
   );
   const summaries = useMemo(
-    () => [
-      ...producedForCase,
-      ...published.filter((s) => !localIds.has(s.id)),
-    ],
+    () => [...producedForCase, ...published.filter((s) => !localIds.has(s.id))],
     [producedForCase, published, localIds],
   );
 
