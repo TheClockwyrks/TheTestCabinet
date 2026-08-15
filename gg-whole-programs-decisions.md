@@ -698,6 +698,66 @@ it the highest-leverage single piece of work in the programme.
 
 ---
 
+## D14 — The guest runtime, per arm. All eleven are now decided.
+
+| arms | runtime | why |
+| --- | --- | --- |
+| **Java, Kotlin** | **TeaVM 0.13.1 `WEBASSEMBLY_WASI`** — a complete non-JS implementation | built end to end; see [`gg-jvm-native-findings.md`](gg-jvm-native-findings.md) |
+| **TypeScript, JavaScript, PureScript** | **quickjs-ng** in a component | the only measured configuration with real module resolution; see [`gg-js-runtime-decision.md`](gg-js-runtime-decision.md) |
+| **Rust** | `wasm32-wasip1`, binary crate, the already-pinned reactor adapter | the only route where a failure of any shape reaches the model |
+| **C++, C#, Swift, Python, Ruby** | unchanged | already compile the model's bytes; only injection is deleted |
+
+**The JVM arms are a whole non-JS implementation, and it is smaller than the
+survey feared.** The canonical-ABI burden is **one host function** —
+`wire: call: func(op: string, request: list<u8>) -> list<u8>` — which is the
+shape `packages/gg-sandbox-java/src/gg/internal/Wire.java` already has; only the
+far side changes from the ECMAScript guest to gg's Rust host. **No `wit-bindgen`
+for Java is needed and none exists**, because no part of the 1,220-line WIT is
+marshalled in Java. gg writes ~24 lines of WIT, ~90 lines of `Abi.java`, a few
+lines of Rust to stamp the `component-type` section through the `wit-component`
+dependency it already has, and one `match` arm per operation in the host.
+
+**Kotlin unifies onto the identical mechanism** — same `Abi.java`, WIT, adapter
+and host, differing by one line in the generated entry class — and the change
+retires Kotlin's script compilation, so `kotlin.source.rs`'s whole
+local-declaration problem disappears with it.
+
+Two things gg's driver must encode, both measured footguns:
+
+1. `@Export` emits a core export **only if the class is reachable**. Without
+   `setClassesToPreserve`, the module exported only `memory` and the encode
+   produced a component with **no exports at all** — silently.
+2. **Do not symbolicate this arm from DWARF.** wasmtime's own backtrace carries
+   correct function names but **wrong files and lines** (`TString.java:91`) —
+   TeaVM's DWARF is misattributed. The correct locations are on stderr, which is
+   where the ruling says to read them anyway.
+
+**The accepted risk, stated plainly.** TeaVM removed this backend in 0.14.0 —
+12,740 deletions, of which **10,685 are the wasm backend proper**, so restoring
+only the WASI glue is impossible — and the author wrote that the backends
+*"failed to gain any adoption"* and that it is *"pointless to invest time into"*
+them. gg is pinning an orphaned compiler backend with no upstream. If a model
+writes Java that it miscompiles, gg cannot get that fixed. The mitigation on
+record is that quickjs-ng is **measured** to run the Java, Kotlin and PureScript
+bundles today with no polyfill, so the fallback is a known quantity rather than a
+rescue project.
+
+**Kotlin/Wasm `wasmWasi` is refuted, not merely unpromising:** sixteen flag
+combinations built and run, **guest stderr = 0 bytes on all sixteen**.
+
+## D15 — TeaVM pins to 0.13.1
+
+Independent of D14 and a live defect today. Measured on identical sources with
+`--release 21` for both the program and the driver:
+
+- JDK 25 + TeaVM **0.12.3** → `IllegalArgumentException: Unsupported class file major version 69`
+- JDK 25 + TeaVM **0.13.1** → builds clean, `teavm errors: 0`
+
+0.13.1 is also the **last release carrying the WASI target**, so it is the version
+D14 needs. Both the 0.12.x and 0.13.x lines are closed upstream.
+
+---
+
 ## Decisions still mine to make, and how I have made them
 
 These were not asked because they follow from the four above or are reversible.

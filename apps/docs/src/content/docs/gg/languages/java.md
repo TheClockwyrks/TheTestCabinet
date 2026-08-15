@@ -125,6 +125,12 @@ and run. The subset is a subset by method as well as by class, and an absence of
 either kind is a located compile error at the model's own line, on the turn that
 reached for it.
 
+The classlib is wider than the declared set, so a package the set omits may still
+compile. `java.nio.file` is the one that matters: the classlib backs it with an
+in-memory filesystem that starts empty and that nothing writes to, so a read
+raises `NoSuchFileException` and a write raises `IOException`. The filesystem a
+program reaches is gg's own `fs` module.
+
 ## Failures
 
 Only diagnostics about the model's own file are the model's. When every error

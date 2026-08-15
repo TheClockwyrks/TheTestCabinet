@@ -417,10 +417,15 @@ fn rerun_paths(root: &Path, id: &str) -> Vec<PathBuf> {
             "packages/gg-sandbox-java/build.sh",
             "packages/gg-sandbox-java/java-version.sh",
         ],
+        // Kotlin names the JAVA arm's pin too, and it is not a copy-paste slip: this arm's
+        // `build.sh` puts the TeaVM jars on the classpath its SDK is compiled against, and which
+        // TeaVM those are is decided in `java-version.sh` rather than here. Without this line a
+        // TeaVM bump re-cut the Java jar and left the Kotlin one at the previous vintage.
         "kotlin" => vec![
             "packages/gg-sandbox-kotlin/src",
             "packages/gg-sandbox-kotlin/build.sh",
             "packages/gg-sandbox-kotlin/kotlin-version.sh",
+            "packages/gg-sandbox-java/java-version.sh",
         ],
         // Rust: `Cargo.toml` is both the manifest and the curated set a model may name, `Cargo.lock`
         // is the exact versions compiled in, and `rust-toolchain.toml` is the compiler the rlibs are

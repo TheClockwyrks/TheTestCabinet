@@ -16,45 +16,50 @@
 # `containers/gg-toolchains/Dockerfile`, and what lets the same tree be copied onto the
 # Debian-derived run images and onto `blender-gg`'s Ubuntu.
 #
-# 21 rather than the newest: TeaVM reads class files with a bundled ASM, and a JDK whose
-# class file version outran it fails with `Unsupported class file major version` rather
-# than with anything a model could act on. gg compiles the model's program with
-# `--release 21` whatever JDK it is running, so the pin is about javac's own diagnostics
-# agreeing between machines rather than about the bytecode.
+# 21 rather than the newest, and nothing about the toolchain forces it. TeaVM reads class files
+# with a bundled ASM, and the 9.8 the pinned release carries reads up to Java 25; gg compiles
+# the model's program with `--release 21` whatever JDK it is running, so the bytecode is the
+# same either way. What the pin buys is javac's own DIAGNOSTICS agreeing between machines, which
+# is what the arm's tests assert and what a model is shown on a compile failure. Moving it is a
+# change to that text and belongs to its own change, with its own re-measurement.
 JDK_VERSION="21.0.12+8"
 
 # TeaVM, which compiles the bytecode to JavaScript. Every jar below is a runtime
-# dependency of `teavm-tooling`, resolved once and pinned here rather than resolved by
-# Maven at install time: an install step that runs a dependency resolver is an install
-# step whose result depends on the day it ran.
-TEAVM_VERSION="0.12.3"
+# dependency of `teavm-tooling` and of `teavm-classlib`, resolved once and pinned here rather
+# than resolved by Maven at install time: an install step that runs a dependency resolver is an
+# install step whose result depends on the day it ran.
+#
+# 0.13.1 and it stays there. It is the last release carrying the `WEBASSEMBLY_WASI` target, which
+# 0.14.0 deleted along with the other non-GC Wasm backend, and there is no 0.13.2. Both the 0.12.x
+# and 0.13.x lines are closed upstream, so this is the terminal version of the one gg wants.
+TEAVM_VERSION="0.13.1"
 
 # group:artifact:version, one per line. Downloaded straight from Maven Central.
 read -r -d '' TEAVM_JARS <<'JARS' || true
-org.teavm:teavm-tooling:0.12.3
-org.teavm:teavm-core:0.12.3
-org.teavm:teavm-classlib:0.12.3
-org.teavm:teavm-interop:0.12.3
-org.teavm:teavm-jso:0.12.3
-org.teavm:teavm-jso-apis:0.12.3
-org.teavm:teavm-jso-impl:0.12.3
-org.teavm:teavm-metaprogramming-api:0.12.3
-org.teavm:teavm-metaprogramming-impl:0.12.3
-org.teavm:teavm-platform:0.12.3
-org.teavm:teavm-relocated-libs-asm:0.12.3
-org.teavm:teavm-relocated-libs-asm-analysis:0.12.3
-org.teavm:teavm-relocated-libs-asm-commons:0.12.3
-org.teavm:teavm-relocated-libs-asm-tree:0.12.3
-org.teavm:teavm-relocated-libs-asm-util:0.12.3
-org.teavm:teavm-relocated-libs-commons-io:0.12.3
-org.teavm:teavm-relocated-libs-hppc:0.12.3
-org.teavm:teavm-relocated-libs-rhino:0.12.3
-org.ow2.asm:asm:9.7.1
-org.ow2.asm:asm-analysis:9.7.1
-org.ow2.asm:asm-commons:9.7.1
-org.ow2.asm:asm-tree:9.7.1
-org.ow2.asm:asm-util:9.7.1
-commons-io:commons-io:2.18.0
+org.teavm:teavm-tooling:0.13.1
+org.teavm:teavm-core:0.13.1
+org.teavm:teavm-classlib:0.13.1
+org.teavm:teavm-interop:0.13.1
+org.teavm:teavm-jso:0.13.1
+org.teavm:teavm-jso-apis:0.13.1
+org.teavm:teavm-jso-impl:0.13.1
+org.teavm:teavm-metaprogramming-api:0.13.1
+org.teavm:teavm-metaprogramming-impl:0.13.1
+org.teavm:teavm-platform:0.13.1
+org.teavm:teavm-relocated-libs-asm:0.13.1
+org.teavm:teavm-relocated-libs-asm-analysis:0.13.1
+org.teavm:teavm-relocated-libs-asm-commons:0.13.1
+org.teavm:teavm-relocated-libs-asm-tree:0.13.1
+org.teavm:teavm-relocated-libs-asm-util:0.13.1
+org.teavm:teavm-relocated-libs-commons-io:0.13.1
+org.teavm:teavm-relocated-libs-hppc:0.13.1
+org.teavm:teavm-relocated-libs-rhino:0.13.1
+org.ow2.asm:asm:9.8
+org.ow2.asm:asm-analysis:9.8
+org.ow2.asm:asm-commons:9.8
+org.ow2.asm:asm-tree:9.8
+org.ow2.asm:asm-util:9.8
+commons-io:commons-io:2.20.0
 com.carrotsearch:hppc:0.10.0
 joda-time:joda-time:2.12.2
 com.jcraft:jzlib:1.1.3

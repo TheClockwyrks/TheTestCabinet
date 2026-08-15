@@ -76,18 +76,21 @@ Each of them can only go one way, and where each goes is the argument:
 
 `JDK_VERSION` is an Eclipse Temurin release, chosen because Temurin publishes a plain
 relocatable tarball per platform: no installer, no distribution packaging, and therefore
-the same tree on the Debian-derived run images and on `blender-gg`'s Ubuntu. It is **21**
-rather than the newest, because TeaVM reads class files with a bundled ASM and a JDK whose
-class-file version outran it fails with `Unsupported class file major version` — which is
-not a diagnostic a model could act on. gg compiles a model's program with `--release 21`
-whatever JDK it runs, so the pin is about javac's own diagnostics agreeing between machines
-rather than about the bytecode.
+the same tree on the Debian-derived run images and on `blender-gg`'s Ubuntu. It is 21
+rather than the newest because gg compiles a model's program with `--release 21` whatever
+JDK it runs, so the bytecode is the same either way and the pin buys javac's own
+diagnostics agreeing between machines. Those diagnostics are what the arm's tests assert
+and what a model is shown on a compile failure, so moving the pin is a change to that text
+and belongs to its own change.
 
-`TEAVM_VERSION` and the jar list are TeaVM and every runtime dependency of
-`teavm-tooling`, resolved once and written down rather than resolved by Maven at install
-time. An install step that runs a dependency resolver is an install step whose result
-depends on the day it ran, and this arm's whole point is that two runs of a study differ in
-the language and in nothing else.
+`TEAVM_VERSION` and the jar list are TeaVM and every runtime dependency of `teavm-tooling`
+and `teavm-classlib`, resolved once and written down rather than resolved by Maven at
+install time. An install step that runs a dependency resolver is an install step whose
+result depends on the day it ran, and this arm's whole point is that two runs of a study
+differ in the language and in nothing else.
+
+The release is 0.13.1 and stays there. It is the last one carrying the `WEBASSEMBLY_WASI`
+target, there is no 0.13.2, and both the 0.12.x and 0.13.x lines are closed upstream.
 
 ## Working on the SDK
 

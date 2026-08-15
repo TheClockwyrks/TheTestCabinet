@@ -530,9 +530,15 @@ fn the_two_compilers_produce_two_different_model_facing_bands() {
     // TeaVM's classlib is a large subset of `java.base` rather than the whole of it, and this is the
     // most valuable property this arm has: what is missing is a LOCATED COMPILE ERROR on the turn
     // that wrote it, not a `ReferenceError` discovered at run time. A model told
-    // `java.nio.file.Paths was not found` at its own line writes something else next turn.
+    // `java.security.MessageDigest was not found` at its own line writes something else next turn.
+    //
+    // `java.security` is the example rather than `java.nio.file`, which it was until TeaVM 0.13:
+    // that release gave the classlib a `java.nio.file` over an in-memory virtual filesystem, so the
+    // package compiles now and what a program reaching for it gets is recorded in
+    // `what_teavm_is_not_is_recorded_rather_than_assumed` instead. `java.security` is the same
+    // absence the arm's `libraries.txt` names in its own header, and it is still absent.
     let absent = compile_program(
-        "System.out.println(String.valueOf(java.nio.file.Paths.get(\"/tmp\")));\n",
+        "System.out.println(String.valueOf(java.security.MessageDigest.getInstance(\"MD5\")));\n",
         &PrepareContext::new(),
     )
     .expect_err("a class the classlib does not carry is refused");
@@ -546,7 +552,7 @@ fn the_two_compilers_produce_two_different_model_facing_bands() {
         "{absent:?}"
     );
     assert!(
-        absent.to_string().contains("java.nio.file.Paths"),
+        absent.to_string().contains("java.security.MessageDigest"),
         "naming the class: {absent}"
     );
     assert!(
@@ -657,11 +663,15 @@ fn what_teavm_is_not_is_recorded_rather_than_assumed() {
         "a refusal passed through undescribed is also unlocated, and that is the trade: {refusal:?}"
     );
 
-    // 6. `String.format` DOES NOT KNOW `%%`. TeaVM's formatter carries the conversions a program
-    //    normally reaches for and raises `IllegalArgumentException: Unknown format conversion` for
-    //    the ones it does not — at run time, where javac cannot see a format string is wrong. A
-    //    literal percent is written as one.
+    // 6. `String.format` DOES NOT KNOW EVERY CONVERSION. TeaVM's formatter carries the ones a
+    //    program normally reaches for and raises `IllegalArgumentException: Unknown format
+    //    conversion` for the rest — at run time, where javac cannot see a format string is wrong.
+    //    The date/time conversions (`%t`) are the ones missing; `%%` was missing too until TeaVM
+    //    0.13 and is not any more, which is why it is asserted here as working rather than left
+    //    unmentioned.
     let outcome = run("System.out.println(String.format(\"%d%%\", 50));\n");
+    assert_eq!(logs(&outcome), ["50%"], "a literal percent formats");
+    let outcome = run("System.out.println(String.format(\"%tY\", new java.util.Date(0)));\n");
     assert!(
         program_error(&outcome)
             .message
@@ -670,10 +680,56 @@ fn what_teavm_is_not_is_recorded_rather_than_assumed() {
         program_error(&outcome)
     );
 
-    // 7. `java.nio.file` IS ABSENT, and that is a decision rather than a gap: the sandbox's ambient
-    //    filesystem is reached through gg's own `fs` object, which is the surface a study compares
-    //    across arms. A Java program reaching for `Files` is told so at compile time — see
-    //    `the_two_compilers_produce_two_different_model_facing_bands`.
+    // 7. `java.nio.file` IS PRESENT SINCE TEAVM 0.13 AND REACHES NOTHING, which is the sharpest
+    //    thing this bump changed. Until 0.13 the classlib had no `java.nio.file` at all and a
+    //    program reaching for it got a located compile error; the release added one over an
+    //    IN-MEMORY VIRTUAL FILESYSTEM that starts empty and that nothing in the sandbox ever
+    //    writes to. So the package now compiles, and every question a program asks it is answered
+    //    "no": `exists` is false, a read raises `NoSuchFileException`, a write raises
+    //    `IOException: Directory does not exist`, and a listing of `/` is empty. gg's own `fs`
+    //    object is still the only filesystem there is, and it is still the surface a study
+    //    compares across arms — `java.nio.file` is not on this arm's `libraries.txt` and is not
+    //    described to a model.
+    let outcome = run(
+        "java.nio.file.Path path = java.nio.file.Paths.get(\"/tmp/probe\");\n\
+         System.out.println(path.getFileName().toString());\n\
+         System.out.println(String.valueOf(java.nio.file.Files.exists(path)));\n\
+         System.out.println(String.valueOf(java.nio.file.Files.list(java.nio.file.Paths.get(\"/\")).count()));\n",
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["probe", "false", "0"],
+        "the virtual filesystem is empty and stays empty"
+    );
+    let outcome = run(
+        "try { java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(\"/tmp/probe\")); }\n\
+         catch (java.io.IOException failure) { System.out.println(failure.getClass().getName()); }\n",
+    );
+    assert_eq!(logs(&outcome), ["java.nio.file.NoSuchFileException"]);
+
+    // 8. AND ONE `java.nio.file` ENTRY POINT ENDS THE RUN, which is the fallout of 7 worth being
+    //    loud about. TeaVM 0.13.1's own `TFiles.readString` calls `BufferedReader.transferTo` and
+    //    its classlib does not carry that method, so the failure is raised against a file GG
+    //    GENERATED rather than against the program: it arrives in the toolchain band and the run
+    //    ends on it, where every other reach outside the declared set is a located compile error
+    //    the model can act on. It is recorded rather than worked around because the JVM arms are
+    //    moving off this backend entirely; see `gg-jvm-native-findings.md`.
+    let broken = compile_program(
+        "System.out.println(java.nio.file.Files.readString(java.nio.file.Paths.get(\"/tmp/probe\")));\n",
+        &PrepareContext::new(),
+    )
+    .expect_err("TeaVM 0.13.1's own java.nio.file.Files does not link");
+    assert!(
+        matches!(
+            &broken,
+            crate::sandbox::language::PrepareFailure::Toolchain(_)
+        ),
+        "gg's own generated source failing to link is not the model's fault: {broken:?}"
+    );
+    assert!(
+        broken.to_string().contains("transferTo"),
+        "naming the method TeaVM's classlib is missing: {broken}"
+    );
 }
 
 #[test]

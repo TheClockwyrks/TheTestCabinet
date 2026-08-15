@@ -607,14 +607,19 @@ fn the_compilers_produce_three_different_model_facing_bands() {
     // 3. WHAT TEAVM CANNOT TRANSLATE, which arrives as a located compile error on the turn that
     //    wrote it rather than as a `ReferenceError` three turns later. This is the arm's most
     //    valuable property and it is inherited from the Java arm.
+    //
+    //    `java.security` is the example rather than `java.nio.file`, which it was until TeaVM 0.13
+    //    gave the classlib a `java.nio.file` over an empty in-memory virtual filesystem — see
+    //    `what_teavm_is_not_is_recorded_rather_than_assumed` on the Java arm, which is where that
+    //    backend's behaviour is measured for both arms.
     let failure = compile_program(
-        "val path = java.nio.file.Paths.get(\"x\")\nprintln(path)\n",
+        "val digest = java.security.MessageDigest.getInstance(\"MD5\")\nprintln(digest)\n",
         &PrepareContext::new(),
     )
     .expect_err("a class TeaVM's classlib does not carry is refused");
     let rendered = failure.to_string();
     assert!(
-        rendered.contains("program.kts:1") && rendered.contains("java.nio.file.Paths"),
+        rendered.contains("program.kts:1") && rendered.contains("java.security.MessageDigest"),
         "the model is told which class, at its own line: {rendered}",
     );
 
