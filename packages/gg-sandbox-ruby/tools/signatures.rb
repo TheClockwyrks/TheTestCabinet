@@ -4,11 +4,13 @@
 # $GG_SIGNATURES_OUT_DIR/ruby.signatures.json
 #   packages/gg-sandbox-ruby/src/library.rb           -->  its `libraries` section
 #
-# gg renders the responses-as-code system prompt and every documentation view from that file, so it
-# is the whole of what a model is *told* about this arm's surface — and every word of it is
-# reflected out of the declaration it describes rather than written anywhere else. A description
-# kept in a table, a template or a `const` in gg's Rust is a description that drifts from its
-# subject with nothing to catch it.
+# gg answers every documentation search and every documentation view out of that file, so it is the
+# whole of what a model can *learn* about this arm's surface — the responses-as-code system prompt
+# takes only the module paths and their one-line briefs from it and names no function at all, and
+# the `libraries` section is quoted back on a compile failure rather than rendered anywhere. Every
+# word of it is reflected out of the declaration it describes rather than written anywhere else. A
+# description kept in a table, a template or a `const` in gg's Rust is a description that drifts
+# from its subject with nothing to catch it.
 #
 # # It reads YARD, which is what a Ruby author already writes
 #

@@ -2,11 +2,14 @@
 # Reflect the Rust arm's signature catalogue out of its SDK, and write
 # `$GG_SIGNATURES_OUT_DIR/rust.signatures.json`.
 #
-# gg embeds that file and renders the responses-as-code system prompt and every documentation view
-# from it, so it is the whole of what a model is told about this arm's surface. Every word of it is
-# reflected out of the SDK's own declarations by `tools/signatures.py`, which reads the JSON
-# `rustdoc` itself emits — so a sentence a model reads is rustdoc's own reading of the declaration it
-# describes rather than prose typed into a table beside it.
+# gg embeds that file and answers every documentation SEARCH and every documentation VIEW out of it,
+# so it is the whole of what a model can learn about this arm's surface. The responses-as-code system
+# prompt takes only the module paths and the one-line brief each module introduces itself by, and
+# names no function at all; the `libraries` section is quoted back on a compile failure rather than
+# rendered anywhere. Every word of it is reflected out of the SDK's own declarations by
+# `tools/signatures.py`, which reads the JSON `rustdoc` itself emits — so a sentence a model reads is
+# rustdoc's own reading of the declaration it describes rather than prose typed into a table beside
+# it.
 #
 # WHERE IT WRITES, AND WHY THERE IS NO DEFAULT. The catalogue is a BUILD ARTIFACT.
 # `crates/gg/build.rs` runs `scripts/gg-signatures.sh` and embeds what lands in the build's own

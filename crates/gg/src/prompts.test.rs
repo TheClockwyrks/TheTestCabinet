@@ -214,13 +214,18 @@ fn a_bare_run_renders_almost_nothing() {
     assert!(!prompt.contains("\n\n\n"), "prompt has a blank-line run");
 }
 
-/// In responses-as-code mode the prompt names the API objects a program has, teaches discovery
-/// through `view.openDocsView`, and points at `finish` to end the run — and it lists no tool
-/// signatures or type declarations at all. Those are discovered on demand.
+/// In responses-as-code mode the prompt names the [modules](ModuleView) a program's surface is
+/// divided into, describes discovery as a **mechanism** — search for what you need, then open a
+/// documentation view of it — and points at the ending call, the one catalogued spelling it is
+/// allowed to write. It lists no tool signatures and no type declarations at all. Those are
+/// discovered on demand.
 ///
-/// The assertions check for the words the prompt must contain — each object's name and its
-/// description, the discovery calls, `finish` — not the punctuation that separates them, so the
-/// prompt's wording can be revised without breaking a test that was only ever about its content.
+/// Discovery is described rather than demonstrated because naming either of the two calls would be
+/// naming a function, which `prompts.spellings.test.rs` fails the build over; the spellings reach the
+/// model out of the [bootstrap](crate::bootstrap) turn instead. So the assertions check for the words
+/// the prompt must contain — each module's path and a distinctive phrase from its brief, and the
+/// words the mechanism is described in — not the punctuation that separates them, so the prompt's
+/// wording can be revised without breaking a test that was only ever about its content.
 #[test]
 fn code_mode_names_objects_and_teaches_discovery() {
     let context = SystemContext {
@@ -2322,8 +2327,13 @@ fn every_language_prompt_states_the_rules_a_program_runs_under() {
 /// `REQUIRED_CALLS`: a table pairing every capability with the call its section had to name, so a
 /// model handed "You have access to a task list" and no call could not be mistaken for a model that
 /// simply could not use tasks. With the prompt naming nothing, that table is retired rather than
-/// retargeted — pointing it at the prompt and the bootstrap would force one named call per granted
-/// capability, which is exactly the immediate function information the design removes.
+/// retargeted, and the reason is the template rather than the design: one file now serves every
+/// [program language](crate::sandbox::ProgramLanguage), and a language-agnostic template **cannot
+/// spell a call** — the spelling is the arm's. There is no sentence left for such a table to hold to
+/// account. What it once asserted is not withheld from the model either: the
+/// [bootstrap](crate::bootstrap)'s opening turn runs a program that lists every module the run
+/// granted, with a one-line brief per function, so the surface still arrives on turn one — just not
+/// out of a `.hbs` file.
 ///
 /// What it was protecting moved to [the discoverability gate](crate::docs), which verifies the same
 /// property end to end and far better: for every capability an agent is granted, the words a model

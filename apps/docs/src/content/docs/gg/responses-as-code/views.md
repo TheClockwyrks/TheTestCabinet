@@ -19,7 +19,7 @@ that opened it.
 | File | the path and, for a paged read, the line region | `FileView` |
 | Text | the label the program gave it | `TextView` |
 | Documentation | the name of the function or type it documents | `DocsView` |
-| Search | the constant `search results` | `SearchResults` |
+| Search | the constant `search results` for an agent's own search, the module path for an opening-turn listing | `SearchResults` |
 
 Everything on disk is a file and everything a program computes is a string, so a
 directory listing, a `shell` result, a subagent's answer, a computed diff and an

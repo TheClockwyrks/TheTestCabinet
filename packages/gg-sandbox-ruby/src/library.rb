@@ -7,12 +7,16 @@
 # the `ruby.component.wasm` it writes into `$GG_ARTIFACTS_OUT_DIR` — the `OUT_DIR` of
 # `crates/gg-sandbox-artifacts/ruby`, which is where gg `include_bytes!`s it from.
 # `tools/signatures.rb` reads the same lines,
-# under the same `# --- … ---` headings, and emits them as the catalogue's `libraries` section,
-# which is what the system prompt tells a model it may require.
+# under the same `# --- … ---` headings, and emits them as the catalogue's `libraries` section —
+# which gg quotes back to a model on a COMPILE FAILURE. No system prompt carries a package
+# inventory any more: the mistake this set prevents — a program written against something that is
+# not below — is one the compile DETECTS, so the set is delivered on the turn that made it, beside
+# the diagnostic that made it relevant, rather than read every turn by a program that requires
+# nothing.
 #
 # So the sentence a model reads and the modules the artifact carries come from one file. That is
-# the rule the Python arm learned the hard way: its prompt claimed a whole standard library where
-# the build had baked a curated subset of one, and nothing gated the sentence.
+# the rule the Python arm learned the hard way: it claimed a whole standard library where the build
+# had baked a curated subset of one, and nothing gated the claim.
 #
 # **This file is not itself compiled into the guest.** It is a manifest that happens to be valid
 # Ruby, because the thing it lists is a list of `require` lines and there is no better way to write

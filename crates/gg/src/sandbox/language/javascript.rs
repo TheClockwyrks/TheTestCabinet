@@ -23,19 +23,28 @@
 //!   evaluate programs differently and the binary does not carry 13.4 MB twice;
 //! * **the same signatures, annotations included.** This language's catalogue is the same
 //!   declarations reflected under a second id, so a model here reads `readFile(path: string):
-//!   FileRead` exactly as a model there does. Stripping the types out of what the *prompt* shows
-//!   would have made the arms differ in how much the model was told about the surface — a second
-//!   variable, and a bigger one than the check;
+//!   FileRead` exactly as a model there does. Stripping the types out of what a *documentation view*
+//!   shows would have made the arms differ in how much the model was told about the surface — a
+//!   second variable, and a bigger one than the check;
 //! * **the same strip** ([TypeScript's own](super::typescript::prepare)), so a program that
 //!   annotates its own bindings runs here too: the annotations are erased rather than rejected. That
 //!   is what "JavaScript" means on this arm — not a narrower grammar, but a program nothing checked;
 //! * **the same healing dialect**, because healing is a lexical reading of a reply and the two arms
 //!   are one syntax.
 //!
-//! The prompt is this language's own, as every language's is: it names the language a model is
-//! writing in, and it carries no section claiming the program is checked, because it is not. It
-//! does not announce the *absence* of a check either — that is the arm's variable, not a rule the
-//! model is being taught, and a prompt that dwelt on it would be measuring a sentence.
+//! **The prompt is one file, and both arms render it.** There is a single responses-as-code
+//! template, `crates/gg/templates/system-code.hbs`, and this language reaches its own segment of it
+//! through `{{#if (eq language.id "javascript")}}` exactly as TypeScript reaches its own. That is
+//! the same construction as the component and the catalogue rather than a fifth thing held equal by
+//! care: the arms cannot drift into being told different rules, because there is no second file for
+//! one of them to drift in.
+//!
+//! What that one template says about a compiler is gated on
+//! [`checker`](super::ProgramLanguage::checker), and this arm answers it `None` — so the sentence
+//! telling a model its program is read and judged before it runs does not render here at all,
+//! because nothing reads or judges it. Nothing announces the *absence* of the check either: that is
+//! the arm's variable, not a rule the model is being taught, and a prompt that dwelt on it would be
+//! measuring a sentence.
 
 use std::sync::OnceLock;
 

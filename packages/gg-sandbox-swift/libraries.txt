@@ -26,9 +26,13 @@
 # module below through the real production prepare step and requires it to build. A module listed
 # here that the archive does not carry fails that test rather than reaching a model.
 #
-# The `# --- heading ---` lines are the groups the catalogue's `libraries` section renders, which
-# is what the system prompt shows. `packages/gg-sandbox-swift/tools/signatures.py` reads this file
-# and refuses a module under no heading.
+# The `# --- heading ---` lines are the groups the catalogue's `libraries` section renders, and
+# that section is what gg quotes back to a model on a COMPILE FAILURE. No system prompt carries a
+# package inventory any more: the one mistake this set prevents — a program that `import`s a module
+# this arm does not carry — is a mistake the compile DETECTS, so the set is delivered on the turn
+# that made it rather than read on every turn by a program that imports nothing.
+# `packages/gg-sandbox-swift/tools/signatures.py` reads this file and refuses a module under no
+# heading.
 
 # --- Collections and algorithms, vendored ---
 Collections

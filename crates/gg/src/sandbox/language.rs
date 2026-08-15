@@ -518,10 +518,13 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// A whole **program** that lists each module in `modules` and opens a documentation view of
     /// each name in `docs`, as this language spells and structures it.
     ///
-    /// It is gg's [opening turn](crate::bootstrap): the program is prepared, run, and then pushed
-    /// into the agent's window as the assistant message the session opens on. So the first example
-    /// of its own output a model reads is a program that provably ran, and the documentation beside
-    /// it was placed by that program's own calls rather than by gg reaching around it.
+    /// It is gg's [opening turn](crate::bootstrap): the program is pushed into the agent's window as
+    /// the assistant message the session opens on, and *then* prepared and run. That order is the
+    /// window's rather than the work's convenience — the reply comes first and everything its own
+    /// calls placed comes after it, which is how a transcript reads when a turn really happened. So
+    /// the first example of its own output a model reads is a program that provably ran, and the
+    /// documentation beside it was placed by that program's own calls rather than by gg reaching
+    /// around it.
     ///
     /// Two groups, in the order the model reads them: every search first, then every documentation
     /// view. Each search is a **whole-module lookup** rather than a query — an empty query string,

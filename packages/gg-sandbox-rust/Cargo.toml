@@ -58,7 +58,10 @@ wit-bindgen = { version = "0.60", default-features = false }
 #
 # The `# --- heading ---` lines are MACHINE-READABLE: `tools/signatures.py` groups the catalogue's
 # `libraries` section by them, so what a model is told it may use is reflected out of the file that
-# decides the set. Add a crate under a heading, rebuild, and the prompt says so.
+# decides the set. That section reaches a model on a COMPILE FAILURE and nowhere else — no system
+# prompt carries a package inventory, because the one mistake this set prevents is a `use` of a
+# crate this arm does not carry, and that is a mistake `rustc` detects on the turn that made it.
+# Add a crate under a heading, rebuild, and the next such refusal says so.
 
 # --- Text and parsing ---
 # The crate a Rust author reaches for the moment a `str::contains` is not enough. Its own

@@ -23,7 +23,7 @@ each part of it became.
 | [`csharp-version.sh`](csharp-version.sh) | every toolchain release this arm is pinned to |
 | [`src/Gg/`](src/Gg/) | the **SDK** a model's program is compiled against, and the documentation comments every word a model reads is reflected out of |
 | [`Sources/`](Sources/) | the guest's C: the shell, the bridge, and the interpreter trampolines |
-| [`libraries.txt`](libraries.txt) | the namespaces this arm says a program may reach, grouped as the prompt shows them |
+| [`libraries.txt`](libraries.txt) | the namespaces this arm says a program may reach, grouped as the catalogue renders them |
 | [`build.sh`](build.sh) | builds the guest into `$GG_ARTIFACTS_OUT_DIR` |
 | [`signatures.sh`](signatures.sh) | reflects the catalogue out of the SDK, with Roslyn, into `$GG_SIGNATURES_OUT_DIR` |
 | [`tools/`](tools/) | the reflector `signatures.sh` runs and the identity table it reads, plus [`Parse.cs`](tools/Parse.cs) — the parse-only Roslyn driver gg builds and runs on a rejected program, to tell a typo from a program written against the wrong surface |
@@ -137,9 +137,16 @@ compiled to wasm.
   wasi build ships the types as ones that throw `PlatformNotSupportedException`. Measured,
   not assumed — `csharp.substrate.test.rs` drives it — and nothing gg can do restores it.
 
-## What is not built yet
+## State: registered
 
-The **registration**: an enum variant, a registry arm, a healing dialect, two prompt templates and
-the console's rows — and, under it, code modules. See
-`crates/gg/src/sandbox/language/csharp.rs` for what each of those needs and why this arm must not be
-registered before them.
+`csharp` is a value an operator configures, and the whole arm is in the tree: the guest and its
+build, the SDK carried in gg's binary, the signature catalogue and the Roslyn reflection that
+produces it, `csc` on the turn path with the two failures it tells apart, code modules, and
+end-to-end execution through gg's own linker, membrane and store. So is the registration this
+section used to list as outstanding — the enum variant, the registry arm, the healing dialect, this
+arm's gated language segment of the two shared prompt templates
+(`crates/gg/templates/system-code.hbs` and `crates/gg/templates/code-nothing-shown.hbs`, which every
+language reaches its own paragraphs of through an `eq` on `language.id`), the `bootstrap_program`
+that writes the program gg's opening turn runs, and the console's rows. See
+`crates/gg/src/sandbox/language/csharp.rs` and its siblings for what each of those is and why it is
+shaped the way it is.

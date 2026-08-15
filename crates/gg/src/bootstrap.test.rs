@@ -1,7 +1,7 @@
 //! Tests for the **synthesized opening turn** — the program gg writes on an agent's behalf and
 //! actually runs.
 //!
-//! Four properties, and each of them is a way the bootstrap could be present and useless:
+//! Five properties, and each of them is a way the bootstrap could be present and useless:
 //!
 //! 1. **It runs.** On every registered arm, the program gg generates prepares, executes, and leaves
 //!    a listing of every granted module and a documentation view of every bootstrap call in the
@@ -12,6 +12,9 @@
 //! 3. **A failure of it is gg's**, and it refuses the run rather than opening a model on a window
 //!    that never got its surface.
 //! 4. **It is not a turn**: nothing here begins one, counts one, or times one.
+//! 5. **It is this agent's surface**, not some other agent's: two grants on one arm open on two
+//!    different function lists, which is the property the prepared-program cache could silently
+//!    break.
 //!
 //! # Why the per-arm run is eleven tests rather than one loop
 //!
@@ -97,9 +100,18 @@ fn programs(ctx: &ContextModel) -> Vec<String> {
 /// left behind.
 async fn seed(id: GgProgramLanguage) -> (ContextModel, Result<usize, String>) {
     let (capabilities, operations) = grant();
+    seed_granted(id, &capabilities, &operations).await
+}
+
+/// The same, for an agent granted `capabilities`/`operations` rather than the whole surface.
+async fn seed_granted(
+    id: GgProgramLanguage,
+    capabilities: &[String],
+    operations: &[OperationId],
+) -> (ContextModel, Result<usize, String>) {
     let mut ctx = code_model();
-    let mut docs = DocsRuntime::new(capabilities.clone(), EndingRole::Standard, &operations, id);
-    let placed = seed_bootstrap(&mut ctx, &mut docs, agent(&capabilities, &operations)).await;
+    let mut docs = DocsRuntime::new(capabilities.to_vec(), EndingRole::Standard, operations, id);
+    let placed = seed_bootstrap(&mut ctx, &mut docs, agent(capabilities, operations)).await;
     (ctx, placed)
 }
 
@@ -254,15 +266,30 @@ async fn a_tool_calling_window_is_not_seeded() {
 /// scope for it to record a turn, a usage figure or a `CodeExecution` event with.
 #[tokio::test]
 async fn the_bootstrap_consumes_no_turn() {
-    let (ctx, placed) = seed(GgProgramLanguage::TypeScript).await;
-    assert!(placed.is_ok());
+    let (mut ctx, placed) = seed(GgProgramLanguage::TypeScript).await;
+    let placed = placed.expect("the bootstrap runs");
+    let seeded = ctx.items().len();
+
+    // The loop's first turn, opened after the seeding exactly as `drive` opens it. Asserting
+    // against a window that never began one at all is what makes the bare `turn() == 0` check
+    // vacuous: a bootstrap that had called `begin_turn(1)` itself would leave its items on turn 1
+    // and the model's first reply on turn 1 as well, and nothing would be able to tell the two
+    // apart. Opening the turn *here* is what separates them.
+    ctx.begin_turn(1);
+    ctx.push_assistant(Some("the model's own first reply".to_string()), Vec::new());
+
+    let (bootstrap, model) = ctx.items().split_at(seeded);
     assert!(
-        ctx.items().iter().all(|item| item.turn() == 0),
-        "nothing the bootstrap pushed sits on a turn: {:?}",
-        ctx.items()
-            .iter()
-            .map(ContextItem::turn)
-            .collect::<Vec<_>>()
+        bootstrap.iter().all(|item| item.turn() == 0),
+        "the bootstrap's {placed} view(s) and its program sit before the first turn, not on it: \
+         {:?}",
+        bootstrap.iter().map(ContextItem::turn).collect::<Vec<_>>()
+    );
+    assert!(
+        model.iter().all(|item| item.turn() == 1),
+        "and the model's first reply is the first turn, so the run's turn 1 is the first thing \
+         the model said: {:?}",
+        model.iter().map(ContextItem::turn).collect::<Vec<_>>()
     );
 }
 
@@ -325,6 +352,92 @@ async fn seeding_twice_re_places_no_documentation_and_no_second_listing() {
         placed,
         listings.len(),
         "so what the second run placed is the listings alone"
+    );
+}
+
+/// Every search view's body, joined — the listing text a model actually reads on turn one.
+fn listings(ctx: &ContextModel) -> String {
+    ctx.items()
+        .iter()
+        .filter(|item| item.source() == GgContextSource::SearchResults)
+        .filter_map(|item| item.message().content.clone())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The fully-qualified names an agent granted `capabilities`/`operations` binds on `id` — the
+/// function list its opening window is supposed to be a listing of.
+fn bound_names(
+    id: GgProgramLanguage,
+    capabilities: &[String],
+    operations: &[OperationId],
+) -> Vec<String> {
+    let docs = DocsRuntime::new(capabilities.to_vec(), EndingRole::Standard, operations, id);
+    catalogue_functions(crate::sandbox::language(id))
+        .iter()
+        .filter(|function| function.alias_of.is_none() && docs.bound(function))
+        .map(|function| function.fqn.to_string())
+        .collect()
+}
+
+/// **Two agents on one arm, granted differently, open on different function lists.**
+///
+/// The opening turn is generated from the grant, so a narrower agent must open on a narrower
+/// surface — and this is the property [the prepared-program cache](super::PREPARED) is most able to
+/// break. That cache is keyed by `(language, source hash)` and is consulted by every agent in the
+/// run, so an arm whose generated source did not vary with the module list, or a key that collapsed
+/// two sources into one, would hand the second agent the first one's artifact: a restricted agent
+/// would open its session reading a listing of calls it does not hold and cannot make.
+///
+/// The wide agent is seeded **first** so the narrow one runs against a warm cache, which is the
+/// order that fails if the key is wrong. Both assertions are needed: that the narrow window omits
+/// every name the narrow agent does not bind, and that the wide window carries them — the first
+/// alone is satisfied by a bootstrap that listed nothing at all.
+#[tokio::test]
+async fn two_grants_on_one_arm_open_on_different_function_lists() {
+    let id = GgProgramLanguage::TypeScript;
+    let (wide_capabilities, wide_operations) = grant();
+    // One capability rather than all of them. The two calls the bootstrap itself makes are bound by
+    // where an instance stands rather than by a capability, so even this agent boots.
+    let narrow_capabilities = vec![
+        wide_capabilities
+            .first()
+            .expect("gg has at least one gating capability")
+            .clone(),
+    ];
+    let narrow_operations = capability_operations(narrow_capabilities.iter().map(String::as_str));
+
+    let wide = bound_names(id, &wide_capabilities, &wide_operations);
+    let narrow = bound_names(id, &narrow_capabilities, &narrow_operations);
+    let withheld: Vec<&String> = wide.iter().filter(|name| !narrow.contains(name)).collect();
+    assert!(
+        !withheld.is_empty(),
+        "the two grants bind the same functions, so this test would pass on a bootstrap that \
+         ignored the grant entirely"
+    );
+
+    let (wide_ctx, placed) = seed_granted(id, &wide_capabilities, &wide_operations).await;
+    placed.expect("the fully-granted agent's bootstrap runs");
+    let (narrow_ctx, placed) = seed_granted(id, &narrow_capabilities, &narrow_operations).await;
+    placed.expect("and so does the restricted agent's, against a warm cache");
+
+    let wide_listings = listings(&wide_ctx);
+    let narrow_listings = listings(&narrow_ctx);
+    for name in withheld {
+        assert!(
+            wide_listings.contains(name.as_str()),
+            "the fully-granted agent's opening window does not list `{name}`, which it binds"
+        );
+        assert!(
+            !narrow_listings.contains(name.as_str()),
+            "the restricted agent opened on `{name}`, which it does not bind — its window is \
+             another agent's"
+        );
+    }
+    assert_ne!(
+        programs(&wide_ctx),
+        programs(&narrow_ctx),
+        "two grants that list different modules are two different programs"
     );
 }
 

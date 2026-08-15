@@ -34,8 +34,10 @@ of them are bound into a program's scope, and therefore which a model is ever sh
 Its documentation is **the** documentation. Every docstring on a catalogued function, argument, type
 and type member in this package is reflected by `tools/signatures.py` into the
 `python.signatures.json` that `crates/gg/build.rs` writes into its own `OUT_DIR`, which is what gg
-renders the system prompt and every documentation view from. There is nowhere else for a description of this surface to live, which
-is what stops one from drifting.
+answers a documentation search and every documentation view from; the system prompt renders no
+signature at all, and takes only the module paths and the one-line brief each module introduces
+itself by. There is nowhere else for a description of this surface to live, which is what stops one
+from drifting.
 
 A docstring's **first line is its brief** and everything after the blank line is its detail, which is
 PEP 257's own shape and the shape every arm's catalogue carries. The reflector refuses a first

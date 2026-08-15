@@ -100,8 +100,10 @@ express, such as an options object that arrived as a bare number, a negative
 surface obeys are on [the agent surface](/gg/languages/agent-surface/).
 
 The catalogue is reflected out of those same declarations by `tsc`'s declaration
-emit, so the signatures the prompt renders, the signatures a documentation view
-answers with, and the signatures the check enforces are one set.
+emit, so the briefs the
+[opening turn](/gg/responses-as-code/views/#the-opening-turn)'s search listings
+carry, the signatures a documentation view answers with, and the signatures the
+check enforces all come off one set of declarations.
 
 ## The type check
 

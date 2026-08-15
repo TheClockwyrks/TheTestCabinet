@@ -1,122 +1,162 @@
 # Handoff: one language-agnostic gg prompt + an opening turn that executes
 
 **Branch:** `gg/language-agnostic-prompt` (cut from `rel/v0.7.0` at `e1cce943d`).
-**Design:** [`gg-prompt-design.md`](gg-prompt-design.md) in this repo root — authoritative, read it first.
-**State:** the implementation's first pass is complete and **compiles**. It is **not verified**.
+**Design:** [`gg-prompt-design.md`](gg-prompt-design.md) in this repo root —
+authoritative, read it first.
+**State:** the design is **implemented and verified against every gate the repo
+has**. What is left is the owner's review of two judgement calls (below), and the
+separate branch ruling 1 describes.
 
 ---
 
 ## What is true right now
 
-`cargo check -p test-cabinet-gg --all-targets` is clean, and the commit's pre-commit hooks passed:
-`cargo fmt --check`, **`cargo clippy` with warnings denied**, `cargo doc` with warnings denied,
-and markdownlint.
+Every gate green, on the whole tree rather than on the crate:
 
-**No test has been run**, and neither has `gen:contract` or the ui suite. The work
-was produced by six parallel agents over disjoint files; the integration pass that reconciles their
-seams, runs the gates and fixes the fallout **never started**. Treat every claim below as "written,
-not proven".
+| Gate | Result |
+| --- | --- |
+| `cargo fmt --all --check` | clean |
+| `cargo clippy --workspace --all-targets -- -D warnings` | clean |
+| `cargo doc -p test-cabinet-gg --no-deps` (warnings denied) | clean |
+| `cargo nextest run --workspace` | green |
+| `cargo test --workspace --doc` | green |
+| `npm run -w packages/ui test` | green |
+| `npm run lint:specs` (markdownlint + cspell) | 0 errors, 1252 / 1815 files |
+| `gen:contract` + `contract-drift.sh` | regenerated and committed |
 
-## What landed
+The prior handoff predicted a long list of test failures from gates encoding the
+deleted design. **None of them failed** — those gates had already been rewritten
+to the new invariant in `43d0e8b32`. What actually failed was four prompt gates,
+and only after the policy repairs below.
 
-- **The eleven `system-code.*.hbs` are one `system-code.hbs`** (410 lines), and the eleven
-  `code-nothing-shown.*.hbs` are one `code-nothing-shown.hbs` (37 lines). A language reaches its
-  own segment through an `eq` helper on `language.id`; the context carries `language.{id,
-  displayName,checker}` and per-skill `carriesCode` / `carriesOnUseScript` flags.
-- **`PromptDialect` and `ProgramLanguage::prompt()` are deleted**; both templates are registered in
-  `prompts.rs`'s shared `TEMPLATES`, and `default_system_prompt_template_code()` lost its language
-  parameter.
-- **`bootstrap.rs` is rewritten** (+701 lines) to *execute*: it generates a whole program through
-  the new `ProgramLanguage::bootstrap_program(modules, docs)`, prepares it through a source-keyed
-  cache, runs it on `spawn_blocking` via `sandbox::run_prepared_program` against a `BootstrapApi`
-  that implements `search_docs` and `open_docs_view` for real and refuses everything else, and
-  routes every failure into `setup_broke` (fault latch + `STATUS_INTERNAL_ERROR`).
-- **All eleven arms + the fixture implement `bootstrap_program`.**
-- **`ContextModel::open_search_view` takes a selector**, so the bootstrap's per-module listings
-  survive instead of superseding one another under the single constant selector.
-- **`scripts/gen-contract.mjs`, `packages/run-record`, `GgAgentEditor.tsx`** dropped the
-  per-language template map, and the docs site was updated across `gg/prompts.md`,
-  `gg/languages/*.md`, `gg/languages/registration.md` and `gg/responses-as-code/views.md`.
+## What the first pass got wrong, and what fixed it
 
-## What is left, in order
+The templates went out with **five statements a model reads that are false
+against gg's own source**. Each was verified in the source before being changed,
+and each is now covered by the gate that should have caught it:
 
-1. **Integration.** Run `cargo clippy --workspace --all-targets -- -D warnings` and
-   `cargo test -p test-cabinet-gg`. Expect failures in the gates that encode the deleted design —
-   `sandbox/language.test.rs`'s pairwise `assert_ne!` on templates, its per-arm
-   `system-code.<id>` name assertion and its JavaScript-is-not-TypeScript assertion;
-   `prompts.spellings.test.rs`'s `judged_against`; `prompts.test.rs`'s `REQUIRED_SECTIONS`,
-   libraries and TypeScript-only assertions; `ruby.test.rs:33`; `cpp.surface.test.rs:723`.
-   Clippy and `cargo doc` are already green, so this is a test-semantics pass, not a compile pass.
-   Fix the tests to the NEW invariant — do not weaken a gate to make a suite pass.
-2. **The just-in-time debt.** Design §2.3 deletes the `{{#if libraries}}` section from the prompt
-   on the strength of a compile failure's feedback naming the arm's available set from
-   `catalogue().libraries`. **That feedback change was never written.** Until it is, nine arms lost
-   information and gained nothing. Check the templates agent's report for anything else it marked
-   OWED TO JUST-IN-TIME.
-3. **`npm run gen:contract` + `bash scripts/ci/contract-drift.sh`**, and commit the regenerated
-   `packages/run-record/src/gg-system-prompt.ts`. CI fails on an uncommitted regeneration.
-4. **The new gates** (design §2.5, none written yet): the opening turn executes and places its
-   views on a compiled arm and an interpreted arm; it consumes no turn and emits no per-turn
-   telemetry; every failure shape ends the run as an internal error; every arm's segment is at most
-   three paragraphs; **two agents on the same arm with different grants open on different function
-   lists** (this one was requested explicitly and covers the prepared-program cache).
-5. **Adversarial verification** over the prompt's policy compliance, the bootstrap's turn
-   accounting and failure paths, and stale references across the tree.
+1. **"give it either a prompt to work from or an issue to implement — one or the
+   other."** `spawn_subagent` (`agent.rs:4569`) refuses a call with no `prompt`,
+   and board issues auto-dispatch to their own top-level agents rather than being
+   hand-dispatched. A model following that sentence earned a guaranteed
+   `invalid-argument`.
+2. **"You can read a workspace file, which arrives as a view of it."** A read
+   hands text to the program and opens nothing; `views.open_file` is the call
+   that adds the view (`sandbox/membrane/views.rs:13-19`). The sentence
+   contradicted the prompt's own load-bearing rule three lines above it.
+3. **"fails when it runs, naming the capability it needed."** The membrane's
+   refusal is `` `{spelled}` is not available. `` and nothing more, and
+   `membrane.rs:982-997` says at length that naming the capability is
+   deliberately withheld. The prompt promised the one sentence the membrane
+   refuses to write.
+4. **"Hand over once per turn: the first hand-over is the one that runs."**
+   `MAX_PROGRAM_CHAIN` is 4 and the **last** program in the chain is the turn's
+   (`agent.code.rs:1396,1409`). Wrong on both counts, and the error that reports
+   the ceiling already carries the number.
+5. **"No function is named anywhere in it."** Two paragraphs later the same
+   template renders `` Call `{{ending.finish}}` ``. A false absolute standing
+   next to an instruction to call `finish` invites a model to doubt the ending
+   call.
 
-Deliberately **not** on this list, and deliberately not lost: docviews do not say how to import a
-symbol (see the audit below). That gap pairs with the contract inversion in ruling 1 rather than
-with this branch — it costs nothing while gg still does the importing, and becomes load-bearing the
-moment it stops. Do it there, not here.
+Alongside those, the policy worklist §2.4 left undone: narrative provenance
+prose, three host-injection mechanics (Java/Kotlin import lifting, PureScript's
+`Main` rename), two "prefer X" instructions, a "never a second overload"
+absence, a "the wire" protocol detail, the ten-item "everything Rust allows"
+reassurance list, and the just-in-time line-and-column promise.
 
-The workflow that produced this can be resumed rather than re-authored:
+**Three gates fired and were right; I reverted to them rather than weakening
+them:**
 
-```
-Workflow({scriptPath: "/home/vscode/.claude/projects/-workspaces-the-test-cabinet/5acdefbd-9e95-475d-92c4-968c7cc9b39c/workflows/scripts/gg-language-agnostic-prompt-wf_594e2094-3ab.js"})
-```
+- `a_read_only_memory_holder_is_told_the_memories_are_not_its_own` — the audit
+  read "another agent's memories" as a need-to-know violation. The gate's own doc
+  explains it is deliberate.
+- `every_language_prompt_states_the_rules_a_program_runs_under` —
+  `REQUIRED_RULES` wants the ending stated as `revoked`; the tightened sentence
+  had dropped the word.
+- `the_nothing_shown_notice_says_a_view_is_the_only_channel_back` —
+  de-duplicating the notice had dropped "A view is the only way to see
+  anything", which is the notice's whole point.
 
-Its Build phase is done; start it at Integrate. (The prior run id is `wf_594e2094-3ab`, but a
-resume only replays cached agents within the same session, so on a fresh session re-run the later
-phases directly.)
+**One audit finding I declined:** rewording `Reading images is supported.` The
+wording is shared with `system-tools.hbs`, where it is correct — in tool-calling
+mode a read really does show the picture — and diverging the two modes churns six
+assertions to replace a vague sentence rather than a false one. The
+verified-false half ("arrives as a view of it") is gone.
 
-## Owner rulings made during this work
+## The two defects the bootstrap audit found
 
-1. **Land this change first, then invert the program contract.** See
-   [[gg-programs-are-whole-programs]] in the memory directory. A gg program must be **whatever
-   bytes the model sent, compiled as-is** — no wrapper, no import hoisting, no scope injection. The
-   agent writes the entry point its language requires *and* its own imports, including the SDK's.
-   Violators found: Rust (`rust.source.rs:104` `wrap` + `refuse_main`), Java
-   (`java.source.rs:138`, synthesizes `public final class`), TypeScript/JavaScript
-   (`typescript.prepare.rs:68`, evaluated as a function body), Kotlin (`kotlin.source.rs:106`,
-   hoists imports). Clean: C++, Swift, PureScript, Python, Ruby, C#. **Scope injection must go on
-   all eleven arms**, not only those five — `-include-pch`, `global using`, `@_exported import` and
-   pre-bound namespaces are the same defect.
-2. **Consequence for this branch:** nine of the eleven language segments currently say some form of
-   "gg's own surface needs no import", which is true today and false after that change. The
-   segments and the module list's `import` field get one more pass then.
+Both are real, both are fixed, and **both fixes are judgement calls the owner
+should confirm**:
 
-## Spec-consistency audit — cut short, findings so far
+1. **`setup_broke` told operators a falsehood.** It emitted *"This is a gg
+   defect, not a problem with the configuration"* — but two of its three callers
+   are answers to a *configuration*: a system-prompt override that will not
+   render is the operator's Handlebars, and the bootstrap now runs a real program
+   under the operator's own `SandboxLimits`, so a `maxMemoryBytes` under the
+   guest engine's floor ends the whole run under that sentence. It now reads *"gg
+   could not stand this agent up as it is configured"*, which is true of all
+   three, and the reasoning is written into the doc comment. **The blast radius
+   is unchanged and deliberate** — the run still ends — because an agent that
+   never got its surface produces a tree indistinguishable from one that had it
+   and ignored it.
+2. **The module listings do not survive a compaction, and the module doc claimed
+   they did.** They are search views (`Retention::Ephemeral`), and
+   `compaction::restore_docviews` re-derives the documentation band only. So a
+   compacted window keeps the two discovery docviews and loses the surface
+   listing they were opened beside. The doc now says so, and argues why it is a
+   cost rather than a trap — the two that survive are the two needed to find the
+   rest again. **If the owner disagrees, the fix is to re-derive the bootstrap's
+   listings at a compaction boundary**, and that is a design change, not a doc
+   change.
 
-Checked against the external responses-as-code specification this design descends from:
+The audit's other findings were cosmetic or unreachable, and it returned a clean
+bill on turn accounting, every failure path, the context/docs move including the
+`JoinError` path, the prepared-program cache's soundness, the search-view
+selector, and `bootstrap_keys`.
 
-- **Function docview pulls in type docviews, one level only — IMPLEMENTED.** `DocViewTypes` is
-  `Off` / `ReturnOnly` (default) / `ReturnAndParameters`, per agent via the `docViewTypes` param;
-  `docs.rs:120-126` states explicitly that it is not a depth and that a type view never opens
-  another type view. `names_a_signature` (`docs.rs:722`) is the depth-one test and deliberately
-  does not read a parameter's inline fields.
-- **Docviews list how to import a symbol — ABSENT.** A function's docview body (`assemble`,
-  `docs.rs:694`) is signature lines + per-parameter descriptions + prose. A type's (`declare`,
-  `docs.rs:394`) is the declaration + prose + a line per member + the member functions the agent
-  may call. **Neither names the module, and neither carries an import line.** The module is only
-  inferable from the FQN key. `ModuleDoc.import` / `ModuleView.import` exist
-  (`sandbox/signatures.rs:226,997`) but are `None` on every registered arm and marked
-  `#[allow(dead_code)]`, because gg currently does the importing — see ruling 1. **These two
-  changes belong together:** the moment agents must write real imports, the docview has to say what
-  to write.
+## Gates added on top of the design's §2.5 list
 
-Not yet audited (the sweep was interrupted): which documentation generator each arm uses and
-whether all documentation comes from SDK source; whether the `first_sentence` derivation was
-deleted and a 120-character brief cap enforced; whether the register gate over the normalized
-catalogue exists; whether PureScript's docs name each parameter; whether the static-SDK inversion
-landed on TypeScript, JavaScript, Python and Ruby; and gg's deliberate divergence on docview
-placement (gg's band is append-only and never moves, where the spec says a docview sits immediately
-after the turn that opened it, like a text or file view).
+- **`two_grants_on_one_arm_open_on_different_function_lists`** — the cache guard
+  §2.5 asked for explicitly. The wide agent seeds first so the narrow one runs
+  against a warm cache, and every name the narrow agent does not bind must be
+  absent from its window.
+- **`the_bootstrap_consumes_no_turn` was vacuous** and now is not. It asserted
+  `turn() == 0` on a window where nothing ever calls `begin_turn`, so it would
+  have passed unchanged had the bootstrap emitted a full turn. It now opens turn
+  1 after seeding and asserts the two bands are separable.
+
+## Stale prose swept across the tree
+
+Three sweeps over `packages/` + `scripts/`,
+`apps/docs/src/content/docs/gg/`, and `crates/gg/` doc comments. The
+load-bearing ones: two references to `crates/gg/templates/system-code.cpp.hbs`, a
+file that does not exist; `sandbox/language.rs`'s `bootstrap_program` doc stating
+the wrong order (it is pushed, *then* run); `docs.rs`'s "there is no directory"
+doctrine, which the bootstrap now reverses by design; and ~30 places claiming the
+system prompt renders the library set or the signature catalogue.
+`python.substrate.test.rs`'s test was renamed off "the prompt" and its one
+external reference moved with it.
+
+## What is left
+
+1. **Owner review of the two judgement calls above.**
+2. **Ruling 1 — invert the program contract.** See
+   [[gg-programs-are-whole-programs]]. A gg program must be whatever bytes the
+   model sent, compiled as-is. Violators: Rust (`rust.source.rs:104`), Java
+   (`java.source.rs:138`), TypeScript/JavaScript (`typescript.prepare.rs:68`),
+   Kotlin (`kotlin.source.rs:106`). Scope injection must go on **all eleven**
+   arms. **Consequence for this branch:** nine language segments say some form of
+   "gg's own surface needs no import", true today and false after that change;
+   the segments and the module list's `import` field get one more pass there.
+   **Docviews still do not say how to import a symbol** — `ModuleDoc.import` /
+   `ModuleView.import` exist but are `None` on every arm and
+   `#[allow(dead_code)]`. That gap costs nothing while gg does the importing and
+   becomes load-bearing the moment it stops, so it belongs to that branch, not
+   this one.
+
+Not audited, and outside this branch (they belong with the D1–D11 docs work):
+which documentation generator each arm uses; whether `first_sentence` was deleted
+and a 120-character brief cap enforced; whether the register gate over the
+normalized catalogue exists; whether PureScript's docs name each parameter; and
+whether the static-SDK inversion landed on TypeScript, JavaScript, Python and
+Ruby.

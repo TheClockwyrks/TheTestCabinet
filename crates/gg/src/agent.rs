@@ -8915,8 +8915,18 @@ async fn fire_post_compact(
 /// and is scored as though it were.
 ///
 /// So: the detail on this agent's stream, the run's [fault latch](crate::fault) raised so every
-/// other agent winds down at its next turn boundary, and [`STATUS_INTERNAL_ERROR`] — which keeps
-/// gg's defect out of the model's column of the run's attribution data.
+/// other agent winds down at its next turn boundary, and [`STATUS_INTERNAL_ERROR`] — which keeps a
+/// failure the model never touched out of the model's column of the run's attribution data.
+///
+/// **The message does not say whose fault it is**, because this seam cannot know. Two of the three
+/// things that end here are answers to a *configuration*: a system prompt override that will not
+/// render is the operator's Handlebars, and a [bootstrap](crate::bootstrap) program the sandbox
+/// refuses to start is very often the operator's own [`SandboxLimits`] — a `maxMemoryBytes` under
+/// the guest engine's floor stops every program this agent would ever run, gg's included. Telling
+/// an operator "this is a gg defect, not a problem with the configuration" over their own memory
+/// cap sends them to read gg's source about a number they set. The `detail` names what actually
+/// failed; this sentence adds only the part that is true of all three — that gg stops rather than
+/// substituting.
 fn setup_broke(
     agent: &Agent,
     emitter: &Emitter,
@@ -8928,9 +8938,9 @@ fn setup_broke(
     emitter.emit(log(
         "error",
         format!(
-            "{detail}. This is a gg defect, not a problem with the configuration: this agent's \
-             loop ends here — and the run with it — rather than running it under something other \
-             than what it was configured as."
+            "{detail}. gg could not stand this agent up as it is configured: this agent's loop \
+             ends here — and the run with it — rather than running it under something other than \
+             what it was configured as."
         ),
     ));
     limits.fault.in_agent(&agent.id, &agent.slot, &detail);

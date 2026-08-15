@@ -96,7 +96,7 @@ Running it by hand is for reading the emitted JSON, which is where a reflector b
 **The direction this arm used to be able to go wrong in is worth knowing about, because it
 is the reason `build.sh` and `signatures.sh` are wired the way they are.** The catalogue is
 reflected from the working tree's `src/`; a compile resolves `Gg` against the *tarball's*
-`libs/gg-sdk`. While the tarball was committed, an SDK edit reached the prompt on the next
+`libs/gg-sdk`. While the tarball was committed, an SDK edit reached the catalogue on the next
 build and the compile only when somebody remembered to re-cut it —
 `the_shipped_sdk_is_the_sdk_in_the_working_tree` existed to name the drifted file, and is
 deleted, because both are now cut from the same `src/` by the same `cargo build`. The

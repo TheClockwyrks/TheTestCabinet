@@ -20,9 +20,13 @@
 # package listed here that does not translate fails that test rather than reaching a model, and the
 # absences worth knowing about are recorded there as absences.
 #
-# The `# --- heading ---` lines are the groups the catalogue's `libraries` section renders, which is
-# what the system prompt shows. `packages/gg-sandbox-kotlin/tools/GgSignatures.kt` reads this file and
-# refuses a package under no heading.
+# The `# --- heading ---` lines are the groups the catalogue's `libraries` section renders, and that
+# section is what gg quotes back to a model on a COMPILE FAILURE. No system prompt carries a package
+# inventory any more: the one mistake this set prevents — a program written against a package this
+# arm does not carry — is a mistake the compiler DETECTS, so the set is delivered on the turn that
+# made it rather than read on every turn by a model that never writes an import.
+# `packages/gg-sandbox-kotlin/tools/GgSignatures.kt` reads this file and refuses a package under no
+# heading.
 #
 # NOTHING HERE NEEDS AN IMPORT LINE FOR THE FIRST GROUP: Kotlin's default imports already cover it in
 # every file, and gg's own surface needs none either, because this SDK's values are declared in the

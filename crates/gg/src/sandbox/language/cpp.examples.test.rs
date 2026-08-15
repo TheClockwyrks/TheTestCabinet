@@ -2,9 +2,9 @@
 //!
 //! # Why this gate exists, and why it exists *here*
 //!
-//! Two things gg renders contain C++ a model is invited to copy: this arm's responses-as-code system
-//! prompt (with the "your program showed you nothing" notice beside it) and its generated signature
-//! catalogue, whose prose is reflected out of the SDK's own documentation comments and rendered into
+//! Two things gg renders contain C++ a model is invited to copy: the responses-as-code system prompt
+//! as it renders for this arm (with the "your program showed you nothing" notice beside it) and this
+//! arm's generated signature catalogue, whose prose is reflected out of the SDK's own documentation comments and rendered into
 //! documentation views. Everything about those two that can be checked without a compiler already is
 //! — [`prompts::spellings`](crate::prompts) resolves every call *name* they quote against the
 //! catalogue, and every argument name beside one against that signature — and none of it can tell
@@ -65,8 +65,8 @@ fn cpp() -> &'static dyn ProgramLanguage {
     crate::sandbox::language(GgProgramLanguage::Cpp)
 }
 
-/// A context with every section this arm's prompt can render turned on, so no example is missed for
-/// living in a branch a narrower run does not take.
+/// A context with every section the prompt can render for this arm turned on, so no example is
+/// missed for living in a branch a narrower run does not take.
 ///
 /// Both ending roles are on at once, which no real run is: the template asks after each
 /// independently, and rendering both is how one pass covers all three ending spellings.

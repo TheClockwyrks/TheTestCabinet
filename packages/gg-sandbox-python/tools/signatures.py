@@ -1,9 +1,12 @@
-"""Emit the signature catalogue gg renders the Python arm's system prompt and doc views from.
+"""Emit the signature catalogue gg answers the Python arm's doc searches and doc views from.
 
-gg has to tell a model, every turn, what functions its program may call and what they do. The wrong
-way to do that is a hand-written list in the prompt template: it drifts away from the SDK silently,
-and a model shown a signature the sandbox does not have wastes a whole turn discovering that. So the
-list is REFLECTED out of the SDK's own declarations and docstrings instead.
+A model DISCOVERS what its program may call: gg's one system prompt names the modules this run
+granted and nothing else, the opening turn runs a program that lists each of them, and a search or a
+documentation view answers for everything after that. Every one of those answers has to describe the
+SDK the guest actually exports. The wrong way to do that is a hand-written list — in a prompt
+template or anywhere else — because it drifts away from the SDK silently, and a model shown a
+signature the sandbox does not have wastes a whole turn discovering that. So what is answered is
+REFLECTED out of the SDK's own declarations and docstrings instead.
 
 The pipeline:
 
@@ -44,9 +47,10 @@ reflector's whole job is to fail the build rather than emit a gap. Concretely:
 
 The catalogue carries one thing that is not a signature, on the same rule: the LIBRARY SET a program
 may import, read off the module-scope imports of `src/library.py` — the file that decides it, because
-`componentize-py` bakes that module's import closure and nothing else. The prompt renders that list,
-so what a model is told it may import is what the artifact was built with rather than a sentence
-somebody wrote once. See `libraries`.
+`componentize-py` bakes that module's import closure and nothing else. gg quotes that list back on a
+COMPILE FAILURE rather than putting it in a prompt — the mistake it prevents is one the compile
+detects — so what a model is told it may import is what the artifact was built with rather than a
+sentence somebody wrote once. See `libraries`.
 
 Usage:
     python tools/signatures.py --out-dir <dir>

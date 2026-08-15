@@ -24,7 +24,8 @@
 # crates/gg-sandbox-artifacts/ whose build script runs that arm's build.sh into its own OUT_DIR;
 # crates/gg/build.rs reflects the catalogues into its own; and crates/gg `include_bytes!`/
 # `include_str!`s the result. So the compiler a program is judged by, the guest it runs in and the
-# catalogue its prompt was written from all come out of the one checkout that compiled the host.
+# catalogue its documentation searches and views are answered out of all come out of the one
+# checkout that compiled the host.
 #
 # A regenerate-and-diff check answers "is the committed copy current?", and that question no longer
 # has a subject — which is a STRONGER guarantee than the gate was, not a weaker one: a gate finds

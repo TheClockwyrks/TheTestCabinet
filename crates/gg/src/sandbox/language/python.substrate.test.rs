@@ -565,17 +565,21 @@ print("still here")
 }
 
 #[test]
-fn the_embedded_guest_carries_every_library_the_prompt_names() {
+fn the_embedded_guest_carries_every_library_its_catalogue_declares() {
     // `componentize-py` bakes only the modules the entry module's import closure reached, so the
     // library set is a property of the ARTIFACT rather than of a policy — and one nothing would
     // notice losing.
     //
     // What makes it checkable is that nothing hand-writes the set twice: `src/library.py` imports
-    // what the arm offers, the catalogue is reflected out of those imports, and the system prompt
-    // renders the catalogue. So the list driven in here is **the list a model is told about**, read
-    // out of the generated catalogue rather than typed out again — and a curated import quietly
-    // dropped in a rebuild fails here rather than months later inside a run, on the turn a model
-    // spends discovering that a module the prompt promised is not there.
+    // what the arm offers, and the catalogue is reflected out of those imports. So the list driven
+    // in here is **the list gg claims this arm carries**, read out of the generated catalogue rather
+    // than typed out again — and nothing tells a model that list up front. It reaches one only as
+    // the tail of a compile failure (`agent.code.rs`'s compiler-error body, which appends
+    // `library_set`), which this interpreted arm never renders; here the whole of what a model ever
+    // learns about a missing module is the guest's own `ModuleNotFoundError`, on the turn its
+    // program imported one. So a curated import quietly dropped in a rebuild fails here rather than
+    // months later inside a run, on the turn a model spends discovering that a module the catalogue
+    // declares is not in the component.
     let named: Vec<&str> = python()
         .catalogue()
         .libraries
@@ -585,7 +589,7 @@ fn the_embedded_guest_carries_every_library_the_prompt_names() {
     assert!(
         named.len() > 50,
         "the generated catalogue names {} libraries, which is too few to be the curated set — the \
-         prompt is describing a sandbox nobody has",
+         catalogue is describing a sandbox nobody has",
         named.len()
     );
     let outcome = run(&format!(
@@ -598,9 +602,10 @@ for name in {named}:
         missing.append(name)
 print("missing", missing)
 
-# Deliberately absent, and the prompt says so by name: a WASI component cannot spawn a process,
-# nothing here is asynchronous, and these C extensions are not in this CPython. Their absence is a
-# loud `ModuleNotFoundError` rather than an import that succeeds and a call that fails.
+# Deliberately absent, and the catalogue leaves every one of them out: a WASI component cannot
+# spawn a process, nothing here is asynchronous, and these C extensions are not in this CPython.
+# Their absence is a loud `ModuleNotFoundError` rather than an import that succeeds and a call that
+# fails.
 for name in ["subprocess", "multiprocessing", "asyncio", "ssl", "ctypes"]:
     try:
         __import__(name)

@@ -399,8 +399,9 @@ async fn an_unreadable_healing_param_refuses_the_launch() {
 /// the transcript stored it.
 ///
 /// The last rather than the first, and that is not incidental. A code agent's window opens with a
-/// synthesized assistant turn of gg's own: the [bootstrap](crate::bootstrap) program that opens the
-/// documentation of the calls discovery is made of. It sits ahead of every reply the model has
+/// synthesized assistant turn of gg's own: the [bootstrap](crate::bootstrap) program that lists
+/// every module the run granted this agent and opens the documentation of the two calls discovery is
+/// made of. It sits ahead of every reply the model has
 /// actually sent, so reading the first assistant message here would read gg's program and never the
 /// model's.
 fn assistant_message(request: &[Message]) -> String {

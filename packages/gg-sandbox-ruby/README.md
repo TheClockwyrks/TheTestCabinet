@@ -50,9 +50,10 @@ toolchain.
 | `src/shim.js` | the entry module: it imports the runtime, the libraries and the SDK at top level (so `wizer` snapshots them), publishes the membrane where `GG::Wire` can reach it, and owns `run`. |
 
 Its documentation is **the** documentation. Every YARD comment on a catalogued method,
-parameter, type and type member is what gg renders the system prompt and every
-documentation view from; there is nowhere else for a description of this surface to live,
-which is what stops one from drifting.
+parameter, type and type member is what gg answers a documentation search and every
+documentation view from; the system prompt renders no signature at all, and takes only the
+module paths and the one-line brief each module introduces itself by. There is nowhere else
+for a description of this surface to live, which is what stops one from drifting.
 
 ## Why there is a second component at all
 

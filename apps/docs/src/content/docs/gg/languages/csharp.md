@@ -158,7 +158,7 @@ refuses is not executed, and that a call the run withheld compiles and fails
 when it runs. The referenced namespace set is carried by a compile failure
 rather than by the prompt.
 
-Source gg synthesizes for this arm is written in the same dialect:
+Source gg synthesizes for this arm is written in the same idiom:
 `Gg.Views.OpenFile("src/Program.cs");`, with a window passed as the call's own
 `offset:` and `limit:` arguments.
 

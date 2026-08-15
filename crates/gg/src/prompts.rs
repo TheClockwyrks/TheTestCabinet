@@ -65,7 +65,7 @@
 //! [`render_memories`]) are then pure **state** — a heading and the current items — rather than
 //! re-teaching the tools on every turn they are refreshed.
 //!
-//! # The prompt names no functions at all — the model discovers them
+//! # The prompt names no functions at all — the opening turn hands them over
 //!
 //! Under [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/views/) the prompt names
 //! **no call**. Each capability section says that the agent has the capability, what it is for and
@@ -73,12 +73,19 @@
 //! [docs carve-out](crate::docs), reflected from the SDK's own declarations, and are reached by
 //! searching for them and opening a documentation view.
 //!
+//! That is not the same as withholding the surface, and it stopped being the same the moment the
+//! template went language-agnostic. gg makes the first search **itself**: the
+//! [bootstrap](crate::bootstrap) opens every code session by running a program, in the agent's own
+//! language, that looks up each granted module whole — so a model reads every function it may call,
+//! with a one-line brief each, before its first real turn. What it still has to go and get is a
+//! *signature*, by opening a documentation view of a name it has now seen.
+//!
 //! The one vocabulary the prompt does supply is the [capability modules](SystemContext::modules) a
 //! program's surface is divided into (`gg::files`, `gg.board`, `Gg.Memories`, …). That is
-//! deliberate and it is load-bearing: with no directory call and no function named anywhere, a
-//! module path is the agent's only entry point, and it turns the first hop of discovery from a
-//! ranking problem into an exact lookup — *show me this module*. Everything after it is search,
-//! briefs, and a documentation view.
+//! deliberate and it is load-bearing twice over: it is what the bootstrap's own lookups are keyed
+//! on, and it is what an agent falls back to for the rest of the session — a module path turns a
+//! lookup from a ranking problem into an exact one, *show me this module*, which is the same shape
+//! the opening turn was built out of.
 //!
 //! Two things follow for anyone editing a template. A sentence that quotes a call is not a stale
 //! sentence, it is a **banned** one — `prompts.spellings.test.rs` fails the build over it — because
@@ -475,11 +482,12 @@ pub struct SystemContext {
     /// The capability **modules** a code program's surface is divided into this run, each with the
     /// line its own declaration introduces it by — and **the only vocabulary the prompt supplies**.
     ///
-    /// Not the functions: those are discovered on demand, by searching for one and opening its
-    /// documentation, which is the whole point of the redesign. A module path is what makes that
-    /// safe rather than a guessing game — it is an exact lookup into the surface, so the first hop
-    /// of discovery cannot be lost to a ranking, and an agent that knows nothing else knows where to
-    /// start.
+    /// Not the functions: those are read out of the surface rather than the prompt, by searching for
+    /// one and opening its documentation, which is the whole point of the redesign. A module path is
+    /// what makes that an exact lookup rather than a guessing game — and gg spends the first one on
+    /// the agent's behalf, since the [bootstrap](crate::bootstrap) looks up each of these modules
+    /// whole on the opening turn. So an agent that knows nothing else has already been shown what
+    /// every module here holds, and knows the path to ask for it by again.
     ///
     /// Empty on the tool-calling path, where the tools are in the request and there is no module
     /// structure to name; on the code path it always carries at least the module that puts material

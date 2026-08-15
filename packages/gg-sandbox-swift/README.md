@@ -153,7 +153,7 @@ The split every compiled arm here has. The toolchain is ~835 MB even pruned, so 
 gg run image (`containers/gg-toolchains/Dockerfile`). These go the other way because they are a
 function of gg's own wire and gg's own surface, and gg is copied as a single file into an ephemeral
 run container whose image was built separately — so an SDK that lived in the image could be a
-different vintage from the prompt describing it.
+different vintage from the catalogue describing it.
 
 **The pin is hard now, and it was not before.** A `.swiftmodule` is a compiler-version-private
 format, so the release that reads this arm's SDK must be the release that wrote it. A bump to
@@ -214,7 +214,7 @@ scripts/gg-signatures.sh                   # all eleven, into target/gg-signatur
 There is nothing to commit and nothing to remember. `crates/gg-sandbox-artifacts/swift` runs
 `build.sh` on every build of gg whose declared inputs moved, and `crates/gg/build.rs` reflects the
 catalogue out of `Sources/SDK/` on the same build — so an edit to the SDK reaches both the archives a
-program is compiled against and the prompt describing them, together, and neither can be the older
+program is compiled against and the catalogue describing them, together, and neither can be the older
 of the two. `swift.compile.test.rs` used to fail by name when the archive's copy of the shell was not
 this checkout's; that assertion is gone, because the state it named is not one this repository can be
 in. Running either script by hand is for reading what it emitted.

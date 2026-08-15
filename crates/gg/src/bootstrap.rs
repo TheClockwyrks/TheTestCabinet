@@ -58,13 +58,21 @@
 //!    re-opens the keys the last instance held, and a re-open of an open key is a no-op — so running
 //!    the bootstrap first means the restored set folds into it rather than duplicating it.
 //!
-//! It survives the two boundaries the same way every documentation view does, and for the same
-//! reason: a docview's body is a pure function of its key, so a [compaction](crate::compaction)
-//! re-derives it and [persistence](crate::persistence) records the key alone. What does *not*
-//! survive a compaction is the synthesized program itself, which is ordinary
-//! [ephemeral](crate::context::Retention::Ephemeral) history — and that is right. Its job is to be
-//! the model's first example of its own output; by the time a window is full the model has written
-//! a hundred better ones, while the documentation it opened is still the thing being read.
+//! **The two documentation views** survive the two boundaries the way every documentation view
+//! does, and for the same reason: a docview's body is a pure function of its key, so a
+//! [compaction](crate::compaction) re-derives it ([`restore_docviews`](crate::compaction::restore_docviews))
+//! and [persistence](crate::persistence) records the key alone.
+//!
+//! **The module listings do not, and neither does the program.** Both are ordinary
+//! [ephemeral](crate::context::Retention::Ephemeral) history — a listing is a
+//! [search view](crate::context::ContextModel::open_search_view), and nothing re-derives the search
+//! band across a compaction — so a compacted window keeps the two docviews and loses the surface
+//! they were opened beside. That is deliberate on both counts, and it is the same argument twice.
+//! This turn's job is to get an agent from a prompt that names no function to a model that can find
+//! one, and it has done that job by the time a window is full: the model has written a hundred
+//! better programs than gg's, and has opened documentation views of the calls it actually uses. The
+//! two that survive are the two it needs to find any of the rest again — which is what makes losing
+//! the listings a cost rather than a trap.
 //!
 //! A **carried** window — an `exec` successor or a `fork` that kept its history — is not re-seeded,
 //! on the same terms as every other opening step: it already holds these views, and pushing a second

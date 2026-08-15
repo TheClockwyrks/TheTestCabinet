@@ -401,9 +401,9 @@ pub fn restore_text_views(context: &mut ContextModel, views: &[OpenTextView]) ->
 ///
 /// Returns how many views actually **arrived**, which is not the same as how many keys were tried
 /// and is the number the [note](restore_note) reports to an operator. Every code agent's saved desk
-/// holds the [bootstrap](crate::bootstrap) key — the bootstrap is seeded first of all the opening
-/// steps and this restore runs last of them, so by the time it reaches that key the view is already
-/// in the window — and counting the no-op would tell the operator a view came back when nothing did.
+/// holds the [bootstrap](crate::bootstrap) keys — the bootstrap is seeded first of all the opening
+/// steps and this restore runs last of them, so by the time it reaches them those views are already
+/// in the window — and counting the no-ops would tell the operator views came back when nothing did.
 /// With a longer desk the note would be over by exactly the number of bootstrap keys.
 pub fn restore_docviews(context: &mut ContextModel, keys: &[String], docs: &DocsRuntime) -> usize {
     let mut restored = 0;

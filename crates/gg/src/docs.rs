@@ -8,11 +8,13 @@
 //! model reads their spellings out of the [bootstrap](crate::bootstrap) turn its session opens with,
 //! not out of the prompt.
 //!
-//! **There is no directory.** Nothing enumerates a module's functions, and that is a decision rather
-//! than an omission: a call that hands back a whole module defeats the point of making a model
-//! search for what it needs, since the cheapest way to find anything would be to dump the directory
-//! and read it. [`search`](DocsRuntime::search) is the only route in, and it is global — one query
-//! reaches every module at once, so nothing is discovered by already knowing where to look.
+//! **There is no directory call.** Nothing enumerates a module's functions under a name of its own,
+//! and that is a decision rather than an omission: [`search`](DocsRuntime::search) is the only route
+//! in, and it is global — one query reaches every module at once, so nothing is discovered by
+//! already knowing where to look. A whole-module listing is therefore a *shape* of that one call
+//! rather than a second one — an [empty query with a module filter](DocQuery), which is an exact
+//! lookup rather than a ranking — and it is the shape the [bootstrap](crate::bootstrap) uses to hand
+//! an agent every module it was granted before its first real turn.
 //!
 //! **Looking something up is deliberately not a capability.** Like [`finish`](crate::sandbox), it is
 //! a carve-out: no toolset offers it, no capability withholds it, and it is bound into every program's

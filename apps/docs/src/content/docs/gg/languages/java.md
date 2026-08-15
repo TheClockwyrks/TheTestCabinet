@@ -118,11 +118,12 @@ author.
 The library set is TeaVM's classlib, a subset of `java.base` plus the ThreeTen
 backport that makes `java.time` real. `packages/gg-sandbox-java/libraries.txt`
 declares it in groups, the catalogue's `libraries` section is reflected from
-that file, and the prompt renders it. The arm's surface tests hold the claim to
-the artifact: every declared package goes through the real javac and the real
-TeaVM, and a real class in each must compile and run. The subset is a subset by
-method as well as by class, so the absences a model would otherwise spend a turn
-discovering are named in the system prompt beside a working alternative.
+that file, and a compile failure quotes that section back group by group. The
+arm's surface tests hold the claim to the artifact: every declared package goes
+through the real javac and the real TeaVM, and a real class in each must compile
+and run. The subset is a subset by method as well as by class, and an absence of
+either kind is a located compile error at the model's own line, on the turn that
+reached for it.
 
 ## Failures
 

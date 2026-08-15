@@ -166,7 +166,7 @@ refuses comes back as diagnostics at the model's own line and column instead of
 running, and that a call the run withheld compiles and fails when it runs. The
 linked library set is carried by a compile failure rather than by the prompt.
 
-Source gg synthesizes for this arm is written in the same dialect:
+Source gg synthesizes for this arm is written in the same idiom:
 `try views.openFile("src/main.swift")`, with a window passed as the call's own
 `offset:` and `limit:` arguments.
 

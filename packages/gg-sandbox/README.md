@@ -31,7 +31,7 @@ checkout on the build that embeds them rather than out of copies somebody last r
 | Artifact | What it is |
 | --- | --- |
 | `typescript.component.wasm` (generated) | The baked component, `include_bytes!`d by the host out of `crates/gg-sandbox-artifacts/typescript`'s `OUT_DIR`. **~13.4 MiB**. |
-| `typescript.signatures.json` (generated) | The signature catalogue, `include_str!`d out of `OUT_DIR` and rendered into the system prompt. |
+| `typescript.signatures.json` (generated) | The signature catalogue, `include_str!`d out of `OUT_DIR`. It is what documentation search and every documentation view are answered out of; only its module paths and their one-line briefs reach the system prompt, which names no function at all. |
 | `javascript.signatures.json` (generated) | The same catalogue under a second language id. gg registers `javascript` as `typescript` with the type check removed — same component, same SDK, same signatures, annotations included — so the two arms differ only in whether a program is checked before it runs. There is deliberately no second `.wasm`. |
 | `typescript.tsc.js` (generated) | The compiler gg type-checks a model's program with, cut from the pinned `typescript`. **6.2 MB**, `include_str!`d and written out once per process. |
 | `typescript.lib.d.ts` (generated) | The ES2022 standard library, 57 files concatenated so a check opens one. |

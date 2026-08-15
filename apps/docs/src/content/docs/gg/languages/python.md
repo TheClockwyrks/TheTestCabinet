@@ -47,10 +47,11 @@ under the `# --- … ---` headings of that file, plus the pure-Python wheels
 `urllib.request` reaches `http://` only.
 
 The set is model-facing, so it is reflected rather than described. The reflector
-reads `library.py`'s module-scope imports with their headings, emits them as the
-catalogue's `libraries` section, and the system prompt renders that section
-group by group. What a model is told it may import must be what the component
-was built with, down to the dotted name.
+reads `library.py`'s module-scope imports with their headings and emits them as
+the catalogue's `libraries` section, whose names are what the component was
+built with, down to the dotted name. What a model learns the set from is the
+error that reports it: nothing on this arm reads a program before it runs, so an
+import of anything else raises the guest's own `ModuleNotFoundError`.
 
 ## The SDK
 

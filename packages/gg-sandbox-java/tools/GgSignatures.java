@@ -1178,11 +1178,11 @@ public final class GgSignatures implements Doclet {
     /**
      * A doc comment rendered as Markdown.
      *
-     * <p>The catalogue is read by a prompt template and by the console, both of which render
-     * Markdown, and every other arm's reflector emits it — so the one thing Java's documentation
-     * tooling does that theirs does not, which is speak HTML, is undone here. It walks the
-     * <b>tree</b> rather than the raw comment, so {@code {@code x}} is a node rather than a substring
-     * and a {@code <} inside one is not mistaken for a tag.
+     * <p>The catalogue is read by documentation search, by every documentation view and by the
+     * console, all of which render Markdown, and every other arm's reflector emits it — so the one
+     * thing Java's documentation tooling does that theirs does not, which is speak HTML, is undone
+     * here. It walks the <b>tree</b> rather than the raw comment, so {@code {@code x}} is a node
+     * rather than a substring and a {@code <} inside one is not mistaken for a tag.
      */
     private final class Markdown {
         private final StringBuilder out = new StringBuilder();

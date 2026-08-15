@@ -15,8 +15,9 @@
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
 //!   questions of: the fence tags, the two predicates, and the mask;
 //! * [`COMPONENT`] — the `componentize-js` guest, built by `gg-artifact-typescript`;
-//! * the **signature catalogue** — every signature the prompt renders and a documentation view
-//!   answers with, reflected out of that guest's SDK by `packages/gg-sandbox/signatures.sh` and
+//! * the **signature catalogue** — every signature a documentation search ranks and a documentation
+//!   view answers with, which is every signature a model ever reads, since the prompt renders none;
+//!   reflected out of that guest's SDK by `packages/gg-sandbox/signatures.sh` and
 //!   generated into this build's `OUT_DIR` rather than committed anywhere (see `crates/gg/build.rs`);
 //! * `typescript.tsc.js`, `.lib.d.ts`, `.globals.d.ts` and `.checker.json` — the `tsc` the check
 //!   runs, its standard library, the globals no SDK declaration covers, and what says which
@@ -49,10 +50,10 @@
 //!    gg's own located rendering, what refuses module syntax and top-level `await`, and what
 //!    notices the statements a program wrote after the one that ends it.
 //! 2. [`check`] runs `tsc` over the **unstripped** source against the SDK's own declarations. It is
-//!    what turns the signatures the system prompt shows from a contract the SDK enforces at run
-//!    time — an options object that arrived as a bare number, a misspelled function — into one the
-//!    model is told about before its program does any work. Measured end to end, the two passes
-//!    together take ~91 ms against a representative program.
+//!    what turns the signatures a documentation view showed the model from a contract the SDK
+//!    enforces at run time — an options object that arrived as a bare number, a misspelled function
+//!    — into one the model is told about before its program does any work. Measured end to end, the
+//!    two passes together take ~91 ms against a representative program.
 //!
 //! The cheap pass runs first, so a program with a syntax error costs a parse rather than a compiler,
 //! and every failure lands in the kind that names its cause: a typo is

@@ -82,8 +82,11 @@ gate.
 component and its build, the interpreter shim, the SDK, the signature catalogue and the
 reflection that produces it, the error reporting, the library set, end-to-end execution through gg's own
 linker, membrane and store, and — in `crates/gg/src/sandbox/language/python.rs` and its
-siblings — the `ProgramLanguage` implementation, the healing dialect and the two prompt
-templates. Its host half is small on purpose: preparing a Python program does **nothing**
+siblings — the `ProgramLanguage` implementation, the healing dialect, this arm's gated language
+segment of the two shared prompt templates (`crates/gg/templates/system-code.hbs` and
+`crates/gg/templates/code-nothing-shown.hbs`, which every language reaches its own paragraphs of
+through an `eq` on `language.id`), and the `bootstrap_program` that writes the program gg's opening
+turn runs. Its host half is small on purpose: preparing a Python program does **nothing**
 to it, because CPython is inside the component and is the first thing to read it.
 
 ## Layout
@@ -121,11 +124,13 @@ to it, because CPython is inside the component and is the first thing to read it
 
   It is also what the **model** is told, without anyone writing the list twice:
   `signatures.sh` reflects those module-scope imports (and the `# --- … ---` headings
-  they are grouped under) into the catalogue's `libraries` section, and the system
-  prompt renders it. Adding or removing an import here changes the prompt on the next
+  they are grouped under) into the catalogue's `libraries` section, which gg quotes back
+  on a **compile failure** — no system prompt carries a package inventory, because the one
+  mistake the set prevents is one the compile detects, and it is delivered where it was
+  detected. Adding or removing an import here changes what that failure quotes on the next
   **build**, with nothing to regenerate — and a name in the catalogue that the committed
-  component cannot import fails `the_embedded_guest_carries_every_library_the_prompt_names`,
-  which is the direction that can still go wrong: the prompt moves the moment the source
+  component cannot import fails `the_embedded_guest_carries_every_library_its_catalogue_declares`,
+  which is the direction that can still go wrong: the catalogue moves the moment the source
   does, and the component is the half that has to be rebuilt by hand to catch up.
 * **The whole WASI p2 surface** gg's host links: the clock, the RNG, the container
   filesystem preopened at `/`, the network, and the process environment. The
