@@ -1,8 +1,10 @@
 # Handoff: one language-agnostic gg prompt + an opening turn that executes
 
 **Branch:** `gg/language-agnostic-prompt` (cut from `rel/v0.7.0` at `e1cce943d`).
-**Design:** [`gg-prompt-design.md`](gg-prompt-design.md) in this repo root —
-authoritative, read it first.
+**Design:** stated on
+[invariants](apps/docs/src/content/docs/gg/responses-as-code/invariants.md),
+[prompts](apps/docs/src/content/docs/gg/prompts.md) and
+[views](apps/docs/src/content/docs/gg/responses-as-code/views.md).
 **State:** the design is **implemented and verified against every gate the repo
 has**. What is left is the owner's review of two judgement calls (below), and the
 separate branch ruling 1 describes.

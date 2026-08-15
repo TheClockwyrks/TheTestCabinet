@@ -1,8 +1,10 @@
 # gg whole-programs ruling — owner decisions
 
-Companion to [`gg-prompt-design.md`](gg-prompt-design.md). These are the owner's
-answers to the seven decisions a fifteen-agent survey found blocking. Where this
-document and a doc comment, a test or a survey disagree, **this document wins**.
+These are the owner's answers to the seven decisions a fifteen-agent survey found
+blocking. The ruling itself is now stated on
+[invariants](apps/docs/src/content/docs/gg/responses-as-code/invariants.md),
+which wins over this document; what survives here is the reasoning and the
+per-arm inventory behind it.
 
 The ruling being implemented, in the owner's words:
 

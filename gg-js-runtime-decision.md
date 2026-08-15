@@ -1,5 +1,16 @@
 # Decision: the five ECMAScript arms (TypeScript, JavaScript, Java, Kotlin, PureScript)
 
+**This document's verdict on the JVM arms is superseded and wrong.** It reports
+TeaVM's WASI target as deleted upstream and concludes that Java and Kotlin cannot
+leave JavaScript. The target survives in TeaVM 0.13.1, which gg pins, and a
+complete Java and Kotlin arm was afterwards built on it end to end
+([`gg-jvm-native-findings.md`](gg-jvm-native-findings.md)). The owner's ruling is
+D14 of [`gg-whole-programs-decisions.md`](gg-whole-programs-decisions.md): the JVM
+arms compile to wasm and reach gg through a guest of their own, and the
+[languages overview](apps/docs/src/content/docs/gg/languages/overview.md) states
+it. What remains authoritative below is everything measured about the ECMAScript
+guest itself, which is what TypeScript, JavaScript and PureScript still need.
+
 **Verdict up front.** Stop using StarlingMonkey — but not by taking Java and Kotlin off JavaScript. Replace the *engine* (StarlingMonkey → quickjs-ng in a component) for all five arms in one migration. That is the only measured configuration that satisfies both rulings, and it satisfies them for all five at once. The owner's suspicion that Java and Kotlin never belonged on a JS engine is correct in principle and **unfundable today**: every JVM-native destination that exists either fails ruling 2 outright (Kotlin/Wasm), requires a JavaScript object model gg would have to write (TeaVM WasmGC, GraalVM), or was deleted upstream three months ago (TeaVM WASI). Revisit the JVM arms when upstream moves; do not fork a compiler to get there.
 
 Separately and immediately: **`--disable stdio` at `packages/gg-sandbox/build.sh:132` is why the incumbent produces zero stderr.** That is gg's flag, not StarlingMonkey's limitation. Removing it was measured to turn every uncaught error on the five arms into a message + stack on stderr that `with_guest_stderr` already folds in. It does not satisfy ruling 1 and does not fix floating rejections, but it is a one-line partial fix for ruling 2 available today.
