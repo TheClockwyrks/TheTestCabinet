@@ -47,10 +47,12 @@ needs. The component is compiled at most once per process. The trust boundary
 above it is the typed WIT membrane, and the component is built with no network
 and no module system, so a program reaches gg through that membrane alone.
 
-The JavaScript, PureScript, Java and Kotlin arms evaluate their prepared
-JavaScript in these same bytes, reached through this arm's constant rather than
-through a second embedding. That sharing is declared in the seam's exemption
-table.
+The JavaScript and PureScript arms evaluate their prepared JavaScript in these
+same bytes, reached through this arm's constant rather than through a second
+embedding, and that sharing is declared in the seam's exemption table. The Java
+and Kotlin arms are declared there too while they still compile to JavaScript;
+[program languages](/gg/languages/overview/) states the wasm component each of
+them is moving to.
 
 ## The toolchain
 

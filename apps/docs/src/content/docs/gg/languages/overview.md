@@ -64,9 +64,8 @@ guest component is shared only between arms a declared table names, and a
 declared pair must hand back identical bytes. TypeScript, JavaScript and
 PureScript share the ECMAScript guest; Ruby compiles to JavaScript on the host
 as well and still has its own, because that component carries Opal's runtime.
-Java and Kotlin share the guest their common wasm target reaches gg through.
-Rust, Swift and C++ have no guest to share, each program being its own
-component.
+Java, Kotlin, Rust, Swift and C++ have no guest to share, each program being its
+own component.
 
 Guest components and signature catalogues are build outputs. Each arm's
 artifacts are produced by the build from the sources in the checkout, so a
