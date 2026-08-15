@@ -34,6 +34,47 @@
 //!   ([`ProgramLanguage::open_docs_views_statement`]), and the program that opens the session
 //!   ([`ProgramLanguage::bootstrap_program`]).
 //!
+//! # What a preparation may do
+//!
+//! A preparation reads a reply and either accepts it or refuses it with a diagnostic the model can
+//! act on. It is not a source transform, and it is not an arrangement: the bytes an arm compiles are
+//! the bytes the model sent. The rule is one rule for every arm, so it is stated once, here, and
+//! each half of the seam repeats the part of it that is its own
+//! ([`prepare_program`](ProgramLanguage::prepare_program),
+//! [`prepare_module`](ProgramLanguage::prepare_module)).
+//!
+//! * **No prologue, no epilogue, no entry point, no import.** Where a language requires an entry
+//!   point, the *model* declares it; where a language executes top-level statements, the model
+//!   writes statements. A reply missing what its language requires earns that language's own
+//!   diagnostic, which is a thing a model can fix — and is what makes the program that ran the
+//!   program the model wrote, rather than gg's arrangement of it.
+//! * **Package availability is packaging, and is allowed.** A classpath entry, an `--extern`, an
+//!   include path, a linked archive: everything that puts gg's SDK where this language's compiler
+//!   can find it is how a library is delivered. What is not allowed is a **name in scope with no
+//!   line the model wrote** — a prelude glob, a `global using`, a precompiled header carrying the
+//!   surface, an `@_exported import`, a scope of names handed to an evaluator. The test is whether
+//!   the program contains the line that reaches the name.
+//! * **A line number is reached through a source map or not at all.** An arm that arrives at one by
+//!   arithmetic over its own wrapper is reporting a program other than the one the model sees, and a
+//!   wrong line costs more than no line: the model reads it as a fact and rewrites the wrong
+//!   statement.
+//! * **The sources gg writes on a model's behalf are whole programs by the arm's own rules.** The
+//!   program that opens the session ([`bootstrap_program`](ProgramLanguage::bootstrap_program)), the
+//!   on-use script of a built-in family skill
+//!   ([`open_docs_views_statement`](ProgramLanguage::open_docs_views_statement)), the synthesized
+//!   file view ([`open_file_statement`](ProgramLanguage::open_file_statement), joined into one
+//!   program by [autoload](crate::agent)) and the module a gate drives an arm with
+//!   (`gate_module`, which is `#[cfg(test)]` and so unreachable from a doc link) are all read by a
+//!   model as examples of its own output, and one of them is compiled and run before the model's
+//!   first request. A generated
+//!   source that only compiles because a wrapper completes it is gg teaching the shape this rule
+//!   forbids.
+//!
+//! Which arms keep it is measured rather than asserted: the **authorship gate**
+//! (`language/authorship.rs`) drives every registered arm's two preparation steps with a whole
+//! program of that arm's own and reports what the preparation did to the bytes — kept, wrapped or
+//! rewritten — against a table of the arms that have not converted.
+//!
 //! # What a language does not own: the prose
 //!
 //! There is **one** responses-as-code system prompt for every arm, registered in
@@ -275,11 +316,30 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// agent is told it is writing.
     fn display_name(&self) -> &'static str;
 
-    /// Turn a model's reply into the source the guest evaluates as a program.
+    /// Prepare a model's reply for the guest that evaluates it: check it, compile it where this arm
+    /// compiles, and refuse it — with a sentence the model can act on — where it cannot be run.
     ///
     /// This is where a language spends whatever it must to make untrusted text safe to hand to a
-    /// parser, and where it refuses — with a sentence the model can act on — anything the sandbox
-    /// has no implementation of.
+    /// parser, and where it refuses anything the sandbox has no implementation of.
+    ///
+    /// # What this may do to the bytes: nothing
+    ///
+    /// **The bytes compiled here are the bytes the model sent.** No prologue, no epilogue, no entry
+    /// point and no import is written around them. Where this language requires an entry point the
+    /// model declares it, and a reply that declares none earns this language's own diagnostic rather
+    /// than a body gg completed for it.
+    ///
+    /// **Making the SDK available is packaging and is allowed** — a classpath entry, an `--extern`,
+    /// an include path, a linked archive. **A name in scope with no line the model wrote is not**: a
+    /// prelude glob, a `global using`, a precompiled header carrying gg's surface, an
+    /// `@_exported import`, a scope of names handed to an evaluator. Every SDK name a program writes
+    /// is reached through an import that program writes, and the
+    /// [documentation view](crate::sandbox::ModuleView) of a symbol states that line.
+    ///
+    /// **A location this step reports is the compiler's own, over the model's own file, or one
+    /// resolved through a source map** — never a line arrived at by arithmetic over a wrapper,
+    /// because that is a coordinate in a program the model cannot see. The rule, and the gate that
+    /// measures who keeps it, are in this module's own documentation.
     ///
     /// # Why the modules are here
     ///
@@ -394,11 +454,15 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// Turn a code skill's or code memory's source into the source the guest evaluates to produce
     /// that module's namespace, bound at `lib.<key>`.
     ///
-    /// A module compiles exactly as a program does, so `context` means what it means there and the
-    /// [isolation rule](Self::prepare_program)
-    /// is the same rule. It is not a lesser path: a turn that reads three code skills compiles three
-    /// modules beside its own program, and every one of those compilations is concurrent with every
-    /// other agent's.
+    /// A module compiles exactly as a program does, so `context` means what it means there, the
+    /// [isolation rule](Self::prepare_program) is the same rule, and so is the
+    /// [authorship rule](Self::prepare_program): the bytes compiled here are the bytes the file
+    /// holds, reached through the imports it writes. The one thing this step owes that the program
+    /// step does not is the [export list](PreparedModule::exports), and it reads that off the
+    /// module the author wrote rather than off a namespace gg wrapped around it.
+    ///
+    /// It is not a lesser path: a turn that reads three code skills compiles three modules beside
+    /// its own program, and every one of those compilations is concurrent with every other agent's.
     fn prepare_module(
         &self,
         source: &str,
