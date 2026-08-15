@@ -241,6 +241,11 @@ pub async fn delete(
 /// infrastructure failures), ordered by finish time — the console's "produced"
 /// worklist, disjoint from the default published listing.
 ///
+/// `state=any` returns **every** stored run, published and unpublished alike — the
+/// consoles' run listings, where an unpublished run must sort and page alongside the
+/// published ones. It is offered only on the numbered-pager path below (the cursor
+/// listings walk one lifecycle slice at a time).
+///
 /// `fields=summary` returns bounded [`RunSummary`] cards (the lightweight shape
 /// the console's run log and list pages consume) instead of full
 /// [`StoredRunOut`] records; the cursor (`before`/`limit`) and `state` selector
@@ -263,6 +268,7 @@ pub async fn list(
             test_case: params.test_case.clone(),
             model: params.model.clone(),
             harness: params.harness.clone(),
+            variant: params.variant.clone(),
             q: params.q.clone(),
         };
         let sort = parse_sort(params.sort.as_deref());
@@ -660,6 +666,9 @@ pub struct ListParams {
     model: Option<String>,
     /// Filter to one harness slug (summary + offset path only).
     harness: Option<String>,
+    /// Filter to one variant slug (summary + offset path only). Paired with
+    /// `testCase` — a variant slug is only unique within its case.
+    variant: Option<String>,
     /// Case-insensitive free-text query across the lifted identity columns (summary
     /// + offset path only).
     q: Option<String>,
@@ -696,12 +705,17 @@ pub struct SummaryListResponse {
 
 /// Map the `state` query param to the summary listing's lifecycle slice, mirroring
 /// the cursor path's `state` handling (`review`/`all` → the reviewer worklist).
+///
+/// `any` has no cursor-path equivalent: it is the summary listing's union slice
+/// (published + unpublished), which only the numbered pager needs — see
+/// [`SummaryState::Any`].
 fn summary_state(state: Option<&str>) -> SummaryState {
     match state {
         Some("review") | Some("all") => SummaryState::Review,
         Some("failures") => SummaryState::Failures,
         Some("unpublished") => SummaryState::Unpublished,
         Some("unreviewed") => SummaryState::Unreviewed,
+        Some("any") => SummaryState::Any,
         _ => SummaryState::Published,
     }
 }

@@ -391,6 +391,12 @@ List stored runs, newest first. A `state` query parameter selects which runs:
   "produced" worklist — every run that exists but is not yet public, so an
   infrastructure failure stays inspectable rather than appearing in no list.
   Disjoint from the default published listing.
+- `state=any` — the **union** of the published and unpublished slices: every
+  stored run, whatever its terminal state. This is what the consoles' run
+  listings draw from, so a produced (and therefore unreviewed) run sorts and
+  pages in the *same* listing as the published ones instead of being merged in
+  ahead of them client-side. Offered only in the numbered-offset mode below (the
+  cursor listings walk one lifecycle slice at a time).
 
 #### Two projections
 
@@ -423,8 +429,9 @@ List stored runs, newest first. A `state` query parameter selects which runs:
 
 The offset mode additionally accepts:
 
-- **Filters** `testCase`, `model`, and `harness` — each narrows to runs matching
-  that lifted subject value.
+- **Filters** `testCase`, `model`, `harness`, and `variant` — each narrows to runs
+  matching that lifted subject value. A variant slug is unique only within its
+  case, so `variant` is paired with `testCase` (the case-detail Runs tab's slice).
 - **Search** `q` — a free-text match across the lifted subject columns (test case
   slug, model id, harness slug, variant). It matches the **raw** recorded ids, not
   a model's resolved display name.

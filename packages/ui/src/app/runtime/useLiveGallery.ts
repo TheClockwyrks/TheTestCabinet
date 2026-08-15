@@ -44,8 +44,12 @@ import { useRunsRuntime } from "./runsRuntime";
 // is no longer drained whole: pages fetch a page at a time through
 // {@link queryRunSummaries} (the backend's numbered offset endpoint), so this only
 // reads the small produced-but-unpublished worklist from the active worker (flagged
-// local so it reads as unpublished and becomes editable on the Verdict tab, and
-// pinned ahead of the queried published window). The catalog (test cases, models)
+// local so it reads as unpublished and becomes editable on the Verdict tab, and so
+// its in-progress writeup and reviews are on hand). The listings themselves no
+// longer merge that worklist in — they query the backend's `any` slice, which
+// carries produced and published runs in one sorted, paged order — but the
+// case-scoped leaderboard/metrics views still fold it into their bounded set. The
+// catalog (test cases, models)
 // still comes from the active backend. It re-reads produced runs whenever the runs
 // runtime bumps its refresh token (e.g. a launched run finishes). Operations a
 // transport doesn't support are treated as "none" so the rest of the gallery still
@@ -535,9 +539,10 @@ export function useLiveGallery(
   // Answer one page of a filtered/sorted/windowed summary query from the backend's
   // numbered-pager endpoint. Forcing an `offset` (defaulting to 0) selects the
   // backend's offset path, so it returns the matching `total` used to size the
-  // console's pager. Only published runs are listed here; a page pins the console's
-  // produced summaries separately. With no backend configured the query resolves
-  // empty.
+  // console's pager. Which runs are in scope is the caller's `state`: the console
+  // listings pass `any`, so produced (unpublished) runs are returned — and sorted
+  // and paged — alongside the published ones. With no backend configured the query
+  // resolves empty.
   const queryRunSummaries = useCallback(
     async (query: RunQuery): Promise<RunQueryResult> => {
       if (!backend) return { summaries: [], total: 0 };

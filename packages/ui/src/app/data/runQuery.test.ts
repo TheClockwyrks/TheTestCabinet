@@ -79,6 +79,23 @@ describe("runSummaryPage", () => {
     expect(runSummaryPage(runs, { testCase: "" }).total).toBe(3);
   });
 
+  it("equality-filters by variant, alone and paired with its case", () => {
+    const runs = [
+      summary("a", { testCase: "carom", variant: "base" }),
+      summary("b", { testCase: "carom", variant: "gyre" }),
+      summary("c", { testCase: "siege", variant: "base" }),
+    ];
+    expect(ids(runSummaryPage(runs, { variant: "base" })).sort()).toEqual([
+      "a",
+      "c",
+    ]);
+    // A variant slug is unique only within its case, so the pair narrows to one.
+    expect(
+      ids(runSummaryPage(runs, { testCase: "carom", variant: "base" })),
+    ).toEqual(["a"]);
+    expect(runSummaryPage(runs, { variant: "" }).total).toBe(3);
+  });
+
   it("free-text q matches case-insensitively across identity columns", () => {
     const runs = [
       summary("a", { testCase: "carom", model: "anthropic/claude" }),
@@ -101,6 +118,9 @@ describe("runSummaryPage", () => {
     expect(runSummaryPage(runs, { state: "review" }).total).toBe(0);
     expect(runSummaryPage(runs, { state: "unpublished" }).summaries).toEqual([]);
     expect(runSummaryPage(runs, { state: "published" }).total).toBe(2);
+    // `any` is the published + unpublished union, and the static index is entirely
+    // published — so it collapses to the published slice rather than matching none.
+    expect(runSummaryPage(runs, { state: "any" }).total).toBe(2);
   });
 
   it("sorts by date, desc default and asc, with id tiebreak", () => {

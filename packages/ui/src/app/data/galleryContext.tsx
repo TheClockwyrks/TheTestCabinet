@@ -289,10 +289,11 @@ export interface GalleryDataInput {
    * The summary cards for runs sourced locally (produced but not yet published) —
    * the console's worker worklist, derived into cards (see `toRunSummary`). The
    * published set is never held whole: pages fetch it a page at a time through
-   * {@link queryRunSummaries}. These local cards are exposed separately so a paged
-   * page can PIN them (they never appear in the backend's numbered
-   * `queryRunSummaries` window) to the first page ahead of the queried published
-   * rows. Empty on the static site (which has no produced runs, except dev-only
+   * {@link queryRunSummaries}. The paged listings no longer merge these cards in —
+   * they query the `any` slice, which returns produced and published runs in one
+   * sorted, paged order — so this is what the *bounded, whole-set* views (the
+   * case-scoped leaderboard and metrics) fold their unpublished runs in from.
+   * Empty on the static site (which has no produced runs, except dev-only
    * on-disk ones) and whenever the host holds none. Full records are fetched lazily
    * by id via {@link readRun}/{@link GalleryData.fetchRun} only when a detail view
    * needs one.
@@ -353,8 +354,9 @@ export interface GalleryDataInput {
    * no backend, so it answers from its in-memory summary index with the same
    * semantics (see `runSummaryPage`). Both resolve the sorted window plus the count
    * of all matching rows, so a numbered pager sizes identically on either host.
-   * Only published runs are queryable this way — a console pins its
-   * {@link producedSummaries} separately.
+   * The query's `state` picks the lifecycle slice: the console listings pass `any`
+   * (published + produced), which the static site answers as `published` since that
+   * is all its index holds.
    */
   queryRunSummaries: (query: RunQuery) => Promise<RunQueryResult>;
   /**

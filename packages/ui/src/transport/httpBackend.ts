@@ -658,6 +658,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       if (opts?.testCase) params.set("testCase", opts.testCase);
       if (opts?.model) params.set("model", opts.model);
       if (opts?.harness) params.set("harness", opts.harness);
+      if (opts?.variant) params.set("variant", opts.variant);
       if (opts?.q) params.set("q", opts.q);
       if (opts?.sort) params.set("sort", opts.sort);
       if (opts?.dir) params.set("dir", opts.dir);
