@@ -1,5 +1,20 @@
 # gg runtime-failure reporting — eleven-arm synthesis
 
+> **Partly superseded — read this first.** This audit was written against the
+> tree at `3330c7811`. Commit `20ec45d1f` landed an hour later and closed four
+> of the cross-arm host defects it names: **16** (`engine::classify` threw the
+> trap's reason away), **18/24** (`I32Exit` was unhandled, so an explicit exit
+> was an anonymous trap), **22** (the memory and timeout paths returned before
+> folding in what the guest said) and **21** (the out-of-memory sentence
+> described a JavaScript engine to every arm). Do not re-fix them.
+>
+> Section **A**'s compliance matrix is superseded outright by
+> `KNOWN_HOLES` in `crates/gg/src/sandbox/language/g8.rs`, which is the same
+> eleven-arm × five-shape question measured through each arm's real toolchain,
+> re-measured on every test run, and failing in both directions. Where the two
+> disagree, the table is the tree and this document is a report. Sections **B**
+> (minus the four above), **C**, **D** and **F** stand.
+
 **Scope.** Eleven per-arm audits, all self-reported as *measured*. I re-verified the four pieces of shared host machinery every arm depends on (`engine::classify` at `crates/gg/src/sandbox/engine.rs:326-346`, `with_guest_stderr` at `:357`, `program_error_feedback` at `crates/gg/src/agent.code.rs:996-1001`, `capture::report_error`/`classify` at `crates/gg/src/sandbox/membrane/capture.rs:305-345`, and `SandboxError`'s Display at `crates/gg/src/sandbox/outcome.rs:405-425`); every cross-arm claim below that rests on them is confirmed against the tree, not just the reports. No file was edited.
 
 **The one-line finding.** Reporting is safe exactly where it lives in code the model cannot omit and the ruling cannot delete — the baked guest (C#, C++, Ruby, Python, and Swift by absence). It is at risk exactly where it lives in per-turn generated source (Java `GgEntry.java`, Kotlin `GgEntry.java`, Rust's prologue, PureScript's `entry.js`) or in an evaluation wrapper (TypeScript/JavaScript's `new Function`). Those five-and-a-half arms are the blocked set in section F, and it is not a coincidence: it is the same property, restated.
