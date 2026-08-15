@@ -42,6 +42,13 @@
 //! * **An SDK in scope with no line the model wrote.** A precompiled header carrying gg's surface, an
 //!   `@_exported import`, a prelude glob, a scope of names handed to an evaluator. Nothing is added
 //!   to the source; the compiler is simply told the names already exist.
+//!
+//!   The ECMAScript arms deliver that scope by evaluating the program as the body of a function,
+//!   which costs the model one thing beyond the names: a top-level `return` ends the program, and
+//!   every statement after it is dead. It is legal JavaScript, so nothing refuses it and the turn is
+//!   recorded as a success — the shape a model drafting two programs and pasting the second after
+//!   the first lands in, kept as the `round2-*-two-drafts` fixtures in `healing.test.rs`. Deleting
+//!   the wrapper is what makes it an early error the language itself reports.
 //! * **A transform conditional on a construct the generated program does not contain.** An arm that
 //!   hoists a model's `import` lines only when it wrote one keeps the bytes of a program that wrote
 //!   none.
