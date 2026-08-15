@@ -2035,8 +2035,8 @@ export type GgProgramLanguage =
  * code-shaped turn.
  *
  * Healing is textual and conservative: it only ever **deletes**, so a healed program is always a
- * subsequence of the response the model sent, and every repair is disclosed to the model in its
- * turn feedback — this record is a fact the model was told, never something done behind it.
+ * subsequence of the response the model sent. The model is told nothing about a repair; this
+ * record and the run's operator stream are where every repair is disclosed.
  *
  * A response that needed nothing carries the default and is omitted from the wire entirely, so
  * the presence of this object *is* "something was unusual about this response".

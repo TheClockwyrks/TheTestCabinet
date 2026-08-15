@@ -960,7 +960,7 @@
       "type": "object"
     },
     "GgResponseHealing": {
-      "description": "What gg had to do to a model's response before it could run it — the healing record of one\ncode-shaped turn.\n\nHealing is textual and conservative: it only ever **deletes**, so a healed program is always a\nsubsequence of the response the model sent, and every repair is disclosed to the model in its\nturn feedback — this record is a fact the model was told, never something done behind it.\n\nA response that needed nothing carries the default and is omitted from the wire entirely, so\nthe presence of this object *is* \"something was unusual about this response\".",
+      "description": "What gg had to do to a model's response before it could run it — the healing record of one\ncode-shaped turn.\n\nHealing is textual and conservative: it only ever **deletes**, so a healed program is always a\nsubsequence of the response the model sent. The model is told nothing about a repair; this\nrecord and the run's operator stream are where every repair is disclosed.\n\nA response that needed nothing carries the default and is omitted from the wire entirely, so\nthe presence of this object *is* \"something was unusual about this response\".",
       "properties": {
         "didNotConverge": {
           "description": "Whether the healing pipeline failed to reach a fixpoint, so every repair was discarded and\nthe response ran exactly as sent.\n\nCarried so that the one response pathological enough to defeat the pipeline is\ndistinguishable from a clean one, which is otherwise byte-identical on the wire.",
