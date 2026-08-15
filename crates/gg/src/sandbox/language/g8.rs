@@ -3,10 +3,18 @@
 //! The [invariants](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) say a program owns
 //! its failures and that what the model reads is what its language emitted. This is the assertion
 //! behind that sentence: five failure shapes, driven through every registered arm's **real**
-//! preparation and **real** run, read back through the **production** renderer, and held to three
-//! things — that the model is told something at all, that what it is told names the fault in the
-//! program's or the language's own words, and that it carries a location wherever the language
-//! reports one.
+//! preparation and **real** run, read back through the **production** renderer, and held to four
+//! things — that the model is told something at all, that it is told under the band the cell
+//! declares, that what it is told names the fault in the program's or the language's own words, and
+//! that it carries a location wherever the language reports one.
+//!
+//! # Not every cell reaches a run, and each one says which
+//!
+//! Five of the shapes cannot be written on the arm they are driven against: the arm's compiler
+//! refuses the program, so nothing runs and what the model reads is a compile diagnostic. Each case
+//! declares which of the two it is with [`Answered`], and the gate holds the cell to the band the
+//! loop files that answer under. A cell that starts running a program it used to refuse fails here,
+//! and so does one that stops.
 //!
 //! # Why it is one module and not eleven tests
 //!
@@ -47,7 +55,7 @@
 //! the rendering would agree with itself instead of with the loop.
 
 use serde_json::Value;
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_core::gg::{GgContextSource, GgProgramLanguage};
 
 use crate::agent::code::ModelFacing;
 use crate::sandbox::fake::{
@@ -120,11 +128,52 @@ pub(super) enum Located {
     At(&'static str),
     /// The language reports no location for this shape.
     ///
-    /// Asserted rather than assumed: the gate checks that gg's own `    at …` location line is
-    /// absent, so an arm that starts shipping a location — right or wrong — fails here instead of
-    /// passing unnoticed. It cannot see a location an arm buries inside the message text, which is
+    /// Asserted rather than assumed: the gate checks that the outcome carries no location at all,
+    /// so an arm that starts shipping one — right or wrong — fails here instead of passing
+    /// unnoticed. It says nothing about a location an arm buries inside the message text, which is
     /// why an arm that locates that way (C++, Swift) declares [`At`](Self::At) instead.
     Nowhere,
+}
+
+/// Whether the arm answers a shape out of a program that **ran**.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Answered {
+    /// **At run time.** The program compiled, ran, and its own runtime reported the fault, which is
+    /// what [D8](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) asks of an arm.
+    AtRuntime,
+    /// **By refusing to compile it.** This arm's compiler will not accept a program of this shape,
+    /// so nothing ran and what the model reads is a compile diagnostic.
+    ///
+    /// It is an answer and not a hole, because there is no runtime failure for the arm to lose: a
+    /// model cannot write the shape on this arm at all, and it is told so in the compiler's own
+    /// words before it spends a turn on it. What makes it worth declaring is that the gate would
+    /// otherwise read the two states as one — a compile refusal satisfies every other check here —
+    /// and a cell that stops running its program would pass unnoticed under a module that says
+    /// every cell is a real run.
+    ///
+    /// Declared per case rather than gathered in a table because it is a property of this arm's
+    /// program in this shape, the same kind of fact [`Located`] carries, and an arm registered
+    /// tomorrow has to answer it five times rather than inherit a silence.
+    ByRefusingToCompile,
+}
+
+impl Answered {
+    /// The [band](GgContextSource) the loop files this answer under, which is what the gate holds a
+    /// cell to: an arm cannot move between the two states without the row moving with it.
+    fn band(self) -> GgContextSource {
+        match self {
+            Self::AtRuntime => GgContextSource::RuntimeError,
+            Self::ByRefusingToCompile => GgContextSource::CompilerError,
+        }
+    }
+
+    /// What the state says happened, for a failure an operator reads without this file open.
+    fn label(self) -> &'static str {
+        match self {
+            Self::AtRuntime => "the program ran and its runtime reported the fault",
+            Self::ByRefusingToCompile => "the compiler refused the program and nothing ran",
+        }
+    }
 }
 
 /// One arm's answer to one shape.
@@ -141,6 +190,8 @@ pub(super) struct Case {
     pub(super) names: &'static [&'static str],
     /// Where the fault is, in the model's coordinates — or that this language locates it nowhere.
     pub(super) located: Located,
+    /// Whether this arm reaches this shape at run time, or refuses the program before it runs.
+    pub(super) answered: Answered,
 }
 
 /// A cell an arm does not satisfy today, and what the model reads in its place.
@@ -434,7 +485,7 @@ pub(super) fn responder(name: &str, args: &Value) -> ToolOutcome {
 /// Nothing here is a stand-in. The alternative — each arm's substrate harness, which leaves out one
 /// production step or another for reasons of its own — would make eleven different roads and one
 /// gate, which is the arrangement this module exists to replace.
-fn drive(arm: GgProgramLanguage, program: &str) -> ModelFacing {
+fn drive(arm: GgProgramLanguage, program: &str) -> Read {
     let log = CallLog::default();
     let api = FakeToolApi::with(&log, responder);
     let operations = granted_operations(&all_operations(), false);
@@ -452,7 +503,29 @@ fn drive(arm: GgProgramLanguage, program: &str) -> ModelFacing {
         None,
         api,
     );
-    crate::agent::code::model_facing(arm, &outcome)
+    Read {
+        attached: outcome
+            .result
+            .as_ref()
+            .ok()
+            .and_then(|result| result.error.as_ref())
+            .and_then(|error| error.location.clone()),
+        model: crate::agent::code::model_facing(arm, &outcome),
+    }
+}
+
+/// One cell, measured: what the model reads, and the location gg put on it.
+struct Read {
+    /// What the model reads, rendered by the loop's own renderer.
+    model: ModelFacing,
+    /// The [location](crate::sandbox::outcome::ProgramError::location) gg attached, read off the
+    /// outcome rather than parsed back out of the rendered body.
+    ///
+    /// Read from the field because the rendering is a four-space `at` line, which is also how a
+    /// runtime indents a stack frame: an arm whose guest stderr happened to indent a frame that way
+    /// would be read as gg's own location and would invert every [`Located::Nowhere`] assertion
+    /// here. The field says what gg did with no string to match.
+    attached: Option<String>,
 }
 
 /// Drive `arm`'s `cases` through the production path and hold every one of them to G8.
@@ -493,10 +566,10 @@ pub(super) fn gate(arm: GgProgramLanguage, cases: &[Case]) {
                     .to_string()
             }
             (Some(hole), Err(_)) => match hole.instead {
-                Instead::Nothing if !read.body.trim().is_empty() || read.fatal => {
+                Instead::Nothing if !read.model.body.trim().is_empty() || read.model.fatal => {
                     "is recorded as producing nothing, and it produced something".to_string()
                 }
-                Instead::Says(words) if !read.body.contains(words) => {
+                Instead::Says(words) if !read.model.body.contains(words) => {
                     format!("is recorded as saying {words:?}, and it no longer does")
                 }
                 _ => continue,
@@ -519,37 +592,44 @@ pub(super) fn gate(arm: GgProgramLanguage, cases: &[Case]) {
 
 /// Whether what the model reads satisfies G8, and the first thing wrong with it if not.
 ///
-/// Three checks, in the order the requirement states them. They are deliberately few: this gate
-/// asks whether a failure **reached** the model, not whether the whole message is well written.
-fn satisfies(read: &ModelFacing, case: &Case) -> Result<(), String> {
-    if read.fatal {
+/// Four checks, in the order the requirement states them. They are deliberately few: this gate asks
+/// whether a failure **reached** the model, not whether the whole message is well written.
+fn satisfies(read: &Read, case: &Case) -> Result<(), String> {
+    if read.model.fatal {
         return Err("gg ended the run and told the model nothing".to_string());
     }
-    if read.body.trim().is_empty() {
-        return Err(match read.error {
+    if read.model.body.trim().is_empty() {
+        return Err(match read.model.error {
             Some(kind) => format!("the model was told nothing (the turn was recorded as {kind:?})"),
             None => {
                 "the model was told nothing, and the turn was recorded as a success".to_string()
             }
         });
     }
+    if read.model.source != Some(case.answered.band()) {
+        return Err(format!(
+            "this cell is recorded as one where {}, and the message arrived under {:?}",
+            case.answered.label(),
+            read.model.source
+        ));
+    }
     for name in case.names {
-        if !read.body.contains(name) {
+        if !read.model.body.contains(name) {
             return Err(format!("what the model reads never says {name:?}"));
         }
     }
     match case.located {
         Located::At(location) => {
-            if !read.body.contains(location) {
+            if !read.model.body.contains(location) {
                 return Err(format!(
                     "the fault is not located at {location:?}, which is where the model wrote it"
                 ));
             }
-            // And gg's own location line, where there is one, is that same place. An arm that puts
-            // the model's line in the message and then appends a second one out of a bundle has
-            // told the model two things and left it to guess: the second is a coordinate in a file
-            // it cannot open, and it is the one the loop renders last.
-            match attached_location(&read.body) {
+            // And gg's own location, where there is one, is that same place. An arm that puts the
+            // model's line in the message and then appends a second one out of a bundle has told
+            // the model two things and left it to guess: the second is a coordinate in a file it
+            // cannot open, and it is the one the loop renders last.
+            match &read.attached {
                 Some(attached) if !attached.contains(location) => Err(format!(
                     "the fault is at {location:?} and gg attached {attached:?} instead, which is a \
                      second location in a file the model did not write"
@@ -557,7 +637,7 @@ fn satisfies(read: &ModelFacing, case: &Case) -> Result<(), String> {
                 _ => Ok(()),
             }
         }
-        Located::Nowhere => match attached_location(&read.body) {
+        Located::Nowhere => match &read.attached {
             Some(attached) => Err(format!(
                 "this shape is recorded as having no location, and gg attached {attached:?}; if it \
                  is right, make the case say so"
@@ -567,28 +647,13 @@ fn satisfies(read: &ModelFacing, case: &Case) -> Result<(), String> {
     }
 }
 
-/// The location the loop **attached** to a message, if it attached one.
-///
-/// [`program_error_feedback`](crate::agent::code) renders a `ProgramError`'s `location` as its own
-/// last line, indented by four spaces — which makes this the one marker that says "gg put a
-/// location on this", whatever arm it came from and whatever the arm spells locations like. An arm
-/// that reports its location *inside* the message instead (C++ and Swift, out of DWARF) attaches
-/// none, and this answers `None` for it, which is correct: there is nothing there to be wrong.
-fn attached_location(body: &str) -> Option<&str> {
-    let after = body.rsplit_once(LOCATION_LINE)?.1;
-    Some(after.split('\n').next().unwrap_or(after))
-}
-
-/// How the loop renders a [`ProgramError`](crate::sandbox::outcome::ProgramError)'s location — the
-/// one marker that says "gg attached a location to this message", whatever the arm.
-const LOCATION_LINE: &str = "\n    at ";
-
-/// What the model read, indented, with the band it arrived under and the class the turn was
-/// recorded as — so a G8 failure **is** the regression report.
-fn quoted(read: &ModelFacing) -> String {
-    let body = match read.body.trim().is_empty() {
+/// What the model read, indented, with the band it arrived under, the class the turn was recorded
+/// as and the location gg attached — so a G8 failure **is** the regression report.
+fn quoted(read: &Read) -> String {
+    let body = match read.model.body.trim().is_empty() {
         true => "    <nothing>".to_string(),
         false => read
+            .model
             .body
             .lines()
             .map(|line| format!("    {line}"))
@@ -596,8 +661,8 @@ fn quoted(read: &ModelFacing) -> String {
             .join("\n"),
     };
     format!(
-        "{body}\n  (band: {:?}, turn recorded as: {:?})",
-        read.source, read.error
+        "{body}\n  (band: {:?}, turn recorded as: {:?}, gg attached: {:?})",
+        read.model.source, read.model.error, read.attached
     )
 }
 

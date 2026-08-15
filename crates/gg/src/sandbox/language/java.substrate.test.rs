@@ -42,7 +42,7 @@ use wasmtime::component::Component;
 
 use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 
-use super::super::g8::{self, Case, Located, Shape};
+use super::super::g8::{self, Answered, Case, Located, Shape};
 
 use super::super::typescript;
 use super::compile::{compile_module, compile_program};
@@ -895,6 +895,7 @@ System.out.println(text);
 "#,
                 names: &["read_text_file", "not-found", "missing.md"],
                 located: Located::Nowhere,
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::NativeFault,
@@ -907,6 +908,7 @@ System.out.println(
 "#,
                 names: &["java.lang.IndexOutOfBoundsException"],
                 located: Located::At("program.java:5"),
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::FailureValue,
@@ -917,6 +919,11 @@ return 3;
 "#,
                 names: &["incompatible types: unexpected return value"],
                 located: Located::At("program.java:4:8"),
+                // Nothing runs: `javac` rejects the `return`, because the statements the model
+                // wrote are the body of a `void` method gg declares around them. A model on this
+                // arm cannot terminate by a value at all, and this is the sentence it reads when it
+                // tries — which is the wrapper's diagnostic rather than the language's.
+                answered: Answered::ByRefusingToCompile,
             },
             Case {
                 shape: Shape::ResourceFault,
@@ -932,6 +939,7 @@ System.out.println(Deep.deeper(0));
 "#,
                 names: &["too much recursion"],
                 located: Located::At("program.java:5"),
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::Abort,
@@ -944,6 +952,10 @@ System.exit(
 "#,
                 names: &["System.exit"],
                 located: Located::At("program.java:4"),
+                // Nothing runs: TeaVM has no `System.exit` to link, so the program is refused at
+                // the translation step. The model reads the method it wrote, by its JVM descriptor,
+                // at its own line.
+                answered: Answered::ByRefusingToCompile,
             },
         ],
     );

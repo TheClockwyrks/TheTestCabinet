@@ -18,7 +18,7 @@
 
 use test_cabinet_core::gg::GgProgramLanguage;
 
-use super::super::g8::{self, Case, Located, Shape};
+use super::super::g8::{self, Answered, Case, Located, Shape};
 
 /// **Gate [G8](super::super::g8) for TypeScript** — all five shapes a runtime failure takes,
 /// driven through the production path and read back as the model would read them.
@@ -38,6 +38,7 @@ console.log(text);
 "#,
                 names: &["read_text_file", "not-found", "missing.md"],
                 located: Located::At("line 3, column 17"),
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::NativeFault,
@@ -50,6 +51,7 @@ console.log(
 "#,
                 names: &["TypeError", "values[7] is undefined"],
                 located: Located::At("line 5, column 13"),
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::FailureValue,
@@ -63,6 +65,7 @@ step();
 "#,
                 names: &["the third step did not finish"],
                 located: Located::Nowhere,
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::ResourceFault,
@@ -76,6 +79,7 @@ deeper(0);
 "#,
                 names: &["too much recursion"],
                 located: Located::At("line 4, column 10"),
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::Abort,
@@ -89,6 +93,10 @@ console.log("after the exit");
 "#,
                 names: &["Cannot find name 'process'"],
                 located: Located::At("program.ts(4,1)"),
+                // Nothing runs: this arm's guest is not Node, so `tsc` has no declaration for the
+                // one name a model reaches for to stop a program. It cannot abort at all, and the
+                // refusal is what it reads instead, at its own line and column.
+                answered: Answered::ByRefusingToCompile,
             },
         ],
     );

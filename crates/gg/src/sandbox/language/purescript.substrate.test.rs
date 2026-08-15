@@ -41,7 +41,7 @@ use wasmtime::component::Component;
 
 use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 
-use super::super::g8::{self, Case, Located, Shape};
+use super::super::g8::{self, Answered, Case, Located, Shape};
 
 use super::super::typescript;
 use super::compile::{compile_module, compile_program};
@@ -1501,6 +1501,7 @@ main = do
 "#,
                 names: &["read_text_file", "not-found", "missing.md"],
                 located: Located::At("line 13, column 11"),
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::NativeFault,
@@ -1523,6 +1524,7 @@ main = do
 "#,
                 names: &["Failed pattern match"],
                 located: Located::At("line 15, column 15"),
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::FailureValue,
@@ -1543,6 +1545,7 @@ main = do
 "#,
                 names: &["the third step did not finish"],
                 located: Located::Nowhere,
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::ResourceFault,
@@ -1563,6 +1566,7 @@ main = Console.log (show (deeper 0))
 "#,
                 names: &["too much recursion"],
                 located: Located::At("line 11, column 16"),
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::Abort,
@@ -1584,6 +1588,7 @@ main = do
 "#,
                 names: &["the third step did not finish"],
                 located: Located::At("line 14, column 3"),
+                answered: Answered::AtRuntime,
             },
         ],
     );

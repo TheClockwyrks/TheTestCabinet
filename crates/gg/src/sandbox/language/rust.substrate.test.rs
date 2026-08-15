@@ -50,7 +50,7 @@ use std::time::Instant;
 use serde_json::Value;
 use test_cabinet_core::gg::GgProgramLanguage;
 
-use super::super::g8::{self, Case, Located, Shape};
+use super::super::g8::{self, Answered, Case, Located, Shape};
 
 use super::compile::compile_program;
 use crate::ending::{Ending, EndingRole};
@@ -734,6 +734,7 @@ let _ = text;
 "#,
                 names: &["read_text_file", "not-found", "missing.md"],
                 located: Located::Nowhere,
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::NativeFault,
@@ -748,6 +749,7 @@ let _ = missing;
                     "index out of bounds: the len is 3 but the index is 7",
                 ],
                 located: Located::At("line 4, column 21"),
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::FailureValue,
@@ -759,6 +761,7 @@ let _ = count;
 "#,
                 names: &["invalid digit found in string"],
                 located: Located::Nowhere,
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::ResourceFault,
@@ -773,6 +776,7 @@ let _ = deeper(0);
 "#,
                 names: &["call stack exhausted"],
                 located: Located::Nowhere,
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::Abort,
@@ -784,6 +788,7 @@ let _ = deeper(0);
 "#,
                 names: &["exit(3)"],
                 located: Located::Nowhere,
+                answered: Answered::AtRuntime,
             },
         ],
     );

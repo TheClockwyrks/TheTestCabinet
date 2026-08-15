@@ -50,7 +50,7 @@ use std::time::Instant;
 
 use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 
-use super::super::g8::{self, Case, Located, Shape};
+use super::super::g8::{self, Answered, Case, Located, Shape};
 use wasmtime::component::Component;
 
 use super::GUEST_COMPONENT;
@@ -774,6 +774,7 @@ Console.WriteLine(text);
 "#,
                 names: &["Gg.ToolException", "Files.ReadTextFile", "missing.md"],
                 located: Located::Nowhere,
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::NativeFault,
@@ -790,6 +791,7 @@ Console.WriteLine(missing);
                     "Index was outside the bounds of the array",
                 ],
                 located: Located::Nowhere,
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::FailureValue,
@@ -804,6 +806,7 @@ public static class Program {
 "#,
                 names: &["the third step did not finish"],
                 located: Located::Nowhere,
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::ResourceFault,
@@ -820,6 +823,7 @@ public static class Program {
 "#,
                 names: &["StackOverflowException"],
                 located: Located::Nowhere,
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::Abort,
@@ -833,6 +837,7 @@ Console.WriteLine("after the exit");
 "#,
                 names: &["exit(3)"],
                 located: Located::Nowhere,
+                answered: Answered::AtRuntime,
             },
         ],
     );

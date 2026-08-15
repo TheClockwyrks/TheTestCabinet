@@ -48,7 +48,7 @@ use crate::sandbox::{
 };
 use crate::tools::ToolOutcome;
 
-use super::super::g8::{self, Case, Located, Shape};
+use super::super::g8::{self, Answered, Case, Located, Shape};
 
 /// This arm, resolved from the registry — the same `&'static dyn ProgramLanguage` a run resolves.
 fn python() -> &'static dyn crate::sandbox::ProgramLanguage {
@@ -1925,6 +1925,7 @@ print(text)
 "#,
                 names: &["read_file", "missing.md"],
                 located: Located::At("line 3, column 8"),
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::NativeFault,
@@ -1937,6 +1938,7 @@ print(
 "#,
                 names: &["IndexError", "list index out of range"],
                 located: Located::At("line 5, column 5"),
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::FailureValue,
@@ -1950,6 +1952,7 @@ sys.exit(
 "#,
                 names: &["SystemExit: 3"],
                 located: Located::At("line 5, column 1"),
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::ResourceFault,
@@ -1962,6 +1965,7 @@ deeper(0)
 "#,
                 names: &["RecursionError", "maximum recursion depth exceeded"],
                 located: Located::At("line 4, column 12"),
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::Abort,
@@ -1975,6 +1979,7 @@ os._exit(
 "#,
                 names: &["exit(3)"],
                 located: Located::Nowhere,
+                answered: Answered::AtRuntime,
             },
         ],
     );

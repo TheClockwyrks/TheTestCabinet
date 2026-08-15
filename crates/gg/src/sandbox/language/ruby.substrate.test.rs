@@ -29,7 +29,7 @@ use std::time::Instant;
 use serde_json::{Value, json};
 use test_cabinet_core::gg::GgProgramLanguage;
 
-use super::super::g8::{self, Case, Located, Shape};
+use super::super::g8::{self, Answered, Case, Located, Shape};
 use wasmtime::component::Component;
 
 use super::COMPONENT;
@@ -1881,6 +1881,7 @@ puts text
 "#,
                 names: &["read_file", "not-found", "missing.md"],
                 located: Located::At("line 3"),
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::NativeFault,
@@ -1893,6 +1894,7 @@ puts(
 "#,
                 names: &["IndexError", "index 7 outside of array bounds"],
                 located: Located::At("line 5"),
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::FailureValue,
@@ -1906,6 +1908,7 @@ outcome
 "#,
                 names: &["the third step did not finish"],
                 located: Located::Nowhere,
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::ResourceFault,
@@ -1919,6 +1922,7 @@ deeper(0)
 "#,
                 names: &["too much recursion"],
                 located: Located::At("line 4"),
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::Abort,
@@ -1932,6 +1936,7 @@ puts "after the exit"
 "#,
                 names: &["exit(3)"],
                 located: Located::Nowhere,
+                answered: Answered::AtRuntime,
             },
         ],
     );

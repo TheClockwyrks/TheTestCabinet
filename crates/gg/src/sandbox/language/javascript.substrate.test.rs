@@ -34,7 +34,7 @@
 use serde_json::json;
 use test_cabinet_core::gg::GgProgramLanguage;
 
-use super::super::g8::{self, Case, Located, Shape};
+use super::super::g8::{self, Answered, Case, Located, Shape};
 
 use crate::context::ViewKind;
 use crate::ending::EndingRole;
@@ -526,6 +526,7 @@ console.log(text);
 "#,
                 names: &["read_text_file", "not-found", "missing.md"],
                 located: Located::At("line 3, column 17"),
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::NativeFault,
@@ -538,6 +539,7 @@ console.log(
 "#,
                 names: &["TypeError", "values[7] is undefined"],
                 located: Located::At("line 5, column 13"),
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::FailureValue,
@@ -551,6 +553,7 @@ step();
 "#,
                 names: &["the third step did not finish"],
                 located: Located::Nowhere,
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::ResourceFault,
@@ -564,6 +567,7 @@ deeper(0);
 "#,
                 names: &["too much recursion"],
                 located: Located::At("line 4, column 10"),
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::Abort,
@@ -577,6 +581,7 @@ console.log("after the exit");
 "#,
                 names: &["exit(3)"],
                 located: Located::Nowhere,
+                answered: Answered::AtRuntime,
             },
         ],
     );

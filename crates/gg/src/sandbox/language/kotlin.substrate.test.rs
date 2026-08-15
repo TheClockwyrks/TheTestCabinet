@@ -68,7 +68,7 @@ use crate::tools::ToolOutcome;
 /// registration would now reach perfectly well. The share is the point: asking the registry would
 /// hand back these same bytes through an indirection, and this file is where the fact that they are
 /// the *other* arm's artifact has to be legible rather than inferred.
-use super::super::g8::{self, Case, Located, Shape};
+use super::super::g8::{self, Answered, Case, Located, Shape};
 use test_cabinet_core::gg::GgProgramLanguage;
 
 fn component() -> &'static Component {
@@ -842,6 +842,7 @@ println(text)
 "#,
                 names: &["read_text_file", "not-found", "missing.md"],
                 located: Located::Nowhere,
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::NativeFault,
@@ -854,6 +855,7 @@ println(
 "#,
                 names: &["java.lang.ArrayIndexOutOfBoundsException"],
                 located: Located::At("program.kts:5"),
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::FailureValue,
@@ -864,6 +866,10 @@ return 3
 "#,
                 names: &["'return' is prohibited here"],
                 located: Located::At("program.kts:4:1"),
+                // Nothing runs: a Kotlin script has no function to return from, so the compiler
+                // refuses the statement. A model on this arm cannot terminate by a value at all,
+                // and this is the sentence it reads when it tries.
+                answered: Answered::ByRefusingToCompile,
             },
             Case {
                 shape: Shape::ResourceFault,
@@ -877,6 +883,7 @@ println(deeper(0))
 "#,
                 names: &["too much recursion"],
                 located: Located::At("program.kts:4"),
+                answered: Answered::AtRuntime,
             },
             Case {
                 shape: Shape::Abort,
@@ -885,8 +892,16 @@ println(deeper(0))
 println("before the exit")
 kotlin.system.exitProcess(3)
 "#,
+                // The program writes `kotlin.system.exitProcess`, and the name in the diagnostic is
+                // `java.lang.System.exit(I)V`, which is what the standard library's `exitProcess`
+                // compiles down to. It is the language's own choice rather than gg's, and it is the
+                // one token here the model did not type: what it can act on is that this arm has no
+                // exit, which the sentence says.
                 names: &["System.exit"],
                 located: Located::At("program.kts:4"),
+                // Nothing runs: TeaVM has no `System.exit` to link, so the program is refused at
+                // the translation step, at the model's own line.
+                answered: Answered::ByRefusingToCompile,
             },
         ],
     );
