@@ -623,7 +623,37 @@ position, and that `Location::file()`/`line()` report the *included* file.
    inside `lib.<name>` is mapped through the **wrong map** and produces a
    plausible, wrong Ruby line. Pinned by no test.
 
-### The one thing no source map can fix — an owner decision
+### D13 — the healed text IS the model's program, and the model is shown it
+
+The owner:
+
+> Showing post-healing line numbers is the expected design. Models should see the
+> post-healing response as though it were their original response.
+
+So the definition is settled: **the healed text is the program of record.** A
+reported line is a line of it, no mapping is owed, and `healing.rs` is not a
+violation of D11 — it is upstream of where "the model's source" begins.
+
+The condition that makes this coherent is the second sentence, and it is a real
+requirement rather than a restatement: the transcript must carry the healed
+program, so that what the model reads and what a line number counts are the same
+text.
+
+**gg implements this, but not by default.** `healing.rs:489` `AssistantMessageMode`
+has two settings, and `:527` records that absent / `null` / `"none"` is **the
+default**, recording the raw reply; only `"response-healing"` records the healed
+program, and then only when healing changed something (`healed.rewritten()`,
+`agent.rs:7114`). Under the default, a model reads the reply it sent — fences,
+prose and all — while every line number it is given counts lines of a text it has
+never seen.
+
+**Open, and a one-line change with study-wide consequences:** whether
+`response-healing` becomes the default. Keeping `none` as an experimental lever is
+defensible — it is a study harness — but under D13 it is a **knowingly
+inconsistent** setting rather than a neutral one, and it should be documented as
+such wherever it is configured.
+
+### The healing question, now closed
 
 `crates/gg/src/healing.rs` rewrites the reply **before any arm sees it**:
 `trim_reply` removes leading blank lines, `strip_fences` takes a fenced block's
