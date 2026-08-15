@@ -1,6 +1,6 @@
 import { Markdown, Panel } from "@test-cabinet/ui";
 import type { ErratumSeverity } from "../../../data/testCases";
-import { useTestCases } from "../../../data/useTestCases";
+import { useTestCase } from "../../../data/useTestCase";
 import styles from "./RunErrataCallout.module.scss";
 
 const SEVERITY_LABEL: Record<ErratumSeverity, string> = {
@@ -31,16 +31,14 @@ export function RunErrataCallout({
 }: {
   subject: RunErrataCalloutSubject;
 }) {
-  const { testCases } = useTestCases();
-  const testCase = testCases.find((tc) => tc.slug === subject.testCaseSlug);
+  const { testCase } = useTestCase(subject.testCaseSlug);
   const group = testCase?.errata.find(
     (entry) => entry.version === subject.testCaseVersion,
   );
   // A case-wide erratum (no variant) applies to every variant; a scoped one only to
   // its own.
   const applicable = (group?.errata ?? []).filter(
-    (erratum) =>
-      erratum.variant == null || erratum.variant === subject.variant,
+    (erratum) => erratum.variant == null || erratum.variant === subject.variant,
   );
   if (applicable.length === 0) {
     return null;
@@ -52,11 +50,12 @@ export function RunErrataCallout({
       </h2>
       <p className={styles.note}>
         Issues found in this version after it shipped. Weigh them when scoring —
-        an issue marked <span className={styles.scoringWord}>affects scoring</span>{" "}
-        is a known defect a run should not be penalised for. An issue marked{" "}
-        <span className={styles.scoringWord}>excluded from scoring</span> has had
-        its review point removed from the score for this version, so it no longer
-        counts either way.
+        an issue marked{" "}
+        <span className={styles.scoringWord}>affects scoring</span> is a known
+        defect a run should not be penalised for. An issue marked{" "}
+        <span className={styles.scoringWord}>excluded from scoring</span> has
+        had its review point removed from the score for this version, so it no
+        longer counts either way.
       </p>
       <ul className={styles.list}>
         {applicable.map((erratum) => (

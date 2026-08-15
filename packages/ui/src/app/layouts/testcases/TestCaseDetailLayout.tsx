@@ -4,9 +4,9 @@ import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
 import { BackChevron } from "../../components/BackChevron";
 import { useGalleryData } from "../../data/galleryContext";
-import { useTestCases } from "../../data/useTestCases";
+import { useTestCase } from "../../data/useTestCase";
 import { tabOf } from "../../data/testCaseTabs";
-import type { TestCaseSummary, VariantSummary } from "../../data/testCases";
+import type { TestCaseDetail, VariantSummary } from "../../data/testCases";
 import { routes } from "../../routes";
 import { useSelectedVariant } from "../../pages/testcases/[slug]/useSelectedVariant";
 import styles from "./TestCaseDetailLayout.module.scss";
@@ -30,7 +30,7 @@ interface TestCaseDetailLayoutProps {
   tab: DetailTab;
   /** The tab body, given the resolved case and the selected variant. */
   children: (ctx: {
-    testCase: TestCaseSummary;
+    testCase: TestCaseDetail;
     variant: VariantSummary;
   }) => ReactNode;
 }
@@ -48,21 +48,24 @@ export function TestCaseDetailLayout({
   const { slug } = useParams<{ slug: string }>();
   const { search } = useLocation();
   const { canExecute, arena } = useGalleryData();
-  const { testCases, status: testCasesStatus } = useTestCases();
-  const testCase = testCases.find((entry) => entry.slug === slug);
+  // The detail tabs need the whole case — its variants, description, changelog,
+  // and errata — which the catalog listing deliberately does not carry. Fetch the
+  // one case this route is about rather than making every listing pay for all of
+  // them.
+  const { testCase, status } = useTestCase(slug);
   // Called unconditionally (hook rules); it tolerates an undefined case and
   // simply resolves no variant, which the guard below turns into the loading or
   // not-found state.
   const [variant, setVariant] = useSelectedVariant(testCase);
 
   if (!testCase || !variant) {
-    // While the catalog is still loading the case simply isn't resolvable yet,
-    // so show the branded full-body loading state (the topbar stays) rather than
+    // While the case is still being fetched it simply isn't resolvable yet, so
+    // show the branded full-body loading state (the topbar stays) rather than
     // the not-found text. "No test case found" is reserved for a case that is
-    // genuinely absent from a catalog that has finished loading.
+    // genuinely absent once the fetch has settled.
     return (
       <PageLayout>
-        {testCasesStatus === "loading" ? (
+        {status === "loading" ? (
           <LoadingState label="Loading test case…" />
         ) : (
           <p className={styles.notFound}>

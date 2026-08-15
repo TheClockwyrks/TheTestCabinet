@@ -26,7 +26,13 @@ import type {
   VerdictStatus,
 } from "../ratings";
 
-export type { DomainRating, Rating, ReviewRevision, ReviewVerdict, VerdictStatus };
+export type {
+  DomainRating,
+  Rating,
+  ReviewRevision,
+  ReviewVerdict,
+  VerdictStatus,
+};
 export type { HarnessFamily, MediaKind, TestType };
 // The normalized harness event shape is generated from the Rust `HarnessEvent`
 // contract (crates/core/src/event.rs) — the live monitor and the published
@@ -117,9 +123,28 @@ export interface LogoFetchResult {
   logoSvg: string;
 }
 
+/**
+ * One case as the catalog *listing* (`GET /test-cases`) carries it: its versions
+ * plus the metadata a card renders. This is deliberately the whole of what a
+ * listing needs — resolving a version is what a client does for the one case a
+ * visitor opens, never for every case it lists.
+ */
 export interface TestCase {
   slug: string;
+  /** Every visible version, oldest first. */
   versions: string[];
+  /** Display name, from the latest visible version. */
+  name: string;
+  /** The case's test type, which drives how a listing groups it. */
+  testType: TestType;
+  /** For an asset-generation case, the asset shape it produces; null for a
+   * non-asset case or a backend that predates the field. */
+  assetKind: AssetKind | null;
+  /** Relative difficulty (`easy` / `medium` / `hard`). */
+  difficulty: string;
+  tags: string[];
+  /** The short plain-text abstract a card shows, or null. */
+  summary: string | null;
 }
 
 // A reference for a view, resolved to an absolute media URL. A rendered mockup or

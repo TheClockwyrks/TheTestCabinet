@@ -25,20 +25,68 @@ use crate::store::{
 
 use super::AppState;
 
-/// `GET /test-cases` — the catalog of ingested cases and their versions.
+/// `GET /test-cases` — the catalog of ingested cases and their versions, each
+/// carrying the display metadata a *listing* needs.
+///
+/// The metadata (name, type, difficulty, tags, summary) is deliberately part of
+/// this response: a catalog listing shows exactly these fields, and without them
+/// a client has to resolve every version of every case just to render a grid of
+/// cards — hundreds of round trips for a page that needs one. Anything heavier
+/// than a card (the description, variants, prompts, seeded specs, checklist,
+/// changelog, errata) stays on [`resolve_version`], fetched only for the case a
+/// visitor actually opens.
+///
+/// The metadata is read from each case's **latest visible version**, which is the
+/// one a listing describes. A case whose latest manifest cannot be read is
+/// skipped rather than failing the whole catalog — one unreadable sidecar should
+/// cost that case's card, not every case's.
 ///
 /// Experimental versions are omitted unless the deployment has opted in via
 /// `TCAB_BACKEND_ALLOW_EXPERIMENTAL` (see [`crate::config::Config::allow_experimental`]),
 /// so an experimental case a deployment has not enabled is not offered to the UI.
 pub async fn catalog(State(state): State<AppState>) -> Result<Json<CatalogResponse>, ApiError> {
-    let cases = state
+    let mut cases = Vec::new();
+    for (slug, versions) in state
         .store
         .list_visible_cases(state.config.allow_experimental)
         .map_err(ApiError::from)?
-        .into_iter()
-        .map(|(slug, versions)| CatalogCase { slug, versions })
-        .collect();
+    {
+        // `list_visible_cases` orders versions oldest-first, so the latest — the
+        // one the card describes — is the last.
+        let Some(latest) = versions.last() else {
+            continue;
+        };
+        let manifest = match state.store.read_manifest(&slug, latest) {
+            Ok(manifest) => manifest,
+            Err(error) => {
+                tracing::warn!(
+                    %slug,
+                    version = %latest,
+                    %error,
+                    "skipping case in catalog listing: its latest manifest could not be read"
+                );
+                continue;
+            }
+        };
+        cases.push(catalog_case(slug, versions, &manifest));
+    }
     Ok(Json(CatalogResponse { test_cases: cases }))
+}
+
+/// Build one catalog listing entry from a case's visible versions and the
+/// manifest of its latest one. Split out from [`catalog`] so the metadata a card
+/// renders can be covered without standing up a store.
+fn catalog_case(slug: String, versions: Vec<String>, manifest: &StoredManifest) -> CatalogCase {
+    CatalogCase {
+        slug,
+        versions,
+        name: manifest.name.clone(),
+        test_type: manifest.test_type,
+        asset_kind: manifest.asset_kind,
+        difficulty: manifest.difficulty.clone(),
+        tags: manifest.tags.clone(),
+        summary: manifest.summary.clone(),
+    }
 }
 
 /// `GET /test-cases/{slug}/versions` — versions for one case.
@@ -700,11 +748,30 @@ pub struct CatalogResponse {
     pub test_cases: Vec<CatalogCase>,
 }
 
+/// One entry of the catalog listing: a case, its visible versions, and the
+/// display metadata a card renders — read from the latest visible version. This
+/// is the *summary* half of the catalog contract; the detail half is
+/// [`VersionResponse`], which a client fetches only for a case it opens.
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct CatalogCase {
     pub slug: String,
+    /// Every visible version, oldest first.
     pub versions: Vec<String>,
+    /// The case's display name, from its latest visible version.
+    pub name: String,
+    /// The case's test type, which drives how a listing groups it.
+    pub test_type: TestType,
+    /// For an asset-generation case, the asset shape it produces — the catalog
+    /// partitions its 2D / 3D / Particle / Audio tabs on this.
+    pub asset_kind: AssetKind,
+    /// Relative difficulty (`easy` / `medium` / `hard`). A game jam is
+    /// unclassified and reports whatever its manifest carries.
+    pub difficulty: String,
+    pub tags: Vec<String>,
+    /// The short plain-text abstract a card shows, when the case declares one.
+    pub summary: Option<String>,
 }
 
 #[derive(Serialize)]

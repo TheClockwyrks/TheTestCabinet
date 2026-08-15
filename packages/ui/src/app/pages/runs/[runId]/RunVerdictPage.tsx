@@ -8,10 +8,14 @@ import {
   type ParsedWriteup,
 } from "../../../data/ratings";
 import { useGalleryData, type ReviewModel } from "../../../data/galleryContext";
+import { useReviewModel } from "../../../data/useTestCase";
 import {
   describeRunState,
   type RunStatePresentation,
 } from "../../../data/runState";
+import { LoadingState } from "../../../components/LoadingState";
+import type { RunRecord } from "@test-cabinet/run-record";
+import type { StoredReview } from "../../../../client/types";
 import { useAuth } from "../../../../client/auth";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
@@ -158,42 +162,61 @@ export function RunVerdictPage() {
                   onChanged={() => runtime.requestRefresh()}
                 />
               ) : (
-                (() => {
-                  const model = gallery.reviewModelFor(run.subject);
-                  return (
-                    <Panel>
-                      {review ? (
-                        <PublishedVerdict review={review} model={model} />
-                      ) : (
-                        <p className={styles.empty}>
-                          No manual review has been written for this run yet.
-                        </p>
-                      )}
-                      {/* The individual reviews behind the aggregate verdict above,
-                          each linking to its own page (its full prose and per-item
-                          verdicts). Shown whenever the run carries any review. */}
-                      {reviews.length > 0 && (
-                        <div className={styles.reviews}>
-                          <h2 className={styles.checklistHeading}>
-                            {reviews.length} review
-                            {reviews.length === 1 ? "" : "s"}
-                          </h2>
-                          <ReviewList
-                            reviews={reviews}
-                            items={model.items}
-                            runId={run.id}
-                          />
-                        </div>
-                      )}
-                    </Panel>
-                  );
-                })()
+                <ReadOnlyVerdictPanel
+                  run={run}
+                  review={review}
+                  reviews={reviews}
+                />
               )
             }
           </div>
         );
       }}
     </RunDetailLayout>
+  );
+}
+
+// The read-only verdict panel and the reviews behind it. A component rather than
+// an inline branch because the scoring model it renders against is now fetched
+// per case (a hook), not read out of a catalog held whole in memory.
+function ReadOnlyVerdictPanel({
+  run,
+  review,
+  reviews,
+}: {
+  run: RunRecord;
+  review: ParsedWriteup | undefined;
+  reviews: StoredReview[];
+}) {
+  const model = useReviewModel(run.subject);
+  // The scoring model arrives with the case fetch, so wait for it rather than
+  // rendering a score-less verdict that then gains a score — a reviewer reading
+  // "no score" for a run that has one is worse than a brief wait.
+  if (model.status === "loading") {
+    return <LoadingState size="section" label="Loading verdict…" />;
+  }
+  return (
+    <Panel>
+      {review ? (
+        <PublishedVerdict review={review} model={model} />
+      ) : (
+        <p className={styles.empty}>
+          No manual review has been written for this run yet.
+        </p>
+      )}
+      {/* The individual reviews behind the aggregate verdict above, each linking
+          to its own page (its full prose and per-item verdicts). Shown whenever
+          the run carries any review. */}
+      {reviews.length > 0 && (
+        <div className={styles.reviews}>
+          <h2 className={styles.checklistHeading}>
+            {reviews.length} review
+            {reviews.length === 1 ? "" : "s"}
+          </h2>
+          <ReviewList reviews={reviews} items={model.items} runId={run.id} />
+        </div>
+      )}
+    </Panel>
   );
 }
 

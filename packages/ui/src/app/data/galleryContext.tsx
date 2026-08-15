@@ -38,6 +38,7 @@ import { findModelByModelId, type ModelSummary } from "./models";
 import type {
   DomainSummary,
   ReviewItemSummary,
+  TestCaseDetail,
   TestCaseSummary,
 } from "./testCases";
 import type { RunQuery, RunQueryResult } from "./runQuery";
@@ -320,11 +321,27 @@ export interface GalleryDataInput {
   reviews: Readonly<Record<string, StoredReview[]>>;
   /** True while the run list is still loading. */
   runsLoading: boolean;
-  /** The test-case catalog. */
+  /**
+   * The test-case catalog, as listing-level {@link TestCaseSummary} cards. This
+   * is intentionally *only* what a listing renders: resolving each case in full
+   * up front meant a request per version plus one per variant's specs — hundreds
+   * of round trips before any page could paint, on every route. A case's detail
+   * is fetched per slug through {@link readTestCase} when a visitor opens it.
+   */
   testCases: TestCaseSummary[];
   /** The catalog's load state, so the UI can tell loading and an unreachable
    * backend apart from a genuinely empty catalog. See {@link CatalogStatus}. */
   testCasesStatus: CatalogStatus;
+  /**
+   * Resolve one case in full by slug — its description, variants (prompts,
+   * seeded specs, references, checklists), changelog, and errata. The detail
+   * counterpart to the summary-level {@link testCases}: a detail surface (the
+   * case/jam detail tabs, a run's Inputs tab, the review scoring model) fetches
+   * the one case it is about rather than the whole catalog carrying every case's
+   * detail. Resolves `null` when no such case is available here. Omitted by a
+   * host that cannot resolve a case by slug.
+   */
+  readTestCase?: (slug: string) => Promise<TestCaseDetail | null>;
   /** The model catalog: curated configs merged with the models recorded runs
    * reference, each with its price history. The console fetches it from the
    * backend; the static site reads it from the snapshot. */
@@ -844,13 +861,13 @@ export interface GalleryData extends GalleryDataInput {
    */
   performancePlaybackFor(run: RunRecord): PerformancePlaybackView | null;
   /**
-   * The scoring model for a run's subject: the effective (common + variant)
-   * weighted checklist items and the effective (common + variant) scoring
-   * domains, resolved from the catalog this host holds. Items and domains are
-   * empty when the case is not in the catalog. Lets the verdict page and the
-   * leaderboard score a run from its review verdicts and per-domain ratings.
+   * Resolve one case in full by slug, delegating to the host's
+   * {@link GalleryDataInput.readTestCase}. Resolves `null` when the host supplies
+   * no resolver or holds no such case. Components should reach this through
+   * `useTestCase`, which caches per slug so the several detail surfaces on one
+   * page share a single fetch.
    */
-  reviewModelFor(subject: RunSubject): ReviewModel;
+  fetchTestCase(slug: string): Promise<TestCaseDetail | null>;
   /**
    * Resolve a run's `modelId` (optionally with its harness slug, for harness-aware
    * canonicalization) to its catalog entry, over the loaded model catalog. Returns
@@ -881,7 +898,6 @@ export function GalleryDataProvider({
       assetMediaUrl,
       validationMediaUrl,
       validationBaselineUrl,
-      testCases,
       models,
     } = value;
     return {
@@ -912,17 +928,10 @@ export function GalleryDataProvider({
       reviewsFor(runId) {
         return reviews[runId] ?? [];
       },
-      reviewModelFor(subject) {
-        const testCase = testCases.find((c) => c.slug === subject.testCaseSlug);
-        const variant = testCase?.variants.find(
-          (v) => v.slug === subject.variant,
-        );
-        return {
-          items: variant?.reviewItems ?? [],
-          // The variant's effective scoring domains (common + its own). Falls back
-          // to the case's common domains when the variant can't be resolved.
-          domains: variant?.domains ?? testCase?.domains ?? [],
-        };
+      fetchTestCase(slug) {
+        return value.readTestCase
+          ? value.readTestCase(slug)
+          : Promise.resolve(null);
       },
       proofMediaFor(run) {
         return run.validation.proofs.map((proof) => ({

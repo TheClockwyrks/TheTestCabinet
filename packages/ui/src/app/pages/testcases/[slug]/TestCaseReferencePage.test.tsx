@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
-import type { TestCaseSummary, VariantSummary } from "../../../data/testCases";
+import type { TestCaseDetail, VariantSummary } from "../../../data/testCases";
 import { routePatterns, routes } from "../../../routes";
 import { TestCaseReferencePage } from "./TestCaseReferencePage";
 
@@ -12,13 +12,19 @@ vi.mock("../../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
-// The catalog is injected through `useTestCases`; mock it so each test seeds an
+// The catalog is injected through `useTestCase`; mock it so each test seeds an
 // exact fixture. The gallery data is read by both the layout (run/arena
 // affordances) and the sheet view (the reference-media resolver), so it is stubbed
 // per test — a host with no resolver at all is a case the view must handle.
-const useTestCases = vi.fn();
-vi.mock("../../../data/useTestCases", () => ({
-  useTestCases: () => useTestCases(),
+const catalog = vi.fn<() => { testCases: TestCaseDetail[]; status: string }>();
+// The layout resolves the case it is about through `useTestCase` (a per-slug
+// fetch), so the stub answers from the fixture catalog each test seeds — the same
+// lookup the real hook performs against the host.
+vi.mock("../../../data/useTestCase", () => ({
+  useTestCase: (slug: string | undefined) => {
+    const { testCases, status } = catalog();
+    return { testCase: testCases.find((c) => c.slug === slug), status };
+  },
 }));
 const galleryData = vi.fn();
 vi.mock("../../../data/galleryContext", () => ({
@@ -46,7 +52,7 @@ function variant(extra: Partial<VariantSummary> = {}): VariantSummary {
 }
 
 // A catalog entry carrying only the fields the Reference tab and its layout read.
-function testCase(extra: Partial<TestCaseSummary> = {}): TestCaseSummary {
+function testCase(extra: Partial<TestCaseDetail> = {}): TestCaseDetail {
   return {
     slug: "lattice-belt",
     name: "Lattice Belt",
@@ -67,7 +73,7 @@ function testCase(extra: Partial<TestCaseSummary> = {}): TestCaseSummary {
       sequences: [{ slug: "run", name: "Run", frames: [0, 1], fps: 8 }],
     },
     ...extra,
-  } as TestCaseSummary;
+  } as TestCaseDetail;
 }
 
 function renderReference(slug = "lattice-belt") {
@@ -85,7 +91,7 @@ function renderReference(slug = "lattice-belt") {
 
 describe("TestCaseReferencePage", () => {
   it("renders the published frames and their action logs for an asset case", () => {
-    useTestCases.mockReturnValue({
+    catalog.mockReturnValue({
       testCases: [
         testCase({
           variants: [variant({ referenceSheet: { frames: [0, 1] } })],
@@ -126,7 +132,7 @@ describe("TestCaseReferencePage", () => {
   });
 
   it("degrades to a placeholder when the host serves no reference media", () => {
-    useTestCases.mockReturnValue({
+    catalog.mockReturnValue({
       testCases: [
         testCase({ variants: [variant({ referenceSheet: { frames: [0] } })] }),
       ],
@@ -143,7 +149,7 @@ describe("TestCaseReferencePage", () => {
   it("shows the frames without animations when the host omits the sheet spec", () => {
     // The static snapshot may not carry the case's `[sheet]`; the frames still
     // stand on their own, they just cannot be played as sequences.
-    useTestCases.mockReturnValue({
+    catalog.mockReturnValue({
       testCases: [
         testCase({
           sheet: null,
@@ -164,7 +170,7 @@ describe("TestCaseReferencePage", () => {
   });
 
   it("still embeds a deployed reference build for an end-to-end variant", () => {
-    useTestCases.mockReturnValue({
+    catalog.mockReturnValue({
       testCases: [
         testCase({
           testType: "end-to-end",
@@ -186,7 +192,7 @@ describe("TestCaseReferencePage", () => {
   it("shows the no-reference placeholder when the variant declares neither", () => {
     // Only reachable by hand-typed URL (the layout hides the tab), but it must not
     // render an empty embed.
-    useTestCases.mockReturnValue({
+    catalog.mockReturnValue({
       testCases: [testCase({ variants: [variant()] })],
       status: "ready",
     });
