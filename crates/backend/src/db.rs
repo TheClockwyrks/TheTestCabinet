@@ -20,8 +20,9 @@ use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::{CaseStatement, Expr, Func, OnConflict, SimpleExpr};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, ConnectOptions, ConnectionTrait, Database,
-    DatabaseBackend, DatabaseConnection, EntityTrait, IntoActiveModel, JoinType, Order,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, RelationTrait, Select, TransactionTrait,
+    DatabaseBackend, DatabaseConnection, DatabaseTransaction, EntityTrait, IntoActiveModel,
+    JoinType, Order, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, RelationTrait, Select,
+    TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use test_cabinet_core::match_play::TournamentRecord;
@@ -2315,16 +2316,39 @@ pub struct NewJob {
     /// Which attempt this job is: `0` for a console launch, `n > 0` for the backend's
     /// `n`th automatic retry after a terminal infrastructure/catastrophic failure.
     pub attempt: i32,
-    /// RFC 3339 of enqueue (the claim-ordering key, also the initial update time).
+    /// RFC 3339 of enqueue (also the initial update time). The queue's ordering key
+    /// is [`job::Model::queue_seq`], minted at insert — not this.
     pub created_at: String,
 }
 
-/// Build the `queued` `job` row for a run to enqueue. Shared by the single
-/// ([`Db::enqueue_job`]) and batch ([`Db::enqueue_jobs`]) insert paths so a job is
-/// materialized identically however it was submitted.
-fn new_job_model(new: NewJob) -> job::ActiveModel {
+/// The queue position to mint for the next job enqueued: one past the highest ever
+/// handed out. Read inside the enqueue's own transaction, so a committed enqueue's
+/// positions are never reused and a batch's block of positions stays contiguous.
+///
+/// Deriving it from the table rather than a database sequence keeps the store
+/// portable across SQLite and Postgres, which is the same reason the schema is built
+/// from SeaORM's portable builder. Two enqueues that genuinely race on Postgres can
+/// read the same maximum and tie; the claim's `created_at`-then-`id` tiebreakers make
+/// that deterministic, and it only ever mis-orders the two racing submissions against
+/// each other — never a batch's runs among themselves, which is what this fixes.
+async fn next_queue_seq(txn: &DatabaseTransaction) -> Result<i64> {
+    let highest: Option<i64> = job::Entity::find()
+        .select_only()
+        .column_as(job::Column::QueueSeq.max(), "highest")
+        .into_tuple::<Option<i64>>()
+        .one(txn)
+        .await?
+        .flatten();
+    Ok(highest.unwrap_or(0) + 1)
+}
+
+/// Build the `queued` `job` row for a run to enqueue, at queue position `queue_seq`.
+/// Shared by the single ([`Db::enqueue_job`]) and batch ([`Db::enqueue_jobs`]) insert
+/// paths so a job is materialized identically however it was submitted.
+fn new_job_model(new: NewJob, queue_seq: i64) -> job::ActiveModel {
     job::ActiveModel {
         id: Set(new.id),
+        queue_seq: Set(queue_seq),
         state: Set("queued".to_string()),
         request_json: Set(new.request_json),
         test_case_slug: Set(new.test_case_slug),
@@ -2360,11 +2384,15 @@ pub struct NewPublishJob {
 /// the lifecycle of a requested run; the produced [`RunRecord`] lands via
 /// [`Db::push`] like any other.
 impl Db {
-    /// Enqueue a run: insert it in the `queued` state for the dispatcher to claim.
+    /// Enqueue a run: insert it in the `queued` state for the dispatcher to claim, at
+    /// the back of the queue — it takes the next [`job::Model::queue_seq`].
     pub async fn enqueue_job(&self, new: NewJob) -> Result<()> {
-        job::Entity::insert(new_job_model(new))
-            .exec(&self.conn())
+        let txn = self.conn().begin().await?;
+        let seq = next_queue_seq(&txn).await?;
+        job::Entity::insert(new_job_model(new, seq))
+            .exec(&txn)
             .await?;
+        txn.commit().await?;
         Ok(())
     }
 
@@ -2373,19 +2401,42 @@ impl Db {
     /// `POST /jobs/batch`. Rows are inserted in bounded chunks so a large fan-out
     /// (a whole coverage plan's missing runs) never exceeds the backing database's
     /// bind-parameter ceiling. An empty batch is a no-op.
+    ///
+    /// The batch takes a **contiguous run of queue positions in the order it was
+    /// submitted**, so the dispatcher starts the runs in the order the console listed
+    /// them: a console that fans a case out over its repeats before moving to the
+    /// next case gets all of that case's repeats started first. The whole batch is
+    /// one transaction, so it never interleaves with a concurrent enqueue's
+    /// positions and a failed chunk leaves nothing behind.
     pub async fn enqueue_jobs(&self, jobs: Vec<NewJob>) -> Result<()> {
-        // Each row binds ~13 columns; a 1000-row chunk is ~13k parameters, well
+        if jobs.is_empty() {
+            return Ok(());
+        }
+        // Each row binds ~14 columns; a 1000-row chunk is ~14k parameters, well
         // under both SQLite's (32766) and Postgres's (65535) per-statement limits.
         const CHUNK: usize = 1000;
-        for chunk in jobs.chunks(CHUNK) {
-            let models = chunk.iter().cloned().map(new_job_model);
-            job::Entity::insert_many(models).exec(&self.conn()).await?;
+        let txn = self.conn().begin().await?;
+        let first = next_queue_seq(&txn).await?;
+        for (chunk_index, chunk) in jobs.chunks(CHUNK).enumerate() {
+            let base = first + (chunk_index * CHUNK) as i64;
+            let models = chunk
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, new)| new_job_model(new, base + i as i64));
+            job::Entity::insert_many(models).exec(&txn).await?;
         }
+        txn.commit().await?;
         Ok(())
     }
 
-    /// Atomically claim the oldest claimable job, flipping it to `dispatched`, and
-    /// return it (or `None` when nothing is claimable). Enforces each harness's
+    /// Atomically claim the first claimable job in queue order, flipping it to
+    /// `dispatched`, and return it (or `None` when nothing is claimable). Selection
+    /// is FIFO across harnesses by [`job::Model::queue_seq`] — the position minted at
+    /// enqueue — skipping any job held back. So a batch of repeated runs is
+    /// dispatched in the order it was submitted, and a console that fans one case out
+    /// over its repeats before moving to the next case gets all of the first case's
+    /// runs started (and so finished) before the next case's. Enforces each harness's
     /// configured maximum parallelism: a job is claimable only when its harness has
     /// fewer than its limit of runs already occupying a parallelism slot
     /// (`ACTIVE_SLOT_STATES` — `dispatched`/`starting`/`running`). A harness with
@@ -2406,8 +2457,7 @@ impl Db {
     /// its cap, or because it is a jam run waiting its turn behind the same model's
     /// earlier entry — is moved to `pending` (visible as such), and one that is
     /// claimable again is released to `queued`. So an operator sees exactly which
-    /// waiting runs are deliberately held versus merely next in line. Selection stays
-    /// FIFO (oldest `created_at`, then `id`) across harnesses, skipping any held back.
+    /// waiting runs are deliberately held versus merely next in line.
     ///
     /// The select-then-updates run in one transaction; SQLite serializes writers
     /// (single-writer WAL), so two dispatchers cannot claim the same job.
@@ -2452,6 +2502,7 @@ impl Db {
         // run reads as `pending` and a now-claimable one as `queued`.
         let waiting = job::Entity::find()
             .filter(job::Column::State.is_in(["queued", "pending"]))
+            .order_by_asc(job::Column::QueueSeq)
             .order_by_asc(job::Column::CreatedAt)
             .order_by_asc(job::Column::Id)
             .all(&txn)
@@ -2631,12 +2682,16 @@ impl Db {
     }
 
     /// Every job still in flight (`queued`, `pending`, `dispatched`, `starting`, or
-    /// `running`), oldest-first by enqueue time. This is the console's active-run
-    /// list: a run it is watching survives a page reload because the backend
-    /// remembers it — including one held back (`pending`) or spinning up (`starting`).
+    /// `running`), in queue order. This is the console's active-run list: a run it is
+    /// watching survives a page reload because the backend remembers it — including
+    /// one held back (`pending`) or spinning up (`starting`). Ordering it by queue
+    /// position rather than enqueue time means the list reads in the order the runs
+    /// will actually start, which for a batch of repeats is the order they were
+    /// requested in.
     pub async fn active_jobs(&self) -> Result<Vec<job::Model>> {
         Ok(job::Entity::find()
             .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
+            .order_by_asc(job::Column::QueueSeq)
             .order_by_asc(job::Column::CreatedAt)
             .order_by_asc(job::Column::Id)
             .all(&self.conn())

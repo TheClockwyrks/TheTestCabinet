@@ -36,6 +36,7 @@ mod m20260719_000016_create_review_revision;
 mod m20260721_000017_create_case_reference_sheet;
 mod m20260731_000023_add_job_test_type;
 mod m20260808_000024_publish_job_unique_queued_run;
+mod m20260815_000025_add_job_queue_seq;
 
 pub struct Migrator;
 
@@ -62,6 +63,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260721_000017_create_case_reference_sheet::Migration),
             Box::new(m20260731_000023_add_job_test_type::Migration),
             Box::new(m20260808_000024_publish_job_unique_queued_run::Migration),
+            Box::new(m20260815_000025_add_job_queue_seq::Migration),
         ]
     }
 }

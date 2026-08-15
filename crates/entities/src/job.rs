@@ -52,7 +52,18 @@ pub struct Model {
     /// infrastructure/catastrophic failure. Bounded against the launch request's
     /// `retryCount` so the retry chain always terminates.
     pub attempt: i32,
-    /// RFC 3339 of when the job was enqueued (the claim ordering key).
+    /// The queue's ordering key: a monotonic sequence number minted at enqueue, in
+    /// the order the runs were submitted (a batch's runs keep the order the console
+    /// listed them in). The claim dispatches in ascending `queue_seq`, so a batch of
+    /// repeated runs starts — and so finishes — in the order it was requested.
+    ///
+    /// `created_at` cannot serve as that key: every run of one `POST /jobs/batch`
+    /// shares a single enqueue timestamp, and it is stored as a string whose RFC 3339
+    /// subsecond part is variable-length, so lexicographic order is not always
+    /// chronological order. `0` for rows enqueued before the column existed, which
+    /// sorts them ahead of everything minted since — correct, as they are older.
+    pub queue_seq: i64,
+    /// RFC 3339 of when the job was enqueued.
     pub created_at: String,
     /// RFC 3339 of the last state transition.
     pub updated_at: String,

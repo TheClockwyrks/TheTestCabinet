@@ -674,24 +674,131 @@ async fn enqueue_jobs_batch_inserts_all_as_queued_and_claimable() {
 }
 
 #[tokio::test]
-async fn claim_takes_the_oldest_queued_job_first() {
+async fn claim_takes_the_first_enqueued_job_first() {
     let db = Db::connect_in_memory().await.unwrap();
-    // Enqueue out of chronological order to prove the claim sorts by created_at.
-    db.enqueue_job(new_job("newer", "2026-06-23T00:10:00Z"))
+    // Every job carries the *same* `created_at`, as a batch's runs do and as two
+    // submissions inside one clock tick can: enqueue order alone decides.
+    db.enqueue_job(new_job("first", "2026-06-23T00:00:00Z"))
         .await
         .unwrap();
-    db.enqueue_job(new_job("older", "2026-06-23T00:00:00Z"))
+    db.enqueue_job(new_job("second", "2026-06-23T00:00:00Z"))
         .await
         .unwrap();
 
     let first = db.claim_next_job("2026-06-23T01:00:00Z").await.unwrap();
     assert_eq!(
         first.unwrap().id,
-        "older",
-        "oldest enqueued is claimed first"
+        "first",
+        "first enqueued is claimed first"
     );
     let second = db.claim_next_job("2026-06-23T01:00:01Z").await.unwrap();
-    assert_eq!(second.unwrap().id, "newer");
+    assert_eq!(second.unwrap().id, "second");
+}
+
+/// The queue is ordered by enqueue position, not by the `created_at` string — which
+/// is stamped once per batch and compares lexicographically, so it cannot order a
+/// batch's runs at all. An enqueue whose timestamp *looks* older than one already in
+/// the queue still goes to the back.
+#[tokio::test]
+async fn claim_ignores_created_at_when_ordering_the_queue() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_job(new_job("enqueued-first", "2026-06-23T00:10:00Z"))
+        .await
+        .unwrap();
+    db.enqueue_job(new_job("enqueued-second", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        db.claim_next_job("2026-06-23T01:00:00Z")
+            .await
+            .unwrap()
+            .unwrap()
+            .id,
+        "enqueued-first",
+    );
+    assert_eq!(
+        db.claim_next_job("2026-06-23T01:00:01Z")
+            .await
+            .unwrap()
+            .unwrap()
+            .id,
+        "enqueued-second",
+    );
+}
+
+/// A batch's runs dispatch in the order they were submitted. This is what makes
+/// repeated runs reviewable: a console that lists a case's repeats together gets all
+/// of that case's runs started — and so finished — before the next case's, instead of
+/// the three cases interleaving arbitrarily.
+#[tokio::test]
+async fn claim_dispatches_a_batch_in_the_order_it_was_submitted() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Three repeats each of three cases, listed case-major, all sharing the single
+    // `created_at` the batch endpoint stamps on every row.
+    let submitted: Vec<String> = ["carom", "pinwheel", "drift"]
+        .iter()
+        .flat_map(|case| (1..=3).map(move |n| format!("{case}-{n}")))
+        .collect();
+    let batch: Vec<NewJob> = submitted
+        .iter()
+        .map(|id| NewJob {
+            test_case_slug: id.rsplit_once('-').unwrap().0.to_string(),
+            ..new_job(id, "2026-06-23T00:00:00Z")
+        })
+        .collect();
+    db.enqueue_jobs(batch).await.unwrap();
+
+    let mut dispatched = Vec::new();
+    while let Some(job) = db.claim_next_job("2026-06-23T00:00:01Z").await.unwrap() {
+        dispatched.push(job.id);
+    }
+    assert_eq!(
+        dispatched, submitted,
+        "the queue dispatches a batch in submission order, so each case's repeats run together",
+    );
+}
+
+/// Batches keep their blocks of queue positions in submission order too: the second
+/// batch's runs all follow the first batch's, never interleaving with them.
+#[tokio::test]
+async fn claim_dispatches_batches_in_the_order_they_were_submitted() {
+    let db = Db::connect_in_memory().await.unwrap();
+    for batch in ["a", "b"] {
+        let jobs: Vec<NewJob> = (1..=3)
+            .map(|n| new_job(&format!("{batch}{n}"), "2026-06-23T00:00:00Z"))
+            .collect();
+        db.enqueue_jobs(jobs).await.unwrap();
+    }
+
+    let mut dispatched = Vec::new();
+    while let Some(job) = db.claim_next_job("2026-06-23T00:00:01Z").await.unwrap() {
+        dispatched.push(job.id);
+    }
+    assert_eq!(dispatched, ["a1", "a2", "a3", "b1", "b2", "b3"]);
+}
+
+/// Every enqueue path shares one sequence: a single enqueue that follows a batch —
+/// an automatic retry, or a one-off launch — lands behind it rather than ahead of it.
+#[tokio::test]
+async fn a_single_enqueue_after_a_batch_goes_to_the_back_of_the_queue() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_jobs(
+        (1..=3)
+            .map(|n| new_job(&format!("batch{n}"), "2026-06-23T00:00:00Z"))
+            .collect(),
+    )
+    .await
+    .unwrap();
+    db.enqueue_job(new_job("single", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+
+    let mut dispatched = Vec::new();
+    while let Some(job) = db.claim_next_job("2026-06-23T00:00:01Z").await.unwrap() {
+        dispatched.push(job.id);
+    }
+    assert_eq!(dispatched, ["batch1", "batch2", "batch3", "single"]);
 }
 
 /// A job for a specific harness, otherwise identical to [`new_job`].
