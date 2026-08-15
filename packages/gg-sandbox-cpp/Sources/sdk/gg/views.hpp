@@ -16,7 +16,7 @@
 
 namespace gg {
 
-/// Show a file, a value, or a function's documentation in the agent's own context window.
+/// Show a file, a value, or a documentation entry in the agent's own context window.
 ///
 /// Under responses as code a whole program's output would otherwise collapse into one anonymous
 /// blob, charged to one band, attributable to nothing and closable by nothing. A view restores
@@ -35,7 +35,7 @@ enum class view_kind {
   file,
   /// A computed value; its selector is the label it was opened under.
   text,
-  /// A function's documentation; its selector is the function's name.
+  /// A documentation entry; its selector is the key it was opened under.
   docs,
 };
 
@@ -111,22 +111,22 @@ files::file_read open_file(std::string_view path, files::read_window window = {}
 ///   over gg's caps.
 void open_text(std::string_view label, std::string_view body);
 
-/// Show the full documentation for one function: its signature, its description, and its types.
+/// Show the full documentation for one module, function or type — everything a search hit left out.
 ///
-/// A type is declared once per session, so what arrives is the declarations of the types this
-/// function refers to that have not been shown already. It is a view rather than a return value —
-/// the documentation arrives in the next prompt under a `Documentation` heading, exactly as a file
-/// or a computed value does — so it is not available in the turn it is asked for: ask in one turn,
-/// use it in the next. Opening the same function's documentation again replaces the view rather
-/// than adding a second copy.
+/// A type is declared once per session, so what arrives is the declarations of the types the entry
+/// refers to that have not been shown already. It is a view rather than a return value — the
+/// documentation arrives in the next prompt under a `Documentation` heading, exactly as a file or a
+/// computed value does — so it is not available in the turn it is asked for: ask in one turn, use
+/// it in the next. Opening a key that is already open does nothing at all, neither moving the view
+/// nor emitting it again: this band only grows, and `docs::close` is the one call that disturbs it.
 ///
 /// <ggop>views.open_docs_view</ggop>
 ///
-/// \param name The function to document, by the fully-qualified name its documentation is keyed
-///   by — `"gg::files::read_file"`. The bare name it is called under its module (`"read_file"`)
-///   also resolves and is a fallback rather than the form to reach for: two modules are free to
-///   declare a `close`, and only the qualified name says which one is meant. Searching the
-///   documentation is what says which names exist.
+/// \param name The entry to document, by the fully-qualified name its documentation is keyed by —
+///   `"gg::files::read_file"`, and a module's own path (`"gg::files"`) for a module. The bare name
+///   it is called under its module (`"read_file"`) also resolves and is a fallback rather than the
+///   form to reach for: two modules are free to declare a `close`, and only the qualified name says
+///   which one is meant. Whatever a search returns can be opened here.
 /// \throws core::tool_error `not_found` for an unknown or unbound name.
 void open_docs_view(std::string_view name);
 

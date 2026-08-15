@@ -1,5 +1,5 @@
 /**
- * Show the agent a file, a value, or a function's documentation.
+ * Show the agent a file, a value, or an entry's documentation.
  *
  * A view is the only channel into the agent's own context window. Under responses-as-code a whole
  * program's output would otherwise collapse into one anonymous blob, charged to one band, attributed
@@ -28,7 +28,7 @@ export type ViewKind =
   | "file"
   /** A value that was shown; its selector is the label it was given. */
   | "text"
-  /** A function's documentation; its selector is the function's name. */
+  /** An entry's documentation; its selector is that entry's key. */
   | "docs";
 
 /** The window of lines a **paged** file view covers; absent for a whole-file view. */
@@ -123,20 +123,21 @@ export function openText(label: string, body: string): void {
 }
 
 /**
- * Show the agent one function's full documentation: its signature, its description and its types.
+ * Show the agent one module, function or type's full documentation: signature, description and types.
  *
  * Only the types it names that have not already been shown this session are appended, so re-reading
- * costs nothing twice. The argument is the function itself, as in
- * `gg.views.openDocsView(gg.files.readFile)`, or its name as a string.
+ * costs nothing twice. The argument is a bound function itself, as in
+ * `gg.views.openDocsView(gg.files.readFile)`, or the entry's name as a string.
  *
  * It is a **view** rather than a return value, so the documentation arrives in the next prompt under
  * a `Documentation` heading and is not available in the turn that asked for it. Asking in one turn
- * and using it in the next is the shape that works. Opening the same function again replaces the
- * view, and `gg.docs.close` takes the same name to put it away — not the `close` in this module,
- * which does not reach documentation.
+ * and using it in the next is the shape that works. Opening an entry that is already open does
+ * nothing at all — the band only grows — and `gg.docs.close` takes the same name to put a view
+ * away, not the `close` in this module, which does not reach documentation.
  *
  * @ggop views.open_docs_view
- * @param target The function to document: the function itself, or its name as a string.
+ * @param target What to document: a bound function itself, or the entry's name as a string — a
+ * module's name is its own path, as in `gg.files`.
  * @throws `ToolError` with `not-found` for an unknown or unbound name — searching the documentation
  * is what says which names exist — and `invalid-argument` for an argument that is neither a
  * function nor a string.

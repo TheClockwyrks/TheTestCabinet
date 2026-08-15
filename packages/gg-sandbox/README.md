@@ -75,12 +75,13 @@ key also has to *name* its function (`files.read_file` is `readFile` and nothing
 else), because that derivation is how `src/shim.ts` binds an operation without a
 second table to keep in step.
 
-The name a documentation view is opened by is `gg.<module>.<name>`, and it is a
-path a program can really write: the shim binds `gg` with one object per module
-this run offers, and binds each module under its bare id as well, so
-`gg.files.readFile` and `files.readFile` are one function. Types are bound bare,
-as `ToolError` is, and filed under their module's name, so `gg.files.FileRead` is
-where the declaration lives and `FileRead` is what a signature writes.
+The name a documentation view is opened by is `gg.<module>.<name>`, or
+`gg.<module>` for a module's own, and it is a path a program can really write:
+the shim binds `gg` with one object per module this run offers, and binds each
+module under its bare id as well, so `gg.files.readFile` and `files.readFile`
+are one function. Types are bound bare, as `ToolError` is, and filed under their
+module's name, so `gg.files.FileRead` is where the declaration lives and
+`FileRead` is what a signature writes.
 
 Four families are model-facing and are **not** gg tools, so no `ALL_TOOL_NAMES`
 entry stands for one: the ending calls of `src/gg/session.ts`, which a role buys;

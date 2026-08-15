@@ -1,4 +1,5 @@
-/// Find the functions and types this run bound, and take their documentation back out of context.
+/// Find the modules, functions and types this run bound, and take their documentation back out of
+/// context.
 ///
 /// Discovery is two steps: `docs.search` answers with one-line briefs, each carrying the
 /// fully-qualified name it is keyed by, and `views.openDocsView` reads one of those names in full.
@@ -10,7 +11,8 @@
 ///
 /// - ggmodule: docs
 public enum docs {
-    /// Search the bound functions and types by keyword, by module, or by both — best match first.
+    /// Search the bound modules, functions and types by keyword, by module, or by both — best match
+    /// first.
     ///
     /// Matching is case-insensitive substring over names, signatures, briefs and detailed
     /// descriptions, so `docs` finds `openDocsView` and `view` finds every call that mentions one.
@@ -34,7 +36,8 @@ public enum docs {
     ///   - type: One type's own name (`FileRead`), narrowing to it and to every function whose
     ///     signature mentions it — what a value of this shape can be used for. Left out, nothing is
     ///     narrowed.
-    ///   - kind: Whether to return only functions or only types. Left out, both come back.
+    ///   - kind: Whether to return only modules, only functions or only types. Left out, all three
+    ///     come back.
     ///   - offset: How many hits to skip, for paging through a total larger than one page. Left out,
     ///     the page starts at the best match.
     ///   - limit: How many hits to return. Left out, the page holds 20; the ceiling is 100, and a
@@ -113,21 +116,32 @@ public enum docs {
         return Int(ret)
     }
 
-    /// Which of the two kinds of entry a search hit documents.
+    /// Which of the three kinds of entry a search hit documents.
     public enum DocKind: Sendable {
+        /// A module a program imports, and whose functions live inside it.
+        case module
         /// A function a program calls.
         case function
         /// A type a function's signature names.
         case type
 
         // The wire spells this as a word in both directions, because WIT has no closed set for it
-        // that both sides of the boundary would agree on. `type` is the only word the documentation
-        // index files anything but a function under, so anything else is a function rather than a
-        // parse this SDK could fail — the wire cannot produce a third.
-        var wire: String { self == .type ? "type" : "function" }
+        // that both sides of the boundary would agree on. These three words are the whole taxonomy,
+        // and anything else is read as a function rather than as a parse this SDK could fail.
+        var wire: String {
+            switch self {
+            case .module: "module"
+            case .function: "function"
+            case .type: "type"
+            }
+        }
 
         init(wire: sandbox_string_t) {
-            self = lift(wire) == "type" ? .type : .function
+            switch lift(wire) {
+            case "module": self = .module
+            case "type": self = .type
+            default: self = .function
+            }
         }
     }
 
@@ -152,15 +166,16 @@ public enum docs {
     public struct DocHit: Sendable {
         /// The fully-qualified name it is keyed by, which is what opening and closing its view take.
         public let key: String
-        /// Whether this is a function or a type.
+        /// Whether this is a module, a function or a type.
         public let kind: DocKind
         /// The module it lives in.
         ///
-        /// One for a function, and for a type every module whose bound functions mention it,
-        /// comma-separated. That plurality is why it is a description rather than something to feed
-        /// back to a `module` filter, which takes one module and compares it whole.
+        /// One for a function, itself for a module, and for a type every module whose bound
+        /// functions mention it, comma-separated. That plurality is why it is a description rather
+        /// than something to feed back to a `module` filter, which takes one module and compares it
+        /// whole.
         public let module: String
-        /// The name a program calls it by, or the type's own name.
+        /// The name a program calls it by, the type's own name, or the module's own path.
         public let name: String
         /// Its one-line brief, and only that. The rest is what a documentation view holds.
         public let summary: String

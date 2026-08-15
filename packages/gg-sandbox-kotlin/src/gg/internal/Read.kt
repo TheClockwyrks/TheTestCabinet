@@ -268,7 +268,11 @@ internal object Read {
 
     /** Which kind a documentation entry is, from the word the wire used. */
     private fun docKind(wire: String): DocKind =
-        if (wire == "type") DocKind.TYPE else DocKind.FUNCTION
+        when (wire) {
+            "module" -> DocKind.MODULE
+            "type" -> DocKind.TYPE
+            else -> DocKind.FUNCTION
+        }
 
     /** Which kind a view is, from the word the wire used. */
     private fun viewKind(wire: String): ViewKind =

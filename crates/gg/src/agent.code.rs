@@ -736,9 +736,7 @@ fn healing_record(healed: &Healed) -> GgResponseHealing {
         // every location gg reports counts lines of, so on a rewritten reply this is the sole
         // surviving copy of what healing started from; on a clean one it would be the same string
         // twice.
-        original: healed
-            .rewritten()
-            .then(|| healed.original.clone()),
+        original: healed.rewritten().then(|| healed.original.clone()),
     }
 }
 

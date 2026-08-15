@@ -470,8 +470,9 @@ declare module "test-cabinet:gg/session" {
 }
 
 /**
- * Finding a function, and taking its documentation back out again — the second model-facing
- * carve-out, beside `session`, and never a gg tool. `src/gg/docs.ts` is its only importer.
+ * Finding what this agent holds, and taking its documentation back out again — the second
+ * model-facing carve-out, beside `session`, and never a gg tool. `src/gg/docs.ts` is its only
+ * importer.
  *
  * `search` is bound into every program's scope whatever a run enables: the system prompt names no
  * function, so this is the only way a model learns what it holds. The two closing calls are bought
@@ -486,11 +487,11 @@ declare module "test-cabinet:gg/docs" {
   export interface DocHitRaw {
     /** What `openDocsView` takes to read the whole entry. */
     key: string;
-    /** `"function"` or `"type"`, as a bare string — the WIT declares no enum for it. */
+    /** `"module"`, `"function"` or `"type"`, as a bare string — the WIT declares no enum for it. */
     kind: string;
-    /** The module the entry lives in. */
+    /** The module the entry lives in, which for a module is itself. */
     module: string;
-    /** The name a program calls it by, or the type's own name. */
+    /** The name a program calls it by, the type's own name, or the module's path. */
     name: string;
     /** Its one-line brief, and only that. */
     summary: string;
@@ -507,8 +508,8 @@ declare module "test-cabinet:gg/docs" {
   }
 
   /**
-   * Search everything this agent can call, and everything its signatures mention. Each `option<T>`
-   * is a required positional that may be `undefined`.
+   * Search the modules this agent holds, everything it can call, and everything its signatures
+   * mention. Each `option<T>` is a required positional that may be `undefined`.
    */
   export function search(
     query: string,
@@ -567,7 +568,7 @@ declare module "test-cabinet:gg/views" {
   ): FileReadRaw;
   /** Open, or replace, the text view keyed by `label`. */
   export function openTextView(label: string, body: string): void;
-  /** Open, or replace, the documentation view for the function called `name`. */
+  /** Open, or replace, the documentation view for the entry called `name`. */
   export function openDocsView(name: string): void;
   /** Close every view carrying `selector`, and return how many were closed. */
   export function closeView(selector: string): number;

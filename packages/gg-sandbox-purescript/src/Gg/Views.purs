@@ -43,7 +43,7 @@ data ViewKind
   -- | A directory listing, a command's output, a child agent's answer and an assembled table are all
   -- | this.
   | TextView
-  -- | A function's documentation; its selector is the function's name.
+  -- | An entry's documentation; its selector is that entry's key.
   | DocsView
 
 derive instance Eq ViewKind
@@ -67,7 +67,7 @@ type ViewRegion =
 -- | # Fields
 -- |
 -- | - `kind` — Whether it is a file, a text or a documentation view.
--- | - `selector` — What closes it: a file's path, a text view's label, or a docs view's name.
+-- | - `selector` — What closes it: a file's path, a text view's label, or a documentation entry's key.
 -- | - `tokens` — Roughly what holding it costs, in tokens.
 -- | - `region` — The line window a paged file view covers.
 -- |
@@ -145,14 +145,15 @@ openText :: String -> String -> Effect Unit
 openText label body =
   Wire.call_ "open_text" "view" "Gg.Views.openText" [ Wire.wire label, Wire.wire body ]
 
--- | Place one function's full documentation in the context window.
+-- | Place one module's, function's or type's full documentation in the context window.
 -- |
--- | Its signature, its description, and the declarations of any types it refers to that have not
--- | already been shown this session. This is a **view** rather than a return value: the documentation
--- | arrives in the next prompt under a `Documentation` heading keyed by the function name, exactly as
--- | a file or a computed value arrives, so it is not available in the turn that asks for it. Asking
--- | in one turn and using it in the next is the shape that works. Opening the same function's
--- | documentation again replaces the view rather than adding a second copy.
+-- | Everything filed under it — its signature, its description, and the declarations of any types it
+-- | refers to that have not already been shown this session. This is a **view** rather than a return
+-- | value: the documentation arrives in the next prompt under a `Documentation` heading keyed by the
+-- | entry's name, exactly as a file or a computed value arrives, so it is not available in the turn
+-- | that asks for it. Asking in one turn and using it in the next is the shape that works. Opening an
+-- | entry that is already open does nothing at all — not a move, not a second copy — since the
+-- | documentation band only grows, and `Gg.Docs.close` is the one call that takes a page out of it.
 -- |
 -- | # Operation
 -- |
@@ -160,8 +161,9 @@ openText label body =
 -- |
 -- | # Arguments
 -- |
--- | - `name` — The function to document, by its fully-qualified name — `"Gg.Files.readFile"`.
--- |   Searching the documentation is what names the functions that exist.
+-- | - `name` — The entry to document, by its fully-qualified name — `"Gg.Files.readFile"` — or, for a
+-- |   module, that module's own path — `"Gg.Files"`. Searching the documentation is what names the
+-- |   entries that exist, and anything a search returns can be opened.
 -- |
 -- | # Throws
 -- |

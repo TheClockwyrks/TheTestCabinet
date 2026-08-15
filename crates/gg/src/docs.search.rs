@@ -63,17 +63,22 @@ use crate::sandbox::{Parameter, SignatureEntry, TypeReference, ViewRefusal, cata
 
 /// Which kind of thing an [entry](DocEntry) documents.
 ///
-/// Two, because today's catalogue has two: a function a program calls, and a type its signatures
-/// mention. A method is a third only once an arm hangs functions off the types they operate on,
-/// which is a reshape a later stage makes; nothing here has to change when it does beyond a variant.
+/// Three: a module a program imports, a function it calls, and a type its signatures mention. They
+/// are the three things a model has to be able to find, and the module is the one it needs first,
+/// because nothing gg offers is in scope until the program has imported the module the symbol lives
+/// in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DocKind {
+    /// A module this language's SDK is divided into — whatever that language makes importable.
+    Module,
     /// A function this language's SDK offers.
     Function,
     /// A type its signatures mention.
     Type,
 }
 
+/// The `kind` filter's spelling of [`DocKind::Module`].
+const KIND_MODULE: &str = "module";
 /// The `kind` filter's spelling of [`DocKind::Function`].
 const KIND_FUNCTION: &str = "function";
 /// The `kind` filter's spelling of [`DocKind::Type`].
@@ -83,6 +88,7 @@ impl DocKind {
     /// The word a filter names this kind by, and a hit reports it as.
     pub fn id(self) -> &'static str {
         match self {
+            Self::Module => KIND_MODULE,
             Self::Function => KIND_FUNCTION,
             Self::Type => KIND_TYPE,
         }
@@ -275,6 +281,37 @@ impl DocIndex {
         }
 
         let functions = entries.len();
+
+        // The modules, keyed by the path a model reads and writes. A module is visible exactly where
+        // one of its own functions is, which is the rule a type already follows and for the same
+        // reason: the module is not itself a call, and an agent that may call something in it must
+        // be able to read where that something lives and how to reach it.
+        //
+        // The import line is folded into the searchable signature text, so a model that has seen an
+        // import line somewhere and half-remembers it can search its way back to the module.
+        for module in crate::sandbox::catalogue_modules(language) {
+            let referenced_by: Vec<usize> = (0..functions)
+                .filter(|position| entries[*position].modules.iter().any(|m| m.id == module.id))
+                .collect();
+            let brief = module.prose.brief;
+            entries.push(DocEntry {
+                key: module.path,
+                kind: DocKind::Module,
+                modules: vec![DocModule {
+                    id: module.id,
+                    path: module.path,
+                }],
+                name: module.path,
+                identity: None,
+                referenced_by,
+                folded: fold(module.path),
+                signature: module.import.unwrap_or(module.path).to_lowercase(),
+                brief,
+                brief_folded: brief.to_lowercase(),
+                detail_folded: module.prose.detail.unwrap_or_default().to_lowercase(),
+            });
+        }
+
         for declaration in &language.catalogue().types {
             let name = declaration.name.as_str();
             // A reference resolves to the type's own key — its fully-qualified name where the arm
@@ -327,6 +364,10 @@ impl DocIndex {
                     && declaration.name.eq_ignore_ascii_case(filter)
                     && declaration.referenced_by.contains(&position)
             }),
+            // A module names no type, so it is never what *what can I do with a value of this
+            // shape* is asking for. Composing the two filters narrows to nothing rather than
+            // widening to every module the matching functions live in.
+            DocKind::Module => false,
         }
     }
 }
@@ -424,14 +465,15 @@ impl super::DocsRuntime {
         let terms = normalize(query.query.split_whitespace());
         let kind = match query.kind.map(str::trim).filter(|kind| !kind.is_empty()) {
             None => None,
+            Some(kind) if kind.eq_ignore_ascii_case(KIND_MODULE) => Some(DocKind::Module),
             Some(kind) if kind.eq_ignore_ascii_case(KIND_FUNCTION) => Some(DocKind::Function),
             Some(kind) if kind.eq_ignore_ascii_case(KIND_TYPE) => Some(DocKind::Type),
             Some(kind) => {
                 return Err(ViewRefusal {
                     failure: ToolFailure::InvalidArgument,
                     message: format!(
-                        "`{kind}` is not a kind of documentation entry; use \
-                         `{KIND_FUNCTION}` or `{KIND_TYPE}`, or leave it out for both"
+                        "`{kind}` is not a kind of documentation entry; use `{KIND_MODULE}`, \
+                         `{KIND_FUNCTION}` or `{KIND_TYPE}`, or leave it out for all three"
                     ),
                 });
             }
@@ -555,8 +597,12 @@ impl super::DocsRuntime {
                 None => false,
             })
             .collect();
+        // A type and a module are both visible through the functions that reach them: a type
+        // through the ones whose signatures name it, a module through the ones it publishes.
+        // Neither is a call, so neither is gated on its own account, and both are asked the one
+        // question `bound` answers about the functions underneath them.
         for (position, entry) in index.entries.iter().enumerate() {
-            if entry.kind == DocKind::Type {
+            if matches!(entry.kind, DocKind::Type | DocKind::Module) {
                 visible[position] = entry.referenced_by.iter().any(|at| visible[*at]);
             }
         }
@@ -627,11 +673,17 @@ fn append_parameter(
     }
 }
 
-/// Where a kind sorts when everything else about two entries is equal: types before functions.
+/// Where a kind sorts when everything else about two entries is equal: modules, then types, then
+/// functions.
+///
+/// A module leads because it is the one entry the others depend on: a model that has matched a
+/// module and a function in it equally well needs the module first, since the function is not a
+/// name it can write until the module is imported.
 fn kind_bias(kind: DocKind) -> u8 {
     match kind {
-        DocKind::Type => 0,
-        DocKind::Function => 1,
+        DocKind::Module => 0,
+        DocKind::Type => 1,
+        DocKind::Function => 2,
     }
 }
 
@@ -665,7 +717,10 @@ impl DocEntry {
     /// appears at all, which is also what keeps the filter and the report from disagreeing.
     fn modules_for(&self, index: &DocIndex, visible: &[bool]) -> Vec<DocModule> {
         match self.kind {
-            DocKind::Function => self.modules.clone(),
+            // A module's own module is itself, which is what makes the `module` filter and the hit
+            // agree: a model reading the hit's module and filtering on it gets that module's
+            // directory, with the module at the head of it.
+            DocKind::Function | DocKind::Module => self.modules.clone(),
             DocKind::Type => {
                 let mut modules: Vec<DocModule> = Vec::new();
                 for position in self.referenced_by.iter().filter(|at| visible[**at]) {

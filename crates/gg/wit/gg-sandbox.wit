@@ -698,12 +698,12 @@ interface docs {
     record doc-hit {
         /// What `open-doc-view` takes to read the whole entry.
         key: string,
-        /// `"function"` or `"type"`.
+        /// `"module"`, `"function"` or `"type"`.
         kind: string,
         /// The module it lives in. A type shows every module in which a function YOU CAN CALL
         /// mentions it — never one you hold nothing in.
         module: string,
-        /// The name a program calls it by, or the type's own name.
+        /// The name a program calls it by, the type's own name, or the module's own path.
         name: string,
         /// Its one-line brief — and only that. The rest is what a documentation view is for.
         summary: string,
@@ -720,8 +720,8 @@ interface docs {
         hits: list<doc-hit>,
     }
 
-    /// Search everything you can call, and everything its signatures mention, by keyword — the way
-    /// to find a function nobody named to you.
+    /// Search every module you can import, everything you can call in one, and everything their
+    /// signatures mention, by keyword — the way to find a function nobody named to you.
     ///
     /// Matching is CASE-INSENSITIVE SUBSTRING over identifiers, signatures, briefs and detailed
     /// descriptions, so `foobar` finds `getFoobar`. Results are ranked by the KIND of thing that
@@ -731,7 +731,8 @@ interface docs {
     ///
     /// The filters compose with the query and with each other. `module` is exact and is a lookup
     /// rather than a search: an empty query plus a module is that module's whole directory.
-    /// `type` narrows to one type and what takes or returns it. `kind` is `"function"` or `"type"`.
+    /// `type` narrows to one type and what takes or returns it. `kind` is `"module"`, `"function"`
+    /// or `"type"`.
     /// An empty query with no filter at all is `invalid-argument` — "nothing matched" and "you asked
     /// for nothing" are different answers.
     ///

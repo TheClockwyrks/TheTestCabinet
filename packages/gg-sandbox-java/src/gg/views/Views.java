@@ -10,13 +10,13 @@ import java.util.Optional;
 import org.teavm.jso.JSObject;
 
 /**
- * Put a file, a computed value or a function's documentation into the context window.
+ * Put a file, a computed value or an entry's documentation into the context window.
  *
  * <p>A program's own output goes nowhere the model can read it. A view is how a program puts
  * something in front of the model that wrote it: one attributable item in the next prompt, closeable
  * once it has been read.
  *
- * <p>There are three kinds and the list is closed: a file, a computed string, and one function's
+ * <p>There are three kinds and the list is closed: a file, a computed string, and one entry's
  * documentation. A picture is not a fourth kind — it is a file view of an image file, and the view
  * carries the picture.
  *
@@ -92,20 +92,21 @@ public final class Views {
     }
 
     /**
-     * Show the full documentation for one function: its signature, its description, and its types.
+     * Show the full documentation for one entry: a module, a function or a type.
      *
-     * <p>This is how a function is read. It is a view rather than a return value — the documentation
-     * arrives in the next prompt under a {@code Documentation} heading keyed by the name, exactly as
-     * a file or a computed value arrives — so it is not available in the turn that asks for it. Ask
-     * in one turn, use it in the next. Opening the same function's documentation again replaces the
-     * view rather than adding a second copy, and {@code gg.docs.Docs.close} closes it — not
-     * {@link #close}, which does not reach documentation.
+     * <p>Whatever a search can return can be read this way. It is a view rather than a return
+     * value — the documentation arrives in the next prompt under a {@code Documentation} heading
+     * keyed by the name, exactly as a file or a computed value arrives — so it is not available in
+     * the turn that asks for it. Ask in one turn, use it in the next. Opening an entry already open
+     * does nothing at all, neither moving it nor sending it again, and {@code gg.docs.Docs.close}
+     * closes it — not {@link #close}, which does not reach documentation.
      *
-     * @param name The function to document, by the fully-qualified name its documentation is
-     *     keyed by — {@code "gg.files.Files.readFile"}. The bare name it is called by
-     *     ({@code "readFile"}) also resolves and is a fallback rather than the form to reach for:
-     *     two modules are free to declare a {@code close}, and only the qualified name says which
-     *     one is meant. Searching the documentation is what says which names exist.
+     * @param name The entry to document, by the fully-qualified name its documentation is keyed
+     *     by — {@code "gg.files.Files.readFile"}, and a module by its own path
+     *     ({@code "gg.files.Files"}). The bare name it is called by ({@code "readFile"}) also
+     *     resolves and is a fallback rather than the form to reach for: two modules are free to
+     *     declare a {@code close}, and only the qualified name says which one is meant. Searching
+     *     the documentation is what says which names exist.
      * @throws ToolError {@link ToolErrorCode#NOT_FOUND} for an unknown or unbound name.
      * @ggop views.open_docs_view
      */
@@ -197,7 +198,7 @@ public final class Views {
         FILE,
         /** A computed value, whose selector is the label it was opened under. */
         TEXT,
-        /** One function's documentation, whose selector is that function's name. */
+        /** One entry's documentation, whose selector is that entry's key. */
         DOCS
     }
 

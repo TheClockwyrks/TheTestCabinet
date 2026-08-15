@@ -15,7 +15,7 @@
 
 namespace gg {
 
-/// Find the functions and types this run bound, and take their documentation back out of context.
+/// Find the modules, functions and types this run bound, and take documentation back out of context.
 ///
 /// Discovery is two steps: `docs::search` answers with one-line briefs, each carrying the
 /// fully-qualified name it is keyed by, and `views::open_docs_view` reads one of those names in
@@ -29,8 +29,10 @@ namespace gg {
 /// <ggmodule>docs</ggmodule>
 namespace docs {
 
-/// Which of the two kinds of entry a search hit documents.
+/// Which of the three kinds of entry a search hit documents.
 enum class doc_kind {
+  /// A module a program imports, and whose functions are the names inside it.
+  module,
   /// A function a program calls.
   function,
   /// A type a function's signature names.
@@ -53,7 +55,7 @@ struct search_filters {
   /// What a value of this shape can be used for, in other words: every function whose signature
   /// takes or returns it, beside the type's own declaration.
   std::optional<std::string_view> type;
-  /// Whether to return only functions or only types; empty returns both.
+  /// Whether to return only modules, only functions or only types; empty returns every kind.
   std::optional<docs::doc_kind> kind;
   /// How many hits to skip, for paging through a total larger than one page.
   std::optional<std::uint32_t> offset;
@@ -65,15 +67,15 @@ struct search_filters {
 struct doc_hit {
   /// The fully-qualified name it is keyed by, which is what opening and closing its view take.
   std::string key;
-  /// Whether this is a function or a type.
+  /// Whether this is a module, a function or a type.
   docs::doc_kind kind{};
   /// The module it lives in.
   ///
-  /// One for a function, and for a type every module whose bound functions mention it,
-  /// comma-separated. That plurality is why it is a description rather than something to feed back
-  /// to a `module` filter, which takes one module and compares it whole.
+  /// One for a function, itself for a module, and for a type every module whose bound functions
+  /// mention it, comma-separated. That plurality is why it is a description rather than something to
+  /// feed back to a `module` filter, which takes one module and compares it whole.
   std::string module;
-  /// The name a program calls it by, or the type's own name.
+  /// The name a program calls it by, the type's own name, or the module's own path.
   std::string name;
   /// Its one-line brief, and only that. The rest is what a documentation view holds.
   std::string summary;
@@ -89,13 +91,13 @@ struct doc_search {
   std::vector<docs::doc_hit> hits;
 };
 
-/// Search the bound functions and types by keyword, by module, or by both — best match first.
+/// Search the bound modules, functions and types by keyword, by module, or both — best match first.
 ///
 /// Matching is case-insensitive substring over names, signatures, briefs and detailed descriptions,
 /// so `docs` finds `open_docs_view` and `view` finds every call that mentions one. Ranking is by the
 /// kind of evidence that matched: an entry whose own name matched outranks one that merely mentions
 /// the word in a paragraph, however often it mentions it. Only what this run bound is ever
-/// returned, so nothing a search finds is something the program cannot call.
+/// returned, so nothing a search finds is something the program cannot reach.
 ///
 /// The result is a value and a view. The value is readable in the turn that asked for it; the view
 /// puts the same page in the next prompt under the selector `search results`, replaced by the next

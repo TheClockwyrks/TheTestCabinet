@@ -1,4 +1,4 @@
-//! Find the functions and types this run bound, and take their documentation back out of context.
+//! Find the modules, functions and types this run bound, and take their documentation out of context.
 //!
 //! Discovery is two steps. [`search`] answers with one-line briefs, each carrying the
 //! fully-qualified name it is keyed by, and
@@ -15,7 +15,7 @@ use crate::bindings::test_cabinet::gg::docs;
 use crate::core::ToolError;
 use crate::wire;
 
-/// Search the bound functions and types by keyword, by module, or by both — best match first.
+/// Search the bound modules, functions and types by keyword, by module, or by both — best match first.
 ///
 /// Matching is case-insensitive substring over names, signatures, briefs and detailed descriptions,
 /// so `docs` finds `open_docs_view` and `view` finds every call that mentions one. Ranking is by the
@@ -121,7 +121,8 @@ pub struct SearchOptions<'a> {
     /// What a value of this shape can be used for, in other words: every bound function whose
     /// signature mentions the type comes back beside the type's own entry.
     pub declared_type: Option<&'a str>,
-    /// Whether to return only functions or only types; `None` returns both.
+    /// One kind of entry to return — only modules, only functions or only types; `None` returns all
+    /// three.
     pub kind: Option<DocKind>,
     /// How many hits to skip, for paging through a total larger than one page.
     pub offset: Option<u32>,
@@ -129,9 +130,11 @@ pub struct SearchOptions<'a> {
     pub limit: Option<u32>,
 }
 
-/// Which of the two kinds of entry a [`DocHit`] documents.
+/// Which of the three kinds of entry a [`DocHit`] documents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DocKind {
+    /// A module a program imports, whose functions live inside it.
+    Module,
     /// A function a program calls.
     Function,
     /// A type a function's signature names.
@@ -142,6 +145,7 @@ impl DocKind {
     /// The word the documentation index files this kind under.
     pub(crate) fn as_str(self) -> &'static str {
         match self {
+            Self::Module => "module",
             Self::Function => "function",
             Self::Type => "type",
         }
@@ -168,15 +172,15 @@ pub struct DocHit {
     /// [`views::open_docs_view`](crate::views::open_docs_view) takes it to read the entry in full,
     /// and [`close`] takes it to put that view away again.
     pub key: String,
-    /// Whether this is a function or a type.
+    /// Whether this is a module, a function or a type.
     pub kind: DocKind,
     /// The module it lives in.
     ///
-    /// One for a function, and for a type every module whose bound functions mention it,
+    /// One for a module or a function, and for a type every module whose bound functions mention it,
     /// comma-separated. That plurality is why this is a description rather than something to feed
     /// back to a [`SearchOptions::module`] filter, which takes one module and compares it whole.
     pub module: String,
-    /// The name a program calls it by, or the type's own name.
+    /// The name a program calls it by, or the module's or the type's own name.
     pub name: String,
     /// Its one-line brief, and only that. The rest is what a documentation view holds.
     pub summary: String,

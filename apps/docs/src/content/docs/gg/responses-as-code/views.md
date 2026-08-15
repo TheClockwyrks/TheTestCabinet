@@ -188,9 +188,10 @@ this agent binds refers to it. A key that resolves to nothing this agent binds
 is `not-found` and places nothing, including none of the types.
 
 A module is a view of its own too, addressed by the module's own path. It
-carries the module's brief and detail, the import line a program writes to reach
-it, and a line per entry the module publishes to this agent, each with its own
-brief.
+carries the module's brief and detail, the line a program writes to bring it into
+scope, and a line per function in it this agent binds, each with its own brief. A
+module every function of which this run withheld is `not-found`, on the rule a
+type is gated by: what a model can read describes a surface it can use.
 
 One open places types one level deep, from the names the function's own
 signature writes down. Which of them it places is the agent's `docViewTypes`

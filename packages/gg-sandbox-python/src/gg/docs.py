@@ -31,7 +31,10 @@ __all__ = [
 
 
 class DocKind(Enum):
-    """Which of the two kinds of thing a documentation entry describes."""
+    """Which of the three kinds of thing a documentation entry describes."""
+
+    MODULE = "module"
+    """A module a program imports, holding the functions it calls."""
 
     FUNCTION = "function"
     """A function a program calls."""
@@ -48,7 +51,7 @@ class DocHit:
     """The fully-qualified name `views.open_docs_view` takes to read the whole entry."""
 
     kind: DocKind
-    """Whether it is a function or a type."""
+    """Whether it is a module, a function or a type."""
 
     module: str
     """The module it lives in.
@@ -82,9 +85,10 @@ class DocSearch:
 def _kind(value: str) -> DocKind:
     """The wire's word for a kind, as the enum a program compares against.
 
-    gg owns both ends of this string and its set is closed at two, so a word that is not one of them
-    is a mismatch between this SDK and the host rather than anything a program did — reported as
-    such, rather than as the `ValueError` an enum lookup would otherwise raise out of the lowering.
+    gg owns both ends of this string and its set is closed at three, so a word that is not one of
+    them is a mismatch between this SDK and the host rather than anything a program did — reported
+    as such, rather than as the `ValueError` an enum lookup would otherwise raise out of the
+    lowering.
     """
     try:
         return DocKind(value)
@@ -106,7 +110,7 @@ def search(
     offset: int | None = None,
     limit: int | None = None,
 ) -> DocSearch:
-    """Search every function and type the agent can call, by keyword and by filter.
+    """Search every module, function and type the agent can call, by keyword and by filter.
 
     This is how a name is found. Matching is a case-insensitive substring over names, signatures,
     briefs and detailed descriptions, so `docs` finds `open_docs_view`. Ranking is by the kind of evidence
@@ -129,7 +133,7 @@ def search(
             not that it was rejected.
         type: One type's name, narrowing to that type and to the functions that take or return it.
             Like `module`, a name nothing declares matches nothing rather than failing.
-        kind: Whether to return functions or types. The default returns both.
+        kind: Whether to return modules, functions or types. The default returns all three.
         offset: How many hits to skip, for reading past the first page. The default starts at the
             best hit.
         limit: The most hits to return. The default is gg's own page size and there is a ceiling

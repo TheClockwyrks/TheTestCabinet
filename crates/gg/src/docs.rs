@@ -337,6 +337,45 @@ impl DocsRuntime {
         Some(self.assemble(&function))
     }
 
+    /// One **module's** documentation by the path a program writes it under: what the module is for,
+    /// the line that brings it into scope, and a line per function in it this agent binds. `None` for
+    /// a path this language's catalogue does not declare, and `None` for a module **no function this
+    /// agent binds** belongs to.
+    ///
+    /// A module is the first thing a model needs and the last thing it could work out for itself.
+    /// Nothing gg offers is in scope until the program has imported the module a symbol lives in, so
+    /// a model that has found a module and cannot read it has found the name of a door.
+    ///
+    /// Gated by reachability rather than on its own account, exactly as a type is: a module is not a
+    /// call, and an agent that may call something in it must be able to read where that something
+    /// lives. A module whose every function this run withheld is `None`, so the module list a model
+    /// can reach never describes a surface it cannot use.
+    pub fn read_module(&self, path: &str) -> Option<String> {
+        let module = module_of(self.language.catalogue(), path)?;
+        let functions: Vec<CatalogueFunction> = catalogue_functions(self.language)
+            .into_iter()
+            .filter(|function| {
+                operation_of(function).is_some_and(|operation| operation.id.namespace == module.id)
+                    && self.bound(function)
+            })
+            .collect();
+        if functions.is_empty() {
+            return None;
+        }
+        let mut text = format!(
+            "{}\n\n{}\n\n{}",
+            module.path,
+            // The same sentence a function's and a type's view carry, from the same place, so the
+            // one line a model copies to reach anything reads identically wherever it meets it.
+            self.defined_in(module.id),
+            module.prose.rendered()
+        );
+        for function in &functions {
+            text.push_str(&format!("\n  {} — {}", function.fqn, function.prose.brief));
+        }
+        Some(text)
+    }
+
     /// One **type's** documentation by the name a signature writes it under: its declaration, the
     /// paragraph explaining it, and a line per member. `None` for a name this language's catalogue
     /// does not declare, and `None` for a type **no function this agent binds** refers to.
@@ -465,7 +504,9 @@ impl DocsRuntime {
     /// are keyed by their module-qualified name and the two namespaces cannot meet, so the
     /// judgement is only ever reached through the *fallback* bare names each half also answers to.
     pub fn read_any(&self, key: &str) -> Option<String> {
-        self.read(key).or_else(|| self.read_type(key))
+        self.read(key)
+            .or_else(|| self.read_type(key))
+            .or_else(|| self.read_module(key))
     }
 
     /// **The single key** whatever `name` addresses is filed under, or `None` when this agent binds
@@ -495,9 +536,17 @@ impl DocsRuntime {
         if let Some(function) = self.function(name) {
             return Some(function.fqn.to_string());
         }
-        let declaration = type_declaration(self.language, name)?;
-        self.type_is_reachable(declaration.key())
-            .then(|| declaration.key().to_string())
+        if let Some(declaration) = type_declaration(self.language, name)
+            && self.type_is_reachable(declaration.key())
+        {
+            return Some(declaration.key().to_string());
+        }
+        // A module answers to gg's id and to this arm's path, the same leniency a function and a
+        // type get; the path is the canonical one, because it is the string search files the hit
+        // under and the string a program writes.
+        let module = module_of(self.language.catalogue(), name)?;
+        self.read_module(module.path)
+            .map(|_| module.path.to_string())
     }
 
     /// The SDK types to open beside the function called `name`, under `mode` — the whole of the

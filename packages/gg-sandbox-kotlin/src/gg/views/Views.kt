@@ -82,16 +82,16 @@ public fun openText(label: String, body: String) {
 }
 
 /**
- * Show the full documentation for one function: its signature, its description, and the types it
- * names.
+ * Show the full documentation for one module, function or type: everything a search's brief left out.
  *
- * The name is the fully-qualified one this documentation is keyed by, such as `gg.files.readFile`.
- * What comes back is a view rather than a return value, so it arrives in the next prompt under a
- * `Documentation` heading and is not available in the turn it was asked for. Opening the same name
- * again replaces the view rather than adding a second copy.
+ * The name is the fully-qualified one this documentation is keyed by, such as `gg.files.readFile`, or
+ * for a module its own path, `gg.files`. What comes back is a view rather than a return value, so it
+ * arrives in the next prompt under a `Documentation` heading and is not available in the turn it was
+ * asked for. Opening a name that is already open does nothing at all — not a move, not a re-emit — so
+ * this band only ever grows.
  *
  * @ggop views.open_docs_view
- * @param name The function to document, by its fully-qualified name.
+ * @param name What to document, by the fully-qualified name it is keyed under.
  * @throws ToolError `NOT_FOUND` for an unknown or unbound name.
  */
 public fun openDocsView(name: String) {
@@ -182,7 +182,7 @@ public enum class ViewKind {
     /** A value that was shown; its selector is the label it was given. */
     TEXT,
 
-    /** A function's documentation; its selector is the function's name. */
+    /** An entry's documentation; its selector is the key it was opened under. */
     DOCS,
 }
 

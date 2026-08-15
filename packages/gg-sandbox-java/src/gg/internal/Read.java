@@ -245,7 +245,11 @@ public final class Read {
 
     /** Which kind a documentation entry is, from the word the wire used. */
     private static Docs.DocKind docKind(String wire) {
-        return "type".equals(wire) ? Docs.DocKind.TYPE : Docs.DocKind.FUNCTION;
+        return switch (wire) {
+            case "module" -> Docs.DocKind.MODULE;
+            case "type" -> Docs.DocKind.TYPE;
+            default -> Docs.DocKind.FUNCTION;
+        };
     }
 
     /** Which kind a view is, from the word the wire used. */

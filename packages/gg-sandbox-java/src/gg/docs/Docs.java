@@ -8,7 +8,7 @@ import java.util.List;
 import org.teavm.jso.JSObject;
 
 /**
- * Search this surface for a function, and take a documentation view back out of the window.
+ * Search this surface, and take a documentation view back out of the window.
  *
  * <p>This is where a session starts. Nothing names the functions of this surface up front, so
  * {@link #search} is what turns "what do I have" into a list of one-line briefs and the
@@ -163,9 +163,9 @@ public final class Docs {
         }
 
         /**
-         * Narrow to functions or to types. Never named, both are searched.
+         * Narrow to modules, to functions or to types. Never named, all three are searched.
          *
-         * @param kind Which of the two to see.
+         * @param kind Which of the three to see.
          * @return these filters, so calls chain
          */
         public SearchFilters kind(DocKind kind) {
@@ -203,12 +203,15 @@ public final class Docs {
     }
 
     /**
-     * Which of the two things a documentation entry describes.
+     * Which of the three things a documentation entry describes.
      *
-     * <p>The taxonomy is closed at two because a surface is functions and the types their signatures
-     * name: a module is a heading, and a parameter is documented on the function that takes it.
+     * <p>A surface is the modules a program imports, the functions inside them, and the types their
+     * signatures name. A parameter is not one of the three: it is documented on the function that
+     * takes it.
      */
     public enum DocKind {
+        /** A module a program imports, and whose functions live inside it. */
+        MODULE("module"),
         /** A function a program calls. */
         FUNCTION("function"),
         /** A type a signature names. */
@@ -235,7 +238,7 @@ public final class Docs {
      *
      * @param key The fully-qualified name it is documented under, and what
      *     {@code gg.views.Views.openDocsView} takes to read the whole of it.
-     * @param kind Whether this entry is a function or a type.
+     * @param kind Whether this entry is a module, a function or a type.
      * @param module The module it lives in; for a type, every module mentioning it,
      *     comma-separated — so not one to hand back as a filter.
      * @param name The name a program calls it by, or the type's own name.
