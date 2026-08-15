@@ -34,6 +34,8 @@
 use serde_json::json;
 use test_cabinet_core::gg::GgProgramLanguage;
 
+use super::super::g8::{self, Case, Located, Shape};
+
 use crate::context::ViewKind;
 use crate::ending::EndingRole;
 use test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE;
@@ -503,5 +505,79 @@ fn a_withheld_capability_is_still_bound_and_refused_with_a_sentence() {
         log.calls().is_empty(),
         "neither call is a gg tool: {:?}",
         log.names()
+    );
+}
+
+/// **Gate [G8](super::super::g8) for JavaScript** — all five shapes a runtime failure takes,
+/// driven through the production path and read back as the model would read them.
+#[test]
+fn g8_a_runtime_failure_reaches_the_model() {
+    g8::gate(
+        GgProgramLanguage::JavaScript,
+        &[
+            Case {
+                shape: Shape::ToolError,
+                program: r#"// G8 (a): a gg call the host answers `not-found`, uncaught.
+
+const text = fs.readTextFile(
+  "missing.md",
+);
+console.log(text);
+"#,
+                names: &["read_text_file", "not-found", "missing.md"],
+                located: Located::At("line 3, column 17"),
+            },
+            Case {
+                shape: Shape::NativeFault,
+                program: r#"// G8 (b): reaching into something that is not there.
+
+const values = [1, 2, 3];
+console.log(
+  values[7].toString(),
+);
+"#,
+                names: &["TypeError", "values[7] is undefined"],
+                located: Located::At("line 5, column 13"),
+            },
+            Case {
+                shape: Shape::FailureValue,
+                program: r#"// G8 (c): an async failure nothing observes.
+
+async function step() {
+  throw new Error("the third step did not finish");
+}
+
+step();
+"#,
+                names: &["the third step did not finish"],
+                located: Located::Nowhere,
+            },
+            Case {
+                shape: Shape::ResourceFault,
+                program: r#"// G8 (d): unbounded recursion.
+
+function deeper(n) {
+  return deeper(n + 1);
+}
+
+deeper(0);
+"#,
+                names: &["too much recursion"],
+                located: Located::At("line 4, column 10"),
+            },
+            Case {
+                shape: Shape::Abort,
+                program: r#"// G8 (e): stopping the process outright.
+
+console.log("before the exit");
+process.exit(
+  3,
+);
+console.log("after the exit");
+"#,
+                names: &["exit(3)"],
+                located: Located::Nowhere,
+            },
+        ],
     );
 }

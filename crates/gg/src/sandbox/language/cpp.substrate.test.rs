@@ -54,6 +54,8 @@ use std::time::Instant;
 
 use test_cabinet_core::gg::GgProgramLanguage;
 
+use super::super::g8::{self, Case, Located, Shape};
+
 use super::compile::{self, compile_program};
 use crate::sandbox::fake::{
     CallLog, FakeToolApi, all_capabilities, all_operations, canned_outcome, granted_operations,
@@ -1063,4 +1065,95 @@ fn temp_env<T>(key: &str, value: &str, body: impl FnOnce() -> T) -> T {
         None => unsafe { std::env::remove_var(key) },
     }
     outcome
+}
+
+/// **Gate [G8](super::super::g8) for C++** — all five shapes a runtime failure takes,
+/// driven through the production path and read back as the model would read them.
+#[test]
+fn g8_a_runtime_failure_reaches_the_model() {
+    g8::gate(
+        GgProgramLanguage::Cpp,
+        &[
+            Case {
+                shape: Shape::ToolError,
+                program: r#"// G8 (a): a gg call the host answers `not-found`, uncaught.
+
+#include <string>
+
+int main() {
+  const auto read = files::read_file(
+      "missing.md"
+  );
+  (void)read;
+  return 0;
+}
+"#,
+                names: &[
+                    "gg::core::tool_error",
+                    "read_file",
+                    "not-found",
+                    "missing.md",
+                ],
+                located: Located::Nowhere,
+            },
+            Case {
+                shape: Shape::NativeFault,
+                program: r#"// G8 (b): an index past the end of a vector.
+
+#include <vector>
+
+int main() {
+  std::vector<int> values{1, 2, 3};
+  const int missing = values[7];
+  return missing;
+}
+"#,
+                names: &["vector[] index out of bounds"],
+                located: Located::At("main.cpp:7:23"),
+            },
+            Case {
+                shape: Shape::FailureValue,
+                program: r#"// G8 (c): ending by returning a failure status.
+
+int main() {
+  log("the third step did not finish");
+  return 3;
+}
+"#,
+                names: &["the third step did not finish"],
+                located: Located::Nowhere,
+            },
+            Case {
+                shape: Shape::ResourceFault,
+                program: r#"// G8 (d): unbounded recursion.
+
+[[clang::optnone]] static int deeper(int n) {
+  return 1 + deeper(n + 1);
+}
+
+int main() {
+  return deeper(0);
+}
+"#,
+                names: &["out of bounds memory access"],
+                located: Located::At("main.cpp:4:14"),
+            },
+            Case {
+                shape: Shape::Abort,
+                program: r#"// G8 (e): stopping the process outright.
+
+#include <cstdlib>
+
+int main() {
+  log("before the exit");
+  std::exit(
+      3
+  );
+}
+"#,
+                names: &["exit(3)"],
+                located: Located::Nowhere,
+            },
+        ],
+    );
 }

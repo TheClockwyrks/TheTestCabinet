@@ -48,6 +48,8 @@ use crate::sandbox::{
 };
 use crate::tools::ToolOutcome;
 
+use super::super::g8::{self, Case, Located, Shape};
+
 /// This arm, resolved from the registry — the same `&'static dyn ProgramLanguage` a run resolves.
 fn python() -> &'static dyn crate::sandbox::ProgramLanguage {
     crate::sandbox::language(GgProgramLanguage::Python)
@@ -1903,4 +1905,77 @@ except ToolError as failure:
         canned_outcome,
     );
     assert_eq!(logs(&outcome), ["close_all True"]);
+}
+
+/// **Gate [G8](super::super::g8) for Python** — all five shapes a runtime failure takes,
+/// driven through the production path and read back as the model would read them.
+#[test]
+fn g8_a_runtime_failure_reaches_the_model() {
+    g8::gate(
+        GgProgramLanguage::Python,
+        &[
+            Case {
+                shape: Shape::ToolError,
+                program: r#"# G8 (a): a gg call the host answers `not-found`, uncaught.
+
+text = files.read_file(
+    "missing.md",
+)
+print(text)
+"#,
+                names: &["read_file", "missing.md"],
+                located: Located::At("line 3, column 8"),
+            },
+            Case {
+                shape: Shape::NativeFault,
+                program: r#"# G8 (b): an index past the end of a list.
+
+values = [1, 2, 3]
+print(
+    values[7],
+)
+"#,
+                names: &["IndexError", "list index out of range"],
+                located: Located::At("line 5, column 5"),
+            },
+            Case {
+                shape: Shape::FailureValue,
+                program: r#"# G8 (c): ending by a failure value.
+
+import sys
+
+sys.exit(
+    3,
+)
+"#,
+                names: &["SystemExit: 3"],
+                located: Located::At("line 5, column 1"),
+            },
+            Case {
+                shape: Shape::ResourceFault,
+                program: r#"# G8 (d): unbounded recursion.
+
+def deeper(n):
+    return deeper(n + 1)
+
+deeper(0)
+"#,
+                names: &["RecursionError", "maximum recursion depth exceeded"],
+                located: Located::At("line 4, column 12"),
+            },
+            Case {
+                shape: Shape::Abort,
+                program: r#"# G8 (e): stopping the process outright.
+
+import os
+
+os._exit(
+    3,
+)
+"#,
+                names: &["exit(3)"],
+                located: Located::Nowhere,
+            },
+        ],
+    );
 }

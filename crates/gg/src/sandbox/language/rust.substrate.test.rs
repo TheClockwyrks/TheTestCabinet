@@ -50,6 +50,8 @@ use std::time::Instant;
 use serde_json::Value;
 use test_cabinet_core::gg::GgProgramLanguage;
 
+use super::super::g8::{self, Case, Located, Shape};
+
 use super::compile::compile_program;
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::fake::{
@@ -711,4 +713,78 @@ fn temporarily_pointing_rustc_at<T>(rustc: &str, body: impl FnOnce() -> T) -> T 
         None => unsafe { std::env::remove_var(super::compile::RUSTC_ENV) },
     }
     outcome
+}
+
+/// **Gate [G8](super::super::g8) for Rust** — all five shapes a runtime failure takes,
+/// driven through the production path and read back as the model would read them.
+#[test]
+fn g8_a_runtime_failure_reaches_the_model() {
+    g8::gate(
+        GgProgramLanguage::Rust,
+        &[
+            Case {
+                shape: Shape::ToolError,
+                program: r#"// G8 (a): a gg call the host answers `not-found`, uncaught.
+
+let text = files::read_text_file(
+    "missing.md",
+    files::ReadOptions::default(),
+)?;
+let _ = text;
+"#,
+                names: &["read_text_file", "not-found", "missing.md"],
+                located: Located::Nowhere,
+            },
+            Case {
+                shape: Shape::NativeFault,
+                program: r#"// G8 (b): an index past the end of a vector.
+
+let values = vec![1, 2, 3];
+let missing = values[7];
+let _ = missing;
+"#,
+                names: &[
+                    "panicked",
+                    "index out of bounds: the len is 3 but the index is 7",
+                ],
+                located: Located::At("line 4, column 21"),
+            },
+            Case {
+                shape: Shape::FailureValue,
+                program: r#"// G8 (c): ending by returning a failure value.
+
+let count: u32 = "not a number"
+    .parse()?;
+let _ = count;
+"#,
+                names: &["invalid digit found in string"],
+                located: Located::Nowhere,
+            },
+            Case {
+                shape: Shape::ResourceFault,
+                program: r#"// G8 (d): unbounded recursion, kept off the optimiser's tail-call path.
+
+fn deeper(n: u64) -> u64 {
+    let deep = 1 + deeper(::std::hint::black_box(n + 1));
+    ::std::hint::black_box(deep)
+}
+
+let _ = deeper(0);
+"#,
+                names: &["call stack exhausted"],
+                located: Located::Nowhere,
+            },
+            Case {
+                shape: Shape::Abort,
+                program: r#"// G8 (e): stopping the process outright.
+
+::std::process::exit(
+    3,
+);
+"#,
+                names: &["exit(3)"],
+                located: Located::Nowhere,
+            },
+        ],
+    );
 }

@@ -41,6 +41,8 @@ use wasmtime::component::Component;
 
 use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 
+use super::super::g8::{self, Case, Located, Shape};
+
 use super::super::typescript;
 use super::compile::{compile_module, compile_program};
 use crate::ending::{Ending, EndingRole};
@@ -1468,5 +1470,121 @@ fn every_type_and_function_the_catalogue_declares_is_a_name_a_program_can_write(
         matches!(&outcome.result, Ok(result) if result.error.is_none()),
         "{:?}",
         outcome.result
+    );
+}
+
+/// **Gate [G8](super::super::g8) for PureScript** — all five shapes a runtime failure takes,
+/// driven through the production path and read back as the model would read them.
+#[test]
+fn g8_a_runtime_failure_reaches_the_model() {
+    g8::gate(
+        GgProgramLanguage::PureScript,
+        &[
+            Case {
+                shape: Shape::ToolError,
+                program: r#"module Main where
+
+-- G8 (a): a gg call the host answers `not-found`, uncaught.
+
+import Prelude
+
+import Effect (Effect)
+import Effect.Class.Console as Console
+import Gg.Files as Gg.Files
+
+main :: Effect Unit
+main = do
+  text <- Gg.Files.readTextFile
+    "missing.md"
+    {}
+  Console.log text
+"#,
+                names: &["read_text_file", "not-found", "missing.md"],
+                located: Located::At("line 13, column 11"),
+            },
+            Case {
+                shape: Shape::NativeFault,
+                program: r#"module Main where
+
+-- G8 (b): a partial function that was not total after all.
+
+import Prelude
+
+import Data.Maybe (Maybe(..), fromJust)
+import Effect (Effect)
+import Effect.Class.Console as Console
+import Partial.Unsafe (unsafePartial)
+
+main :: Effect Unit
+main = do
+  let
+    missing = unsafePartial (fromJust (Nothing :: Maybe Int))
+  Console.log (show missing)
+"#,
+                names: &["Failed pattern match"],
+                located: Located::At("line 15, column 15"),
+            },
+            Case {
+                shape: Shape::FailureValue,
+                program: r#"module Main where
+
+-- G8 (c): ending by returning a failure value.
+
+import Prelude
+
+import Data.Either (Either(..))
+import Effect (Effect)
+import Effect.Class.Console as Console
+
+main :: Effect (Either String Int)
+main = do
+  Console.log "starting the third step"
+  pure (Left "the third step did not finish")
+"#,
+                names: &["the third step did not finish"],
+                located: Located::Nowhere,
+            },
+            Case {
+                shape: Shape::ResourceFault,
+                program: r#"module Main where
+
+-- G8 (d): unbounded recursion, deliberately not a tail call.
+
+import Prelude
+
+import Effect (Effect)
+import Effect.Class.Console as Console
+
+deeper :: Int -> Int
+deeper n = 1 + deeper (n + 1)
+
+main :: Effect Unit
+main = Console.log (show (deeper 0))
+"#,
+                names: &["too much recursion"],
+                located: Located::At("line 11, column 16"),
+            },
+            Case {
+                shape: Shape::Abort,
+                program: r#"module Main where
+
+-- G8 (e): stopping the program outright.
+
+import Prelude
+
+import Effect (Effect)
+import Effect.Class.Console as Console
+import Partial.Unsafe (unsafeCrashWith)
+
+main :: Effect Unit
+main = do
+  Console.log "before the crash"
+  unsafeCrashWith
+    "the third step did not finish"
+"#,
+                names: &["the third step did not finish"],
+                located: Located::At("line 14, column 3"),
+            },
+        ],
     );
 }

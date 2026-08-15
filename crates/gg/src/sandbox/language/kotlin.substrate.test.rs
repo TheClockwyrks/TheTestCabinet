@@ -68,6 +68,9 @@ use crate::tools::ToolOutcome;
 /// registration would now reach perfectly well. The share is the point: asking the registry would
 /// hand back these same bytes through an indirection, and this file is where the fact that they are
 /// the *other* arm's artifact has to be legible rather than inferred.
+use super::super::g8::{self, Case, Located, Shape};
+use test_cabinet_core::gg::GgProgramLanguage;
+
 fn component() -> &'static Component {
     static COMPILED: OnceLock<Component> = OnceLock::new();
     COMPILED.get_or_init(|| {
@@ -818,5 +821,73 @@ fn a_pooled_jvm_is_reused_and_the_first_one_is_the_expensive_one() {
         "starting a JVM and building in it took {cold:?} and a warm build takes {steady:?} \
          ({warm_builds:?}); the first one is supposed to be the expensive one, so a pool that made \
          no difference is what this reads like",
+    );
+}
+
+/// **Gate [G8](super::super::g8) for Kotlin** — all five shapes a runtime failure takes,
+/// driven through the production path and read back as the model would read them.
+#[test]
+fn g8_a_runtime_failure_reaches_the_model() {
+    g8::gate(
+        GgProgramLanguage::Kotlin,
+        &[
+            Case {
+                shape: Shape::ToolError,
+                program: r#"// G8 (a): a gg call the host answers `not-found`, uncaught.
+
+val text = gg.files.readTextFile(
+    "missing.md"
+)
+println(text)
+"#,
+                names: &["read_text_file", "not-found", "missing.md"],
+                located: Located::Nowhere,
+            },
+            Case {
+                shape: Shape::NativeFault,
+                program: r#"// G8 (b): an index past the end of a list.
+
+val values = listOf(1, 2, 3)
+println(
+    values[7]
+)
+"#,
+                names: &["java.lang.ArrayIndexOutOfBoundsException"],
+                located: Located::At("program.kts:5"),
+            },
+            Case {
+                shape: Shape::FailureValue,
+                program: r#"// G8 (c): ending by returning a failure status.
+
+println("the third step did not finish")
+return 3
+"#,
+                names: &["'return' is prohibited here"],
+                located: Located::At("program.kts:4:1"),
+            },
+            Case {
+                shape: Shape::ResourceFault,
+                program: r#"// G8 (d): unbounded recursion.
+
+fun deeper(n: Int): Int {
+    return 1 + deeper(n + 1)
+}
+
+println(deeper(0))
+"#,
+                names: &["too much recursion"],
+                located: Located::At("program.kts:4"),
+            },
+            Case {
+                shape: Shape::Abort,
+                program: r#"// G8 (e): stopping the process outright.
+
+println("before the exit")
+kotlin.system.exitProcess(3)
+"#,
+                names: &["System.exit"],
+                located: Located::At("program.kts:4"),
+            },
+        ],
     );
 }

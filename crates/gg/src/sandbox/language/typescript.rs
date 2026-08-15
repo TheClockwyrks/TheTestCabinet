@@ -87,6 +87,16 @@ mod check;
 #[path = "typescript.healing.rs"]
 pub(super) mod healing;
 
+/// **The TypeScript arm's execution substrate**, driven end to end through its real check, its real
+/// strip and its real guest.
+///
+/// A file of its own, at last: this arm's end-to-end coverage used to ride entirely on
+/// [JavaScript](super::javascript)'s, which shares everything with it except the one step that
+/// makes it a different arm. Its module documentation says what that costs.
+#[cfg(test)]
+#[path = "typescript.substrate.test.rs"]
+mod substrate;
+
 /// The interpreter component: the TypeScript guest in `packages/gg-sandbox`, built by that
 /// package's `build.sh` with `componentize-js`.
 ///

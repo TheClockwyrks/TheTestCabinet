@@ -28,6 +28,8 @@ use std::time::Instant;
 
 use serde_json::{Value, json};
 use test_cabinet_core::gg::GgProgramLanguage;
+
+use super::super::g8::{self, Case, Located, Shape};
 use wasmtime::component::Component;
 
 use super::COMPONENT;
@@ -1858,5 +1860,79 @@ puts "clean"
         log.args("set_blocked_by"),
         Some(json!({ "id": "t1", "blockedBy": ["t0", "t2"] })),
         "and the splat still arrives as the list it is"
+    );
+}
+
+/// **Gate [G8](super::super::g8) for Ruby** — all five shapes a runtime failure takes,
+/// driven through the production path and read back as the model would read them.
+#[test]
+fn g8_a_runtime_failure_reaches_the_model() {
+    g8::gate(
+        GgProgramLanguage::Ruby,
+        &[
+            Case {
+                shape: Shape::ToolError,
+                program: r#"# G8 (a): a gg call the host answers `not-found`, uncaught.
+
+text = GG::Files.read_file(
+  "missing.md",
+)
+puts text
+"#,
+                names: &["read_file", "not-found", "missing.md"],
+                located: Located::At("line 3"),
+            },
+            Case {
+                shape: Shape::NativeFault,
+                program: r#"# G8 (b): an index past the end of an array.
+
+values = [1, 2, 3]
+puts(
+  values.fetch(7),
+)
+"#,
+                names: &["IndexError", "index 7 outside of array bounds"],
+                located: Located::At("line 5"),
+            },
+            Case {
+                shape: Shape::FailureValue,
+                program: r#"# G8 (c): ending by a failure value.
+
+def outcome
+  RuntimeError.new("the third step did not finish")
+end
+
+outcome
+"#,
+                names: &["the third step did not finish"],
+                located: Located::Nowhere,
+            },
+            Case {
+                shape: Shape::ResourceFault,
+                program: r#"# G8 (d): unbounded recursion.
+
+def deeper(n)
+  deeper(n + 1)
+end
+
+deeper(0)
+"#,
+                names: &["too much recursion"],
+                located: Located::At("line 4"),
+            },
+            Case {
+                shape: Shape::Abort,
+                program: r#"# G8 (e): stopping the process outright.
+
+puts "before the exit"
+exit(
+  3,
+)
+puts "after the exit"
+"#,
+                names: &["exit(3)"],
+                located: Located::Nowhere,
+            },
+        ],
     );
 }

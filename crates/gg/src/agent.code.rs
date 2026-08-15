@@ -440,10 +440,27 @@ pub(super) async fn run_code_turn(
         .chain(module_error_notice(&outcome.module_errors).map(CodeFeedback::notice))
         .collect();
 
-    let decision = match &outcome.result {
-        Err(error) => sandbox_failure_decision(code.language, error, &notices, emitter),
+    let decision = turn_decision(code.language, &outcome, &notices, emitter);
+    (decision, state)
+}
+
+/// What one program's [outcome](SandboxOutcome) makes of its turn: the disposition, the class it is
+/// recorded under, and the feedback the model reads.
+///
+/// A function rather than the `match` it used to be inline, because it is the only thing that
+/// decides **what a model is told about a failure**, and gate G8 — `sandbox::language::g8`, which
+/// is `#[cfg(test)]` and so unreachable from a doc link — holds all eleven arms to it. A gate that mirrored this routing instead of calling it would be
+/// asserting against a copy, which is how a gate goes green while the thing it guards regresses.
+fn turn_decision(
+    language: GgProgramLanguage,
+    outcome: &SandboxOutcome,
+    notices: &[CodeFeedback],
+    emitter: &Emitter,
+) -> CodeTurnOutcome {
+    match &outcome.result {
+        Err(error) => sandbox_failure_decision(language, error, notices, emitter),
         Ok(result) => {
-            let report = program_report(&outcome, result);
+            let report = program_report(outcome, result);
             // The class the guest already typed the throw with, rather than the bare fact that
             // there was one: an uncaught *call failure* says the model is fighting the API, an
             // unknown name says it is writing against a surface this run withheld, and a plain
@@ -454,15 +471,82 @@ pub(super) async fn run_code_turn(
                 .map(|error| error.kind.turn_error_type());
             CodeTurnOutcome::Continue {
                 feedback: match result.error.as_ref() {
-                    Some(error) => with_error(&notices, program_error_feedback(error)),
-                    None => notices.clone(),
+                    Some(error) => with_error(notices, program_error_feedback(error)),
+                    None => notices.to_vec(),
                 },
                 error,
                 report,
             }
         }
-    };
-    (decision, state)
+    }
+}
+
+/// **What the model reads back about a program**, rendered by the production path that renders it.
+///
+/// The one entry gate G8 drives: an arm hands over the outcome of a
+/// real run — including one whose program its own compiler refused, which arrives here as an `Err`
+/// like any other — and gets back the body that would be pushed into the model's window, the band
+/// it would arrive under, and the class the turn would be recorded as. Nothing here re-implements
+/// the rendering; it calls [`turn_decision`] with no notices and a sink nobody reads, because a
+/// notice is a fact about the *session* and G8 asks only what the model is told about the
+/// **fault**.
+#[cfg(test)]
+pub(crate) fn model_facing(language: GgProgramLanguage, outcome: &SandboxOutcome) -> ModelFacing {
+    let emitter = Emitter::with_sink(None, Box::new(crate::telemetry::CapturingSink::new()));
+    ModelFacing::of(turn_decision(language, outcome, &[], &emitter))
+}
+
+/// What a turn would put in front of the model, flattened out of [`CodeTurnOutcome`].
+#[cfg(test)]
+#[derive(Debug)]
+pub(crate) struct ModelFacing {
+    /// The band the message arrives under, or `None` when nothing is fed back at all — a fatal
+    /// fault, or a program that ran to its end.
+    pub(crate) source: Option<GgContextSource>,
+    /// The message body, empty when there is none. This is the string a model reads.
+    pub(crate) body: String,
+    /// The class the turn is recorded as, `None` for a turn that carried out its work.
+    pub(crate) error: Option<TurnErrorType>,
+    /// Whether gg ended the run rather than feeding anything back — which is a failure the model
+    /// is never told about, and therefore never one an arm may answer a program fault with.
+    pub(crate) fatal: bool,
+}
+
+#[cfg(test)]
+impl ModelFacing {
+    /// Read a decision the way the loop would deliver it.
+    fn of(decision: CodeTurnOutcome) -> Self {
+        match decision {
+            CodeTurnOutcome::Continue {
+                feedback, error, ..
+            } => match feedback.into_iter().next_back() {
+                Some(message) => Self {
+                    source: Some(message.source),
+                    body: message.body,
+                    error,
+                    fatal: false,
+                },
+                None => Self {
+                    source: None,
+                    body: String::new(),
+                    error,
+                    fatal: false,
+                },
+            },
+            CodeTurnOutcome::Fatal { .. } => Self {
+                source: None,
+                body: String::new(),
+                error: None,
+                fatal: true,
+            },
+            CodeTurnOutcome::Finished { .. } => Self {
+                source: None,
+                body: String::new(),
+                error: None,
+                fatal: false,
+            },
+        }
+    }
 }
 
 /// The [turn error type](TurnErrorType) a sandbox failure the **model** owns is recorded as.

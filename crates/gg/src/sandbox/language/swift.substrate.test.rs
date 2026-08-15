@@ -59,6 +59,8 @@ use std::time::Instant;
 
 use test_cabinet_core::gg::GgProgramLanguage;
 
+use super::super::g8::{self, Case, Located, Shape};
+
 use super::compile::{self, compile_program};
 use crate::sandbox::fake::{
     CallLog, FakeToolApi, all_capabilities, all_operations, canned_outcome, granted_operations,
@@ -669,4 +671,78 @@ fn temp_env<T>(key: &str, value: &str, body: impl FnOnce() -> T) -> T {
         None => unsafe { std::env::remove_var(key) },
     }
     outcome
+}
+
+/// **Gate [G8](super::super::g8) for Swift** — all five shapes a runtime failure takes,
+/// driven through the production path and read back as the model would read them.
+#[test]
+fn g8_a_runtime_failure_reaches_the_model() {
+    g8::gate(
+        GgProgramLanguage::Swift,
+        &[
+            Case {
+                shape: Shape::ToolError,
+                program: r#"// G8 (a): a gg call the host answers `not-found`, uncaught.
+
+let text = try files.readTextFile(
+    "missing.md"
+)
+gg.log(text)
+"#,
+                names: &["read_text_file", "not-found", "missing.md"],
+                located: Located::At("main.swift:3:"),
+            },
+            Case {
+                shape: Shape::NativeFault,
+                program: r#"// G8 (b): an index past the end of an array.
+
+let values = [1, 2, 3]
+let missing = values[7]
+gg.log("\(missing)")
+"#,
+                names: &["Swift runtime failure: Index out of range"],
+                located: Located::At("main.swift:4:21"),
+            },
+            Case {
+                shape: Shape::FailureValue,
+                program: r#"// G8 (c): an async failure nothing observes.
+
+struct StepFailure: Error {}
+
+Task {
+    throw StepFailure()
+}
+"#,
+                names: &["StepFailure"],
+                located: Located::Nowhere,
+            },
+            Case {
+                shape: Shape::ResourceFault,
+                program: r#"// G8 (d): unbounded recursion.
+
+func deeper(_ n: Int) -> Int {
+    return 1 + deeper(n + 1)
+}
+
+gg.log("\(deeper(0))")
+"#,
+                names: &["call stack exhausted"],
+                located: Located::At("main.swift:4:16"),
+            },
+            Case {
+                shape: Shape::Abort,
+                program: r#"// G8 (e): stopping the process outright.
+
+import WASILibc
+
+gg.log("before the exit")
+exit(
+    3
+)
+"#,
+                names: &["exit(3)"],
+                located: Located::Nowhere,
+            },
+        ],
+    );
 }

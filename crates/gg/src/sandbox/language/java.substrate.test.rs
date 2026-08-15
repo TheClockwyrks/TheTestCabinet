@@ -42,6 +42,8 @@ use wasmtime::component::Component;
 
 use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 
+use super::super::g8::{self, Case, Located, Shape};
+
 use super::super::typescript;
 use super::compile::{compile_module, compile_program};
 use crate::sandbox::fake::{
@@ -872,5 +874,77 @@ fn a_pooled_jvm_is_reused_and_the_first_one_is_the_expensive_one() {
         warm * 2 < cold,
         "a warm build ({warm:?}) is not meaningfully cheaper than the cold one ({cold:?}): the \
          pool is not keeping a JVM"
+    );
+}
+
+/// **Gate [G8](super::super::g8) for Java** — all five shapes a runtime failure takes,
+/// driven through the production path and read back as the model would read them.
+#[test]
+fn g8_a_runtime_failure_reaches_the_model() {
+    g8::gate(
+        GgProgramLanguage::Java,
+        &[
+            Case {
+                shape: Shape::ToolError,
+                program: r#"// G8 (a): a gg call the host answers `not-found`, uncaught.
+
+String text = Files.readTextFile(
+        "missing.md"
+);
+System.out.println(text);
+"#,
+                names: &["read_text_file", "not-found", "missing.md"],
+                located: Located::Nowhere,
+            },
+            Case {
+                shape: Shape::NativeFault,
+                program: r#"// G8 (b): an index past the end of a list.
+
+List<String> values = new ArrayList<>();
+System.out.println(
+        values.get(7)
+);
+"#,
+                names: &["java.lang.IndexOutOfBoundsException"],
+                located: Located::At("program.java:5"),
+            },
+            Case {
+                shape: Shape::FailureValue,
+                program: r#"// G8 (c): ending by returning a failure status.
+
+System.out.println("the third step did not finish");
+return 3;
+"#,
+                names: &["incompatible types: unexpected return value"],
+                located: Located::At("program.java:4:8"),
+            },
+            Case {
+                shape: Shape::ResourceFault,
+                program: r#"// G8 (d): unbounded recursion.
+
+class Deep {
+    static int deeper(int n) {
+        return 1 + deeper(n + 1);
+    }
+}
+
+System.out.println(Deep.deeper(0));
+"#,
+                names: &["too much recursion"],
+                located: Located::At("program.java:5"),
+            },
+            Case {
+                shape: Shape::Abort,
+                program: r#"// G8 (e): stopping the process outright.
+
+System.out.println("before the exit");
+System.exit(
+        3
+);
+"#,
+                names: &["System.exit"],
+                located: Located::At("program.java:4"),
+            },
+        ],
     );
 }

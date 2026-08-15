@@ -182,6 +182,16 @@ mod isolation;
 // arm must now be added to, and `gg-artifact-build` checks that list against what the build really
 // wrote, which is the same forcing function one layer up and on the right side of the gap.
 
+/// **Gate G8**: the assertion that a runtime failure reaches the model — on every arm, for all five
+/// shapes a failure takes.
+///
+/// `#[cfg(test)]` because it drives eleven real toolchains through five real failures each, which is
+/// a gate's budget and not a turn's. Its module documentation carries the table of every cell that
+/// is not satisfied today and why the table fails in both directions.
+#[cfg(test)]
+#[path = "language/g8.rs"]
+mod g8;
+
 /// A **second implementation of this trait, for tests only** — the thing that makes the seam an
 /// abstraction rather than one implementation wearing a trait.
 ///

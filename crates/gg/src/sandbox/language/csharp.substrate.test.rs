@@ -49,6 +49,8 @@ use std::sync::OnceLock;
 use std::time::Instant;
 
 use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
+
+use super::super::g8::{self, Case, Located, Shape};
 use wasmtime::component::Component;
 
 use super::GUEST_COMPONENT;
@@ -752,4 +754,86 @@ fn csharp_runs_a_program_written_the_async_way_a_model_reaches_for() {
             "this async shape did not run: {source}"
         );
     }
+}
+
+/// **Gate [G8](super::super::g8) for C#** — all five shapes a runtime failure takes,
+/// driven through the production path and read back as the model would read them.
+#[test]
+fn g8_a_runtime_failure_reaches_the_model() {
+    g8::gate(
+        GgProgramLanguage::CSharp,
+        &[
+            Case {
+                shape: Shape::ToolError,
+                program: r#"// G8 (a): a gg call the host answers `not-found`, uncaught.
+
+var text = Files.ReadTextFile(
+    "missing.md"
+);
+Console.WriteLine(text);
+"#,
+                names: &["Gg.ToolException", "Files.ReadTextFile", "missing.md"],
+                located: Located::Nowhere,
+            },
+            Case {
+                shape: Shape::NativeFault,
+                program: r#"// G8 (b): an index past the end of an array.
+
+var values = new int[] { 1, 2, 3 };
+var missing = values[
+    7
+];
+Console.WriteLine(missing);
+"#,
+                names: &[
+                    "System.IndexOutOfRangeException",
+                    "Index was outside the bounds of the array",
+                ],
+                located: Located::Nowhere,
+            },
+            Case {
+                shape: Shape::FailureValue,
+                program: r#"// G8 (c): ending by returning a failure status.
+
+public static class Program {
+  public static int Main() {
+    Console.WriteLine("the third step did not finish");
+    return 3;
+  }
+}
+"#,
+                names: &["the third step did not finish"],
+                located: Located::Nowhere,
+            },
+            Case {
+                shape: Shape::ResourceFault,
+                program: r#"// G8 (d): unbounded recursion.
+
+public static class Program {
+  static int Deeper(int n) {
+    return 1 + Deeper(n + 1);
+  }
+  public static void Main() {
+    Console.WriteLine(Deeper(0));
+  }
+}
+"#,
+                names: &["StackOverflowException"],
+                located: Located::Nowhere,
+            },
+            Case {
+                shape: Shape::Abort,
+                program: r#"// G8 (e): stopping the process outright.
+
+Console.WriteLine("before the exit");
+Environment.Exit(
+    3
+);
+Console.WriteLine("after the exit");
+"#,
+                names: &["exit(3)"],
+                located: Located::Nowhere,
+            },
+        ],
+    );
 }
