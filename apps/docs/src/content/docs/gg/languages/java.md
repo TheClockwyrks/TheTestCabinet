@@ -10,11 +10,8 @@ capability's `language` parameter.
 
 This arm does not keep the [invariants](/gg/responses-as-code/invariants/) yet,
 and this page states what it does today. gg wraps the reply and writes the
-imports and the entry point around it, a diagnostic's line is reached by an
-offset gg computes rather than through a source map, and a program runs as
-JavaScript on the ECMAScript guest where
-[program languages](/gg/languages/overview/) states that this arm compiles to
-wasm into a component of the turn's own.
+imports and the entry point around it, and a compile diagnostic's line is
+reached by an offset gg computes rather than through a source map.
 
 ## Preparation
 

@@ -2,6 +2,13 @@
 title: "Swift"
 ---
 
+This arm compiles a program's own bytes and locates every diagnostic in the
+model's coordinates. It does not keep the rest of the
+[invariants](/gg/responses-as-code/invariants/) yet, and this page states what it
+does today: gg's shell writes `@_exported import gg`, so gg's names are in scope
+with no line the model wrote, and a code module's declarations are moved into an
+extension and made `static`.
+
 ## Preparation
 
 The arm is selected per agent by the responses-as-code capability's `language`

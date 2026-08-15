@@ -14,10 +14,8 @@ of TeaVM's source map are the shared JVM road.
 
 This arm does not keep the [invariants](/gg/responses-as-code/invariants/) yet,
 and this page states what it does today. gg hoists the `import` lines a model
-wrote into a header and moves a diagnostic back by the number of lines it added,
-and a program runs as JavaScript on the ECMAScript guest where
-[program languages](/gg/languages/overview/) states that this arm compiles to
-wasm into a component of the turn's own.
+wrote into a header and moves a compile diagnostic back by the number of lines
+it added.
 
 The script shape is required. A function body would put every declaration the
 model wrote in a local position, where Kotlin refuses `object`, `interface`,

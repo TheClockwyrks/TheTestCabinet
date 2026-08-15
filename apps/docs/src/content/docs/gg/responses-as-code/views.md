@@ -178,8 +178,9 @@ language passes by name rather than by position is marked `(passed by name)`.
 Every view states where the symbol is defined and how a program reaches it, on
 its own line under the signature or the declaration. The module is named by this
 language's own path for it, and the line a program writes to bring the symbol
-into scope is quoted verbatim. Nothing gg offers is in scope before a program
-imports it, so a view without that line describes a call the model cannot make.
+into scope is quoted verbatim. An arm whose SDK is in a program's scope before it
+compiles says so instead, because a model shown neither cannot tell "nothing to
+write" from "nobody said".
 
 A type is a view of its own, addressed by the type's name, and it ends with a
 line per member function: the member's fully-qualified name and its one-line
@@ -188,8 +189,8 @@ this agent binds refers to it. A key that resolves to nothing this agent binds
 is `not-found` and places nothing, including none of the types.
 
 A module is a view of its own too, addressed by the module's own path. It
-carries the module's brief and detail, the line a program writes to bring it into
-scope, and a line per function in it this agent binds, each with its own brief. A
+carries the module's brief and detail, the same answer about reaching it, and a
+line per function in it this agent binds, each with its own brief. A
 module every function of which this run withheld is `not-found`, on the rule a
 type is gated by: what a model can read describes a surface it can use.
 
@@ -224,9 +225,10 @@ language, which gg then runs. Its source is pushed as the assistant message and
 the views the window opens on are the ones its own calls placed, so the model's
 first example of a well-formed reply is a program that provably ran.
 
-That program is written under the same rules a model's is, stated on
-[invariants](/gg/responses-as-code/invariants/), so the example a model opens on
-has the shape of a reply it has to send.
+That program is written under the same rules a model's reply is on that arm, so
+the example a model opens on has the shape of a reply it has to send. The rules
+an arm is converting to are on
+[invariants](/gg/responses-as-code/invariants/).
 
 The program makes two kinds of call. It searches each capability module the
 agent was granted, as an exact whole-module lookup, which leaves one search view

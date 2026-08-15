@@ -163,7 +163,7 @@ turn had already run as many programs as it may.
 The role an agent was dispatched in decides which ending calls it may make. An
 agent doing work calls `gg.session.finish(summary)`. An agent reviewing work
 calls `gg.session.approve()` or `gg.session.requestChanges(items)`. Both groups
-are bound in every program. The membrane accepts the calls of the agent's own
+are declared on every agent. The membrane accepts the calls of the agent's own
 role and refuses the other group as `unavailable`, naming the endings the agent
 does have. See [ending a session](/gg/ending-a-session/) for the shape of each
 declaration.

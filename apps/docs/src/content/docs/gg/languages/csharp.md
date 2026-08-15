@@ -2,6 +2,13 @@
 title: "C#"
 ---
 
+This arm compiles a program's own bytes and locates every diagnostic in the
+model's coordinates. It does not keep the rest of the
+[invariants](/gg/responses-as-code/invariants/) yet, and this page states what it
+does today: the SDK declares `global using Gg;` for itself, so a module's names
+are in scope with no line the model wrote, and a code module is put in a class gg
+declares around it.
+
 ## Preparation
 
 The arm is selected per agent by the responses-as-code capability's `language`

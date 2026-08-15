@@ -27,6 +27,13 @@ only be wrong in the accepting direction.
 `member_separator` is `::`, code modules are compiled from `.hpp` files, and
 `checker()` is `"clang++"`, so compile time is recorded on every turn.
 
+This arm compiles a program's own bytes and locates every diagnostic in the
+model's coordinates. It does not keep the rest of the
+[invariants](/gg/responses-as-code/invariants/) yet, and this page states what it
+does today: the precompiled header carries gg's surface and ends with
+`using namespace gg;`, so a module is in scope with no line the model wrote, and
+a code module is put in a namespace gg declares around it.
+
 ## Toolchain and build outputs
 
 The compiler is a wasi-sdk tree, located at `TCAB_GG_WASI_SDK_HOME`, then

@@ -7,14 +7,20 @@ is type-stripped to JavaScript in process, type-checked with `tsc`, and
 evaluated by an embedded `componentize-js` guest. A program that does not
 type-check is not executed.
 
+This arm does not keep the [invariants](/gg/responses-as-code/invariants/) yet,
+and this page states what it does today. The strip prints the parsed program
+back out, so a runtime diagnostic is located in gg's copy rather than in the
+text the model sent, and the guest evaluates that copy as the body of a function
+whose parameters carry `gg`, `ToolError` and `lib` into scope with no line the
+model wrote.
+
 ## Preparation
 
 Preparation is two passes over the reply, in this order.
 
 The strip parses the reply with `oxc` and erases the types, in process, in ~0.2
 ms. Its output is the JavaScript the guest evaluates. This pass also produces
-the located syntax errors, the ECMAScript early errors, the refusals below, and
-the count of statements that cannot run.
+the located syntax errors, the ECMAScript early errors and the refusals below.
 
 The check runs `tsc` over the model's *unstripped* source, against the
 declarations described below. A program it rejects is not evaluated. The model
@@ -27,7 +33,9 @@ declares that its preparation compiles, so both passes are timed on the failing
 path as well as the succeeding one and reach the run as `compileMs`.
 
 The guest evaluates a program as the body of a function, so a top-level `return`
-ends it. That is legal and runs as written.
+ends it and every statement after it is dead. That is legal JavaScript, nothing
+refuses it, and the turn is recorded as one that worked. The reply that lands in
+it is a model that drafted a second program and pasted it after the first.
 
 ## Refusals in the strip
 

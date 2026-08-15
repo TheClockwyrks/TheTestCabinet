@@ -32,8 +32,8 @@ SDK, its own segment of the shared prompt templates and its own healing dialect.
 | [Python](/gg/languages/python/) | `python` | Evaluated as written by a guest carrying CPython 3.14, with no compiler on the turn path. |
 | [Ruby](/gg/languages/ruby/) | `ruby` | Compiled to JavaScript on the host by an embedded Opal, evaluated by a guest carrying Opal's runtime. |
 | [PureScript](/gg/languages/purescript/) | `purescript` | Type-checked and compiled to JavaScript by the run image's `purs`, bundled, evaluated by the ECMAScript guest. |
-| [Java](/gg/languages/java/) | `java` | Compiled by `javac` and then TeaVM inside a warm JVM, into the wasm component that turn is evaluated by. |
-| [Kotlin](/gg/languages/kotlin/) | `kotlin` | Compiled by the Kotlin compiler and then TeaVM inside the same warm JVM, onto the same wasm target. |
+| [Java](/gg/languages/java/) | `java` | Compiled by `javac` and then TeaVM inside a warm JVM, to JavaScript the ECMAScript guest evaluates. |
+| [Kotlin](/gg/languages/kotlin/) | `kotlin` | Compiled by the Kotlin compiler and then TeaVM inside the same warm JVM, along the same road. |
 | [Rust](/gg/languages/rust/) | `rust` | `rustc` compiles the program into the wasm component that turn is evaluated by. |
 | [Swift](/gg/languages/swift/) | `swift` | `swiftc` compiles the reply verbatim into that turn's wasm component. |
 | [C++](/gg/languages/cpp/) | `cpp` | `clang++` compiles the reply verbatim against a prelude precompiled once per machine. |
@@ -41,12 +41,12 @@ SDK, its own segment of the shared prompt templates and its own healing dialect.
 
 ## Rules every arm keeps
 
-The rules that hold whatever language an agent writes in are on
+The rules required of every arm whatever language an agent writes in are on
 [invariants](/gg/responses-as-code/invariants/): the program is the model's own
 bytes, the SDK is reached by an import the model writes, documentation comes
 from that language's own documentation generator, and a failure reaches the
-model with the language's own words and locations. An arm is registered when it
-keeps all of them.
+model with the language's own words and locations. An arm that does not keep
+them all yet says so at the head of its own page.
 
 The capability set is gg's. An arm chooses how a call is spelled, which module
 it is filed under, whether it is a free function or a method, and how optional
@@ -61,11 +61,15 @@ sees only the SDK. The rules the surface keeps in every language are on
 
 An arm owns its catalogue, its prompt segment and its healing dialect. A
 guest component is shared only between arms a declared table names, and a
-declared pair must hand back identical bytes. TypeScript, JavaScript and
-PureScript share the ECMAScript guest; Ruby compiles to JavaScript on the host
-as well and still has its own, because that component carries Opal's runtime.
-Java, Kotlin, Rust, Swift and C++ have no guest to share, each program being its
-own component.
+declared pair must hand back identical bytes. TypeScript, JavaScript, PureScript,
+Java and Kotlin all declare the ECMAScript guest; Ruby compiles to JavaScript on
+the host as well and still has its own, because that component carries Opal's
+runtime. Rust, Swift and C++ have no guest to share, each program being its own
+component.
+
+Java and Kotlin are moving onto TeaVM's WebAssembly target, where each program
+is its own component and no JavaScript is on the road. Both arm pages state what
+their arm does today.
 
 Guest components and signature catalogues are build outputs. Each arm's
 artifacts are produced by the build from the sources in the checkout, so a

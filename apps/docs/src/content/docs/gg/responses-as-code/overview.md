@@ -33,9 +33,10 @@ two, so an A/B of the response shape is a comparison inside a single run.
   `gg.session.finish(summary)`; a reviewer calls `gg.session.approve()` or
   `gg.session.requestChanges(items)`. A program that throws after calling one
   loses the ending.
-- Every function of the SDK is bound in every program whatever the run enabled.
-  A call the agent was not granted runs and fails, saying that the call is not
-  available and, where the agent has one, which call to make instead.
+- Every function of the SDK is compiled, linked and callable in every program
+  whatever the run enabled. A call the agent was not granted runs and fails,
+  saying that the call is not available and, where the agent has one, which call
+  to make instead.
 
 ## Configuration
 

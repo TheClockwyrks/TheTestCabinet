@@ -5,7 +5,7 @@ title: "The API surface"
 ## Typed functions
 
 Every gg operation is a distinct, typed function in the run's program language,
-reached through an import the program writes. A program names no tool through a
+named at a path the arm files it under. A program names no tool through a
 dispatcher and assembles no JSON.
 
 The interface between a program and gg is a
@@ -36,7 +36,7 @@ in which calls exist.
 
 ## The module vocabulary
 
-gg's surface is divided into modules, and a program imports the ones it calls.
+gg's surface is divided into modules, and a program names the ones it calls.
 The module ids, in the order the prompt and the agent surface present them:
 `files`, `shell`, `board`, `tasks`, `memories`, `docs`, `views`, `context`,
 `delegation`, `skills`, `programs`, `session`, `core`. `core` carries no
@@ -58,13 +58,19 @@ search hit carries, and a path a program writes. TypeScript spellings:
 | `gg.delegation.spawnSubagent(request: { agent: string } & ({ prompt: string } \| { issueId: string }))` | `SubagentHandle` |
 
 Two names belong to the surface without being a capability. `ToolError` is the
-failure type every failed call raises, documented under `core` and imported the
+failure type every failed call raises, documented under `core` and reached the
 way every other name is. `lib` holds the code the agent has loaded, and the
 reply to the read that loaded something quotes the form that reaches it.
 
+Which line reaches a name is the arm's, and PureScript is the one arm where the
+program writes one today. Every other puts gg's surface in a program's scope
+before it compiles, so a model reads its own arm's answer in its prompt and in
+every [documentation view](/gg/responses-as-code/views/) it opens. See
+[static SDKs](/gg/languages/static-sdks/).
+
 ## Static binding
 
-Every function of the SDK is compiled, linked and importable in every program
+Every function of the SDK is compiled, linked and callable in every program
 whatever the run enabled, and the SDK covers all 50 operations. Both ending
 groups are declared on every agent, and the agent's role decides which of them
 the membrane accepts.
@@ -91,16 +97,19 @@ nothing here.
 
 Each row names an `OperationId` of the form `namespace.key` (`files.read_file`),
 the family it belongs to, whether the call takes input, and its `Binding`. A
-`Binding` is one of three things:
+`Binding` is one of four things:
 
 - `Capability(id)`, bought by a gg capability the agent holds and named in that
-  agent's [allowlist](/gg/configurations/#granting-calls). 42 rows, and a
+  agent's [allowlist](/gg/configurations/#granting-calls). 41 rows, and a
   capability commonly buys several: `read-file` alone buys `files.read_file`,
   `files.read_text_file` and `views.open_file`, which are three separately
   documented, separately called and separately grantable operations over one
   read.
 - `Ending(role)`, bought by the agent's ending role. `session.finish` is
   `Standard`; `session.approve` and `session.request_changes` are `Review`.
+- `Machine`, bought by where the instance stands rather than by anything on its
+  profile. Its one row is `delegation.transition_state`, held by an agent
+  running a [machine](/gg/fsms/) state with somewhere to go.
 - `Always`, bound to every program whatever a run enables. `docs.search`,
   `views.open_text`, `views.open_docs_view`, `views.close` and `views.current`.
 

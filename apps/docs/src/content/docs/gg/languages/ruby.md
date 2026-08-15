@@ -7,6 +7,13 @@ guest component carrying Opal's runtime, gg's Ruby SDK and the declared library
 set pre-initialised into it. The program crosses the membrane as JavaScript, and
 everything it is evaluated against is Ruby.
 
+This arm compiles a program's own bytes and locates a failure through a source
+map. It does not keep the rest of the
+[invariants](/gg/responses-as-code/invariants/) yet, and this page states what it
+does today: the guest carries gg's `GG::*` constants, so a call is written with
+no line the model wrote, and a code module is wrapped in a block whose line a
+diagnostic is moved back over by arithmetic.
+
 ## Preparation
 
 The whole reply is compiled as `program.rb`, at its top level, with no wrapper

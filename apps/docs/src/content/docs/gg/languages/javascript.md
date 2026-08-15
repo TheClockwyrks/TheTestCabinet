@@ -7,6 +7,12 @@ gg parses the reply, erases any type annotations in it, and hands the stripped
 source to the embedded ECMAScript guest, which evaluates it. Nothing reads the
 program between the strip and the guest.
 
+This arm does not keep the [invariants](/gg/responses-as-code/invariants/) yet,
+and this page states what it does today. It shares the TypeScript arm's strip,
+so it shares that arm's two departures: the strip prints the parsed program back
+out and the guest evaluates that copy as the body of a function whose parameters
+carry `gg`, `ToolError` and `lib` into scope with no line the model wrote.
+
 ## Preparation
 
 Preparation is a single in-process `oxc` pass over the reply, the same parse and

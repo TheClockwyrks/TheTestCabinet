@@ -2,11 +2,13 @@
 title: "Invariants"
 ---
 
-Everything on this page holds on every turn of every agent in this execution
-mode, whatever language that agent writes in. An arm is registered when it keeps
-all of it, and the pages under
+Everything on this page is required of every turn of every agent in this
+execution mode, whatever language that agent writes in. The pages under
 [program languages](/gg/languages/overview/) record how each arm spells what is
-required here.
+required here, and an arm that does not keep it yet says so at the head of its
+own page. Two gates measure the gap, over every registered arm: `authorship.rs`
+holds a preparation to the bytes it was handed, and `g8.rs` holds every arm to
+reporting each of five runtime failures.
 
 ## The program is the model's
 

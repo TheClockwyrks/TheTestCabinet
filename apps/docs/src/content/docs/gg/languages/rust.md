@@ -2,6 +2,13 @@
 title: "Rust"
 ---
 
+This arm does not keep the [invariants](/gg/responses-as-code/invariants/) yet,
+and this page states what it does today. gg wraps the reply in a prologue and an
+epilogue, declares the entry point itself and refuses a program that declares
+`main`, writes `use ::gg::prelude::*;` above the model's first line so every
+module is in scope with no line the model wrote, and moves a diagnostic back by
+the prologue's line rather than reading a source map.
+
 ## Preparation
 
 An agent whose responses-as-code capability names `rust` answers each turn with

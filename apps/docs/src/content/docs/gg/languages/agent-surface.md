@@ -128,7 +128,7 @@ sections. A catalogue must declare its schema, and gg refuses any number but 1.
 
 | Section | What it carries |
 | --- | --- |
-| `modules` | Every module the surface is divided into, in the order a model meets them, each with its gg id, the path this arm spells it under, a brief and optional detail, and the line a program writes to bring it into scope. |
+| `modules` | Every module the surface is divided into, in the order a model meets them, each with its gg id, the path this arm spells it under, a brief and optional detail, and either the line a program writes to bring it into scope or the answer that this arm needs none. |
 | `libraries` | The libraries a program may import, grouped as the artifact that decides the set groups them, each name spelled as a program must write it. Absent where an arm's programs get their runtime's standard library and nothing more. |
 | `functions` | Every call a program can write, in one flat array. Each entry names the gg `operation` it binds, the `module` it is documented under, its `kind` and `receiver`, the `name` a program calls it by, its `fqn`, a brief with optional detail, its `signatures`, and its `returns` and `types` as resolved references. A second way into a capability the arm already binds carries `aliasOf`. |
 | `types` | Every type a signature refers to: its `fqn` and `module`, its declaration, the prose explaining what it is for, a line per member, and the member functions an arm hangs off the type. |

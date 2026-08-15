@@ -11,7 +11,14 @@ Python module, and it crosses the membrane as the source the model wrote.
 Preparation returns that source unchanged, with no compiled component. The
 first thing to read a program is the CPython inside the guest, which
 compiles it as `program.py` with `__name__` set to `"__main__"` and runs it at
-the top level. The arm puts no compiler on the turn path, installs nothing in
+the top level.
+
+This arm compiles the bytes it was handed and locates a failure through the
+interpreter's own traceback. It does not keep the
+[invariants](/gg/responses-as-code/invariants/) import rule yet, and this page
+states what it does today: the guest binds every capability module into the
+program's namespace before the program runs, so a call is written with no line
+the model wrote. The arm puts no compiler on the turn path, installs nothing in
 the run container, and opens no workspace during preparation. For the shared
 account of how the other arms compile a reply, see
 [compilation](/gg/languages/compilation/).

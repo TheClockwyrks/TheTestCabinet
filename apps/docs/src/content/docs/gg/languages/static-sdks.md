@@ -11,20 +11,22 @@ was not granted returns a refusal from the host.
 
 gg names every model-facing call an operation, under a `namespace.key` identity
 of its own rather than any arm's spelling, and states once what buys it. That is
-the operation's binding, and there are three kinds.
+the operation's binding, and there are four kinds.
 
 | Binding | What buys the operation |
 | --- | --- |
 | Capability | The agent holds the named gg capability, and its [allowlist](/gg/configurations/#granting-calls) names this operation. |
 | Ending | The agent was dispatched in the named [ending role](/gg/ending-a-session/). |
+| Machine | The agent stands in a [machine](/gg/fsms/) state with somewhere to go. Its one member is `delegation.transition_state`, which a configuration cannot grant. |
 | Always | Every program has it. |
 
 An agent's grant is the other half of the pair: the gg capability ids it was
-given, the operation ids its allowlist grants, and the ending role it was
-dispatched in. Each kind of binding is answered by the half of the grant that can
-answer it, and nothing falls back. An operation whose capability is off stays
-refused however the allowlist reads, and an ending belonging to another role
-stays refused for an agent holding every capability gg has.
+given, the operation ids its allowlist grants, the ending role it was dispatched
+in, and the machine state it stands in. Each kind of binding is answered by the
+half of the grant that can answer it, and nothing falls back. An operation whose
+capability is off stays refused however the allowlist reads, and an ending
+belonging to another role stays refused for an agent holding every capability gg
+has.
 
 The tool vocabulary decides none of this. A program's grant is stated in
 operation ids from end to end, and a gg tool name is neither writable in a
@@ -47,7 +49,7 @@ this agent may call, and a documentation view describes only what this agent may
 call.
 
 A program can therefore compile a call search would never have shown it. One
-condition makes that safe, and every arm holds it:
+condition makes that safe, and an arm is registered under it:
 
 :::note
 No gg name is available unqualified without a line the model wrote. An import
@@ -62,12 +64,19 @@ C#     using Gg;        →  Files.WriteFile(…)     unshortened  Gg.Files.Writ
 Rust   use gg::files;   →  files::read_file(…)    unshortened  gg::files::read_file(…)
 ```
 
-What survives without a line is package availability: a classpath entry, an
-extern prelude, an include path, a linked archive. That is how a compiler is
-told the library exists, and it declares no name. Each arm's own line is on that
-arm's page, and a
-[documentation view](/gg/responses-as-code/views/) quotes it beside the symbol it
-reaches.
+Both are the form their arm is converting to. PureScript is the one arm holding
+the condition today, with a program writing `import Gg.Files as Gg.Files` for
+every module it calls. Every other arm puts its SDK in a program's scope before
+the program compiles, through a prelude, a precompiled header, a re-exported
+import, a `global using` or a scope handed to an evaluator, and each arm's page
+states which of those its own is.
+
+What survives a converted arm without a line is package availability: a classpath
+entry, an extern prelude, an include path, a linked archive. That is how a
+compiler is told the library exists, and it declares no name. A
+[documentation view](/gg/responses-as-code/views/) quotes the line beside the
+symbol it reaches, and says the symbol is in scope already on an arm with no line
+to write.
 
 ## What a refused call raises
 
