@@ -5,8 +5,8 @@ title: "The API surface"
 ## Typed functions
 
 Every gg operation is a distinct, typed function in the run's program language,
-already in the program's scope. A program names no tool through a dispatcher and
-assembles no JSON.
+reached through an import the program writes. A program names no tool through a
+dispatcher and assembles no JSON.
 
 The interface between a program and gg is a
 [WIT](https://component-model.bytecodealliance.org/design/wit.html) membrane,
@@ -36,7 +36,7 @@ in which calls exist.
 
 ## The module vocabulary
 
-A program reaches gg through one object, `gg`, carrying one object per module.
+gg's surface is divided into modules, and a program imports the ones it calls.
 The module ids, in the order the prompt and the agent surface present them:
 `files`, `shell`, `board`, `tasks`, `memories`, `docs`, `views`, `context`,
 `delegation`, `skills`, `programs`, `session`, `core`. `core` carries no
@@ -57,26 +57,17 @@ search hit carries, and a path a program writes. TypeScript spellings:
 | `gg.views.openText(label: string, body: string)` | `void` |
 | `gg.delegation.spawnSubagent(request: { agent: string } & ({ prompt: string } \| { issueId: string }))` | `SubagentHandle` |
 
-Two more names are bound bare: `ToolError`, so `e instanceof ToolError` reads
-naturally in a `catch`, and `lib` when the agent has loaded code. The scope also
-binds each module's object under the alias names the PureScript, Java and Kotlin
-bundles resolve as free identifiers. Those aliases are in no catalogue, so
-nothing puts one in front of a model.
-
-A program is evaluated as the body of a function whose parameters are the
-scope's names, so redeclaring one of those names is a `SyntaxError` raised
-before any statement runs. Five aliases are module ids themselves, `tasks`,
-`context`, `skills`, `programs` and `docs`, and are therefore seeded bare. The
-prompt says that gg seeds short names of its own into the scope, naming `gg`,
-`ToolError` and `lib` among them, rather than listing every one.
+Two names belong to the surface without being a capability. `ToolError` is the
+failure type every failed call raises, documented under `core` and imported the
+way every other name is. `lib` holds the code the agent has loaded, and the
+reply to the read that loaded something quotes the form that reaches it.
 
 ## Static binding
 
-The scope is static and takes no argument. Every function of the SDK is
-compiled, linked and callable in every program whatever the run enabled, and the
-surface a program's scope is built from covers all 50 operations. Both ending
-groups are bound on every agent, and the agent's role decides which of them the
-membrane accepts.
+Every function of the SDK is compiled, linked and importable in every program
+whatever the run enabled, and the SDK covers all 50 operations. Both ending
+groups are declared on every agent, and the agent's role decides which of them
+the membrane accepts.
 
 A call the agent was not granted travels to the membrane and is refused there.
 See [static SDKs](/gg/languages/static-sdks/) for that design and for what a
@@ -198,9 +189,9 @@ const rows = lib.csvTools.parseCsv(gg.files.readTextFile("data/vendor.csv"));
 gg.views.openText("rows", `${rows.length} rows, ${rows[0].length} columns`);
 ```
 
-`lib` joins the scope only when the agent has loaded something. It is not an API
-object: it holds no gg function, and the hint an unknown name earns names it
-separately from the modules.
+`lib` exists only when the agent has loaded something. It is not an API object:
+it holds no gg function, and the hint an unknown name earns names it separately
+from the modules.
 
 Loaded code costs no tokens. It is prepared source the host holds and hands to
 the guest, so it is never a context item, is never summarized or evicted, and a
@@ -232,13 +223,12 @@ before the parse, because a module is untrusted input whoever wrote it.
 
 ### Module scope
 
-A module is evaluated as the body of a function whose parameters are the scope's
-names, which is the same scope the program gets, so it may call any gg function
+A module reaches the same surface a program does, so it may call any gg function
 the run offers and a helper may be a whole procedure.
 
-Modules are evaluated in order, each against that scope rather than against the
-`lib` being built, so a module sees no other module. Load order is the order the
-agent happened to read things in, and it is kept out of the contract.
+Modules are evaluated in order, and none of them is evaluated against the `lib`
+being built, so a module sees no other module. Load order is the order the agent
+happened to read things in, and it is kept out of the contract.
 
 ### Module failures
 

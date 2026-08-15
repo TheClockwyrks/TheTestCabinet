@@ -224,9 +224,9 @@ language, which gg then runs. Its source is pushed as the assistant message and
 the views the window opens on are the ones its own calls placed, so the model's
 first example of a well-formed reply is a program that provably ran.
 
-That program is written under the same rules a model's is. It carries its own
-imports and its own entry point, so the example a model opens on is a program of
-the shape it has to send.
+That program is written under the same rules a model's is, stated on
+[invariants](/gg/responses-as-code/invariants/), so the example a model opens on
+has the shape of a reply it has to send.
 
 The program makes two kinds of call. It searches each capability module the
 agent was granted, as an exact whole-module lookup, which leaves one search view
