@@ -2056,6 +2056,17 @@ export type GgResponseHealing = {
    * distinguishable from a clean one, which is otherwise byte-identical on the wire.
    */
   didNotConverge?: boolean;
+  /**
+   * The reply **as the model sent it**, carried whenever healing rewrote it into something else.
+   *
+   * The program that ran is what the model's own history carries and what every reported line
+   * number counts lines of, so this is the only surviving copy of the text healing started from
+   * — and reading the two against each other is what tells a defect in healing apart from a
+   * mistake by the model. It is for the run's operator; no model is ever shown it.
+   *
+   * Absent for a clean response, where the reply and the program are the same string.
+   */
+  original?: string;
 };
 
 /**

@@ -479,9 +479,13 @@ fn healing_locus() -> String {
 ///
 /// Under responses-as-code the reply is a program, and [healing](heal) rewrites it before it runs.
 /// That leaves a choice with no analogue on the tool-calling path: is the assistant turn the model
-/// re-reads next turn the reply it *sent*, or the program gg actually *ran*? Both are defensible and
-/// the difference is measurable, so it is a lever rather than a hard-coded policy — the same reason
-/// [healing itself](HealingConfig) is.
+/// re-reads next turn the reply it *sent*, or the program gg actually *ran*?
+///
+/// The healed text is the program of record, so the answer gg records by default is the program that
+/// ran. Every line number a model is handed counts lines of that text — a compiler's diagnostic, a
+/// runtime's location, the frame under a panic — so a history carrying the *other* text hands the
+/// model coordinates into something it has never seen. The reply as sent survives regardless, on the
+/// operator's side, which is where reading the two against each other belongs.
 ///
 /// Whichever mode is chosen, healing still runs and is still disclosed in the turn's feedback: the
 /// mode governs only the stored assistant message, never whether a reply is repaired before it runs.
@@ -490,14 +494,17 @@ pub enum AssistantMessageMode {
     /// **No post-processing.** The assistant message is the reply exactly as the model returned it,
     /// byte for byte. Healing still repairs the reply before running it, but that repair does not
     /// leak into the recorded message — so the transcript shows what the model actually wrote, which
-    /// is what a study of a model's code-only compliance wants to read. The default.
-    #[default]
+    /// is what a study of a model's code-only compliance wants to read.
+    ///
+    /// It is knowingly inconsistent rather than neutral: a reply that could not have compiled sits
+    /// in the model's own history while every location gg reports counts lines of the healed text.
+    /// It is an arm of a study, and the arm every other run is compared against is the default one.
     None,
     /// **Post-response healing.** The assistant message is the [healed](Healed::program) program —
     /// what gg actually compiled and ran — whenever healing rewrote the reply, and the reply
     /// verbatim when it did not ([`Healed::rewritten`] is false). The model then re-reads a clean,
-    /// running program next turn rather than the malformed one it sent, which is what a run optimised
-    /// for task completion rather than compliance measurement wants.
+    /// running program next turn rather than the malformed one it sent. The default.
+    #[default]
     ResponseHealing,
 }
 
@@ -524,8 +531,8 @@ pub const PARAM_ASSISTANT_MESSAGES: &str = "assistantMessages";
 ///
 /// | `params.assistantMessages` | Mode |
 /// | --- | --- |
-/// | absent / `null` / `"none"` | [`None`](AssistantMessageMode::None) — no post-processing (the default) |
-/// | `"response-healing"` | [`ResponseHealing`](AssistantMessageMode::ResponseHealing) |
+/// | absent / `null` / `"response-healing"` | [`ResponseHealing`](AssistantMessageMode::ResponseHealing) — the healed program that ran (the default) |
+/// | `"none"` | [`None`](AssistantMessageMode::None) — no post-processing |
 /// | anything else | **refused** — the launch does not start |
 ///
 /// Read literally — with only surrounding whitespace forgiven — and [refused](crate::validate) on
@@ -547,9 +554,7 @@ pub fn resolve_assistant_messages(
 
     match value {
         Value::Null => AssistantMessageMode::default(),
-        Value::String(mode) if mode.trim() == ASSISTANT_MESSAGES_NONE => {
-            AssistantMessageMode::default()
-        }
+        Value::String(mode) if mode.trim() == ASSISTANT_MESSAGES_NONE => AssistantMessageMode::None,
         Value::String(mode) if mode.trim() == ASSISTANT_MESSAGES_RESPONSE_HEALING => {
             AssistantMessageMode::ResponseHealing
         }
@@ -614,6 +619,13 @@ pub const MAX_PASSES: usize = 4;
 pub struct Healed {
     /// The text to hand the [sandbox](crate::sandbox): the healed program, which is always run.
     pub program: String,
+    /// The reply exactly as it arrived, before canonicalisation and before any strategy ran.
+    ///
+    /// Kept because the program is what everything downstream treats as the model's source — it is
+    /// what compiles, what the model's history carries and what every reported line number counts
+    /// lines of — so once healing has run, this is the only copy of what it started from. It
+    /// reaches the run's operator and no model.
+    pub original: String,
     /// Every strategy application, in application order. A strategy may appear more than once (two
     /// nested fences are two applications), which is what makes "how many times did it fire" a count
     /// rather than a flag.
@@ -750,19 +762,21 @@ pub fn heal(reply: &str, config: &HealingConfig, dialect: &dyn Dialect) -> Heale
     // whitespace do not change what a program is, so there is no contract violation here to
     // disclose and nothing to count. It is therefore deliberately NOT an application, which is what
     // `Healed::rewritten` turns on.
-    let original = trim_reply(reply);
+    let canonical = trim_reply(reply);
 
-    let mut text = original.to_string();
+    let mut text = canonical.to_string();
     let mut applied = Vec::new();
 
     match to_fixpoint(&mut text, config, &mut applied, MAX_PASSES, dialect) {
         Fixpoint::Converged => Healed {
             program: text,
+            original: reply.to_string(),
             applied,
             did_not_converge: false,
         },
         Fixpoint::Exhausted => Healed {
-            program: original.to_string(),
+            program: canonical.to_string(),
+            original: reply.to_string(),
             applied: Vec::new(),
             did_not_converge: true,
         },

@@ -1027,20 +1027,20 @@ fn a_disabled_capabilitys_unreadable_healing_param_is_refused() {
 // The assistant-message mode
 // ---------------------------------------------------------------------------------------------
 
-/// A capability that says nothing about assistant messages records the reply as sent — the default,
-/// and the behaviour every run had before the mode existed.
+/// A capability that says nothing about assistant messages records the healed program that ran —
+/// the default, because that is the text every location gg reports counts lines of.
 #[test]
-fn absent_assistant_messages_is_no_post_processing() {
+fn absent_assistant_messages_is_response_healing() {
     for params in [json!({}), json!({ "assistantMessages": null })] {
         assert_eq!(
             assistant_messages_of(&set_with(params.clone())),
-            AssistantMessageMode::None,
+            AssistantMessageMode::ResponseHealing,
             "{params}"
         );
     }
     assert_eq!(
         assistant_messages_of(&GgAgentConfig::root()),
-        AssistantMessageMode::None
+        AssistantMessageMode::ResponseHealing
     );
 }
 
@@ -1075,7 +1075,11 @@ fn an_unknown_assistant_messages_value_is_refused() {
         let (mode, defects) = assistant_messages_refusal(&set_with(
             json!({ "assistantMessages": unreadable.clone() }),
         ));
-        assert_eq!(mode, AssistantMessageMode::None, "the resolver stays total");
+        assert_eq!(
+            mode,
+            AssistantMessageMode::ResponseHealing,
+            "the resolver stays total"
+        );
         assert_eq!(defects.len(), 1, "{unreadable} -> {defects:?}");
         assert_eq!(
             defects[0].locus,

@@ -728,6 +728,13 @@ fn healing_record(healed: &Healed) -> GgResponseHealing {
     GgResponseHealing {
         strategies: healed.strategies().into_iter().map(wire_strategy).collect(),
         did_not_converge: healed.did_not_converge,
+        // Only where the two texts differ. The program is what the model's history carries and what
+        // every location gg reports counts lines of, so on a rewritten reply this is the sole
+        // surviving copy of what healing started from; on a clean one it would be the same string
+        // twice.
+        original: healed
+            .rewritten()
+            .then(|| healed.original.clone()),
     }
 }
 

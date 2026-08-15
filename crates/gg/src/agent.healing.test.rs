@@ -124,6 +124,19 @@ async fn a_healed_turn_reports_what_was_healed_on_its_code_execution() {
         records[1].is_clean() && records[2].is_clean(),
         "a reply that needed nothing carries the default, which the wire omits: {records:?}"
     );
+
+    // The repaired turn carries the reply as the model sent it. Nothing else on the wire does: the
+    // program is what the model's own history now holds and what every location gg reports counts
+    // lines of, so this is the operator's only route back to what healing started from.
+    let original = records[0]
+        .original
+        .as_deref()
+        .expect("a rewritten reply carries the text it was rewritten from");
+    assert_eq!(original, FENCED_PROGRAM);
+    assert!(
+        records[1].original.is_none() && records[2].original.is_none(),
+        "a clean reply and its program are the same string, so neither is carried twice: {records:?}"
+    );
 }
 
 /// **Healing never reaches the model.**
@@ -446,17 +459,17 @@ async fn response_healing_mode_records_the_healed_program() {
     );
 }
 
-/// **No post-processing (the default) records the reply verbatim, fence and prose and all.**
+/// **No post-processing records the reply verbatim, fence and prose and all.**
 ///
-/// The mirror of the above: a run that says nothing about `assistantMessages` stores exactly what the
-/// model sent, which is what a study of a model's code-only compliance reads.
+/// The mirror of the above, and the arm a study of a model's code-only compliance reads. It is asked
+/// for explicitly, because the default is the healed program.
 #[tokio::test]
 async fn no_post_processing_records_the_raw_reply() {
     let dir = TempDir::new().unwrap();
     std::fs::create_dir_all(dir.path().join("src")).unwrap();
     let (_, _, requests) = drive_recorded_code_run(
         &dir,
-        healing_set(json!({})),
+        healing_set(json!({ "assistantMessages": "none" })),
         vec![code_reply(FENCED_PROGRAM), code_reply(FINISHING_PROGRAM)],
     )
     .await;

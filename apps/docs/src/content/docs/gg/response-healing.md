@@ -367,9 +367,16 @@ unusual about this response":
 ```jsonc
 "healing": {
   "strategies": ["strip-fences", "strip-prose"],    // in application order, repeats kept
-  "didNotConverge": false                           // omitted when false
+  "didNotConverge": false,                          // omitted when false
+  "original": "```ts\nreturn 1;\n```"               // omitted for a clean reply
 }
 ```
+
+`original` is the reply as the model sent it, and it is carried exactly where the
+program that ran is no longer that text. Everything else downstream treats the
+healed program as the model's source, so this is the only surviving copy of what
+healing started from, and the run's console renders it under the turn it belongs
+to. It is written for the operator and reaches no model.
 
 Per run, on the session summary's `healing` rollup, folded from that same event
 so numerator and denominator come from one mechanism:

@@ -966,6 +966,10 @@
           "description": "Whether the healing pipeline failed to reach a fixpoint, so every repair was discarded and\nthe response ran exactly as sent.\n\nCarried so that the one response pathological enough to defeat the pipeline is\ndistinguishable from a clean one, which is otherwise byte-identical on the wire.",
           "type": "boolean"
         },
+        "original": {
+          "description": "The reply **as the model sent it**, carried whenever healing rewrote it into something else.\n\nThe program that ran is what the model's own history carries and what every reported line\nnumber counts lines of, so this is the only surviving copy of the text healing started from\n— and reading the two against each other is what tells a defect in healing apart from a\nmistake by the model. It is for the run's operator; no model is ever shown it.\n\nAbsent for a clean response, where the reply and the program are the same string.",
+          "type": ["string", "null"]
+        },
         "strategies": {
           "description": "Each strategy application, in the order applied — a strategy may appear more than once (two\nnested fences are two applications), which is what makes this a count rather than a flag.\nEmpty for a clean response.",
           "items": {
