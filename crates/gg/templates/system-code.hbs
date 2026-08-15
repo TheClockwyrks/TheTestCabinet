@@ -76,8 +76,8 @@ hands back is nested in it.
 {{/if}}
 {{#if (eq language.id "javascript")}}
 Your response is evaluated as the body of a function whose parameters include
-`gg`, `ToolError` and `lib`. Write statements at the top level; a value you
-return goes nowhere.
+`gg`, `ToolError` and `lib`. Write statements at the top level; a `return` there
+ends your program and its value goes nowhere.
 
 A failed call throws. `ToolError` is the one gg name bound as a value, so
 `catch (error) { if (error instanceof ToolError) … }` is the shape that reads its
@@ -179,8 +179,8 @@ takes the short name.
 {{/if}}
 {{#if (eq language.id "typescript")}}
 Your response is evaluated as the body of a function whose parameters include
-`gg`, `ToolError` and `lib`. Write statements at the top level; a value you
-return goes nowhere.
+`gg`, `ToolError` and `lib`. Write statements at the top level; a `return` there
+ends your program and its value goes nowhere.
 
 A failed call throws, and a caught error is `unknown` until you narrow it:
 `catch (e) { if (e instanceof ToolError) … }` is the shape that reads its `tool`

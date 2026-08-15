@@ -184,8 +184,8 @@ always parses as an identifier.
 `typescript`, and `code-nothing-shown.hbs` through a clause naming
 `console.log`. Neither names a catalogued function. The segment states:
 
-- the reply is a sequence of top-level statements, with no function to return
-  from;
+- the reply is a sequence of top-level statements, and a `return` at that level
+  ends the program;
 - a failed call throws a `ToolError`, which a `catch` narrows to before reading
   it, since a caught error is `unknown`;
 - optional arguments are the fields of a trailing options object, and every

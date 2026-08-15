@@ -118,8 +118,8 @@ statements after it do not run.
 `javascript`, and `code-nothing-shown.hbs` through a clause naming
 `console.log`. The segment states:
 
-- the reply is a sequence of top-level statements, with no function to return
-  from;
+- the reply is a sequence of top-level statements, and a `return` at that level
+  ends the program;
 - a failed call throws a `ToolError`, the one gg name bound as a value, whose
   `tool` and `code` an `instanceof` check reaches;
 - optional arguments are the fields of a trailing options object, and every
