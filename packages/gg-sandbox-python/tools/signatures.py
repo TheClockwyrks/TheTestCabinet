@@ -123,6 +123,16 @@ which is the half of a signature Python states in prose rather than in the annot
 would carry it in none, and the failure type would be a declaration no model could open.
 """
 
+BRIEF_CAP = 120
+"""The longest a brief may be, in characters.
+
+The same cap `crates/gg/src/sandbox/language/register.rs` holds every arm's catalogue to, and it is
+enforced here as well because the host's copy is a `#[test]`: a reflection that embedded a paragraph
+in the brief field would succeed, and so would a build, and the author would hear about it from a
+gate three steps away naming an entry they then have to go looking for. Here is where the author is
+standing.
+"""
+
 def load_catalogue() -> ModuleType:
     """Load `gg/catalogue.py` as a standalone module.
 
@@ -214,10 +224,11 @@ class Prose:
 def prose_of(docstring: str | None, where: str) -> Prose:
     """Split one docstring into its brief and its detail, or fail naming the declaration.
 
-    The rule is PEP 257's: a summary line, then a blank line, then the rest. It is enforced here
-    rather than in a gate over the emitted JSON because here is where the author is standing — a
-    first paragraph that wraps over two lines is a mistake to be told about at the `def`, not three
-    steps later under a name the author has to go looking for.
+    The rule is PEP 257's: a summary line, then a blank line, then the rest, and that line no longer
+    than `BRIEF_CAP`. Both halves are enforced here rather than in a gate over the emitted JSON
+    because here is where the author is standing — a first paragraph that wraps over two lines, or a
+    summary line that runs on for a paragraph's worth of characters, is a mistake to be told about at
+    the `def`, not three steps later under a name the author has to go looking for.
     """
     if docstring is None or not docstring.strip():
         raise SystemExit(
@@ -234,6 +245,11 @@ def prose_of(docstring: str | None, where: str) -> Prose:
             f"{where}'s brief runs over more than one line. The first line of a docstring is the "
             "brief and everything after the blank line that follows it is the detail, so a first "
             f"paragraph that wraps has no brief in it: {brief!r}"
+        )
+    if len(brief) > BRIEF_CAP:
+        raise SystemExit(
+            f"{where} has a {len(brief)}-character brief, and a brief is capped at "
+            f"{BRIEF_CAP}: {brief!r}"
         )
     detail = reflow("\n".join(rest))
     return Prose(brief=brief, detail=detail or None)

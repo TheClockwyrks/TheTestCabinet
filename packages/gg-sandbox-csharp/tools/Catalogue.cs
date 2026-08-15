@@ -44,7 +44,10 @@ internal static class Catalogue
         new("session", "Session", "Gg.Session"),
         // The one module with no class of its own: the types and the exception that live directly in
         // `namespace Gg`, because every other module's signatures name them. Its empty class name is
-        // what says so, and is what keeps it out of the function walk.
+        // what says so, and is what keeps it out of the function walk. Its own two lines of
+        // documentation are still written on a declaration, like every other module's — on the
+        // `internal` class at the end of `src/Gg/Core/Errors.cs`, which `Signatures` resolves by
+        // its `<ggmodule>` tag.
         new("core", "", "Gg"),
     ];
 

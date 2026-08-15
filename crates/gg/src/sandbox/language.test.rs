@@ -285,6 +285,110 @@ fn every_language_writes_the_program_that_opens_the_session() {
     );
 }
 
+/// **What an arm's catalogue says about reaching a module is what gg's own program does about
+/// reaching it** — the assertion that keeps *in scope already* honest.
+///
+/// # The claim this holds
+///
+/// A documentation view of every symbol tells a model how its program reaches that symbol, out of
+/// [`ModuleView::import`](crate::sandbox::ModuleView): a line to write, or nothing to write because
+/// this arm's SDK is in a program's scope before the model's code is compiled. Ten of the eleven
+/// arms are in the second state, and the second state is a claim about **how that arm delivers its
+/// SDK** — a prelude, a precompiled header, an `@_exported import`, a `global using`, a scope
+/// injection. Nothing about the catalogue notices when that stops being true. The day an arm's SDK
+/// has to be imported, every view on that arm quietly tells every model the opposite, and the model
+/// pays with a compile error naming a symbol it was told it already had.
+///
+/// The one thing in gg that would notice is right here: the [opening turn](crate::bootstrap) is a
+/// program **gg writes and the arm compiles**, in that arm's own syntax, before the model's first
+/// request. So it is the arm's own demonstration of what a program has to do to call `docs.search`
+/// and `views.openDocsView`, and the catalogue has to agree with it:
+///
+/// * a module that states a line — PureScript's, whose compiler resolves a qualified name only under
+///   a qualified import — has that exact line in the program, character for character;
+/// * a module that states none has **no line in the program bringing it into scope**, which is what
+///   "already there" means when a compiler is the one being told.
+///
+/// The negative half looks for a scope-bringing statement that names *that module's path*, rather
+/// than for import syntax in general, so a program that imports something else entirely — a
+/// standard-library module, an effect type — is not what this fails on.
+#[test]
+fn an_arms_import_line_is_the_one_its_own_opening_program_writes() {
+    const MODULES: [&str; 2] = ["gg.files", "gg.views"];
+    const DOCS: [&str; 1] = ["gg.docs.search"];
+    /// The keywords the eleven arms bring a module into scope with. A line is a scope-bringing
+    /// statement when it opens with one of these *and* names the module, which is the pair that
+    /// makes this precise enough to keep.
+    const BRINGS_INTO_SCOPE: [&str; 5] = ["import ", "use ", "using ", "#include", "require "];
+
+    let mut lines_asserted = 0usize;
+    for language in all_languages() {
+        let name = language.display_name();
+        let program = language.bootstrap_program(&MODULES, &DOCS);
+        // The two modules the opening program actually calls into. Resolved through the operation
+        // rather than by reading a path out of the call, because the operation is gg's identity for
+        // a call and the module id is what the catalogue files it under.
+        for operation in [DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW] {
+            let function = crate::sandbox::catalogue_functions(language)
+                .into_iter()
+                .find(|function| {
+                    crate::sandbox::operation_of(function)
+                        .is_some_and(|declared| declared.id == operation)
+                })
+                .unwrap_or_else(|| {
+                    panic!("{name}: its catalogue carries no call for `{operation:?}`")
+                });
+            let module = crate::sandbox::catalogue_modules(language)
+                .into_iter()
+                .find(|module| module.id == function.module)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{name}: `{}` is filed under the module `{}`, which its catalogue does not \
+                         declare",
+                        function.fqn, function.module
+                    )
+                });
+            match module.import {
+                Some(line) => {
+                    assert!(
+                        program.contains(line),
+                        "{name}: its catalogue says `{}` is reached with `{line}`, and the opening \
+                         program gg writes for this arm calls into it without that line. One of \
+                         the two is wrong, and the model is told the catalogue's \
+                         answer:\n{program}",
+                        module.path
+                    );
+                    lines_asserted += 1;
+                }
+                None => {
+                    let brought = program.lines().find(|line| {
+                        let line = line.trim_start();
+                        BRINGS_INTO_SCOPE
+                            .iter()
+                            .any(|keyword| line.starts_with(keyword))
+                            && line.contains(module.path)
+                    });
+                    assert!(
+                        brought.is_none(),
+                        "{name}: its catalogue states no import line for `{}` — so every view of \
+                         every symbol in it tells models the module is in scope already — and the \
+                         opening program gg writes for this arm brings it into scope with \
+                         `{}`:\n{program}",
+                        module.path,
+                        brought.unwrap_or_default().trim()
+                    );
+                }
+            }
+        }
+    }
+
+    assert!(
+        lines_asserted > 0,
+        "no arm's opening program was checked against a declared import line, so the half of this \
+         gate that holds a stated line to being the real one never ran"
+    );
+}
+
 /// **Every language says how a program reaches the code a skill or memory bound**, in a form that
 /// arm's own compiler would accept.
 ///

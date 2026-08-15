@@ -67,10 +67,13 @@ fn a_brief_of_more_than_one_line_is_caught() {
 /// **A brief longer than the cap is caught.**
 ///
 /// The value being defended is not brevity for its own sake: it is that the field is a *brief*, and
-/// a paragraph pasted into it reaches the model where one line was promised. Measured over today's
-/// catalogues, the longest derived first line is 249 characters on seven of the eleven
-/// arms and 1,239 on Python — which is why this rule waits for an arm to be converted rather than
-/// applying now.
+/// a paragraph pasted into it reaches the model where one line was promised. The rule applies to
+/// every registered arm today — the test above asserts it over each arm's real catalogue — and
+/// measured over those eleven catalogues the longest authored brief is 118 characters, on the C#
+/// and Java arms. Two characters of margin is not much, which is the point of the cap being
+/// enforced in each reflector as well: an arm's own reflection now refuses an over-long brief where
+/// its author is standing, rather than leaving it to this `#[test]` to find after the catalogue is
+/// built.
 #[test]
 fn a_brief_over_the_cap_is_caught() {
     let complaints = against(|json| {

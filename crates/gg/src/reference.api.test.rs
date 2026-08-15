@@ -167,6 +167,64 @@ fn every_body_opens_the_way_a_documentation_view_opens() {
     }
 }
 
+/// **Every body says which module its symbol is defined in, and how a program reaches it** — on
+/// every arm, for a call and for a type alike.
+///
+/// The prompt names no function, so this line is the only thing that tells a model which module the
+/// symbol it searched for belongs to and what, if anything, it must write to reach it. The module's
+/// own path and its import line are read off the page's module list rather than composed here, which
+/// is what makes this a check on the renderer instead of a second copy of it.
+///
+/// Both states of the access line are covered by walking every arm: one states an import line for
+/// every module it declares, and the rest put their SDK in a program's scope before it compiles. An
+/// arm rendering only the state it happens to be in would pass on itself and fail here.
+#[test]
+fn every_body_says_where_its_symbol_is_defined() {
+    for (id, document) in documents() {
+        for entry in &document.entries {
+            let module = document
+                .modules
+                .iter()
+                .find(|module| module.id == entry.module)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{}'s `{}` is filed under `{}`, which its page does not declare",
+                        id.id(),
+                        entry.fqn,
+                        entry.module
+                    )
+                });
+            let defined = entry
+                .body
+                .lines()
+                .find(|line| line.starts_with("Defined in "))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{}'s `{}` never says which module defines it:\n{}",
+                        id.id(),
+                        entry.fqn,
+                        entry.body
+                    )
+                });
+            assert!(
+                defined.contains(&module.path),
+                "{}'s `{}` is defined in `{}` and its view says `{defined}`",
+                id.id(),
+                entry.fqn,
+                module.path
+            );
+            if let Some(import) = &module.import {
+                assert!(
+                    defined.contains(import.as_str()),
+                    "{}'s `{}` is reached with `{import}` and its view says `{defined}`",
+                    id.id(),
+                    entry.fqn
+                );
+            }
+        }
+    }
+}
+
 /// **Both ending roles are on the page, and only the functions differ between them.**
 ///
 /// The page is the pool, so a reviewer's verdict calls and a worker's `finish` are all on it even

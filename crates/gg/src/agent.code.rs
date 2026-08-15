@@ -2515,6 +2515,12 @@ fn docs_close_event(key: Option<&str>, closed: &ViewsClosed) -> Option<GgTelemet
 /// begins with the module, and a **type**'s [`module`](crate::docs::DocHit::module) is the joined
 /// list of every module whose functions mention it, which as a parenthesised suffix is a
 /// twelve-item blob rather than a fact worth reading.
+///
+/// A [documentation view](crate::docs::DocsRuntime) states the module outright, and says how a
+/// program reaches it, and the two renderings differ because the moments do. A hit is read while
+/// choosing between hits, where the qualified key is the whole of what a choice needs. A view is
+/// read at the moment the call is about to be written, where the module's own path and the line
+/// that brings it into scope are what the writing needs — and neither is recoverable from a key.
 pub(crate) fn render_search_results(query: &DocSearchQuery, page: &DocSearch) -> String {
     let mut asked: Vec<String> = Vec::new();
     if !query.query.trim().is_empty() {

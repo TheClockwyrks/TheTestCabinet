@@ -82,6 +82,15 @@ ALIAS_TAG = re.compile(r"^<ggop-alias>([a-z_]+\.[a-z_]+)</ggop-alias>$")
 #: The line a module's namespace carries to name which of gg's cross-arm modules it is.
 MODULE_TAG = re.compile(r"^<ggmodule>([a-z_]+)</ggmodule>$")
 
+#: The longest a brief may be, in characters.
+#:
+#: The same cap ``crates/gg/src/sandbox/language/register.rs`` holds every arm's catalogue to, and it
+#: is enforced here as well because the host's copy is a ``#[test]``: a reflection that embedded a
+#: paragraph in the brief field would succeed, and so would a build, and the author would hear about
+#: it from a gate three steps away naming an entry they then have to go looking for. Here is where
+#: the author is standing.
+BRIEF_CAP = 120
+
 
 class Failure(Exception):
     """Something a model would have read is missing, or says something the code does not."""
@@ -321,9 +330,11 @@ def tagged(node, pattern):
 def described(node, what):
     """One declaration's ``(brief, detail)``, with its identity lines taken out.
 
-    The brief is the **first paragraph and one line**. An opening paragraph that runs to two lines
-    is not a brief, and it is refused here — naming the declaration it was written on — rather than
-    reaching a model as a paragraph in the field where it expected a line.
+    The brief is the **first paragraph and one line**, and no longer than :data:`BRIEF_CAP`. An
+    opening paragraph that runs to two lines is not a brief, and neither is a one-line sentence that
+    runs on for a paragraph's worth of characters; both are refused here — naming the declaration
+    they were written on — rather than reaching a model as a paragraph in the field where it
+    expected a line.
     """
     comment = comment_of(node)
     if comment is None:
@@ -343,6 +354,11 @@ def described(node, what):
             f"{what} opens with a paragraph of {len(brief.splitlines())} lines where a brief "
             "is one line — the first line is the brief and everything after the blank line is "
             f"the detail, so this reads as a brief nobody wrote: {brief!r}"
+        )
+    if len(brief) > BRIEF_CAP:
+        raise Failure(
+            f"{what} has a {len(brief)}-character brief, and a brief is capped at "
+            f"{BRIEF_CAP}: {brief!r}"
         )
     detail = unwrapped("\n\n".join(written[1:])).strip() or None
     return brief, detail

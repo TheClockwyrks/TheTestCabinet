@@ -134,6 +134,54 @@ fn a_type_lookup_declares_the_type_and_explains_its_members() {
     assert!(docs.read_type("NotAType").is_none());
 }
 
+/// **A view names the module the symbol is defined in, and says how a program reaches it.**
+///
+/// It is the only place a model is told: the prompt names the modules and no function, and a search
+/// hit is a key and a brief. A signature a model can read and cannot qualify is a call it cannot
+/// write.
+///
+/// Both states of the access line are asserted here, because a renderer that carried only the line
+/// would say nothing at all on ten of the eleven arms. TypeScript's SDK is in a program's scope
+/// before it compiles, so the view says so; PureScript resolves a qualified name only under a
+/// qualified import, so the view quotes the import.
+#[test]
+fn a_view_names_the_module_and_says_how_to_reach_it() {
+    let docs = runtime(ENABLED);
+    let read_file = docs.read("readFile").expect("readFile is bound");
+    assert!(
+        read_file.contains("\nDefined in `gg.files`, in scope already.\n"),
+        "{read_file}"
+    );
+    let file_read = docs.read_type("FileRead").expect("FileRead is reachable");
+    assert!(
+        file_read.contains("\nDefined in `gg.files`, in scope already.\n"),
+        "{file_read}"
+    );
+
+    // The line an arm needs is quoted exactly as the model must write it, and it is read out of the
+    // catalogue rather than spelled here: a test carrying its own copy of an import line would go on
+    // passing after the arm changed one.
+    let module = crate::sandbox::catalogue_modules(language(GgProgramLanguage::PureScript))
+        .into_iter()
+        .find(|module| module.id == "files")
+        .expect("purescript declares the filesystem module");
+    let import = module
+        .import
+        .expect("purescript states an import line for every module it declares");
+    let docs = everything(GgProgramLanguage::PureScript, EndingRole::Standard);
+    let read_file = docs
+        .read("Gg.Files.readFile")
+        .expect("readFile is bound on every arm");
+    let defined = read_file
+        .lines()
+        .find(|line| line.starts_with("Defined in "))
+        .expect("a view says where its symbol is defined");
+    assert!(
+        defined.contains(module.path) && defined.contains(import),
+        "{defined}"
+    );
+}
+
 /// **A type no function this agent binds can reach is not readable by name** — the half of the
 /// discovery surface that would otherwise leak past the permission filter.
 ///

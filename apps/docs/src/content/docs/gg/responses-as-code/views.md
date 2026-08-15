@@ -137,6 +137,12 @@ opens the search-results view of the same page. The filters `module`, `type`,
 empty query with a `module` filter is that module's whole directory. A page is
 20 hits by default and 100 at most.
 
+A query matches an entry's name, its signature, its brief and the detail beneath
+it. Every argument's name counts as signature text and every argument's own
+description counts as detail, on every language, so a search for an argument
+finds the call that takes it whatever the language's declaration syntax writes
+down. Hits are ranked by which of those matched, name first and detail last.
+
 A blank query carrying no filter, an unrecognised `kind` and a `limit` of zero
 are each `invalid-argument`. A refusal opens no view.
 
@@ -159,6 +165,14 @@ A function's view is every shape the function may be called in, with a line per
 argument giving its name, type, default where the language states one, and
 description, followed by the function's own description. An argument the
 language passes by name rather than by position is marked `(passed by name)`.
+
+Every view states where the symbol is defined and how a program reaches it, on
+its own line under the signature or the declaration. The module is named by this
+language's own path for it. A language that needs a line to bring the module
+into scope has that line quoted verbatim; a language whose SDK is in a program's
+scope before it compiles is told so. The system prompt names no function, so the
+view is the only place a model is told which module a symbol it searched for
+belongs to.
 
 A type is a view of its own, addressed by the type's name, and it ends with a
 line per member function: the member's fully-qualified name and its one-line

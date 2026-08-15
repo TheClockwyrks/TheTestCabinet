@@ -689,3 +689,81 @@ fn every_language_answers_only_with_what_its_agent_binds() {
         }
     }
 }
+
+/// **Every argument an arm declares is in the index**: its name with the signature, its own line
+/// with the detail.
+///
+/// Asserted over the index rather than through a query because it is a statement about what the
+/// evidence *is* — a search can only be as good as what was filed — and over every arm because the
+/// thing it defends is cross-arm. Ten arms write an argument's name into the signature string
+/// themselves; the eleventh declares a curried type that names nothing, and before the names were
+/// read off `parameters` a model on that arm could not find a call by an argument it had been told
+/// the name of.
+#[test]
+fn every_arguments_name_and_description_is_indexed() {
+    for language in crate::sandbox::all_languages() {
+        let index = index(language);
+        for function in crate::sandbox::catalogue_functions(language) {
+            // An entry gg has no operation for is not indexed at all, and could never be returned.
+            let Some(entry) = index
+                .entries
+                .iter()
+                .find(|entry| entry.kind == DocKind::Function && entry.key == function.fqn)
+            else {
+                continue;
+            };
+            for shape in function.signatures {
+                for parameter in &shape.parameters {
+                    assert!(
+                        entry.signature.contains(&parameter.name.to_lowercase()),
+                        "{}: `{}`'s argument `{}` is in no signature evidence",
+                        language.display_name(),
+                        function.fqn,
+                        parameter.name,
+                    );
+                    assert!(
+                        entry.detail_folded.contains(&parameter.doc.to_lowercase()),
+                        "{}: what `{}`'s argument `{}` says is in no detail evidence",
+                        language.display_name(),
+                        function.fqn,
+                        parameter.name,
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// **An argument's name finds the call it belongs to, on every arm.**
+///
+/// The query is the arm's own spelling of the argument, taken from the same catalogue the search
+/// reads, because eleven arms name one argument several ways — `old_string`, `oldString`, and
+/// Swift's label `replacing` — and a test carrying its own copy of that would be testing the copy.
+#[test]
+fn an_argument_name_finds_its_call_on_every_arm() {
+    for language in crate::sandbox::all_languages() {
+        let docs = on(language.id());
+        let edit = crate::sandbox::catalogue_functions(language)
+            .into_iter()
+            .find(|function| function.operation == "files.edit_file")
+            .expect("every arm binds files.edit_file");
+        // The argument that is not the path: every arm takes three, and the second is the one whose
+        // name is distinctive enough that the answer is about it rather than about paths.
+        let named = edit.signatures[0].parameters[1].name.as_str();
+        let found = docs
+            .search(DocQuery {
+                query: named,
+                limit: Some(MAX_SEARCH_LIMIT),
+                ..DocQuery::default()
+            })
+            .expect("a usable query");
+        assert!(
+            found.hits.iter().any(|hit| hit.key == edit.fqn),
+            "{}: `{}` names `{}`'s second argument and finds {:?}",
+            language.display_name(),
+            named,
+            edit.fqn,
+            keys(&found),
+        );
+    }
+}

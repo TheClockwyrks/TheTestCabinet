@@ -66,6 +66,20 @@ ALIAS_ALIAS = "ggop-alias:"
 #: The prefix a ``pub mod`` carries to name which of gg's cross-arm modules it is.
 MODULE_ALIAS = "ggmodule:"
 
+#: The longest a brief may be, in characters.
+#:
+#: The same cap ``crates/gg/src/sandbox/language/register.rs`` holds every arm's catalogue to, and it
+#: is enforced here as well because the host's copy is a ``#[test]``: a reflection that embedded a
+#: paragraph in the brief field would succeed, and so would a build, and the author would hear about
+#: it from a gate three steps away naming an entry they then have to go looking for. Here is where
+#: the author is standing.
+#:
+#: It carries more weight on this arm than on most, because :func:`unwrapped` runs first: a ``///``
+#: comment whose opening paragraph is three sentences over four wrapped lines arrives at
+#: :func:`split` as ONE line, so the shape check below it cannot see it and this length is the only
+#: thing that can.
+BRIEF_CAP = 120
+
 #: How ``rustdoc`` renders an attribute it has nothing structured to say about — the shape every
 #: ``#[doc(alias = …)]`` arrives in.
 _ATTRIBUTE = re.compile(r'^#\[doc\(alias = "(.*)"\)\]$')
@@ -246,13 +260,23 @@ def split(text, what):
     Doxygen's implicit structure, which is the whole of the convention this SDK is written to. The
     brief is authored rather than derived — there is no "first sentence of" anywhere in this file —
     and the split is on the blank line the author put there, so a doc comment whose opening paragraph
-    is really three sentences of narrative fails the register gate as the paragraph it is rather than
-    being silently cut at a full stop.
+    is really three sentences of narrative is never silently cut at a full stop.
+
+    It fails on :data:`BRIEF_CAP` instead. The text reaching here has already been through
+    :func:`unwrapped`, so such a paragraph is one long line by now and no shape check could tell it
+    from a brief; its length can, and that is what this raises on — naming the declaration it was
+    written on, which is what the author is looking at.
     """
     if not text:
         raise Failure(f"{what} has no documentation")
     brief, _, detail = text.partition("\n\n")
-    return brief.strip(), (detail.strip() or None)
+    brief = brief.strip()
+    if len(brief) > BRIEF_CAP:
+        raise Failure(
+            f"{what} has a {len(brief)}-character brief, and a brief is capped at "
+            f"{BRIEF_CAP}: {brief!r}"
+        )
+    return brief, (detail.strip() or None)
 
 
 def documented(item, what):

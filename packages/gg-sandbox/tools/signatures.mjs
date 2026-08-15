@@ -135,6 +135,17 @@ const SCHEMA = 1;
  */
 const GENERATED_FROM = "packages/gg-sandbox/src/gg/ (tsc, declaration emit)";
 
+/**
+ * The longest a brief may be, in characters.
+ *
+ * The same cap `crates/gg/src/sandbox/language/register.rs` holds every arm's catalogue to, and it is
+ * enforced here as well because the host's copy is a `#[test]`: a reflection that embedded a
+ * paragraph in the brief field would succeed, and so would a build, and the author would hear about
+ * it from a gate three steps away naming an entry they then have to go looking for. Here is where the
+ * author is standing.
+ */
+const BRIEF_CAP = 120;
+
 /** The JSDoc tag that names the gg operation a declaration binds. */
 const OPERATION_TAG = "ggop";
 
@@ -260,10 +271,11 @@ function reflow(text) {
 /**
  * Split one doc comment into its brief and its detail, or fail naming the declaration.
  *
- * The rule is the model's: a summary line, then a blank line, then the rest. It is enforced here
- * rather than in a gate over the emitted JSON because here is where the author is standing — a first
- * paragraph that wraps over two lines is a mistake to be told about at the declaration, not three
- * steps later under a name the author has to go looking for.
+ * The rule is the model's: a summary line, then a blank line, then the rest, and that line no longer
+ * than {@link BRIEF_CAP}. Both halves are enforced here rather than in a gate over the emitted JSON
+ * because here is where the author is standing — a first paragraph that wraps over two lines, or a
+ * summary line that runs on for a paragraph's worth of characters, is a mistake to be told about at
+ * the declaration, not three steps later under a name the author has to go looking for.
  */
 function proseOf(text, where) {
   if (!text || text.trim() === "") {
@@ -283,6 +295,12 @@ function proseOf(text, where) {
       `${where}'s brief runs over more than one line. The first line of a doc comment is the brief ` +
         "and everything after the blank line that follows it is the detail, so a first paragraph " +
         `that wraps has no brief in it: ${JSON.stringify(brief)}`,
+    );
+  }
+  if (brief.length > BRIEF_CAP) {
+    throw new Error(
+      `${where} has a ${brief.length}-character brief, and a brief is capped at ` +
+        `${BRIEF_CAP}: ${JSON.stringify(brief)}`,
     );
   }
   const detail = reflow(rest.join("\n"));

@@ -109,6 +109,17 @@ public final class GgSignatures implements Doclet {
     /** The block tag naming the gg module a class is. */
     private static final String MODULE_TAG = "ggmodule";
 
+    /**
+     * The longest a brief may be, in characters.
+     *
+     * <p>The same cap {@code crates/gg/src/sandbox/language/register.rs} holds every arm's catalogue
+     * to, and it is enforced here as well because the host's copy is a {@code #[test]}: a reflection
+     * that embedded a paragraph in the brief field would succeed, and so would a build, and the
+     * author would hear about it from a gate three steps away naming an entry they then have to go
+     * looking for. Here is where the author is standing.
+     */
+    private static final int BRIEF_CAP = 120;
+
     /** Where the JSON goes. */
     private Path output;
 
@@ -825,6 +836,8 @@ public final class GgSignatures implements Doclet {
      * text rather than after the wrapping is collapsed: a paragraph written without a {@code <p>}
      * would otherwise arrive as a perfectly well-formed brief six lines long, and the author would
      * hear about it from a gate three steps away instead of from the declaration in front of them.
+     * It is required to be no longer than {@link #BRIEF_CAP} for the second half of the same reason:
+     * one line is a shape, and a line long enough to be a paragraph is one anyway.
      */
     private Prose prose(Element element, String what) {
         return documented(element, what).prose();
@@ -881,6 +894,10 @@ public final class GgSignatures implements Doclet {
                     + "brief and everything after a `<p>` is the detail: " + raw.replace('\n', '⏎'));
         }
         String brief = new Markdown().render(body.subList(0, split));
+        if (brief.length() > BRIEF_CAP) {
+            complain(what + " has a " + brief.length() + "-character brief, and a brief is capped "
+                    + "at " + BRIEF_CAP + ": " + brief);
+        }
 
         String detail = null;
         if (split < body.size()) {

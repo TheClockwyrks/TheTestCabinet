@@ -256,6 +256,12 @@ pub use signatures::{
     Prose, SignatureEntry, TypeMember, TypeReference, catalogue_modules,
 };
 
+// The single-module lookup, for the [documentation carve-out](crate::docs): a view of one symbol
+// says which module the symbol is defined in and how a program reaches it, and the module a
+// catalogue entry carries is gg's id rather than a spelling a model can type. `pub(crate)` because
+// it hands back a catalogue projection to a reader inside the crate, which is every reader there is.
+pub(crate) use signatures::module_of;
+
 /// One code module as the guest binds it: the key it is reached at under `lib`, and the source
 /// whose evaluation — in whatever that guest evaluates — produces its exports.
 ///

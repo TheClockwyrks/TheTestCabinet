@@ -15,8 +15,9 @@
 # WHY ROSLYN. Everything a model reads about this surface is written on the declaration it describes
 # — a function's brief in its `<summary>`, its detail in its `<remarks>`, an argument's in that
 # argument's `<param>`, a record component's in the `<param>` on the record, an enum constant's in
-# the comment above it, a module's on the `static partial class` that IS the module, and a type's on
-# its own declaration nested inside that module — and Roslyn reads all of it. It is also the
+# the comment above it, a module's on the `static partial class` that IS the module — or, for the one
+# module that is no class at all, on the `internal` class `src/Gg/Core/Errors.cs` ends with — and a
+# type's on its own declaration nested inside that module, and Roslyn reads all of it. It is also the
 # compiler this arm runs on every turn, so the catalogue is reflected by the same reading of the same
 # sources a model's program is compiled against, rather than by a second tool that could disagree
 # with the first.

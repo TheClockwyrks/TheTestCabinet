@@ -33,6 +33,16 @@
 //! the **kind** of evidence that matched it — its own name, its signature, its brief, its detail —
 //! and a worse kind never outranks a better one however often it occurs.
 //!
+//! Two of those four are **read off the catalogue's structure rather than off its rendered text**,
+//! and that is what makes the scheme mean the same thing on eleven arms. An argument's *name* is
+//! signature evidence and an argument's *documentation* is detail evidence, on every arm — but only
+//! ten of the eleven write the name into the signature string, because PureScript's declaration is a
+//! curried type (`editFile :: String -> String -> String -> Effect Unit`) that is valid PureScript
+//! and names nothing. Indexed from the rendering alone, a query for an argument's name found the
+//! call on ten arms and nothing on the eleventh, and the tier a search reported would have been a
+//! fact about a language's syntax rather than about the evidence. So the names and the descriptions
+//! come from `parameters`, which all eleven carry in full. See [`DocEntry::signature`].
+//!
 //! There is deliberately **no tuning surface**: no weights, no per-agent knob, and no committed
 //! table of expected results. What holds the ranking honest is the discoverability gate in
 //! `docs.discoverability.test.rs`, which asserts the property that actually matters — that every
@@ -49,7 +59,7 @@ use crate::tools::ToolFailure;
 
 use super::ProgramLanguage;
 use super::suggest::fold;
-use crate::sandbox::{TypeReference, ViewRefusal, catalogue_functions};
+use crate::sandbox::{Parameter, SignatureEntry, TypeReference, ViewRefusal, catalogue_functions};
 
 /// Which kind of thing an [entry](DocEntry) documents.
 ///
@@ -140,15 +150,22 @@ struct DocEntry {
     /// [fold](super::suggest) a failed lookup's hint uses — so a query for `write_file` finds
     /// `writeFile` on every arm that spells it that way.
     folded: String,
-    /// The rendered signature text, joined across every shape this language offers the function in;
-    /// for a type, its declaration. Lowercased.
+    /// The rendered signature text, joined across every shape this language offers the function in
+    /// and followed by [every argument's name](parameter_names); for a type, its declaration.
+    /// Lowercased.
     signature: String,
     /// The one-line brief, as authored.
     brief: &'static str,
     /// The brief, lowercased.
     brief_folded: String,
-    /// The detail beneath the brief — everything the documentation says after its first line — with
-    /// the brief itself removed, so a word in the brief is not also counted here. Lowercased.
+    /// The detail beneath the brief — everything the documentation says after its first line, plus
+    /// [what each argument's own line says](parameter_docs) — with the brief itself removed, so a
+    /// word in the brief is not also counted here. Lowercased.
+    ///
+    /// An argument's description belongs here rather than with the signature because it is prose:
+    /// it is rendered under the signature in a [docview](super::DocsRuntime::read), and a sentence
+    /// about what to put in a field is the weakest kind of evidence there is that a call is the one
+    /// the model meant — which is exactly what this tier says.
     detail_folded: String,
 }
 
@@ -160,7 +177,9 @@ const TIER_IDENTIFIER_EXACT: u8 = 0;
 const TIER_IDENTIFIER_PREFIX: u8 = 1;
 /// The tier for a term the identifier merely **contains** — what makes `foobar` find `getFoobar`.
 const TIER_IDENTIFIER_CONTAINS: u8 = 2;
-/// The tier for a term in the rendered **signature**: a parameter name, an argument type.
+/// The tier for a term in the **signature**: an argument type, or an argument's name — the latter
+/// taken from the catalogue's `parameters` rather than from the rendering, so that it is available
+/// on the one arm whose declaration syntax writes no names. See [`parameter_names`].
 const TIER_SIGNATURE: u8 = 3;
 /// The tier for a term in the **brief**.
 const TIER_BRIEF: u8 = 4;
@@ -232,16 +251,25 @@ impl DocIndex {
                 identity: Some((function.object, function.key)),
                 referenced_by: Vec::new(),
                 folded: fold(function.name),
-                signature: function
-                    .signatures
-                    .iter()
-                    .map(|entry| entry.signature.as_str())
-                    .collect::<Vec<_>>()
-                    .join("\n")
-                    .to_lowercase(),
+                signature: format!(
+                    "{}{}",
+                    function
+                        .signatures
+                        .iter()
+                        .map(|entry| entry.signature.as_str())
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                    parameter_names(function.signatures),
+                )
+                .to_lowercase(),
                 brief,
                 brief_folded: brief.to_lowercase(),
-                detail_folded: function.prose.detail.unwrap_or_default().to_lowercase(),
+                detail_folded: format!(
+                    "{}{}",
+                    function.prose.detail.unwrap_or_default(),
+                    parameter_docs(function.signatures),
+                )
+                .to_lowercase(),
             });
             references.push(function.types);
         }
@@ -533,6 +561,69 @@ impl super::DocsRuntime {
             }
         }
         visible
+    }
+}
+
+/// Every argument name the shapes of one function declare, structured fields included, one per line
+/// and with a leading newline so it appends to a rendered signature.
+///
+/// **Why the names are read off `parameters` rather than out of the rendering.** A parameter's name
+/// is signature evidence, and on ten arms it is *in* the signature string because their declaration
+/// syntax writes it there. PureScript's does not: a call is declared as a curried type,
+/// `editFile :: String -> String -> String -> Effect Unit`, which is the honest rendering of what
+/// that arm's SDK declares and names no argument at all. Its catalogue names every one of them, and
+/// documents them, in `parameters` — so before this, a model on that arm searching `oldString` was
+/// told nothing matched, while the same query on the ten others returned the call at
+/// [`TIER_SIGNATURE`]. The tier is a claim about the *kind of evidence*, and it can only mean the
+/// same thing on eleven arms if it is read from the thing all eleven carry.
+///
+/// A name an arm does also write into its rendering is therefore counted twice on that arm. That is
+/// deliberate rather than tolerated. The alternative — appending a name only when the rendering does
+/// not already contain it — is a substring test that would drop a genuine second occurrence and make
+/// one entry's frequency depend on another field's spelling; and the doubling is uniform across every
+/// entry of an arm, since an arm renders names in all its signatures or in none, so it cannot reorder
+/// two entries within a tier.
+///
+/// The **fields** of a structured argument are walked too. A model writing a call reads
+/// `openDocsView`'s `key` and a search options record's `limit` as the same kind of thing, and only
+/// one of them is a top-level parameter.
+fn parameter_names(signatures: &'static [SignatureEntry]) -> String {
+    let mut out = String::new();
+    for entry in signatures {
+        for parameter in &entry.parameters {
+            append_parameter(parameter, &mut out, |parameter| &parameter.name);
+        }
+    }
+    out
+}
+
+/// What each argument's own line says, for every shape, one per line and with a leading newline so
+/// it appends to an entry's detail.
+///
+/// It is [detail](DocEntry::detail_folded) rather than signature evidence: the *name* is part of how
+/// the call is written, and the sentence beneath it is prose about what to put there. A model that
+/// searched the words of that sentence — `absolute path`, `wall-clock budget` — matched nothing at
+/// all before this, on any of the eleven arms, although it is text every docview shows.
+fn parameter_docs(signatures: &'static [SignatureEntry]) -> String {
+    let mut out = String::new();
+    for entry in signatures {
+        for parameter in &entry.parameters {
+            append_parameter(parameter, &mut out, |parameter| &parameter.doc);
+        }
+    }
+    out
+}
+
+/// One argument's `text`, and every field of it, appended to `out` a line at a time.
+fn append_parameter(
+    parameter: &'static Parameter,
+    out: &mut String,
+    text: fn(&'static Parameter) -> &'static str,
+) {
+    out.push('\n');
+    out.push_str(text(parameter));
+    for field in &parameter.fields {
+        append_parameter(field, out, text);
     }
 }
 
