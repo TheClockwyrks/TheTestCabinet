@@ -201,7 +201,7 @@ fn evaluate_granting(
             library,
         )
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
-    let (outcome, _api) = reclaim(store, returned, None, None, None);
+    let (outcome, _api) = reclaim(store, returned, None, None);
     (outcome, log)
 }
 

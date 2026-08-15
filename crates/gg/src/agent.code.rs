@@ -66,8 +66,7 @@ use crate::sandbox::{
     MEMORIES_UPDATE_MEMORY, MEMORIES_WRITE_MEMORY, OperationId, PreparedProgram, ProgramError,
     ProgramLanguage, ProgramScope, RunEnding, SHELL_SHELL, SKILLS_READ_SKILL, SandboxViewOpened,
     TASKS_ADD_TASK, TASKS_COMPLETE_TASK, TASKS_REMOVE_TASK, TASKS_SET_BLOCKED_BY,
-    TASKS_UPDATE_TASK, ToolApi, UnreachableTail, ViewOpenOutcome, ViewRefusal,
-    run_prepared_program, spell,
+    TASKS_UPDATE_TASK, ToolApi, ViewOpenOutcome, ViewRefusal, run_prepared_program, spell,
 };
 use crate::tasks::TaskStatus;
 use crate::tools::{
@@ -314,23 +313,6 @@ pub(super) async fn run_code_turn(
     report_to_operator(&outcome, emitter);
     report_chain_to_operator(code.language, &chain, &outcome, emitter);
 
-    // Statements the model wrote that could not run are said out loud on the operator's stream as
-    // well as in the model's own feedback, for the same reason a repaired reply is: a program gg
-    // ran that is not the whole program the model sent has to be visible without waiting for a
-    // rollup.
-    if let Some(tail) = &outcome.unreachable {
-        emitter.emit(log(
-            "warn",
-            format!(
-                "the program wrote {} after its top-level `return` that could not run; the first \
-                 is line {}: {}",
-                plural(tail.statements, "statement"),
-                tail.line,
-                tail.excerpt
-            ),
-        ));
-    }
-
     // The composed calls the turn actually **dispatched** — the roster plus whatever the roster cap
     // (or a panicked sandbox) stopped describing, never the roster's length. It is a count of calls
     // that reached a tool implementation, not of tool calls: a program makes none of those, and
@@ -424,16 +406,13 @@ pub(super) async fn run_code_turn(
     // The process facts this turn produced, independent of whether it also failed. They are
     // separate messages from any error, and they come first: an error carries the error alone, so
     // a fact welded onto it would be exactly the extra text that band exists not to have.
-    let notices: Vec<CodeFeedback> = outcome
-        .unreachable
-        .as_ref()
-        .map(|tail| CodeFeedback::notice(unreachable_notice(tail)))
-        .into_iter()
+    let notices: Vec<CodeFeedback> = handover_notice(code.language, &chain, &outcome)
         // A program the model handed over that gg did not run. It is exactly the class of fact a
         // notice exists for: nothing the program can observe reveals it — no call failed, nothing
         // threw — and a model that believes its replacement ran would spend its next turn reasoning
         // about work that never happened.
-        .chain(handover_notice(code.language, &chain, &outcome).map(CodeFeedback::notice))
+        .map(CodeFeedback::notice)
+        .into_iter()
         // A skill's or memory's code that failed to load. Its `lib` binding is empty, and a name
         // that is not bound is indistinguishable from one the run never granted, so a model reading
         // the silence would fix the wrong thing.
@@ -957,32 +936,10 @@ fn with_error(notices: &[CodeFeedback], error: CodeFeedback) -> Vec<CodeFeedback
     all
 }
 
-/// The [`Notice`](GgContextSource::System) for [statements that could not run](UnreachableTail).
-///
-/// A notice rather than an error, and one gg keeps saying even though it says almost nothing else
-/// about a program that ran: the model wrote a reply it believes executed in full, and half of it
-/// silently did not. Nothing the program can observe reveals that — no call failed, nothing threw —
-/// so this is the only channel it has. It names the count, quotes the first dead statement so the
-/// model can recognise which half was lost, and states the rule that made them dead.
-///
-/// Rendered in Rust rather than in a template for the reason every count-bearing line here is: a
-/// template that has to pluralise is a template that will one day say "1 statements".
-fn unreachable_notice(tail: &UnreachableTail) -> String {
-    format!(
-        "{} after your top-level `return` did not run — the first is line {}: {}. A top-level \
-         `return` ends the program, so nothing written after it executes. Send exactly one program \
-         per reply.",
-        plural(tail.statements, "statement"),
-        tail.line,
-        tail.excerpt,
-    )
-}
-
 /// The [`Notice`](GgContextSource::System) for code modules that failed, or `None` when every one
 /// this turn brought into use loaded and ran.
 ///
-/// The counterpart of [`unreachable_notice`] and there for the same reason: nothing the program can
-/// observe reveals it. A skill or memory whose code threw while it was being loaded leaves its
+/// A notice for the same reason the hand-over one is: nothing the program can observe reveals it. A skill or memory whose code threw while it was being loaded leaves its
 /// `lib` binding empty, and a model calling into that binding reads a name that does not exist
 /// rather than a broken one — so without this the model spends its next turn on a call it has no
 /// way to know was never available.
@@ -1491,9 +1448,8 @@ async fn run_code_program(
                 rerun: None,
                 revoked_rerun: false,
                 elapsed: Duration::ZERO,
-                // All three are observations the sandbox makes on its way through, and the task that
-                // would have made them died — so none is known, and none is invented.
-                unreachable: None,
+                // Both are observations the sandbox makes on its way through, and the task that
+                // would have made them died — so neither is known, and neither is invented.
                 compile: None,
                 compile_wait: None,
                 result: Err(SandboxError::Host(format!(
@@ -1597,7 +1553,6 @@ fn merge_chain(earlier: SandboxOutcome, later: SandboxOutcome) -> SandboxOutcome
         rerun: _,
         revoked_rerun: earlier_revoked_rerun,
         elapsed: earlier_elapsed,
-        unreachable: earlier_unreachable,
         compile: earlier_compile,
         compile_wait: earlier_compile_wait,
         // The earlier program ran to its end — that is the only way the chain continued — so its
@@ -1642,7 +1597,6 @@ fn merge_chain(earlier: SandboxOutcome, later: SandboxOutcome) -> SandboxOutcome
         // execution timeout is per program, so a chained turn that is slow must be visibly slow
         // rather than reporting only its last link.
         elapsed: earlier_elapsed.saturating_add(later.elapsed),
-        unreachable: later.unreachable.or(earlier_unreachable),
         // **Summed**, unlike `compile_wait` below and for the opposite reason: the shared component
         // is compiled at most once, but every link of a chain is a program of its own and a
         // compiling language compiles each one. Reporting only a link's worth would make a turn

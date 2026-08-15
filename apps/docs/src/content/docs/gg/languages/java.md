@@ -160,10 +160,7 @@ refused by the sandbox.
 Two failures cross untouched, so that the guest classifies the turn from what
 the host said. A `ToolError` the host raised is recorded as the host's own
 refusal before any Java description is considered, and a JavaScript exception
-TeaVM wrapped and prefixed `(JavaScript)` is passed through undescribed. A
-program reports no unreachable-tail count: a `return` leaves the method gg
-wrapped the statements in, so everything after it is javac's `unreachable
-statement` at the model's own line.
+TeaVM wrapped and prefixed `(JavaScript)` is passed through undescribed.
 
 ## Prompt segment
 

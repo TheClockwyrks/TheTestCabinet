@@ -27,8 +27,7 @@ declares that its preparation compiles, so both passes are timed on the failing
 path as well as the succeeding one and reach the run as `compileMs`.
 
 The guest evaluates a program as the body of a function, so a top-level `return`
-ends it. That is legal and runs as written. gg reports how many statements
-followed it and quotes the first.
+ends it. That is legal and runs as written.
 
 ## Refusals in the strip
 

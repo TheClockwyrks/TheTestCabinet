@@ -712,12 +712,13 @@ pub fn all_languages() -> impl Iterator<Item = &'static dyn ProgramLanguage> {
     GgProgramLanguage::ALL.iter().copied().map(language)
 }
 
-/// A program that prepared cleanly: the source the guest evaluates, and what preparing it observed
-/// about the model's own text on the way past.
+/// A program that prepared cleanly: what the guest is handed, in whichever of the two shapes this
+/// arm produces.
 ///
-/// The observation rides with the source rather than being recovered later because it is a fact
-/// about the **model's** text, in the model's own coordinates, and the only place both that text and
-/// the language's own understanding of it exist together is inside the prepare step.
+/// It carries no observation *about* the model's text, and that absence is the contract rather than
+/// an omission. A preparation reads a program and either accepts it or refuses it with a diagnostic
+/// the model can act on; anything else it thought it noticed on the way past would be gg's account
+/// of a program in front of the language's own.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreparedProgram {
     /// The source the guest evaluates. For TypeScript, the type-stripped JavaScript.
@@ -728,9 +729,6 @@ pub struct PreparedProgram {
     /// read it costs nothing to pass an empty string to, and making the wire's shape depend on the
     /// arm would be a difference between two arms of a study in the one place there must not be one.
     pub source: String,
-    /// Top-level statements the program wrote that cannot execute, when it wrote any. See
-    /// [`UnreachableTail`].
-    pub unreachable: Option<UnreachableTail>,
     /// **The component that evaluates this program**, for a language that compiled one *for this
     /// program* — `None` for every language whose programs are evaluated by a
     /// [prebuilt](ProgramLanguage::guest_component) one.
@@ -764,29 +762,6 @@ pub struct PreparedModule {
     /// The exported names, in source order, as the namespace lists them. A renaming export is listed
     /// under the name the namespace gives it.
     pub exports: Vec<String>,
-}
-
-/// Top-level statements a program wrote **after** a statement that ends it — code that provably
-/// never runs.
-///
-/// This is not an error and nothing is refused: a language whose program body may end early is
-/// entitled to dead code after the statement that ends it. It exists because of what it is a symptom
-/// of. A model that drafts two programs and pastes the second after the first produces exactly this
-/// shape, and without a word about it gg reports "your program ran to completion" over a reply whose
-/// second half — the half that wrote the deliverable and ended the run — never executed. Round 1
-/// proved that silent discard is the one failure a model cannot recover from, so gg counts what did
-/// not run and says so.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UnreachableTail {
-    /// How many top-level statements followed it that could have done something. Declarations the
-    /// language hoists into scope before the first statement runs, and declarations that do not
-    /// exist at run time at all, are excluded: calling either "did not run" would be false.
-    pub statements: usize,
-    /// The 1-based line of the first such statement, in the **program's** coordinates.
-    pub line: usize,
-    /// The first such statement's own source text, trimmed and capped — what lets a model recognise
-    /// the half of its reply that never ran without counting lines.
-    pub excerpt: String,
 }
 
 /// Why a source could not be prepared for its guest — because of what the **model wrote**.

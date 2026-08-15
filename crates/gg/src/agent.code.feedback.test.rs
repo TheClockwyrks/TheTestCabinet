@@ -46,7 +46,6 @@ fn quiet_outcome() -> SandboxOutcome {
         rerun: None,
         revoked_rerun: false,
         elapsed: Duration::ZERO,
-        unreachable: None,
         compile: None,
         compile_wait: None,
         result: Ok(ProgramResult { error: None }),

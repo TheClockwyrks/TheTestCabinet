@@ -15,8 +15,7 @@ Roslyn compiles the reply to a .NET assembly on the host, and the assembly is
 base64-encoded into the string a prepared program carries its source in. The
 guest is a prebuilt component holding Mono's IL interpreter and the .NET class
 library, so nothing about a C# program is compiled to wasm. A prepared program
-carries no component of its own and no `unreachable` count, because C# has no
-statement that ends a program early.
+carries no component of its own.
 
 One `csc` invocation compiles the program, the SDK's sources and the code
 modules in scope, driven by a response file in the workspace. It declares

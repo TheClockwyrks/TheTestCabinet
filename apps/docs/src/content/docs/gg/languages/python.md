@@ -8,9 +8,8 @@ Python is a registered [responses-as-code](/gg/responses-as-code/overview/) prog
 language whose guest carries its own interpreter. A model's whole reply is a
 Python module, and it crosses the membrane as the source the model wrote.
 
-Preparation returns that source unchanged, with no compiled component and no
-unreachable-tail measurement, since Python has no statement that ends a module
-early. The first thing to read a program is the CPython inside the guest, which
+Preparation returns that source unchanged, with no compiled component. The
+first thing to read a program is the CPython inside the guest, which
 compiles it as `program.py` with `__name__` set to `"__main__"` and runs it at
 the top level. The arm puts no compiler on the turn path, installs nothing in
 the run container, and opens no workspace during preparation. For the shared

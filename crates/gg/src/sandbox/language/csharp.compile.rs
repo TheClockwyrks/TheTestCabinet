@@ -223,11 +223,6 @@ fn usable(root: &Path) -> bool {
 
 /// Compile a **program** — a model's reply — into the IL the guest interprets, base64-encoded.
 ///
-/// [`unreachable`](PreparedProgram::unreachable) is `None`, and it is an absence rather than a zero:
-/// the measurement counts top-level statements written after one that *ends the program*, and C#'s
-/// entry point has no such statement — every way out of `Main` is a `return` the compiler already
-/// treats as the end, or an exception.
-///
 /// [`component`](PreparedProgram::component) is `None` because this arm evaluates its program with a
 /// **prebuilt** runtime — one the build linked, once, and gg embeds — rather than compiling one per
 /// turn. That is what separates it from the
@@ -241,7 +236,6 @@ pub(super) fn compile_program(
     let assembly = compile(program, modules, context)?;
     Ok(PreparedProgram {
         source: base64::engine::general_purpose::STANDARD.encode(assembly),
-        unreachable: None,
         component: None,
     })
 }

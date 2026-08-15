@@ -97,9 +97,6 @@ pub fn prepare_module(src: &str) -> Result<PreparedModule, PrepareFailure> {
     on_a_deep_stack(src, || {
         let plan = plan_module(src)?;
         let stripped = strip_types(&plan.blanked)?;
-        // The generated `return` is gg's, not the author's, so `PreparedProgram::unreachable` —
-        // which is about a model pasting a second draft after its own `return` — is simply dropped
-        // here.
         Ok(PreparedModule {
             source: format!("{}{}", stripped.source, plan.epilogue()),
             exports: plan.names(),

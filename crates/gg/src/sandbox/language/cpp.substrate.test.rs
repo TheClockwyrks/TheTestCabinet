@@ -168,7 +168,7 @@ fn evaluate_granting(
         store.data_mut().revoke_completion();
     }
     let returned = keep_reported_error(returned, &store);
-    let (outcome, _api) = reclaim(store, returned, None, None, None);
+    let (outcome, _api) = reclaim(store, returned, None, None);
     (outcome, log)
 }
 

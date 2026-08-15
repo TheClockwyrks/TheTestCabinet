@@ -174,7 +174,7 @@ fn run_as(
             library,
         )
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
-    let (outcome, _api) = reclaim(store, returned, None, None, None);
+    let (outcome, _api) = reclaim(store, returned, None, None);
     (outcome, log)
 }
 
@@ -1681,7 +1681,7 @@ print(summary.turn, repr(summary.source()))
             true,
         )
         .expect("the program runs");
-    let (outcome, _api) = reclaim(store, Ok(()), None, None, None);
+    let (outcome, _api) = reclaim(store, Ok(()), None, None);
     assert_eq!(logs(&outcome), ["3 \"print('the program that ran')\""]);
 }
 
@@ -1828,7 +1828,7 @@ programs.rerun(source.replace("ran", "walked"))
             true,
         )
         .expect("the program runs");
-    let (outcome, _api) = reclaim(store, Ok(()), None, None, None);
+    let (outcome, _api) = reclaim(store, Ok(()), None, None);
     assert_eq!(
         logs(&outcome),
         ["1 3 True None", "\"print('the program that ran')\""]
@@ -1876,7 +1876,7 @@ print(docs.close("gg.files.read_file"), docs.close_all())
             false,
         )
         .expect("the program runs");
-    let (outcome, _api) = reclaim(store, Ok(()), None, None, None);
+    let (outcome, _api) = reclaim(store, Ok(()), None, None);
     assert_eq!(logs(&outcome), ["DocSearch 0 0 []", "0 0"]);
     let searched: Vec<&str> = outcome
         .views_opened

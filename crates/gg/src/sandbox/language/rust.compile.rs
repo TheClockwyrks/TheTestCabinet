@@ -203,15 +203,8 @@ pub(super) fn warm() {
 
 /// Compile a **program** — a model's reply — into the component that evaluates it.
 ///
-/// [`unreachable`](PreparedProgram::unreachable) is `None`, and that is an absence rather than a
-/// zero: the measurement counts top-level statements written after one that *ends* the program,
-/// which in the ECMAScript arms is a top-level `return`. A `return` in a Rust program returns from
-/// the body gg wrapped it in, and everything after it is ordinary dead code the compiler already
-/// reports on — so the shape this field records does not exist on this arm, exactly as it does not
-/// on Python's, Ruby's or PureScript's.
-///
-/// [`source`](PreparedProgram::source) is empty for the same reason: there is nothing left for a
-/// guest to evaluate, because the guest *is* what this returned.
+/// [`source`](PreparedProgram::source) is empty: there is nothing left for a guest to evaluate,
+/// because the guest *is* what this returned.
 pub(super) fn compile_program(
     source: &str,
     modules: &[CodeModule],
@@ -219,7 +212,6 @@ pub(super) fn compile_program(
 ) -> Result<PreparedProgram, PrepareFailure> {
     Ok(PreparedProgram {
         source: String::new(),
-        unreachable: None,
         component: Some(compile(source, modules, context)?),
     })
 }

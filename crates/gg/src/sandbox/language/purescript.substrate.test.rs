@@ -162,7 +162,7 @@ fn evaluate(
             library,
         )
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
-    let (outcome, _api) = reclaim(store, returned, None, None, None);
+    let (outcome, _api) = reclaim(store, returned, None, None);
     (outcome, log)
 }
 
@@ -1032,7 +1032,7 @@ fn a_convenience_function_reaches_the_operation_it_is_an_alias_of() {
             true,
         )
         .expect("the program runs");
-    let (outcome, _api) = reclaim(store, Ok(()), None, None, None);
+    let (outcome, _api) = reclaim(store, Ok(()), None, None);
     assert_eq!(
         logs(&outcome),
         [
@@ -1257,7 +1257,7 @@ fn the_views_docs_program_library_helper_and_endings_modules_are_reached_in_pure
             false,
         )
         .expect("the program runs");
-    let (outcome, _api) = reclaim(store, Ok(()), None, None, None);
+    let (outcome, _api) = reclaim(store, Ok(()), None, None);
     assert_eq!(logs(&outcome), ["0 0 []", "0 0"]);
     let searched: Vec<&str> = outcome
         .views_opened

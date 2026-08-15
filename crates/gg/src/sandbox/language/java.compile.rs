@@ -227,12 +227,6 @@ pub(super) fn warm() {
 }
 
 /// Compile a **program** — a model's reply — into the JavaScript the guest evaluates.
-///
-/// [`unreachable`](PreparedProgram::unreachable) is `None`, and that is an absence rather than a
-/// zero: the measurement counts top-level statements written after one that *ends the program*,
-/// which in the ECMAScript arms is a top-level `return`. A `return` in a Java program's statements
-/// leaves the method gg wrapped them in, and everything after it is `unreachable statement` — a
-/// located `javac` error the model is shown, which is a better answer than a count.
 pub(super) fn compile_program(
     source: &str,
     context: &PrepareContext,
@@ -240,7 +234,6 @@ pub(super) fn compile_program(
     let wrapped = source::wrap_program(source)?;
     Ok(PreparedProgram {
         source: build(PROGRAM_FILE, &wrapped, Entry::Program, context)?,
-        unreachable: None,
         component: None,
     })
 }

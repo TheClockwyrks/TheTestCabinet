@@ -15,7 +15,7 @@
 use std::time::Duration;
 
 use super::invoker::{SandboxRefusal, SandboxToolCall, SandboxViewOpened};
-use super::language::{PrepareError, PrepareFailure, UnreachableTail};
+use super::language::{PrepareError, PrepareFailure};
 use crate::ending::Ending;
 use crate::limits::TurnErrorType;
 
@@ -133,13 +133,6 @@ pub struct SandboxOutcome {
     /// it is the time burned up to the stop). The efficiency signal that replaces the fuel figure
     /// the fuel-metered sandbox used to report.
     pub elapsed: Duration,
-    /// Top-level statements the program wrote that could not run, when it wrote any — the fact that
-    /// keeps a reply whose second half never executed from being reported as an unqualified
-    /// success. See [`UnreachableTail`].
-    ///
-    /// `None` for a program its language could not prepare, because a program that did not
-    /// compile has no statements at all.
-    pub unreachable: Option<UnreachableTail>,
     /// How long **compiling for this program** took — the whole of its language's
     /// [prepare step](super::ProgramLanguage::prepare_program), including any compiler that step
     /// shells out to — for a language that declares it
@@ -216,7 +209,6 @@ impl SandboxOutcome {
             rerun: None,
             revoked_rerun: false,
             elapsed: Duration::ZERO,
-            unreachable: None,
             compile,
             compile_wait: None,
             result: Err(error),

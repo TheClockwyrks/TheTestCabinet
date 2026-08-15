@@ -1947,138 +1947,15 @@ async fn a_code_mode_issue_agents_worktree_is_merged() {
 }
 
 // ---------------------------------------------------------------------------
-// Statements the reply wrote that could not run
+// A program that keeps going after it has declared the session done
 // ---------------------------------------------------------------------------
-
-/// **A program whose reply carried a second draft after its top-level `return` is told so.**
-///
-/// The exact round-2 shape, from the model that sent it: two drafts pasted one after the other, the
-/// first ending in a `return`. It compiles, it runs, and the whole second half — including the
-/// `writeFile` of the deliverable and the `finish` that would have ended the run — never executes.
-/// The turn is a clean success by every other measure, which is precisely why the silence was
-/// unrecoverable: the model was told "your program ran to completion" and had no way to learn
-/// otherwise.
-///
-/// Both audiences are asserted, because they need it for different reasons: the model, so it can
-/// send one program next turn, and the operator's stream, so a run whose program is not the whole
-/// reply is visible while it is happening.
-#[tokio::test]
-async fn statements_after_a_top_level_return_are_disclosed_to_the_model_and_the_stream() {
-    let dir = TempDir::new().unwrap();
-    std::fs::create_dir_all(dir.path().join("src")).unwrap();
-    std::fs::write(dir.path().join("src/a.ts"), "export const a = 1;\n").unwrap();
-    let (outcome, events, requests) = drive_recorded_code_run(
-        &dir,
-        code_set("mock/primary", json!({})),
-        vec![
-            code_reply(
-                "const src = fs.listDir(\"src\");\n\
-                 return { count: src.length };\n\n\
-                 fs.writeFile(\"MANIFEST.md\", \"- a.ts (1 lines)\\n\");\n\
-                 harness.finish(\"wrote the manifest\");",
-            ),
-            code_reply(FINISHING_PROGRAM),
-        ],
-    )
-    .await;
-    assert_eq!(outcome, SessionOutcome::Ran);
-
-    // The first half ran: the reply was a program, and nothing about the disclosure refuses it.
-    let executions: Vec<bool> = events
-        .iter()
-        .filter_map(|e| match &e.kind {
-            GgTelemetryKind::CodeExecution { ok, .. } => Some(*ok),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(executions.first(), Some(&true), "the program itself ran");
-    // ...and the second half did not, which is the whole point.
-    assert!(
-        !dir.path().join("MANIFEST.md").exists(),
-        "the dead half wrote the deliverable, so it must not exist"
-    );
-
-    let feedback = requests[1]
-        .iter()
-        .filter_map(|message| message.content.clone())
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(
-        feedback.contains(
-            "2 statements after your top-level `return` did not run — the first is line 4"
-        ),
-        "the model was not told what did not run:\n{feedback}"
-    );
-    assert!(
-        feedback.contains("fs.writeFile(\"MANIFEST.md\""),
-        "the model was not shown WHICH statement, so it cannot recognise the half that was lost:\n\
-         {feedback}"
-    );
-    assert!(
-        feedback.contains("Send exactly one program per reply."),
-        "the model was not told what to do differently:\n{feedback}"
-    );
-    // It is a `Notice` — a fact about the session — not an error. Nothing failed: the program the
-    // model sent compiled and ran, and gg is telling it that half of what it wrote was never part
-    // of that program.
-    assert!(
-        requests[1].iter().any(|message| {
-            message.content.as_deref().is_some_and(|body| {
-                body.starts_with("Notice\n----\n") && body.contains("did not run")
-            })
-        }),
-        "the disclosure is a notice:\n{feedback}"
-    );
-
-    assert!(
-        warn_messages(&events).iter().any(|message| {
-            message.contains("wrote 2 statements after its top-level `return` that could not run")
-        }),
-        "the operator's stream never mentioned it: {:?}",
-        warn_messages(&events)
-    );
-}
-
-/// **A program with no dead tail says nothing about one** — the disclosure must not become noise on
-/// the turns that got it right.
-#[tokio::test]
-async fn a_program_with_nothing_after_its_return_is_not_told_about_unreachable_statements() {
-    let dir = TempDir::new().unwrap();
-    let (_, events, requests) = drive_recorded_code_run(
-        &dir,
-        code_set("mock/primary", json!({})),
-        vec![
-            code_reply("const a = 1;\nreturn a + 1;"),
-            code_reply(FINISHING_PROGRAM),
-        ],
-    )
-    .await;
-    let feedback = requests[1]
-        .iter()
-        .filter_map(|message| message.content.clone())
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(
-        !feedback.contains("did not run"),
-        "a clean program was told about statements that do not exist:\n{feedback}"
-    );
-    assert!(
-        !warn_messages(&events)
-            .iter()
-            .any(|message| message.contains("did not run")),
-        "{:?}",
-        warn_messages(&events)
-    );
-}
 
 /// **A program that calls `finish` and then keeps going does the rest of the work**, and nothing is
 /// reported about it.
 ///
 /// This is the shape that would lose a run its deliverable if `finish` unwound the program: the
 /// `writeFile` below it would never run, and the run would end "completed" over a workspace with no
-/// artifact in it. The statement
-/// runs, the file exists, and there is nothing to warn about — which is why the warning is asserted
-/// **absent** here rather than reworded.
+/// artifact in it. The statement runs and the file exists.
 #[tokio::test]
 async fn a_program_that_finishes_and_keeps_going_still_does_the_work() {
     let dir = TempDir::new().unwrap();
@@ -2097,13 +1974,6 @@ async fn a_program_that_finishes_and_keeps_going_still_does_the_work() {
             .expect("the deliverable was written"),
         "- a.ts (1 lines)\n",
         "the statement after `finish` is ordinary work and runs"
-    );
-    assert!(
-        !warn_messages(&events)
-            .iter()
-            .any(|message| message.contains("could not run")),
-        "nothing was unreachable, so nothing may be reported as such: {:?}",
-        warn_messages(&events)
     );
 }
 

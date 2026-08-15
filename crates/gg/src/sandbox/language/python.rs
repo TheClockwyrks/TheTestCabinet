@@ -36,11 +36,6 @@
 //!   way; the [turn error](crate::limits::TurnErrorType) it is recorded under is the run-time band
 //!   rather than the `transpile` one, and that is the honest recording for an arm where nothing
 //!   read the program before it ran.
-//! * **No [`UnreachableTail`](super::UnreachableTail).** That measurement counts top-level
-//!   statements written after a statement that *ends the program*, which in the ECMAScript arms is a
-//!   top-level `return` — the program is evaluated as a function body there. Python has no top-level
-//!   `return` and no statement that ends a module early, so the shape does not exist here rather
-//!   than going unmeasured.
 //!
 //! Adding a Python parser to the host was considered and rejected. It would buy the `transpile`
 //! band and a marginally earlier diagnostic, and it would cost the one thing that cannot be
@@ -169,9 +164,6 @@ impl ProgramLanguage for Python {
     ) -> Result<PreparedProgram, PrepareFailure> {
         Ok(PreparedProgram {
             source: source.to_string(),
-            // A Python module has no statement that ends it early — there is no top-level `return`
-            // to write anything after — so the shape this field records does not exist on this arm.
-            unreachable: None,
             component: None,
         })
     }

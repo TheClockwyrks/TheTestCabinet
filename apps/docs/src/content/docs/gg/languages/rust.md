@@ -13,8 +13,7 @@ out. The component is what the turn evaluates.
 
 This arm has no guest component: `guest_component()` answers `None`, the
 compiled bytes ride on the prepared program, and the engine instantiates a fresh
-component every turn. The prepared program carries no source, and no
-`unreachable` count, since a `return` here returns from the wrapper.
+component every turn. The prepared program carries no source.
 
 ## Program shape
 

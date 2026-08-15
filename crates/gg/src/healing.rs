@@ -1502,9 +1502,9 @@ pub(crate) fn dedent(text: &str) -> String {
 
 /// `n` and its noun, pluralised the English way.
 ///
-/// `pub(crate)` because the [code turn](crate::agent) renders one count-bearing clause of its own —
-/// the statements a top-level `return` left unreachable — and two spellings of "1 statement" in one
-/// turn's feedback is exactly the drift a shared helper removes.
+/// `pub(crate)` because the [code turn](crate::agent) renders count-bearing clauses of its own — the
+/// code modules that failed to load, the programs a chained turn ran — and two spellings of "1
+/// program" in one turn's feedback is exactly the drift a shared helper removes.
 pub(crate) fn plural(count: usize, noun: &str) -> String {
     if count == 1 {
         format!("{count} {noun}")

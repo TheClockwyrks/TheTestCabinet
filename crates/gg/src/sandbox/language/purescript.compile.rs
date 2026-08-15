@@ -287,20 +287,12 @@ pub(super) fn warm() {
 }
 
 /// Compile a **program** — a model's reply — into the JavaScript the guest evaluates.
-///
-/// [`unreachable`](PreparedProgram::unreachable) is `None`, and that is an absence rather than a
-/// zero. The measurement counts top-level statements written after one that *ends the program*,
-/// which in the ECMAScript arms is a top-level `return`. A PureScript module has no statements at its
-/// top level at all — it has declarations, in any order, and the entry point is a value called
-/// `main` — so the shape this field records does not exist on this arm rather than going unmeasured,
-/// exactly as it does not on [Python](super::super::python)'s or [Ruby](super::super::ruby)'s.
 pub(super) fn compile_program(
     source: &str,
     context: &PrepareContext,
 ) -> Result<PreparedProgram, PrepareFailure> {
     Ok(PreparedProgram {
         source: compile(PROGRAM_FILE, source, Entry::Program, context)?,
-        unreachable: None,
         component: None,
     })
 }

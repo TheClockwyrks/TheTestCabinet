@@ -235,7 +235,6 @@ impl ProgramLanguage for FixtureLanguage {
         }
         Ok(PreparedProgram {
             source: self.build(&strip_comments(source), context)?,
-            unreachable: None,
             component: None,
         })
     }

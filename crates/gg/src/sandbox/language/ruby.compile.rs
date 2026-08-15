@@ -199,21 +199,12 @@ pub(super) fn warm() {
 }
 
 /// Compile a **program** — a model's reply — into the JavaScript the guest evaluates.
-///
-/// [`unreachable`](PreparedProgram::unreachable) is `None`, and that is an absence rather than a
-/// zero. The measurement counts top-level statements written after one that **ends the program**,
-/// which in the ECMAScript arms is a top-level `return` — the program is evaluated as a function
-/// body there. A Ruby program's top level has no statement that ends it early: a bare `return` at
-/// the top level is a `LocalJumpError` rather than an exit, and every other way out is an exception.
-/// So the shape this field records does not exist on this arm rather than going unmeasured, exactly
-/// as it does not exist on [Python](super::super::python)'s.
 pub(super) fn compile_program(
     source: &str,
     context: &PrepareContext,
 ) -> Result<PreparedProgram, PrepareFailure> {
     Ok(PreparedProgram {
         source: compile(PROGRAM_FILE, source, context)?,
-        unreachable: None,
         component: None,
     })
 }

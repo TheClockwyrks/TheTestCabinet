@@ -430,11 +430,6 @@ pub(super) fn warm() {
 
 /// Compile a **program** — a model's reply — into the component that evaluates it.
 ///
-/// [`unreachable`](PreparedProgram::unreachable) is `None`, and that is an absence rather than a
-/// zero: the measurement counts top-level statements written after one that *ends* the program,
-/// which in the ECMAScript arms is a top-level `return`. A C++ translation unit has no top level to
-/// put a statement at, so the shape this field records does not exist on this arm.
-///
 /// [`source`](PreparedProgram::source) is empty for the same reason the Rust arm's is: there is
 /// nothing left for a guest to evaluate, because the guest *is* what this returned.
 pub(super) fn compile_program(
@@ -444,7 +439,6 @@ pub(super) fn compile_program(
 ) -> Result<PreparedProgram, PrepareFailure> {
     Ok(PreparedProgram {
         source: String::new(),
-        unreachable: None,
         component: Some(compile(source, modules, context)?),
     })
 }

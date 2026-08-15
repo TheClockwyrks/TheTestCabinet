@@ -174,7 +174,7 @@ fn evaluate(
             library,
         )
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
-    let (outcome, _api) = reclaim(store, returned, None, None, None);
+    let (outcome, _api) = reclaim(store, returned, None, None);
     (outcome, log)
 }
 
@@ -1147,7 +1147,7 @@ puts "#{GG::Docs.close("GG::Files.read_file")} #{GG::Docs.close_all}"
             false,
         )
         .expect("the program runs");
-    let (outcome, _api) = reclaim(store, Ok(()), None, None, None);
+    let (outcome, _api) = reclaim(store, Ok(()), None, None);
     assert_eq!(logs(&outcome), ["GG::Docs::DocSearch 0 0 []", "0 0"]);
     let searched: Vec<&str> = outcome
         .views_opened
@@ -1438,7 +1438,7 @@ end
             false,
         )
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
-    let (outcome, _api) = reclaim(store, returned, None, None, None);
+    let (outcome, _api) = reclaim(store, returned, None, None);
     assert!(
         outcome.result.is_err(),
         "a sleeping Ruby program is stopped by the deadline: {:?}",

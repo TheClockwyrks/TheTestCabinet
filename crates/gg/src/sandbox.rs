@@ -106,7 +106,7 @@ pub(crate) mod signatures;
 pub use invoker::ToolApi;
 pub use language::{
     FileWindow, PARAM_LANGUAGE, PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage,
-    UnreachableTail, all_languages, language, library_set, resolve_program_language, spell,
+    all_languages, language, library_set, resolve_program_language, spell,
 };
 
 // gg's own name for each model-facing call, for the code outside this module that has to *quote*
@@ -449,7 +449,6 @@ fn evaluate<A: ToolApi>(
     let library = capabilities
         .iter()
         .any(|id| id == test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY);
-    let unreachable = prepared.unreachable;
     // Either the language's embedded component, or — for an arm whose prepare step compiled the
     // program itself into one — this program's own. The wait is reported the same way for both.
     let (component, compile_wait) = match engine::program_component(language, prepared.component) {
@@ -473,7 +472,7 @@ fn evaluate<A: ToolApi>(
             // embedded artifact importing something this membrane does not provide — i.e. the
             // component and the WIT have drifted apart.
             let error = engine::classify(&store, limits, &error, SandboxError::Instantiate);
-            return reclaim(store, Err(error), unreachable, compile, compile_wait);
+            return reclaim(store, Err(error), compile, compile_wait);
         }
     };
 
@@ -495,7 +494,7 @@ fn evaluate<A: ToolApi>(
         store.data_mut().revoke_completion();
     }
     let returned = keep_reported_error(returned, &store);
-    reclaim(store, returned, unreachable, compile, compile_wait)
+    reclaim(store, returned, compile, compile_wait)
 }
 
 /// Keep a **failure the program already reported** rather than replacing it with the trap that
@@ -766,7 +765,6 @@ pub(crate) fn component_bound_tools(
 fn reclaim<A: ToolApi>(
     store: Store<MembraneState<A>>,
     returned: Result<(), SandboxError>,
-    unreachable: Option<UnreachableTail>,
     compile: Option<Duration>,
     compile_wait: Option<Duration>,
 ) -> (SandboxOutcome, A) {
@@ -822,7 +820,6 @@ fn reclaim<A: ToolApi>(
         rerun,
         revoked_rerun,
         elapsed,
-        unreachable,
         compile,
         compile_wait,
         result: returned.map(|()| ProgramResult {

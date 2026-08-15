@@ -34,9 +34,6 @@ fn a_program_crosses_as_the_model_wrote_it() {
             .prepare_program(source, &[], &PrepareContext::new())
             .expect("this arm prepares every reply, because nothing on the host reads it");
         assert_eq!(prepared.source, source);
-        // There is no top-level statement that ends a Python module early — no `return` to write
-        // anything after — so the shape this field records does not exist on this arm.
-        assert_eq!(prepared.unreachable, None);
     }
 }
 

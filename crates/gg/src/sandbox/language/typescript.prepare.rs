@@ -31,14 +31,6 @@
 //! costs one extra pass over a tree that is already built (the transformer needs the same scope
 //! analysis) and hands the model the same located diagnostic every other failure here carries.
 //!
-//! # Statements that cannot run
-//!
-//! A program's top level is a function body, so a top-level `return` ends it: everything after it is
-//! dead. That is legal JavaScript, so nothing refuses it — but a model that pasted a second draft
-//! after the first one's `return` would otherwise be told "your program ran to completion" about a
-//! reply whose second half never executed. [`PreparedProgram::unreachable`] is what makes that
-//! visible, and disclosure is the whole of the fix: the program still runs exactly as written.
-//!
 //! # How TypeScript's failures map onto [`PrepareFailure`]
 //!
 //! The seam's kinds are not several names for "it did not compile" — they are distinct *causes*, and
@@ -109,15 +101,15 @@
 use std::path::Path;
 
 use oxc::allocator::Allocator;
-use oxc::ast::ast::{ModuleDeclaration, Program, Statement};
+use oxc::ast::ast::{ModuleDeclaration, Program};
 use oxc::codegen::Codegen;
 use oxc::diagnostics::{LabeledSpan, OxcDiagnostic};
 use oxc::parser::{ParseOptions, Parser, ParserReturn};
 use oxc::semantic::SemanticBuilder;
-use oxc::span::{GetSpan, SourceType};
+use oxc::span::SourceType;
 use oxc::transformer::{TransformOptions, Transformer};
 
-use crate::sandbox::language::{PrepareError, PrepareFailure, PreparedProgram, UnreachableTail};
+use crate::sandbox::language::{PrepareError, PrepareFailure, PreparedProgram};
 
 /// The virtual path diagnostics are labelled with. Never read from disk — a program has no file.
 const VIRTUAL_SOURCE_PATH: &str = "program.ts";
@@ -278,9 +270,6 @@ pub(super) fn strip_types(src: &str) -> Result<PreparedProgram, PrepareFailure> 
     }
 
     let mut program = parsed.program;
-    // Observed while the tree still spans the MODEL's source: after the transform the spans point
-    // into a program the model never wrote.
-    let unreachable = unreachable_tail(src, &program);
     // The transformer needs the program's resolved scopes to rename what it must; building them
     // here (rather than letting the transformer do it) is how oxc's API is shaped — and asking the
     // same pass to check ECMAScript's early errors costs one flag, because the scope analysis that
@@ -314,64 +303,8 @@ pub(super) fn strip_types(src: &str) -> Result<PreparedProgram, PrepareFailure> 
 
     Ok(PreparedProgram {
         source: Codegen::new().build(&program).code,
-        unreachable,
         component: None,
     })
-}
-
-/// The top-level statements `program` wrote after a statement that ends it, if it wrote any.
-///
-/// # What counts as ending the program
-///
-/// One shape: a top-level [`ReturnStatement`](Statement::ReturnStatement). It has to be
-/// **unconditional** and a direct child of the program body — a `return` inside an `if`, a loop or a
-/// block is a conditional exit and says nothing about what follows it.
-///
-/// A top-level [`finish`](crate::sandbox::FINISH_FUNCTION) call is deliberately **not** one, and
-/// used to be. It sets a flag in the agent's context and returns like any other call, so the
-/// statements after it run exactly as written; calling them unreachable would be false, and telling
-/// a model its `finish` killed the rest of its program would teach it a rule this sandbox no longer
-/// has.
-///
-/// # What counts as not running
-///
-/// Everything after it **except** hoisted `function` declarations (in scope before the first
-/// statement runs, so they are not dead), erased type-only declarations (`interface`, `type`, which
-/// do not exist at run time at all), and empty statements. A `class` is *not* excluded: class
-/// declarations are not hoisted into existence, so one after a `return` really is unreachable.
-fn unreachable_tail(src: &str, program: &Program<'_>) -> Option<UnreachableTail> {
-    let index = program
-        .body
-        .iter()
-        .position(|statement| matches!(statement, Statement::ReturnStatement(_)))?;
-    let mut dead = program.body[index + 1..]
-        .iter()
-        .filter(|statement| would_have_run(statement));
-    let first = dead.next()?;
-    let statements = 1 + dead.count();
-    let span = first.span();
-    let (line, _, _) = line_column(src, span.start as usize);
-    Some(UnreachableTail {
-        statements,
-        line,
-        excerpt: excerpt(&src[span.start as usize..(span.end as usize).min(src.len())]),
-    })
-}
-
-/// Whether a statement placed after a terminator would have done something had it been reached.
-///
-/// `false` for the three kinds that are not dead even where they sit: a hoisted `function`
-/// declaration (bound before the first statement runs), a type-only declaration (erased entirely by
-/// the strip, so it never existed at run time), and an empty statement (a stray `;`, which a model
-/// that ends its program with `return x;;` would otherwise be told "did not run").
-fn would_have_run(statement: &Statement<'_>) -> bool {
-    !matches!(
-        statement,
-        Statement::FunctionDeclaration(_)
-            | Statement::EmptyStatement(_)
-            | Statement::TSInterfaceDeclaration(_)
-            | Statement::TSTypeAliasDeclaration(_)
-    )
 }
 
 /// The guidance for a program nested deeper than the parser is given room for.

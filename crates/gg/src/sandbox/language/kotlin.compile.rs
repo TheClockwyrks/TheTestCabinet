@@ -198,11 +198,6 @@ pub(super) fn warm() {
 }
 
 /// Compile a **program** — a model's reply — into the JavaScript the guest evaluates.
-///
-/// [`unreachable`](PreparedProgram::unreachable) is `None`, and that is an absence rather than a
-/// zero: the measurement counts top-level statements written after one that *ends the program*,
-/// which in the ECMAScript arms is a top-level `return`. A script's top level is not a function
-/// body, so `return` there is a compile error the model is shown rather than something to count.
 pub(super) fn compile_program(
     source: &str,
     context: &PrepareContext,
@@ -210,7 +205,6 @@ pub(super) fn compile_program(
     let wrapped = source::wrap_program(source)?;
     Ok(PreparedProgram {
         source: build(PROGRAM_FILE, &wrapped, Entry::Program, context)?,
-        unreachable: None,
         component: None,
     })
 }
