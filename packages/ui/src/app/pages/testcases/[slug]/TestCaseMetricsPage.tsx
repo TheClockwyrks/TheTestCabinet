@@ -21,6 +21,7 @@ import {
   UNKNOWN_PROVIDER_COLOR,
 } from "../../../data/providerColor";
 import type { TestCaseSummary, VariantSummary } from "../../../data/testCases";
+import { LoadingState } from "../../../components/LoadingState";
 import { formatCompact, formatUsd, totalTokens } from "../../../format";
 import { TestCaseDetailLayout } from "../../../layouts/testcases/TestCaseDetailLayout";
 import { resolveRunScore } from "./TestCaseLeaderboardPage";
@@ -70,7 +71,9 @@ export function MetricsContent({
   testCase: TestCaseSummary;
   variant: VariantSummary;
 }) {
-  const { summaries, localWriteups } = useCaseRunSummaries(testCase.slug);
+  const { summaries, localWriteups, loading } = useCaseRunSummaries(
+    testCase.slug,
+  );
   const findModel = useFindModel();
   const findReview = useFindReview();
 
@@ -164,7 +167,12 @@ export function MetricsContent({
     <section className={styles.section}>
       <VersionScopeControl state={versionScope} />
 
-      {scopedRuns.length < MIN_RUNS ? (
+      {/* The case's runs drain over several requests, so a count taken mid-drain
+          is meaningless — it would report "not enough runs" about a set that is
+          still arriving. Wait for it to settle before judging the sample size. */}
+      {loading ? (
+        <LoadingState size="section" label="Loading metrics…" />
+      ) : scopedRuns.length < MIN_RUNS ? (
         <Panel>
           <p className={styles.empty}>
             Need at least {MIN_RUNS} runs of {variant.name} to chart a
