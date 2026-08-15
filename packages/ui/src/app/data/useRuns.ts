@@ -44,10 +44,10 @@ async function drainCaseSummaries(
 }
 
 // A single test case's run summaries — every published run of the case, merged
-// with the console's produced (local) runs of the same case pinned first (the
-// backend's numbered listing never returns unpublished runs). The case's runs are
-// bounded, so the leaderboard/metrics/runs tabs rank, aggregate, and page over
-// this set client-side (including the per-variant narrowing the server can't do).
+// with the console's produced (local) runs of the same case. This backs the views
+// that genuinely need the case's WHOLE set at once: the leaderboard's ranking and
+// the metrics tab's aggregates. The paged Runs tab does not use it — a listing is
+// filtered, sorted, and windowed server-side, a page at a time.
 // Host-agnostic: both galleries answer the same `queryRunSummaries`, so a tab
 // behaves identically wherever it renders.
 export function useCaseRunSummaries(slug: string): CaseRunSummariesState {

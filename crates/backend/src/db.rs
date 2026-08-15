@@ -1933,6 +1933,12 @@ pub enum SummaryState {
     /// Excludes the automatically-graded types, which no reviewer can clear (see
     /// `AUTO_GRADED_TEST_TYPES`).
     Unreviewed,
+    /// **Every** stored run — published and unpublished alike, whatever its
+    /// terminal state. The union of [`Self::Published`] and [`Self::Unpublished`],
+    /// for the consoles' run listings, where an unpublished (and therefore
+    /// unreviewed) run must take its place in the *same* sorted, paged listing as
+    /// the published ones rather than being pinned ahead of them client-side.
+    Any,
 }
 
 /// The filter for [`Db::list_summaries`]: a lifecycle `state` slice, optional
@@ -1948,6 +1954,10 @@ pub struct SummaryFilter {
     pub model: Option<String>,
     /// Restrict to one harness (`harness_slug`).
     pub harness: Option<String>,
+    /// Restrict to one variant (`variant`). Paired with [`Self::test_case`] this is
+    /// the case-detail Runs tab's slice — a variant slug is only unique within its
+    /// case.
+    pub variant: Option<String>,
     /// Free-text query matched case-insensitively (LIKE `%q%`) across
     /// `test_case_slug`, `model_id`, `harness_slug`, and `variant`.
     pub q: Option<String>,
@@ -2007,6 +2017,8 @@ fn summary_query(filter: &SummaryFilter) -> Select<run::Entity> {
             .filter(run::Column::RunState.eq("completed"))
             .filter(run::Column::ReviewCount.eq(0))
             .filter(run::Column::TestType.is_not_in(AUTO_GRADED_TEST_TYPES)),
+        // Every stored run: no lifecycle predicate at all.
+        SummaryState::Any => query,
     };
     if let Some(test_case) = filter.test_case.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(run::Column::TestCaseSlug.eq(test_case));
@@ -2016,6 +2028,9 @@ fn summary_query(filter: &SummaryFilter) -> Select<run::Entity> {
     }
     if let Some(harness) = filter.harness.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(run::Column::HarnessSlug.eq(harness));
+    }
+    if let Some(variant) = filter.variant.as_deref().filter(|s| !s.is_empty()) {
+        query = query.filter(run::Column::Variant.eq(variant));
     }
     if let Some(q) = filter.q.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         // Lower both sides so the match is case-insensitive on any backend (SQLite's

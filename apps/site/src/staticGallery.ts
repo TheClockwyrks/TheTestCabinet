@@ -80,12 +80,13 @@ export function useStaticGallery(): GalleryDataInput {
   // emitted `runs/<id>.json` asset.
   const localById = new Map(local.map((run) => [run.id, run]));
 
-  // The produced (dev-only local) runs as their own summary cards, pinned ahead of
-  // the queried published window by a paged page — mirroring the console's
-  // `producedSummaries`. Dev-only local runs have no published summary, so derive
-  // theirs from the full record (they are unreviewed previews, so no reviews / null
-  // rating is correct). The published summary index stays internal to this module
-  // (queried by `queryRunSummaries` below); it is never exposed whole.
+  // The produced (dev-only local) runs as their own summary cards — mirroring the
+  // console's `producedSummaries`, and folded into the `any` slice by
+  // `queryRunSummaries` below so a listing sorts and pages them with the published
+  // rows. Dev-only local runs have no published summary, so derive theirs from the
+  // full record (they are unreviewed previews, so no reviews / null rating is
+  // correct). The published summary index stays internal to this module (queried by
+  // `queryRunSummaries` below); it is never exposed whole.
   const producedSummaries = local.map((run) => toRunSummary(run, []));
 
   // The public gallery lists only models that a run has actually used. The
@@ -183,16 +184,25 @@ export function useStaticGallery(): GalleryDataInput {
 
   // Answer a paged summary query purely in memory — the static analog of the
   // console's backend offset endpoint. The queryable set is the published summary
-  // index (minus any dev local overrides, which a page pins via
-  // `producedSummaries`); `runSummaryPage` filters/sorts/windows it with the same
-  // semantics the backend uses, so a numbered page behaves identically on both
-  // hosts. Stable identity keyed on the loaded local runs (the only varying input).
+  // index (minus any dev local overrides, which the local card supersedes), plus —
+  // for the `any` slice the listings ask for — the dev-only produced runs, so an
+  // unpublished preview sorts and pages among the published rows exactly as it does
+  // against the backend's `any` slice. `runSummaryPage` filters/sorts/windows the
+  // set with the same semantics the backend uses, so a numbered page behaves
+  // identically on both hosts. Stable identity keyed on the loaded local runs (the
+  // only varying input).
   const queryRunSummaries = useCallback(
-    async (query: RunQuery) =>
-      runSummaryPage(
-        publishedRunSummaries.filter((summary) => !localIds.has(summary.id)),
+    async (query: RunQuery) => {
+      const published = publishedRunSummaries.filter(
+        (summary) => !localIds.has(summary.id),
+      );
+      return runSummaryPage(
+        query.state === "any"
+          ? [...producedSummaries, ...published]
+          : published,
         query,
-      ),
+      );
+    },
     // `localIds` is rebuilt each render from the loaded local runs; key on those.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [localRuns],

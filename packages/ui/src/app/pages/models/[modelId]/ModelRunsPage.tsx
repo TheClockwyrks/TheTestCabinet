@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Pagination, Panel } from "@test-cabinet/ui";
 import { LoadingState } from "../../../components/LoadingState";
 import { RunLog, sortStateToQuery, useRunTable } from "../../../components/RunLog";
@@ -19,7 +19,9 @@ const PAGE_SIZE = 20;
 // The Runs tab (`/models/:modelId/runs`): the full run log for this model, newest
 // first and paged a page at a time from the server (the console's backend offset
 // endpoint, the static site's in-memory index). The model column is dropped since
-// every row is this model; a header sort re-queries in that order.
+// every row is this model; a header sort re-queries in that order, and an
+// unpublished (so unreviewed) run sorts and pages among the published ones rather
+// than leading the first page.
 export function ModelRunsPage() {
   return (
     <ModelDetailLayout tab="runs">
@@ -29,8 +31,7 @@ export function ModelRunsPage() {
 }
 
 function RunsContent({ model }: { model: ModelSummary }) {
-  const { producedSummaries, localIds, writeups, queryRunSummaries } =
-    useGalleryData();
+  const { localIds, writeups, queryRunSummaries } = useGalleryData();
   const { page, setPage } = usePagedSearchParams();
   const [result, setResult] = useState<RunQueryResult>({
     summaries: [],
@@ -44,23 +45,10 @@ function RunsContent({ model }: { model: ModelSummary }) {
   // single-id model is exact.)
   const modelId = model.modelIds[0] ?? model.slug;
 
-  // Produced (local) runs of this model, pinned to the first page ahead of the
-  // queried published window. Matched against the model's covered ids so a local
-  // run still lands on its model page.
-  const produced = useMemo(() => {
-    const covered = new Set(model.modelIds);
-    return producedSummaries.filter((run) =>
-      covered.has(run.subject.modelId),
-    );
-  }, [model.modelIds, producedSummaries]);
-
-  const displayed = useMemo(
-    () => (page === 0 ? [...produced, ...result.summaries] : result.summaries),
-    [page, produced, result.summaries],
-  );
-
+  // The table renders the server-ordered page as-is (externalOrder) but still owns
+  // the sort state, so its headers drive the re-query below.
   const table = useRunTable({
-    runs: displayed,
+    runs: result.summaries,
     localIds,
     localWriteups: writeups,
     scope: "model",
@@ -73,7 +61,9 @@ function RunsContent({ model }: { model: ModelSummary }) {
     let active = true;
     setLoading(true);
     queryRunSummaries({
-      state: "published",
+      // Every run this host holds for the model — produced ones included, ordered
+      // with the published rows rather than ahead of them.
+      state: "any",
       model: modelId,
       offset: page * PAGE_SIZE,
       limit: PAGE_SIZE,
@@ -108,7 +98,7 @@ function RunsContent({ model }: { model: ModelSummary }) {
     if (!loading && page > pageCount - 1) setPage(pageCount - 1, { replace: true });
   }, [loading, page, pageCount, setPage]);
 
-  const hasContent = displayed.length > 0;
+  const hasContent = result.summaries.length > 0;
 
   if (!hasContent) {
     return (

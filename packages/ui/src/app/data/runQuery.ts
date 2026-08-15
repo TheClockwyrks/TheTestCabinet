@@ -19,15 +19,27 @@ export type { RunSort, SortDir };
 // is optional; the defaults (published, unfiltered, date-descending, offset 0)
 // match the backend's.
 export interface RunQuery {
-  /** The lifecycle slice to draw from (default `published`). The static site only
-   * holds published runs, so a non-`published` state matches nothing there. */
-  state?: "published" | "review" | "failures" | "unpublished" | "unreviewed";
+  /** The lifecycle slice to draw from (default `published`). `any` is the union of
+   * published and unpublished runs — the consoles' listings, where an unpublished
+   * (and so unreviewed) run must sort and page alongside the published ones. The
+   * static site only holds published runs, so `any` is `published` there and every
+   * other non-`published` state matches nothing. */
+  state?:
+    | "published"
+    | "any"
+    | "review"
+    | "failures"
+    | "unpublished"
+    | "unreviewed";
   /** Filter to one test-case slug (an empty string is ignored). */
   testCase?: string;
   /** Filter to one model id (an empty string is ignored). */
   model?: string;
   /** Filter to one harness slug (an empty string is ignored). */
   harness?: string;
+  /** Filter to one variant slug (an empty string is ignored). Paired with
+   * {@link testCase} — a variant slug is unique only within its case. */
+  variant?: string;
   /** Case-insensitive substring across testCase/model/harness/variant. */
   q?: string;
   /** The sort column (default `date`). */
@@ -74,12 +86,16 @@ function cmpNum(a: number | null, b: number | null): number {
 // equality filters (empty strings ignored), and the lowercased substring `q`
 // across the searchable identity columns.
 function matches(summary: RunSummary, query: RunQuery): boolean {
-  // The static index is entirely published runs; any other slice matches none.
-  if (query.state && query.state !== "published") return false;
+  // The static index is entirely published runs, so `any` (the published +
+  // unpublished union) collapses to `published` here; any other slice matches none.
+  if (query.state && query.state !== "published" && query.state !== "any") {
+    return false;
+  }
   const { subject } = summary;
   if (query.testCase && subject.testCaseSlug !== query.testCase) return false;
   if (query.model && subject.modelId !== query.model) return false;
   if (query.harness && subject.harnessSlug !== query.harness) return false;
+  if (query.variant && subject.variant !== query.variant) return false;
   const q = query.q?.trim().toLowerCase();
   if (q) {
     const haystack = [

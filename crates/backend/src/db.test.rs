@@ -2494,6 +2494,117 @@ async fn list_summaries_total_counts_the_filtered_set_not_the_page() {
 }
 
 #[tokio::test]
+async fn list_summaries_filters_by_variant_within_a_case() {
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_ident(&db, "a", "pong", "m", HarnessSlug::Claude, "base", 10).await;
+    seed_ident(&db, "b", "pong", "m", HarnessSlug::Claude, "gyre", 20).await;
+    // Same variant slug under a different case: only the case+variant pair narrows
+    // to one case's runs, since a variant slug is unique only within its case.
+    seed_ident(&db, "c", "snake", "m", HarnessSlug::Claude, "base", 30).await;
+
+    let filter = SummaryFilter {
+        variant: Some("base".to_string()),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Tokens, SortDir::Asc).await,
+        ["a", "c"]
+    );
+
+    let filter = SummaryFilter {
+        test_case: Some("pong".to_string()),
+        variant: Some("base".to_string()),
+        ..unpublished_filter()
+    };
+    let (runs, total) = db
+        .list_summaries(&filter, SummarySort::Tokens, SortDir::Asc, 50, 0)
+        .await
+        .unwrap();
+    assert_eq!(run_ids(&runs), ["a"]);
+    assert_eq!(total, 1);
+}
+
+#[tokio::test]
+async fn list_summaries_any_slice_orders_unpublished_runs_among_the_published_ones() {
+    // The consoles' run listings draw from the union slice, where an unpublished
+    // (and therefore unreviewed) run must take its place in the SAME sorted order as
+    // the published ones rather than leading the listing.
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_metric(&db, "pub-lo", 10, Some(1.0), Some(Rating::Great)).await;
+    seed_metric(&db, "unpub-mid", 20, Some(1.0), None).await;
+    seed_metric(&db, "pub-hi", 30, Some(1.0), Some(Rating::Great)).await;
+    db.publish("pub-lo", "2026-06-17T21:40:00Z").await.unwrap();
+    db.publish("pub-hi", "2026-06-17T21:41:00Z").await.unwrap();
+
+    let filter = SummaryFilter {
+        state: SummaryState::Any,
+        ..SummaryFilter::default()
+    };
+    // The unpublished run sorts strictly between the two published ones by tokens —
+    // in both directions — and the total counts every stored run.
+    let (runs, total) = db
+        .list_summaries(&filter, SummarySort::Tokens, SortDir::Asc, 50, 0)
+        .await
+        .unwrap();
+    assert_eq!(run_ids(&runs), ["pub-lo", "unpub-mid", "pub-hi"]);
+    assert_eq!(total, 3);
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Tokens, SortDir::Desc).await,
+        ["pub-hi", "unpub-mid", "pub-lo"]
+    );
+
+    // The narrower slices still see only their own runs.
+    assert_eq!(
+        summary_ids(
+            &db,
+            &SummaryFilter {
+                state: SummaryState::Published,
+                ..SummaryFilter::default()
+            },
+            SummarySort::Tokens,
+            SortDir::Asc
+        )
+        .await,
+        ["pub-lo", "pub-hi"]
+    );
+    assert_eq!(
+        summary_ids(
+            &db,
+            &unpublished_filter(),
+            SummarySort::Tokens,
+            SortDir::Asc
+        )
+        .await,
+        ["unpub-mid"]
+    );
+}
+
+#[tokio::test]
+async fn list_summaries_any_slice_covers_every_terminal_state() {
+    // The union slice is a lifecycle union, not a state filter: a failure tier the
+    // review/failures worklists exclude (an infrastructure failure) is still listed,
+    // matching the produced worklist the consoles previously merged in client-side.
+    let db = Db::connect_in_memory().await.unwrap();
+    for (id, state) in [
+        ("done", RunState::Completed),
+        ("cat", RunState::Catastrophic),
+        ("infra", RunState::Infrastructure),
+    ] {
+        let mut r = record(id);
+        r.status.state = state;
+        db.push(&r, &links(), None).await.unwrap();
+    }
+
+    let filter = SummaryFilter {
+        state: SummaryState::Any,
+        ..SummaryFilter::default()
+    };
+    let mut ids = summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await;
+    ids.sort();
+    assert_eq!(ids, ["cat", "done", "infra"]);
+}
+
+#[tokio::test]
 async fn sync_reference_builds_reconciles_the_table_to_the_lockfile() {
     let db = Db::connect_in_memory().await.unwrap();
 

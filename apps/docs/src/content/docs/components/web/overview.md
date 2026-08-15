@@ -69,13 +69,17 @@ The console does **not** drain the whole cabinet into memory. Its run and model
 list pages are **server-paged**: each page issues a
 [`GET /runs?fields=summary`](/components/backend/api/#get-runs) query in the
 numbered-offset mode (`offset` + `limit`), driving the numbered pager off the
-returned `total`. Search, the page-scoped filter (a model id on the model-runs
-page, a case slug elsewhere), and column-header sort are sent as query params, so
-filtering and sorting happen in the backend, not client-side; changing any of them
-re-queries and resets to page 0, and produced/in-progress runs the worker holds
-locally are pinned to page 0. The home page fetches a recent window, and the
-case-scoped leaderboard and metrics views fetch one bounded, case-scoped summary
-set. Only a run's **detail** page loads that run's full
+returned `total`. Search (debounced, then sent as `q`), the page-scoped filters (a
+model id on the model-runs page, a case slug and variant on the case/jam Runs
+tab), and column-header sort are sent as query params, so filtering and sorting
+happen in the backend, not client-side; changing any of them re-queries and resets
+to page 0. Those listings draw from the
+[`state=any`](/components/backend/api/#get-runs) slice, so a produced —
+unpublished, and so unreviewed — run sorts and pages among the published ones
+rather than being pinned ahead of them; only **in-progress** runs, which have no
+record to list yet, still lead the first page. The home page fetches a recent
+window, and the case-scoped leaderboard and metrics views fetch one bounded,
+case-scoped summary set. Only a run's **detail** page loads that run's full
 [record](/components/core/run-records/) (and its reviews),
 [lazily](/components/backend/api/#get-runsid), one run at a time. Lightweight
 [`RunSummary`](/components/backend/snapshot/#runsjson--the-run-index) cards back
