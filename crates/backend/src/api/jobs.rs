@@ -98,6 +98,12 @@ const MAX_BATCH_RUNS: usize = 20_000;
 /// This is the batch analogue of [`launch`]: a console fanning out a set of runs
 /// (the coverage matrix's still-missing runs, the new-run form's combinations)
 /// sends one request and one insert instead of one per run.
+///
+/// **The request's order is the queue's order.** The accepted runs take a contiguous
+/// block of queue positions in the order they were listed, and the dispatcher claims
+/// in that order — so a console that emits a case's repeats together (both of ours
+/// do) has all of that case's runs start, and so finish, before the next case's. A
+/// caller that wants a different execution order sends the runs in that order.
 #[tracing::instrument(name = "jobs.launch_batch", skip(state, _user, body), fields(runs = body.runs.len()), err(Debug))]
 pub async fn launch_batch(
     State(state): State<AppState>,

@@ -21,7 +21,9 @@ The dispatcher runs a single control loop forever:
 
 1. **Claim** the next claimable job from the backend (`POST /jobs/next`),
    authenticating with a shared **service token**. The claim is atomic, so the
-   backend hands each job to exactly one dispatcher. The backend — not the
+   backend hands each job to exactly one dispatcher. Selection is **FIFO by enqueue
+   order** across harnesses (see [Queue order](#queue-order)), skipping any job held
+   back. The backend — not the
    dispatcher — enforces each harness's **maximum parallelism** here: it only hands
    back a job whose harness has fewer than its configured limit of runs already in
    flight, holding the rest in the `pending` state until a slot frees (see
@@ -63,6 +65,32 @@ queue and the cluster's scheduler.
   authenticates its claim with a shared service token (`TCAB_BACKEND_SERVICE_TOKEN`,
   which the backend also holds); each driver authenticates its own streaming with
   the per-job token the backend minted at enqueue and the dispatcher passed in.
+
+## Queue order
+
+The backend hands jobs back in the order they were **enqueued**. Each job takes a
+monotonic queue position (`job.queue_seq`) when it is inserted, and the claim orders
+by that position — not by the enqueue timestamp, which cannot order a batch (every
+run of one `POST /jobs/batch` shares a single timestamp) and, being stored as an
+RFC 3339 string with a variable-length subsecond part, does not always compare
+chronologically either.
+
+The practical consequence is that **a batch runs in the order the console listed
+it**. Both consoles emit a case's repeats together — the new-run form fans each
+harness/model combination out over its "runs each" count before moving to the next
+combination, and the coverage plan emits each cell's missing runs together — so three
+runs each of three cases start as three of the first case, then three of the second,
+then three of the third, and finish in roughly that order. That is what makes a
+repeated set reviewable a case at a time instead of arriving interleaved. A caller
+that wants a different execution order submits the runs in that order.
+
+Ordering governs when a run *starts*, not when it finishes: runs still execute
+concurrently up to the caps below, so a slow early run can finish after a fast later
+one. The one queue the backend fully serializes is a **game jam per model**, for the
+reason in step 1 above.
+
+An automatic retry is a fresh enqueue, so it goes to the **back** of the queue rather
+than jumping ahead of work queued while it was running.
 
 ## Sandbox reaping
 
