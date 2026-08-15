@@ -13,9 +13,14 @@ It repairs only shapes it can prove are safe to delete, and it counts every
 repair on the run, so "how often did this model still send a fence?" is a figure
 a study can group by.
 
-Healing tells the model nothing. A repaired reply is simply the reply that runs.
-The repairs are reported to the operator on the run's stream and recorded in the
-run's telemetry.
+Healing tells the model nothing. A repaired reply is simply the reply that runs,
+and it is the reply the model's own history carries, so a model reads a past
+turn of its own as a program that compiled.
+
+The reply as the model sent it is kept beside the healed one and shown to the
+run's operator, along with every repair that was applied. Reading the two
+against each other is what tells a defect in healing apart from a mistake by the
+model, which is the question a repair that deletes code raises.
 
 ## Where healing sits
 
@@ -42,9 +47,10 @@ language's dialect. It performs no I/O, reads no clock, and imports nothing from
 the sandbox, so turning a strategy off changes only what one function returns.
 
 The assistant message gg records for the turn is governed by the
-`assistantMessages` param rather than by healing. Its default records the reply
-the model sent, so the transcript answers "did this model still emit a fence?"
-alongside the counters.
+`assistantMessages` param rather than by healing. Its default records the healed
+program, which is the one that ran. The other setting records the reply as the
+model sent it, which puts a reply that could not compile into the model's own
+history and is an arm of a study rather than the ordinary path.
 
 ## Canonicalisation
 

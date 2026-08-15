@@ -32,9 +32,8 @@ and `logsSuppressed` says how many lines were dropped.
 
 The same holds for far more than the logs. An
 [error message carries the error alone](/gg/responses-as-code/overview/), and a
-clean program earns no message at all beyond a process notice. There are two of
-those, and each names a fact nothing the program can observe reveals: statements
-after its top-level `return` that never ran, and a
+clean program earns no message at all beyond a process notice. Such a notice
+names a fact nothing the program can observe reveals, such as a
 [replacement program](/gg/program-library/) it handed over that gg did not run.
 
 This event and the operator-facing lines gg writes beside it on the run's own

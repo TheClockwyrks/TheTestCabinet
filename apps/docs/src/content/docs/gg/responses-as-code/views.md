@@ -137,6 +137,15 @@ opens the search-results view of the same page. The filters `module`, `type`,
 empty query with a `module` filter is that module's whole directory. A page is
 20 hits by default and 100 at most.
 
+A hit's `summary` is the entry's brief and stops there. The detail, the
+signatures, the types and the import line are what opening a documentation view
+of the hit is for, so a page of twenty hits costs a line apiece.
+
+Three kinds of entry are searchable: `module`, `function` and `type`. A module is
+whatever the arm's language makes importable, which is a namespace in C++ and a
+module in PureScript. Every one of the three can be opened as a documentation
+view, so a name a model can find is a name it can read in full.
+
 A query matches an entry's name, its signature, its brief and the detail beneath
 it. Every argument's name counts as signature text and every argument's own
 description counts as detail, on every language, so a search for an argument
@@ -168,17 +177,20 @@ language passes by name rather than by position is marked `(passed by name)`.
 
 Every view states where the symbol is defined and how a program reaches it, on
 its own line under the signature or the declaration. The module is named by this
-language's own path for it. A language that needs a line to bring the module
-into scope has that line quoted verbatim; a language whose SDK is in a program's
-scope before it compiles is told so. The system prompt names no function, so the
-view is the only place a model is told which module a symbol it searched for
-belongs to.
+language's own path for it, and the line a program writes to bring the symbol
+into scope is quoted verbatim. Nothing gg offers is in scope before a program
+imports it, so a view without that line describes a call the model cannot make.
 
 A type is a view of its own, addressed by the type's name, and it ends with a
 line per member function: the member's fully-qualified name and its one-line
 brief, for the members this agent binds. A type is readable when some function
 this agent binds refers to it. A key that resolves to nothing this agent binds
 is `not-found` and places nothing, including none of the types.
+
+A module is a view of its own too, addressed by the module's own path. It
+carries the module's brief and detail, the import line a program writes to reach
+it, and a line per entry the module publishes to this agent, each with its own
+brief.
 
 One open places types one level deep, from the names the function's own
 signature writes down. Which of them it places is the agent's `docViewTypes`
@@ -210,6 +222,10 @@ code-mode window is seeded with one program written in that agent's own
 language, which gg then runs. Its source is pushed as the assistant message and
 the views the window opens on are the ones its own calls placed, so the model's
 first example of a well-formed reply is a program that provably ran.
+
+That program is written under the same rules a model's is. It carries its own
+imports and its own entry point, so the example a model opens on is a program of
+the shape it has to send.
 
 The program makes two kinds of call. It searches each capability module the
 agent was granted, as an exact whole-module lookup, which leaves one search view

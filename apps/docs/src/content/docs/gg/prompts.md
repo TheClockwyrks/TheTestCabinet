@@ -179,8 +179,11 @@ segment and no other arm's.
 
 The opening section states the reply contract: the model's whole reply is the
 program, with no plain text, no Markdown formatting and no other non-code text.
+It states that the reply is a whole program in that language, carrying the
+imports it calls through and the entry point its language requires, and that gg
+compiles it as it stands.
 
-Four rules follow it, stated for every arm, because none of them is visible in a
+Five rules follow it, stated for every arm, because none of them is visible in a
 signature and each costs a turn to discover by trying it:
 
 - every call is synchronous, so `await` is not a thing to reach for and a return
@@ -188,7 +191,9 @@ signature and each costs a turn to discover by trying it:
 - a view is the only way to read data out of a program, and nothing written to
   the console reaches the model;
 - a returned value is discarded;
-- what a view holds arrives on the next turn.
+- what a view holds arrives on the next turn;
+- a gg name is reached through an import the program writes, and a documentation
+  view carries the line to write.
 
 Beyond those, the opening section states what only this run can answer. When the
 run's [read mode](/gg/filesystem/#read-modes) caps a read it states the cap,

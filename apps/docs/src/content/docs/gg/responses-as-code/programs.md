@@ -14,16 +14,23 @@ prose around the code. gg runs no analysis of its own to decide whether a reply
 is a program. The reply is healed, then prepared by the agent's program
 language, and that language's compiler or parser is what accepts or refuses it.
 
+The reply is a whole program in its language. It imports the parts of gg's SDK
+it calls, and it declares the entry point its language requires of a program
+that runs. gg compiles it as it stands, on the terms in
+[invariants](/gg/responses-as-code/invariants/).
+
 A program, written in TypeScript:
 
 ```ts
-const specs = gg.files.listDir("specs").filter((e) => e.kind === "file");
+import { files, session, views } from "gg";
+
+const specs = files.listDir("specs").filter((e) => e.kind === "file");
 const missing = specs.filter(
-  (e) => !gg.files.readTextFile(`specs/${e.name}`).includes("## Rules"),
+  (e) => !files.readTextFile(`specs/${e.name}`).includes("## Rules"),
 );
-gg.views.openText("missing-rules", missing.map((e) => e.name).join("\n"));
+views.openText("missing-rules", missing.map((e) => e.name).join("\n"));
 if (missing.length === 0) {
-  gg.session.finish(`Checked ${specs.length} spec files; each has rules.`);
+  session.finish(`Checked ${specs.length} spec files; each has rules.`);
 }
 ```
 
@@ -34,7 +41,7 @@ Four rules govern what such a program can do with what it computed.
   the next prompt.
 - What the program logged reaches the run's operator. A log line is never shown
   back to the model.
-- A top-level `return` ends the program, and its value is discarded.
+- A value the program returns is discarded.
 - An ending call ends the session, and nothing else does.
 
 Every reply is compiled and gg judges none of them. Prose does not compile and
@@ -118,6 +125,11 @@ owner:
 | The language read the program and rejected it | the language's diagnostic verbatim, under `Compiler error` | continues |
 | A sandbox ceiling stopped the program | the ceiling's own words, under `Runtime error` | continues |
 
+A program that ran and then failed on its own account is a result rather than a
+failure of the sandbox. gg reports what the language emitted, with the location
+that language reported and whatever the program wrote to standard error, under
+`Runtime error`. The turn is an error turn and the session continues.
+
 The fatal failures are fed back to nobody and charged to no ceiling. The model
 answered and gg could not run the answer, so the failure is gg's and is recorded
 as gg's: the run ends under `internal_error` whichever agent was taking the turn,
@@ -137,7 +149,7 @@ already did stands, and the program that runs next sees the world it left
 behind. The first hand-over in a turn stands and a second is refused.
 
 One turn runs at most four programs: the model's own, plus up to three handed
-over. The turn's outcome, its ending and its unreachable tail come from the last
+over. The turn's outcome and its ending come from the last
 program in the chain, and that is the source the program library records. The
 calls dispatched, the views opened, the lines logged, the module errors and the
 elapsed and compile time accumulate across every link.
@@ -178,7 +190,7 @@ declaration.
 
 ## Returned values
 
-A top-level `return` ends the program, and gg does not look at the value. The
+A program's entry point may return a value, and gg does not look at it. The
 guest reports only that a value was returned, and that report reaches the run's
 operator. Anything a program wants the model to read, it opens a view of.
 
@@ -186,31 +198,3 @@ A returned Promise is reported as an error instead, saying that the program
 returned a Promise and that this sandbox is synchronous. It is the trace of
 `async` or `await` in a synchronous sandbox, and the work inside it is still
 pending as the program returns.
-
-## Statements that cannot run
-
-A program's top level is a function body in the ECMAScript arms, so an
-unconditional top-level `return` ends the program and the top-level statements
-after it are dead. The preparation step counts them, and gg pushes a `Notice`
-naming the count, quoting the first dead statement and stating the rule:
-
-```text
-2 statements after your top-level `return` did not run — the first is line 4:
-gg.files.writeFile("MANIFEST.md", "- a.ts (6 lines)\n");. A top-level `return`
-ends the program, so nothing written after it executes. Send exactly one program
-per reply.
-```
-
-The notice exists because nothing the program can observe reveals the loss: no
-call failed and nothing threw. It is also written to the operator's stream.
-
-Three kinds of statement are excluded from the count: a hoisted `function`
-declaration, which is in scope before the first statement runs; a type-only
-declaration, which is erased before execution; and an empty statement. A `class`
-declaration counts, because it is not hoisted into existence. A `return` inside
-an `if`, a loop or a block is a conditional exit and says nothing about what
-follows it. An ending call is not a terminator either: it returns, so the
-statements after it run.
-
-A language whose program body has no statement that ends it early reports no
-unreachable tail.

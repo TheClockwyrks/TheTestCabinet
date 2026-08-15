@@ -202,6 +202,11 @@ loop nor any sibling agent. The hazard this guards is shared mutable state.
 
 ## Diagnostic bounds
 
+A bound shortens a diagnostic by deleting from it, so what a model reads is a
+subsequence of what the compiler wrote and each bound closes by counting what it
+dropped. Rewording a compiler's own account of a program is the one edit no
+bound makes.
+
 Nothing downstream of an arm shortens a diagnostic. `PrepareError::Compile`
 carries the arm's string, `CodeFeedback::compiler` is built straight from it,
 and the next request to the model carries it verbatim, as does every request

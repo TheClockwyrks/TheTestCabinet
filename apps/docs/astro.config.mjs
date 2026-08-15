@@ -585,6 +585,7 @@ export default defineConfig({
                   collapsed: true,
                   items: [
                     "gg/responses-as-code/overview",
+                    "gg/responses-as-code/invariants",
                     "gg/responses-as-code/programs",
                     "gg/responses-as-code/tools",
                     "gg/responses-as-code/views",

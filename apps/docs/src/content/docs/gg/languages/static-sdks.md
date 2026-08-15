@@ -50,25 +50,24 @@ A program can therefore compile a call search would never have shown it. One
 condition makes that safe, and every arm holds it:
 
 :::note
-Every gg function is reached through a qualifier or an import that names gg. A
-call the agent cannot make reads as a qualified path rather than as an ordinary
-bare name.
+No gg name is available unqualified without a line the model wrote. An import
+may shorten a name, and nothing makes a name reachable that was not.
 :::
 
-Per arm, the qualifier is held like this:
+The line is written in that language's own idiom, and shortening a name is what
+it buys:
 
-| Arm | How a call is written | What holds the condition |
-| --- | --- | --- |
-| TypeScript, JavaScript | `gg.files.readFile(…)` | The guest binds modules, and a gg function is a property of one. |
-| Python | `files.read_file(…)`, `gg.files.read_file(…)` | The scope binds capability modules; the functions live on them. |
-| Ruby | `GG::Files.read_file(…)` | Module functions on constants under `GG`. |
-| Rust | `files::read_file(…)` | The prelude glob-imports the modules, not their contents. |
-| C++ | `files::read_file(…)` | The prelude's `using namespace gg;` elides `gg::` and nothing else. |
-| C# | `Files.ReadFile(…)` | `global using Gg;` puts the namespace in scope, and each module stays a type. |
-| Java | `Files.readFile(…)` | One type-import-on-demand per module puts that module's class in scope. |
-| Kotlin | `gg.files.readFile(…)` | A program writes the fully-qualified name, or imports it itself. |
-| Swift | `files.readFile(…)` | `@_exported import gg` re-exports the module enums; the functions are inside them. |
-| PureScript | `Gg.Files.readFile` | Modules are imported by the program. |
+```text
+C#     using Gg;        →  Files.WriteFile(…)     unshortened  Gg.Files.WriteFile(…)
+Rust   use gg::files;   →  files::read_file(…)    unshortened  gg::files::read_file(…)
+```
+
+What survives without a line is package availability: a classpath entry, an
+extern prelude, an include path, a linked archive. That is how a compiler is
+told the library exists, and it declares no name. Each arm's own line is on that
+arm's page, and a
+[documentation view](/gg/responses-as-code/views/) quotes it beside the symbol it
+reaches.
 
 ## What a refused call raises
 

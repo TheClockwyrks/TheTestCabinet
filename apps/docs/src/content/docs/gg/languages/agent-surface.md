@@ -8,8 +8,10 @@ every arm.
 
 ## Call shape
 
-- A capability is a function reached through a qualified name. A module path, a
-  type or an import qualifies every call.
+- A capability is a function the program imported. The import is a line the
+  model wrote, and a name gg offers is reachable from the line after it.
+- A capability is reached through a qualified name. A module path, a type or an
+  import qualifies every call.
 - Every call is synchronous. Nothing returns a promise, a future or a
   coroutine. The sandbox is linked and driven synchronously, and no guest
   carries an event loop.
@@ -97,6 +99,11 @@ host withholds is stdout. gg's [telemetry](/gg/telemetry/overview/) stream is th
 process's own stdout, so the guest's WASI context is built without it and a
 guest's console output is rebound to gg's feedback channel.
 
+Standard error is bound and captured on every arm. It is where a runtime writes
+its dying words, so it is how a program's own failure reaches the model with the
+runtime's own text and location. An arm's guest is built with the channel open,
+and what a failing program wrote on it rides out with the failure gg reports.
+
 ## The signature catalogue
 
 A catalogue is the whole of what a model is told about an arm's surface, and
@@ -104,6 +111,16 @@ every word of it is reflected out of documentation written on the declaration it
 describes. A module's description comes from the comment on the module, an
 argument's from the annotation on that argument, and a type member's from the
 comment above the member.
+
+That reflection is the language's own documentation generator reading the SDK's
+sources. Each arm reaches for the tool its own users would, and reads the tool's
+output rather than the sources. The import line for a symbol is the one thing an
+arm may compose itself, and only where its generator does not report it.
+
+Every entry is written in Doxygen's implicit structure, first line the brief and
+the lines below it the detail. Each function documents the arguments it takes,
+the failures it raises and the value it returns, and states the preconditions,
+postconditions and invariants it holds.
 
 Every registered arm emits schema 1: three provenance lines naming the schema,
 the language it was generated for and what it was reflected out of, then four
@@ -168,7 +185,7 @@ and the catalogue test fixture as the two exemptions.
 
 On the Rust, Swift, C++ and C# arms, every example a model is shown is gathered
 into one program and put through the arm's production prepare step, with the
-same compiler, wrapper and library set a model's own reply gets. That covers the
+same compiler and library set a model's own reply gets. That covers the
 prompt's fenced blocks, the nothing-shown notice and the fenced blocks in that
 arm's own catalogue. On a compiled arm an example that does not build costs the
 whole turn.

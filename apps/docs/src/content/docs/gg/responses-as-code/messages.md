@@ -30,8 +30,10 @@ program which throws does not end the session, that whatever it did before the
 throw stands, that a returned value is discarded, that logging is not a channel
 to the model.
 
-gg may remove from an error. A stack trace whose frames are gg's own internals
-is cut down to the model's frame. gg never adds to an error.
+gg may remove from an error, and removal is the only edit it may make. What the
+model reads is a subsequence of what the compiler or the runtime emitted, so a
+stack trace is cut down to the model's own frames and a diagnostic list is cut
+to its first few entries.
 
 The one carve-out is that the layer raising a fault may compose into it the fact
 that fault implies, because at that point the fact is part of the diagnostic. A
@@ -45,17 +47,19 @@ advice about what to do with it.
 
 ### Runtime errors
 
-The body is `{name}: {message}` as the guest composed it, followed by one stack
-frame:
+The body is what the language emitted: the error as its runtime composed it, the
+location that runtime reported, and whatever the program wrote to standard
+error.
 
 ```text
 `edit_file` failed (conflict): `oldString` matched 3 times in src/main.rs
     at line 12, column 5
 ```
 
-That frame is the model's own. The guest finds it by matching the marker that
-only frames inside the constructed function carry, so frames belonging to the
-shim and to the SDK are excluded by construction rather than by a denylist.
+The location is the model's own, because the program that ran is the program the
+model wrote and the next prompt carries that same text. Frames belonging to the
+SDK and to gg's own plumbing are dropped from a trace, which is a deletion like
+any other trim.
 
 ### Toolchain failures
 
@@ -71,9 +75,6 @@ goes to the operator's stream at `error` level.
 A notice is charged to the [System band](/gg/context-visibility/), where gg's
 own messages live.
 
-- Statements after a top-level `return` that could not run. The notice names the
-  count, quotes the first dead statement, and states the rule that made them
-  dead.
 - A `gg.programs.rerun` hand-over gg did not run. Three wordings, one per
   reason: the program failed afterwards, the program also ended the session, or
   the turn had already run as many programs as it may.
