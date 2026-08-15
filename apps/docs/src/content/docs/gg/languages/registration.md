@@ -84,8 +84,8 @@ the one it embedded carries its own id.
 Three trait methods have defaults that are right for almost every arm and exist
 for the ones they are wrong for:
 
-- `isolation_module`, for a language whose code module is a different shape from
-  a program, so the isolation gate has a module it can drive;
+- `gate_module`, for a language whose code module is a different shape from a
+  program, so a gate that drives the module step has a module to drive;
 - `isolation_readable`, for an arm whose artifact rides over the wire in a
   transport encoding. An implementation may only reveal more bytes, never drop,
   mask, reorder or summarise any;
@@ -210,12 +210,18 @@ below.
     `GgProgramLanguage::ALL`.
 12. Run the gates. The isolation gate drives the new arm's program and module
     steps sixteen ways and requires every artifact to carry its own input. The
-    capability gate holds the new catalogue to gg's operations table operation
-    by operation. The prompt gate renders `system-code.hbs` for the new arm
-    under every context fixture and checks every required section, every
-    configured value, the ending call, every rule a program runs under, and that
-    the render carries this arm's segment and no other arm's, within the
-    three-paragraph ceiling. The bootstrap gate prepares and runs the arm's
+    authorship gate drives the same two steps and records what the preparation
+    did to the bytes it was handed. The runtime-failure gate drives five shapes
+    of failure through the arm's real preparation and run and requires the
+    report the model reads to name the fault and to carry a location wherever
+    the language reports one. The last two each hold a table of the cells an arm
+    does not satisfy, so an arm that starts satisfying one fails until its rows
+    are deleted. The capability gate holds the new catalogue to gg's operations
+    table operation by operation. The prompt gate renders `system-code.hbs` for
+    the new arm under every context fixture and checks every required section,
+    every configured value, the ending call, every rule a program runs under,
+    and that the render carries this arm's segment and no other arm's, within
+    the three-paragraph ceiling. The bootstrap gate prepares and runs the arm's
     bootstrap program and requires the views it promised. The spelling gates
     refuse a segment that names a catalogued function of any arm. The healing
     invariant re-earns delete-only over the new dialect's fixtures and over the
