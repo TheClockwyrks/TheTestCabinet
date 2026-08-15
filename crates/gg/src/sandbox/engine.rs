@@ -292,7 +292,10 @@ pub(crate) fn compiles() -> u64 {
 /// — is always valid in a real build.
 pub(crate) fn compile_bytes(bytes: &[u8]) -> Result<Component, SandboxError> {
     COMPILES.fetch_add(1, Ordering::Relaxed);
-    Component::new(engine(), bytes).map_err(|err| SandboxError::Compile(err.to_string()))
+    // Through [`failure_reason`] like every other wasmtime error path here: a component that will
+    // not compile fails with the validator's own sentence buried in the chain, and `to_string()`
+    // hands back the outer link alone.
+    Component::new(engine(), bytes).map_err(|err| SandboxError::Compile(failure_reason(&err)))
 }
 
 /// One language's embedded component bytes, for the test that guards its size band.
