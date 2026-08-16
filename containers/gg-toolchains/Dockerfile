@@ -238,7 +238,7 @@ RUN set -eux; \
 	test -f /opt/gg/toolchains/kotlin/kotlin-home/lib/kotlin-scripting-compiler.jar
 
 # --- Rust -------------------------------------------------------------------
-# The heaviest toolchain in this image by a wide margin — **~376 MB** — and the first that is
+# The heaviest toolchain in this image by a wide margin — **~380 MB** — and the first that is
 # not a compiler *for* a guest but the thing that PRODUCES one. Every other arm here compiles a
 # model's program into something an interpreter already inside a prebuilt component evaluates;
 # `rustc` emits the component itself, per turn, because there is no Rust runtime to bake. See
@@ -250,7 +250,7 @@ RUN set -eux; \
 # `blender-gg`'s Ubuntu alike. Verified here by running the copy, not assumed.
 #
 # Constraint 2 is satisfied outright: `rustc` is a plain one-shot process with an explicit `-o`, it
-# has no daemon and nothing to keep warm (a compile is ~60 ms), and it only ever READS the library
+# has no daemon and nothing to keep warm (a compile is ~45 ms), and it only ever READS the library
 # set gg ships inside its own binary. Nothing here is written to by a compilation.
 #
 # WHAT IS PRUNED, and why each is safe. `cargo` (40 MB) — gg drives `rustc` directly, and a build
@@ -273,9 +273,11 @@ RUN set -eux; \
 # instead. This is the only arm still passed its versions rather than running its own installer,
 # because the block IS the installer: `rustup` needs no script around it.
 #
-# The build ends by compiling a `cdylib` for the target WITH THE COPY rather than with the rustup
+# The build ends by compiling a `bin` for the target WITH THE COPY rather than with the rustup
 # installation — the relocated sysroot, the pruned host tree and `rust-lld` are exactly what a run
-# will use, and each of the three is a thing the pruning above could have broken.
+# will use, and each of the three is a thing the pruning above could have broken. A `bin` rather
+# than a library crate because that is the crate type a run compiles: it is what links the target's
+# start files and emits the entry symbol gg's SDK calls the model's `main` through.
 ARG RUST_VERSION
 ARG RUST_TARGET
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -297,8 +299,8 @@ RUN set -eux; \
 	cp -a "$src/lib/rustlib/${RUST_TARGET}" "$dst/lib/rustlib/"; \
 	cp -a "$src/lib/rustlib/${host}/bin" "$dst/lib/rustlib/${host}/"; \
 	rm -rf /tmp/rustup /tmp/cargo; \
-	printf '#[unsafe(no_mangle)] pub extern "C" fn smoke() -> u32 { 1 }\n' >/tmp/smoke.rs; \
-	"$dst/bin/rustc" --edition 2024 --target "${RUST_TARGET}" --crate-type cdylib \
+	printf 'fn main() { eprintln!("smoke"); }\n' >/tmp/smoke.rs; \
+	"$dst/bin/rustc" --edition 2024 --target "${RUST_TARGET}" --crate-type bin \
 	-Copt-level=s -Cstrip=symbols -Cpanic=abort -o /tmp/smoke.wasm /tmp/smoke.rs; \
 	test -s /tmp/smoke.wasm; \
 	rm -f /tmp/smoke.rs /tmp/smoke.wasm; \
@@ -307,7 +309,7 @@ RUN set -eux; \
 
 # --- Swift ------------------------------------------------------------------
 # The second toolchain that PRODUCES a component rather than compiling for one, and the second
-# heaviest here — **~835 MB** against `rustc`'s ~376 MB. A Swift program is compiled by `swiftc`
+# heaviest here — **~835 MB** against `rustc`'s ~380 MB. A Swift program is compiled by `swiftc`
 # against the Swift SDK for WebAssembly into a core wasm module, which gg then encodes as a
 # component in its own process. See `crates/gg/src/sandbox/language/swift.compile.rs`.
 #
@@ -363,7 +365,7 @@ RUN set -eux; \
 
 # --- C++ -------------------------------------------------------------------
 # The third toolchain that PRODUCES a component rather than compiling for one, and the
-# LIGHTEST of the three — **~200 MB**, against `rustc`'s ~376 MB and the Swift SDK's ~835 MB.
+# LIGHTEST of the three — **~200 MB**, against `rustc`'s ~380 MB and the Swift SDK's ~835 MB.
 # A C++ program is compiled by `clang++` from wasi-sdk against wasi-libc and libc++ into a core
 # wasm module, which gg then encodes as a component in its own process. See
 # `crates/gg/src/sandbox/language/cpp.compile.rs`.
@@ -417,7 +419,7 @@ RUN set -eux; \
 
 # --- C# ---------------------------------------------------------------------
 # The LIGHTEST toolchain in this image — **~122 MB**, against wasi-sdk's ~200 MB, `rustc`'s
-# ~376 MB and the Swift SDK's ~835 MB — and the only one here that is not a wasm toolchain
+# ~380 MB and the Swift SDK's ~835 MB — and the only one here that is not a wasm toolchain
 # at all. That is the arm's whole strategy rather than a saving: a C# program is compiled to
 # **IL** by Roslyn on the host, in ~0.3 s, and interpreted by a Mono IL interpreter that
 # `packages/gg-sandbox-csharp/build.sh` compiles to wasm once per build and gg embeds in its own

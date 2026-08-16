@@ -344,10 +344,12 @@ const KNOWN_HOLES: &[Hole] = &[
     Hole {
         arm: GgProgramLanguage::Rust,
         shape: Shape::Abort,
-        // `wasm32-unknown-unknown` has no `proc_exit`, so `std::process::exit` is an abort and the
-        // abort is an `unreachable`. The status the program chose reaches nothing, and neither do
-        // the frames: this target carries no DWARF, so the backtrace is a list of indices.
-        instead: Instead::Says("wasm trap: wasm `unreachable` instruction executed"),
+        // The status the program chose is destroyed on the way out: `std::process::exit(3)` is
+        // reported as `exit(1)`, for the reason Python, Swift, C++ and C# report the same thing —
+        // the preview1 adapter this program is encoded with imports only `wasi:cli/exit.exit`, and
+        // that import carries a boolean rather than a status. The sentence is gg's and it is right
+        // about everything except the one number the program picked.
+        instead: Instead::Says("the program called exit(1) instead of returning"),
     },
     // ---- swift ------------------------------------------------------------------------------
     Hole {

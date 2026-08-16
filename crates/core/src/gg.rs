@@ -4675,10 +4675,19 @@ pub enum GgProgramLanguage {
     /// runtime (a CPython, an Opal, a JavaScript engine) and a program crosses the membrane as
     /// source that runtime reads. `rustc` produces no such thing — it produces the program — so this
     /// arm commits **no component at all** and compiles one per turn instead, against a prebuilt
-    /// library set that ships inside gg's binary. It is also the only arm with **no exception
-    /// mechanism in the guest**: `wasm32-unknown-unknown` has no unwinder, so a panic aborts and
-    /// traps, and what saves the error surface is a panic *hook* that reports through the host with
-    /// the model's own line and column before the abort.
+    /// library set that ships inside gg's binary.
+    ///
+    /// A program is the reply **verbatim**, as a whole Rust program declaring its own `fn main` —
+    /// no wrapper, no prologue, no offset to subtract. The crate type is `bin`, which is what makes
+    /// that `main` reachable: `rustc` emits the unmangled C entry symbol for a binary crate, and
+    /// gg's SDK calls it from the world's `run` export. `--extern gg=…` makes the SDK available and
+    /// puts no name in scope, so a program writes `gg::files::read_file` in full or the
+    /// `use gg::files;` its catalogue states.
+    ///
+    /// A failure reaches the model by **capture**, with nothing intercepted. The target is
+    /// `wasm32-wasip1`, so a panic writes `std`'s own message to a real standard error in the
+    /// model's own file, line and column before it aborts; a `main` returning `Err` writes
+    /// `Error: …` through `Termination`; and `std::process::exit` is `proc_exit`.
     ///
     /// A **code module** here is linked into the same artifact as the program that reads it, which
     /// is why the seam hands the modules in scope to a program's preparation at all: nothing can be
@@ -4686,8 +4695,8 @@ pub enum GgProgramLanguage {
     /// `snake_case`, an API object as a **module** so a call is a path, `Result<_, ToolError>`
     /// everywhere so `?` composes gg's calls with `std`'s own fallible ones, a struct with `Default`
     /// and functional update where a call has two or more optional arguments and a bare `Option<T>`
-    /// where it has one, real `enum`s for fixed choices, a `RangeInclusive` for a span of turns, and
-    /// one glob (`use gg::prelude::*;`) that a program's own `use` may shadow.
+    /// where it has one, real `enum`s for fixed choices, and a `RangeInclusive` for a span of
+    /// turns.
     Rust,
     /// Swift: **compiled by `swiftc` into the wasm component that turn is evaluated by**, and the
     /// one arm whose reply is compiled **byte for byte** while still admitting declarations.

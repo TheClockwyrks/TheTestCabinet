@@ -261,22 +261,6 @@ const UNCONVERTED: &[Unconverted] = &[
         adds: "@file:JvmName(\"Module\")",
         instead: "puts the file under file-level annotations and two imports of its own",
     },
-    // ---- rust -----------------------------------------------------------------------------------
-    Unconverted {
-        arm: GgProgramLanguage::Rust,
-        half: Half::Program,
-        did: Did::Wrapped,
-        adds: "struct __GgProgram;",
-        instead: "puts the statements in a function body, under a prologue declaring the guest type \
-                  and the entry point, and refuses a program that declares `main` itself",
-    },
-    Unconverted {
-        arm: GgProgramLanguage::Rust,
-        half: Half::Module,
-        did: Did::Wrapped,
-        adds: "use ::gg::prelude::*;",
-        instead: "puts the module under a glob import of gg's prelude",
-    },
     // ---- swift ----------------------------------------------------------------------------------
     Unconverted {
         arm: GgProgramLanguage::Swift,

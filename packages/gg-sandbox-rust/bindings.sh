@@ -11,7 +11,7 @@
 # `crates/gg`'s, and `crates/gg/build.rs` runs it on EVERY build of `test-cabinet-gg`. A signature
 # step that reached `build.sh` for its bindings would re-cut the whole library set every time the
 # catalogue was reflected — collapsing two deliberately separate rerun sets into one, so that an
-# edit to a doc comment paid for a `cargo build --target wasm32-unknown-unknown` of the entire
+# edit to a doc comment paid for a `cargo build --target wasm32-wasip1` of the entire
 # curated crate closure. It would also make the reflection dirty an artifact build's declared
 # inputs, which is how a build script comes to re-run forever.
 #

@@ -676,10 +676,9 @@ impl<A: ToolApi> MembraneState<A> {
     ///
     /// Read by [`keep_reported_error`](super::keep_reported_error) after a trap, and only there. A
     /// guest that catches its own throw reports the failure and then returns normally, so for every
-    /// arm with an exception mechanism this is never consulted; a guest without one — a Rust program
-    /// on `wasm32-unknown-unknown`, whose panic hook makes this call and whose panic then aborts —
-    /// reaches the host with the failure recorded and the store trapped, and the recorded failure is
-    /// the better of the two things gg could tell the model.
+    /// arm with an exception mechanism this is never consulted; a guest that reports a failure and
+    /// is then killed by its own runtime reaches the host with the failure recorded and the store
+    /// trapped, and the recorded failure is the better of the two things gg could tell the model.
     pub(crate) fn reported_error(&self) -> bool {
         self.program_error.is_some()
     }

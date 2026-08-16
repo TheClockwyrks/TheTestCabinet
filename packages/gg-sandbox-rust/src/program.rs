@@ -1,12 +1,85 @@
-//! The **shell** a model's program runs inside: what starts it, what a failure becomes, and what
-//! the component answers when gg asks it what it can bind.
+//! The **shell** a model's program runs inside: what calls it, what it answers when gg asks what it
+//! can bind, and the error type its `main` may return.
 //!
-//! Everything here is named by the entry file gg generates around a model's text
-//! (`crates/gg/src/sandbox/language/rust.source.rs`) and by nothing else. It is not the SDK, it is
-//! not one of the capability modules, and no model reads it.
+//! The shell is here rather than in a file gg writes around the model's text, and that is the whole
+//! of this arm's conversion to the
+//! [invariants](https://docs.testcabinet.ai/gg/responses-as-code/invariants/). gg compiles the
+//! model's bytes and nothing else; the file it hands `rustc` is a **binary crate** whose `fn main`
+//! the model wrote. What reaches that `main` is [`Program::run`] below, through the unmangled C
+//! entry symbol `rustc` emits for a binary crate — so the world's `run` export lives in this rlib,
+//! is linked into every program, and appears in no source a model reads.
+//!
+//! No model reads any of this. It is not the SDK and it is not one of the capability modules.
 
-use crate::bindings::test_cabinet::gg::feedback;
-use crate::bindings::test_cabinet::gg::types::ErrorCode;
+use crate::bindings::{CodeModule, EndingKind};
+
+/// The type gg's world is exported on, and the whole of what stands between the host's `run` and
+/// the model's `fn main`.
+///
+/// It lives in this rlib rather than in the file `rustc` compiles, which is the point: the file
+/// `rustc` compiles is the model's reply, byte for byte. The `export!` below turns this crate into
+/// the half of the component that answers `run` and `bound-tools`, and linking it into a **binary**
+/// crate is what makes the model's own `main` reachable — see [`Program::run`].
+struct Program;
+
+impl crate::bindings::Guest for Program {
+    /// Call the model's `main`, and stop with the status it ended on.
+    ///
+    /// # How this reaches `main` at all
+    ///
+    /// `rustc` compiling a **binary** crate emits an unmangled C entry symbol beside the model's
+    /// `fn main` — `__main_void` on `wasm32-wasip1`, which is wasi-libc's convention — and asks
+    /// `rust-lld` to export it. That symbol is what [`main`](self::main) declares and what this
+    /// calls. A **library** crate type emits neither: there the model's `main` is dead code, and
+    /// the Rust-mangled symbol carries a `-C metadata` hash no `extern` declaration can name.
+    ///
+    /// It is a convention rather than a stable ABI, so it is guarded by a test rather than trusted:
+    /// `rust.substrate.test.rs` compiles a `fn main()` program, drives this export and asserts both
+    /// that the model's `main` ran and that a panicking one's stderr reaches the host. A toolchain
+    /// that renamed the symbol fails at link, loudly; one that made the platform's own `_start` do
+    /// more than call `main` would fail quietly, and that test is what would say so.
+    ///
+    /// # Why the status is propagated rather than swallowed
+    ///
+    /// `main` returning `Err` is [shape (c)](https://docs.testcabinet.ai/gg/responses-as-code/invariants/)
+    /// of a runtime failure, and `std`'s own `Termination` has already written `Error: …` to
+    /// standard error by the time this sees the status — which the host keeps, because gg wires the
+    /// guest's stderr. What the status adds is that the turn **failed**: a `run` that returned
+    /// normally would be a program the model is told worked. [`std::process::exit`] is `proc_exit`
+    /// here, so the host reads it as the exit it is, carrying the status the program chose.
+    fn run(
+        _program: String,
+        _modules: Vec<CodeModule>,
+        _tools: Vec<String>,
+        _ending: EndingKind,
+        _library: bool,
+    ) {
+        // SAFETY: `main` is the C entry symbol `rustc` emits for the binary crate this rlib is
+        // linked into. It takes no arguments, returns the program's status, and is the same symbol
+        // the platform's own `_start` would have called.
+        let status = unsafe { main() };
+        if status != 0 {
+            std::process::exit(status);
+        }
+    }
+
+    fn bound_tools() -> Vec<String> {
+        self::bound_tools()
+    }
+}
+
+crate::bindings::export!(Program with_types_in crate::bindings);
+
+unsafe extern "C" {
+    /// The model's `fn main`, reached through the entry symbol `rustc` emits for a binary crate.
+    ///
+    /// `__main_void` rather than `main`: on `wasm32-wasip1` that is the wasi-libc convention for an
+    /// entry point taking no arguments, and it is the symbol `rust-lld` is asked to export. The
+    /// Rust name of the model's `main` is unreachable — it is mangled with a `-C metadata` hash
+    /// that is a function of the compile.
+    #[link_name = "__main_void"]
+    fn main() -> i32;
+}
 
 /// The gg tool names this component can bind, **module by module** — what `bound-tools` answers.
 ///
@@ -40,91 +113,7 @@ pub fn bound_tools() -> Vec<String> {
         .collect()
 }
 
-/// Start a program: install the panic hook that gets a located failure out of an aborting guest.
-///
-/// `program_file` is the file name gg compiled the model's text under and `line_offset` is how many
-/// lines of gg's own wrapper precede it, so that a panic at line 4 of the generated file is reported
-/// at line 3 of the model's program. Both are passed rather than assumed, because both are gg's
-/// facts about a compilation this crate never sees.
-///
-/// # Why a hook at all
-///
-/// `wasm32-unknown-unknown` has no unwinder, so `panic = "abort"` is not a setting but the only
-/// option, and an abort is an `unreachable` that traps the store. What reaches gg from a trap is
-/// "the program trapped" — no message, no location, and no way for a model to tell an
-/// out-of-bounds index from an `unwrap` on `None`. That is the single worst error surface any arm
-/// of this study could have, and it is entirely avoidable: a panic hook runs **before** the abort,
-/// on a live guest, so it can make an ordinary synchronous host call. `feedback.report-error`
-/// completes, gg records it, and the trap that follows is then a trap over an error gg already
-/// knows the shape of.
-///
-/// The location comes from [`Location`](std::panic::Location), which is static data rather than a
-/// symbol name — which is why `-C strip=symbols` can delete the whole name section without costing
-/// this anything.
-pub fn begin(program_file: &'static str, line_offset: u32) {
-    std::panic::set_hook(Box::new(move |info| {
-        let message = match info.payload_as_str() {
-            Some(payload) => format!("panicked: {payload}"),
-            None => "panicked".to_string(),
-        };
-        feedback::report_error(&feedback::ProgramError {
-            kind: feedback::ErrorKind::Other,
-            code: None,
-            message,
-            location: located(info.location(), program_file, line_offset),
-        });
-    }));
-}
-
-/// Where a panic happened, in the **model's** coordinates — or nothing, when it did not happen in
-/// the model's text at all.
-///
-/// A panic raised inside a library gg linked, or inside `std`, carries that file rather than the
-/// program's, and reporting its line as if it were the model's would point at whichever of the
-/// model's lines happened to have the same number. Rust makes this the exception rather than the
-/// rule: `#[track_caller]` is on `Option::unwrap`, `Result::unwrap`, `expect`, slice indexing and
-/// the arithmetic checks, so the panic a program actually causes is attributed to the program's own
-/// call.
-///
-/// # Why the first `line_offset` lines of the file are *not* the model's either
-///
-/// The model's first line is the line **after** gg's wrapper, so a panic attributed to file line
-/// `line_offset` or above it happened in the prologue gg wrote, which is one physical line
-/// declaring the export and calling the program. There is no line of the model's program that such
-/// a panic is *at*, so it is reported with no location rather than with a line the model could go
-/// and edit.
-///
-/// The subtraction alone will not say that, which is why the guard is written out. `checked_sub`
-/// only refuses an underflow, and an underflow needs a file line of 0 — a line no file has. File
-/// line 1 subtracts cleanly to 0, and `line 0` is what the model was told.
-fn located(
-    location: Option<&std::panic::Location<'_>>,
-    program_file: &str,
-    line_offset: u32,
-) -> Option<String> {
-    let location = location?;
-    if !location.file().ends_with(program_file) {
-        return None;
-    }
-    let line = location
-        .line()
-        .checked_sub(line_offset)
-        .filter(|line| *line > 0)?;
-    Some(format!("line {line}, column {}", location.column()))
-}
-
-/// Report a program that ended by returning `Err`, and hand back nothing: the shell has already
-/// told gg everything there is to tell.
-pub fn report(failure: &Failure) {
-    feedback::report_error(&feedback::ProgramError {
-        kind: failure.kind(),
-        code: failure.code(),
-        message: failure.to_string(),
-        location: None,
-    });
-}
-
-/// **Why a program ended early** — the error type the body gg wraps a model's text in returns.
+/// **Why a program ended early** — the error type a program's `main` returns.
 ///
 /// It exists so that `?` is the operator a Rust author would reach for. Anything that implements
 /// [`std::error::Error`] converts into it, which covers every SDK call and every `std` fallible
@@ -137,55 +126,11 @@ pub fn report(failure: &Failure) {
 /// shape `anyhow::Error` has, for the same reason.
 pub struct Failure {
     /// What ended the program. Boxed because it is whatever the program's own `?` produced, and
-    /// because keeping it as itself — rather than flattening it to a string at the conversion — is
-    /// what lets [`kind`](Self::kind) recover the gg failure class the SDK's own error carries.
+    /// kept as itself rather than flattened to a string at the conversion so that [`Display`] can
+    /// walk the whole chain it carries.
+    ///
+    /// [`Display`]: std::fmt::Display
     error: Box<dyn std::error::Error>,
-}
-
-impl Failure {
-    /// Which of gg's [error kinds](feedback::ErrorKind) this is, as the guest reads it.
-    ///
-    /// [`ToolFailure`](feedback::ErrorKind::ToolFailure) when the `?` that ended the program was a
-    /// failed gg call, and [`Other`](feedback::ErrorKind::Other) for anything the program failed on
-    /// its own account — a parse it did itself, a sentence it constructed with
-    /// [`message`]. That is the same split the ECMAScript arm's shim makes when it classifies an
-    /// uncaught error, which is what makes the two arms' error taxonomies comparable rather than
-    /// merely similar.
-    ///
-    /// [`UnknownName`](feedback::ErrorKind::UnknownName) is deliberately unreachable here and is not
-    /// a gap: a Rust program that names something out of scope does not run at all, because the
-    /// compile refused it — so on this arm that failure is a compile error a turn earlier rather
-    /// than a class of run-time fault.
-    fn kind(&self) -> feedback::ErrorKind {
-        match self.tool_error() {
-            Some(_) => feedback::ErrorKind::ToolFailure,
-            None => feedback::ErrorKind::Other,
-        }
-    }
-
-    /// The failure class the **call** carried, for a program that ended on a failed gg call.
-    ///
-    /// `None` for anything else. The host classifies a turn's error from this rather than from
-    /// [`kind`](Self::kind), because `Unavailable` — a model reaching for something its run does not
-    /// offer — has to be the same fact on an arm whose SDK is always in scope as it is on an arm
-    /// that can withhold a name. This arm is the first kind: every name is in scope and the host is
-    /// what refuses.
-    fn code(&self) -> Option<ErrorCode> {
-        Some(self.tool_error()?.code.to_wire())
-    }
-
-    /// The gg failure this program ended on, if that is what ended it.
-    ///
-    /// The downcast is why [`Failure`] boxes the error it was given rather than flattening it to a
-    /// string at the `?`: the class a failed call carried is the one thing the host cannot recover
-    /// from prose, and it is the field a query slices an arm's failures by.
-    ///
-    /// It reads the **head** of the chain, not the whole of it. A `ToolError` a program wrapped in
-    /// an error of its own is that program's failure, classified the way the program classified it;
-    /// digging past the wrapper would report a class the program deliberately reframed.
-    fn tool_error(&self) -> Option<&crate::ToolError> {
-        self.error.downcast_ref::<crate::ToolError>()
-    }
 }
 
 impl std::fmt::Display for Failure {
@@ -219,9 +164,9 @@ impl<E: std::error::Error + 'static> From<E> for Failure {
 
 /// A failure that is a sentence rather than an error value: `Err(gg::program::message("no rows"))`.
 ///
-/// It is reached by that path rather than out of [`prelude`](crate::prelude), and the
-/// responses-as-code prompt names it that way: a bare `message` glob-imported into every program
-/// would take a common word out of a model's own namespace for a call it makes once a session.
+/// It is reached by that path — `gg::program::message`, or under a `use gg::program;` the program
+/// wrote — rather than by a name gg put in scope, because there is no such name: everything this
+/// crate offers is reached through a line the program writes or through the full path.
 ///
 /// A free function rather than `impl From<&str> for Failure`, and not for want of trying. The
 /// blanket conversion above is what makes `?` work, and coherence will not admit a second `From`

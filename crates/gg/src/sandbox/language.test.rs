@@ -332,10 +332,11 @@ fn an_arms_import_line_is_the_one_its_own_opening_program_writes() {
     /// one that had dropped its imports entirely.
     ///
     /// C#'s modules are `static class`es inside a namespace an assembly reference makes reachable
-    /// in full, so its opening program names them in full and writes no `using`. Every other arm
-    /// that states a line writes that line, and the table fails in both directions: an arm listed
-    /// here that starts writing its line fails, and an arm not listed that stops writing one fails.
-    const PATH_ROUTE: [GgProgramLanguage; 1] = [GgProgramLanguage::CSharp];
+    /// in full, and Rust's are modules of a crate `--extern` puts in the extern prelude, so both
+    /// opening programs name them in full and write no line. Every other arm that states a line
+    /// writes that line, and the table fails in both directions: an arm listed here that starts
+    /// writing its line fails, and an arm not listed that stops writing one fails.
+    const PATH_ROUTE: [GgProgramLanguage; 2] = [GgProgramLanguage::CSharp, GgProgramLanguage::Rust];
 
     let mut lines_asserted = 0usize;
     for language in all_languages() {

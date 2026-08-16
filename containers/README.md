@@ -695,7 +695,7 @@ wrapper function would refuse five things a Kotlin author writes without thinkin
 compiler loads its scripting plugin by four unversioned file names out of a `kotlin-home/lib`
 tree the installer lays out.
 
-**Rust** is the heaviest thing in the tree — **~376 MB** — and the first that is not a
+**Rust** is the heaviest thing in the tree — **~380 MB** — and the first that is not a
 compiler *for* a guest. Every arm above compiles a model's program into something an
 interpreter already inside a committed component evaluates; `rustc` emits the component
 itself, per turn, because there is no Rust runtime to commit. What is installed is a rustup
@@ -712,7 +712,7 @@ the library set inside gg's binary — so there is only one Rust release in the 
 all. That set is not here, for the vintage reason PureScript's is not.
 
 **Swift** is the second arm of that shape and the second heaviest thing in the tree —
-**~835 MB**, against `rustc`'s 376 MB — because a Swift cross-compile needs a compiler, a
+**~835 MB**, against `rustc`'s 380 MB — because a Swift cross-compile needs a compiler, a
 target SDK holding a wasm sysroot and standard library, *and* a vendored copy of the shared
 libraries the published linker was built against. That last one is the whole reason its
 install is a script rather than two `curl`s: the toolchain is built for Debian 12 and its
@@ -731,7 +731,7 @@ different half of what was deleted. The bindings a program is compiled against a
 for the vintage reason PureScript's library set is not.
 
 **C++** is the third arm of that shape and the **lightest** of the three — ~200 MB, against
-`rustc`'s 376 MB and Swift's 835 MB — because wasi-sdk is one relocatable tree holding a
+`rustc`'s 380 MB and Swift's 835 MB — because wasi-sdk is one relocatable tree holding a
 clang, a `wasm-ld`, a wasi-libc sysroot and a libc++. It is also the least work to make
 portable, and that is the toolchain rather than the script: `clang` finds its own sysroot
 from its own path, every binary carries an `$ORIGIN/../lib` rpath, and the only things

@@ -83,16 +83,36 @@ fn rust() -> &'static dyn ProgramLanguage {
 /// sentence has to supply them. Everything here is used by at least one snippet; the tuple at the
 /// end is what keeps the ones a given rendering did not reach from warning.
 const PREAMBLE: &str = "\
-#![allow(unused, unused_must_use)]
-let path = \"notes.md\";
-let label = \"notes\";
-let body = \"what the program computed\";
-let name = \"physics\";
-let options = files::ReadOptions::default();
-let turn: Option<u32> = None;
-let source = String::from(\"let total = 1;\");
-let _ = (path, label, body, name, &options, turn, &source);
+    let path = \"notes.md\";
+    let label = \"notes\";
+    let body = \"what the program computed\";
+    let name = \"physics\";
+    let options = files::ReadOptions::default();
+    let turn: Option<u32> = None;
+    let source = String::from(\"fn main() {}\");
+    let _ = (path, label, body, name, &options, turn, &source);
 ";
+
+/// **The lines a model copying one of these examples would have written above it**, taken from the
+/// catalogue's own `import` field rather than restated here.
+///
+/// An example in a documentation view is written `files::read_file(…)`, and the view that carries it
+/// states `use gg::files;` beside it — so the honest thing to compile is the example *under that
+/// line*. Reconstructing them from the catalogue is what makes this a check on the pair: an arm
+/// whose stated import did not reach the module its examples call fails here.
+fn stated_imports() -> String {
+    let mut lines: Vec<String> = crate::sandbox::catalogue_modules(rust())
+        .iter()
+        .filter_map(|module| module.import.map(str::to_string))
+        .collect();
+    lines.sort_unstable();
+    lines.dedup();
+    assert!(
+        !lines.is_empty(),
+        "the catalogue states no import line for any module, so nothing here would be reconstructed"
+    );
+    format!("{}\n", lines.join("\n"))
+}
 
 /// Every fenced block in `text`, as `(tag, body)`.
 fn fenced(text: &str) -> Vec<(String, String)> {
@@ -362,10 +382,20 @@ fn every_rust_example_a_model_is_shown_compiles() {
          programs can no longer build a failure of their own."
     );
 
-    let mut program = PREAMBLE.to_string();
+    // A WHOLE Rust program, because that is the only kind this arm compiles: the crate attribute,
+    // the lines the catalogue says a program writes to reach these modules, and one `fn main`
+    // holding every example.
+    let mut program = format!(
+        "#![allow(unused, unused_must_use)]\n{}\nfn main() -> Result<(), gg::Failure> {{\n{PREAMBLE}",
+        stated_imports()
+    );
     for (label, snippet) in &snippets {
-        program.push_str(&format!("// {label}\n{{\n{}\n}}\n", snippet.trim_end()));
+        program.push_str(&format!(
+            "    // {label}\n    {{\n{}\n    }}\n",
+            snippet.trim_end()
+        ));
     }
+    program.push_str("    Ok(())\n}\n");
 
     if let Err(failure) = compile_program(&program, &[], &PrepareContext::new()) {
         panic!(

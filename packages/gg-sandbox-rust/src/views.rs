@@ -9,7 +9,7 @@
 //!
 //! A program's own output is unreadable by the model that wrote it, and a view is the only way a
 //! value it computed reaches that model. On this arm the point is hard to miss: `println!` reaches
-//! nobody at all, because `wasm32-unknown-unknown` has no standard output to write to.
+//! nobody at all, because gg attaches no standard output to the guest.
 
 use crate::bindings::test_cabinet::gg::views;
 use crate::core::ToolError;

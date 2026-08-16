@@ -150,21 +150,22 @@ defaults, `*items` takes as many as you like, and a `&body` is a block.
 path is what you write.
 {{/if}}
 {{#if (eq language.id "rust")}}
-Your response is compiled as the body of a function gg declares, so it is a
-sequence of statements evaluated in order and there is no `main` to write. Every
-item Rust allows in a function body is allowed where you wrote it, and is visible
-to the whole program however far down you declared it.
+Your response is compiled verbatim, as a whole Rust program, and must define
+`main`: `fn main() -> Result<(), gg::Failure> { … }` is where your work goes, and
+every item Rust has is legal beside it. Write the `use` lines you would normally
+write.
 
-Every call returns `Result<_, ToolError>`. A failure you do not handle ends the
-turn with the failed call named, and matching on a `ToolError`'s `code` is how
-you branch on the kind of failure. A failure of your own is built from a sentence
-with `gg::program::message("no rows")`.
+Every call returns `Result<_, gg::core::ToolError>`, so `?` composes against that
+return type. A failure you do not handle ends the turn with the failed call
+named, and matching on a `ToolError`'s `code` is how you branch on the kind of
+failure. A failure of your own is built from a sentence with
+`gg::program::message("no rows")`.
 
 Required arguments are positional. A call with exactly one optional argument
 takes an `Option<T>` in that position; a call with two or more takes an options
-struct with a `Default`, filled in with functional-update syntax. Every module
-below is in scope under the last segment of its path, because
-`use gg::prelude::*;` is already written above your first line.
+struct with a `Default`, filled in with functional-update syntax. Each module
+below is reached by writing its path in full, or by writing its `use` line first
+and then the last segment of that path.
 {{/if}}
 {{#if (eq language.id "swift")}}
 Your response is compiled verbatim, as a whole Swift file. It is the top level of

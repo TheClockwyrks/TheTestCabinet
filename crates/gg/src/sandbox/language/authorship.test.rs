@@ -62,7 +62,7 @@ fn a_preparation_that_completes_the_source_wrapped_it() {
     let source = "docs.search(\"\", module=\"gg.files\", limit=200)\n";
     for produced in [
         format!("fn main() {{\n{source}}}\n"),
-        format!("use gg::prelude::*;\n{source}"),
+        format!("import gg\n{source}"),
         format!("{source};\nOk(())\n"),
     ] {
         let verdict =

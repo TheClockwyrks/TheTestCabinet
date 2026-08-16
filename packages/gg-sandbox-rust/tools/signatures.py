@@ -324,9 +324,9 @@ class Declared:
     """One type this SDK declares, and the two names it answers to.
 
     ``fqn`` is the key a documentation view is opened by and the string a program could write in
-    full; ``spelled`` is what a signature writes, which is the module-qualified form under
-    ``gg::prelude`` — `files::FileRead` rather than a bare `FileRead`, because the prelude re-exports
-    the modules and not the types inside them, and a bare name would be a spelling that does not
+    full; ``spelled`` is what a signature writes, which is the module-qualified form a program
+    reaches under the ``use`` line its module states — `files::FileRead` under `use gg::files;`,
+    `core::ToolError` under `use gg::core;`. A bare name is a spelling nothing gg does makes
     resolve.
     """
 
@@ -336,8 +336,7 @@ class Declared:
         self.item = item
         self.name = item["name"]
         self.fqn = f"{module.path}::{self.name}"
-        # The `core` types are the exception the prelude makes, so they are written bare.
-        self.spelled = self.name if module.id == "core" else f"{module.name}::{self.name}"
+        self.spelled = f"{module.name}::{self.name}"
 
 
 class Reflector:
@@ -392,10 +391,10 @@ class Reflector:
     def render_type(self, node):
         """One rustdoc type node, written the way a program writes it.
 
-        A path this crate declares is written **module-qualified**, because that is the spelling the
-        prelude leaves resolvable and the one a model can copy out of a signature; anything else —
-        `Option`, `Vec`, `Result`, `String`, `RangeInclusive` — is written by its last segment,
-        which is Rust's own and is already in every program's scope.
+        A path this crate declares is written **module-qualified**, because that is the spelling
+        the module's own `use` line leaves resolvable and the one a model can copy out of a
+        signature; anything else — `Option`, `Vec`, `Result`, `String`, `RangeInclusive` — is
+        written by its last segment, which is Rust's own and is already in every program's scope.
         """
         if node is None:
             return "()"
@@ -684,9 +683,9 @@ class Reflector:
             "receiver": receiver,
             "name": name,
             "fqn": fqn,
-            # `null`, because on this arm the fully-qualified name IS what a program writes: the
-            # prelude puts every module in scope, so `files::read_file` and `gg::files::read_file`
-            # are the same path written short and long.
+            # `null`, because on this arm the fully-qualified name IS what a program writes:
+            # `--extern gg=...` makes `gg::files::read_file` resolve with no line at all, and
+            # `use gg::files;` is what shortens it to `files::read_file`.
             "call": None,
             "brief": brief,
             "detail": detail,
@@ -788,9 +787,17 @@ class Reflector:
                     "path": module.path,
                     "brief": brief,
                     "detail": detail,
-                    # `null`, and truthfully: gg writes `use gg::prelude::*;` into the entry file
-                    # itself, so there is no import line a program would be right to write.
-                    "import": None,
+                    # The line a program writes to reach this module by its own name. Composed
+                    # here rather than reflected because rustdoc describes what a crate DECLARES
+                    # and not how another file reaches it — which is the one thing the invariants
+                    # let an arm compose (`responses-as-code/invariants.md`).
+                    #
+                    # `use gg::files;` shortens `gg::files::read_file(...)` to
+                    # `files::read_file(...)`. The full path needs no line at all, because
+                    # `rustc --extern gg=...` puts the crate in the extern prelude — packaging, on
+                    # the same terms a jar on a classpath is — and that is why the catalogue's
+                    # own fully-qualified spellings are always writable.
+                    "import": f"use {module.path};",
                 }
             )
         return out

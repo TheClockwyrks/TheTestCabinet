@@ -502,11 +502,10 @@ fn evaluate<A: ToolApi>(
 ///
 /// A guest with an exception mechanism catches its own throw, calls `feedback.report-error` with a
 /// message and a location, and returns normally — so the trap and the error never coexist and this
-/// changes nothing for it. A guest without one cannot: `wasm32-unknown-unknown` has no unwinder, so
-/// a Rust program's panic runs its hook and then **aborts**, which traps the store. The hook's host
-/// call completes first and gg has the message, the class and the model's own line and column
-/// already recorded; taking the trap as the verdict would throw all of that away and tell the model
-/// "your program trapped" over a panic gg can describe exactly.
+/// changes nothing for it. A guest that reports a failure and is then killed by its own runtime
+/// reaches the host with both: the host call completes first and gg has the message, the class and
+/// the location already recorded, and taking the trap as the verdict would throw all of that away
+/// and tell the model "your program trapped" over a failure gg can describe exactly.
 ///
 /// Only an ordinary [`Trap`](SandboxError::Trap) is displaced. A
 /// [timeout](SandboxError::Timeout) and an [out-of-memory](SandboxError::OutOfMemory) are ceilings
