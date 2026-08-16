@@ -7,6 +7,7 @@ import { LoadingState } from "../../components/LoadingState";
 import { BackChevron } from "../../components/BackChevron";
 import { DownloadIcon } from "../../components/DownloadIcon";
 import { ExternalLinkIcon } from "../../components/ExternalLinkIcon";
+import { ShareControl } from "../../components/ShareControl";
 import { GradeBadge, RatingBadge, canonicalModelId } from "@test-cabinet/ui";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { RunDeleteControl } from "../../components/RunDeleteControl";
@@ -386,11 +387,30 @@ export function RunDetailLayout({
               </a>
             );
           })()}
+          {/* Copy a short link to this run's verdict or play page. Renders nothing
+            unless a short-link resolver fronts this deployment AND the run is
+            published — a short code addresses the published corpus, so an
+            unpublished run has no link that would resolve for whoever received it.
+            Not gated on `canExecute`: sharing is exactly what the public gallery is
+            for, and the gate that matters is whether a resolver exists. */}
+          <ShareControl
+            runId={run.id}
+            published={detail?.published ?? false}
+            // Optional-chained though `links` is typed required: a record can
+            // reach here without one (an older record, a fixture), and a missing
+            // link means no build just as a null one does.
+            hasPlayableBuild={Boolean(run.links?.playableBuild)}
+          />
           {canExecute && <RunDeleteControl runId={run.id} />}
         </div>
       </div>
 
-      {children({ run, review, reviews, published: detail?.published ?? false })}
+      {children({
+        run,
+        review,
+        reviews,
+        published: detail?.published ?? false,
+      })}
     </PageLayout>
   );
 }

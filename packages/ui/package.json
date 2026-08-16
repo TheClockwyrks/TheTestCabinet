@@ -26,6 +26,7 @@
     "@test-cabinet/particle-runtime": "*",
     "@test-cabinet/run-record": "*",
     "@test-cabinet/run-stats": "*",
+    "@test-cabinet/share-links": "*",
     "@test-cabinet/voxel-runtime": "*",
     "gifenc": "^1.0.3",
     "react-markdown": "^10.1.0",

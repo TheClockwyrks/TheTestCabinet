@@ -11,6 +11,10 @@ import {
 import { useNavigate } from "react-router";
 import { useFindModel } from "../data/useModels";
 import { CONFIRM_DELETE_RUN, useRunDeletion } from "../data/useRunDeletion";
+import {
+  COPIED_FEEDBACK_MS,
+  useCopyToClipboard,
+} from "../data/useCopyToClipboard";
 import { useRunKill } from "../data/useRunKill";
 import { routes } from "../routes";
 import type { SelectableRun } from "./RunSelect";
@@ -52,9 +56,6 @@ interface MenuState {
 // Keep the popover fully on-screen: nudged in from each viewport edge by this
 // margin when a cursor near the edge would otherwise clip it. Mirrors ColumnMenu.
 const VIEWPORT_MARGIN = 8;
-
-// How long the "Copy link(s)" item shows its confirmation before the menu closes.
-const COPIED_FEEDBACK_MS = 850;
 
 // An absolute URL for an in-app path, for the clipboard and a new tab (both need a
 // full origin, not the relative path a <Link> would take).
@@ -134,7 +135,7 @@ function distinct<T>(
  */
 export function RunContextMenu({ ref, onBatchActed }: RunContextMenuProps) {
   const [menu, setMenu] = useState<MenuState | null>(null);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy, reset: resetCopied } = useCopyToClipboard();
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
   const findModel = useFindModel();
@@ -145,11 +146,11 @@ export function RunContextMenu({ ref, onBatchActed }: RunContextMenuProps) {
     ref,
     () => ({
       openAt: (x, y, target) => {
-        setCopied(false);
+        resetCopied();
         setMenu({ x, y, target });
       },
     }),
-    [],
+    [resetCopied],
   );
 
   const close = useCallback(() => setMenu(null), []);
@@ -192,15 +193,10 @@ export function RunContextMenu({ ref, onBatchActed }: RunContextMenuProps) {
   // denied/absent clipboard it just dismisses. Shared by both Copy-link items.
   const copyText = useCallback(
     async (text: string) => {
-      try {
-        await navigator.clipboard?.writeText(text);
-        setCopied(true);
-        window.setTimeout(close, COPIED_FEEDBACK_MS);
-      } catch {
-        close();
-      }
+      if (await copy(text)) window.setTimeout(close, COPIED_FEEDBACK_MS);
+      else close();
     },
-    [close],
+    [close, copy],
   );
 
   if (!menu) return null;

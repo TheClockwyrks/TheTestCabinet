@@ -208,6 +208,18 @@ Setup:
 - There is no deploy hook and nothing to rebuild per publish; redeploy only when
   the Worker's own code changes.
 
+Then tell the two UIs the domain exists, so each offers its run pages a **share**
+control (each hides it when unset, so nothing breaks if you skip one):
+
+- The **gallery** builds its links against `https://tcab.ai` by default. Set
+  `VITE_TCAB_SHARE_BASE_URL` as a build variable to point a staging gallery
+  elsewhere, or to an empty string to offer no share control.
+- The **consoles** read it from the backend's `GET /config`, so set
+  `TCAB_SHARE_BASE_URL` on the backend (see
+  [Kubernetes](/deployment/kubernetes/)). Set it per environment: a short code
+  addresses one corpus of published runs, so a staging console must not hand out
+  production short links.
+
 ## Docs (Cloudflare Pages, one-time)
 
 The developer docs (`apps/docs`) deploy to Cloudflare Pages at
