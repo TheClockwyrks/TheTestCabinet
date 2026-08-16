@@ -18,10 +18,11 @@
       "minimum": 0,
       "type": "integer"
     },
-    "runsKey": {
+    "runDocumentsPrefix": {
+      "description": "The shared prefix the per-run documents live under\n(`documents/runs/`) — snapshot-independent, so it is the same string in every\ngeneration. Informational: a reader resolves a run's document through the\n`documentKey` on its summary, because the key carries a content digest and so\ncannot be composed from the run id. Operators and\n`scripts/recover-run-media-from-snapshot.sh` use it to scope a listing.",
       "type": "string"
     },
-    "runsPrefix": {
+    "runsKey": {
       "type": "string"
     },
     "schemaVersion": {
@@ -39,7 +40,7 @@
     "generatedAt",
     "runCount",
     "runsKey",
-    "runsPrefix",
+    "runDocumentsPrefix",
     "casesPrefix",
     "modelsKey"
   ],
