@@ -22,18 +22,18 @@ use crate::healing::Dialect;
 /// the same program, an apostrophe in a line of English, a `#` line that is prose here, and two
 /// replies that are no program at all.
 pub(super) const FIXTURES: &[&str] = &[
-    "Here is the program.\n\n```rust\nlet rows = fs::list_dir(Some(\"src\"))?;\nview::open_text(\"rows\", &format!(\"{rows:?}\"))?;\n```\n\nThat lists the directory.",
-    "std::thread::spawn(|| {\n    view::open_text(\"note\", \"done\")\n}).join().unwrap();",
-    "use std::thread;\n\nthread::spawn(move || {\n    let rows = fs::list_dir(Some(\"src\"))?;\n    view::open_text(\"rows\", &format!(\"{rows:?}\"))?;\n}).join().unwrap();",
-    "let handle = std::thread::spawn(|| {\n    view::open_text(\"note\", \"done\")\n});\nhandle.join().expect(\"worker panicked\");",
-    "std::thread::spawn(|| {\n    let notes = fs::read_text_file(\"notes.md\", ReadOptions::default()).await;\n    view::open_text(\"notes\", &notes)?;\n}).join().unwrap();",
-    "use std::collections::HashMap;\n\nlet mut counts: HashMap<&str, usize> = HashMap::new();\ncounts.insert(\"src\", 1);\nview::open_text(\"counts\", &format!(\"{counts:?}\"))?;",
-    "fn helper() -> usize { 1 }\nview::open_text(\"n\", &helper().to_string())?;\nfn helper() -> usize { 1 }\nview::open_text(\"n\", &helper().to_string())?;",
-    "let total = 1;\nview::open_text(\"n\", &total.to_string())?;\nlet total = 1;\nview::open_text(\"n\", &total.to_string())?;",
-    "let usage = r#\"\n    Example:\n\n    std::thread::spawn(|| {\n        let total = 1;\n    });\n\"#;\nview::open_text(\"usage\", usage)?;",
-    "fn first(rows: &'static [&'static str]) -> char {\n    rows.first().map(|row| row.chars().next().unwrap_or('?')).unwrap_or('!')\n}\nview::open_text(\"c\", &first(&[\"a\"]).to_string())?;",
-    "I couldn't finish that.\n\n```rust\nview::open_text(\"note\", \"partial\")?;\n```",
-    "# Plan\n\nlet total = 1;\nview::open_text(\"total\", &total.to_string())?;",
+    "Here is the program.\n\n```rust\nuse gg::{files, views};\n\nfn main() -> Result<(), gg::Failure> {\n    let rows = files::list_dir(Some(\"src\"))?;\n    views::open_text(\"rows\", &format!(\"{rows:?}\"))?;\n    Ok(())\n}\n```\n\nThat lists the directory.",
+    "fn main() {\n    std::thread::spawn(|| {\n        gg::views::open_text(\"note\", \"done\")\n    }).join().unwrap();\n}",
+    "use std::thread;\n\nfn main() {\n    thread::spawn(move || {\n        let rows = gg::files::list_dir(Some(\"src\"))?;\n        gg::views::open_text(\"rows\", &format!(\"{rows:?}\"))?;\n    }).join().unwrap();\n}",
+    "fn main() {\n    let handle = std::thread::spawn(|| {\n        gg::views::open_text(\"note\", \"done\")\n    });\n    handle.join().expect(\"worker panicked\");\n}",
+    "fn main() {\n    std::thread::spawn(|| {\n        let notes = gg::files::read_text_file(\"notes.md\", gg::files::ReadOptions::default()).await;\n        gg::views::open_text(\"notes\", &notes)?;\n    }).join().unwrap();\n}",
+    "use std::collections::HashMap;\n\nfn main() -> Result<(), gg::Failure> {\n    let mut counts: HashMap<&str, usize> = HashMap::new();\n    counts.insert(\"src\", 1);\n    gg::views::open_text(\"counts\", &format!(\"{counts:?}\"))?;\n    Ok(())\n}",
+    "fn helper() -> usize { 1 }\nfn main() -> Result<(), gg::Failure> {\n    gg::views::open_text(\"n\", &helper().to_string())?;\n    Ok(())\n}\nfn helper() -> usize { 1 }\nfn main() -> Result<(), gg::Failure> {\n    gg::views::open_text(\"n\", &helper().to_string())?;\n    Ok(())\n}",
+    "fn main() -> Result<(), gg::Failure> {\n    let total = 1;\n    gg::views::open_text(\"n\", &total.to_string())?;\n    let total = 1;\n    gg::views::open_text(\"n\", &total.to_string())?;\n    Ok(())\n}",
+    "fn main() -> Result<(), gg::Failure> {\n    let usage = r#\"\n    Example:\n\n    std::thread::spawn(|| {\n        let total = 1;\n    });\n\"#;\n    gg::views::open_text(\"usage\", usage)?;\n    Ok(())\n}",
+    "fn first(rows: &'static [&'static str]) -> char {\n    rows.first().map(|row| row.chars().next().unwrap_or('?')).unwrap_or('!')\n}\n\nfn main() -> Result<(), gg::Failure> {\n    gg::views::open_text(\"c\", &first(&[\"a\"]).to_string())?;\n    Ok(())\n}",
+    "I couldn't finish that.\n\n```rust\nfn main() -> Result<(), gg::Failure> {\n    gg::views::open_text(\"note\", \"partial\")?;\n    Ok(())\n}\n```",
+    "# Plan\n\nfn main() -> Result<(), gg::Failure> {\n    let total = 1;\n    gg::views::open_text(\"total\", &total.to_string())?;\n    Ok(())\n}",
     "I have finished the task. Everything works.",
 ];
 
