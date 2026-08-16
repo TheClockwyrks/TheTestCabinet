@@ -164,7 +164,9 @@ them, and reads the public items at its top level from that source as the names
 its namespace offers. A module's author writes the same `use gg::<module>;`
 lines a program does. It hands back source, because a module is an input to the
 program compile that links it. Each module in scope is written beside the entry
-file and declared below the program, where it moves no line of it.
+file and declared below the program's last line, which moves no line of it. A
+reply that ends mid-line is closed with a newline first, so a declaration never
+lands inside a line the model wrote.
 
 ## Failures
 

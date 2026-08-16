@@ -717,6 +717,32 @@ fn a_program_reaches_a_code_module_that_was_linked_into_it() {
     );
     assert_eq!(logs(&outcome), ["OK 7"]);
 
+    // A reply that ends mid-line — no trailing newline, and a `//` comment as its last line — is the
+    // same program to `rustc`, because the declarations gg writes below it are separated from it. It
+    // is here rather than only in `source`'s unit tests because what makes it matter is the compile:
+    // without the separator the comment swallows the first declaration and the model is told
+    // `error[E0432]: unresolved import `super::__gg_module_csv_tools``, over a program it wrote
+    // correctly and about a symbol it has never seen.
+    let prepared = crate::sandbox::prepare_program(
+        crate::sandbox::language(GgProgramLanguage::Rust),
+        &format!(
+            "fn main() {{\n    {LOG}(lib::csv_tools::shout(\"ok\").as_str());\n}}\n// that is all"
+        ),
+        &modules,
+    )
+    .expect("a program that ends on a comment with no trailing newline compiles");
+    let (outcome, _log) = evaluate(
+        &prepared
+            .component
+            .expect("a compiled arm hands back a component"),
+        &[],
+        &modules,
+        RunEnding::None,
+        false,
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["OK"]);
+
     // And a module the compiler refuses is the module author's failure, reported at the read rather
     // than two turns later against somebody else's program.
     let failure = crate::sandbox::prepare_module(

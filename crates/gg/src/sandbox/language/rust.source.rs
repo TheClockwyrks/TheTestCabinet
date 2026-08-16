@@ -43,8 +43,33 @@ pub(super) const SDK_CRATE: &str = "gg";
 /// Byte-for-byte by construction when the agent has loaded no code modules, and line-preserving
 /// always: the declarations come after everything the model wrote, so the model's line *n* is line
 /// *n* of the file and no column moves at all.
+///
+/// **Below** means below the model's last *line*, not below its last byte, and the difference is the
+/// separator this function adds. A reply need not end in a newline — plenty do not — and
+/// concatenating the first `#[path = …]` onto the end of the model's last line would put a
+/// declaration *inside* it: harmless where that line is code, because Rust is whitespace-
+/// insensitive, and fatal where it is a `//` comment, which swallows the declaration whole and
+/// leaves the `mod lib` re-export below it dangling on a symbol the model has never seen
+/// (`error[E0432]: unresolved import` `super::__gg_module_…`, charged to the model's error budget
+/// over a program it wrote correctly). So a program that does not end in a newline is given one, and
+/// nothing else: it adds a line *after* the model's last, which moves none of them.
+///
+/// It is what keeps the declarations out of the model's coordinates, too. `rustc` locates a
+/// diagnostic they earn on the line they are written on, and
+/// [`Diagnostic::primary`](super::compile) reports a span past the model's last line with no
+/// location rather than a wrong one — which only holds while the declarations are past it.
 pub(super) fn wrap(program: &str, modules: &[CodeModule]) -> String {
-    format!("{program}{}", module_declarations(modules))
+    let declarations = module_declarations(modules);
+    if declarations.is_empty() {
+        // Byte for byte, including a program that ends mid-line: with nothing to declare there is
+        // nothing to separate it from.
+        return program.to_string();
+    }
+    let separator = match program.is_empty() || program.ends_with('\n') {
+        true => "",
+        false => "\n",
+    };
+    format!("{program}{separator}{declarations}")
 }
 
 // ---------------------------------------------------------------------------------------------

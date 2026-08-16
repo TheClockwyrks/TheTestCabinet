@@ -60,6 +60,58 @@ fn the_modules_in_scope_are_declared_below_everything_the_model_wrote() {
     );
 }
 
+/// **A reply that does not end in a newline still has the declarations below its last line.**
+///
+/// A model's reply need not end in a newline, and the declarations are appended to it — so without a
+/// separator the first `#[path = …]` lands *inside* the model's last line. Where that line is code
+/// Rust does not mind; where it is a `//` comment the comment swallows the declaration, the `mod
+/// lib` re-export below it dangles, and the model is charged a compile failure naming
+/// `__gg_module_…`, a symbol it has never seen. Both shapes are here because only the second one
+/// fails, and a test that drove only the first would pass over the bug.
+#[test]
+fn a_program_that_ends_mid_line_is_still_above_the_declarations() {
+    let modules = [CodeModule {
+        name: "csv_tools".to_string(),
+        source: "pub fn parse(_row: &str) -> usize {\n    0\n}\n".to_string(),
+    }];
+    for program in [
+        "fn main() { let _ = lib::csv_tools::parse(\"a\"); }",
+        "fn main() { let _ = lib::csv_tools::parse(\"a\"); }\n// that is all",
+    ] {
+        let wrapped = wrap(program, &modules);
+        assert!(
+            wrapped.starts_with(&format!("{program}\n")),
+            "the model's last line was not closed before the declarations:\n{wrapped}"
+        );
+        // The model's own lines, all of them, unmoved and unaltered.
+        let lines: Vec<&str> = wrapped.lines().collect();
+        for (index, original) in program.lines().enumerate() {
+            assert_eq!(
+                lines[index],
+                original,
+                "the model's line {} moved",
+                index + 1
+            );
+        }
+        assert_eq!(
+            lines[program.lines().count()],
+            "#[path = \"module_csv_tools.rs\"] mod __gg_module_csv_tools;",
+            "{wrapped}"
+        );
+    }
+
+    // A reply that already ends in one is not given a second, which would put a blank line between
+    // the model's text and the declarations for no reason.
+    let ended = "fn main() {}\n";
+    assert_eq!(
+        wrap(ended, &modules),
+        format!("{ended}{}", module_declarations(&modules))
+    );
+    // An empty reply has no last line to close, so there is nothing to separate: `rustc` answers it
+    // with `E0601` either way, and a leading blank line would be gg writing above the model.
+    assert_eq!(wrap("", &modules), module_declarations(&modules));
+}
+
 /// **A code module's own file is its author's own bytes**, on the same terms a program's is.
 ///
 /// [Ruling D5](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) puts code modules
