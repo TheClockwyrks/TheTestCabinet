@@ -209,10 +209,12 @@ segment states:
   more takes an options struct with a `Default`, and a module is reached by its
   path in full or under its own `use` line.
 
-`gg::program::message` is the one name any segment writes. It binds no
-capability, so no catalogue carries it and a documentation search cannot find
-it, and a program that means to fail on its own terms has no other way to build
-the failure its body returns.
+`gg::Failure` and `gg::program::message` are the two names any segment writes
+that no catalogue carries. Neither binds a capability, so the reflection over the
+SDK's capability modules does not report them and a documentation search does not
+find them. They are in the segment because a program has no other way to declare
+the return type its `main` composes `?` against, or to build a failure of its
+own.
 
 The arm names `rustc` as its [checker](/gg/languages/compilation/), so the
 shared body states that a program is compiled before it runs, that one `rustc`

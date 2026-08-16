@@ -22,13 +22,23 @@
 //! [`SandboxOutcome::compile_wait`](crate::sandbox::SandboxOutcome::compile_wait)) rather than
 //! hidden, and it is small for the reason the artifacts are small: `wasm-ld` dead-strips unreached
 //! code, so a program links only the part of the library set it actually reached. Measured in this
-//! repository's dev container, aarch64, on an ordinary program:
+//! repository's dev container, aarch64, best of five per program:
 //!
 //! | | |
 //! | --- | --- |
-//! | `rustc` — the whole compile, including the link — and the [`wit_component`] encode | **~45 ms** |
+//! | `rustc` — the whole compile, including the link — and the [`wit_component`] encode | **~45–60 ms** |
 //! | wasmtime `Component::new` at `OptLevel::None` | **~15 ms** |
-//! | Artifact | **~64 KB** |
+//! | Artifact, program reaching nothing of the SDK's | **~64 KB** |
+//! | Artifact, program calling a gg tool | **~79–82 KB** |
+//!
+//! The two artifact rows are one step rather than a slope, and what it is worth knowing about it is
+//! *where* the step is. `fn main() {}` is 63,949 bytes and a program that only logs is 64,581: the
+//! standard library and the panic machinery are the floor, and a call that cannot fail costs
+//! nothing on top of it. The **first fallible** SDK call is what adds ~14 KB — the error type, and
+//! the wire a result decodes through — and every call after it is nearly free: one
+//! `views::open_text` is 78,626 bytes and a `files::read_text_file` followed by a `gg::log` is
+//! 81,667. So the figure a model's own program actually costs is the second row, and the first is
+//! the floor beneath it rather than a typical turn.
 //!
 //! The feasibility study priced this arm at 0.15–0.5 s of CPU per compile against a **1.57–4.22 MB**
 //! artifact costing 296–317 ms to instantiate. Those figures came from a build topology in which
@@ -141,8 +151,8 @@ const TOOLCHAIN_BIN: &str = "/opt/gg/toolchains/rust/bin";
 /// How long one `rustc` may take before it is killed and reported as a
 /// [toolchain failure](PrepareFailure::Toolchain).
 ///
-/// A compile here is ~45 ms, and the worst honest case — a program that instantiates a great deal of
-/// generic code — is seconds. A minute is unmistakably a hang.
+/// A compile here is tens of milliseconds, and the worst honest case — a program that instantiates
+/// a great deal of generic code — is seconds. A minute is unmistakably a hang.
 const COMPILE_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// What `rustc` is told to write, in this preparation's own output directory.
