@@ -4717,15 +4717,17 @@ pub enum GgProgramLanguage {
     /// prepare time, because wasi-libc references `main` weakly and would otherwise link a program
     /// that traps having run nothing.
     ///
-    /// It is the **cheapest compile of the three compiled arms** — ~85 ms against `swiftc`'s ~0.3 s
-    /// — and only because the prelude, gg's whole surface plus the standard library, is
-    /// precompiled: without that the same program costs about a second. Its SDK is hand-written and
-    /// reads like the standard library it arrives beside: `snake_case` functions *and* types, an
-    /// API object as a **namespace** so a call is a qualified name, `enum class` for a fixed
-    /// choice, aggregates for records, `std::variant` narrowed with `std::get_if` for a read, a
-    /// default argument for one optional part and a **designated initialiser** (`{.limit = 40}`)
-    /// for several — because C++ has no keyword arguments and a defaulted parameter cannot be
-    /// skipped over — and a thrown `gg::tool_error` for the error arm.
+    /// It is the **cheapest compile of the three compiled arms** — ~90 ms against `swiftc`'s ~0.3 s
+    /// — and only because the prelude, which is the C++ standard library, is precompiled: without
+    /// that the same program costs about a second. gg's own surface is deliberately not in that
+    /// prelude, so a program reaches it by writing `#include <gg/files.hpp>` for each module it
+    /// calls. Its SDK is hand-written and reads like the standard library it arrives beside:
+    /// `snake_case` functions *and* types, an API object as a **namespace** so a call is a
+    /// qualified name, `enum class` for a fixed choice, aggregates for records, `std::variant`
+    /// narrowed with `std::get_if` for a read, a default argument for one optional part and a
+    /// **designated initialiser** (`{.limit = 40}`) for several — because C++ has no keyword
+    /// arguments and a defaulted parameter cannot be skipped over — and a thrown
+    /// `gg::core::tool_error` for the error arm.
     ///
     /// It also carries a **comparability risk no other arm has**, stated rather than hidden: an
     /// uncaught `throw` and a failed libc++ hardening check both arrive with words, but undefined

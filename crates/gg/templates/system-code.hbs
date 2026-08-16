@@ -31,18 +31,18 @@ is not executed: you get its diagnostics and write another program.
 {{#if (eq language.id "cpp")}}
 Your response is compiled verbatim, as a whole translation unit, and must define
 `main`: `int main() { … }` is where your work goes, and every declaration C++ has
-is legal where you put it.
+is legal where you put it. The C++ standard library is declared in front of your
+first line, so `std::vector` and `std::format` need no `#include`.
 
-Every call throws on failure. A failure you expect is a `core::tool_error`, which
-is a `std::runtime_error` whose `code()` is an `enum class`; let the rest escape,
-and gg names the call that failed.
+Every call throws on failure. A failure you expect is a `gg::core::tool_error`,
+which is a `std::runtime_error` whose `code()` is an `enum class`; let the rest
+escape, and gg names the call that failed.
 
 Required arguments are positional. A call with exactly one optional argument
 gives that parameter a default; a call with two or more takes an aggregate you
 fill in with designated initializers, naming only the parts you mean. Each module
-below is a `namespace` already in front of your first line, so a call is that
-module's path, qualified with `gg::` where a name of your own would make it
-ambiguous.
+below is a `namespace` inside `namespace gg`, reached by writing that module's
+own `#include` line and then its path in full.
 {{/if}}
 {{#if (eq language.id "csharp")}}
 Your response is compiled verbatim, as a whole compilation unit: the `using`

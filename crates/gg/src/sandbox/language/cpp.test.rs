@@ -136,7 +136,7 @@ fn the_generated_documentation_program_is_a_translation_unit() {
     let program = cpp().open_docs_views_statement(&["read_file", "open_text"]);
     assert_eq!(
         program,
-        "int main() {\n  \
+        "#include <gg/views.hpp>\n\nint main() {\n  \
          const std::array functions{\n      \
          \"read_file\",\n      \"open_text\",\n  };\n  \
          for (const auto &name : functions) {\n    \
@@ -170,7 +170,7 @@ fn the_opening_program_is_a_translation_unit() {
     assert_eq!(
         program,
         format!(
-            "int main() {{\n  \
+            "#include <gg/docs.hpp>\n#include <gg/views.hpp>\n\nint main() {{\n  \
                  const std::array modules{{\n      \"files\",\n      \"views\",\n  }};\n  \
                  for (const auto &path : modules) {{\n    \
                      gg::docs::search(\"\", {{.module = path, .limit = {limit}}});\n  }}\n\
@@ -197,7 +197,9 @@ fn a_code_module_is_a_namespace_opened_in_place() {
                   return {};\n}\n";
     let wrapped = source::namespaced(module, "csv_tools").expect("an ordinary module is wrapped");
     assert!(
-        wrapped.starts_with("namespace lib::csv_tools {\n#line 1 \"module_csv_tools.hpp\"\n"),
+        wrapped.starts_with(
+            "#include <gg.hpp>\nnamespace lib::csv_tools {\n#line 1 \"module_csv_tools.hpp\"\n"
+        ),
         "{wrapped}"
     );
     assert!(
@@ -227,7 +229,8 @@ fn a_code_module_is_a_namespace_opened_in_place() {
 /// The one refusal this half has, and it is a refusal rather than a rewrite because hoisting the
 /// line out would be gg editing somebody's file — the thing this arm has never done. The message
 /// says to delete it and write nothing in its place, which is surprising enough to have to be said
-/// outright: the prelude already declares the standard library and gg's whole surface.
+/// outright: the prelude already declares the standard library, and gg writes the one include that
+/// declares its own surface above the namespace itself.
 ///
 /// Only the module half is asserted here. The asymmetry with a **program** is real and is the
 /// language's rather than gg's — a program's `#include` is left exactly as written, because a

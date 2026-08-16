@@ -17,8 +17,8 @@ namespace gg {
 
 /// Find the modules, functions and types this run bound, and take documentation back out of context.
 ///
-/// Discovery is two steps: `docs::search` answers with one-line briefs, each carrying the
-/// fully-qualified name it is keyed by, and `views::open_docs_view` reads one of those names in
+/// Discovery is two steps: `gg::docs::search` answers with one-line briefs, each carrying the
+/// fully-qualified name it is keyed by, and `gg::views::open_docs_view` reads one of those names in
 /// full. Nothing else names a function — the system prompt lists the modules and stops there.
 ///
 /// Searching is bound to every program whatever a run enables, because an agent that cannot find
@@ -42,7 +42,7 @@ enum class doc_kind {
 /// The filters and the page a search runs under; `{}` narrows nothing.
 ///
 /// An aggregate filled in with designated initialisers, which is what C++ offers in place of named
-/// arguments: `docs::search("read", {.module = "files", .limit = 5})`. Every field composes with
+/// arguments: `gg::docs::search("read", {.module = "files", .limit = 5})`. Every field composes with
 /// the query and with the others.
 struct search_filters {
   /// One module to look in, by gg's id (`files`) or by this arm's path (`gg::files`).
@@ -101,8 +101,8 @@ struct doc_search {
 ///
 /// The result is a value and a view. The value is readable in the turn that asked for it; the view
 /// puts the same page in the next prompt under the selector `search results`, replaced by the next
-/// search rather than accumulating, and closed by `views::close`. A hit carries a brief and no more
-/// — reading one in full is `views::open_docs_view` on its `key`.
+/// search rather than accumulating, and closed by `gg::views::close`. A hit carries a brief and no more
+/// — reading one in full is `gg::views::open_docs_view` on its `key`.
 ///
 /// <ggop>docs.search</ggop>
 ///
@@ -111,7 +111,7 @@ struct doc_search {
 /// \param filters The filters and the page; `{}` searches the whole bound surface and takes the
 ///   first page.
 /// \returns the page that matched, best first, and how many matched behind it.
-/// \throws core::tool_error `invalid_argument` when `query` is empty and no filter is set — asking
+/// \throws gg::core::tool_error `invalid_argument` when `query` is empty and no filter is set — asking
 ///   for nothing and matching nothing are different answers — and when `limit` is `0`, which is a
 ///   page that could never answer anything.
 docs::doc_search search(std::string_view query, docs::search_filters filters = {});
@@ -127,20 +127,20 @@ docs::doc_search search(std::string_view query, docs::search_filters filters = {
 /// \param key The fully-qualified name the view was opened under, as a hit's `key` reports it.
 /// \returns how many views were closed, which is `0` when that key is not open — not a failure, so
 ///   a program that tidies up unconditionally needs no guard.
-/// \throws core::tool_error `unavailable` when this agent was not given the capability that buys
+/// \throws gg::core::tool_error `unavailable` when this agent was not given the capability that buys
 ///   closing documentation.
 std::uint32_t close(std::string_view key);
 
 /// Take every documentation view out of the context window, and report how many went.
 ///
-/// The blanket form of `docs::close`, on the same terms and behind the same capability: what it
+/// The blanket form of `gg::docs::close`, on the same terms and behind the same capability: what it
 /// frees is every documentation view the session has opened, and none of the file or text views
 /// beside them.
 ///
 /// <ggop>docs.close_all</ggop>
 ///
 /// \returns how many views were closed.
-/// \throws core::tool_error `unavailable` when this agent was not given the capability that buys
+/// \throws gg::core::tool_error `unavailable` when this agent was not given the capability that buys
 ///   closing documentation.
 std::uint32_t close_all();
 

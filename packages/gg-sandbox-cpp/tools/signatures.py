@@ -717,6 +717,23 @@ class Reflector:
                 "module-qualified so that the spelling a model reads is one it can open"
             )
 
+    def qualified(self, written):
+        """`written`, with every declared type spelled the way a **program** writes it.
+
+        clang prints a type relative to the namespace it was declared in, so the dump says
+        `files::read_window` where a model's own file has to say `gg::files::read_window`: this arm
+        reaches its SDK through an `#include` the program wrote, and an include brings nothing into
+        scope beyond the names its headers declare. Every string a model reads a type out of goes
+        through here — the signature line, an argument's type, a member's type and a rendered
+        declaration.
+
+        The lookbehind in the pattern is what makes it idempotent: the `files::` inside an already
+        qualified `gg::files::read_window` is preceded by a `:` and does not match.
+        """
+        if not written:
+            return written
+        return self._spellings.sub(lambda found: self.declared[found.group(1)].fqn, written)
+
     def declare(self, spelled):
         """Record one type's declaration, once, and hand back the spellings its members mention."""
         if spelled in self.types:
@@ -725,7 +742,7 @@ class Reflector:
         node = declared.node
         found = public_members(node)
         parts = [member for member in found if not is_member_function(member)]
-        rendered = declaration_of(node, declared.name, parts)
+        rendered = self.qualified(declaration_of(node, declared.name, parts))
         brief, detail = described(node, f"the type `{declared.fqn}`")
         members = []
         referenced = []
@@ -742,8 +759,8 @@ class Reflector:
             )
             members.append(
                 {
-                    "name": member_name(member, declared.name),
-                    "type": written,
+                    "name": self.qualified(member_name(member, declared.name)),
+                    "type": self.qualified(written),
                     "kind": kind,
                     "brief": member_brief,
                     "detail": member_detail,
@@ -791,9 +808,16 @@ class Reflector:
         return seen
 
     def references(self, spellings):
-        """A list of spellings, as the resolved type references the catalogue carries."""
+        """A list of spellings, as the resolved type references the catalogue carries.
+
+        `spelled` is what the signature writes and `fqn` is the key a documentation view is opened
+        by, and on this arm they are now one string: a program reaches gg through its own
+        `#include`, which declares `gg::files::read_window` and nothing shorter, so the spelling a
+        model copies out of a signature is the fully-qualified name.
+        """
         return [
-            {"spelled": spelled, "fqn": self.declared[spelled].fqn} for spelled in spellings
+            {"spelled": self.declared[spelled].fqn, "fqn": self.declared[spelled].fqn}
+            for spelled in spellings
         ]
 
     # -- functions -------------------------------------------------------------------------------
@@ -804,6 +828,7 @@ class Reflector:
         if comment is None:
             raise Failure(f"{what} has no `///` documentation")
         rendered, parameters = signature_of(node, name)
+        rendered = self.qualified(rendered)
         documented = parameter_docs(comment)
         if len(documented) != len(parameters):
             raise Failure(
@@ -823,7 +848,7 @@ class Reflector:
             out.append(
                 {
                     "name": argument,
-                    "type": kind,
+                    "type": self.qualified(kind),
                     "optional": value is not None,
                     # C++ has no keyword arguments: every argument is positional, and one a program
                     # may say nothing about says so with a DEFAULT rather than with a name at the
@@ -979,9 +1004,21 @@ class Reflector:
     # -- the whole document ----------------------------------------------------------------------
 
     def modules_section(self):
-        """Each module's own brief and detail, out of its namespace's own `///`."""
+        """Each module's own brief and detail, out of its namespace's own `///`, and the include
+        line a program reaches it by.
+
+        The include line is composed rather than reflected, and the header it names is checked to
+        be a real file: it is copied character for character into a model's program, and a line
+        naming a header the archive does not carry is a turn spent on a `file not found`.
+        """
         out = []
         for module in catalogue.MODULES:
+            header = Path("Sources/sdk") / module.header
+            if not header.is_file():
+                raise Failure(
+                    f"`{module.path}` states `{module.include}` as its import line and "
+                    f"{header} is not a file"
+                )
             block = next(
                 child
                 for child in self.children
@@ -996,10 +1033,12 @@ class Reflector:
                     "path": module.path,
                     "brief": brief,
                     "detail": detail,
-                    # `null`, and truthfully: the prelude is put in front of every program with
-                    # `-include-pch` and ends with `using namespace gg;`, so there is no import
-                    # line a program would be right to write.
-                    "import": None,
+                    # The one line a program writes to reach this module. clang's comment AST
+                    # reports no include line for a declaration — there is no such thing to report,
+                    # since a header is a file rather than a property of what it declares — so this
+                    # is composed from the module's own name, and the file it names is checked to
+                    # exist below.
+                    "import": module.include,
                 }
             )
         return out

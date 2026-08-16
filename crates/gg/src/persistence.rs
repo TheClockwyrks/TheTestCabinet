@@ -73,23 +73,24 @@ use crate::tools::{READ_FILE_TOOL, ReadFileTool, ReadPolicy, Tool, ToolContext};
 /// view can never collide with a call the model actually made.
 const RESTORED_CALL_PREFIX: &str = "persisted";
 
-/// The one file-view call gg synthesizes to restore `view` on a
+/// The one file-view program gg synthesizes to restore `view` on a
 /// [code-mode](ContextModel::code_mode) agent's behalf, spelled the way the agent would have had to
 /// spell it: the bare path for a whole-file view, the `offset`/`limit` window for a paged one, so a
 /// restored page reads as the paging call that produced it.
 ///
-/// The statement is written by the agent's own
-/// [program language](crate::sandbox::ProgramLanguage::open_file_statement) rather than here,
-/// because this is pushed into the transcript as an **assistant** turn: it has to be a reply the
-/// agent could have sent, down to how that language writes an optional argument.
+/// It is written by the agent's own
+/// [program language](crate::sandbox::ProgramLanguage::open_file_program) rather than here, because
+/// this is pushed into the transcript as an **assistant** turn: it has to be a reply the agent could
+/// have sent, down to how that language writes an optional argument and whatever else that language
+/// requires of a whole program.
 fn open_file_call(language: GgProgramLanguage, view: &OpenFileView) -> String {
-    crate::sandbox::language(language).open_file_statement(
-        &view.path,
+    crate::sandbox::language(language).open_file_program(&[(
+        view.path.as_str(),
         view.region.map(|region| FileWindow {
             offset: region.offset,
             limit: region.limit,
         }),
-    )
+    )])
 }
 
 /// Whether `profile` is **persistent** — its instances are serialized and carry their open file views

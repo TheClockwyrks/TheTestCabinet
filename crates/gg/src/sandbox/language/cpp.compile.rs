@@ -16,7 +16,9 @@
 //!
 //! **A model's reply is compiled verbatim, as `main.cpp`.** No wrapper, no prologue, no `#include`
 //! line gg wrote, and therefore **no line offset at all** — a diagnostic at line 7 is line 7 of what
-//! the model wrote.
+//! the model wrote. gg's own surface is reached by the reply's own `#include <gg/files.hpp>`: the
+//! header is on the compile's include path and its bodies are in the `sdk.o` every artifact links,
+//! which is packaging, and nothing gg passes puts a name of that SDK in scope.
 //!
 //! Like [Swift](super::super::swift::compile)'s, that is forced rather than chosen, and C++ forces it
 //! harder than any arm before it. A function-body wrapper — the shape [Rust](super::super::rust) uses —
@@ -34,16 +36,21 @@
 //!
 //! # The precompiled header, which is what makes this arm affordable
 //!
-//! Parsing the prelude (`packages/gg-sandbox-cpp/Sources/prelude.hpp`) — gg's generated wire header
-//! plus the ~55 standard-library headers a C++ author reaches for — costs **~850 ms of every
-//! compile**. Precompiling it
-//! costs ~40 ms to read back. Measured on this repository's dev container, aarch64, on a small
-//! program:
+//! Parsing the prelude (`packages/gg-sandbox-cpp/Sources/prelude.hpp`) — the 53 standard-library
+//! headers a C++ author reaches for — costs the best part of a second of every compile. Measured on
+//! this repository's dev container, aarch64, best of five, on two programs: a small one that logs a
+//! line, and the ranges/format/map program this module's cost table also quotes.
 //!
-//! | | |
-//! | --- | --- |
-//! | `clang++` with no PCH, prelude included as text | 883–1110 ms |
-//! | `clang++` with the PCH | **82–95 ms** |
+//! | | small | realistic |
+//! | --- | --- | --- |
+//! | `clang++` with no PCH, prelude included as text | 836 ms | 1581 ms |
+//! | `clang++` with the PCH | **90 ms** | **952 ms** |
+//!
+//! **What the PCH does not carry is gg's own surface**, and that costs a measured 31 ms a turn on
+//! both programs — the parse of `<gg.hpp>` the reply's own `#include` now asks for. It is the price
+//! of the [invariant](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) that every SDK
+//! name a program writes is reached through a line that program wrote, and it is 3% of a realistic
+//! turn.
 //!
 //! So the PCH is built, and three properties of it decide where it lives.
 //!
@@ -114,9 +121,9 @@
 //!
 //! | | small program | ranges/format/map program |
 //! | --- | --- | --- |
-//! | `clang++`, with the PCH warm | **~85 ms** | ~0.95 s |
+//! | `clang++`, with the PCH warm | **~90 ms** | ~0.95 s |
 //! | The [`wit_component`] encode | ~2 ms | ~7 ms |
-//! | Artifact | ~790 KB | ~3.7 MB |
+//! | Artifact | ~830 KB | ~4.2 MB |
 //! | wasmtime `Component::new`, at `OptLevel::None`, **per turn** | ~25 ms | ~220 ms |
 //!
 //! `-O0` rather than `-Oz`, and it is a measurement rather than a preference: `-Oz` costs ~1.26 s of
@@ -221,7 +228,7 @@ const USER_HOME_SUFFIX: &str = ".local/share/tcab/gg-wasi-sdk";
 /// How long one `clang++` may take before it is killed and reported as a
 /// [toolchain failure](PrepareFailure::Toolchain).
 ///
-/// A compile here is ~85 ms warm and ~1 s for a template-heavy program; the worst honest case is a
+/// A compile here is ~90 ms warm and ~1 s for a template-heavy program; the worst honest case is a
 /// program whose template instantiation is genuinely deep, which is seconds. Two minutes is
 /// unmistakably a hang, and matches the Swift arm rather than the Rust arm's minute because the
 /// **first** compile of a process additionally builds the precompiled header.
@@ -485,7 +492,7 @@ pub(super) fn compile_module(
         .arg("-include-pch")
         .arg(&prelude)
         .arg("-I")
-        .arg(guest.tree())
+        .arg(guest.include())
         .arg(format!(
             "-ffile-prefix-map={}={PREPARATION_PREFIX}",
             workspace.root().display()
@@ -604,17 +611,18 @@ fn invoke_clang(
         // unit is a whole object rather than a function.
         .arg("-ffunction-sections")
         .arg("-fdata-sections")
-        // The prelude, already parsed. This is the single largest cost reducer this arm has —
-        // ~850 ms of every compile — and it is also what puts gg's wire surface and the standard
-        // library in front of the model's file with no line of gg's own in it.
+        // The standard library, already parsed. This is the single largest cost reducer this arm
+        // has — the best part of a second off every compile — and it carries the standard library
+        // and nothing else: gg's own surface is undeclared until the model's file includes it.
         .arg("-include-pch")
         .arg(prelude)
-        // Where the SDK's headers and `prelude.hpp` are, for a program that includes one by name.
-        // A model's program needs no include at all — the precompiled prelude is already in front
-        // of it — but writing `#include "sdk/gg.hpp"` anyway costs nothing, which is the point of
-        // compiling the reply verbatim.
+        // **Where gg's headers are**, which is the whole of what this argument does: it makes
+        // `#include <gg/files.hpp>` resolve. It is packaging rather than injection — the names in
+        // that header are declared by the line the model wrote and by nothing else — and it is the
+        // C++ spelling of the classpath entry, the `--extern` and the linked archive every other
+        // compiled arm passes.
         .arg("-I")
-        .arg(guest.tree())
+        .arg(guest.include())
         // Every path this preparation's own tree contributes to the artifact, rewritten to a fixed
         // one. A model that traps is shown the frame, and `/gg/work/main.cpp:7:13` is a thing it can
         // read, where `/tmp/gg-prepare/8421-3/work/main.cpp:7:13` names a directory that was deleted
@@ -1071,10 +1079,17 @@ impl Guest {
         self.tree.join(name)
     }
 
-    /// The directory itself, which is what `clang++ -I` is given so `#include "sandbox.h"`
-    /// resolves.
-    pub(super) fn tree(&self) -> &Path {
-        &self.tree
+    /// **The model-facing include root** — the one directory `clang++ -I` is given on the turn
+    /// path, so that `#include <gg/files.hpp>` and `#include <gg.hpp>` resolve and nothing else
+    /// gg carries does.
+    ///
+    /// `build.sh` fills it with the umbrella header, the thirteen module headers a catalogue entry
+    /// states as its own import line, and the one header the umbrella includes by name. The
+    /// generated `sandbox.h` and the SDK's `wire.hpp` are in the tree beside it and off this path
+    /// deliberately: they are the C the SDK is written against, no model-facing header includes
+    /// either, and an include root is a claim about what a program may write.
+    pub(super) fn include(&self) -> PathBuf {
+        self.tree.join("include")
     }
 }
 
@@ -1214,8 +1229,8 @@ fn build_prelude(home: &Path, guest: &Guest, context: &PrepareContext) -> Result
             .compiler(clang(home))
             .map_err(|error| format!("{}{error}", spawn_prefix(home)))?
             .args(&flags)
-            .arg("-I")
-            .arg(guest.tree())
+            // No `-I`: the prelude is the standard library and nothing else, so there is no header
+            // of gg's own for it to find.
             .arg("-x")
             .arg("c++-header")
             .arg("-o")

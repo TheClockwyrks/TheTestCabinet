@@ -741,11 +741,11 @@ fn reaches(line: &str, path: &str, separator: &str) -> bool {
 ///
 /// [`ModuleDoc::import`] has two states and both of them are an answer a documentation view renders:
 /// `Some(line)` is quoted verbatim for a model to copy, and `None` becomes *in scope already*.
-/// Ten of the eleven arms are in the second state today, which is truthful — gg puts their SDK in a
-/// program's scope before the model's code is compiled — and it is also the state a reflector that
-/// simply **stopped emitting the field** would land in, silently, because serde fills an absent
-/// `Option` in with `None`. Ten truthful `None`s and ten dropped fields are the same value, and only
-/// the raw document tells them apart. So this reads it.
+/// The arms that have not converted yet are in the second state, which is truthful — gg puts their
+/// SDK in a program's scope before the model's code is compiled — and it is also the state a
+/// reflector that simply **stopped emitting the field** would land in, silently, because serde fills
+/// an absent `Option` in with `None`. A truthful `None` and a dropped field are the same value, and
+/// only the raw document tells them apart. So this reads it.
 ///
 /// # What else is held here
 ///
@@ -759,11 +759,15 @@ fn reaches(line: &str, path: &str, separator: &str) -> bool {
 ///   copied character for character into a program, and an import of some other module leaves the
 ///   call it was written for unresolved.
 ///
-///   Both forms are real. PureScript imports a module by its own full name, so its line names the
-///   path. C#'s modules are types in one namespace, and `using Gg;` reaches all of them at once, so
-///   its line names the namespace their paths sit in — which is why the ancestor form is accepted
-///   and the second half of the rule is what keeps it honest: a `using Gg.Views;` filed under
-///   `Gg.Files` names a module that does not contain `Gg.Files`, and fails.
+///   All three forms are real. PureScript imports a module by its own full name, so its line names
+///   the path. C#'s modules are types in one namespace, and `using Gg;` reaches all of them at once,
+///   so its line names the namespace their paths sit in. C++'s line is a header path rather than a
+///   namespace path — `#include <gg/files.hpp>` for `gg::files` — so it names the enclosing
+///   namespace and nothing narrower. That is why the ancestor form is accepted, and the second half
+///   of the rule is what keeps it honest: a `using Gg.Views;` filed under `Gg.Files` names a module
+///   that does not contain `Gg.Files`, and fails. What the ancestor form cannot see is an arm whose
+///   line names its module in a spelling of its own, so `cpp.surface.test.rs` holds all thirteen of
+///   this arm's lines to a written-out list and its reflector checks each header is a real file.
 /// * **Both states are live.** If no arm stated a line, every renderer's `Some` branch would be
 ///   unexercised across the whole suite; if none stated `None`, its `None` branch would be. The
 ///   count at the bottom fails rather than letting either half rot.

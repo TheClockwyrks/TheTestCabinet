@@ -67,7 +67,7 @@ struct subagent_handle {
   /// <ggop-alias>delegation.send_message</ggop-alias>
   ///
   /// \param message What to put in its inbox.
-  /// \throws core::tool_error `conflict` when this child has already returned.
+  /// \throws gg::core::tool_error `conflict` when this child has already returned.
   void send(std::string_view message) const;
 };
 
@@ -106,10 +106,10 @@ struct subagent_result {
 /// <ggop>delegation.spawn_subagent</ggop>
 ///
 /// \param agent The agent profile to run the child as, from the ones this agent may spawn.
-/// \param task What the child is to do: `delegation::brief::prompt` with self-contained
-///   instructions, or `delegation::brief::issue` with a board issue's id.
+/// \param task What the child is to do: `gg::delegation::brief::prompt` with self-contained
+///   instructions, or `gg::delegation::brief::issue` with a board issue's id.
 /// \returns the child's handle, for waiting on it or messaging it.
-/// \throws core::tool_error `limit_exceeded` at the delegation depth cap, and `invalid_argument`
+/// \throws gg::core::tool_error `limit_exceeded` at the delegation depth cap, and `invalid_argument`
 ///   for an agent this agent may not spawn.
 delegation::subagent_handle spawn_subagent(std::string_view agent, delegation::brief task);
 
@@ -133,7 +133,7 @@ std::vector<delegation::subagent_result> wait_for_subagents();
 ///
 /// \param ids The children to wait for, as spawning them returned their handles.
 /// \returns one result per named child, in dispatch order.
-/// \throws core::tool_error `not_found` for an unknown id.
+/// \throws gg::core::tool_error `not_found` for an unknown id.
 std::vector<delegation::subagent_result> wait_for_subagents(std::vector<std::string> ids);
 
 /// Deliver a message to a running child agent's inbox, which it reads at its next turn.
@@ -142,7 +142,7 @@ std::vector<delegation::subagent_result> wait_for_subagents(std::vector<std::str
 ///
 /// \param agent_id The child to deliver to, as spawning it returned its handle.
 /// \param message What to put in its inbox.
-/// \throws core::tool_error `not_found` for an unknown agent id, and `conflict` when that child
+/// \throws gg::core::tool_error `not_found` for an unknown agent id, and `conflict` when that child
 ///   has already returned.
 void send_message(std::string_view agent_id, std::string_view message);
 
@@ -158,7 +158,7 @@ void send_message(std::string_view agent_id, std::string_view message);
 ///
 /// \param state The state to move on to, named the way an agent to spawn is named.
 /// \param note The opening message the next state's agent sees; empty tells it nothing.
-/// \throws core::tool_error `invalid_argument` for a state this agent may not move to, and
+/// \throws gg::core::tool_error `invalid_argument` for a state this agent may not move to, and
 ///   `refused` for a second declaration in one turn.
 void transition_state(std::string_view state, std::optional<std::string_view> note = std::nullopt);
 
@@ -175,7 +175,7 @@ void transition_state(std::string_view state, std::optional<std::string_view> no
 /// \param agent The agent to become, from the ones this agent may become.
 /// \param prompt Its opening message. It already has the whole conversation, so this is the
 ///   instruction rather than a briefing; empty tells it nothing.
-/// \throws core::tool_error `invalid_argument` for an agent this agent may not become, and
+/// \throws gg::core::tool_error `invalid_argument` for an agent this agent may not become, and
 ///   `refused` for a second succession in one turn.
 void exec(std::string_view agent, std::optional<std::string_view> prompt = std::nullopt);
 
@@ -192,7 +192,7 @@ void exec(std::string_view agent, std::optional<std::string_view> prompt = std::
 /// \param prompt What the copy is to do instead. It has the whole conversation already, so this is
 ///   the difference rather than a briefing.
 /// \returns the copy's handle.
-/// \throws core::tool_error `limit_exceeded` at the delegation depth cap.
+/// \throws gg::core::tool_error `limit_exceeded` at the delegation depth cap.
 delegation::subagent_handle fork(std::string_view prompt);
 
 }  // namespace delegation

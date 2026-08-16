@@ -28,7 +28,7 @@ namespace tasks {
 /// The field really has three states and an `std::optional<std::string>` could say only two of
 /// them, which is how a stringly interface ends up treating "clear it" and "set it to the empty
 /// string" as one request. A default-constructed value keeps the field, so a patch that says
-/// nothing about a description leaves it alone. `board::update_issue` takes the same type for the
+/// nothing about a description leaves it alone. `gg::board::update_issue` takes the same type for the
 /// same reason.
 class text_edit {
  public:
@@ -99,21 +99,21 @@ struct task_patch {
 /// \param title A short line naming the work.
 /// \param options The parts that may be left out: a description, and the tasks this one waits on.
 /// \returns how much of the task budget is used.
-/// \throws core::tool_error `conflict` on a duplicate id or on an edge that would close a cycle.
+/// \throws gg::core::tool_error `conflict` on a duplicate id or on an edge that would close a cycle.
 tasks::task_usage add_task(std::string_view id, std::string_view title,
                            tasks::task_options options = {});
 
 /// Revise a task's title, description or status; at least one of the three is required.
 ///
-/// A field left at its default is left alone, `tasks::text_edit::clear()` empties the description,
-/// and `tasks::text_edit::set(…)` replaces it.
+/// A field left at its default is left alone, `gg::tasks::text_edit::clear()` empties the description,
+/// and `gg::tasks::text_edit::set(…)` replaces it.
 ///
 /// <ggop>tasks.update_task</ggop>
 ///
 /// \param id The task to revise.
 /// \param patch The fields to change. At least one is required; a field left at its default is
 ///   left alone.
-/// \throws core::tool_error `not_found` for an unknown id.
+/// \throws gg::core::tool_error `not_found` for an unknown id.
 void update_task(std::string_view id, tasks::task_patch patch);
 
 /// Replace a task's whole blocker set; an empty vector clears every blocker.
@@ -122,7 +122,7 @@ void update_task(std::string_view id, tasks::task_patch patch);
 ///
 /// \param id The task whose blockers to replace.
 /// \param blocked_by The ids of every task that must now be done before it.
-/// \throws core::tool_error `not_found` for an unknown id, and `conflict` when an edge would close
+/// \throws gg::core::tool_error `not_found` for an unknown id, and `conflict` when an edge would close
 ///   a cycle.
 void set_blocked_by(std::string_view id, std::vector<std::string> blocked_by);
 
@@ -133,7 +133,7 @@ void set_blocked_by(std::string_view id, std::vector<std::string> blocked_by);
 /// <ggop>tasks.complete_task</ggop>
 ///
 /// \param id The task to mark done.
-/// \throws core::tool_error `not_found` for an unknown id.
+/// \throws gg::core::tool_error `not_found` for an unknown id.
 void complete_task(std::string_view id);
 
 /// Remove a task and every blocker edge pointing at it, and hand back the task budget.
@@ -142,7 +142,7 @@ void complete_task(std::string_view id);
 ///
 /// \param id The task to remove.
 /// \returns how much of the task budget is left in use.
-/// \throws core::tool_error `not_found` for an unknown id.
+/// \throws gg::core::tool_error `not_found` for an unknown id.
 tasks::task_usage remove_task(std::string_view id);
 
 }  // namespace tasks

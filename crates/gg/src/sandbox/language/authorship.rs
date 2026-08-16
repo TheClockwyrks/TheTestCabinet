@@ -306,11 +306,12 @@ const UNCONVERTED: &[Unconverted] = &[
     // No row, because there is nothing here to record: these arms hand the compiler what they were
     // handed, and what they do besides is a shape this measurement says it cannot see.
     //
-    // * C++ and Swift programs reach gg's surface with no line the program wrote — a precompiled
-    //   header on `-include-pch`, a shell writing `@_exported import gg` behind
-    //   `-import-objc-header`. C# no longer belongs on that list: its SDK is compiled beside the
-    //   program, which tells `csc` the library exists and puts nothing in scope, and
-    //   `csharp.surface.test.rs` asks Roslyn to say so.
+    // * A Swift program reaches gg's surface with no line the program wrote — a shell writing
+    //   `@_exported import gg` behind `-import-objc-header`. Neither C# nor C++ belongs on that
+    //   list any more: C#'s SDK is compiled beside the program and C++'s is an include path and a
+    //   linked object, each of which tells the compiler the library exists and puts nothing in
+    //   scope, and `csharp.surface.test.rs` and `cpp.surface.test.rs` ask the two compilers to say
+    //   so.
     // * Kotlin lifts a model's `import` lines to the head of the file when it wrote any, and gg's
     //   own opening program writes none.
     // * PureScript supplies a module header when the reply has none and renames one that names

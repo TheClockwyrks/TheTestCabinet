@@ -28,10 +28,15 @@ The price is the entry point, and gg refuses a reply that defines none *at prepa
 cleanly and traps having done nothing.
 
 **The prelude is precompiled, and that is the single largest thing about this arm's cost.** Parsing
-`Sources/prelude.hpp` — gg's generated wire header plus the ~55 standard-library headers a C++
-author reaches for — costs ~850 ms of every compile. Reading it back precompiled costs ~40 ms.
-Measured: a small program is 883–1110 ms without the PCH and **82–95 ms** with it, which makes this
-the cheapest of the three compiled arms per turn rather than the dearest.
+`Sources/prelude.hpp` — the 53 standard-library headers a C++ author reaches for, and nothing else —
+costs the best part of a second of every compile. Measured on this repository's dev container,
+aarch64, best of five: a small program is 836 ms without the PCH and **90 ms** with it, and a
+ranges/format/map program is 1581 ms without and 952 ms with. That makes this the cheapest of the
+three compiled arms per turn rather than the dearest.
+
+**gg's own surface is deliberately not in it.** Every SDK name a program writes is reached through
+an `#include` that program wrote, so `gg` is undeclared until the reply asks for it. The cost is a
+measured 31 ms of a turn on both programs above.
 
 **Exceptions work.** `-fwasm-exceptions` with the standardised encoding (`-mllvm
 -wasm-use-legacy-eh=false`, because clang still defaults to the legacy one and the pinned wasmtime
@@ -50,7 +55,7 @@ three-element vector reads whatever is there. gg compiles every translation unit
 | --- | --- |
 | `Sources/sdk/gg/` | **gg's surface, hand-written and idiomatic**: one header per capability module, each a nested `namespace` under `gg` holding that module's functions and the types they hand back. Its `///` comments are the model-facing documentation — `tools/signatures.py` reflects the catalogue out of them on every build — and its `//` comments are not. |
 | `Sources/sdk/*.cpp` | One translation unit per module: the lowering, the call and the lift. Nothing in them is model-facing. `sdk/wire.*` is the bridge onto the canonical ABI, which a model never reads, and `sdk/runtime.hpp` holds the three declarations that belong to no module. |
-| `Sources/prelude.hpp` | **What every program is compiled against**, and the header this arm precompiles once per machine: the generated WIT surface as C, the declaration of the model's own entry point, and the standard-library set. One declaration, two readers — the compile, and the `headers` list in the generated `cpp.toolchain.json`. |
+| `Sources/prelude.hpp` | **What every program is compiled against**, and the header this arm precompiles once per machine: the standard-library set, and nothing of gg's. One declaration, two readers — the compile, and the `headers` list in the generated `cpp.toolchain.json`. |
 | `Sources/shell.cpp` | gg's shell — the two exports the sandbox world declares, the call into the model's own `main`, and the `catch` that turns an uncaught exception from `thrown Wasm exception` into the exception's own class and `what()`. Compiled **once**, at build time. |
 | `cpp-version.sh` | Every pin — the wasi-sdk release, the target triple, the C++ standard, the `wasi_snapshot_preview1` adapter, the `wit-bindgen` release — and where gg looks for the toolchain. Sourced by everything below, by `containers/gg-toolchains/Dockerfile` and by `scripts/ci/install-wasi-sdk.sh`. |
 | `bindings.sh` | Generates the C bindings from `crates/gg/wit` with the pinned `wit-bindgen`. Its own script so no step that must write exactly one file has to reach the build. |
@@ -61,22 +66,26 @@ three-element vector reads whatever is there. gg compiles every translation unit
 
 ## What a C++ program looks like
 
-An ordinary translation unit. Nothing is added to it and nothing has to be included, because the
-prelude is already in front of it — though writing the includes anyway costs nothing, which is the
-point of compiling the reply verbatim:
+An ordinary translation unit, carrying the `#include` line of every gg module it calls. The
+standard library needs none, because the precompiled prelude is already in front of it:
 
 ```cpp
+#include <gg/files.hpp>
+#include <gg/session.hpp>
+#include <gg/shell.hpp>
+#include <gg/views.hpp>
+
 int main() {
-  const auto entries = files::list_dir("src");
+  const auto entries = gg::files::list_dir("src");
   std::vector<std::string> sources;
   for (const auto &entry : entries) {
-    if (entry.kind == files::entry_kind::file) sources.push_back(entry.name);
+    if (entry.kind == gg::files::entry_kind::file) sources.push_back(entry.name);
   }
   std::ranges::sort(sources);
 
-  const auto built = shell::run("cmake --build build", 300.0);
-  views::open_text("build", built.output);
-  session::finish(std::format("looked at {} sources", sources.size()));
+  const auto built = gg::shell::run("cmake --build build", 300.0);
+  gg::views::open_text("build", built.output);
+  gg::session::finish(std::format("looked at {} sources", sources.size()));
   return 0;
 }
 ```
@@ -86,30 +95,25 @@ int main() {
 **The surface is thirteen capability modules, one header and one namespace each, under `namespace
 gg`.** `gg::files` is a namespace, a header, a translation unit and the prefix of every name the
 module declares, so `gg::files::read_file` and `gg::files::file_read` are both real C++ paths a
-program can write and two modules may each offer a `close`. The prelude ends with
-`using namespace gg;`, so a program writes `files::read_file(…)` with no import line of its own.
-The directive costs one measured surprise: it makes gg's module names visible *at* global scope
-rather than nested inside it, so a program's own file-scope `namespace files { … }` — or the reflex
-`namespace files = std::filesystem;` — is a second candidate and an unqualified `files::` is
-*reference to 'files' is ambiguous*, naming both at the model's own line. The declaration itself is
-accepted; `gg::files::` and `::files::` each resolve the use, and block scope is unaffected. No
-module name collides with anything the prelude already declares: measured against this arm's pinned
-`clang++`, all thirteen compile as a fresh `namespace` at global scope beside it.
+program can write and two modules may each offer a `close`. A program writes
+`#include <gg/files.hpp>` and then `gg::files::read_file(…)`, which is the line that module's own
+catalogue entry states. `#include <gg.hpp>` is the umbrella declaring all thirteen. Nothing of this
+SDK's is at global scope, so a program's own `namespace files` and `gg::files` never meet.
 
-**It reads like the standard library**, because it arrives in the same prelude as `<vector>` and is
-called with `std::string` arguments: `snake_case` functions, `snake_case` types, `enum class` for a
+**It reads like the standard library**, because it is called beside `<vector>` with `std::string`
+arguments: `snake_case` functions, `snake_case` types, `enum class` for a
 fixed choice, aggregates with public members for a record, `std::variant` for a value that is one of
 two things, **default arguments** for one optional part and a **designated initialiser** for
-several, and a thrown `gg::tool_error` — a `std::runtime_error` — for a call that failed.
+several, and a thrown `gg::core::tool_error` — a `std::runtime_error` — for a call that failed.
 
 ```cpp
-files::read_file("src/main.cpp", {.limit = 40});
-tasks::update_task("t1", {.description = tasks::text_edit::clear(),
-                          .status = tasks::task_status::done});
+gg::files::read_file("src/main.cpp", {.limit = 40});
+gg::tasks::update_task("t1", {.description = gg::tasks::text_edit::clear(),
+                              .status = gg::tasks::task_status::done});
 try {
-  views::open_text("notes", files::read_text_file("notes.md"));
-} catch (const core::tool_error &failure) {
-  if (failure.code() != core::tool_error_code::not_found) throw;
+  gg::views::open_text("notes", gg::files::read_text_file("notes.md"));
+} catch (const gg::core::tool_error &failure) {
+  if (failure.code() != gg::core::tool_error_code::not_found) throw;
 }
 ```
 
@@ -175,8 +179,8 @@ Four things are deliberately off the set, and each is a decision rather than an 
   including it drags its static initialisation into every artifact.
 - `<filesystem>`, for the reason the Rust arm keeps `std::fs` off its own: it compiles and links
   here — measured — and nothing read through it is gated, recorded in the run's events or put in
-  front of the model. The workspace is reached through `files`, `shell::run` and
-  `views::open_file`, which is what gg mediates anyway.
+  front of the model. The workspace is reached through `gg::files`, `gg::shell::run` and
+  `gg::views::open_file`, which is what gg mediates anyway.
 - **Any third-party library.** This is the one place this arm ships a set of a different *kind* from
   the Rust and Swift arms, and it is a deviation from the seam's eighth rule taken deliberately
   rather than skipped. The rule is that commonly used libraries are available by default, and what a
@@ -226,9 +230,10 @@ header is one the prelude already read, its include guard is already defined and
 nothing at all, which is worse: the module compiles, and the same line detonates the day somebody
 writes a header the prelude does not carry. Hoisting it out would be gg editing the author's file,
 which this arm has never done to anybody's text. It does not need to: the prelude is in front of a
-module exactly as it is in front of a program, so the refusal says to delete the line and write
-nothing in its place. A *program*'s `#include` is left exactly as written, because a program is not
-compiled inside a namespace.
+module exactly as it is in front of a program, and gg writes `#include <gg.hpp>` above the namespace
+itself, so the refusal says to delete the line and write nothing in its place. That one line is the
+module half's alone. A *program*'s includes are the model's own, because a program is a reply gg
+compiles exactly as sent.
 
 A code skill or memory spells its code **`skill.hpp`** / `memory.hpp` — one spelling, because
 nothing else in the registry compiles C++ and a language whose modules nothing else can evaluate

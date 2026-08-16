@@ -16,8 +16,8 @@ namespace gg {
 
 /// The types every other module's signatures name: how a call fails, and how it is classified.
 ///
-/// It declares no capability of its own: a program reaches `core::tool_error` by catching one, and
-/// `core::tool_error_code` by branching on the failure it caught.
+/// It declares no capability of its own: a program reaches `gg::core::tool_error` by catching one, and
+/// `gg::core::tool_error_code` by branching on the failure it caught.
 ///
 /// <ggmodule>core</ggmodule>
 namespace core {
@@ -75,11 +75,11 @@ enum class tool_error_code {
 ///
 /// ```cpp
 /// try {
-///   const auto notes = files::read_text_file("notes.md");
-///   views::open_text("notes", notes);
-/// } catch (const core::tool_error& failure) {
-///   if (failure.code() != core::tool_error_code::not_found) throw;
-///   files::write_file("notes.md", "");
+///   const auto notes = gg::files::read_text_file("notes.md");
+///   gg::views::open_text("notes", notes);
+/// } catch (const gg::core::tool_error& failure) {
+///   if (failure.code() != gg::core::tool_error_code::not_found) throw;
+///   gg::files::write_file("notes.md", "");
 /// }
 /// ```
 ///

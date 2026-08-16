@@ -22,7 +22,7 @@ namespace gg {
 /// that reads a dozen files to decide what to change is well shaped, while one that rewrites forty
 /// large files in a single turn will exhaust its fuel budget.
 ///
-/// Nothing here places anything in the agent's context window. `views::open_file` is the call that
+/// Nothing here places anything in the agent's context window. `gg::views::open_file` is the call that
 /// does.
 ///
 /// <ggmodule>files</ggmodule>
@@ -39,7 +39,7 @@ struct read_window {
   std::optional<std::uint32_t> limit;
 };
 
-/// A text file's window, as the `files::text_file` alternative of a read carries it.
+/// A text file's window, as the `gg::files::text_file` alternative of a read carries it.
 struct text_file {
   /// The file's text, or just the requested window under a capped read policy.
   std::string contents;
@@ -53,7 +53,7 @@ struct text_file {
   bool byte_truncated{};
 };
 
-/// A picture's description, as the `files::image_file` alternative of a read carries it.
+/// A picture's description, as the `gg::files::image_file` alternative of a read carries it.
 ///
 /// The pixels are not here and never enter the program: gg attaches the picture to the turn
 /// instead, which is what `shown` reports.
@@ -79,11 +79,11 @@ struct image_file {
 /// other does:
 ///
 /// ```cpp
-/// const auto read = files::read_file("logo.png");
-/// if (const auto* text = std::get_if<files::text_file>(&read)) {
-///   views::open_text("logo", text->contents);
+/// const auto read = gg::files::read_file("logo.png");
+/// if (const auto* text = std::get_if<gg::files::text_file>(&read)) {
+///   gg::views::open_text("logo", text->contents);
 /// } else {
-///   views::open_text("logo", std::get<files::image_file>(read).label);
+///   gg::views::open_text("logo", std::get<gg::files::image_file>(read).label);
 /// }
 /// ```
 using file_read = std::variant<files::text_file, files::image_file>;
@@ -108,7 +108,7 @@ struct dir_entry {
   files::entry_kind kind{};
 };
 
-/// Read a file, as either a `files::text_file` or a `files::image_file`.
+/// Read a file, as either a `gg::files::text_file` or a `gg::files::image_file`.
 ///
 /// Which of the two comes back is detected from the file's bytes, never from the extension, so a
 /// mislabelled picture is still a picture. A relative path resolves against the workspace; an
@@ -117,19 +117,19 @@ struct dir_entry {
 ///
 /// This call hands bytes to the program and places nothing in the context window. Reading a
 /// picture describes it and shows nothing, so a file only read here is a file nobody has looked
-/// at; `views::open_file` is the one call that shows one.
+/// at; `gg::views::open_file` is the one call that shows one.
 ///
 /// <ggop>files.read_file</ggop>
 ///
 /// \param path The file to read, relative to the workspace or absolute.
 /// \param window The lines to read; `{}` reads the whole file.
 /// \returns the file's text window, or the picture's description.
-/// \throws core::tool_error `not_found` for a missing path.
+/// \throws gg::core::tool_error `not_found` for a missing path.
 files::file_read read_file(std::string_view path, files::read_window window = {});
 
 /// Read a text file and hand back its contents directly, without the narrowing.
 ///
-/// It takes the same window as `files::read_file` and is the shape a program wants whenever the
+/// It takes the same window as `gg::files::read_file` and is the shape a program wants whenever the
 /// path is known to be text.
 ///
 /// <ggop>files.read_text_file</ggop>
@@ -137,8 +137,8 @@ files::file_read read_file(std::string_view path, files::read_window window = {}
 /// \param path The file to read, relative to the workspace or absolute.
 /// \param window The lines to read; `{}` reads the whole file.
 /// \returns the file's text.
-/// \throws core::tool_error `invalid_argument` when the path names a picture, which
-///   `files::read_file` describes and `views::open_file` shows.
+/// \throws gg::core::tool_error `invalid_argument` when the path names a picture, which
+///   `gg::files::read_file` describes and `gg::views::open_file` shows.
 std::string read_text_file(std::string_view path, files::read_window window = {});
 
 /// Write UTF-8 text to a file, creating parent directories and replacing whatever was there.
@@ -152,7 +152,7 @@ std::string read_text_file(std::string_view path, files::read_window window = {}
 ///   created.
 /// \param contents The UTF-8 text to write. It replaces the file entirely.
 /// \returns how many bytes were written.
-/// \throws core::tool_error `invalid_argument` for an empty path, and `io_error` when creating the
+/// \throws gg::core::tool_error `invalid_argument` for an empty path, and `io_error` when creating the
 ///   parent directories or the write itself failed.
 std::uint64_t write_file(std::string_view path, std::string_view contents);
 
@@ -166,7 +166,7 @@ std::uint64_t write_file(std::string_view path, std::string_view contents);
 /// \param path The file to edit.
 /// \param old_string The exact text to find, whitespace included. It must appear exactly once.
 /// \param new_string The text to put in its place. An empty string deletes the match.
-/// \throws core::tool_error `not_found` when the text does not appear, and `conflict` — with the
+/// \throws gg::core::tool_error `not_found` when the text does not appear, and `conflict` — with the
 ///   number of matches — when it appears more than once.
 void edit_file(std::string_view path, std::string_view old_string, std::string_view new_string);
 
@@ -180,7 +180,7 @@ void edit_file(std::string_view path, std::string_view old_string, std::string_v
 /// \param path The directory to list, relative to the workspace or absolute; empty lists the
 ///   workspace root.
 /// \returns the directory's entries, sorted by name.
-/// \throws core::tool_error `not_found` for a directory that is not there, and `invalid_argument`
+/// \throws gg::core::tool_error `not_found` for a directory that is not there, and `invalid_argument`
 ///   for a path that is given but empty.
 std::vector<files::dir_entry> list_dir(std::optional<std::string_view> path = std::nullopt);
 

@@ -11058,22 +11058,21 @@ async fn autoload_specifications(
 }
 
 /// The program gg synthesizes to open `paths` on a [code-mode](ContextModel::code_mode) agent's
-/// behalf — one file-view statement per path, in seeding order, and nothing else.
+/// behalf — one file view per path, in seeding order, and nothing else.
 ///
-/// Every statement is written by the agent's own
-/// [program language](crate::sandbox::ProgramLanguage::open_file_statement) rather than spelled out
+/// The whole program is written by the agent's own
+/// [program language](crate::sandbox::ProgramLanguage::open_file_program) rather than spelled out
 /// here: this program is pushed into the transcript as an assistant turn, and the model reads its own
 /// transcript as the example of what a well-formed turn looks like, so a statement in some other
-/// language's syntax would teach it the wrong protocol on turn one.
+/// language's syntax — or a statement list on an arm whose programs are translation units — would
+/// teach it the wrong protocol on turn one.
 fn open_file_program<'a>(
     language: GgProgramLanguage,
     paths: impl Iterator<Item = &'a String>,
 ) -> String {
-    let language = crate::sandbox::language(language);
-    paths
-        .map(|path| language.open_file_statement(path, None))
-        .collect::<Vec<_>>()
-        .join("\n")
+    let views: Vec<(&str, Option<crate::sandbox::FileWindow>)> =
+        paths.map(|path| (path.as_str(), None)).collect();
+    crate::sandbox::language(language).open_file_program(&views)
 }
 
 /// Re-read the workspace paths a [`compact`](COMPACT_TOOL) call named, so they can be seeded back

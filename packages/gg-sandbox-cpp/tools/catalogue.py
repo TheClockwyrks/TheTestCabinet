@@ -27,6 +27,27 @@ class Module:
         #: The path a program writes, and the prefix every name in this module is qualified by.
         self.path = path
 
+    @property
+    def header(self):
+        """The header this module is declared in, relative to the include root a program compiles
+        against.
+
+        One header per module is this SDK's whole layout — ``gg::files`` is a namespace, a header
+        and a translation unit — so the name is derived rather than written down a second time, and
+        ``signatures.py`` checks the file is really there.
+        """
+        return f"gg/{self.name}.hpp"
+
+    @property
+    def include(self):
+        """**The line a program writes to reach this module**, character for character.
+
+        clang's comment AST says nothing about include lines, so this is the one part of a C++
+        catalogue entry the arm composes rather than reflects — which is exactly what the
+        invariants allow an arm to compose and nothing else.
+        """
+        return f"#include <{self.header}>"
+
 
 # The modules the surface is divided into, IN THE ORDER IT IS PRESENTED IN.
 #

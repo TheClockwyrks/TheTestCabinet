@@ -24,19 +24,22 @@
 //! # What the surface looks like, and the one thing a model has to know about it
 //!
 //! **Every capability module is a `namespace` inside `namespace gg`, with the types it produces
-//! nested in it, and the prelude ends with `using namespace gg;`** — so a program writes
-//! `files::read_file(…)` with no import line of its own, and `gg::files::read_file` is the same
-//! call written in full.
+//! nested in it, and one header per module** — so a program writes `#include <gg/files.hpp>` and
+//! then `gg::files::read_file(…)`, which is the line the module's own catalogue entry states and
+//! the call written in full.
 //!
-//! The nesting is what makes that full name a real C++ path rather than a label, which is the whole
+//! Nothing gg passes the compiler puts any of it in scope. The header is on the include path and the
+//! bodies are in the `sdk.o` every artifact links, which is
+//! [packaging](https://docs.testcabinet.ai/gg/responses-as-code/invariants/); the declaration is the
+//! model's own `#include`. The [prelude](compile) carries the standard library and stops there, and
+//! there is no using-directive anywhere — so a program that declares its own `namespace files` has
+//! taken a name gg was not using, and `gg::files::` goes on resolving beside it.
+//!
+//! The nesting is what makes the full name a real C++ path rather than a label, which is the whole
 //! point of the surface being modules: it is what a search hit shows, what a documentation view is
-//! opened by, and what lets two modules each declare a `close`. The using-directive is only
-//! brevity, and it costs one surprise worth knowing — it makes gg's module names visible *at*
-//! global scope rather than nested inside it, so a program's own file-scope `namespace files { … }`
-//! or `namespace files = std::filesystem;` is a second candidate and an unqualified `files::` is
-//! *reference to 'files' is ambiguous*, naming both at the model's own line. `gg::files::` and
-//! `::files::` each resolve it, and block scope is unaffected. `Sources/prelude.hpp` records the
-//! measurement behind that and the reason `<filesystem>` is off this arm's library set.
+//! opened by, and what lets two modules each declare a `close`. `Sources/prelude.hpp` records what
+//! the standard-library-only prelude costs and the reason `<filesystem>` is off this arm's library
+//! set.
 //!
 //! Everything else is spelling, and it is written to read like the standard library it arrives
 //! beside: `snake_case` throughout, `enum class` for a fixed choice, aggregates with public members
@@ -119,8 +122,11 @@
 //! inside `namespace lib::<key>` **where they stand**. It is the plainest shape of the three
 //! compiled arms — C++ has a real nested namespace, so nothing has to be moved, re-synthesized or
 //! declared twice — and the one thing that had to be decided is what happens to a `#include` at a
-//! module's top level, which is refused by name. See [`source`] for the shape, the refusal and the
-//! argument.
+//! module's top level, which is refused by name. gg writes the one include that declares its own
+//! surface **above** that namespace, which is the wrapper
+//! [a module is allowed and a program is not](https://docs.testcabinet.ai/gg/responses-as-code/invariants/):
+//! a module is a skill author's file that gg wraps, where a program is a model's reply that gg does
+//! not touch. See [`source`] for the shape, the refusal and the argument.
 //!
 //! What a model can see of the difference is that `lib::csv_tools::parse` is a **name the compiler
 //! resolves** rather than a property looked up on a value: a key that does not exist is a diagnostic
@@ -305,17 +311,38 @@ impl ProgramLanguage for Cpp {
         open_file_statement(&spell(self, VIEWS_OPEN_FILE), path, window)
     }
 
-    /// [An array of names and a range `for` over it](self::open_docs_views_statement), each
-    /// iteration opening one documentation view — inside the `int main` this language has nowhere
-    /// else to put a statement than.
-    fn open_docs_views_statement(&self, names: &[&str]) -> String {
-        open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
+    /// [The include the call needs and the `int main` it lives in](self::open_file_program), which
+    /// is what a statement list is not on this arm.
+    ///
+    /// The one arm that has to override the seam's default twice over: C++ has nowhere for a bare
+    /// statement to live, and gg's surface is undeclared until a line the program wrote declares it.
+    /// A model reads this out of its own transcript as an example of its own output, so a text it
+    /// could not have sent would be teaching a shape its next reply is refused for.
+    fn open_file_program(&self, views: &[(&str, Option<FileWindow>)]) -> String {
+        open_file_program(
+            &includes(self, &[VIEWS_OPEN_FILE]),
+            &spell(self, VIEWS_OPEN_FILE),
+            views,
+        )
     }
 
-    /// [One `int main` holding two arrays and two range `for`s](self::bootstrap_program), with both
-    /// calls resolved from this language's own catalogue.
+    /// [An array of names and a range `for` over it](self::open_docs_views_statement), each
+    /// iteration opening one documentation view — inside the `int main` this language has nowhere
+    /// else to put a statement than, under the one `#include` that declares the call.
+    fn open_docs_views_statement(&self, names: &[&str]) -> String {
+        open_docs_views_statement(
+            &includes(self, &[VIEWS_OPEN_DOCS_VIEW]),
+            &spell(self, VIEWS_OPEN_DOCS_VIEW),
+            names,
+        )
+    }
+
+    /// [One `int main` holding two arrays and two range `for`s](self::bootstrap_program), under the
+    /// `#include` lines that declare the two calls — every one of them resolved from this
+    /// language's own catalogue.
     fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
         bootstrap_program(
+            &includes(self, &[DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW]),
             &spell(self, DOCS_SEARCH),
             &spell(self, VIEWS_OPEN_DOCS_VIEW),
             modules,
@@ -345,6 +372,44 @@ impl ProgramLanguage for Cpp {
 // ---------------------------------------------------------------------------------------------
 // The syntax this arm writes
 // ---------------------------------------------------------------------------------------------
+
+/// **The `#include` lines a program writes to reach the calls it makes**, one per module, in the
+/// order the calls are listed and each written once — followed by the blank line a C++ author leaves
+/// between a preamble and the code.
+///
+/// Resolved out of this arm's own catalogue rather than written out, for the reason [`spell`]
+/// resolves a call's name: the catalogue is where a module's [import line](crate::sandbox::ModuleView::import)
+/// is composed, a model reads that same line in its own module list, and a second copy here would be
+/// the one that drifts. A module that states no line contributes none, which is a state this arm's
+/// catalogue never reaches and every other arm's does.
+fn includes(language: &dyn ProgramLanguage, calls: &[crate::sandbox::OperationId]) -> String {
+    let functions = crate::sandbox::catalogue_functions(language);
+    let modules = crate::sandbox::catalogue_modules(language);
+    let mut lines: Vec<&str> = Vec::with_capacity(calls.len());
+    for call in calls {
+        let Some(function) = functions.iter().find(|function| {
+            function.alias_of.is_none()
+                && crate::sandbox::operation_of(function)
+                    .is_some_and(|operation| operation.id == *call)
+        }) else {
+            continue;
+        };
+        let Some(line) = modules
+            .iter()
+            .find(|module| module.id == function.module)
+            .and_then(|module| module.import)
+        else {
+            continue;
+        };
+        if !lines.contains(&line) {
+            lines.push(line);
+        }
+    }
+    match lines.is_empty() {
+        true => String::new(),
+        false => format!("{}\n\n", lines.join("\n")),
+    }
+}
 
 /// `csv-tools` → `csv_tools`, `my_helpers.v2` → `my_helpers_v2`, `9lives` → `_9lives`.
 ///
@@ -416,6 +481,28 @@ pub(super) fn open_file_statement(
     }
 }
 
+/// A whole translation unit that opens one file view per entry of `views`: the module's own
+/// `#include` line, an `int main`, and one call per view in the order given.
+///
+/// The seam's default is the statement list, and this arm cannot take it: a bare statement has
+/// nowhere to live in C++ and [gg refuses](self::source::defines_main) a reply that defines no
+/// `main`. So what gg pushes into the transcript is a program the model really could have sent —
+/// which is the whole reason the seam lets a language answer this for itself.
+///
+/// Each call is written by [`open_file_statement`], indented by two, so the one place a file-view
+/// call is spelled stays one place.
+pub(super) fn open_file_program(
+    includes: &str,
+    open_file: &str,
+    views: &[(&str, Option<FileWindow>)],
+) -> String {
+    let calls: String = views
+        .iter()
+        .map(|(path, window)| format!("  {}\n", open_file_statement(open_file, path, *window)))
+        .collect();
+    format!("{includes}int main() {{\n{calls}  return 0;\n}}\n")
+}
+
 /// A whole translation unit: an array of names and a range `for` over it, each iteration opening one
 /// documentation view.
 ///
@@ -435,7 +522,11 @@ pub(super) fn open_file_statement(
 /// initialiser gives `std::array` nothing to deduce from — *no viable constructor or deduction
 /// guide* — and the `(void)` cast keeps a program that declares an array it never reads from being
 /// a warning about one.
-pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) -> String {
+pub(super) fn open_docs_views_statement(
+    includes: &str,
+    open_docs_view: &str,
+    names: &[&str],
+) -> String {
     let entries: Vec<String> = names
         .iter()
         .map(|name| format!("      {}", serde_json::Value::String((*name).to_string())))
@@ -450,7 +541,7 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
         ),
     };
     format!(
-        "int main() {{\n{listed}  for (const auto &name : functions) {{\n    \
+        "{includes}int main() {{\n{listed}  for (const auto &name : functions) {{\n    \
          {open_docs_view}(name);\n  }}\n  return 0;\n}}\n"
     )
 }
@@ -472,6 +563,7 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
 /// A failed call throws and nothing here catches it, which is this arm's failure model: a bootstrap
 /// that caught its own failure would be a worked example of swallowing one.
 pub(super) fn bootstrap_program(
+    includes: &str,
     search: &str,
     open_docs_view: &str,
     modules: &[&str],
@@ -495,7 +587,7 @@ pub(super) fn bootstrap_program(
     let paths = listed("modules", modules);
     let functions = listed("functions", docs);
     format!(
-        "int main() {{\n{paths}  for (const auto &path : modules) {{\n    \
+        "{includes}int main() {{\n{paths}  for (const auto &path : modules) {{\n    \
          {search}(\"\", {{.module = path, .limit = {MAX_SEARCH_LIMIT}}});\n  }}\n\
          \n{functions}  for (const auto &name : functions) {{\n    \
          {open_docs_view}(name);\n  }}\n  return 0;\n}}\n"

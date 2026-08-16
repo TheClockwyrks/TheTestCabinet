@@ -30,7 +30,7 @@
 //! * which prebuilt component evaluates it ([`ProgramLanguage::guest_component`]);
 //! * how its SDK spells the surface ([`ProgramLanguage::catalogue`]);
 //! * and the source gg **writes on the model's behalf** — the synthesized file view
-//!   ([`ProgramLanguage::open_file_statement`]), the on-use script of a built-in family skill
+//!   ([`ProgramLanguage::open_file_program`]), the on-use script of a built-in family skill
 //!   ([`ProgramLanguage::open_docs_views_statement`]), and the program that opens the session
 //!   ([`ProgramLanguage::bootstrap_program`]).
 //!
@@ -62,8 +62,8 @@
 //!   program that opens the session ([`bootstrap_program`](ProgramLanguage::bootstrap_program)), the
 //!   on-use script of a built-in family skill
 //!   ([`open_docs_views_statement`](ProgramLanguage::open_docs_views_statement)), the synthesized
-//!   file view ([`open_file_statement`](ProgramLanguage::open_file_statement), joined into one
-//!   program by [autoload](crate::agent)) and the module a gate drives an arm with
+//!   file view ([`open_file_program`](ProgramLanguage::open_file_program), which
+//!   [autoload](crate::agent) pushes into the transcript) and the module a gate drives an arm with
 //!   (`gate_module`, which is `#[cfg(test)]` and so unreachable from a doc link) are all read by a
 //!   model as examples of its own output, and one of them is compiled and run before the model's
 //!   first request. A generated
@@ -580,6 +580,27 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// The two callers are [autoload](crate::agent) and
     /// [agent persistence](crate::persistence::restore_file_views).
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String;
+
+    /// **A whole program that opens a view of each of `views`**, in the order given, as this
+    /// language spells and structures one.
+    ///
+    /// gg pushes it into an agent's transcript as an assistant turn — [autoload](crate::agent) with
+    /// every file a test case provided, [persistence](crate::persistence) with one restored view at
+    /// a time — and a model reads its own transcript as the example of what a well-formed reply
+    /// looks like. Nothing on the turn path compiles it, which is exactly why the seam names it: a
+    /// text that is a *statement list* rather than a program teaches a shape the model's own next
+    /// reply would be refused for.
+    ///
+    /// The default is the statement list, because on nine of the eleven arms a program **is** one:
+    /// a language with a top level takes the statements as they stand. An arm that requires an
+    /// entry point, or a line to reach the call, overrides it — [C++](cpp) does both.
+    fn open_file_program(&self, views: &[(&str, Option<FileWindow>)]) -> String {
+        views
+            .iter()
+            .map(|(path, window)| self.open_file_statement(path, *window))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 
     /// A whole **program** that opens one documentation view per name in `names`, as this language
     /// spells and structures it.

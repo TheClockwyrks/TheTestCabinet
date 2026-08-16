@@ -196,7 +196,10 @@ fn every_cpp_example_a_model_is_shown_compiles() {
         snippets.len()
     );
 
-    let mut program = String::new();
+    // gg's whole surface, under one line of this gate's own — because that is the line a model's
+    // own program carries and an example is a fragment of one. Nothing else is added: the standard
+    // library arrives from the precompiled prelude exactly as it does on the turn path.
+    let mut program = format!("{}\n\n", super::source::SURFACE_INCLUDE);
     for (index, (label, snippet)) in snippets.iter().enumerate() {
         let body = snippet.trim_end();
         // A whole program goes in as it stands; a statement fragment is enclosed in a function

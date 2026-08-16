@@ -34,7 +34,7 @@ use serde_json::{Value, json};
 
 use super::substrate::{evaluate, evaluate_closing_docviews, logs, prepare};
 use crate::ending::{Ending, EndingRole};
-use test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE;
+use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 
 use crate::sandbox::fake::{CallLog, all_operations, all_operations_without, canned_outcome};
 use crate::sandbox::membrane::RunEnding;
@@ -73,11 +73,13 @@ fn text<'a>(entry: &'a Value, field: &str) -> &'a str {
 
 /// A whole program out of a body of statements, which is what C++ needs and no other arm does.
 ///
-/// It is the one place these tests add anything to what a model would write, and it adds the two
-/// lines C++ has no top level to do without. Nothing else is prepended: the SDK is in scope because
-/// the prelude put it there, which is the claim being made.
+/// It is the one place these tests add anything to what a model would write, and what it adds is
+/// what a model's own reply has to carry: the `#include` that declares gg's surface, and the entry
+/// point C++ has no top level to do without. The umbrella header rather than the thirteen module
+/// ones, because the bodies below reach across most of them and a per-body include list would be a
+/// second copy of what each one calls.
 fn program(body: &str) -> String {
-    format!("int main() {{\n{body}\n  return 0;\n}}\n")
+    format!("#include <gg.hpp>\n\nint main() {{\n{body}\n  return 0;\n}}\n")
 }
 
 /// Compile and run one C++ program with `enabled`'s tools offered and no ending group.
@@ -115,7 +117,7 @@ struct Crossing {
 /// arguments and the expected JSON — because the expected JSON is the point. gg's dispatch is
 /// language-independent: ten arms writing the same call in their own idioms must produce
 /// **byte-identical** arguments, or they are not running the same experiment. A designated
-/// initialiser lowered onto the wrong wire slot, a `tasks::text_edit::clear()` read as "leave it alone"
+/// initialiser lowered onto the wrong wire slot, a `gg::tasks::text_edit::clear()` read as "leave it alone"
 /// instead of "clear it", an enumerator whose wire word did not translate — none of them is a
 /// compile error in any of the ten, and all of them are visible here.
 ///
@@ -127,37 +129,37 @@ fn crossings() -> Vec<Crossing> {
     vec![
         Crossing {
             tool: "shell",
-            statement: r#"shell::run("npm test", 30.0);"#,
+            statement: r#"gg::shell::run("npm test", 30.0);"#,
             expected: || json!({ "command": "npm test", "timeout_secs": 30.0 }),
         },
         Crossing {
             tool: "read_file",
-            statement: r#"files::read_file("src/a.cpp", {.offset = 2, .limit = 5});"#,
+            statement: r#"gg::files::read_file("src/a.cpp", {.offset = 2, .limit = 5});"#,
             expected: || json!({ "path": "src/a.cpp", "offset": 2, "limit": 5 }),
         },
         Crossing {
             tool: "write_file",
-            statement: r#"files::write_file("out.txt", "hello");"#,
+            statement: r#"gg::files::write_file("out.txt", "hello");"#,
             expected: || json!({ "path": "out.txt", "contents": "hello" }),
         },
         Crossing {
             tool: "edit_file",
-            statement: r#"files::edit_file("src/a.cpp", "alpha", "beta");"#,
+            statement: r#"gg::files::edit_file("src/a.cpp", "alpha", "beta");"#,
             expected: || json!({ "path": "src/a.cpp", "old_string": "alpha", "new_string": "beta" }),
         },
         Crossing {
             tool: "list_dir",
-            statement: r#"files::list_dir("src");"#,
+            statement: r#"gg::files::list_dir("src");"#,
             expected: || json!({ "path": "src" }),
         },
         Crossing {
             tool: "read_skill",
-            statement: r#"skills::read_skill("testing");"#,
+            statement: r#"gg::skills::read_skill("testing");"#,
             expected: || json!({ "name": "testing" }),
         },
         Crossing {
             tool: "write_memory",
-            statement: r#"memories::write_memory("layout", "d", "b");"#,
+            statement: r#"gg::memories::write_memory("layout", "d", "b");"#,
             expected: || {
                 json!({ "name": "layout", "description": "d", "body": "b",
                         "code": null, "onUse": null })
@@ -165,7 +167,7 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "update_memory",
-            statement: r#"memories::update_memory("layout", "d2", "b2");"#,
+            statement: r#"gg::memories::update_memory("layout", "d2", "b2");"#,
             expected: || {
                 json!({ "name": "layout", "description": "d2", "body": "b2",
                         "code": null, "onUse": null })
@@ -175,7 +177,7 @@ fn crossings() -> Vec<Crossing> {
             tool: "create_memory",
             // The one crossing that carries a memory's CODE, and the one that fills in a single
             // field of an options aggregate by name and leaves the other at its default.
-            statement: r#"memories::create_memory("layout", "d", "b",
+            statement: r#"gg::memories::create_memory("layout", "d", "b",
                                                 {.code = "int one() { return 1; }"});"#,
             expected: || {
                 json!({ "name": "layout", "description": "d", "contents": "b",
@@ -184,36 +186,36 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "read_memory",
-            statement: r#"memories::read_memory("layout");"#,
+            statement: r#"gg::memories::read_memory("layout");"#,
             expected: || json!({ "name": "layout" }),
         },
         Crossing {
             tool: "edit_memory",
-            statement: r#"memories::edit_memory("layout", "old", "new");"#,
+            statement: r#"gg::memories::edit_memory("layout", "old", "new");"#,
             expected: || json!({ "name": "layout", "old_string": "old", "new_string": "new" }),
         },
         Crossing {
             tool: "search_memories",
-            statement: r#"memories::search_memories({"cargo", "nextest"});"#,
+            statement: r#"gg::memories::search_memories({"cargo", "nextest"});"#,
             expected: || json!({ "keywords": ["cargo", "nextest"] }),
         },
         Crossing {
             tool: "delete_memory",
-            statement: r#"memories::delete_memory("layout");"#,
+            statement: r#"gg::memories::delete_memory("layout");"#,
             expected: || json!({ "name": "layout" }),
         },
         Crossing {
             tool: "add_task",
-            statement: r#"tasks::add_task("t1", "T", {.description = "D", .blocked_by = {"t0"}});"#,
+            statement: r#"gg::tasks::add_task("t1", "T", {.description = "D", .blocked_by = {"t0"}});"#,
             expected: || json!({ "id": "t1", "title": "T", "description": "D", "blockedBy": ["t0"] }),
         },
         Crossing {
             tool: "update_task",
-            statement: r#"tasks::update_task("t1", {.title = "T2",
-                                                   .description = tasks::text_edit::clear(),
-                                                   .status = tasks::task_status::in_progress});"#,
+            statement: r#"gg::tasks::update_task("t1", {.title = "T2",
+                                                   .description = gg::tasks::text_edit::clear(),
+                                                   .status = gg::tasks::task_status::in_progress});"#,
             expected: || {
-                // `tasks::text_edit::clear()` is what CLEARS it — a default-constructed `text_edit` is what
+                // `gg::tasks::text_edit::clear()` is what CLEARS it — a default-constructed `text_edit` is what
                 // leaves it alone — and `in_progress` is gg's own spelling, so the membrane's
                 // `in-progress` reaches neither a model nor a tool.
                 json!({ "id": "t1", "title": "T2", "status": "in_progress", "description": "" })
@@ -221,27 +223,27 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "set_blocked_by",
-            statement: r#"tasks::set_blocked_by("t1", {});"#,
+            statement: r#"gg::tasks::set_blocked_by("t1", {});"#,
             expected: || json!({ "id": "t1", "blockedBy": [] }),
         },
         Crossing {
             tool: "complete_task",
-            statement: r#"tasks::complete_task("t1");"#,
+            statement: r#"gg::tasks::complete_task("t1");"#,
             expected: || json!({ "id": "t1" }),
         },
         Crossing {
             tool: "remove_task",
-            statement: r#"tasks::remove_task("t1");"#,
+            statement: r#"gg::tasks::remove_task("t1");"#,
             expected: || json!({ "id": "t1" }),
         },
         Crossing {
             tool: "create_epic",
-            statement: r#"board::create_epic("epc", "E", "D");"#,
+            statement: r#"gg::board::create_epic("epc", "E", "D");"#,
             expected: || json!({ "prefix": "epc", "title": "E", "description": "D" }),
         },
         Crossing {
             tool: "create_issue",
-            statement: r#"board::create_issue("I", "s", "o", "c", "worker",
+            statement: r#"gg::board::create_issue("I", "s", "o", "c", "worker",
                                                 {.reviewers = {"critic"}});"#,
             expected: || {
                 json!({
@@ -259,10 +261,10 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "update_issue",
-            statement: r#"board::update_issue("i1", {.status = board::issue_status::done,
-                                                      .epic = board::epic_assignment::ungroup()});"#,
+            statement: r#"gg::board::update_issue("i1", {.status = gg::board::issue_status::done,
+                                                      .epic = gg::board::epic_assignment::ungroup()});"#,
             expected: || {
-                // `board::epic_assignment::ungroup()` ungroups the issue, which gg's schema spells as the
+                // `gg::board::epic_assignment::ungroup()` ungroups the issue, which gg's schema spells as the
                 // empty string; a description the patch left default keeps the one it has, so its
                 // key is absent.
                 json!({
@@ -278,27 +280,27 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "set_issue_blocked_by",
-            statement: r#"board::set_issue_blocked_by("i1", {"i0"});"#,
+            statement: r#"gg::board::set_issue_blocked_by("i1", {"i0"});"#,
             expected: || json!({ "id": "i1", "blockedBy": ["i0"] }),
         },
         Crossing {
             tool: "remove_epic",
-            statement: r#"board::remove_epic("e1");"#,
+            statement: r#"gg::board::remove_epic("e1");"#,
             expected: || json!({ "id": "e1" }),
         },
         Crossing {
             tool: "remove_issue",
-            statement: r#"board::remove_issue("i1");"#,
+            statement: r#"gg::board::remove_issue("i1");"#,
             expected: || json!({ "id": "i1" }),
         },
         Crossing {
             tool: "wait_for_issue",
-            statement: r#"board::wait_for_issue("i1");"#,
+            statement: r#"gg::board::wait_for_issue("i1");"#,
             expected: || json!({ "issueId": "i1" }),
         },
         Crossing {
             tool: "evict_file_view",
-            statement: r#"context::evict_file_view("src/a.cpp");"#,
+            statement: r#"gg::context::evict_file_view("src/a.cpp");"#,
             expected: || json!({ "path": "src/a.cpp" }),
         },
         Crossing {
@@ -307,24 +309,24 @@ fn crossings() -> Vec<Crossing> {
             // pairs. C++ has no value type for a closed integer range — `std::ranges::iota_view` is
             // a sequence, which a span of turn numbers is not — so this is the one place the arm
             // spells with a record what Rust spells with `4..=19`.
-            statement: r#"context::archive_thread({{4, 19}, {30, 35}});"#,
+            statement: r#"gg::context::archive_thread({{4, 19}, {30, 35}});"#,
             expected: || json!({ "ranges": [[4, 19], [30, 35]] }),
         },
         Crossing {
             tool: "search_archive",
-            statement: r#"context::search_archive("the parser");"#,
+            statement: r#"gg::context::search_archive("the parser");"#,
             expected: || json!({ "query": "the parser" }),
         },
         Crossing {
             tool: "compact",
-            statement: r#"context::compact("scaffolded the page", {"src/main.cpp"});"#,
+            statement: r#"gg::context::compact("scaffolded the page", {"src/main.cpp"});"#,
             expected: || json!({ "summary": "scaffolded the page", "files": ["src/main.cpp"] }),
         },
         Crossing {
             tool: "spawn_subagent",
             // The brief is one value with two named factories rather than one of two optional
             // arguments, so "both" and "neither" are programs that do not compile.
-            statement: r#"delegation::spawn_subagent("subagent", delegation::brief::prompt("write the lexer"));"#,
+            statement: r#"gg::delegation::spawn_subagent("subagent", gg::delegation::brief::prompt("write the lexer"));"#,
             expected: || json!({ "agent": "subagent", "prompt": "write the lexer", "issueId": null }),
         },
         Crossing {
@@ -332,27 +334,27 @@ fn crossings() -> Vec<Crossing> {
             // The one function this SDK spells as an OVERLOAD PAIR rather than a default argument,
             // because "every outstanding child" and "these children" are two calls in C++ and an
             // `std::optional<std::vector<…>>` would have made the common one write `std::nullopt`.
-            statement: r#"delegation::wait_for_subagents({"agent-1"});"#,
+            statement: r#"gg::delegation::wait_for_subagents({"agent-1"});"#,
             expected: || json!({ "ids": ["agent-1"] }),
         },
         Crossing {
             tool: "send_message",
-            statement: r#"delegation::send_message("agent-1", "prefer the simpler parser");"#,
+            statement: r#"gg::delegation::send_message("agent-1", "prefer the simpler parser");"#,
             expected: || json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }),
         },
         Crossing {
             tool: "transition_state",
-            statement: r#"delegation::transition_state("verify", "the build is green");"#,
+            statement: r#"gg::delegation::transition_state("verify", "the build is green");"#,
             expected: || json!({ "state": "verify", "note": "the build is green" }),
         },
         Crossing {
             tool: "exec",
-            statement: r#"delegation::exec("Builder", "pick it up from here");"#,
+            statement: r#"gg::delegation::exec("Builder", "pick it up from here");"#,
             expected: || json!({ "agent": "Builder", "prompt": "pick it up from here" }),
         },
         Crossing {
             tool: "fork",
-            statement: r#"delegation::fork("try the other fix");"#,
+            statement: r#"gg::delegation::fork("try the other fix");"#,
             expected: || json!({ "prompt": "try the other fix" }),
         },
     ]
@@ -412,33 +414,33 @@ fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_cpp_too() {
     let (outcome, log) = evaluate(
         &prepare(&program(
             r####"
-  const std::string text = files::read_text_file("notes.md", {.offset = 1, .limit = 2});
-  const auto read = views::open_file("notes.md", {.offset = 1, .limit = 2});
-  views::open_text("summary", text);
-  views::open_docs_view("read_file");
-  const std::uint32_t closed = views::close("summary");
-  const std::uint32_t missing = views::close("never opened");
-  const auto open = views::current();
-  log(std::format("{} {}", open[0].selector, open[0].kind == views::view_kind::file));
-  log(std::format("{} {}", closed, missing));
-  const std::string shown = std::holds_alternative<files::text_file>(read)
-                                ? std::get<files::text_file>(read).contents
-                                : std::get<files::image_file>(read).label;
-  log(shown.substr(0, shown.find('\n')));
-  const auto found = docs::search(
-      "open", {.module = "views", .kind = docs::doc_kind::function, .limit = 5});
-  log(std::format("{} {} {}", found.total, found.offset, found.hits.size()));
+  const std::string text = gg::files::read_text_file("notes.md", {.offset = 1, .limit = 2});
+  const auto read = gg::views::open_file("notes.md", {.offset = 1, .limit = 2});
+  gg::views::open_text("summary", text);
+  gg::views::open_docs_view("read_file");
+  const std::uint32_t closed = gg::views::close("summary");
+  const std::uint32_t missing = gg::views::close("never opened");
+  const auto open = gg::views::current();
+  gg::log(std::format("{} {}", open[0].selector, open[0].kind == gg::views::view_kind::file));
+  gg::log(std::format("{} {}", closed, missing));
+  const std::string shown = std::holds_alternative<gg::files::text_file>(read)
+                                ? std::get<gg::files::text_file>(read).contents
+                                : std::get<gg::files::image_file>(read).label;
+  gg::log(shown.substr(0, shown.find('\n')));
+  const auto found = gg::docs::search(
+      "open", {.module = "views", .kind = gg::docs::doc_kind::function, .limit = 5});
+  gg::log(std::format("{} {} {}", found.total, found.offset, found.hits.size()));
   try {
-    log(std::format("closed {}", docs::close("gg::views::open_text")));
-  } catch (const core::tool_error &failure) {
-    log(std::format("{} on {}", core::gg_name(failure.code()), failure.tool()));
+    gg::log(std::format("closed {}", gg::docs::close("gg::views::open_text")));
+  } catch (const gg::core::tool_error &failure) {
+    gg::log(std::format("{} on {}", gg::core::gg_name(failure.code()), failure.tool()));
   }
   try {
-    log(std::format("closed {}", docs::close_all()));
-  } catch (const core::tool_error &failure) {
-    log(std::format("{} on {}", core::gg_name(failure.code()), failure.tool()));
+    gg::log(std::format("closed {}", gg::docs::close_all()));
+  } catch (const gg::core::tool_error &failure) {
+    gg::log(std::format("{} on {}", gg::core::gg_name(failure.code()), failure.tool()));
   }
-  session::finish("read the file and showed myself the result");
+  gg::session::finish("read the file and showed myself the result");
 "####,
         )),
         &all_operations_without(CAPABILITY_DOCVIEW_CLOSE),
@@ -488,7 +490,7 @@ fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_cpp_too() {
     let (granted, _log) = evaluate_closing_docviews(
         &prepare(&program(
             r####"
-  log(std::format("{} {}", docs::close("gg::views::open_text"), docs::close_all()));
+  gg::log(std::format("{} {}", gg::docs::close("gg::views::open_text"), gg::docs::close_all()));
 "####,
         )),
         canned_outcome,
@@ -496,7 +498,7 @@ fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_cpp_too() {
     assert_eq!(logs(&granted), ["0 0"]);
 
     // Two reads reached gg's dispatch and both arrived as `read_file`: the helper's, and the one
-    // `views::open_file` performs. Neither has a tool name of its own, which is exactly the point — a
+    // `gg::views::open_file` performs. Neither has a tool name of its own, which is exactly the point — a
     // helper is a spelling of the tool it is built on, and a view is a read gg also shows you.
     assert_eq!(log.names(), ["read_file", "read_file"]);
     assert_eq!(
@@ -513,14 +515,14 @@ fn the_program_library_and_a_reviewers_verdict_are_reached_in_cpp_too() {
     let (outcome, _log) = evaluate(
         &prepare(&program(
             r####"
-  log(std::to_string(programs::history().size()));
+  gg::log(std::to_string(gg::programs::history().size()));
   try {
-    log(programs::get(2));
-  } catch (const core::tool_error &failure) {
-    log(std::string(core::gg_name(failure.code())));
+    gg::log(gg::programs::get(2));
+  } catch (const gg::core::tool_error &failure) {
+    gg::log(std::string(gg::core::gg_name(failure.code())));
   }
-  programs::rerun("int main() { log(\"again\"); return 0; }");
-  session::request_changes({"widen the test", "name the file"});
+  gg::programs::rerun("int main() { gg::log(\"again\"); return 0; }");
+  gg::session::request_changes({"widen the test", "name the file"});
 "####,
         )),
         &[],
@@ -544,7 +546,7 @@ fn the_program_library_and_a_reviewers_verdict_are_reached_in_cpp_too() {
     // The other verdict, which is the same role's other ending, and the one call in the surface that
     // takes nothing at all.
     let (outcome, _log) = evaluate(
-        &prepare(&program("  session::approve();")),
+        &prepare(&program("  gg::session::approve();")),
         &[],
         RunEnding::Role(EndingRole::Review),
         false,
@@ -565,19 +567,19 @@ fn the_program_library_and_a_reviewers_verdict_are_reached_in_cpp_too() {
 
 #[test]
 fn a_failure_is_thrown_whether_it_is_caught_or_let_out() {
-    // Caught: an ordinary `catch` on `core::tool_error` with a test on the code, which is what a program
+    // Caught: an ordinary `catch` on `gg::core::tool_error` with a test on the code, which is what a program
     // that expects one failure and not the others writes. Nothing about it is exceptional —
-    // `core::tool_error` is a `std::runtime_error`, so `catch (const std::exception&)` sees it too and no
+    // `gg::core::tool_error` is a `std::runtime_error`, so `catch (const std::exception&)` sees it too and no
     // SDK-specific combinator is needed to compose with the standard library's own throws.
     let (outcome, _log) = run_with(
         r####"
   try {
-    log(files::read_text_file("gone.cpp"));
-  } catch (const core::tool_error &failure) {
-    if (failure.code() != core::tool_error_code::not_found) throw;
-    log(std::format("{} on {}", core::gg_name(failure.code()), failure.tool()));
+    gg::log(gg::files::read_text_file("gone.cpp"));
+  } catch (const gg::core::tool_error &failure) {
+    if (failure.code() != gg::core::tool_error_code::not_found) throw;
+    gg::log(std::format("{} on {}", gg::core::gg_name(failure.code()), failure.tool()));
   }
-  log("carried on");
+  gg::log("carried on");
 "####,
         &all_operations(),
         |_name: &str, _args: &Value| {
@@ -591,14 +593,14 @@ fn a_failure_is_thrown_whether_it_is_caught_or_let_out() {
 
     // Let out: gg's shell catches what escapes `main`, so an uncaught failure is a reported,
     // RECOVERABLE program error rather than a trap — and it carries the failed call's own gg code,
-    // which is what the host classifies the turn by. That code is read off the `core::tool_error` itself:
+    // which is what the host classifies the turn by. That code is read off the `gg::core::tool_error` itself:
     // an arm whose uncaught gg failure was recorded as `other` would be an arm whose error rates a
     // study could not compare with any other.
     let (outcome, _log) = run_with(
         r####"
-  log("before");
-  files::read_text_file("gone.cpp");
-  log("after");
+  gg::log("before");
+  gg::files::read_text_file("gone.cpp");
+  gg::log("after");
 "####,
         &all_operations(),
         |_name: &str, _args: &Value| {
@@ -616,7 +618,7 @@ fn a_failure_is_thrown_whether_it_is_caught_or_let_out() {
     assert_eq!(
         error.kind,
         crate::sandbox::outcome::ProgramErrorKind::ToolFailure,
-        "an uncaught gg failure is classified from the CODE gg's shell read off the `core::tool_error`;          without that it would land in `Other` beside a model that threw an `int`: {error:?}"
+        "an uncaught gg failure is classified from the CODE gg's shell read off the `gg::core::tool_error`;          without that it would land in `Other` beside a model that threw an `int`: {error:?}"
     );
     assert_eq!(
         outcome.logs,
@@ -634,11 +636,11 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     let (outcome, log) = run_with(
         r####"
   try {
-    files::write_file("out.txt", "hello");
-  } catch (const core::tool_error &failure) {
-    log(std::format("{} on {}", core::gg_name(failure.code()), failure.tool()));
+    gg::files::write_file("out.txt", "hello");
+  } catch (const gg::core::tool_error &failure) {
+    gg::log(std::format("{} on {}", gg::core::gg_name(failure.code()), failure.tool()));
   }
-  log("carried on");
+  gg::log("carried on");
 "####,
         &[crate::sandbox::operations::FILES_READ_FILE],
         canned_outcome,
@@ -689,7 +691,9 @@ fn cpp_reaches_every_library() {
     );
 
     // And a program that reaches for a representative of each group, written the way a model writes
-    // one: with no `#include` at all, because the precompiled prelude is already in front of it.
+    // one: with no `#include` of the standard library at all, because the precompiled prelude is
+    // already in front of it. The one include it does carry is gg's, which is the line every
+    // program on this arm writes for itself.
     let outcome = evaluate(
         &prepare(&program(
             r####"
@@ -706,9 +710,9 @@ fn cpp_reaches_every_library() {
   std::mt19937 engine(7);
   const auto rolled = std::uniform_int_distribution<int>(1, 6)(engine);
   const auto span = std::chrono::seconds(90) + std::chrono::minutes(1);
-  log(std::format("{} {} {} {} {} {} {} {}", values[0], parsed.value_or(-1), built.str(),
+  gg::log(std::format("{} {} {} {} {} {} {} {}", values[0], parsed.value_or(-1), built.str(),
                   matched, (int)(pi * 100), rolled > 0, span.count(),
-                  std::to_underlying(files::entry_kind::directory)));
+                  std::to_underlying(gg::files::entry_kind::directory)));
 "####,
         )),
         &[],
@@ -734,13 +738,13 @@ fn cpp_tells_the_truth_about_what_is_off_the_library_set() {
     //    refusal built out of the set would cost a model a turn on a program that would have worked.
     let reached = evaluate(
         &prepare(
-            "#include <iostream>\n\
+            "#include <gg.hpp>\n\n#include <iostream>\n\
              #include <sstream>\n\
              int main() {\n\
              \x20 std::ostringstream built;\n\
              \x20 built << \"off the set\";\n\
              \x20 std::cout << built.str() << std::endl;\n\
-             \x20 log(built.str());\n\
+             \x20 gg::log(built.str());\n\
              \x20 return 0;\n\
              }\n",
         ),
@@ -763,9 +767,9 @@ fn cpp_tells_the_truth_about_what_is_off_the_library_set() {
     //    Rust's, whose `std::thread::spawn` also compiles and then does nothing at all.
     let threaded = evaluate(
         &prepare(
-            "#include <thread>\n\
+            "#include <gg.hpp>\n\n#include <thread>\n\
              int main() {\n\
-             \x20 log(\"before\");\n\
+             \x20 gg::log(\"before\");\n\
              \x20 std::thread worker([] {});\n\
              \x20 worker.join();\n\
              \x20 return 0;\n\
@@ -885,13 +889,32 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
             ("core", "gg::core"),
         ]
     );
-    for module in section(&catalogue, "modules") {
-        assert!(
-            module["import"].is_null(),
-            "the prelude is precompiled in front of every program, so there is no import line a \
-             model would be right to write: {module}"
-        );
-    }
+    // **The line a program writes to reach each of them**, which on this arm is one header per
+    // module and the only part of a catalogue entry the arm composes rather than reflects: clang's
+    // comment AST reports which declaration a comment belongs to and says nothing about which file
+    // it is in. It is asserted for every module rather than sampled, because it is copied character
+    // for character into a program and a wrong one is a turn spent on `file not found`.
+    assert_eq!(
+        section(&catalogue, "modules")
+            .iter()
+            .map(|module| text(module, "import"))
+            .collect::<Vec<_>>(),
+        [
+            "#include <gg/files.hpp>",
+            "#include <gg/shell.hpp>",
+            "#include <gg/board.hpp>",
+            "#include <gg/tasks.hpp>",
+            "#include <gg/memories.hpp>",
+            "#include <gg/views.hpp>",
+            "#include <gg/docs.hpp>",
+            "#include <gg/context.hpp>",
+            "#include <gg/delegation.hpp>",
+            "#include <gg/skills.hpp>",
+            "#include <gg/programs.hpp>",
+            "#include <gg/session.hpp>",
+            "#include <gg/core.hpp>",
+        ]
+    );
 
     // Nothing a model reads is blank, anywhere, and every name it is shown is one it could type.
     // The register and coverage gates make these checks for real over the parsed catalogue; making
@@ -998,11 +1021,11 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
         .expect("read_file is catalogued");
     assert_eq!(
         text(&read_file["signatures"][0], "signature"),
-        "read_file(std::string_view path, files::read_window window = {}) -> files::file_read"
+        "read_file(std::string_view path, gg::files::read_window window = {}) -> gg::files::file_read"
     );
     // A `std::variant` alias closes over its ALTERNATIVES, which is the one place a type reference
-    // is not a member of anything: a model shown `using file_read = std::variant<files::text_file,
-    // files::image_file>` and neither alternative has been shown nothing at all.
+    // is not a member of anything: a model shown `using file_read = std::variant<gg::files::text_file,
+    // gg::files::image_file>` and neither alternative has been shown nothing at all.
     assert_eq!(
         read_file["types"]
             .as_array()
@@ -1011,12 +1034,12 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
             .map(|reference| (text(reference, "spelled"), text(reference, "fqn")))
             .collect::<Vec<_>>(),
         [
-            ("files::read_window", "gg::files::read_window"),
-            ("files::file_read", "gg::files::file_read"),
-            ("core::tool_error", "gg::core::tool_error"),
-            ("core::tool_error_code", "gg::core::tool_error_code"),
-            ("files::text_file", "gg::files::text_file"),
-            ("files::image_file", "gg::files::image_file"),
+            ("gg::files::read_window", "gg::files::read_window"),
+            ("gg::files::file_read", "gg::files::file_read"),
+            ("gg::core::tool_error", "gg::core::tool_error"),
+            ("gg::core::tool_error_code", "gg::core::tool_error_code"),
+            ("gg::files::text_file", "gg::files::text_file"),
+            ("gg::files::image_file", "gg::files::image_file"),
         ]
     );
 
@@ -1082,4 +1105,139 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
         text(&handle["memberFunctions"][0], "fqn"),
         "gg::delegation::subagent_handle::send"
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// The line the program writes
+// ---------------------------------------------------------------------------------------------
+
+/// **No name gg offers resolves without a line the program wrote**, measured by compiling a program
+/// that writes none and watching `clang++` refuse it.
+///
+/// The claim the [invariants](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) rest on
+/// for this arm, and the one a reading of the sources cannot settle: gg puts its SDK's headers on
+/// the compile's include path and links its bodies into every artifact, and what that buys is the
+/// library *existing* rather than any name being in scope. The difference is invisible in the
+/// command line and decided by the compiler, so it is asked of the compiler.
+///
+/// Four programs, one call each, differing only in what stands above it:
+///
+/// * nothing — refused, *use of undeclared identifier 'gg'*, which is what "no name is in scope"
+///   looks like in this language;
+/// * the module's own [import line](crate::sandbox::ModuleView::import), which is what a
+///   documentation view quotes — accepted;
+/// * the umbrella [`SURFACE_INCLUDE`](super::source::SURFACE_INCLUDE) — accepted;
+/// * some *other* module's line — refused, and refused one step further in: `namespace gg` now
+///   exists and *no member named 'views'* is in it, which is the diagnostic that proves the
+///   acceptance above is that header doing the work rather than any include at all being enough.
+///
+/// And the standard library the other way round, because the prompt makes a claim about it that is
+/// the opposite claim: `std::vector` with no `#include` compiles, because the precompiled prelude
+/// really does carry it. A program is told two different things about two different libraries and
+/// both are true.
+///
+/// It compiles and never runs, so it instantiates no component: what a compiler refuses never
+/// reaches a guest.
+#[test]
+fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
+    let compile = |source: &str| {
+        super::compile::compile_program(source, &[], &crate::sandbox::PrepareContext::new())
+    };
+    const CALL: &str = "int main() {\n  gg::views::open_text(\"t\", \"b\");\n  return 0;\n}\n";
+
+    let bare = compile(CALL).expect_err("a gg name with no line above it does not compile");
+    match bare {
+        crate::sandbox::PrepareFailure::Program(crate::sandbox::PrepareError::Compile(
+            diagnostic,
+        )) => assert!(
+            diagnostic.starts_with("main.cpp:2:")
+                && diagnostic.contains("use of undeclared identifier 'gg'"),
+            "a program naming gg's surface with no include line was refused for another reason: \
+             {diagnostic}"
+        ),
+        other => panic!(
+            "a name that is not in scope is the model's compile error, not {other:?}. gg's surface \
+             is reaching a program that never asked for it."
+        ),
+    }
+
+    // The line this arm's catalogue states for the module the call is filed under, read out of the
+    // catalogue rather than typed here — a line that worked and a line a model is shown have to be
+    // the same line.
+    let stated =
+        crate::sandbox::catalogue_modules(crate::sandbox::language(GgProgramLanguage::Cpp))
+            .into_iter()
+            .find(|module| module.id == "views")
+            .and_then(|module| module.import)
+            .expect("the views module states the line a program writes to reach it");
+    compile(&format!("{stated}\n{CALL}"))
+        .expect("the line this arm's catalogue states declares the call it is filed with");
+
+    compile(&format!("{}\n{CALL}", super::source::SURFACE_INCLUDE))
+        .expect("the umbrella header declares the whole surface");
+
+    let wrong = compile(&format!("#include <gg/tasks.hpp>\n{CALL}"))
+        .expect_err("another module's header does not declare this call");
+    assert!(
+        format!("{wrong:?}").contains("no member named 'views' in namespace 'gg'"),
+        "including some other module's header was refused for another reason: {wrong:?}"
+    );
+
+    // And the half the prompt states positively: the standard library needs no line, because the
+    // precompiled prelude carries it and carries nothing else.
+    compile("int main() {\n  std::vector<int> values{1};\n  return (int)values.size() - 1;\n}\n")
+        .expect(
+            "the precompiled prelude declares the standard library with no line of the program's",
+        );
+}
+
+/// **The bytes `clang++` reads are the bytes the model sent**, compared byte for byte in the
+/// preparation's own workspace.
+///
+/// The [authorship gate](super::super::authorship) asserts this across every arm from the outside.
+/// This asks it of the one file that matters here and names it: `main.cpp`, the file every
+/// diagnostic and every located trap on this arm is reported in. A program carrying an `#include`,
+/// a comment, an odd indent and no trailing newline, so that anything that normalised, re-indented
+/// or terminated the text would show.
+#[test]
+fn the_bytes_the_compiler_reads_are_the_bytes_the_model_sent() {
+    let source = "#include <gg/views.hpp>\n\n// a comment gg has no business touching\nint main() \
+                  {\n     gg::views::open_text(\"t\", \"b\");\n  return 0;\n}";
+    let context = crate::sandbox::PrepareContext::new();
+    super::compile::compile_program(source, &[], &context).expect("the subject compiles");
+    let workspace = context
+        .opened_workspace()
+        .expect("this arm's preparation opens a workspace to run a compiler in");
+    let written =
+        std::fs::read_to_string(workspace.join("work").join(super::compile::PROGRAM_FILE))
+            .expect("the file the compiler was given is readable");
+    assert_eq!(
+        written, source,
+        "gg wrote something other than the model's own text into the file clang++ read"
+    );
+}
+
+/// **The file-view program gg synthesizes is a program this arm compiles.**
+///
+/// gg pushes it into an agent's transcript as an assistant turn — every file a test case provided,
+/// or one restored view — and a model reads its own transcript as the example of what a well-formed
+/// reply looks like. Nothing on the turn path compiles it, so a text that could not have been sent
+/// would teach the wrong shape and never fail anything, which is what this is for. On this arm that
+/// is two things at once: the include, and the entry point a statement list has not got.
+#[test]
+fn the_file_view_program_gg_synthesizes_is_a_program_that_compiles() {
+    let arm = crate::sandbox::language(GgProgramLanguage::Cpp);
+    let window = crate::sandbox::FileWindow {
+        offset: 400,
+        limit: 200,
+    };
+    let program = arm.open_file_program(&[("src/main.cpp", None), ("docs/spec.md", Some(window))]);
+    assert!(
+        super::source::defines_main(&program),
+        "the synthesized file-view program defines no entry point:\n{program}"
+    );
+    super::compile::compile_program(&program, &[], &crate::sandbox::PrepareContext::new())
+        .unwrap_or_else(|failure| {
+            panic!("gg pushes a C++ program that does not compile into the transcript: {failure}\n\n{program}")
+        });
 }

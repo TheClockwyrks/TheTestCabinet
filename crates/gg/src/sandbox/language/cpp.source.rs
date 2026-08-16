@@ -18,6 +18,7 @@
 //! their last, and nothing in between is touched:
 //!
 //! ```text
+//! #include <gg.hpp>                             // gg's line
 //! namespace lib::csv_tools {                    // gg's line
 //! #line 1 "module_csv_tools.hpp"                // gg's line
 //! std::vector<row> parse(std::string_view text, char delimiter = ',') {   // as authored
@@ -43,11 +44,14 @@
 //! day somebody wrote a header the prelude does not carry.
 //!
 //! Hoisting it out is the alternative and it is the one thing this arm has never done to anybody's
-//! text. It does not need to: the precompiled prelude puts the standard library **and** gg's whole
-//! surface in front of a module exactly as it does in front of a program, so a module that includes
-//! nothing already has `std::vector` and `files::read_file`. The refusal says that, at the author's
-//! own
-//! line, and it is the whole of what a module author has to know that a program author does not.
+//! text. It does not need to: the precompiled prelude puts the standard library in front of a
+//! module exactly as it does in front of a program, and gg writes [one include](SURFACE_INCLUDE) of
+//! its own **above** the namespace — so a module that includes nothing already has `std::vector`
+//! and `gg::files::read_file`. That is the one asymmetry between the two halves of this arm and it
+//! is [ruling D5](https://docs.testcabinet.ai/gg/responses-as-code/invariants/)'s: a module is a
+//! skill author's file that gg wraps, where a program is a model's reply that gg does not touch.
+//! The refusal says so, at the author's own line, and it is the whole of what a module author has to
+//! know that a program author does not.
 //!
 //! # Why gg has to look at all
 //!
@@ -131,10 +135,29 @@ pub(super) fn namespaced(source: &str, key: &str) -> Result<String, PrepareError
     // it is unconditional: a module whose final line is `int last() { return 1; }` with no trailing
     // newline would otherwise have gg's brace glued to it.
     Ok(format!(
-        "namespace lib::{key} {{\n#line 1 {}\n{source}\n}}  // namespace lib::{key}\n",
+        "{SURFACE_INCLUDE}\nnamespace lib::{key} {{\n#line 1 {}\n{source}\n}}  // namespace \
+         lib::{key}\n",
         serde_json::Value::String(file)
     ))
 }
+
+/// The one line gg writes above a code module's namespace: gg's whole surface, included **outside**
+/// the namespace the module's declarations are opened inside.
+///
+/// It is here rather than in the module because a module may not `#include` anything
+/// ([`refuse_include`]) — `#include` is textual, so one written inside `namespace lib::<key>` would
+/// pull the header into that namespace. So the author writes none and gg writes this one, which is
+/// the [module wrapper](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) a code module
+/// is allowed and a *program* is not: a module is a skill's or a memory's source rather than a
+/// model's reply, and it never crosses the line an authorship rule is about.
+///
+/// The umbrella rather than a module header, because gg has no way to know which of the thirteen an
+/// author will reach for and a wrong guess is a diagnostic in somebody else's coordinates. Its cost
+/// is the 31 ms of parse [`compile`](super::compile) measures, paid once per module per compile.
+///
+/// Above the `#line 1` directive, so it cannot move a number: the directive is what says the
+/// author's first line is line 1, whatever stands in front of it.
+pub(super) const SURFACE_INCLUDE: &str = "#include <gg.hpp>";
 
 /// The refusal a module carrying a `#include` gets, with the author's own line.
 ///
@@ -166,9 +189,9 @@ fn refuse_include(source: &str) -> Result<(), PrepareError> {
         "line {number}: a code module here may not `#include` anything. Its declarations are \
          compiled inside `namespace lib::<key>`, and `#include` is textual — so the header would be \
          pulled into that namespace rather than into the file. Delete the line and write nothing in \
-         its place: this sandbox compiles every module against a prelude that already declares the \
-         C++ standard library and the whole of gg's own surface, so `std::vector`, `std::format` and \
-         `files::read_file` are in scope with no include at all."
+         its place: this sandbox compiles every module against a precompiled C++ standard library \
+         and writes `{SURFACE_INCLUDE}` above the namespace itself, so `std::vector`, `std::format` \
+         and `gg::files::read_file` are in scope with no include of your own."
     )))
 }
 
