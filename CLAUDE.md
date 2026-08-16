@@ -47,7 +47,12 @@ browser runner/reporter the **web console**, but on disk the desktop crate is
 
 Other shared packages: `packages/run-record/` (`@test-cabinet/run-record` —
 TypeScript types + JSON Schema for the run record contract; see
-[`components/core/run-records.md`](apps/docs/src/content/docs/components/core/run-records.md))
+[`components/core/run-records.md`](apps/docs/src/content/docs/components/core/run-records.md)),
+`packages/run-stats/` (`@test-cabinet/run-stats` — the framework-free scoring
+rules, each mirroring a counterpart in `crates/core/src/review.rs`, plus the
+set-level rollup that lets a figure frozen at one moment and the same figure
+recomputed later be compared; `packages/ui`'s `ratings` module re-exports the
+scoring half alongside its display metadata)
 and `packages/browser-driver/` (the Playwright driver the
 [validator](apps/docs/src/content/docs/components/core/validation.md) shells out
 to).

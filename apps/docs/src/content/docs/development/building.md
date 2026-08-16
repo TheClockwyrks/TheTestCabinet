@@ -58,6 +58,15 @@ dependency versions are declared once in the root `Cargo.toml` under
 - `packages/run-record` — `@test-cabinet/run-record`. Shared TypeScript types and
   JSON Schema for the [run record](/components/core/run-records/), the central
   data contract. Apps depend on this package for types.
+- `packages/run-stats` — `@test-cabinet/run-stats`. The framework-free rules for
+  scoring a reviewed run (each mirroring a counterpart in
+  `crates/core/src/review.rs`) and for rolling a set of runs up into figures. It
+  has no runtime dependencies and imports only *types* from `run-record`, so it
+  runs in a bundle, a build script, or a worker alike. Its rollup is what makes a
+  figure frozen at one moment and the same figure recomputed later comparable,
+  rather than two implementations that drift. `packages/ui`'s `ratings` module
+  re-exports the scoring half alongside the display metadata (labels, emoji) it
+  keeps.
 - `packages/browser-driver` — `@test-cabinet/browser-driver`. A small Playwright
   driver script (`driver.mjs`) the [validator](/components/core/validation/)
   shells out to, used both to render reference mockups to screenshots and to
