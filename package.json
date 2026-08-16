@@ -13,7 +13,8 @@
   },
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "build:site": "npm run build -w @test-cabinet/run-record -w @test-cabinet/run-stats -w @test-cabinet/share-links -w @test-cabinet/voxel-runtime -w @test-cabinet/particle-runtime -w @test-cabinet/site",
+    "build:packages": "npm run build -w @test-cabinet/run-record -w @test-cabinet/run-stats -w @test-cabinet/share-links -w @test-cabinet/voxel-runtime -w @test-cabinet/particle-runtime",
+    "build:site": "npm run build:packages && npm run build -w @test-cabinet/site",
     "dev": "npm run dev --workspaces --if-present",
     "gen:contract": "node scripts/gen-contract.mjs",
     "lint": "npm run lint --workspaces --if-present",

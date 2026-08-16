@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Installs the npm workspace, runs the front-end unit tests, and builds the front
-# ends: the gallery (apps/site), the operator web console (apps/web), and the
-# developer docs (apps/docs).
+# Installs the npm workspace and builds the front ends: the gallery (apps/site),
+# the operator web console (apps/web), and the developer docs (apps/docs). The
+# unit tests are `web-test.sh`, a job of its own.
 #
 # Each `build` script runs `tsc -b` (type-checking) before `vite build`, so this
 # both type-checks and produces the static bundle in one step (the docs are an
@@ -31,12 +31,6 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 log "npm ci"
 npm ci
-
-# The workspace unit tests (vitest), for every workspace that defines a `test`
-# script. Run before the builds because a failing assertion is faster and more
-# specific feedback than a failing bundle.
-log "test the npm workspaces"
-npm run test --workspaces --if-present
 
 log "build @test-cabinet/site (and the runtime packages it depends on)"
 npm run build:site
