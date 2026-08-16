@@ -126,10 +126,17 @@ every per-run file. Each summary carries the run's id and timestamps, its
 cards, the `validationLoaded` signal, the run state, the aggregate `rating` (the
 run's overall rating — the worst across every domain of every review — shown as a
 per-run badge), a `reviewCount` of how many reviews the run carries, the
-`documentKey` naming where its full document lives, and the links. The `rating` is nullable in the contract (an unrated console run carries
+aggregate `score`, the `documentKey` naming where its full document lives, and
+the links. The `rating` is nullable in the contract (an unrated console run carries
 none), but the snapshot holds only reviewed runs, so it is always present here.
-The aggregate **score** (the average across reviews) is not summarized here; the
-site computes it client-side from the per-run file's reviews. The site fetches
+
+The aggregate **score** — the mean earned checklist weight across the run's
+reviews, over the shared total — is summarized here too, as `score`. Unlike the
+rest of the card it is not readable from the run record alone: the point weights
+live in the case catalog, so it is computed by the callers that hold both (the
+snapshot builder's `run_summary_score`, and the console's listing endpoint). A
+consumer therefore has every headline figure — outcome, rating, and score — from
+this one file, without walking per-run documents. The site fetches
 full records lazily, per run page — the summary index is the whole dataset the
 list, home, leaderboard, and metrics views read; a full record loads only when a
 run's detail page opens.
