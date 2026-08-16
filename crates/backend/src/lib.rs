@@ -23,6 +23,7 @@ pub mod artifacts;
 pub mod auth;
 pub mod bootstrap;
 pub mod config;
+pub mod coverage;
 pub mod db;
 pub mod error;
 pub mod ingest;

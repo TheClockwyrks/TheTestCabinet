@@ -3,6 +3,7 @@ import type { RunRecord } from "@test-cabinet/run-record";
 import type { ReviewItem } from "../../../../client/types";
 import {
   autoVerdictMap,
+  describeAutoVerdictRestore,
   overriddenAutoVerdictIds,
   type VerdictDraft,
 } from "./autoVerdicts";
@@ -126,5 +127,81 @@ describe("overriddenAutoVerdictIds", () => {
       "controls.mouse": { status: "pass", note: "" },
     };
     expect(overriddenAutoVerdictIds(items, auto, verdicts)).toEqual([]);
+  });
+});
+
+describe("describeAutoVerdictRestore", () => {
+  const auto = autoVerdictMap(run());
+
+  it("names each point and which way its verdict would flip", () => {
+    const verdicts = drafts({ loop: "fail", "controls.kb": "pass" });
+    const ids = overriddenAutoVerdictIds(items, auto, verdicts);
+    expect(describeAutoVerdictRestore(items, auto, verdicts, ids)).toEqual([
+      {
+        id: "loop",
+        title: "Has a game loop",
+        category: "",
+        from: "fail",
+        to: "pass",
+      },
+      {
+        id: "controls.kb",
+        title: "Keyboard",
+        category: "Controls work",
+        from: "pass",
+        to: "fail",
+      },
+      // `controls.mouse` was left unanswered, so restoring it is a change too.
+      {
+        id: "controls.mouse",
+        title: "Mouse",
+        category: "Controls work",
+        from: "",
+        to: "pass",
+      },
+    ]);
+  });
+
+  it("reports an unanswered point's current answer as empty", () => {
+    const changes = describeAutoVerdictRestore(items, auto, drafts({}), [
+      "loop",
+    ]);
+    expect(changes).toEqual([
+      {
+        id: "loop",
+        title: "Has a game loop",
+        category: "",
+        from: "",
+        to: "pass",
+      },
+    ]);
+  });
+
+  it("keeps the order it is given", () => {
+    const verdicts = drafts({ loop: "fail", "controls.kb": "pass" });
+    const changes = describeAutoVerdictRestore(items, auto, verdicts, [
+      "controls.kb",
+      "loop",
+    ]);
+    expect(changes.map((c) => c.id)).toEqual(["controls.kb", "loop"]);
+  });
+
+  it("skips an id validation did not decide", () => {
+    // Nothing to restore `feel` to, so it contributes no line — the list only ever
+    // describes changes the restore would actually make.
+    expect(
+      describeAutoVerdictRestore(items, auto, drafts({ feel: "fail" }), [
+        "feel",
+      ]),
+    ).toEqual([]);
+  });
+
+  it("falls back to the raw id for a point the case no longer declares", () => {
+    const stale = autoVerdictMap(run([{ id: "retired", pass: false }]));
+    expect(
+      describeAutoVerdictRestore(items, stale, drafts({}), ["retired"]),
+    ).toEqual([
+      { id: "retired", title: "retired", category: "", from: "", to: "fail" },
+    ]);
   });
 });

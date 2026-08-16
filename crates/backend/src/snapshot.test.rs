@@ -19,6 +19,37 @@ use test_cabinet_core::validation::{
 use crate::db::StoredReview;
 use crate::store::{StoredBuild, StoredCheck, StoredManifest, StoredReference, StoredVariant};
 
+/// The per-run document object for `run_id`.
+///
+/// Located by the run's `documents/runs/<id>/` prefix rather than a composed path:
+/// the key's last segment is a digest of the document's own bytes, so it is not
+/// predictable from the test's inputs.
+fn run_document<'a>(snapshot: &'a Snapshot, run_id: &str) -> &'a SnapshotObject {
+    let prefix = format!("{RUN_DOCUMENT_PREFIX}/{run_id}/");
+    snapshot
+        .objects
+        .iter()
+        .find(|object| object.key.starts_with(&prefix))
+        .unwrap_or_else(|| panic!("a document object for run {run_id}"))
+}
+
+/// The parsed per-run document for `run_id`.
+fn run_document_json(snapshot: &Snapshot, run_id: &str) -> serde_json::Value {
+    serde_json::from_slice(&run_document(snapshot, run_id).bytes)
+        .expect("the run document is valid JSON")
+}
+
+/// The parsed `runs.json` summary index.
+fn runs_index(snapshot: &Snapshot) -> serde_json::Value {
+    let key = format!("snapshots/{}/runs.json", snapshot.snapshot_id);
+    let object = snapshot
+        .objects
+        .iter()
+        .find(|object| object.key == key)
+        .expect("runs.json present");
+    serde_json::from_slice(&object.bytes).expect("runs.json is valid JSON")
+}
+
 /// An empty definition store rooted at a fresh temp dir. The `TempDir` is
 /// returned so the caller keeps it alive for the test's duration.
 fn empty_store() -> (TempDir, DefinitionStore) {
@@ -283,8 +314,17 @@ async fn snapshot_has_index_runs_per_run_and_case_objects() {
     let keys: Vec<&str> = snapshot.objects.iter().map(|o| o.key.as_str()).collect();
     let prefix = format!("snapshots/{}", snapshot.snapshot_id);
     assert!(keys.contains(&format!("{prefix}/runs.json").as_str()));
-    assert!(keys.contains(&format!("{prefix}/runs/r1.json").as_str()));
     assert!(keys.contains(&format!("{prefix}/cases/pong/v1.0.0.json").as_str()));
+    // The per-run document lives outside the generation prefix, content-addressed by
+    // run id, and the summary index names it.
+    assert!(
+        keys.iter()
+            .any(|key| key.starts_with(&format!("{RUN_DOCUMENT_PREFIX}/r1/"))),
+    );
+    assert_eq!(
+        runs_index(&snapshot)["runs"][0]["documentKey"],
+        run_document(&snapshot, "r1").key,
+    );
     // An empty catalog still emits a well-formed models.json.
     assert!(keys.contains(&format!("{prefix}/models.json").as_str()));
 }
@@ -345,12 +385,17 @@ async fn index_points_at_the_versioned_prefix() {
     .await
     .unwrap();
     let index: serde_json::Value = serde_json::from_slice(&snapshot.index.bytes).unwrap();
-    assert_eq!(index["schemaVersion"], 1);
+    assert_eq!(index["schemaVersion"], 2);
     assert_eq!(index["runCount"], 1);
     let prefix = format!("snapshots/{}", snapshot.snapshot_id);
     assert_eq!(index["runsKey"], format!("{prefix}/runs.json"));
-    assert_eq!(index["runsPrefix"], format!("{prefix}/runs/"));
     assert_eq!(index["casesPrefix"], format!("{prefix}/cases/"));
+    // The run documents are shared across generations, so their prefix is not the
+    // generation's.
+    assert_eq!(
+        index["runDocumentsPrefix"],
+        format!("{RUN_DOCUMENT_PREFIX}/"),
+    );
 }
 
 #[tokio::test]
@@ -393,13 +438,7 @@ async fn per_run_file_embeds_full_record_review_and_links() {
     .build(now())
     .await
     .unwrap();
-    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
-    let per_run = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == format!("{prefix}/runs/r1.json"))
-        .unwrap();
-    let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
+    let parsed = run_document_json(&snapshot, "r1");
     assert_eq!(parsed["record"]["id"], "r1");
     assert_eq!(
         parsed["record"]["links"]["playableBuild"],
@@ -445,13 +484,7 @@ async fn reviewer_picture_is_exported_and_named_by_key_on_the_review() {
     assert_eq!(pfp.content_type, "image/webp");
 
     // The review points at it by that key.
-    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
-    let per_run = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == format!("{prefix}/runs/r1.json"))
-        .unwrap();
-    let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
+    let parsed = run_document_json(&snapshot, "r1");
     assert_eq!(parsed["reviews"][0]["pictureKey"], "pfp/u1");
 }
 
@@ -469,13 +502,7 @@ async fn without_a_reviewer_picture_no_pfp_object_and_no_key() {
     .unwrap();
 
     assert!(!snapshot.objects.iter().any(|o| o.key.starts_with("pfp/")));
-    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
-    let per_run = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == format!("{prefix}/runs/r1.json"))
-        .unwrap();
-    let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
+    let parsed = run_document_json(&snapshot, "r1");
     // The optional key is omitted (skip_serializing_if) when absent.
     assert!(parsed["reviews"][0].get("pictureKey").is_none());
 }
@@ -491,24 +518,13 @@ async fn per_run_file_includes_events_when_present_and_omits_them_when_absent() 
         .build(now())
         .await
         .unwrap();
-    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
-
-    let find = |id: &str| -> serde_json::Value {
-        let object = snapshot
-            .objects
-            .iter()
-            .find(|o| o.key == format!("{prefix}/runs/{id}.json"))
-            .unwrap();
-        serde_json::from_slice(&object.bytes).unwrap()
-    };
-
     // The recorded event stream is re-emitted verbatim into the per-run file.
-    let r1 = find("r1");
+    let r1 = run_document_json(&snapshot, "r1");
     assert_eq!(r1["events"][0]["type"], "agent");
     assert_eq!(r1["events"][0]["message"], "hi");
 
     // A run that captured no events omits the field entirely.
-    let r2 = find("r2");
+    let r2 = run_document_json(&snapshot, "r2");
     assert!(r2.get("events").is_none());
 }
 
@@ -530,7 +546,6 @@ async fn per_run_file_exports_asset_media_and_names_it_by_key() {
     .build(now())
     .await
     .unwrap();
-    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
 
     // The staged bytes are exported under the run's content-stable media prefix
     // (NOT this snapshot's prefix) with a content type that follows the extension.
@@ -551,12 +566,7 @@ async fn per_run_file_exports_asset_media_and_names_it_by_key() {
 
     // The per-run document names each present file by its served name + key; the
     // missing preview.png is omitted.
-    let per_run = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == format!("{prefix}/runs/a1.json"))
-        .unwrap();
-    let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
+    let parsed = run_document_json(&snapshot, "a1");
     let media = parsed["assetMedia"].as_array().unwrap();
     let files: Vec<&str> = media.iter().map(|m| m["file"].as_str().unwrap()).collect();
     assert_eq!(files, vec!["regenerated.png", "actions.json"]);
@@ -578,13 +588,7 @@ async fn per_run_file_omits_asset_media_for_a_non_asset_run() {
     .build(now())
     .await
     .unwrap();
-    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
-    let per_run = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == format!("{prefix}/runs/r1.json"))
-        .unwrap();
-    let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
+    let parsed = run_document_json(&snapshot, "r1");
     // An end-to-end run carries an empty assetMedia list and exports no asset objects.
     assert_eq!(parsed["assetMedia"].as_array().unwrap().len(), 0);
     assert!(!snapshot.objects.iter().any(|o| o.key.contains("/asset/")));
@@ -944,7 +948,6 @@ async fn per_run_file_exports_proof_media_from_the_record() {
         .build(now())
         .await
         .unwrap();
-    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
 
     // Each present proof's bytes are exported under its content-stable media key,
     // with a content type that follows the extension (the video stays a video).
@@ -964,12 +967,7 @@ async fn per_run_file_exports_proof_media_from_the_record() {
 
     // The per-run document lists the present proofs with the record's kinds; the
     // unproduced `skip` is omitted.
-    let per_run = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == format!("{prefix}/runs/p1.json"))
-        .unwrap();
-    let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
+    let parsed = run_document_json(&snapshot, "p1");
     let media = parsed["proofMedia"].as_array().unwrap();
     let ids: Vec<&str> = media.iter().map(|m| m["id"].as_str().unwrap()).collect();
     assert_eq!(ids, vec!["title", "rally"]);
@@ -1027,7 +1025,6 @@ async fn per_run_file_exports_actual_validation_media_from_the_record() {
         .build(now())
         .await
         .unwrap();
-    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
 
     // The still's bytes are exported under its content-stable validation media key.
     let still = snapshot
@@ -1040,12 +1037,7 @@ async fn per_run_file_exports_actual_validation_media_from_the_record() {
 
     // The per-run document names it by the flat name the reviewer UI requests; the
     // unproduced video output is omitted.
-    let per_run = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == format!("{prefix}/runs/v1.json"))
-        .unwrap();
-    let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
+    let parsed = run_document_json(&snapshot, "v1");
     let media = parsed["validationMedia"].as_array().unwrap();
     assert_eq!(media.len(), 1);
     assert_eq!(media[0]["file"], "spin__still.png");
@@ -1086,7 +1078,6 @@ async fn per_run_validation_media_for_a_sub_item_is_keyed_by_the_composite_verdi
         .build(now())
         .await
         .unwrap();
-    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
 
     assert!(
         snapshot
@@ -1095,12 +1086,7 @@ async fn per_run_validation_media_for_a_sub_item_is_keyed_by_the_composite_verdi
             .any(|o| o.key == "media/runs/v1/validation/ball-spin.stationary__still.png"),
         "the sub-item's media is exported under the composite verdict-id name"
     );
-    let per_run = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == format!("{prefix}/runs/v1.json"))
-        .unwrap();
-    let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
+    let parsed = run_document_json(&snapshot, "v1");
     let media = parsed["validationMedia"].as_array().unwrap();
     assert_eq!(media.len(), 1);
     assert_eq!(media[0]["file"], "ball-spin.stationary__still.png");
@@ -1200,7 +1186,6 @@ async fn video_proof_recorded_as_webm_is_transcoded_to_mp4_for_the_snapshot() {
         .build(now())
         .await
         .unwrap();
-    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
 
     // The webm is gone from the snapshot; the exported object is a real mp4.
     assert!(
@@ -1220,12 +1205,7 @@ async fn video_proof_recorded_as_webm_is_transcoded_to_mp4_for_the_snapshot() {
     assert_eq!(&rally.bytes[4..8], b"ftyp", "transcoded bytes are not mp4");
 
     // The per-run doc points at the mp4 key with a video kind.
-    let per_run = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == format!("{prefix}/runs/p1.json"))
-        .unwrap();
-    let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
+    let parsed = run_document_json(&snapshot, "p1");
     let rally_meta = parsed["proofMedia"]
         .as_array()
         .unwrap()
@@ -1256,7 +1236,6 @@ async fn video_validation_media_recorded_as_webm_is_transcoded_to_mp4() {
         .build(now())
         .await
         .unwrap();
-    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
 
     // The raw webm is gone; the exported object is a real mp4 under the mp4 key.
     assert!(
@@ -1275,12 +1254,7 @@ async fn video_validation_media_recorded_as_webm_is_transcoded_to_mp4() {
     assert_eq!(&rally.bytes[4..8], b"ftyp", "transcoded bytes are not mp4");
 
     // The per-run doc keeps the `.webm` file the UI requests but points at the mp4 key.
-    let per_run = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == format!("{prefix}/runs/v1.json"))
-        .unwrap();
-    let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
+    let parsed = run_document_json(&snapshot, "v1");
     let media = parsed["validationMedia"].as_array().unwrap();
     assert_eq!(media.len(), 1);
     assert_eq!(media[0]["file"], "spin__rally.webm");
@@ -1423,13 +1397,7 @@ async fn existing_media_is_referenced_without_re_uploading_or_reading_the_source
         "existing media must not be re-uploaded",
     );
     // But the per-run document still points at both stable keys.
-    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
-    let per_run = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == format!("{prefix}/runs/p1.json"))
-        .unwrap();
-    let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
+    let parsed = run_document_json(&snapshot, "p1");
     let keys: Vec<&str> = parsed["proofMedia"]
         .as_array()
         .unwrap()
@@ -1443,6 +1411,70 @@ async fn existing_media_is_referenced_without_re_uploading_or_reading_the_source
             "media/runs/p1/proof/rally.mp4"
         ],
     );
+}
+
+#[tokio::test]
+async fn an_unchanged_run_document_is_referenced_without_being_re_uploaded() {
+    // The whole point of content-addressing the documents: a refresh where nothing
+    // about a run moved must upload nothing for it, while `runs.json` still resolves.
+    // Build once to learn the key the run's document hashes to, then rebuild handing
+    // that key back as already-present.
+    let (_tmp, store) = empty_store();
+    let runs = || vec![stored_run("r1", "2026-06-17T21:40:00Z")];
+    let first = SnapshotBuilder::new(runs(), vec![manifest()], store.clone())
+        .build(now())
+        .await
+        .unwrap();
+    let key = run_document(&first, "r1").key.clone();
+
+    let second = SnapshotBuilder::new(runs(), vec![manifest()], store)
+        .with_existing_documents(std::collections::HashSet::from([key.clone()]))
+        .build(now())
+        .await
+        .unwrap();
+
+    assert!(
+        !second
+            .objects
+            .iter()
+            .any(|object| object.key.starts_with(RUN_DOCUMENT_PREFIX)),
+        "an unchanged run document must not be re-uploaded",
+    );
+    // The summary still points at it, so the site reaches the same document…
+    assert_eq!(runs_index(&second)["runs"][0]["documentKey"], key);
+    // …and the prune sees it as live rather than orphaned.
+    assert!(second.run_document_keys.contains(&key));
+}
+
+#[tokio::test]
+async fn a_changed_run_mints_a_new_document_key_and_uploads_it() {
+    // The complement, and what keeps the skip honest: the digest is over the document's
+    // own bytes, so a run whose public content changed cannot collide with the key
+    // already in the bucket and is uploaded.
+    let (_tmp, store) = empty_store();
+    let before = SnapshotBuilder::new(
+        vec![stored_run("r1", "2026-06-17T21:40:00Z")],
+        vec![manifest()],
+        store.clone(),
+    )
+    .build(now())
+    .await
+    .unwrap();
+    let stale_key = run_document(&before, "r1").key.clone();
+
+    let mut changed = stored_run("r1", "2026-06-17T21:40:00Z");
+    changed.record.links.source_repo = Some("https://github.com/x/moved".to_string());
+    let after = SnapshotBuilder::new(vec![changed], vec![manifest()], store)
+        .with_existing_documents(std::collections::HashSet::from([stale_key.clone()]))
+        .build(now())
+        .await
+        .unwrap();
+
+    let fresh = run_document(&after, "r1");
+    assert_ne!(fresh.key, stale_key, "changed content must mint a new key");
+    assert_eq!(runs_index(&after)["runs"][0]["documentKey"], fresh.key);
+    // The superseded revision is no longer referenced, so the prune may reclaim it.
+    assert!(!after.run_document_keys.contains(&stale_key));
 }
 
 #[tokio::test]

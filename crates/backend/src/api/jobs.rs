@@ -15,12 +15,12 @@
 //! table via [`crate::db::Db::push`] on success, the same store a locally-driven
 //! `tcab` run pushes to.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 
 use axum::Json;
 use axum::body::Body;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
@@ -48,28 +48,43 @@ pub use test_cabinet_core::{
 use test_cabinet_entities::job;
 
 use crate::auth::{AuthUser, ServiceAuth, bearer_token, token_matches};
+use crate::db::{CANCELABLE_ACTIVE_STATES, CANCELABLE_WAITING_STATES, JobCancelFilter, JobOrigin};
 use crate::error::ApiError;
 use crate::relay::{JobSummary, Notification, StreamItem};
 
 use super::AppState;
 
-/// `POST /jobs` — enqueue a run. Requires a bearer token (the launching account);
-/// validates the request, mints a job id and per-job driver token, stores it in
-/// the `queued` state, and returns the job id. The run itself is driven later by
-/// a driver pod the dispatcher creates; observe it via the endpoints below.
+/// `POST /jobs` — enqueue a run. Requires a bearer token; validates the request,
+/// mints a job id and per-job driver token, stores it in the `queued` state, and
+/// returns the job id. The run itself is driven later by a driver pod the dispatcher
+/// creates; observe it via the endpoints below.
+///
+/// The run is **attributed** to the token's account (`job.user_id`) and, when the
+/// request carries an [`origin`](LaunchQuery::origin), to the coverage plan or ladder
+/// that asked for it (`job.origin`). A launch by hand from the console's run form
+/// sends no origin and so is never swept up by a plan's or ladder's scoped halt.
+/// Attribution is bookkeeping only: coverage counting stays global, so a run counts
+/// toward its cell's target whoever launched it and whatever launched it.
 #[tracing::instrument(
     name = "jobs.launch",
-    skip(state, _user, body),
-    fields(case.slug = %body.test_case, case.version = %body.version, variant = %body.variant),
+    skip(state, user, body, query),
+    fields(
+        case.slug = %body.test_case,
+        case.version = %body.version,
+        variant = %body.variant,
+        origin = query.origin.as_deref().unwrap_or("manual"),
+    ),
     err(Debug),
 )]
 pub async fn launch(
     State(state): State<AppState>,
-    _user: AuthUser,
+    user: AuthUser,
+    Query(query): Query<LaunchQuery>,
     Json(body): Json<LaunchBody>,
 ) -> Result<Response, ApiError> {
+    let attribution = attribution(&user, &query)?;
     let now = now_rfc3339()?;
-    let new = build_new_job(&body, resolve_test_type(&state, &body), &now)
+    let new = build_new_job(&body, resolve_test_type(&state, &body), &now, &attribution)
         .map_err(ApiError::bad_request)?;
     let id = new.id.clone();
 
@@ -88,8 +103,8 @@ pub async fn launch(
 /// worth of missing runs.
 const MAX_BATCH_RUNS: usize = 20_000;
 
-/// `POST /jobs/batch` — enqueue many runs in one request. Requires a bearer token
-/// (the launching account), the same gate as `POST /jobs`. Each requested run is
+/// `POST /jobs/batch` — enqueue many runs in one request. Requires a bearer token,
+/// the same gate as `POST /jobs`. Each requested run is
 /// validated and minted independently, so a single malformed request is reported as
 /// its own error without aborting the rest; the accepted runs are then inserted in
 /// one batch. The response carries one result per requested run, aligned by index,
@@ -98,10 +113,27 @@ const MAX_BATCH_RUNS: usize = 20_000;
 /// This is the batch analogue of [`launch`]: a console fanning out a set of runs
 /// (the coverage matrix's still-missing runs, the new-run form's combinations)
 /// sends one request and one insert instead of one per run.
-#[tracing::instrument(name = "jobs.launch_batch", skip(state, _user, body), fields(runs = body.runs.len()), err(Debug))]
+///
+/// Every run in the batch takes the **same** attribution — the token's account, and
+/// the one [`origin`](LaunchQuery::origin) the query carries — because a batch is one
+/// decision by one plan, ladder, or person. A caller wanting runs attributed to two
+/// different origins sends two batches.
+///
+/// **The request's order is the queue's order.** The accepted runs take a contiguous
+/// block of queue positions in the order they were listed, and the dispatcher claims
+/// in that order — so a console that emits a case's repeats together (both of ours
+/// do) has all of that case's runs start, and so finish, before the next case's. A
+/// caller that wants a different execution order sends the runs in that order.
+#[tracing::instrument(
+    name = "jobs.launch_batch",
+    skip(state, user, body, query),
+    fields(runs = body.runs.len(), origin = query.origin.as_deref().unwrap_or("manual")),
+    err(Debug),
+)]
 pub async fn launch_batch(
     State(state): State<AppState>,
-    _user: AuthUser,
+    user: AuthUser,
+    Query(query): Query<LaunchQuery>,
     Json(body): Json<LaunchBatchBody>,
 ) -> Result<Response, ApiError> {
     if body.runs.len() > MAX_BATCH_RUNS {
@@ -111,6 +143,7 @@ pub async fn launch_batch(
         )));
     }
 
+    let attribution = attribution(&user, &query)?;
     let now = now_rfc3339()?;
     // Validate and mint each requested run up front. A rejected run records its
     // error at its index and is dropped from the insert set; an accepted run
@@ -125,7 +158,7 @@ pub async fn launch_batch(
         let test_type = *types
             .entry((run.test_case.clone(), run.version.clone()))
             .or_insert_with(|| resolve_test_type(&state, run));
-        match build_new_job(run, test_type, &now) {
+        match build_new_job(run, test_type, &now, &attribution) {
             Ok(new) => {
                 items.push(LaunchBatchItem {
                     job_id: Some(new.id.clone()),
@@ -165,9 +198,51 @@ fn resolve_test_type(state: &AppState, body: &LaunchBody) -> TestType {
         .unwrap_or_default()
 }
 
+/// Who and what a job is attributed to, resolved once per request and stamped on
+/// every job that request enqueues.
+///
+/// Both halves are optional because both are optional on the row: attribution was
+/// added after the queue existed, so every job enqueued before it carries neither, and
+/// a retry copies whatever its original had rather than inventing one. A run with no
+/// attribution is a perfectly good run — it is simply invisible to the scoped halts,
+/// which is the correct answer for a run nobody can attribute.
+#[derive(Debug, Clone, Default)]
+struct JobAttribution {
+    /// The account that asked for the run. `None` only on a retry of a job enqueued
+    /// before attribution existed.
+    user_id: Option<String>,
+    /// The coverage plan or ladder that asked for the run, or `None` for a launch by
+    /// hand. This is what a scoped `halt` cancels by.
+    origin: Option<JobOrigin>,
+}
+
+/// Resolve the attribution for a launch request: the token's account, plus the
+/// plan/ladder named by the query's `origin`.
+///
+/// An `origin` that is present but unparseable is a **400** rather than a silently
+/// dropped label. The whole point of the column is that a later `halt` can find these
+/// jobs again, so a run enqueued under a typo'd origin is one no halt will ever reach
+/// — a fault that surfaces much later and in a confusing shape ("this plan will not
+/// stop"), far from the request that caused it.
+fn attribution(user: &AuthUser, query: &LaunchQuery) -> Result<JobAttribution, ApiError> {
+    let origin = match query.origin.as_deref() {
+        None => None,
+        Some(token) => Some(JobOrigin::parse(token).ok_or_else(|| {
+            ApiError::bad_request(format!(
+                "`origin` must be `plan:<id>` or `ladder:<id>` (got `{token}`)"
+            ))
+        })?),
+    };
+    Ok(JobAttribution {
+        user_id: Some(user.0.id.clone()),
+        origin,
+    })
+}
+
 /// Validate a launch request and build the `queued` job to enqueue for it: mint the
 /// job id and per-job driver token and serialize the request verbatim. `test_type`
-/// is the resolved type of the case it targets (see [`resolve_test_type`]). Returns
+/// is the resolved type of the case it targets (see [`resolve_test_type`]), and
+/// `attribution` is who and what asked for the run (see [`attribution`]). Returns
 /// the human-readable reason on a validation failure. Shared by the single
 /// ([`launch`]) and batch ([`launch_batch`]) enqueue paths so both validate and
 /// record a run identically.
@@ -175,6 +250,7 @@ fn build_new_job(
     body: &LaunchBody,
     test_type: TestType,
     now: &str,
+    attribution: &JobAttribution,
 ) -> Result<crate::db::NewJob, String> {
     if body.test_case.trim().is_empty() {
         return Err("`testCase` must not be empty".to_string());
@@ -203,6 +279,8 @@ fn build_new_job(
         // A console launch is the initial attempt; the backend re-enqueues any
         // automatic retries with an incremented `attempt`.
         attempt: 0,
+        user_id: attribution.user_id.clone(),
+        origin: attribution.origin.clone(),
         created_at: now.to_string(),
     })
 }
@@ -241,7 +319,9 @@ pub async fn status(
 }
 
 /// `POST /jobs/{id}/cancel` — request cancellation of an in-flight run. Requires a
-/// bearer token (the launching account, the same gate as `POST /jobs`).
+/// bearer token, the same gate as `POST /jobs`. Any signed-in account may cancel any
+/// run: the queue is a shared workbench, and a stuck run costs everyone. The job
+/// records who *launched* it (`job.user_id`), not who stopped it.
 ///
 /// A job still in a non-terminal state (`queued`, `pending`, `dispatched`,
 /// `starting`, or `running`) is atomically moved to the terminal `canceled` state
@@ -305,6 +385,167 @@ pub async fn cancel(
     // canceled run raises no completion alert.
     state.relay.live(&id).finish();
     Ok(Json(job_status_out(&canceled)))
+}
+
+/// `POST /jobs/cancel-waiting` — cancel every run that has not started yet
+/// (`queued` or `pending`), whoever launched it and whatever launched it. Requires a
+/// bearer token, the same gate as the other job mutations.
+///
+/// This is the Runs page's **"Clear pending"** control, and the one of the three that
+/// needs no confirmation: a waiting job has no driver and has spent nothing, so
+/// cancelling it discards no work. It is deliberately **global** rather than scoped to
+/// the caller or to a plan — "empty the queue" is the whole point, and a queue with
+/// somebody else's runs still in it is not empty. The scoped equivalent is a coverage
+/// plan's or ladder's `halt`, which sweeps only its own jobs.
+///
+/// `pending` is included alongside `queued` because both are simply waiting: a
+/// `pending` job is one the queue is holding back behind a harness parallelism cap or
+/// a same-model game jam, not one that is part-way through anything.
+#[tracing::instrument(name = "jobs.cancel_waiting", skip(state, _user), err(Debug))]
+pub async fn cancel_waiting(
+    State(state): State<AppState>,
+    _user: AuthUser,
+) -> Result<Json<BulkCancelOut>, ApiError> {
+    let canceled = sweep_cancel(
+        &state,
+        &global_filter(&CANCELABLE_WAITING_STATES),
+        "canceled by an operator clearing the waiting queue",
+    )
+    .await?;
+    Ok(Json(BulkCancelOut {
+        canceled,
+        included_waiting: true,
+        included_active: false,
+    }))
+}
+
+/// `POST /jobs/cancel-active` — cancel every run that is already executing
+/// (`dispatched`, `starting`, or `running`), whoever launched it. Requires a bearer
+/// token, the same gate as the other job mutations.
+///
+/// This is the Runs page's **"Kill active"** control. Unlike [`cancel_waiting`] it
+/// throws work away: each of these runs has a driver Job that is being created,
+/// starting up, or burning tokens right now, so the console must confirm before
+/// calling it and must never offer it as the default action. It leaves the waiting
+/// queue alone, so the dispatcher starts claiming from it again immediately — pair it
+/// with [`cancel_waiting`], or use [`cancel_all`], to actually stop everything.
+#[tracing::instrument(name = "jobs.cancel_active", skip(state, _user), err(Debug))]
+pub async fn cancel_active(
+    State(state): State<AppState>,
+    _user: AuthUser,
+) -> Result<Json<BulkCancelOut>, ApiError> {
+    let canceled = sweep_cancel(
+        &state,
+        &global_filter(&CANCELABLE_ACTIVE_STATES),
+        "canceled by an operator killing the active runs",
+    )
+    .await?;
+    Ok(Json(BulkCancelOut {
+        canceled,
+        included_waiting: false,
+        included_active: true,
+    }))
+}
+
+/// `POST /jobs/cancel-all` — cancel every in-flight run, waiting or executing.
+/// Requires a bearer token, the same gate as the other job mutations.
+///
+/// This is the Runs page's **"Stop all"** control: [`cancel_waiting`] and
+/// [`cancel_active`] in one atomic sweep, so nothing that was waiting can be claimed
+/// and started in the gap between two separate calls. It is the most destructive of
+/// the three and must be confirmed.
+#[tracing::instrument(name = "jobs.cancel_all", skip(state, _user), err(Debug))]
+pub async fn cancel_all(
+    State(state): State<AppState>,
+    _user: AuthUser,
+) -> Result<Json<BulkCancelOut>, ApiError> {
+    let mut states: Vec<&str> = CANCELABLE_WAITING_STATES.to_vec();
+    states.extend_from_slice(&CANCELABLE_ACTIVE_STATES);
+    let canceled = sweep_cancel(
+        &state,
+        &global_filter(&states),
+        "canceled by an operator stopping every run",
+    )
+    .await?;
+    Ok(Json(BulkCancelOut {
+        canceled,
+        included_waiting: true,
+        included_active: true,
+    }))
+}
+
+/// The filter the three **global** sweeps use: the given states, unnarrowed.
+///
+/// Both narrowing fields are `None` on purpose. Narrowing by account would silently
+/// skip every job enqueued before attribution existed (they carry no `user_id`), and
+/// narrowing by origin is what a plan's or ladder's own `halt` does instead — these
+/// controls deliberately reach every run on the worker.
+fn global_filter<'a>(states: &'a [&'a str]) -> JobCancelFilter<'a> {
+    JobCancelFilter {
+        states,
+        origin: None,
+        user_id: None,
+    }
+}
+
+/// The shared body of the three global cancel controls: move every in-flight job in
+/// `states` to the terminal `canceled` state with `detail` as its reason, close the
+/// live stream of each run that left the queue as a result, and report how many moved.
+///
+/// The transition is [`crate::db::Db::cancel_jobs`] — one atomic `UPDATE` applying
+/// exactly the same rule as the single-run [`cancel`]: only a job still in an
+/// in-flight state moves, so a run that reached a terminal state a moment ago is left
+/// alone and a driver's already-final report can never be overwritten. Nothing here
+/// writes a new state transition.
+///
+/// Closing the live streams needs the *ids* the sweep touched, which a set-based
+/// `UPDATE` does not report, so the in-flight set is read either side of it and the
+/// difference is what ended. That errs in the safe direction on both sides: a job
+/// still in flight afterwards keeps its stream open (a `queued` run that was claimed
+/// and started mid-sweep is genuinely still going, and closing its monitor would lie
+/// to the reviewer watching it), while a job that finished on its own instead of being
+/// cancelled has already had its stream finished, and finishing it again is a no-op.
+///
+/// No completion notification is fired, for the same reason a single cancel fires
+/// none: an operator stopping runs is an operator action, not a failure to alert on.
+pub(super) async fn sweep_cancel(
+    state: &AppState,
+    filter: &JobCancelFilter<'_>,
+    detail: &str,
+) -> Result<u32, ApiError> {
+    let before: Vec<String> = state
+        .db
+        .active_jobs()
+        .await
+        .map_err(ApiError::from)?
+        .into_iter()
+        .filter(|job| filter.states.contains(&job.state.as_str()))
+        .map(|job| job.id)
+        .collect();
+
+    let canceled = state
+        .db
+        .cancel_jobs(filter, &now_rfc3339()?, detail)
+        .await
+        .map_err(ApiError::from)?;
+
+    let still_in_flight: HashSet<String> = state
+        .db
+        .active_jobs()
+        .await
+        .map_err(ApiError::from)?
+        .into_iter()
+        .map(|job| job.id)
+        .collect();
+    for id in before.iter().filter(|id| !still_in_flight.contains(*id)) {
+        state.relay.live(id).finish();
+    }
+
+    tracing::info!(canceled, detail, "swept the run queue");
+    // The count is reported as a `u32` on the wire; the queue is capped far below
+    // that (`MAX_BATCH_RUNS` per request), so the clamp is unreachable in practice
+    // and exists only so the conversion cannot wrap.
+    Ok(canceled.min(u64::from(u32::MAX)) as u32)
 }
 
 /// `GET /jobs/{id}/live` — the live harness-event + asset-preview stream as
@@ -562,6 +803,11 @@ fn is_retryable(state: RunState) -> bool {
 /// `retryCount`), and `attempt = job.attempt + 1`. The dispatcher re-claims it
 /// unchanged, so no dispatcher change is needed.
 ///
+/// It also inherits the **original** job's attribution rather than taking none: the
+/// retry is still that account's run, and still the plan's or ladder's, so it stays in
+/// that plan's coverage buffer and is still reached by that plan's halt. A retry with
+/// no origin would be a job the plan launched and can no longer stop.
+///
 /// Two guards keep the chain finite: `already_terminal` skips a duplicate/late
 /// terminal report (the decision is made only the first time a job goes terminal),
 /// and the strictly-monotonic `attempt` bounded by the request's `retryCount` means
@@ -599,6 +845,8 @@ async fn maybe_enqueue_retry(
             model_id: job.model_id.clone(),
             job_token,
             attempt,
+            user_id: job.user_id.clone(),
+            origin: job.origin.as_deref().and_then(JobOrigin::parse),
             created_at: now,
         })
         .await
@@ -889,6 +1137,51 @@ fn encode_preview_line(preview: &AssetPreview) -> Bytes {
 }
 
 // --- Wire shapes ------------------------------------------------------------
+
+/// The query string of `POST /jobs` and `POST /jobs/batch`: what asked for these runs.
+///
+/// Attribution rides in the query rather than in [`LaunchBody`] deliberately. The
+/// launch body is stored **verbatim** as the job's `request_json` and handed straight
+/// back to the driver when the dispatcher claims the job — it is the description of
+/// *what to run*, and a driver has no business knowing which plan wanted it. An origin
+/// is queue bookkeeping: one `job` column, read only by a scoped halt. Keeping it out
+/// of the body also keeps [`LaunchBody`] — which lives in `core`, shared with the
+/// driver and the dispatcher — from growing a field only the backend ever reads.
+///
+/// Deserialize-only, and not a codegen contract type: a query string is not a JSON
+/// body, so there is nothing for the TypeScript bindings to describe.
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct LaunchQuery {
+    /// The `plan:<id>` / `ladder:<id>` token naming the coverage plan or ladder that
+    /// is topping itself up. Absent for a launch by hand from the console's run form,
+    /// which is what leaves `job.origin` null and so keeps that run out of every
+    /// scoped halt. An unrecognized token is rejected rather than ignored — see
+    /// [`attribution`].
+    #[serde(default)]
+    pub origin: Option<String>,
+}
+
+/// The response to one of the three global cancel controls: how many runs the sweep
+/// stopped, and how far into the queue it reached.
+///
+/// The **count is the point**. A sweep that reported only success would leave the
+/// operator unable to tell "the queue was already empty" from "nothing matched", and
+/// those call for opposite next moves. The two scope flags let the console phrase what
+/// it just did ("stopped 12 runs, including 3 already executing") from the response
+/// alone, rather than from which button it happens to have called.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct BulkCancelOut {
+    /// How many jobs moved to the terminal `canceled` state.
+    pub canceled: u32,
+    /// Whether the sweep reached runs that had not started yet (`queued`, `pending`)
+    /// — the ones that had cost nothing.
+    pub included_waiting: bool,
+    /// Whether the sweep reached runs that were already executing (`dispatched`,
+    /// `starting`, `running`) — the ones whose work was discarded.
+    pub included_active: bool,
+}
 
 /// The body of `POST /jobs/{id}/verify-token`: the per-job token to check against
 /// the one minted for the job. Sent by the artifact service to authenticate an

@@ -1,18 +1,174 @@
 {
   "$defs": {
+    "AssetKind": {
+      "description": "Within an asset-generation case, the shape of the asset the model draws.\n\nA case is one of: a single 2D sprite, a 2D sprite sheet, a single static 3D\nvoxel model, or a rigged/animatable 3D voxel model — never a mix, and not a\nper-variant choice: it is a property of the whole version, chosen by the\n`asset_kind` field. A [`Self::SpriteSheet`] case additionally declares a\n`[sheet]` table (the frame grid and the named animation sequences); the two\nvoxel kinds declare a `[voxel]` table (the bounding volume), and\n[`Self::VoxelAnimation`] additionally declares a `[model]` table (the parts,\njoints, and clips of the rig). Defaults to [`Self::Sprite`] so a manifest that\npredates the discriminator — and every non-asset-generation case — resolves\nunchanged.",
+      "oneOf": [
+        {
+          "const": "sprite",
+          "description": "One sprite drawn onto the whole canvas (the original asset-generation shape).",
+          "type": "string"
+        },
+        {
+          "const": "sprite-sheet",
+          "description": "A grid of animation frames drawn onto the canvas, sliced into the named\nsequences the `[sheet]` table declares.",
+          "type": "string"
+        },
+        {
+          "const": "voxel-model",
+          "description": "A single static 3D voxel model, drawn one voxel operation at a time with the\n`voxel` binary. Declares a `[voxel]` table (the bounding volume). Rendered as\nan auto-rotating 3D model.",
+          "type": "string"
+        },
+        {
+          "const": "voxel-animation",
+          "description": "A rigged, animatable 3D voxel model: named parts in a parent/child hierarchy\nwith named joints a consuming game drives at runtime (for example a tank's\n`turret_yaw`), drawn with the `voxel-anim` binary. Declares a `[voxel]` table\nand a `[model]` table (the required parts and joints the model must produce,\non top of which it may add its own).",
+          "type": "string"
+        },
+        {
+          "const": "mc-model",
+          "description": "A static surface-meshed 3D model built with the **marching cubes** `mc`\nbinary: the model composites a signed-distance field of CSG primitives, which\nthe mesher extracts to a per-model `.glb`. Declares a `[voxel]` table\n(the field bounds) and no `[model]`. Marching cubes yields a chunky, faceted\n**low-poly** surface.",
+          "type": "string"
+        },
+        {
+          "const": "mc-animation",
+          "description": "A rigged, animatable surface-meshed 3D model built with the **marching cubes**\n`mc-anim` binary. Like [`Self::VoxelAnimation`] but each part is a meshed\nfield extracted to its own `.glb`; declares a `[voxel]` and a `[model]`\ntable.",
+          "type": "string"
+        },
+        {
+          "const": "sn-model",
+          "description": "A static surface-meshed 3D model built with the **surface nets** `sn` binary.\nDeclares a `[voxel]` table and no `[model]`. Surface nets yields a smooth,\nwatertight mid-fidelity surface with uniform triangle density.",
+          "type": "string"
+        },
+        {
+          "const": "sn-animation",
+          "description": "A rigged, animatable surface-meshed 3D model built with the **surface nets**\n`sn-anim` binary. Like [`Self::VoxelAnimation`] but each part is a meshed\nfield; declares a `[voxel]` and a `[model]` table.",
+          "type": "string"
+        },
+        {
+          "const": "dc-model",
+          "description": "A static surface-meshed 3D model built with the **dual contouring** `dc`\nbinary. Declares a `[voxel]` table and no `[model]`. Dual contouring yields a\nhigh-fidelity surface that preserves sharp edges and corners.",
+          "type": "string"
+        },
+        {
+          "const": "dc-animation",
+          "description": "A rigged, animatable surface-meshed 3D model built with the **dual contouring**\n`dc-anim` binary. Like [`Self::VoxelAnimation`] but each part is a meshed\nfield; declares a `[voxel]` and a `[model]` table.",
+          "type": "string"
+        },
+        {
+          "const": "ui",
+          "description": "A high-resolution 2D interface asset (or kit of elements) painted with the\n`paint`/`ui` binaries. Declares a `[canvas]` (base element size) and an\noptional `[ui]` table (the kit's elements). Judged on the emitted flattened\nPNG(s) plus `ui.json`.",
+          "type": "string"
+        },
+        {
+          "const": "material",
+          "description": "A tileable PBR material — a set of maps (base color, normal, roughness, …) —\npainted with the `texture`/`pbr` binaries. Declares a `[material]` table (no\n`[canvas]`/`[voxel]`). Judged on the emitted maps plus `material.json`.",
+          "type": "string"
+        },
+        {
+          "const": "mc-skinned",
+          "description": "A skinned character (marching cubes): one whole-body field bound to a\nmodel-invented skeleton, deformed by linear-blend skinning. Declares a\n`[voxel]` and a `[model]` table but emits a **single** `mesh.glb` + `rig.json`\n(not per-part).",
+          "type": "string"
+        },
+        {
+          "const": "sn-skinned",
+          "description": "A skinned character (surface nets). See [`Self::McSkinned`].",
+          "type": "string"
+        },
+        {
+          "const": "dc-skinned",
+          "description": "A skinned character (dual contouring). See [`Self::McSkinned`].",
+          "type": "string"
+        },
+        {
+          "const": "particle-2d",
+          "description": "A 2D particle effect authored with the `particle-2d` binary. Declares a\n`[particle]` table (a planar field). Judged on the emitted `system.json`.",
+          "type": "string"
+        },
+        {
+          "const": "particle-3d",
+          "description": "A 3D particle effect authored with the `particle-3d` binary. Declares a\n`[particle]` table (a volume). Judged on the emitted `system.json`.",
+          "type": "string"
+        },
+        {
+          "const": "sfx-synth",
+          "description": "A procedurally-synthesized sound effect authored with the `sfx-synth` binary.\nDeclares an `[audio]` table. Judged on the emitted `clip.wav`.",
+          "type": "string"
+        },
+        {
+          "const": "sfx-sample",
+          "description": "A sample-library sound effect authored with the `sfx-sample` binary. Declares\nan `[audio]` table (naming its `sample_pack`). Judged on the emitted `clip.wav`.",
+          "type": "string"
+        },
+        {
+          "const": "music",
+          "description": "A short piece of music authored with the `music` sequencer binary. Declares an\n`[audio]` table (naming its `instrument_bank`). Judged on the emitted\n`clip.wav` (and portable `clip.mid`).",
+          "type": "string"
+        },
+        {
+          "const": "blender-character",
+          "description": "A rigged, animated **skinned character** authored by driving **headless Blender**\nthrough its Python API — the first Blender-based asset kind. The model writes a\n`build.py` (a `bpy` script) that builds the character mesh, an armature, skin\nweights, and one Action per required animation, then runs the `tcab-blend` runner\nto export a single **`character.glb`** (a standard skinned + animated glTF 2.0)\nplus a `model.png` preview. Unlike the CSG skinned kinds (`mc-skinned` …), there\nis **no operation log**: `build.py` is the recorded authoring trace, re-run for\nprovenance. Declares a `[voxel]` table (reused as the character's bounding box)\nand a `[model]` table (the required animations); judged on the emitted glTF, never\nan op-log replay.",
+          "type": "string"
+        },
+        {
+          "const": "blender-prop",
+          "description": "A static **hard-surface prop** authored by driving headless Blender through a\n`build.py` script — a weapon, crate, pickup, or emplacement. Like every Blender\nkind it writes a `build.py` and runs `tcab-blend`, but it emits a **static**,\nunrigged native glTF (`model.glb`): no armature, no skin, and **no animations**,\nso it declares **no `[model]` table**. Reuses the `[voxel]` table as a bounding\nbox. Judged on the emitted glTF (a well-formed static mesh); `build.py` is the\nrecorded trace, re-run for provenance.",
+          "type": "string"
+        },
+        {
+          "const": "blender-mechanism",
+          "description": "A **rigidly-articulated mechanism** authored by driving headless Blender through a\n`build.py` script — a turret, blast door, crane, or mech. It emits a native glTF\n(`model.glb`) whose motion is baked as standard **glTF node-hierarchy animations**\n(each part posed about its pivot by parenting, **not** skin deformation and **not**\na Test-Cabinet `rig.json`), so a game plays the clips natively. Declares a\n`[voxel]` bounding box and a `[model]` table of required animations, reconciled\nagainst the emitted glTF; `build.py` is re-run for provenance.",
+          "type": "string"
+        }
+      ]
+    },
     "CatalogCase": {
+      "description": "One entry of the catalog listing: a case, its visible versions, and the\ndisplay metadata a card renders — read from the latest visible version. This\nis the *summary* half of the catalog contract; the detail half is\n[`VersionResponse`], which a client fetches only for a case it opens.",
       "properties": {
+        "assetKind": {
+          "$ref": "#/$defs/AssetKind",
+          "description": "For an asset-generation case, the asset shape it produces — the catalog\npartitions its 2D / 3D / Particle / Audio tabs on this."
+        },
+        "difficulty": {
+          "description": "Relative difficulty (`easy` / `medium` / `hard`). A game jam is\nunclassified and reports whatever its manifest carries.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The case's display name, from its latest visible version.",
+          "type": "string"
+        },
         "slug": {
           "type": "string"
         },
+        "summary": {
+          "description": "The short plain-text abstract a card shows, when the case declares one.",
+          "type": ["string", "null"]
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "testType": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TestType",
+          "description": "The case's test type, which drives how a listing groups it."
+        },
         "versions": {
+          "description": "Every visible version, oldest first.",
           "items": {
             "type": "string"
           },
           "type": "array"
         }
       },
-      "required": ["slug", "versions"],
+      "required": [
+        "slug",
+        "versions",
+        "name",
+        "testType",
+        "assetKind",
+        "difficulty",
+        "tags"
+      ],
       "type": "object"
     }
   },

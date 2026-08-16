@@ -119,8 +119,10 @@ single committed number:
 - A `:free`-tagged OpenRouter run is priced at the model's **base rate**, never
   `$0` — the free variant is a routing tag, not a genuinely free run.
 
-A model's detail page shows this history as a **graph** and a **table**, with one
-table row per newly-observed price.
+The history is what a run's **comparable cost** is priced against, so a run keeps
+the rate it actually ran at. It is not charted in the console: a model's price
+changes rarely enough that a chart of it was almost always two or three points,
+so the model's **Stats** tab shows the latest per-Mtok rates and nothing else.
 
 ## Updating an existing model
 

@@ -3,6 +3,7 @@ import {
   ReliabilityRingWidget,
   type ReliabilitySegment,
 } from "@test-cabinet/ui";
+import { rollupRuns } from "@test-cabinet/run-stats/rollup";
 import type { ModelSummary } from "../../../data/models";
 import { useModelRunSummaries } from "../../../data/useModelRunSummaries";
 import {
@@ -33,31 +34,40 @@ function StatsContent({ model }: { model: ModelSummary }) {
   // the set is exactly the published runs) and the console.
   const { summaries, loading } = useModelRunSummaries(model.modelIds);
   const { segments, totalRuns } = useMemo(() => {
-    let completed = 0;
-    let harnessErrors = 0;
-    let hangs = 0;
-    let timeouts = 0;
-    for (const run of summaries) {
-      if (run.state === "completed") completed += 1;
-      else if (run.state === "harness_error") harnessErrors += 1;
-      else if (run.state === "hung") hangs += 1;
-      else if (run.state === "timed_out") timeouts += 1;
-    }
-    // Order: the positive outcome first, then the published failure tiers.
+    // The shared rollup, rather than a tally written out here: anything else that
+    // reports this model's outcomes — a write-up that freezes them, a later live
+    // recomputation of the same figures — reduces the run set with this same
+    // function, so the numbers agree by construction.
+    const { outcomes, runs } = rollupRuns(summaries);
+    // One segment per publishable state, in `RunState::ALL` order: the positive
+    // outcome first, then the failure tiers as the contract enumerates them. That
+    // covers every run this page can see — `infrastructure` is the only state
+    // without a segment, and it is never publishable and excluded from every model
+    // statistic — so the legend tallies sum to the ring's center total.
     const segments: ReliabilitySegment[] = [
-      { label: "Completed", value: completed, tone: "success" },
-      { label: "Harness errors", value: harnessErrors, tone: "harnessError" },
-      { label: "Hangs", value: hangs, tone: "hung" },
-      { label: "Timeouts", value: timeouts, tone: "timeout" },
+      { label: "Completed", value: outcomes.completed, tone: "success" },
+      {
+        label: "Catastrophic",
+        value: outcomes.catastrophic,
+        tone: "catastrophic",
+      },
+      { label: "Timeouts", value: outcomes.timed_out, tone: "timeout" },
+      {
+        label: "Harness errors",
+        value: outcomes.harness_error,
+        tone: "harnessError",
+      },
+      { label: "Hangs", value: outcomes.hung, tone: "hung" },
     ];
-    return { segments, totalRuns: summaries.length };
+    return { segments, totalRuns: runs };
   }, [summaries]);
 
   return (
     <>
       {/* Reliability: how the model's published runs broke down — completed vs
-          the publishable failure tiers (harness errors, timeouts). Hidden while
-          the runs are still loading so the ring never flashes a misleading 0%. */}
+          every publishable failure tier (catastrophic, timeouts, harness errors,
+          hangs). Hidden while the runs are still loading so the ring never flashes
+          a misleading 0%. */}
       {!loading && (
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>Reliability</h2>
@@ -111,9 +121,7 @@ function StatsContent({ model }: { model: ModelSummary }) {
           />
           <Stat
             label="Release date"
-            value={
-              model.releasedAt ? formatReleaseDate(model.releasedAt) : "—"
-            }
+            value={model.releasedAt ? formatReleaseDate(model.releasedAt) : "—"}
             muted={!model.releasedAt}
           />
         </div>
@@ -133,9 +141,7 @@ function Stat({ label, value, muted = false }: StatProps) {
   return (
     <div className={styles.stat}>
       <span className={styles.statLabel}>{label}</span>
-      <span
-        className={`${styles.statValue}${muted ? ` ${styles.muted}` : ""}`}
-      >
+      <span className={`${styles.statValue}${muted ? ` ${styles.muted}` : ""}`}>
         {value}
       </span>
     </div>

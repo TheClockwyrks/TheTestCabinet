@@ -6,8 +6,26 @@
 
 import { useId, useState } from "react";
 import { SegmentedControl, type SegmentedOption } from "@test-cabinet/ui";
-import type { TestCaseSummary } from "../data/testCases";
+import { parseVersion } from "../data/versions";
 import styles from "./VersionScope.module.scss";
+
+/**
+ * The versions a scope or pick is measured against: every version on offer,
+ * newest first, and the one that counts as "latest" for the relative scopes.
+ *
+ * A `TestCaseSummary` satisfies this structurally, which is the ordinary source —
+ * the case detail tabs scope a case against its own published versions. It is an
+ * interface of its own rather than the catalog type because a view can legitimately
+ * anchor the scope somewhere else: the model Overview measures against the versions
+ * *that model* has runs for, so its default scope always selects runs that exist
+ * (the case's newest version may be one this model never ran).
+ */
+export interface VersionSet {
+  /** Every version on offer, newest first. */
+  versions: readonly string[];
+  /** The version the relative scopes (`current`, `major`) are measured against. */
+  latestVersion: string;
+}
 
 // Which versions of the case a tab draws from, all relative to the case's
 // latest version:
@@ -23,28 +41,6 @@ const SCOPE_OPTIONS: ReadonlyArray<SegmentedOption<VersionScope>> = [
   { value: "specific", label: "Specific" },
   { value: "all", label: "All" },
 ];
-
-// A version's numeric parts. Versions are `v<major>.<minor>.<revision>` strings
-// (e.g. `v1.2.0`); there is no shared semver parser, so the scopes parse the two
-// they compare on the fly.
-interface Semver {
-  major: number;
-  minor: number;
-  revision: number;
-}
-
-// Parse a `v1.2.0`-style version into its numeric parts, or null when it doesn't
-// match (a scope then falls back to an exact string compare rather than silently
-// matching nothing).
-function parseVersion(version: string): Semver | null {
-  const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(version);
-  if (!match) return null;
-  return {
-    major: Number(match[1]),
-    minor: Number(match[2]),
-    revision: Number(match[3]),
-  };
-}
 
 // Whether a run's `testCaseVersion` falls within the selected scope, measured
 // against the case's latest version (or, for `specific`, the picked version).
@@ -86,7 +82,7 @@ export interface VersionScopeState {
 // Track the version scope for one case. The default `current` scope keeps a
 // single-version case's runs whole (every run shares the latest version), so a
 // case with nothing to scope needs no special-casing beyond hiding the control.
-export function useVersionScope(testCase: TestCaseSummary): VersionScopeState {
+export function useVersionScope(testCase: VersionSet): VersionScopeState {
   const [scope, setScope] = useState<VersionScope>("current");
   const [picked, setPicked] = useState(testCase.latestVersion);
   // A picked version the case no longer lists (the visitor navigated to another
@@ -184,7 +180,7 @@ export interface VersionPickState {
 // comparable WITHIN one version — a performance case's fuel totals, which are
 // only meaningful against the same scored scenario set — so it picks a cohort
 // rather than widening across several.
-export function useVersionPick(testCase: TestCaseSummary): VersionPickState {
+export function useVersionPick(testCase: VersionSet): VersionPickState {
   const [picked, setPicked] = useState(testCase.latestVersion);
   // A picked version the case no longer lists (the visitor navigated to another
   // case without the component remounting) would show an empty board; fall back

@@ -21,6 +21,12 @@ function summary(
     cellsSatisfied: cells * (perCellMissing === 0 ? 1 : 0),
     cellsTotal: cells,
     runsMissing: cells * perCellMissing,
+    // The scheduling fields are irrelevant to the progress bar — it measures runs
+    // that exist, not whether the plan is still feeding itself — so they take the
+    // values a plan has before anyone touches its schedule.
+    runsUnreviewed: 0,
+    paused: false,
+    autoTopUp: false,
   };
 }
 

@@ -135,7 +135,7 @@ jobs:
 
       # Authenticate to GHCR with the built-in token (packages: write above).
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -150,7 +150,7 @@ jobs:
           echo "ref=ghcr.io/${owner}/${{ matrix.image.image }}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       # Build from the repository root (the Dockerfiles compile their crate from
       # source, so the context must include crates/); the repo-root .dockerignore
@@ -160,7 +160,7 @@ jobs:
       # runs (scoped per image AND arch so the legs don't clobber each other).
       - name: Build and push ${{ matrix.image.image }} (${{ matrix.arch.name }})
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.image.dockerfile }}
@@ -187,7 +187,7 @@ jobs:
           touch "${{ runner.temp }}/digests/${digest#sha256:}"
 
       - name: Upload digest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: digest-${{ matrix.image.name }}-${{ matrix.arch.name }}
           path: ${{ runner.temp }}/digests/*
@@ -222,21 +222,21 @@ jobs:
             image: tcab-web
     steps:
       - name: Download this image's per-arch digests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: ${{ runner.temp }}/digests
           pattern: digest-${{ matrix.image.name }}-*
           merge-multiple: true
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Compute registry namespace
         id: registry

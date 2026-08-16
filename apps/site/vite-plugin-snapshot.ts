@@ -36,7 +36,10 @@ interface SnapshotIndex {
   generatedAt: string;
   runCount: number;
   runsKey: string;
-  runsPrefix: string;
+  // The shared, snapshot-independent prefix the per-run documents live under. Purely
+  // informational here: a run's document is content-addressed, so it is reached
+  // through the `documentKey` on its summary rather than by composing a path.
+  runDocumentsPrefix: string;
   casesPrefix: string;
   // Optional so a snapshot published before the model catalog existed still loads
   // (the site then renders an empty Models section).
@@ -87,7 +90,8 @@ interface SnapshotReview {
   pictureKey?: string | null;
 }
 
-// `runs/<run-id>.json`: the full run record plus its review and links, and the
+// `documents/runs/<run-id>/<digest>.json`: the full run record plus its review and
+// links, and the
 // recorded normalized event stream when the run captured one (raw harness output
 // is never published). The events are emitted as a separate per-run static asset
 // rather than inlined into the bundle, so the gallery JS doesn't carry every
@@ -846,8 +850,17 @@ async function loadSnapshot(
 
   // Per-run records + reviews, in the snapshot's newest-first order.
   for (const summary of runsFile.runs) {
+    // The run's document is content-addressed under a snapshot-independent prefix, so
+    // the summary is what names it — the key carries a digest of the document's own
+    // bytes and cannot be composed from the run id. A summary in `runs.json` always
+    // carries one; a missing key is a malformed snapshot, not a fallback path.
+    if (!summary.documentKey) {
+      throw new Error(
+        `snapshot run summary ${summary.id} carries no documentKey; the snapshot is malformed`,
+      );
+    }
     const runFile = await fetchJson<SnapshotRunFile>(
-      joinUrl(base, `${index.runsPrefix}${summary.id}.json`),
+      joinUrl(base, summary.documentKey),
     );
     // Emit the full run record as a runtime-fetchable static asset
     // (`runs/<id>.json`), so a summary-first page lazily fetches one run's whole

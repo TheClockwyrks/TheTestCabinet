@@ -201,7 +201,19 @@ export interface VariantSummary {
   referenceSheet: ReferenceSheet | null;
 }
 
-/** One test case in the catalog, across all of its published versions. */
+/**
+ * One test case as a *listing* knows it: the fields a catalog card renders, plus
+ * the version list. This is the whole of what the catalog and every other list
+ * surface needs, and it is what a host resolves for every case up front.
+ *
+ * Everything heavier — the description, the variants (with their prompts, seeded
+ * specs, references, and checklists), the changelog, and the errata — lives on
+ * {@link TestCaseDetail}, fetched per slug only for a case a visitor opens. The
+ * split is deliberate: folding those into the listing meant resolving every
+ * version of every case (and every variant's spec bodies) before the catalog grid
+ * could paint, which cost hundreds of requests for a page that shows a name, a
+ * difficulty, a summary, and some tags.
+ */
 export interface TestCaseSummary {
   slug: string;
   name: string;
@@ -219,6 +231,19 @@ export interface TestCaseSummary {
   tags: string[];
   /** Short, plain-text abstract shown on the catalog card, or null. */
   summary: string | null;
+  /** Every published version, newest first. */
+  versions: string[];
+  /** The newest version (first of `versions`). */
+  latestVersion: string;
+}
+
+/**
+ * One test case in full, across all of its published versions — what a *detail*
+ * surface needs. Resolved per slug through the gallery's `fetchTestCase` (see
+ * `useTestCase`) rather than held for the whole catalog, because assembling it
+ * costs one request per version plus one per variant's seeded specs.
+ */
+export interface TestCaseDetail extends TestCaseSummary {
   /** Inlined site-facing Markdown from the case's `description.md`, or null. */
   description: string | null;
   /** The case's changelog, one entry per version that declares a `changelog.md`,
@@ -229,17 +254,13 @@ export interface TestCaseSummary {
    * detail page's Errata tab and the run detail view's "known errata" callout
    * (resolved by the run's version). */
   errata: ErrataEntry[];
-  /** Every published version, newest first. */
-  versions: string[];
-  /** The newest version (first of `versions`). */
-  latestVersion: string;
   /** The variants the latest version offers, in declared order (default first).
    * Each carries the inputs a run of that variant is seeded with. */
   variants: VariantSummary[];
   /** The case's COMMON scoring domains (every variant is rated on these; a
    * variant may add its own — see VariantSummary.domains). A reviewer rates each
    * domain independently; a run's overall rating is the worst across them. At
-   * least one is present when the host could resolve the catalog. */
+   * least one is present when the host could resolve the case. */
   domains: DomainSummary[];
   /** The sprite-sheet frame grid and named sequences a sprite-sheet
    * asset-generation case declares; null for a single sprite or any non-asset

@@ -4,6 +4,11 @@
   margin-bottom: t.$space-xl;
 }
 
+// The filter bar above the log, spaced off it like the index page's controls.
+.controls {
+  margin-bottom: t.$space-lg;
+}
+
 .empty {
   color: t.$color-text-muted;
   margin: 0;

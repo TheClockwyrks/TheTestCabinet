@@ -157,7 +157,16 @@ pub async fn backfill_coverage_plans(db: &Db) -> Result<usize> {
             cases: plan.cases,
             updated_at: now.clone(),
         };
-        db.insert_coverage_plan(&plan.user_id, &coverage).await?;
+        // A migrated plan starts under the default schedule, which is exactly the
+        // behaviour the legacy `review_plan` had: cases outer, not paused, and no
+        // automatic top-up. Migration must not change how an existing plan is fed —
+        // the reviewer opts into scheduling afterwards, from the console.
+        db.insert_coverage_plan(
+            &plan.user_id,
+            &coverage,
+            &crate::db::CoveragePlanSchedule::default(),
+        )
+        .await?;
         db.mark_review_plan_migrated(&plan.user_id).await?;
         migrated += 1;
     }

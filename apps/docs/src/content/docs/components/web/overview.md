@@ -69,17 +69,68 @@ The console does **not** drain the whole cabinet into memory. Its run and model
 list pages are **server-paged**: each page issues a
 [`GET /runs?fields=summary`](/components/backend/api/#get-runs) query in the
 numbered-offset mode (`offset` + `limit`), driving the numbered pager off the
-returned `total`. Search, the page-scoped filter (a model id on the model-runs
-page, a case slug elsewhere), and column-header sort are sent as query params, so
-filtering and sorting happen in the backend, not client-side; changing any of them
-re-queries and resets to page 0, and produced/in-progress runs the worker holds
-locally are pinned to page 0. The home page fetches a recent window, and the
-case-scoped leaderboard and metrics views fetch one bounded, case-scoped summary
-set. Only a run's **detail** page loads that run's full
+returned `total`. Search (debounced, then sent as `q`), the page-scoped filters (a
+model id on the model-runs page, a case slug and variant on the case/jam Runs
+tab), and column-header sort are sent as query params, so filtering and sorting
+happen in the backend, not client-side; changing any of them re-queries and resets
+to page 0.
+
+Every run listing carries the same **filter bar**: the free-text field plus the
+equality facets its route does not already pin — test case, version, harness, and
+model — and the **Current versions only** toggle, which is **on by default**. The
+facets exist because `q` alone is one substring OR'd across the recorded identity
+columns, so it can express neither "this case *and* this model" nor a test-case
+version at all; each facet is its own server-side equality filter, so they AND with
+each other and with the search. The toggle scopes every case's runs to its current
+`major.minor` — a case version is frozen once it has runs, so an older minor is a
+different spec whose runs are not comparable with the current one's — and steps
+aside when an exact version is picked (see
+[`latestVersions`](/components/backend/api/#get-runs)). All of it lives in the URL
+(`?q=`, `?case=`, `?version=`, `?harness=`, `?model=`, `?latest=0`, `?page=`), so a
+narrowed listing is a link someone else can open. Those listings draw from the
+[`state=any`](/components/backend/api/#get-runs) slice, so a produced —
+unpublished, and so unreviewed — run sorts and pages among the published ones
+rather than being pinned ahead of them; only **in-progress** runs, which have no
+record to list yet, still lead the first page. The home page fetches a recent
+window, and the case-scoped leaderboard and metrics views fetch one bounded,
+case-scoped summary set. A model's **Overview** tab fetches two such sets: a
+model-scoped one, which is what its case/variant picker is built from, and the
+selected case's case-scoped one, which is the field it places the model against.
+Only a run's **detail** page loads that run's full
 [record](/components/core/run-records/) (and its reviews),
 [lazily](/components/backend/api/#get-runsid), one run at a time. Lightweight
 [`RunSummary`](/components/backend/snapshot/#runsjson--the-run-index) cards back
 every list, card, leaderboard, and metric.
+
+## Planning and steering runs
+
+The console's Account section is where a reviewer declares what they want run and
+how fast: [coverage plans](/components/backend/coverage/) (cases × combinations,
+with a target per cell) and [ladders](/components/backend/ladders/) (an ordered
+climb each combination ascends until it fails a rung). Both dashboards read the
+backend's derived board and drive the same controls — top up now, pause, halt, halt
+all — and both show the plan's or ladder's own unreviewed queue **in its own order**
+rather than newest-first, which is the point of having chosen an emission order at
+all.
+
+Nothing here polls in the background. Topping up happens when the console asks:
+opening a dashboard, pressing the button, or — where the plan or ladder has
+`autoTopUp` on — submitting a review, which is exactly when a buffer slot frees. The
+run order picker is labelled **"One case at a time" / "One model at a time"** (and,
+on a ladder, "Rung by rung" / "Model by model"); the words depth- and breadth-first
+appear nowhere in the console, because the choice is about what you want to review
+side by side rather than about tree traversal.
+
+Because reviewing is the loop these dashboards exist to close, opening a run from
+one and pressing back returns to **that dashboard** rather than to the global run
+list — the shared back-return machinery records the coverage section as the place to
+come back to.
+
+The Runs page carries the global counterparts to a plan's halt, on the trailing edge
+of its tab bar: **Clear pending**, **Kill active**, and **Stop all**. These are
+scoped to nothing — they stop the cabinet, not one plan — so the two that discard
+work in progress confirm first, and all three report how many runs they actually
+cancelled.
 
 ## Deployment
 
