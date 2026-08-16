@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { LoadingState } from "../../components/LoadingState";
 import type {
+  CoverageAxis,
   CoverageGroup,
-  CoveragePlan,
   CoveragePlanInput,
+  CoveragePlanOut,
   ReviewPlanCase,
   ReviewPlanCombo,
 } from "@test-cabinet/run-record/coverage";
@@ -14,16 +15,32 @@ import type { Model } from "../../../client/types";
 import { PageLayout } from "../../components/PageLayout";
 import { BackChevron } from "../../components/BackChevron";
 import { routes } from "../../routes";
-import { ComboPicker, CasePicker } from "./coveragePickers";
+import {
+  AxisPicker,
+  BufferTargetField,
+  ComboPicker,
+  CasePicker,
+} from "./coveragePickers";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
+// The backend's compiled-in review-buffer default, shown as the placeholder until
+// the account's own setting resolves. Only ever a display fallback: the number that
+// actually applies is whatever `GET /coverage-settings` reports, and an empty
+// override field defers to it rather than to this.
+const FALLBACK_BUFFER_TARGET = 10;
+
 // The coverage plan editor (`/account/coverage/new` and `/account/coverage/:planId/
-// edit`): name, runs-per-cell, the reusable groups the plan references, and any
-// one-off combinations/cases pinned directly. Referenced groups are pointers —
-// editing a group later reshapes this plan — while one-offs live on the plan. Save
-// creates or updates and returns to the plans list. Console-only; gated on a
-// signed-in account.
+// edit`): name, runs-per-cell, how the plan is fed (run order, review buffer,
+// auto-top-up), the reusable groups the plan references, and any one-off
+// combinations/cases pinned directly. Referenced groups are pointers — editing a
+// group later reshapes this plan — while one-offs live on the plan. Save creates or
+// updates and returns to the plans list. Console-only; gated on a signed-in account.
+//
+// The schedule fields travel in the save body's nested `schedule`, and the plan's
+// `paused` state is carried through untouched from what was loaded: pausing and
+// halting are the dashboard's controls, and saving an edited member list here must
+// never resume a plan somebody deliberately stopped.
 export function CoveragePlanEditPage() {
   const { planId } = useParams();
   const editing = Boolean(planId);
@@ -43,6 +60,14 @@ export function CoveragePlanEditPage() {
   const [caseGroupIds, setCaseGroupIds] = useState<string[]>([]);
   const [combos, setCombos] = useState<ReviewPlanCombo[]>([]);
   const [cases, setCases] = useState<ReviewPlanCase[]>([]);
+  // How the plan is fed. `outerAxis`/`autoTopUp` default to today's behaviour so a
+  // plan created here is fed exactly as one created before this existed.
+  const [outerAxis, setOuterAxis] = useState<CoverageAxis>("case");
+  const [autoTopUp, setAutoTopUp] = useState(false);
+  const [bufferTarget, setBufferTarget] = useState<number | null>(null);
+  // Carried, never edited here — see the note on this page's purpose above.
+  const [paused, setPaused] = useState(false);
+  const [accountBuffer, setAccountBuffer] = useState(FALLBACK_BUFFER_TARGET);
 
   useEffect(() => {
     if (!backend || !token) {
@@ -56,7 +81,7 @@ export function CoveragePlanEditPage() {
       backend.listCoverageGroups?.(token) ?? Promise.resolve([]),
       editing
         ? (backend.listCoveragePlans?.(token) ?? Promise.resolve([]))
-        : Promise.resolve<CoveragePlan[]>([]),
+        : Promise.resolve<CoveragePlanOut[]>([]),
     ])
       .then(([gs, plans]) => {
         if (!active) return;
@@ -72,6 +97,10 @@ export function CoveragePlanEditPage() {
             setCaseGroupIds(plan.caseGroupIds);
             setCombos(plan.combos);
             setCases(plan.cases);
+            setOuterAxis(plan.outerAxis);
+            setAutoTopUp(plan.autoTopUp);
+            setBufferTarget(plan.bufferTarget ?? null);
+            setPaused(plan.paused);
           }
         }
         setLoading(false);
@@ -86,6 +115,16 @@ export function CoveragePlanEditPage() {
       .then((ms) => active && setModels(ms))
       .catch(() => {
         /* optional; the model field stays free-text */
+      });
+    // The account default the buffer override falls back to, fetched only so the
+    // field can *show* what an empty value inherits. Failing to read it must not
+    // block editing the plan, so the placeholder simply keeps the compiled-in
+    // fallback.
+    backend
+      .getCoverageSettings?.(token)
+      .then((s) => active && setAccountBuffer(s.bufferTarget))
+      .catch(() => {
+        /* optional; the placeholder stays the compiled-in default */
       });
     return () => {
       active = false;
@@ -123,6 +162,16 @@ export function CoveragePlanEditPage() {
       caseGroupIds,
       combos,
       cases,
+      schedule: {
+        outerAxis,
+        // Whatever the plan was loaded as (false for a new plan): the dashboard owns
+        // this control, and a member edit is not a decision to resume.
+        paused,
+        autoTopUp,
+        // Omitted rather than sent as 0 when there is no override — null means
+        // "inherit my account default", 0 means "never top this plan up".
+        ...(bufferTarget === null ? {} : { bufferTarget }),
+      },
     };
     setBusy(true);
     setError(null);
@@ -203,11 +252,36 @@ export function CoveragePlanEditPage() {
             />
           </label>
 
+          <p className={exec.sectionLabel}>Run order</p>
+          <AxisPicker value={outerAxis} onChange={setOuterAxis} />
+
+          <p className={exec.sectionLabel}>Review buffer</p>
+          <BufferTargetField
+            value={bufferTarget}
+            accountDefault={accountBuffer}
+            onChange={setBufferTarget}
+          />
+          <label className={styles.controlToggle}>
+            <input
+              type="checkbox"
+              checked={autoTopUp}
+              onChange={(e) => setAutoTopUp(e.target.checked)}
+            />
+            Top up this plan when I submit a review
+          </label>
+          <p className={styles.fieldHint}>
+            A top-up walks the cells in the order above, skips the ones already
+            at their target, and enqueues whole cases at a time until the buffer
+            is full — so a case&rsquo;s repeats arrive together and can be
+            reviewed against each other. Pausing and halting live on the
+            plan&rsquo;s dashboard.
+          </p>
+
           <p className={exec.sectionLabel}>Model groups</p>
           {comboGroups.length === 0 ? (
             <p className={styles.empty}>
-              No model groups yet — create some on the Groups tab, or pin one-off
-              combinations below.
+              No model groups yet — create some on the Groups tab, or pin
+              one-off combinations below.
             </p>
           ) : (
             <div className={styles.groupPicks}>
@@ -219,7 +293,9 @@ export function CoveragePlanEditPage() {
                     type="button"
                     className={`${styles.groupPick} ${on ? styles.groupPickOn : ""}`}
                     aria-pressed={on}
-                    onClick={() => toggle(g.id, comboGroupIds, setComboGroupIds)}
+                    onClick={() =>
+                      toggle(g.id, comboGroupIds, setComboGroupIds)
+                    }
                   >
                     {g.name}
                     <span className={styles.groupPickCount}>
@@ -259,7 +335,9 @@ export function CoveragePlanEditPage() {
             </div>
           )}
 
-          <p className={exec.sectionLabel}>One-off harness / model combinations</p>
+          <p className={exec.sectionLabel}>
+            One-off harness / model combinations
+          </p>
           <ComboPicker combos={combos} onChange={setCombos} models={models} />
 
           <p className={exec.sectionLabel}>One-off test cases</p>

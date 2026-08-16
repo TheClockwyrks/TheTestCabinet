@@ -110,6 +110,17 @@ export const routes = {
     `/account/coverage/${planId}`,
   accountCoveragePlanEdit: (planId: string): string =>
     `/account/coverage/${planId}/edit`,
+  // The account section's ladders tab (consoles only): the reviewer's ladders — an
+  // ordered climb of version-pinned cases each harness/model combination advances
+  // through on its own, gated on that account's own reviews. A sibling of coverage,
+  // not a mode of it, so it gets its own routes rather than a query parameter.
+  accountLadders: (): string => "/account/ladders",
+  // Create a new ladder, and open / edit an existing one by id. `new` is a static
+  // segment so it ranks above the dynamic `:ladderId`.
+  accountLadderNew: (): string => "/account/ladders/new",
+  accountLadder: (ladderId: string): string => `/account/ladders/${ladderId}`,
+  accountLadderEdit: (ladderId: string): string =>
+    `/account/ladders/${ladderId}/edit`,
   // The account section's coverage-groups tab: the reusable model/case groups
   // plans reference, plus their create/edit pages.
   accountGroups: (): string => "/account/groups",
@@ -244,6 +255,13 @@ export const routePatterns = {
   accountCoveragePlanNew: "/account/coverage/new",
   accountCoveragePlan: "/account/coverage/:planId",
   accountCoveragePlanEdit: "/account/coverage/:planId/edit",
+  // The ladder surfaces, laid out exactly as the plan ones: `new` (static) ranks
+  // above the dynamic `:ladderId`, and `:ladderId/edit` is more specific than the
+  // bare detail, so react-router matches them correctly.
+  accountLadders: "/account/ladders",
+  accountLadderNew: "/account/ladders/new",
+  accountLadder: "/account/ladders/:ladderId",
+  accountLadderEdit: "/account/ladders/:ladderId/edit",
   accountGroups: "/account/groups",
   accountGroupNew: "/account/groups/new",
   accountGroupEdit: "/account/groups/:groupId/edit",

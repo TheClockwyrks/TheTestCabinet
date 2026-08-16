@@ -6,8 +6,11 @@
 //! model-catalog tables (`model`, `model_alias`, `model_price`), and the
 //! `case_reference_build` table (a test-case variant's deployed reference
 //! implementation URL), and the `case_reference_sheet` table (the published frame
-//! set of an asset-generation variant's reference). They run at
-//! backend startup via [`Migrator::up`], and apply identically to the SQLite
+//! set of an asset-generation variant's reference). The reviewer-tooling
+//! migrations then add the coverage groups/plans, the per-account
+//! `coverage_settings`, and the four **ladder** tables (`ladder`, `ladder_rung`,
+//! `ladder_climber`, `ladder_outcome`) that hold the ordered, gated climb. They run
+//! at backend startup via [`Migrator::up`], and apply identically to the SQLite
 //! (local/tests) and PostgreSQL (deployment) backends because they are built from
 //! SeaORM's portable schema builder rather than backend-specific SQL.
 //!
@@ -37,6 +40,10 @@ mod m20260721_000017_create_case_reference_sheet;
 mod m20260731_000023_add_job_test_type;
 mod m20260808_000024_publish_job_unique_queued_run;
 mod m20260815_000025_add_job_queue_seq;
+mod m20260815_000026_add_job_attribution;
+mod m20260815_000027_add_coverage_plan_scheduling;
+mod m20260815_000028_create_coverage_settings;
+mod m20260815_000029_create_ladder;
 
 pub struct Migrator;
 
@@ -64,6 +71,10 @@ impl MigratorTrait for Migrator {
             Box::new(m20260731_000023_add_job_test_type::Migration),
             Box::new(m20260808_000024_publish_job_unique_queued_run::Migration),
             Box::new(m20260815_000025_add_job_queue_seq::Migration),
+            Box::new(m20260815_000026_add_job_attribution::Migration),
+            Box::new(m20260815_000027_add_coverage_plan_scheduling::Migration),
+            Box::new(m20260815_000028_create_coverage_settings::Migration),
+            Box::new(m20260815_000029_create_ladder::Migration),
         ]
     }
 }

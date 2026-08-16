@@ -627,6 +627,22 @@ export interface LaunchConfig {
   retryCount?: number;
 }
 
+// What a run is being launched *on behalf of*, recorded on the enqueued job as its
+// origin. It is deliberately structured rather than the `plan:<id>` / `ladder:<id>`
+// string the backend stores: the transport formats it, so a caller cannot mistype an
+// origin into a `400` (or, worse on an older backend, into a run that no halt would
+// ever reach). Absent means a hand-launch — the run form's own submit — which no
+// plan's or ladder's scoped halt should ever sweep up.
+//
+// Attribution is bookkeeping only. Coverage counting stays global: a run counts toward
+// its cell's target whoever launched it and whatever launched it, so tagging a run's
+// origin never changes what a plan considers still missing.
+export interface LaunchOrigin {
+  kind: "plan" | "ladder";
+  // The plan's or ladder's opaque id.
+  id: string;
+}
+
 // The terminal outcome of a publish. Publishing is **asynchronous**: the backend
 // enqueues a per-publish job and the gh/wrangler release runs in a `tcab-publisher`
 // Job, observed over a live stream that ends with this result. `published` is true

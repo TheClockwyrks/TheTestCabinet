@@ -25,6 +25,7 @@ import type {
   HarnessEvent,
   InProgressRun,
   LaunchConfig,
+  LaunchOrigin,
   LogoFetchResult,
   Model,
   ModelInput,
@@ -56,14 +57,33 @@ import type {
   RunRecord,
 } from "@test-cabinet/run-record";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { BulkCancelOut } from "@test-cabinet/run-record/jobs-api";
 import type {
   CoverageGroup,
   CoverageGroupInput,
   CoverageMatrix,
-  CoveragePlan,
   CoveragePlanInput,
+  CoveragePlanOut,
   CoveragePlanSummary,
+  CoverageQueue,
+  CoverageSchedule,
+  CoverageSettings,
+  CoverageSettingsInput,
+  HaltResult,
+  TopUpResult,
 } from "@test-cabinet/run-record/coverage";
+import type {
+  LadderClimberInput,
+  LadderInput,
+  LadderOut,
+  LadderOverrideInput,
+  LadderProgress,
+  LadderRung,
+  LadderRungOrderInput,
+  LadderRungOutcome,
+  LadderSchedule,
+  StoredClimberOut,
+} from "@test-cabinet/run-record/ladders";
 import {
   delJson,
   delVoid,
@@ -331,6 +351,20 @@ interface MyReviewsResponseBody {
   total: number;
 }
 
+// The path of one coverage plan's resource, or of a sub-resource beneath it
+// (`/schedule`, `/topup`, …). Every plan-scoped call routes through here so the id is
+// escaped exactly once, in one place — a plan id is opaque and must survive the URL
+// intact for the scoped controls (halt above all) to address the right plan.
+function planPath(id: string, suffix = ""): string {
+  return `/coverage-plans/${encodeURIComponent(id)}${suffix}`;
+}
+
+// The ladder equivalent of {@link planPath}. Ladders are a sibling surface, not a mode
+// of a plan, so they get their own route family rather than a query flag.
+function ladderPath(id: string, suffix = ""): string {
+  return `/ladders/${encodeURIComponent(id)}${suffix}`;
+}
+
 export function createHttpBackend(baseUrl: string): BackendClient {
   return {
     async identity(): Promise<BackendIdentity> {
@@ -564,36 +598,34 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       );
     },
 
-    async listCoveragePlans(token: string): Promise<CoveragePlan[]> {
-      return getJson<CoveragePlan[]>(baseUrl, "/coverage-plans", token);
+    async listCoveragePlans(token: string): Promise<CoveragePlanOut[]> {
+      // Each plan arrives with its schedule flattened in (`CoveragePlanOut`), so the
+      // plans list can show paused/axis/buffer state without a call per plan.
+      return getJson<CoveragePlanOut[]>(baseUrl, "/coverage-plans", token);
     },
 
     async createCoveragePlan(
       input: CoveragePlanInput,
       token: string,
-    ): Promise<CoveragePlan> {
-      return postJson<CoveragePlan>(baseUrl, "/coverage-plans", input, token);
+    ): Promise<CoveragePlanOut> {
+      return postJson<CoveragePlanOut>(
+        baseUrl,
+        "/coverage-plans",
+        input,
+        token,
+      );
     },
 
     async updateCoveragePlan(
       id: string,
       input: CoveragePlanInput,
       token: string,
-    ): Promise<CoveragePlan> {
-      return putJson<CoveragePlan>(
-        baseUrl,
-        `/coverage-plans/${encodeURIComponent(id)}`,
-        input,
-        token,
-      );
+    ): Promise<CoveragePlanOut> {
+      return putJson<CoveragePlanOut>(baseUrl, planPath(id), input, token);
     },
 
     async deleteCoveragePlan(id: string, token: string): Promise<void> {
-      await delVoid(
-        baseUrl,
-        `/coverage-plans/${encodeURIComponent(id)}`,
-        token,
-      );
+      await delVoid(baseUrl, planPath(id), token);
     },
 
     async getCoveragePlansSummary(
@@ -610,9 +642,234 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       id: string,
       token: string,
     ): Promise<CoverageMatrix> {
-      return getJson<CoverageMatrix>(
+      return getJson<CoverageMatrix>(baseUrl, planPath(id, "/coverage"), token);
+    },
+
+    async getCoverageSettings(token: string): Promise<CoverageSettings> {
+      return getJson<CoverageSettings>(baseUrl, "/coverage-settings", token);
+    },
+
+    async setCoverageSettings(
+      input: CoverageSettingsInput,
+      token: string,
+    ): Promise<CoverageSettings> {
+      // The backend clamps the target, so it echoes back what it actually stored
+      // rather than what was asked for — display that, not the submitted value.
+      return putJson<CoverageSettings>(
         baseUrl,
-        `/coverage-plans/${encodeURIComponent(id)}/coverage`,
+        "/coverage-settings",
+        input,
+        token,
+      );
+    },
+
+    async getCoveragePlanSchedule(
+      id: string,
+      token: string,
+    ): Promise<CoverageSchedule> {
+      return getJson<CoverageSchedule>(
+        baseUrl,
+        planPath(id, "/schedule"),
+        token,
+      );
+    },
+
+    async setCoveragePlanSchedule(
+      id: string,
+      schedule: CoverageSchedule,
+      token: string,
+    ): Promise<CoverageSchedule> {
+      return putJson<CoverageSchedule>(
+        baseUrl,
+        planPath(id, "/schedule"),
+        schedule,
+        token,
+      );
+    },
+
+    async topUpCoveragePlan(id: string, token: string): Promise<TopUpResult> {
+      // The top-up takes no body — every input (the plan, its schedule, the account's
+      // buffer target, what is already outstanding) is server-side state it recomputes
+      // per call, which is exactly what makes repeating the call harmless.
+      return postJson<TopUpResult>(baseUrl, planPath(id, "/topup"), {}, token);
+    },
+
+    async getCoveragePlanQueue(
+      id: string,
+      token: string,
+    ): Promise<CoverageQueue> {
+      return getJson<CoverageQueue>(baseUrl, planPath(id, "/queue"), token);
+    },
+
+    async pauseCoveragePlan(
+      id: string,
+      paused: boolean,
+      token: string,
+    ): Promise<CoverageSchedule> {
+      // The desired state travels in the body, so the control is idempotent and a
+      // console can drive a switch without tracking which way it is going.
+      return postJson<CoverageSchedule>(
+        baseUrl,
+        planPath(id, "/pause"),
+        { paused },
+        token,
+      );
+    },
+
+    async haltCoveragePlan(id: string, token: string): Promise<HaltResult> {
+      return postJson<HaltResult>(baseUrl, planPath(id, "/halt"), {}, token);
+    },
+
+    async haltAllCoveragePlan(id: string, token: string): Promise<HaltResult> {
+      return postJson<HaltResult>(
+        baseUrl,
+        planPath(id, "/halt-all"),
+        {},
+        token,
+      );
+    },
+
+    async listLadders(token: string): Promise<LadderOut[]> {
+      return getJson<LadderOut[]>(baseUrl, "/ladders", token);
+    },
+
+    async getLadder(id: string, token: string): Promise<LadderOut> {
+      return getJson<LadderOut>(baseUrl, ladderPath(id), token);
+    },
+
+    async createLadder(input: LadderInput, token: string): Promise<LadderOut> {
+      // The response carries every rung's minted id — the stable handle a reorder, a
+      // version bump, and every recorded verdict key off — so the caller must adopt
+      // the returned ladder rather than the one it submitted.
+      return postJson<LadderOut>(baseUrl, "/ladders", input, token);
+    },
+
+    async updateLadder(
+      id: string,
+      input: LadderInput,
+      token: string,
+    ): Promise<LadderOut> {
+      return putJson<LadderOut>(baseUrl, ladderPath(id), input, token);
+    },
+
+    async deleteLadder(id: string, token: string): Promise<void> {
+      await delVoid(baseUrl, ladderPath(id), token);
+    },
+
+    async reorderLadderRungs(
+      id: string,
+      input: LadderRungOrderInput,
+      token: string,
+    ): Promise<LadderRung[]> {
+      return postJson<LadderRung[]>(
+        baseUrl,
+        ladderPath(id, "/rungs/order"),
+        input,
+        token,
+      );
+    },
+
+    async getLadderSchedule(
+      id: string,
+      token: string,
+    ): Promise<LadderSchedule> {
+      return getJson<LadderSchedule>(
+        baseUrl,
+        ladderPath(id, "/schedule"),
+        token,
+      );
+    },
+
+    async setLadderSchedule(
+      id: string,
+      schedule: LadderSchedule,
+      token: string,
+    ): Promise<LadderSchedule> {
+      return putJson<LadderSchedule>(
+        baseUrl,
+        ladderPath(id, "/schedule"),
+        schedule,
+        token,
+      );
+    },
+
+    async getLadderProgress(
+      id: string,
+      token: string,
+    ): Promise<LadderProgress> {
+      return getJson<LadderProgress>(
+        baseUrl,
+        ladderPath(id, "/progress"),
+        token,
+      );
+    },
+
+    async topUpLadder(id: string, token: string): Promise<TopUpResult> {
+      return postJson<TopUpResult>(
+        baseUrl,
+        ladderPath(id, "/topup"),
+        {},
+        token,
+      );
+    },
+
+    async getLadderQueue(id: string, token: string): Promise<CoverageQueue> {
+      return getJson<CoverageQueue>(baseUrl, ladderPath(id, "/queue"), token);
+    },
+
+    async pauseLadder(
+      id: string,
+      paused: boolean,
+      token: string,
+    ): Promise<LadderSchedule> {
+      return postJson<LadderSchedule>(
+        baseUrl,
+        ladderPath(id, "/pause"),
+        { paused },
+        token,
+      );
+    },
+
+    async haltLadder(id: string, token: string): Promise<HaltResult> {
+      return postJson<HaltResult>(baseUrl, ladderPath(id, "/halt"), {}, token);
+    },
+
+    async haltAllLadder(id: string, token: string): Promise<HaltResult> {
+      return postJson<HaltResult>(
+        baseUrl,
+        ladderPath(id, "/halt-all"),
+        {},
+        token,
+      );
+    },
+
+    async setLadderClimber(
+      id: string,
+      input: LadderClimberInput,
+      token: string,
+    ): Promise<StoredClimberOut> {
+      // The combination travels in the body, not the path: a model id contains
+      // slashes and has no business being a path segment.
+      return postJson<StoredClimberOut>(
+        baseUrl,
+        ladderPath(id, "/climbers"),
+        input,
+        token,
+      );
+    },
+
+    async setLadderOutcome(
+      id: string,
+      input: LadderOverrideInput,
+      token: string,
+    ): Promise<LadderRungOutcome> {
+      // The response is the verdict as it now stands — the override applied over (or
+      // cleared back to) whatever the gate itself computed, which is not necessarily
+      // what was submitted.
+      return postJson<LadderRungOutcome>(
+        baseUrl,
+        ladderPath(id, "/outcomes"),
+        input,
         token,
       );
     },
@@ -819,6 +1076,20 @@ function launchBodyOf(config: LaunchConfig) {
       : {}),
     ...(config.retryCount != null ? { retryCount: config.retryCount } : {}),
   };
+}
+
+// The query string attributing an enqueue to the plan or ladder that asked for it,
+// or "" for a hand-launch (which no scoped halt should ever sweep up).
+//
+// The origin rides in the **query**, not in `LaunchBody`: the body is stored verbatim
+// as the job's request and handed back to the driver, and queue bookkeeping is none of
+// the driver's business. Formatting it here (rather than taking the `plan:<id>` string
+// from callers) is what makes a mistyped origin impossible — the backend rejects an
+// unparseable one `400`, precisely because a run enqueued under a typo is one no halt
+// would ever reach.
+function originQuery(origin?: LaunchOrigin | null): string {
+  if (!origin) return "";
+  return `?origin=${encodeURIComponent(`${origin.kind}:${origin.id}`)}`;
 }
 
 // The backend's `GET /jobs/{id}` status (`JobStatusOut`): the job's lifecycle
@@ -1059,15 +1330,18 @@ export function createBackendExec(
     async launchRun(
       config: LaunchConfig,
       token?: string | null,
+      origin?: LaunchOrigin | null,
     ): Promise<string> {
       // Enqueue a run on the backend's job queue; the dispatcher creates the
       // driver Job. The body is the backend's `LaunchBody` (camelCase). The
       // backend gates `POST /jobs` on the launching account, so the signed-in
       // account's token rides along as `Authorization: Bearer` — without it the
-      // enqueue is rejected `401`.
+      // enqueue is rejected `401`. The account is recorded on the job; `origin`,
+      // when given, additionally records which plan or ladder asked for the run,
+      // which is what puts it inside that plan's or ladder's halt scope.
       const ack = await postJson<LaunchAckResponse>(
         backendUrl,
-        "/jobs",
+        `/jobs${originQuery(origin)}`,
         launchBodyOf(config),
         token,
       );
@@ -1077,16 +1351,19 @@ export function createBackendExec(
     async launchRunBatch(
       configs: LaunchConfig[],
       token?: string | null,
+      origin?: LaunchOrigin | null,
     ): Promise<BatchLaunchResult[]> {
       // Enqueue the whole set in one `POST /jobs/batch` (same account gate as
       // `POST /jobs`) instead of a request per run — the fan-out a coverage
       // "trigger all missing" or a multi-combination new-run submit produces. An
       // empty set needs no round-trip. The ack returns one entry per run, aligned
       // by index, each an enqueued job id or a per-run rejection reason.
+      // One `origin` attributes the whole batch — a batch is one decision by one
+      // plan, ladder, or person; two origins mean two batches.
       if (configs.length === 0) return [];
       const ack = await postJson<LaunchBatchAckResponse>(
         backendUrl,
-        "/jobs/batch",
+        `/jobs/batch${originQuery(origin)}`,
         { runs: configs.map(launchBodyOf) },
         token,
       );
@@ -1328,6 +1605,37 @@ export function createBackendExec(
         {},
         token,
       );
+    },
+
+    async cancelWaitingRuns(token: string): Promise<BulkCancelOut> {
+      // `POST /jobs/cancel-waiting` — every `queued` and `pending` job, whoever
+      // launched it. The backend names these states "waiting" rather than "pending"
+      // because `pending` is one of them (a run held back by its harness's
+      // parallelism cap), and the console surfaces that state separately.
+      return postJson<BulkCancelOut>(
+        backendUrl,
+        "/jobs/cancel-waiting",
+        {},
+        token,
+      );
+    },
+
+    async cancelActiveRuns(token: string): Promise<BulkCancelOut> {
+      // `POST /jobs/cancel-active` — every `dispatched`, `starting`, and `running`
+      // job. It deliberately leaves the waiting queue alone, so the dispatcher
+      // resumes claiming from it immediately; `cancelAllRuns` is the one that stops.
+      return postJson<BulkCancelOut>(
+        backendUrl,
+        "/jobs/cancel-active",
+        {},
+        token,
+      );
+    },
+
+    async cancelAllRuns(token: string): Promise<BulkCancelOut> {
+      // `POST /jobs/cancel-all` — both sets in one atomic sweep rather than two
+      // calls, so no queued job can be claimed into execution between them.
+      return postJson<BulkCancelOut>(backendUrl, "/jobs/cancel-all", {}, token);
     },
 
     // A pre-publish run's proof / asset media is served by the artifact service

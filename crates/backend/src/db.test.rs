@@ -607,6 +607,10 @@ fn new_job(id: &str, created_at: &str) -> NewJob {
         model_id: "claude-sonnet-4-5".to_string(),
         job_token: format!("token-{id}"),
         attempt: 0,
+        // Unattributed by default — the shape of a job enqueued before attribution
+        // existed, and the shape a manual launch keeps.
+        user_id: None,
+        origin: None,
         created_at: created_at.to_string(),
     }
 }
@@ -3192,7 +3196,9 @@ async fn coverage_plans_round_trip_and_scope_to_account() {
         cases: vec![sample_case()],
         updated_at: "2026-07-15T00:00:00Z".to_string(),
     };
-    db.insert_coverage_plan("u1", &plan).await.unwrap();
+    db.insert_coverage_plan("u1", &plan, &CoveragePlanSchedule::default())
+        .await
+        .unwrap();
 
     let got = db.get_coverage_plan("u1", "p1").await.unwrap().unwrap();
     assert_eq!(got.name, "Anthropic/E2E");
@@ -3588,4 +3594,758 @@ async fn game_jam_prior_readmes_matches_jam_and_model_across_harnesses_oldest_fi
     );
     assert_eq!(entries[0].run_id, "older");
     assert_eq!(entries[0].finished_at, "2026-01-01T00:00:00Z");
+}
+
+// ---- Coverage buffering, ladders, and job attribution ----------------------
+
+/// The default completed run, with control over whether its build loaded — the one
+/// fact a ladder gate is allowed to judge without a reviewer.
+fn record_loaded(id: &str, loaded: bool) -> RunRecord {
+    let mut record = record(id);
+    record.validation.loaded = loaded;
+    record
+}
+
+/// The cell key `record`/`new_job` produce: pong v1.0.0 base on claude/sonnet.
+fn sample_cell() -> CellKey {
+    (
+        "pong".to_string(),
+        "v1.0.0".to_string(),
+        "base".to_string(),
+        "claude".to_string(),
+        "claude-sonnet-4-5".to_string(),
+    )
+}
+
+#[tokio::test]
+async fn unreviewed_cell_counts_are_per_account_and_ignore_another_reviewers_pass() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(&record("r1"), &links(), None).await.unwrap();
+    db.push(&record("r2"), &links(), None).await.unwrap();
+    let slugs = vec!["pong".to_string()];
+
+    // Nobody has reviewed: both runs are outstanding for either account.
+    for account in ["u1", "u2"] {
+        assert_eq!(
+            db.count_unreviewed_runs_by_cell(&slugs, account, false)
+                .await
+                .unwrap()
+                .get(&sample_cell())
+                .copied(),
+            Some(2),
+        );
+    }
+
+    // `u2` reviews one. That clears it from *their* buffer and nobody else's —
+    // judgement is per account even though the run counts are global.
+    db.add_review("r1", &review_by("u2", Rating::Great), None)
+        .await
+        .unwrap();
+    assert_eq!(
+        db.count_unreviewed_runs_by_cell(&slugs, "u2", false)
+            .await
+            .unwrap()
+            .get(&sample_cell())
+            .copied(),
+        Some(1),
+    );
+    assert_eq!(
+        db.count_unreviewed_runs_by_cell(&slugs, "u1", false)
+            .await
+            .unwrap()
+            .get(&sample_cell())
+            .copied(),
+        Some(2),
+        "another account's review does not empty this account's buffer",
+    );
+}
+
+#[tokio::test]
+async fn unreviewed_cell_counts_can_exclude_a_run_whose_build_never_loaded() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(&record_loaded("loaded", true), &links(), None)
+        .await
+        .unwrap();
+    db.push(&record_loaded("dead", false), &links(), None)
+        .await
+        .unwrap();
+    let slugs = vec!["pong".to_string()];
+
+    // A coverage plan has no gate: a dead build still wants a human to look at it.
+    assert_eq!(
+        db.count_unreviewed_runs_by_cell(&slugs, "u1", false)
+            .await
+            .unwrap()
+            .get(&sample_cell())
+            .copied(),
+        Some(2),
+    );
+    // A ladder that counts an unloaded build as broken decides it without a
+    // reviewer, so it must not hold a buffer slot waiting for one.
+    assert_eq!(
+        db.count_unreviewed_runs_by_cell(&slugs, "u1", true)
+            .await
+            .unwrap()
+            .get(&sample_cell())
+            .copied(),
+        Some(1),
+    );
+}
+
+#[tokio::test]
+async fn unreviewed_cell_counts_skip_the_automatically_graded_types() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let mut auto = record("perf");
+    auto.subject.test_type = TestType::Performance;
+    db.push(&auto, &links(), None).await.unwrap();
+
+    // No reviewer can ever clear a performance run, so counting it would hold a
+    // buffer slot that never frees — exactly why `list_unreviewed` drops it too.
+    assert!(
+        db.count_unreviewed_runs_by_cell(&["pong".to_string()], "u1", false)
+            .await
+            .unwrap()
+            .is_empty(),
+    );
+}
+
+#[tokio::test]
+async fn cell_run_ratings_read_only_the_requesting_accounts_review() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(&record("r1"), &links(), None).await.unwrap();
+    // Two reviewers disagree. The lifted `run.rating` is the worse of the two, and
+    // is exactly what a gate must not read.
+    db.add_review("r1", &review_by("u1", Rating::Great), None)
+        .await
+        .unwrap();
+    db.add_review("r1", &review_by("u2", Rating::Broken), None)
+        .await
+        .unwrap();
+    assert_eq!(
+        lifted(&db, "r1").await.rating.as_deref(),
+        Some("broken"),
+        "the run's aggregate is the worst across reviewers",
+    );
+
+    let mine = db.cell_run_ratings(&sample_cell(), "u1").await.unwrap();
+    assert_eq!(mine.len(), 1);
+    assert_eq!(mine[0].run_id, "r1");
+    assert_eq!(
+        mine[0].rating,
+        Some(Rating::Great),
+        "u1's climb is gated on u1's own judgement, not u2's harsher one",
+    );
+    // And the account that has not reviewed it at all sees no rating — which is
+    // "undecided", not "bad".
+    assert_eq!(
+        db.cell_run_ratings(&sample_cell(), "u3").await.unwrap()[0].rating,
+        None,
+    );
+}
+
+#[tokio::test]
+async fn cell_run_ratings_hold_only_completed_runs() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let mut failed = record("boom");
+    failed.status.state = RunState::HarnessError;
+    db.push(&failed, &links(), None).await.unwrap();
+    db.push(&record("ok"), &links(), None).await.unwrap();
+
+    let runs = db.cell_run_ratings(&sample_cell(), "u1").await.unwrap();
+    // An infrastructure failure retries; it is never evidence, and never a wall.
+    assert_eq!(
+        runs.iter().map(|r| r.run_id.as_str()).collect::<Vec<_>>(),
+        vec!["ok"],
+    );
+}
+
+/// A queued job attributed to `user_id` and launched by `origin`.
+fn attributed_job(id: &str, user_id: &str, origin: Option<JobOrigin>) -> NewJob {
+    NewJob {
+        user_id: Some(user_id.to_string()),
+        origin,
+        ..new_job(id, "2026-08-15T00:00:00Z")
+    }
+}
+
+#[tokio::test]
+async fn job_origin_tokens_round_trip_and_never_collide_across_kinds() {
+    assert_eq!(JobOrigin::Plan("x".to_string()).as_token(), "plan:x");
+    assert_eq!(
+        JobOrigin::parse("ladder:x"),
+        Some(JobOrigin::Ladder("x".to_string())),
+    );
+    // A plan and a ladder that happen to share an id are still different origins.
+    assert_ne!(
+        JobOrigin::Plan("x".to_string()).as_token(),
+        JobOrigin::Ladder("x".to_string()).as_token(),
+    );
+    // A manual launch, and anything unrecognized, is simply unattributed.
+    assert_eq!(JobOrigin::parse(""), None);
+    assert_eq!(JobOrigin::parse("plan:"), None);
+    assert_eq!(JobOrigin::parse("tournament:x"), None);
+}
+
+#[tokio::test]
+async fn a_scoped_halt_cancels_its_own_waiting_jobs_and_nothing_else() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let plan = JobOrigin::Plan("p1".to_string());
+    db.enqueue_jobs(vec![
+        attributed_job("mine-1", "u1", Some(plan.clone())),
+        attributed_job("mine-2", "u1", Some(plan.clone())),
+        attributed_job("other-plan", "u1", Some(JobOrigin::Plan("p2".to_string()))),
+        attributed_job("ladder", "u1", Some(JobOrigin::Ladder("p1".to_string()))),
+        attributed_job("by-hand", "u1", None),
+    ])
+    .await
+    .unwrap();
+
+    let cancelled = db
+        .cancel_jobs(
+            &JobCancelFilter {
+                states: &CANCELABLE_WAITING_STATES,
+                origin: Some(&plan),
+                ..JobCancelFilter::default()
+            },
+            "2026-08-15T00:01:00Z",
+            "halted",
+        )
+        .await
+        .unwrap();
+    assert_eq!(cancelled, 2, "the halt reports what it actually cancelled");
+
+    let still_waiting: Vec<String> = db
+        .active_jobs()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|job| job.id)
+        .collect();
+    // Another plan's runs, a ladder that shares the id, and the run someone kicked
+    // off by hand all survive — the last of these is why `origin` exists at all.
+    assert_eq!(still_waiting, vec!["other-plan", "ladder", "by-hand"]);
+    assert_eq!(
+        db.get_job("mine-1")
+            .await
+            .unwrap()
+            .unwrap()
+            .detail
+            .as_deref(),
+        Some("halted"),
+    );
+}
+
+#[tokio::test]
+async fn a_bulk_cancel_spares_running_jobs_unless_they_are_asked_for() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_jobs(vec![
+        attributed_job("waiting", "u1", None),
+        attributed_job("running", "u1", None),
+        attributed_job("done", "u1", None),
+    ])
+    .await
+    .unwrap();
+    db.set_job_state("running", "running", "2026-08-15T00:00:30Z", None, None)
+        .await
+        .unwrap();
+    db.set_job_state("done", "succeeded", "2026-08-15T00:00:30Z", None, None)
+        .await
+        .unwrap();
+
+    // "Clear pending": the jobs that have cost nothing yet.
+    let cleared = db
+        .cancel_jobs(
+            &JobCancelFilter {
+                states: &CANCELABLE_WAITING_STATES,
+                ..JobCancelFilter::default()
+            },
+            "2026-08-15T00:01:00Z",
+            "cleared",
+        )
+        .await
+        .unwrap();
+    assert_eq!(cleared, 1);
+    assert_eq!(
+        db.get_job("running").await.unwrap().unwrap().state,
+        "running",
+        "an executing run keeps going until it is explicitly killed",
+    );
+
+    // "Kill active": the expensive half, confirmed separately in the console.
+    let killed = db
+        .cancel_jobs(
+            &JobCancelFilter {
+                states: &CANCELABLE_ACTIVE_STATES,
+                ..JobCancelFilter::default()
+            },
+            "2026-08-15T00:02:00Z",
+            "killed",
+        )
+        .await
+        .unwrap();
+    assert_eq!(killed, 1);
+    // A job that already reached a terminal state is untouchable, exactly as it is
+    // through `cancel_job`.
+    assert_eq!(
+        db.get_job("done").await.unwrap().unwrap().state,
+        "succeeded"
+    );
+}
+
+#[tokio::test]
+async fn coverage_buffer_target_is_absent_until_the_account_chooses_one() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // No row means "no opinion", so the caller applies its own default rather than
+    // the store inventing a zero.
+    assert_eq!(db.coverage_buffer_target("u1").await.unwrap(), None);
+
+    db.set_coverage_buffer_target("u1", 10, "2026-08-15T00:00:00Z")
+        .await
+        .unwrap();
+    assert_eq!(db.coverage_buffer_target("u1").await.unwrap(), Some(10));
+    // An explicit zero is a real instruction — "never top me up" — and is stored.
+    db.set_coverage_buffer_target("u1", 0, "2026-08-15T01:00:00Z")
+        .await
+        .unwrap();
+    assert_eq!(db.coverage_buffer_target("u1").await.unwrap(), Some(0));
+    assert_eq!(db.coverage_buffer_target("u2").await.unwrap(), None);
+}
+
+/// The minimal plan used by the scheduling/top-up tests.
+fn schedulable_plan(id: &str) -> crate::api::CoveragePlan {
+    crate::api::CoveragePlan {
+        id: id.to_string(),
+        name: "Anthropic/E2E".to_string(),
+        runs_per_cell: 3,
+        combo_group_ids: vec![],
+        case_group_ids: vec![],
+        combos: vec![sample_combo()],
+        cases: vec![sample_case()],
+        updated_at: "2026-08-15T00:00:00Z".to_string(),
+    }
+}
+
+#[tokio::test]
+async fn editing_a_plans_declaration_never_disturbs_its_schedule() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let plan = schedulable_plan("p1");
+    db.insert_coverage_plan("u1", &plan, &CoveragePlanSchedule::default())
+        .await
+        .unwrap();
+
+    let paused = CoveragePlanSchedule {
+        outer_axis: "combination".to_string(),
+        paused: true,
+        auto_top_up: true,
+        buffer_target: Some(4),
+    };
+    assert!(
+        db.set_coverage_plan_schedule("u1", "p1", &paused)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !db.set_coverage_plan_schedule("u2", "p1", &paused)
+            .await
+            .unwrap(),
+        "the schedule is the owner's to change",
+    );
+
+    // Saving an edit to the members must not un-pause a plan somebody paused.
+    let mut bumped = plan.clone();
+    bumped.runs_per_cell = 5;
+    assert!(db.update_coverage_plan("u1", &bumped).await.unwrap());
+    assert_eq!(
+        db.coverage_plan_schedule("u1", "p1").await.unwrap(),
+        Some(paused),
+    );
+}
+
+#[tokio::test]
+async fn a_top_up_claim_is_exclusive_until_it_is_released_or_expires() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.insert_coverage_plan(
+        "u1",
+        &schedulable_plan("p1"),
+        &CoveragePlanSchedule::default(),
+    )
+    .await
+    .unwrap();
+
+    assert!(
+        db.claim_coverage_plan_top_up("u1", "p1", "2026-08-15T00:00:00Z")
+            .await
+            .unwrap()
+    );
+    // The second console tab observes the same shortfall a moment later and must
+    // not enqueue for it a second time.
+    assert!(
+        !db.claim_coverage_plan_top_up("u1", "p1", "2026-08-15T00:00:01Z")
+            .await
+            .unwrap()
+    );
+    db.release_coverage_plan_top_up("p1").await.unwrap();
+    assert!(
+        db.claim_coverage_plan_top_up("u1", "p1", "2026-08-15T00:00:02Z")
+            .await
+            .unwrap()
+    );
+
+    // A caller that died mid-top-up expires out of the claim rather than wedging
+    // the plan: the marker is a timestamp precisely so this can recover itself.
+    assert!(
+        db.claim_coverage_plan_top_up("u1", "p1", "2026-08-15T00:05:00Z")
+            .await
+            .unwrap()
+    );
+    // Someone else's plan is not claimable at all.
+    assert!(
+        !db.claim_coverage_plan_top_up("u2", "p1", "2026-08-15T01:00:00Z")
+            .await
+            .unwrap()
+    );
+}
+
+/// One rung of a test ladder, pinned to `version` of `slug`.
+fn rung(id: &str, slug: &str, version: &str) -> StoredLadderRung {
+    StoredLadderRung {
+        id: id.to_string(),
+        slug: slug.to_string(),
+        version: version.to_string(),
+        variant: "base".to_string(),
+        runs_override: None,
+    }
+}
+
+/// A ladder with the given rungs, climbed by [`sample_combo`].
+fn test_ladder(id: &str, name: &str, rungs: Vec<StoredLadderRung>) -> StoredLadder {
+    StoredLadder {
+        id: id.to_string(),
+        name: name.to_string(),
+        runs_per_cell: 5,
+        gate: Gate {
+            floor: Rating::Scuffed,
+            threshold: GateThreshold::Fraction { fraction: 0.5 },
+            unloaded_counts_as_broken: true,
+            early_stop: false,
+        },
+        combo_group_ids: vec!["g1".to_string()],
+        combos: vec![sample_combo()],
+        rungs,
+        updated_at: "2026-08-15T00:00:00Z".to_string(),
+    }
+}
+
+#[tokio::test]
+async fn ladders_round_trip_with_their_gate_and_scope_to_account() {
+    let db = Db::connect_in_memory().await.unwrap();
+    assert!(db.list_ladders("u1").await.unwrap().is_empty());
+
+    let ladder = test_ladder(
+        "l1",
+        "E2E difficulty climb",
+        vec![
+            rung("r1", "pong", "v1.0.0"),
+            rung("r2", "carom", "v1.0.0"),
+            rung("r3", "caldera", "v1.2.0"),
+        ],
+    );
+    db.insert_ladder("u1", &ladder, &LadderSchedule::default())
+        .await
+        .unwrap();
+
+    let got = db.get_ladder("u1", "l1").await.unwrap().unwrap();
+    assert_eq!(got.name, "E2E difficulty climb");
+    assert_eq!(got.runs_per_cell, 5);
+    // The gate round-trips through its three columns without changing shape.
+    assert_eq!(got.gate, ladder.gate);
+    assert_eq!(got.combo_group_ids, vec!["g1".to_string()]);
+    assert_eq!(got.combos.len(), 1);
+    assert_eq!(got.rungs, ladder.rungs);
+    // Rungs come back in climb order, which is the order they were written in.
+    assert_eq!(
+        got.rungs
+            .iter()
+            .map(|r| r.slug.as_str())
+            .collect::<Vec<_>>(),
+        vec!["pong", "carom", "caldera"],
+    );
+    assert!(db.get_ladder("u2", "l1").await.unwrap().is_none());
+    assert!(db.list_ladders("u2").await.unwrap().is_empty());
+
+    // The schedule is stored apart from the declaration, as a plan's is.
+    assert_eq!(
+        db.ladder_schedule("u1", "l1").await.unwrap(),
+        Some(LadderSchedule::default()),
+    );
+    let steered = LadderSchedule {
+        outer_axis: "combination".to_string(),
+        paused: true,
+        auto_top_up: false,
+        buffer_target: Some(6),
+    };
+    assert!(db.set_ladder_schedule("u1", "l1", &steered).await.unwrap());
+    assert!(!db.set_ladder_schedule("u2", "l1", &steered).await.unwrap());
+
+    assert!(!db.delete_ladder("u2", "l1").await.unwrap());
+    assert!(db.delete_ladder("u1", "l1").await.unwrap());
+    assert!(db.list_ladders("u1").await.unwrap().is_empty());
+    // The rungs went with it (they cascade), leaving nothing orphaned.
+    assert!(db.list_ladder_rungs("l1").await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn reordering_a_ladder_keeps_every_climbers_recorded_progress() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let ladder = test_ladder(
+        "l1",
+        "Climb",
+        vec![rung("r1", "pong", "v1.0.0"), rung("r2", "carom", "v1.0.0")],
+    );
+    db.insert_ladder("u1", &ladder, &LadderSchedule::default())
+        .await
+        .unwrap();
+    let combo = combination_key(&sample_combo());
+    db.record_ladder_outcome(
+        "l1",
+        "r1",
+        &combo,
+        "v1.0.0",
+        LadderOutcomeKind::Advanced,
+        "2026-08-15T01:00:00Z",
+    )
+    .await
+    .unwrap();
+
+    // Swap the two rungs and add a third. Rungs are reconciled under their stable
+    // ids, so nothing is deleted — which matters because outcomes cascade from
+    // `ladder_rung`, and a delete-and-reinsert would silently erase the climb.
+    let mut reordered = ladder.clone();
+    reordered.rungs = vec![
+        rung("r2", "carom", "v1.0.0"),
+        rung("r1", "pong", "v1.0.0"),
+        rung("r3", "caldera", "v1.2.0"),
+    ];
+    assert!(db.update_ladder("u1", &reordered).await.unwrap());
+
+    assert_eq!(
+        db.list_ladder_rungs("l1")
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| r.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["r2", "r1", "r3"],
+    );
+    let outcomes = db.list_ladder_outcomes("l1").await.unwrap();
+    assert_eq!(outcomes.len(), 1, "the verdict survived the reorder");
+    assert_eq!(outcomes[0].rung_id, "r1");
+    assert_eq!(outcomes[0].outcome, LadderOutcomeKind::Advanced);
+
+    // Dropping a rung from the climb does take its verdicts with it — that is what
+    // removing it means.
+    let mut trimmed = ladder.clone();
+    trimmed.rungs = vec![rung("r2", "carom", "v1.0.0")];
+    assert!(db.update_ladder("u1", &trimmed).await.unwrap());
+    assert!(db.list_ladder_outcomes("l1").await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_recomputed_outcome_never_overwrites_a_reviewers_override() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.insert_ladder(
+        "u1",
+        &test_ladder("l1", "Climb", vec![rung("r1", "pong", "v1.0.0")]),
+        &LadderSchedule::default(),
+    )
+    .await
+    .unwrap();
+    let combo = combination_key(&sample_combo());
+
+    db.record_ladder_outcome(
+        "l1",
+        "r1",
+        &combo,
+        "v1.0.0",
+        LadderOutcomeKind::Walled,
+        "2026-08-15T01:00:00Z",
+    )
+    .await
+    .unwrap();
+    // The reviewer disagrees and promotes past the wall.
+    assert!(
+        db.set_ladder_outcome_override(
+            "l1",
+            "r1",
+            &combo,
+            "v1.0.0",
+            Some(LadderOutcomeKind::Advanced),
+            "2026-08-15T02:00:00Z",
+        )
+        .await
+        .unwrap()
+    );
+
+    // A later recompute re-states the automatic verdict and must leave the human
+    // decision — and therefore the effective one — exactly as it was.
+    db.record_ladder_outcome(
+        "l1",
+        "r1",
+        &combo,
+        "v1.0.0",
+        LadderOutcomeKind::Walled,
+        "2026-08-15T03:00:00Z",
+    )
+    .await
+    .unwrap();
+    let outcome = &db.list_ladder_outcomes("l1").await.unwrap()[0];
+    assert_eq!(outcome.outcome, LadderOutcomeKind::Walled);
+    assert_eq!(
+        outcome.override_outcome,
+        Some(LadderOutcomeKind::Advanced),
+        "the override survives a recompute",
+    );
+    assert_eq!(outcome.effective(), LadderOutcomeKind::Advanced);
+    assert_eq!(outcome.decided_at, "2026-08-15T03:00:00Z");
+
+    // Clearing it reverses the override exactly, restoring the gate's own verdict.
+    assert!(
+        db.set_ladder_outcome_override("l1", "r1", &combo, "v1.0.0", None, "2026-08-15T04:00:00Z")
+            .await
+            .unwrap()
+    );
+    let outcome = &db.list_ladder_outcomes("l1").await.unwrap()[0];
+    assert_eq!(outcome.override_outcome, None);
+    assert_eq!(outcome.override_at, None);
+    assert_eq!(outcome.effective(), LadderOutcomeKind::Walled);
+
+    // There is nothing to promote past on a rung the gate has not resolved.
+    assert!(
+        !db.set_ladder_outcome_override(
+            "l1",
+            "r1",
+            &combo,
+            "v9.9.9",
+            Some(LadderOutcomeKind::Advanced),
+            "2026-08-15T05:00:00Z",
+        )
+        .await
+        .unwrap()
+    );
+}
+
+#[tokio::test]
+async fn bumping_a_rungs_version_neither_erases_nor_inherits_the_old_verdict() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let ladder = test_ladder("l1", "Climb", vec![rung("r1", "pong", "v1.0.0")]);
+    db.insert_ladder("u1", &ladder, &LadderSchedule::default())
+        .await
+        .unwrap();
+    let combo = combination_key(&sample_combo());
+    db.record_ladder_outcome(
+        "l1",
+        "r1",
+        &combo,
+        "v1.0.0",
+        LadderOutcomeKind::Advanced,
+        "2026-08-15T01:00:00Z",
+    )
+    .await
+    .unwrap();
+
+    // Re-pin the rung to a newer case version, keeping its stable id.
+    let mut bumped = ladder.clone();
+    bumped.rungs = vec![rung("r1", "pong", "v2.0.0")];
+    assert!(db.update_ladder("u1", &bumped).await.unwrap());
+
+    let versions: Vec<String> = db
+        .list_ladder_outcomes("l1")
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|o| o.decided_version)
+        .collect();
+    assert_eq!(
+        versions,
+        vec!["v1.0.0"],
+        "the verdict stays recorded against the version that earned it",
+    );
+
+    // The new pin starts undecided, and deciding it leaves both on the books.
+    db.record_ladder_outcome(
+        "l1",
+        "r1",
+        &combo,
+        "v2.0.0",
+        LadderOutcomeKind::Walled,
+        "2026-08-15T02:00:00Z",
+    )
+    .await
+    .unwrap();
+    assert_eq!(db.list_ladder_outcomes("l1").await.unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn ladder_climbers_hold_steering_only_and_are_optional() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.insert_ladder(
+        "u1",
+        &test_ladder("l1", "Climb", vec![rung("r1", "pong", "v1.0.0")]),
+        &LadderSchedule::default(),
+    )
+    .await
+    .unwrap();
+    // An un-steered combination writes nothing, which is how a model added to a
+    // standing ladder simply starts at rung 1.
+    assert!(db.list_ladder_climbers("l1").await.unwrap().is_empty());
+
+    let combo = combination_key(&sample_combo());
+    db.set_ladder_climber(
+        "l1",
+        &StoredLadderClimber {
+            combination_key: combo.clone(),
+            priority: 5,
+            focused: true,
+            held: false,
+            updated_at: "2026-08-15T01:00:00Z".to_string(),
+        },
+    )
+    .await
+    .unwrap();
+    // Re-steering the same combination updates it rather than adding a second row.
+    db.set_ladder_climber(
+        "l1",
+        &StoredLadderClimber {
+            combination_key: combo.clone(),
+            priority: 5,
+            focused: true,
+            held: true,
+            updated_at: "2026-08-15T02:00:00Z".to_string(),
+        },
+    )
+    .await
+    .unwrap();
+
+    let climbers = db.list_ladder_climbers("l1").await.unwrap();
+    assert_eq!(climbers.len(), 1);
+    assert!(climbers[0].held);
+    assert_eq!(climbers[0].updated_at, "2026-08-15T02:00:00Z");
+}
+
+#[test]
+fn a_combination_key_separates_on_a_character_a_model_id_cannot_contain() {
+    // Model ids routinely carry `/`, so the key separates on `|`; the provider
+    // segment is present-but-empty when the harness is not provider-routed.
+    assert_eq!(
+        combination_key(&crate::api::ReviewPlanCombo {
+            harness: HarnessSlug::Opencode,
+            model: "anthropic/claude-opus-4.8".to_string(),
+            provider: Some("openrouter".to_string()),
+        }),
+        "opencode|anthropic/claude-opus-4.8|openrouter",
+    );
+    assert_eq!(
+        combination_key(&sample_combo()),
+        "claude|claude-sonnet-4-5|",
+    );
 }
