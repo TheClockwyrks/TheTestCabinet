@@ -128,13 +128,13 @@ jobs:
       # public) package would 404 identically to a missing tag, so authenticate and
       # keep the failure meaning exactly one thing.
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       # The six images `overlays/app` pins — the exact set the app's k3d cluster
       # pulls. Check them all before failing, so one dispatch reports every gap
       # rather than only the first.
