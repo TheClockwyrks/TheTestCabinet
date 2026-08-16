@@ -688,12 +688,9 @@ vintage reason PureScript's library set is not here either.
 program is compiled to JVM bytecode and handed to the *same* TeaVM, so everything from
 bytecode onwards already exists here. Its installer
 ([`scripts/ci/install-kotlin.sh`](../scripts/ci/install-kotlin.sh)) runs the Java one rather
-than installing a second JDK beside it. One directory it writes is not a classpath: gg
-compiles a model's program as a Kotlin **script** — because Kotlin refuses `object`,
-`interface`, `enum class`, `typealias` and `private fun` as *local* declarations, so a
-wrapper function would refuse five things a Kotlin author writes without thinking — and the
-compiler loads its scripting plugin by four unversioned file names out of a `kotlin-home/lib`
-tree the installer lays out.
+than installing a second JDK beside it. Everything it writes is a classpath entry: a model's
+program is an ordinary Kotlin file with its own `fun main()`, so the compiler needs its own
+jars and nothing else.
 
 **Rust** is the heaviest thing in the tree — **~380 MB** — and the first that is not a
 compiler *for* a guest. Every arm above compiles a model's program into something an
