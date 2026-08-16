@@ -1,0 +1,63 @@
+@use "../../styles/tokens" as t;
+
+// The not-found page body: one centred column inside the panel. The min-height
+// keeps it from reading as a stub pinned to the top of an otherwise-empty page,
+// the same reason `LoadingState` reserves the space it does.
+.wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: t.$space-md;
+  min-height: 40vh;
+  padding: t.$space-xl t.$space-md;
+  text-align: center;
+}
+
+// The status itself, shown large and muted: it names what happened without
+// competing with the sentence that explains it.
+.code {
+  margin: 0;
+  font-size: t.$font-2xl;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.1em;
+  color: t.$color-text-muted;
+}
+
+.heading {
+  margin: 0;
+  font-size: t.$font-xl;
+  color: t.$color-text;
+}
+
+.detail {
+  max-width: 34rem;
+  margin: 0;
+  color: t.$color-text-muted;
+}
+
+// The requested path, echoed back so the reader can see the typo. It can be
+// arbitrarily long and arbitrarily unbreakable, so it is allowed to wrap
+// anywhere rather than widening the panel.
+.path {
+  overflow-wrap: anywhere;
+  color: t.$color-text;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-sm t.$space-md;
+  justify-content: center;
+  margin-top: t.$space-sm;
+}
+
+.link {
+  color: t.$color-accent;
+  text-decoration: none;
+
+  &:hover,
+  &:focus-visible {
+    text-decoration: underline;
+  }
+}
