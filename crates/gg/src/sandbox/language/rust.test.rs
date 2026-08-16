@@ -117,6 +117,11 @@ fn the_binding_name_is_a_snake_case_rust_identifier() {
         ("9lives", "_9lives"),
         ("---", "module"),
         ("", "module"),
+        // A keyword is a path segment `rustc` refuses, and `crate`/`self`/`super` are worse than
+        // refused: each parses and resolves somewhere other than the module.
+        ("match", "_match"),
+        ("crate", "_crate"),
+        ("Self", "_self"),
     ];
     for (name, expected) in cases {
         let key = rust().binding_name(name);

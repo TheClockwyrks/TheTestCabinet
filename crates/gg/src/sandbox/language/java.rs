@@ -329,23 +329,25 @@ impl ProgramLanguage for Java {
 // The syntax this arm writes
 // ---------------------------------------------------------------------------------------------
 
-/// `csv-tools` → `csvTools`, `my_helpers.v2` → `myHelpersV2`, `9lives` → `_9lives`.
+/// `csv-tools` → `csvTools`, `my_helpers.v2` → `myHelpersV2`, `9lives` → `_9lives`,
+/// `class` → `_class`.
 ///
 /// camelCase because that is what Java spells a name in and what this SDK spells every other bound
-/// function in, so a program reaching `lib.text("csvTools", "parse", …)` reads like the rest of its
-/// own scope. Any separator — `-`, `_`, `.`, or anything a name should not have had — joins the next
-/// word rather than surviving; a name that is nothing but separators becomes `module`, and a leading
-/// digit is prefixed.
+/// function in, so a program reaching `Lib.csvTools.parse(…)` reads like the rest of its own scope.
+/// Any separator — `-`, `_`, `.`, or anything a name should not have had — joins the next word
+/// rather than surviving; a name that is nothing but separators becomes `module`.
 ///
-/// The result is held to being a valid Java **identifier** even though this arm reaches a module by
-/// *string* — `lib.text(key, name, …)` rather than a field access, because a code module is compiled
-/// separately and there is no `import` for javac to check a program against. The key is still quoted
-/// back to the model in the reply that binds it and typed out in every program that uses it, so a
-/// key a Java author could not have written is a key a model will get wrong; and if this arm ever
-/// gains a generated accessor, the name is already one javac would accept.
+/// # The result must be a Java identifier, and that is load-bearing
 ///
-/// Deliberately ASCII-only, though Java identifiers may be Unicode, for the same reason: a name a
-/// model has to reproduce exactly is one that should have no characters it could get wrong.
+/// The key is a **nested class name** in the [`Lib`](source::lib_class) gg declares beside a
+/// program, and the path segment javac resolves when a program writes `Lib.<key>.<name>`. A key that
+/// is not an identifier is therefore a `Lib` that does not compile, on every turn, for a name the
+/// model was handed and cannot change — so a leading digit is prefixed and a **reserved word** is
+/// too. Both are prefixed rather than suffixed because `_class` reads as a name a tool chose and
+/// `class_` reads as one an author typed.
+///
+/// Deliberately ASCII-only, though Java identifiers may be Unicode: a name a model has to reproduce
+/// exactly is one that should have no characters it could get wrong.
 pub(super) fn binding_name(name: &str) -> String {
     let mut out = String::new();
     let mut capitalize = false;
@@ -364,11 +366,76 @@ pub(super) fn binding_name(name: &str) -> String {
     if out.is_empty() {
         return "module".to_string();
     }
-    if out.starts_with(|ch: char| ch.is_ascii_digit()) {
+    if out.starts_with(|ch: char| ch.is_ascii_digit()) || RESERVED.contains(&out.as_str()) {
         out.insert(0, '_');
     }
     out
 }
+
+/// Every word javac refuses as an identifier: the language's keywords and its three reserved
+/// literals.
+///
+/// Enumerated because the language enumerates it — this is
+/// [JLS §3.9](https://docs.oracle.com/javase/specs/jls/se21/html/jls-3.html#jls-3.9) plus
+/// `true`, `false` and `null`, which §3.10.3 and §3.10.7 reserve as literals rather than keywords
+/// and which javac refuses in exactly the same place. The contextual keywords (`record`, `sealed`,
+/// `yield`, `var`) are deliberately absent: each is a legal class name, and so is `_` — which the
+/// camelCase pass above cannot produce in any case, since it keeps only alphanumerics.
+const RESERVED: [&str; 53] = [
+    "abstract",
+    "assert",
+    "boolean",
+    "break",
+    "byte",
+    "case",
+    "catch",
+    "char",
+    "class",
+    "const",
+    "continue",
+    "default",
+    "do",
+    "double",
+    "else",
+    "enum",
+    "extends",
+    "false",
+    "final",
+    "finally",
+    "float",
+    "for",
+    "goto",
+    "if",
+    "implements",
+    "import",
+    "instanceof",
+    "int",
+    "interface",
+    "long",
+    "native",
+    "new",
+    "null",
+    "package",
+    "private",
+    "protected",
+    "public",
+    "return",
+    "short",
+    "static",
+    "strictfp",
+    "super",
+    "switch",
+    "synchronized",
+    "this",
+    "throw",
+    "throws",
+    "transient",
+    "true",
+    "try",
+    "void",
+    "volatile",
+    "while",
+];
 
 /// `gg.views.Views.openFile("src/Main.java");`, or the same call with `, 400, 200` for a window —
 /// with the call itself already spelled by the language that asked.

@@ -69,9 +69,12 @@
 //! program that writes neither resolves nothing of gg's.
 //!
 //! And its **SDK is top-level functions rather than objects**, which is what this language spells a
-//! free function as. Everything in `gg.internal` is `internal` — module visibility, and a program is
-//! its own module — so the crossing is out of a program's reach by the compiler rather than by
-//! convention.
+//! free function as. The Kotlin half of `gg.internal` is `internal` — module visibility, and a
+//! program is its own module — and the crossing under it is the Java `gg.internal` package both JVM
+//! arms compile, whose classes are public because Java has no module visibility to give them. What
+//! keeps that package out of a program's way is the same thing that keeps it out of every other
+//! arm's: nothing describes it. See [`Abi`'s class
+//! note](https://docs.testcabinet.ai/gg/languages/java/).
 
 use std::sync::OnceLock;
 
@@ -341,23 +344,25 @@ impl ProgramLanguage for Kotlin {
 // The syntax this arm writes
 // ---------------------------------------------------------------------------------------------
 
-/// `csv-tools` → `csvTools`, `my_helpers.v2` → `myHelpersV2`, `9lives` → `_9lives`.
+/// `csv-tools` → `csvTools`, `my_helpers.v2` → `myHelpersV2`, `9lives` → `_9lives`,
+/// `object` → `_object`.
 ///
 /// camelCase because that is what Kotlin spells a name in and what this SDK spells every other bound
-/// function in, so a program reaching `lib.text("csvTools", "parse", …)` reads like the rest of its
-/// own scope. Any separator — `-`, `_`, `.`, or anything a name should not have had — joins the next
-/// word rather than surviving; a name that is nothing but separators becomes `module`, and a leading
-/// digit is prefixed.
+/// function in, so a program reaching `lib.csvTools.parse(…)` reads like the rest of its own scope.
+/// Any separator — `-`, `_`, `.`, or anything a name should not have had — joins the next word
+/// rather than surviving; a name that is nothing but separators becomes `module`.
 ///
-/// The result is held to being a valid Kotlin **identifier** even though this arm reaches a module by
-/// *string* — `lib.text(key, name, …)` rather than a property access, because a code module is
-/// compiled separately and there is no `import` for the compiler to check a program against. The key
-/// is quoted back to the model in the reply that binds it and typed out in every program that uses
-/// it, so a key a Kotlin author could not have written is a key a model will get wrong.
+/// # The result must be a Kotlin identifier, and that is load-bearing
 ///
-/// Deliberately ASCII-only, though Kotlin identifiers may be Unicode and may even be backquoted, for
-/// the same reason: a name a model has to reproduce exactly is one that should have no characters it
-/// could get wrong.
+/// The key is a **package segment**: gg compiles the module's own file into
+/// [`lib.<key>`](source::module_package), and `lib.<key>.<name>` is what a program writes or
+/// imports. A key that is not an identifier is therefore a syntax error against the *model's* own
+/// file, on every turn, for a name it was handed and cannot change — so a leading digit is prefixed
+/// and a **hard keyword** is too. Both are prefixed rather than suffixed because `_object` reads as
+/// a name a tool chose and `object_` reads as one an author typed.
+///
+/// Deliberately ASCII-only, though Kotlin identifiers may be Unicode and may even be backquoted: a
+/// name a model has to reproduce exactly is one that should have no characters it could get wrong.
 pub(super) fn binding_name(name: &str) -> String {
     let mut out = String::new();
     let mut capitalize = false;
@@ -376,11 +381,48 @@ pub(super) fn binding_name(name: &str) -> String {
     if out.is_empty() {
         return "module".to_string();
     }
-    if out.starts_with(|ch: char| ch.is_ascii_digit()) {
+    if out.starts_with(|ch: char| ch.is_ascii_digit()) || RESERVED.contains(&out.as_str()) {
         out.insert(0, '_');
     }
     out
 }
+
+/// Kotlin's **hard keywords**: the words the parser refuses wherever an identifier may stand.
+///
+/// The soft and modifier keywords (`by`, `data`, `sealed`, `value`, `where`, `open`, and the rest)
+/// are deliberately absent: each is a legal identifier, and reserving one would rename a key for no
+/// reason. `field` and `it` are absent for the same reason — they are identifiers everywhere except
+/// inside an accessor and a lambda, and a package segment is neither.
+const RESERVED: [&str; 28] = [
+    "as",
+    "break",
+    "class",
+    "continue",
+    "do",
+    "else",
+    "false",
+    "for",
+    "fun",
+    "if",
+    "in",
+    "interface",
+    "is",
+    "null",
+    "object",
+    "package",
+    "return",
+    "super",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typealias",
+    "typeof",
+    "val",
+    "var",
+    "when",
+    "while",
+];
 
 /// `view.openFile("src/Main.kt")`, or `view.openFile("src/Main.kt", offset = 400, limit = 200)` for
 /// a window — with `view.openFile` already spelled by the language that asked.

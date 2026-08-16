@@ -343,11 +343,26 @@ pub(super) fn binding_name(name: &str) -> String {
     if out.is_empty() {
         return "module".to_string();
     }
-    if out.starts_with(|ch: char| ch.is_ascii_digit()) {
+    if out.starts_with(|ch: char| ch.is_ascii_digit()) || RESERVED.contains(&out.as_str()) {
         out.insert(0, '_');
     }
     out
 }
+
+/// Every word `rustc` refuses as a path segment: the 2021 edition's strict keywords and the ones it
+/// reserves for later.
+///
+/// `crate`, `self`, `super` and `Self` are among them and are the sharpest of the set — each parses
+/// and means something else entirely, so a module bound at one would resolve to somewhere other than
+/// the module. The weak keywords (`macro_rules`, `union`, `raw`) are absent: each is a legal
+/// identifier.
+const RESERVED: [&str; 51] = [
+    "abstract", "as", "async", "await", "become", "box", "break", "const", "continue", "crate",
+    "do", "dyn", "else", "enum", "extern", "false", "final", "fn", "for", "if", "impl", "in",
+    "let", "loop", "macro", "match", "mod", "move", "mut", "override", "priv", "pub", "ref",
+    "return", "self", "static", "struct", "super", "trait", "true", "try", "type", "typeof",
+    "unsafe", "unsized", "use", "virtual", "where", "while", "yield", "gen",
+];
 
 /// `gg::views::open_file("src/main.rs", gg::files::ReadOptions::default())?;`, or the same call with
 /// a `gg::files::ReadOptions { offset: Some(400), limit: Some(200) }` for a window — with the call

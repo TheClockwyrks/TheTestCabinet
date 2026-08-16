@@ -1171,9 +1171,28 @@ fun recalled(): String = seen.joinToString("+")
     );
 
     // The access the reply that binds a module quotes back is the one that compiles.
-    assert_eq!(
-        crate::sandbox::language::language(test_cabinet_core::gg::GgProgramLanguage::Kotlin)
-            .lib_access("helpers"),
-        "lib.helpers.<name>"
+    let kotlin =
+        crate::sandbox::language::language(test_cabinet_core::gg::GgProgramLanguage::Kotlin);
+    assert_eq!(kotlin.lib_access("helpers"), "lib.helpers.<name>");
+
+    // AND A SKILL WHOSE NAME IS A KEYWORD IS STILL REACHABLE. The key is a package segment, so a
+    // module bound at `object` would make `lib.object.greet(…)` a syntax error against the MODEL's
+    // own file, every turn, for a name gg minted and told it to use.
+    let key = kotlin.binding_name("object");
+    let modules = vec![CodeModule {
+        name: key.clone(),
+        source: modules[0].source.clone(),
+    }];
+    let (outcome, _log) = evaluate_as(
+        &prepare_with(
+            &whole("", &format!("    gg.log(lib.{key}.greet(\"gg\"))\n")),
+            &modules,
+        ),
+        &[],
+        &modules,
+        RunEnding::None,
+        false,
+        canned_outcome,
     );
+    assert_eq!(logs(&outcome), ["hello, GG"]);
 }

@@ -60,7 +60,20 @@ fn the_binding_name_is_a_camel_case_java_identifier() {
     assert_eq!(java().binding_name("--"), "module");
     assert_eq!(java().binding_name(""), "module");
 
-    for name in ["csv-tools", "CSV-tools", "9lives", "--", "Helpers.v2"] {
+    assert_eq!(java().binding_name("class"), "_class");
+    assert_eq!(java().binding_name("new"), "_new");
+    assert_eq!(java().binding_name("static"), "_static");
+
+    for name in [
+        "csv-tools",
+        "CSV-tools",
+        "9lives",
+        "--",
+        "Helpers.v2",
+        "class",
+        "new",
+        "static",
+    ] {
         let key = java().binding_name(name);
         assert!(
             key.starts_with(|ch: char| ch.is_ascii_alphabetic() || ch == '_'),

@@ -66,7 +66,22 @@ fn the_binding_name_is_a_camel_case_kotlin_identifier() {
     assert_eq!(kotlin().binding_name("--"), "module");
     assert_eq!(kotlin().binding_name(""), "module");
 
-    for name in ["csv-tools", "CSV-tools", "9lives", "--", "Helpers.v2"] {
+    assert_eq!(kotlin().binding_name("object"), "_object");
+    assert_eq!(kotlin().binding_name("fun"), "_fun");
+    assert_eq!(kotlin().binding_name("in"), "_in");
+    assert_eq!(kotlin().binding_name("is"), "_is");
+
+    for name in [
+        "csv-tools",
+        "CSV-tools",
+        "9lives",
+        "--",
+        "Helpers.v2",
+        "object",
+        "fun",
+        "in",
+        "is",
+    ] {
         let key = kotlin().binding_name(name);
         assert!(
             key.starts_with(|ch: char| ch.is_ascii_alphabetic() || ch == '_'),

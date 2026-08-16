@@ -7,11 +7,14 @@ import gg.core.ToolErrorCode
  * **The bridge** — the one file in this SDK that knows there is a host at all, and the lowering
  * helpers every model-facing module writes its arguments with.
  *
- * Nothing here is model-facing. A program cannot even name it: everything below is `internal`, which
- * in Kotlin means *visible inside this module and nowhere else*, and a model's program is compiled as
- * its own module against this one's jar. That is a stronger fence than the [Java arm's]
- * (https://docs.testcabinet.ai/gg/languages/java/) package-private one and it costs nothing — the
- * compiler enforces it, and the reflector that writes the catalogue never reads this package.
+ * Nothing here is model-facing, and nothing describes it to a model: the reflector that writes the
+ * catalogue never reads this package and no prompt names it. Everything Kotlin-authored below is
+ * `internal`, which in Kotlin means *visible inside this module and nowhere else*, and a model's
+ * program is compiled as its own module against this one's jar — so the compiler refuses a program
+ * that names one of these functions. That fence stops here: [Abi], [Frames] and [Value] are Java,
+ * and Java has no module visibility to give them, so a program that wrote `import gg.internal.Abi`
+ * would compile. What makes the crossing non-model-facing is the silence rather than the fence,
+ * exactly as it is on every other arm. See [Abi]'s class note.
  *
  * ## What the far side of the bridge is
  *
