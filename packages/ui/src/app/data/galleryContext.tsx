@@ -364,19 +364,6 @@ export interface GalleryDataInput {
    */
   grafanaUrl: string | null;
   /**
-   * The short-link domain's base URL (e.g. `https://tcab.ai`), or null when this
-   * UI has no short-link resolver in front of it. Non-null enables the run
-   * detail's share control; null hides it, the same way a null {@link grafanaUrl}
-   * hides the traces link.
-   *
-   * The consoles read it from the backend's `GET /config` rather than compiling it
-   * in, because it is per-environment: a short code addresses one corpus of
-   * *published* runs, so a staging console handing out a production-domain link
-   * would point at a different run or at none. The static gallery, which is the
-   * public deployment the links resolve to, supplies its own.
-   */
-  shareBaseUrl: string | null;
-  /**
    * Answer one page of a filtered/sorted summary query — the host-agnostic paged
    * listing the run-log pages drive. The console forwards it to the backend's
    * offset endpoint (`GET /runs?fields=summary&offset=…`), which filters, sorts,

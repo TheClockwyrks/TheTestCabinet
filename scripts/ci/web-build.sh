@@ -15,8 +15,8 @@
 # to know — see `apps/docs/src/content/docs/development/releasing.md`, which names
 # it the single source of truth, and note that Cloudflare's git-connected gallery
 # build runs the very same script. Duplicating the list here is how it went stale:
-# `run-stats` and `share-links` were added to the root script and not to this one,
-# leaving CI building the site against packages it had never built.
+# `run-stats` was added to the root script and not to this one, leaving CI building
+# the site against a package it had never built.
 #
 # The console and docs follow, and reuse those same built packages.
 #

@@ -1,13 +1,6 @@
 import type { Plugin } from "vite";
 import type { AssetKind, AssetSheet, TestType } from "@test-cabinet/run-record";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
-import {
-  SHARE_INDEX_PATH,
-  SHARE_INDEX_VERSION,
-  assignShortCodes,
-  type ShareEntry,
-  type ShareIndex,
-} from "@test-cabinet/share-links";
 
 // Build-time data source: the public R2 snapshot.
 //
@@ -820,15 +813,10 @@ function collapseCases(
 // `emitRecord` is called for every run with its full record JSON, so the build
 // can write it out as a runtime-fetchable `runs/<id>.json` asset (the lazy
 // per-run detail fetch), mirroring the events emission.
-// `emitShareIndex` is called once with the assembled share index — the short code
-// and preview card for every published run — which the gallery serves for its own
-// preview tags and the short-link resolver reads to resolve a code.
 async function loadSnapshot(
   base: string,
   emitEvents: (runId: string, json: string) => void,
   emitRecord: (runId: string, json: string) => void,
-  emitShareIndex: (json: string, collisions: string[][]) => void,
-  siteOrigin: string,
 ): Promise<AssembledSnapshot | null> {
   // `index.json` is the atomic pointer the backend writes last, only after a
   // publish. A 404 here means nothing has been published yet (a fresh
@@ -859,9 +847,6 @@ async function loadSnapshot(
   const referenceMediaUrls: Record<string, Record<string, string>> = {};
   // The case-version keys referenced by published runs; deduplicated.
   const caseKeys = new Set<string>();
-  // The share-index draft: one preview card per published run, keyed by run id
-  // until the codes are assigned across the whole corpus below.
-  const shareDrafts = new Map<string, Omit<ShareEntry, "code">>();
 
   // Per-run records + reviews, in the snapshot's newest-first order.
   for (const summary of runsFile.runs) {
@@ -900,33 +885,6 @@ async function loadSnapshot(
       }
       proofMediaUrls[summary.id] = byFile;
     }
-    // The run's share card. The proof image doubles as the preview image: it is a
-    // screenshot of the thing being shared, already published and already public,
-    // so a shared link unfurls as the implementation rather than as a logo. A video
-    // proof is skipped — an unfurl wants a still.
-    const proofImage = runFile.proofMedia?.find(
-      (proof) => proof.kind === "image",
-    );
-    shareDrafts.set(summary.id, {
-      runId: summary.id,
-      caseName: summary.caseName,
-      variant: summary.subject.variant,
-      model: summary.subject.modelId,
-      harness: summary.subject.harnessSlug,
-      rating: summary.rating ?? null,
-      score: summary.score
-        ? { earned: summary.score.earned, total: summary.score.total }
-        : null,
-      reviews: summary.reviewCount,
-      state: summary.state,
-      // A harness-error or hung run releases no playable build, so a `play` link
-      // for it has nothing to open; the resolver reads this and sends the visitor
-      // to the verdict page instead of a dead tab.
-      hasPlayableBuild: Boolean(
-        runFile.links?.playableBuild ?? summary.links.playableBuild,
-      ),
-      image: proofImage ? joinUrl(base, proofImage.key) : null,
-    });
     // The run's asset-generation media, keyed by its served file name, resolved to
     // absolute URLs the asset result view loads.
     if (runFile.assetMedia?.length) {
@@ -1027,25 +985,6 @@ async function loadSnapshot(
     }
   }
 
-  // The share index. Codes are assigned across the whole corpus at once, because
-  // whether a canonical code is unique is a property of the set rather than of any
-  // one run (see `assignShortCodes`). The generated timestamp comes from the
-  // snapshot rather than the clock, so rebuilding the same snapshot produces the
-  // same file.
-  const { codes, collisions } = assignShortCodes([...shareDrafts.keys()]);
-  const shareEntries: Record<string, ShareEntry> = {};
-  for (const [runId, draft] of shareDrafts) {
-    const code = codes.get(runId)!;
-    shareEntries[code] = { code, ...draft };
-  }
-  const shareIndex: ShareIndex = {
-    version: SHARE_INDEX_VERSION,
-    origin: siteOrigin,
-    generatedAt: index.generatedAt,
-    entries: shareEntries,
-  };
-  emitShareIndex(JSON.stringify(shareIndex), collisions);
-
   return {
     // The already-fetched summary index — the bounded cards, verbatim. No extra
     // network calls.
@@ -1094,50 +1033,17 @@ export function snapshot(): Plugin {
         module = serialize(EMPTY);
         return;
       }
-      // The origin the share index's links resolve against. Only ever this
-      // gallery's own public address — a share link never points at a run's own
-      // playable-build deployment, so a visitor always lands somewhere that can
-      // take them into the rest of the cabinet.
-      //
-      // Declared before `emitEmptyShareIndex` closes over it, and before the early
-      // returns that call it: a `const` read from a closure invoked above its own
-      // declaration throws `ReferenceError` at run time, and `tsc` does not catch
-      // it because the read is not lexically before the declaration.
-      const siteOrigin = (
-        process.env.TCAB_SITE_ORIGIN?.trim() || "https://testcabinet.ai"
-      ).replace(/\/+$/, "");
-
-      // The share index is emitted on every build, including the empty ones below.
-      // A resolver fetching it must always get a document: an absent file is
-      // indistinguishable from a broken deployment, whereas an empty index says
-      // plainly that this gallery knows of no published runs yet.
-      const emitEmptyShareIndex = () => {
-        const empty: ShareIndex = {
-          version: SHARE_INDEX_VERSION,
-          origin: siteOrigin,
-          generatedAt: null,
-          entries: {},
-        };
-        this.emitFile({
-          type: "asset",
-          fileName: SHARE_INDEX_PATH,
-          source: JSON.stringify(empty),
-        });
-      };
-
       const base = process.env.TCAB_SNAPSHOT_URL?.trim();
       if (!base) {
         this.warn(
           "TCAB_SNAPSHOT_URL is not set; building with an empty published dataset.",
         );
         module = serialize(EMPTY);
-        emitEmptyShareIndex();
         return;
       }
       try {
         let eventAssets = 0;
         let recordAssets = 0;
-        let shareCodes = 0;
         const data = await loadSnapshot(
           base,
           (runId, json) => {
@@ -1160,39 +1066,16 @@ export function snapshot(): Plugin {
             });
             recordAssets += 1;
           },
-          (json, collisions) => {
-            // The share index, served from the gallery's own origin: the gallery's
-            // preview middleware reads it to tag a run page, and the short-link
-            // resolver reads it to turn a code back into a run.
-            this.emitFile({
-              type: "asset",
-              fileName: SHARE_INDEX_PATH,
-              source: json,
-            });
-            shareCodes = Object.keys(
-              (JSON.parse(json) as ShareIndex).entries,
-            ).length;
-            // Astronomically unlikely, and handled rather than fatal — but a build
-            // that silently lengthened a link is worth saying out loud.
-            for (const group of collisions) {
-              this.warn(
-                `short-code collision: ${group.join(", ")} share a canonical code; ` +
-                  "their links were lengthened to separate them.",
-              );
-            }
-          },
-          siteOrigin,
         );
         if (data === null) {
           this.warn(
             `no published snapshot at ${base} yet (index.json 404); building with an empty dataset. The backend's deploy hook will rebuild the gallery once a run is published.`,
           );
           module = serialize(EMPTY);
-          emitEmptyShareIndex();
           return;
         }
         this.info(
-          `fetched snapshot from ${base}: ${data.runSummaries.length} run(s), ${data.testCases.length} case(s), ${eventAssets} event log(s), ${recordAssets} run record(s), ${shareCodes} share code(s).`,
+          `fetched snapshot from ${base}: ${data.runSummaries.length} run(s), ${data.testCases.length} case(s), ${eventAssets} event log(s), ${recordAssets} run record(s).`,
         );
         module = serialize(data);
       } catch (error) {

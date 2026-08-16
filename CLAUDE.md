@@ -38,7 +38,6 @@ Read the doc first; the code location is where the implementation lives.
 | UI library (`@test-cabinet/ui`) | [`components/ui/overview.md`](apps/docs/src/content/docs/components/ui/overview.md) | `packages/ui/` |
 | Voxel runtime (`@test-cabinet/voxel-runtime` — poses/renders a produced voxel rig; pure-core + three) | [`components/voxel-runtime/overview.md`](apps/docs/src/content/docs/components/voxel-runtime/overview.md) | `packages/voxel-runtime/` |
 | Particle runtime (`@test-cabinet/particle-runtime` — simulates/renders a produced particle `system.json`; pure-core + three + canvas) | [`components/particle-runtime/overview.md`](apps/docs/src/content/docs/components/particle-runtime/overview.md) | `packages/particle-runtime/` |
-| Short links (`tcab.ai` Worker: `/r/<code>` → a run's verdict page, `/p/<code>` → its play page, plus link previews) | [`development/releasing.md`](apps/docs/src/content/docs/development/releasing.md) | `apps/edge/` + `functions/_middleware.ts` |
 | Docs site | [`components/docs/overview.md`](apps/docs/src/content/docs/components/docs/overview.md) | `apps/docs/` |
 
 **Naming gotcha:** the docs call the desktop app the **Tauri app** and the
@@ -53,11 +52,7 @@ TypeScript types + JSON Schema for the run record contract; see
 rules, each mirroring a counterpart in `crates/core/src/review.rs`, plus the
 set-level rollup that lets a figure frozen at one moment and the same figure
 recomputed later be compared; `packages/ui`'s `ratings` module re-exports the
-scoring half alongside its display metadata),
-`packages/share-links/` (`@test-cabinet/share-links` — the short-link contract:
-run-id short codes, the `share-index.json` the gallery build publishes, and the
-preview meta tags a shared link unfurls into, shared by the gallery build, the
-gallery's preview middleware, and the `tcab.ai` Worker)
+scoring half alongside its display metadata)
 and `packages/browser-driver/` (the Playwright driver the
 [validator](apps/docs/src/content/docs/components/core/validation.md) shells out
 to).

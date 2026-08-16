@@ -12,11 +12,6 @@
 # "Infinite loop detected in this rule and has been ignored" at build time. The
 # rule does nothing except make the build look broken.
 #
-# The sibling `_routes.json` is the other half of the Pages configuration: it
-# decides which requests reach `functions/_middleware.ts` at all. It is JSON and
-# cannot carry its own comments, so its reasoning lives in
-# `apps/docs/src/content/docs/development/releasing.md`.
-#
 # What this replaced: a `public/404.html` that stashed the requested path in
 # sessionStorage and bounced through `/` to restore it client-side. That is the
 # GitHub Pages workaround, correct when the gallery was hosted there and carried
