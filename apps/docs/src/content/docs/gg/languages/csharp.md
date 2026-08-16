@@ -4,9 +4,9 @@ title: "C#"
 
 This arm keeps the [invariants](/gg/responses-as-code/invariants/) for a
 program: it compiles the model's own bytes, writes no import around them, and
-locates every diagnostic in the model's coordinates. A code module is put in a
-class gg declares around it, which the invariants place outside the authorship
-rule.
+locates every diagnostic and every runtime frame in the model's coordinates. A
+code module is put in a class gg declares around it, which the invariants place
+outside the authorship rule.
 
 ## Preparation
 
@@ -26,8 +26,13 @@ carries no component of its own.
 One `csc` invocation compiles the program, the SDK's sources and the code
 modules in scope, driven by a response file in the workspace. It declares
 `-nostdlib+`, `-langversion:14.0`, `-nullable:enable`, `-optimize+`,
-`-deterministic`, `-utf8output`, the target, the output path, and `-r:` for
-every `.dll` under the toolchain's `ref/` directory, sorted. `-noconfig` goes on
+`-debug:embedded`, `-pathmap:`, `-deterministic`, `-utf8output`, the target, the
+output path, and `-r:` for
+every `.dll` under the toolchain's `ref/` directory, sorted. `-debug:embedded`
+puts a portable PDB inside the assembly, which is the only place one can travel
+to the guest, and `-pathmap:` maps the preparation's own workspace onto `./` so
+that what a stack trace names is `./program.cs` rather than a path that differs
+between two preparations of the same program. `-noconfig` goes on
 the command line, which is the only place `csc` honours it. The compiler is run
 as `dotnet exec roslyn/bincore/csc.dll`, never through the `csc` shim, which
 would start Roslyn's resident compiler server, and never through msbuild. A
@@ -150,7 +155,14 @@ error between bands. The rules these bands follow are on
 
 At run time the guest is a real .NET runtime, so `try`, `catch` and `finally`
 work, and an unhandled exception reports `Exception.ToString()`: the type, the
-message and the managed frames.
+message and the managed frames. Each frame carries the file and line the
+assembly's own debug information gives for it, so a frame in the model's program
+reads `./program.cs:line 5`. The guest initialises Mono's debug lookup before it
+loads the runtime, which is what makes that information readable.
+
+A program that ends by returning a non-zero status from its entry point is
+reported with the status it chose. That is the one failure C# reports without
+throwing.
 
 ## Prompt segment
 

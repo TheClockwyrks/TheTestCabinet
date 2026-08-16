@@ -832,6 +832,53 @@ public static class Program
     );
 }
 
+/// **Every way a C# program can end by a status is read**, not only the one G8 drives.
+///
+/// `mono_runtime_run_main` hands back the entry point's own return value, so both spellings of one
+/// are read: an explicit `int Main`, and top-level statements ending in `return 3;`, which is the
+/// same entry point written the way this arm's prompt directs. A zero is measured beside them, so a
+/// program that ended cleanly is not reported as having failed.
+///
+/// `Environment.ExitCode` is measured too, and it is the one this runtime does **not** read. It is
+/// asserted rather than left out so that the row here is a measurement rather than a silence.
+#[test]
+fn a_status_a_csharp_program_ends_with_reaches_the_model_however_it_was_set() {
+    let said = |source: &str| {
+        run(source)
+            .result
+            .expect("the program ran")
+            .error
+            .map(|error| error.message)
+    };
+    assert_eq!(
+        said("using System;\npublic static class Program { public static int Main() { return 3; } }\n")
+            .as_deref(),
+        Some("the program's entry point returned 3"),
+        "a returned status did not reach the model"
+    );
+    assert_eq!(
+        said("return 3;\n").as_deref(),
+        Some("the program's entry point returned 3"),
+        "a status returned from top-level statements did not reach the model"
+    );
+    assert_eq!(
+        said("using System;\nEnvironment.ExitCode = 4;\n"),
+        None,
+        "MEASURED, and recorded rather than asserted as desirable: this runtime reads the entry \
+         point's RETURN VALUE and never `Environment.ExitCode`, so a program that sets the field \
+         and returns nothing is a clean turn. Closing it means reading \
+         `mono_environment_exitcode_get` in the guest, and this assertion is what would notice a \
+         runtime pin that closed it on its own"
+    );
+    assert_eq!(
+        said(
+            "using System;\npublic static class Program { public static int Main() { return 0; } }\n"
+        ),
+        None,
+        "a program that ended cleanly was reported as a failure"
+    );
+}
+
 /// **Gate [G8](super::super::g8) for C#** — all five shapes a runtime failure takes,
 /// driven through the production path and read back as the model would read them.
 #[test]
@@ -851,7 +898,7 @@ var text = Files.ReadTextFile(
 Console.WriteLine(text);
 "#,
                 names: &["Gg.ToolException", "Files.ReadTextFile", "missing.md"],
-                located: Located::Nowhere,
+                located: Located::At("./program.cs:line 5"),
                 answered: Answered::AtRuntime,
             },
             Case {
@@ -869,7 +916,7 @@ Console.WriteLine(missing);
                     "System.IndexOutOfRangeException",
                     "Index was outside the bounds of the array",
                 ],
-                located: Located::Nowhere,
+                located: Located::At("./program.cs:line 5"),
                 answered: Answered::AtRuntime,
             },
             Case {
@@ -884,7 +931,11 @@ public static class Program {
   }
 }
 "#,
-                names: &["the third step did not finish"],
+                // The status, which is every word the program produced that reaches the model:
+                // `Console` is the operator's channel, so the line above is not fed back. C#
+                // locates a returned status nowhere, because it is not a fault raised at a
+                // statement — it is how the program chose to end.
+                names: &["returned 3"],
                 located: Located::Nowhere,
                 answered: Answered::AtRuntime,
             },

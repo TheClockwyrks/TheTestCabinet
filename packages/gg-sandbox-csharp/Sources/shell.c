@@ -26,6 +26,20 @@
 // the interpreter. It is done on the first `run` rather than in a constructor because a component
 // instance that is created and never driven — an instantiation gg makes to read `bound-tools` — has
 // no reason to pay for it.
+//
+// # Why `mono_debug_init` is called before it
+//
+// So that a stack trace carries the model's own line. Mono resolves a frame to a file and a line
+// through `mono_debug_lookup_source_location`, which answers nothing at all until the debug
+// subsystem has been initialised — and nothing initialises it here otherwise. The runtime pack's own
+// hook (`mono_wasm_load_runtime`'s non-zero `debug_level`) is not the way in: it reaches
+// `mono_wasm_enable_debugging`, which lives in the managed debugger component, and this build links
+// that component's STUB. It would also turn every interpreter optimisation off, which is a price
+// paid for an attachable debugger nothing here can attach.
+//
+// `MONO_DEBUG_FORMAT_MONO` is the format that reads a portable PDB out of the assembly, which is
+// where `csc -debug:embedded` puts it (`csharp.compile.rs`). It costs the lookup and nothing else:
+// the interpreter still runs with its optimisations on.
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -38,6 +52,7 @@
 #include <mono/metadata/class.h>
 #include <mono/metadata/exception.h>
 #include <mono/metadata/loader.h>
+#include <mono/metadata/mono-debug.h>
 #include <mono/metadata/object.h>
 #include <mono/utils/mono-publib.h>
 
@@ -181,6 +196,12 @@ static void flush_operator_console(MonoImage *image) {
 /// and message, which is what a C# programmer would have seen printed. It is a recoverable
 /// model-facing error, not a trap: this arm has a real exception mechanism because the interpreter
 /// has one, and nothing in the guest has to unwind wasm frames to use it.
+///
+/// **A status is a failure too, and it is read rather than discarded.** `mono_runtime_run_main`
+/// hands back the entry point's own return value, which is the one way a C# program reports failure
+/// without throwing and the one that walks past every `catch` there is. A non-zero status is
+/// reported with the number the program chose. `Environment.ExitCode` is a different field and this
+/// runtime does not fold it in; `csharp.substrate.test.rs` measures both.
 void exports_sandbox_run(sandbox_string_t *program, sandbox_list_code_module_t *modules,
                          sandbox_list_string_t *tools, sandbox_ending_kind_t ending, bool library) {
   (void)modules;
@@ -189,6 +210,7 @@ void exports_sandbox_run(sandbox_string_t *program, sandbox_list_code_module_t *
   (void)library;
 
   if (!started) {
+    mono_debug_init(MONO_DEBUG_FORMAT_MONO);
     mono_wasm_load_runtime(0);
     gg_bridge_register();
     started = true;
@@ -229,9 +251,19 @@ void exports_sandbox_run(sandbox_string_t *program, sandbox_list_code_module_t *
   // than a program.
   MonoObject *thrown = NULL;
   char *argv[1] = {(char *)"program"};
-  mono_runtime_run_main(entry, 1, argv, &thrown);
+  const int status = mono_runtime_run_main(entry, 1, argv, &thrown);
   flush_operator_console(mono_assembly_get_image(assembly));
-  if (thrown == NULL) return;
+  if (thrown == NULL) {
+    // The status the program chose, said back to it with the number it chose. Nothing is added
+    // about what to do instead: a program that returns a status meant to, and what it needs told is
+    // that gg read it.
+    if (status != 0) {
+      char message[128];
+      snprintf(message, sizeof message, "the program's entry point returned %d", status);
+      report(message);
+    }
+    return;
+  }
 
   // `ToString()` on an exception is what .NET itself prints for an unhandled one: the full type
   // name, the message, and the managed stack trace. It is taken whole rather than reassembled from

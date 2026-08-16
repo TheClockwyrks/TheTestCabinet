@@ -4755,9 +4755,13 @@ pub enum GgProgramLanguage {
     /// `ToolException` whose `Code` is an enum rather than free text. Nothing returns `Task` and
     /// nothing is `async`.
     ///
-    /// It has the **best error surface of any compiled arm here, and gg engineered none of it**:
-    /// `try`/`catch`/`finally` work because they are IL, and an unhandled exception is reported as
-    /// `Exception.ToString()` — the type, the message *and* the managed frames. Two absences are
+    /// It has the **best error surface of any compiled arm here**: `try`/`catch`/`finally` work
+    /// because they are IL, and an unhandled exception is reported as `Exception.ToString()` — the
+    /// type, the message *and* the managed frames, each frame carrying the model's own file and
+    /// line, because the assembly carries its own portable debug information and the guest
+    /// initialises the lookup that reads it. What a program ends by **returning** is read too: a
+    /// non-zero status from its entry point, the one failure C# reports without throwing. Two
+    /// absences are
     /// stated rather than glossed: `System.Net.Http`'s native handler is not in this guest, so the
     /// types compile and the transport is gone (the network is `system.Shell`, as on every arm), and
     /// `System.Security.Cryptography` is Mono's own gap and arrives as a catchable

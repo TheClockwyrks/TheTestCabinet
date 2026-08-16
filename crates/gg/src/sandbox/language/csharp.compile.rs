@@ -275,6 +275,7 @@ pub(super) fn compile_module(
             &response_file(
                 &root,
                 Target::Library,
+                workspace.work(),
                 &sdk,
                 std::slice::from_ref(&file),
                 &output,
@@ -327,7 +328,14 @@ fn compile(
     let response = workspace
         .write(
             RESPONSE_FILE,
-            &response_file(&root, Target::Exe, &sdk, &sources, &output)?,
+            &response_file(
+                &root,
+                Target::Exe,
+                workspace.work(),
+                &sdk,
+                &sources,
+                &output,
+            )?,
         )
         .map_err(PrepareFailure::Toolchain)?;
 
@@ -391,6 +399,19 @@ impl Target {
 /// * `-optimize+` — the IL is *interpreted*, so optimisation here is not about native code: it is
 ///   what removes the debug-build scaffolding an interpreter would otherwise walk instruction by
 ///   instruction.
+/// * `-debug:embedded` — **what puts the model's own line on a runtime frame.** A portable PDB, in
+///   the assembly rather than beside it, because the assembly is the only thing that crosses to the
+///   guest: a `program.pdb` written into a workspace gg deletes is a file the interpreter never
+///   sees. Mono reads it once the guest has initialised its debug lookup
+///   (`packages/gg-sandbox-csharp/Sources/shell.c`), and an unhandled exception's frames then name
+///   `./program.cs` and a line, where they used to name a method and an IL offset. It is compatible
+///   with `-optimize+`: the sequence points are in the PDB, not in the IL.
+/// * `-pathmap` — the preparation's own workspace, mapped onto `./`. Two things need it. A model
+///   reads those frames, and `/tmp/gg-prepare/1234-0/work/program.cs` is a path it cannot open and
+///   did not write; and the PDB is *in* the assembly, so an absolute path would make two
+///   preparations of one program differ in the bytes `-deterministic` exists to hold equal. The
+///   value is `./` because Roslyn refuses an empty one (`CS8101`), which is the only spelling that
+///   would have left the bare `program.cs` the compiler's own diagnostics use.
 /// * `-deterministic` — Roslyn stamps a build with an MVID derived from its inputs rather than from
 ///   the clock, so two preparations of one program produce byte-identical assemblies. Nothing in the
 ///   seam demands that (the isolation gate in `language/isolation.rs` searches artifacts
@@ -413,6 +434,7 @@ impl Target {
 fn response_file(
     root: &Path,
     target: Target,
+    work: &Path,
     sdk: &[PathBuf],
     sources: &[PathBuf],
     output: &Path,
@@ -424,6 +446,12 @@ fn response_file(
         format!("-langversion:{LANGUAGE_VERSION}"),
         "-nullable:enable".to_string(),
         "-optimize+".to_string(),
+        "-debug:embedded".to_string(),
+        format!(
+            "-pathmap:{}{sep}=.{sep}",
+            work.display(),
+            sep = std::path::MAIN_SEPARATOR
+        ),
         "-deterministic".to_string(),
         "-utf8output".to_string(),
         format!("-out:{}", output.display()),

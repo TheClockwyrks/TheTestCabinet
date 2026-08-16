@@ -402,19 +402,17 @@ const KNOWN_HOLES: &[Hole] = &[
     // ---- csharp -----------------------------------------------------------------------------
     Hole {
         arm: GgProgramLanguage::CSharp,
-        shape: Shape::FailureValue,
-        // Nothing. `int Main()`'s status is read and discarded by the shell, so a program that
-        // reports failure the way C# reports it from an entry point is a clean turn.
-        instead: Instead::Nothing,
-    },
-    Hole {
-        arm: GgProgramLanguage::CSharp,
         shape: Shape::ResourceFault,
         // A wall of identical frames and no statement of what happened: the runtime writes
         // `StackOverflowException` FIRST, and the 8 KiB stderr policy keeps the tail, so the one
         // line that named the fault is the one line evicted. What survives is ~200 copies of the
         // recursive frame and, at the end, an exit the runtime made on the program's behalf.
-        instead: Instead::Says("at Program.Deeper (int) [0x00000] in <"),
+        //
+        // The frames now carry the model's own file and line, which they did not when this row was
+        // written: that half is `-debug:embedded` and `mono_debug_init` landing together. What is
+        // still missing is the fault's NAME, and it is missing to a trim rather than to this arm —
+        // the same 8 KiB tail policy would evict any arm's leading line.
+        instead: Instead::Says("at Program.Deeper (int) [0x00000] in ./program.cs:6"),
     },
     Hole {
         arm: GgProgramLanguage::CSharp,

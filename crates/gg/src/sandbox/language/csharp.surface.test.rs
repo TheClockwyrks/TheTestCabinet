@@ -1320,6 +1320,11 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
 /// * the module's own path written out — accepted, which is the route that needs no line and the
 ///   one every statement gg synthesizes takes.
 ///
+/// The refusal's own text is held to `program.cs(` as well, because that is the file name the
+/// model's coordinates are reported under and `-pathmap` rewrites the paths a *runtime* frame
+/// carries. A flag that reached the compiler's diagnostics too would move every location this arm
+/// reports into a spelling nothing else expects.
+///
 /// It compiles and never runs, so it instantiates no component: what a compiler refuses never
 /// reaches a guest.
 #[test]
@@ -1334,7 +1339,9 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
         crate::sandbox::PrepareFailure::Program(crate::sandbox::PrepareError::Compile(
             diagnostic,
         )) => assert!(
-            diagnostic.contains("CS0103") && diagnostic.contains("'Views'"),
+            diagnostic.starts_with("program.cs(")
+                && diagnostic.contains("CS0103")
+                && diagnostic.contains("'Views'"),
             "a program naming gg's surface with no import line was refused for another reason: \
              {diagnostic}"
         ),
