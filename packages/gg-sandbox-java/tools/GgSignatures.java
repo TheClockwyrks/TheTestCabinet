@@ -386,12 +386,14 @@ public final class GgSignatures implements Doclet {
             // this reflector is allowed to compose (javadoc reports no import line for anything).
             //
             // The `core` module has no class of its own: what lives in package `gg` is the
-            // exception and the types every other module's signatures name, and a program reaches
-            // one of those by importing IT rather than the package. So it states no line, which is
-            // the other of the two answers the field has.
-            entry.put("import", module.type().isEmpty()
-                    ? Json.NULL
-                    : Json.of("import " + module.path() + ";"));
+            // exception and the types every other module's signatures name. Its path is therefore a
+            // PACKAGE, and the line that reaches everything in it is an on-demand import. Nothing
+            // on this arm is in a program's scope without a line it wrote, so `null` — which every
+            // reader renders as "in scope already" — would be a claim about this arm that is false
+            // of the one name the prompt tells every model to write.
+            entry.put("import", Json.of(module.type().isEmpty()
+                    ? "import " + module.path() + ".*;"
+                    : "import " + module.path() + ";"));
             out.add(entry);
         }
         return Json.array(out);

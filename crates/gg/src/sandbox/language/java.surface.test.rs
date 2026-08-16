@@ -875,16 +875,42 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
         assert_eq!(log.names(), ["read_file"], "{source}");
     }
 
-    // And the line the catalogue publishes for `files` is the one written above, character for
-    // character, rather than a second answer this test invented.
-    let published = java_language()
-        .catalogue()
-        .modules
-        .iter()
-        .find(|module| module.id == "files")
-        .and_then(|module| module.import.clone())
-        .expect("the catalogue states a line for `files`");
-    assert_eq!(published, "import gg.files.Files;");
+    // The `core` module's own line resolves the name refused above. It is a package rather than a
+    // class, so the line the catalogue states is an on-demand import — and this is the case that
+    // decides whether the exception the prompt tells every model to catch has a line to write.
+    let published = |id: &str| -> String {
+        java_language()
+            .catalogue()
+            .modules
+            .iter()
+            .find(|module| module.id == id)
+            .and_then(|module| module.import.clone())
+            .unwrap_or_else(|| panic!("the catalogue states a line for `{id}`"))
+    };
+    let (outcome, _) = evaluate_as(
+        &prepare(&format!(
+            "{}\n\
+             \n\
+             public final class Program {{\n\
+             \x20   public static void main(String[] args) {{\n\
+             \x20       ToolErrorCode code = ToolErrorCode.NOT_FOUND;\n\
+             \x20       gg.Gg.log(code.toString());\n\
+             \x20   }}\n\
+             }}\n",
+            published("core"),
+        )),
+        &all_operations(),
+        &[],
+        RunEnding::None,
+        false,
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["NOT_FOUND"]);
+
+    // And the lines the catalogue publishes are the ones written above, character for character,
+    // rather than a second answer this test invented.
+    assert_eq!(published("files"), "import gg.files.Files;");
+    assert_eq!(published("core"), "import gg.*;");
 }
 
 // ---------------------------------------------------------------------------------------------

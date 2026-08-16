@@ -65,14 +65,15 @@ you need, then `public final class Program` with a
 record, an enum — goes beside it in the same file, without `public` on it.
 
 A failure is an unchecked `gg.ToolError`: let one escape, or catch it with
-`catch (ToolError failure)` and read `failure.code()`, which is an enum.
+`catch (ToolError failure)` after `import gg.ToolError;` and read
+`failure.code()`, which is an enum.
 
 Required arguments are positional, and an optional one is an overload: an entry
 that shows you several signatures is showing you the ones you may call. A call
 with many optional fields takes a builder, and one that takes a list takes a
-varargs. Each module below is a class of `static` methods, reached by writing
-that module's own `import` line and then the class name, and a type one hands
-back is nested in it.
+varargs. Each module below is reached by writing its own `import` line; every one
+but `gg` is then a class of `static` methods you write the name of, and a type
+one hands back is nested in it.
 {{/if}}
 {{#if (eq language.id "javascript")}}
 Your response is evaluated as the body of a function whose parameters include
