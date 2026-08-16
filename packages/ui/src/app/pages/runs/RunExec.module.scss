@@ -1063,6 +1063,59 @@
   }
 }
 
+// The change list inside the bulk restore's confirmation: one row per point the
+// restore would put back, reading "<point> — <your answer> → <what validation
+// decided>". It lives in the dialog's own capped, scrollable detail region, so it
+// needs no height limit of its own however many points a case declares.
+.restoreList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.restoreRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
+  padding: t.$space-2xs 0;
+
+  & + & {
+    border-top: t.$border-hairline solid
+      color-mix(in srgb, t.$color-border 45%, transparent);
+  }
+}
+
+.restorePoint {
+  flex: 1 1 12rem;
+  color: t.$color-text;
+}
+
+// The category a sub-item sits under, so a bare "Keyboard" is placed without
+// having to widen the row.
+.restoreCategory {
+  color: t.$color-text-muted;
+}
+
+.restoreFlip {
+  flex: 0 0 auto;
+  color: t.$color-text-muted;
+  white-space: nowrap;
+}
+
+// What is being discarded, struck through; what it becomes, in the accent.
+.restoreFrom {
+  text-decoration: line-through;
+}
+
+.restoreTo {
+  color: t.$color-accent;
+}
+
 .itemNavList {
   list-style: none;
   margin: 0;

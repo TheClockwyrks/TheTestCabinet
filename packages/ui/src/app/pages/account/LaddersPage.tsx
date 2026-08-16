@@ -9,6 +9,7 @@ import { useBackend } from "../../../client/context";
 import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
+import { useConfirm } from "../../components/ConfirmDialog";
 import { routes } from "../../routes";
 import { AccountTabs } from "./AccountTabs";
 import exec from "../runs/RunExec.module.scss";
@@ -71,6 +72,7 @@ export function ladderSummary(progress: LadderProgress): LadderSummary {
 export function LaddersPage() {
   const { token } = useAuth();
   const { client: backend } = useBackend();
+  const { confirm } = useConfirm();
 
   const [ladders, setLadders] = useState<LadderOut[] | null>(null);
   const [boards, setBoards] = useState<Record<string, LadderProgress>>({});
@@ -123,11 +125,14 @@ export function LaddersPage() {
     async (id: string, name: string) => {
       if (!backend?.deleteLadder || !token) return;
       if (
-        !window.confirm(
-          `Delete the ladder “${name}”? This removes its rungs, every climber's ` +
+        !(await confirm({
+          title: "Delete ladder",
+          message:
+            `Delete the ladder “${name}”? This removes its rungs, every climber's ` +
             `recorded verdicts, and their steering, and cannot be undone. Runs it ` +
             `already launched are left alone — halt it first if you want those stopped.`,
-        )
+          confirmLabel: "Delete ladder",
+        }))
       ) {
         return;
       }
@@ -142,7 +147,7 @@ export function LaddersPage() {
         setBusy(false);
       }
     },
-    [backend, token, reload],
+    [backend, token, reload, confirm],
   );
 
   if (!token) {

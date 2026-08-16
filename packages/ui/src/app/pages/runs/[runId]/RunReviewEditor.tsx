@@ -46,9 +46,11 @@ import {
 import { ReviewList } from "./ReviewList";
 import {
   autoVerdictMap,
+  describeAutoVerdictRestore,
   overriddenAutoVerdictIds,
   type VerdictDraft,
 } from "./autoVerdicts";
+import { useConfirm } from "../../../components/ConfirmDialog";
 import styles from "../RunExec.module.scss";
 
 const STATUSES: VerdictStatus[] = ["pass", "fail"];
@@ -198,6 +200,7 @@ export function RunReviewEditor({
   // the editor offers a single Publish action there.
   const solo = worker?.local ?? false;
   const { account, token } = useAuth();
+  const { confirm } = useConfirm();
   // The checklist items are catalog data: read them from the backend, keyed by
   // the run's case identity — the worker doesn't serve the catalog.
   const { client: backend } = useBackend();
@@ -521,15 +524,53 @@ export function RunReviewEditor({
   // Restore every overridden point at once, from the rail. Confirmed first because
   // it discards the reviewer's own calls wholesale — the mirror image of "Mark
   // unplayable", which overwrites them wholesale.
-  function restoreAllAutoVerdicts() {
+  //
+  // The confirmation enumerates every point it would change and which way each
+  // would flip, because by the time a reviewer reaches for the rail's bulk restore
+  // they have worked through the whole checklist and cannot be expected to hold
+  // which of their own calls the machine disagrees with. The list is rendered in
+  // the dialog's capped, scrollable detail region, so a case with a hundred points
+  // asks the question the same way a case with three does.
+  async function restoreAllAutoVerdicts() {
     const n = overriddenIds.length;
     if (n === 0) return;
-    if (
-      !window.confirm(
-        `Restore ${n} overridden ${n === 1 ? "verdict" : "verdicts"} to what this run's automated validation decided? Your own Pass/Fail on ${n === 1 ? "that point" : "those points"} will be discarded; notes are kept.`,
-      )
-    )
-      return;
+    const changes = describeAutoVerdictRestore(
+      items,
+      auto,
+      verdicts,
+      overriddenIds,
+    );
+    const confirmed = await confirm({
+      title: "Restore validator verdicts",
+      message: `Restore ${n} overridden ${n === 1 ? "verdict" : "verdicts"} to what this run's automated validation decided? Your own Pass/Fail on ${n === 1 ? "that point" : "those points"} will be discarded; notes are kept.`,
+      confirmLabel: n === 1 ? "Restore verdict" : `Restore ${n} verdicts`,
+      details: (
+        <ul className={styles.restoreList}>
+          {changes.map((change) => (
+            <li key={change.id} className={styles.restoreRow}>
+              <span className={styles.restorePoint}>
+                {change.category && (
+                  <span className={styles.restoreCategory}>
+                    {change.category} ›{" "}
+                  </span>
+                )}
+                {change.title}
+              </span>
+              <span className={styles.restoreFlip}>
+                <span className={styles.restoreFrom}>
+                  {change.from ? VERDICT_META[change.from].label : "Unanswered"}
+                </span>
+                <span aria-hidden="true"> → </span>
+                <span className={styles.restoreTo}>
+                  {VERDICT_META[change.to].label}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      ),
+    });
+    if (!confirmed) return;
     restoreAutoVerdicts(overriddenIds);
   }
 
@@ -710,15 +751,15 @@ export function RunReviewEditor({
   // step without walking each question. Purely local state — it flows through the
   // normal buildReview()/submit path and fills the submit gate. Confirmed first
   // because it overwrites every verdict and rating already recorded.
-  function markUnplayable() {
-    if (
-      !window.confirm(
-        jam
-          ? "Mark this run unplayable? Every category and the overall grade will be set to 💩 Broken."
-          : "Mark this run unplayable? Every checklist item will be set to Fail and every rating to Broken.",
-      )
-    )
-      return;
+  async function markUnplayable() {
+    const confirmed = await confirm({
+      title: "Mark run unplayable",
+      message: jam
+        ? "Mark this run unplayable? Every category and the overall grade will be set to 💩 Broken."
+        : "Mark this run unplayable? Every checklist item will be set to Fail and every rating to Broken.",
+      confirmLabel: "Mark unplayable",
+    });
+    if (!confirmed) return;
     // A jam grades every category (and the overall) as the worst tier, `broken`; a
     // domain-scored case fails every item and rates every domain the worst tier.
     const worst: VerdictStatus = jam ? "broken" : "fail";
@@ -1154,7 +1195,7 @@ export function RunReviewEditor({
                 <button
                   type="button"
                   className={styles.unplayable}
-                  onClick={markUnplayable}
+                  onClick={() => void markUnplayable()}
                   disabled={busy}
                   title={
                     jam
@@ -1177,7 +1218,7 @@ export function RunReviewEditor({
                   <button
                     type="button"
                     className={styles.restoreAuto}
-                    onClick={restoreAllAutoVerdicts}
+                    onClick={() => void restoreAllAutoVerdicts()}
                     disabled={busy || overriddenIds.length === 0}
                     title={
                       overriddenIds.length === 0

@@ -5,6 +5,10 @@ import { useAuth } from "../../../client/auth";
 import { useOptionalWorkers } from "../../../client/context";
 import { useGalleryData } from "../../data/galleryContext";
 import { useRecordSectionIndex } from "../../components/backReturn";
+import {
+  useConfirm,
+  type ConfirmOptions,
+} from "../../components/ConfirmDialog";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import type { InProgressRun } from "../../../client/types";
 import { routes } from "../../routes";
@@ -107,6 +111,7 @@ function StopRunsControls() {
   // component (no `canExecute`), but the hook must not throw if it ever does.
   const worker = useOptionalWorkers()?.active ?? null;
   const { token } = useAuth();
+  const { confirm } = useConfirm();
   const runtime = useRunsRuntime();
   const client = worker?.client ?? null;
   const [busy, setBusy] = useState<StopScope | null>(null);
@@ -137,8 +142,8 @@ function StopRunsControls() {
     scope: StopScope;
     label: string;
     title: string;
-    /** Empty when the sweep is cheap enough to need no confirmation. */
-    confirm: string;
+    /** Null when the sweep is cheap enough to need no confirmation. */
+    confirm: ConfirmOptions | null;
     disabled: boolean;
     sweep: () => Promise<BulkCancelOut>;
   }[] = [
@@ -150,7 +155,7 @@ function StopRunsControls() {
         "Runs already executing keep going.",
       // Deliberately unconfirmed: these have no driver and have spent nothing, so
       // the control discards no work and a prompt would only be noise.
-      confirm: "",
+      confirm: null,
       disabled: waiting === 0,
       sweep: () => cancelWaiting(token),
     },
@@ -160,11 +165,15 @@ function StopRunsControls() {
       title:
         "Cancel every run that is already executing. The queue is left alone, " +
         "so the dispatcher starts claiming from it again.",
-      confirm:
-        `Kill ${count(running, "run")} already executing? Their work is ` +
-        "discarded and each is recorded as canceled. This cannot be undone. " +
-        "Runs still waiting in the queue are left alone — the dispatcher will " +
-        "start claiming them immediately.",
+      confirm: {
+        title: "Kill active runs",
+        message:
+          `Kill ${count(running, "run")} already executing? Their work is ` +
+          "discarded and each is recorded as canceled. This cannot be undone. " +
+          "Runs still waiting in the queue are left alone — the dispatcher will " +
+          "start claiming them immediately.",
+        confirmLabel: "Kill active",
+      },
       disabled: running === 0,
       sweep: () => cancelActive(token),
     },
@@ -172,17 +181,21 @@ function StopRunsControls() {
       scope: "all",
       label: "Stop all",
       title: "Cancel everything: the waiting queue and the executing runs.",
-      confirm:
-        `Stop everything — ${count(waiting, "run")} waiting and ` +
-        `${count(running, "run")} already executing? The executing ones lose ` +
-        "their work and every one is recorded as canceled. This cannot be undone.",
+      confirm: {
+        title: "Stop all runs",
+        message:
+          `Stop everything — ${count(waiting, "run")} waiting and ` +
+          `${count(running, "run")} already executing? The executing ones lose ` +
+          "their work and every one is recorded as canceled. This cannot be undone.",
+        confirmLabel: "Stop all",
+      },
       disabled: waiting + running === 0,
       sweep: () => cancelAll(token),
     },
   ];
 
   const onSweep = async (control: (typeof controls)[number]) => {
-    if (control.confirm && !window.confirm(control.confirm)) return;
+    if (control.confirm && !(await confirm(control.confirm))) return;
     setBusy(control.scope);
     setStatus(null);
     setError(null);

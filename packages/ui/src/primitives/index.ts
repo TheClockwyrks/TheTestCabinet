@@ -1,6 +1,12 @@
 // Brand-neutral presentational primitives shared across the GUIs. They read the
 // `--tcab-*` token contract (styles/tokens.css) so each app themes them.
 export { Avatar, type AvatarProps } from "./Avatar";
+export {
+  Dialog,
+  type DialogAction,
+  type DialogActionTone,
+  type DialogProps,
+} from "./Dialog";
 export { Markdown } from "./Markdown";
 export { RatingBadge } from "./RatingBadge";
 export { GradeBadge } from "./GradeBadge";

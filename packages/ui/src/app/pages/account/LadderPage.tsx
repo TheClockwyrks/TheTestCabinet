@@ -21,6 +21,7 @@ import { useBackend } from "../../../client/context";
 import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { BackChevron } from "../../components/BackChevron";
+import { useConfirm } from "../../components/ConfirmDialog";
 import {
   claimSectionReturn,
   useRecordSectionIndex,
@@ -620,6 +621,7 @@ export function LadderPage() {
   const { ladderId = "" } = useParams();
   const { token } = useAuth();
   const { client: backend } = useBackend();
+  const { confirm } = useConfirm();
 
   // Record this dashboard as the coverage section's index, so a run opened from a rung
   // or from the review queue can return here (see `backReturn`).
@@ -779,11 +781,14 @@ export function LadderPage() {
       if (!supported) return;
       if (
         all &&
-        !window.confirm(
-          "Cancel every job this ladder launched, including runs already executing? " +
+        !(await confirm({
+          title: "Halt everything",
+          message:
+            "Cancel every job this ladder launched, including runs already executing? " +
             "Their work so far is lost and their cost is already spent. Use “Halt” to " +
             "cancel only what has not started.",
-        )
+          confirmLabel: "Halt everything",
+        }))
       ) {
         return;
       }
@@ -803,7 +808,7 @@ export function LadderPage() {
         setBusy(false);
       }
     },
-    [backend, token, ladderId, refresh],
+    [backend, token, ladderId, refresh, confirm],
   );
 
   // One combination's steering, written whole: the control changes one field and the
@@ -883,11 +888,14 @@ export function LadderPage() {
     async (rung: LadderProgressRung) => {
       if (!backend?.updateLadder || !token || !ladder) return;
       if (
-        !window.confirm(
-          `Bump rung ${rung.position + 1} from ${rung.version} to ${rung.latestVersion}? ` +
+        !(await confirm({
+          title: `Bump rung ${rung.position + 1}`,
+          message:
+            `Bump rung ${rung.position + 1} from ${rung.version} to ${rung.latestVersion}? ` +
             `Every climber re-attempts it at the new version; verdicts decided against ` +
             `${rung.version} are kept as history and stop governing the climb.`,
-        )
+          confirmLabel: "Bump rung",
+        }))
       ) {
         return;
       }
@@ -925,7 +933,7 @@ export function LadderPage() {
         setBusy(false);
       }
     },
-    [backend, token, ladder, ladderId, refresh],
+    [backend, token, ladder, ladderId, refresh, confirm],
   );
 
   if (!token) {

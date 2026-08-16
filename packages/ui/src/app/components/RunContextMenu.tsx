@@ -12,6 +12,7 @@ import { useNavigate } from "react-router";
 import { useFindModel } from "../data/useModels";
 import { CONFIRM_DELETE_RUN, useRunDeletion } from "../data/useRunDeletion";
 import { useRunKill } from "../data/useRunKill";
+import { useConfirm, type ConfirmApi } from "./ConfirmDialog";
 import { routes } from "../routes";
 import type { SelectableRun } from "./RunSelect";
 import styles from "./RunContextMenu.module.scss";
@@ -140,6 +141,7 @@ export function RunContextMenu({ ref, onBatchActed }: RunContextMenuProps) {
   const findModel = useFindModel();
   const { canDelete, deleteRun } = useRunDeletion();
   const { canKill, killRun } = useRunKill();
+  const { confirm, alert } = useConfirm();
 
   useImperativeHandle(
     ref,
@@ -229,11 +231,14 @@ export function RunContextMenu({ ref, onBatchActed }: RunContextMenuProps) {
 
     const onDelete = async () => {
       close();
-      if (!window.confirm(CONFIRM_DELETE_RUN)) return;
+      if (!(await confirm(CONFIRM_DELETE_RUN))) return;
       try {
         await deleteRun(run.id);
       } catch (e) {
-        window.alert(`Could not delete run: ${String(e)}`);
+        await alert({
+          title: "Could not delete run",
+          message: String(e),
+        });
       }
     };
 
@@ -330,35 +335,41 @@ export function RunContextMenu({ ref, onBatchActed }: RunContextMenuProps) {
     const onKill = async () => {
       close();
       if (
-        !window.confirm(
-          `Kill ${plural(killable.length, "run")}? They stop immediately and ` +
+        !(await confirm({
+          title: `Kill ${plural(killable.length, "run")}`,
+          message:
+            `Kill ${plural(killable.length, "run")}? They stop immediately and ` +
             "are recorded as canceled. This cannot be undone.",
-        )
+          confirmLabel: "Kill runs",
+        }))
       ) {
         return;
       }
       const outcomes = await Promise.allSettled(
         killable.map((run) => killRun(run.id)),
       );
-      reportFailures(outcomes, "kill");
+      await reportFailures(outcomes, "kill", alert);
       onBatchActed?.();
     };
 
     const onDelete = async () => {
       close();
       if (
-        !window.confirm(
-          `Delete ${plural(deletable.length, "run")} permanently? Their ` +
+        !(await confirm({
+          title: `Delete ${plural(deletable.length, "run")}`,
+          message:
+            `Delete ${plural(deletable.length, "run")} permanently? Their ` +
             "records, reviews, and stored media are removed. This cannot be " +
             "undone.",
-        )
+          confirmLabel: "Delete runs",
+        }))
       ) {
         return;
       }
       const outcomes = await Promise.allSettled(
         deletable.map((run) => deleteRun(run.id)),
       );
-      reportFailures(outcomes, "delete");
+      await reportFailures(outcomes, "delete", alert);
       onBatchActed?.();
     };
 
@@ -451,12 +462,17 @@ export function RunContextMenu({ ref, onBatchActed }: RunContextMenuProps) {
 }
 
 // Surface a batch mutation's failures: how many of the requests rejected, if any.
-function reportFailures(
+// The reporter is passed in rather than reached for, because the themed dialog is
+// a hook off context and this runs outside the component.
+async function reportFailures(
   outcomes: PromiseSettledResult<unknown>[],
   verb: "kill" | "delete",
-): void {
+  alert: ConfirmApi["alert"],
+): Promise<void> {
   const failed = outcomes.filter((o) => o.status === "rejected").length;
-  if (failed > 0) {
-    window.alert(`Could not ${verb} ${failed} of ${outcomes.length} runs.`);
-  }
+  if (failed === 0) return;
+  await alert({
+    title: `Could not ${verb} every run`,
+    message: `${failed} of ${outcomes.length} runs could not be ${verb === "kill" ? "killed" : "deleted"}.`,
+  });
 }
