@@ -8,21 +8,28 @@
 //! [healing dialect](super::healing) reads a reply with — which is why it masks strings and
 //! comments properly rather than scanning the raw bytes.
 //!
-//! # A code module is a namespace opened around the author's own file
+//! # A code module is a named C++ module exporting a namespace of the author's own file
 //!
 //! A code [skill](crate::skills)'s or [memory](crate::memories)'s namespace is bound at `lib::<key>`
 //! for every program the agent writes afterwards, and on a compiled arm that binding is a **link**:
-//! the module has to be built into the same artifact as the program that uses it. C++ has a real
-//! nested namespace, so the shape is the plainest one any compiled arm here has —
-//! [`namespaced`] opens `namespace lib::<key> {` above the author's first line and closes it below
-//! their last, and nothing in between is touched:
+//! the module has to be built into the same artifact as the program that uses it. C++ has both a
+//! real nested namespace and a real module system, so [`namespaced`] declares `export module
+//! lib.<key>;`, opens `export namespace lib::<key> {` above the author's first line and closes it
+//! below their last, and nothing in between is touched:
 //!
 //! ```text
+//! module;                                       // gg's line
 //! #include <gg.hpp>                             // gg's line
-//! namespace lib::csv_tools {                    // gg's line
-//! #line 1 "module_csv_tools.hpp"                // gg's line
+//! export module lib.csv_tools;                  // gg's line
+//! export namespace lib::csv_tools {             // gg's line
+//! #line 1 "module_csv_tools.cppm"               // gg's line
 //! std::vector<row> parse(std::string_view text, char delimiter = ',') {   // as authored
 //! ```
+//!
+//! **The module declaration is what keeps gg's surface out of the program.** Names a global module
+//! fragment includes are attached to the global module and reach nobody who imports this one, so a
+//! program that binds a code module reaches `lib::<key>` and reaches gg's surface only through a
+//! line it wrote itself.
 //!
 //! **`#line` is why no line number moves**, and it is the reason this arm needs no offset
 //! arithmetic anywhere: C++ is the one language here with a line-control directive, so gg says what
@@ -46,8 +53,9 @@
 //! Hoisting it out is the alternative and it is the one thing this arm has never done to anybody's
 //! text. It does not need to: the precompiled prelude puts the standard library in front of a
 //! module exactly as it does in front of a program, and gg writes [one include](SURFACE_INCLUDE) of
-//! its own **above** the namespace — so a module that includes nothing already has `std::vector`
-//! and `gg::files::read_file`. That is the one asymmetry between the two halves of this arm and it
+//! its own into the module's **global module fragment** — so a module that includes nothing already
+//! has `std::vector` and `gg::files::read_file`, and nobody importing it has either. That is the one
+//! asymmetry between the two halves of this arm and it
 //! is [ruling D5](https://docs.testcabinet.ai/gg/responses-as-code/invariants/)'s: a module is a
 //! skill author's file that gg wraps, where a program is a model's reply that gg does not touch.
 //! The refusal says so, at the author's own line, and it is the whole of what a module author has to
@@ -90,17 +98,37 @@
 
 use crate::sandbox::PrepareError;
 
-/// The file a code module is compiled under, given its binding key — `module_csv_tools.hpp`.
+/// The file a code module is compiled under, given its binding key — `module_csv_tools.cppm`.
 ///
 /// A fixed name per key inside a workspace that is private per preparation, on the same terms
 /// [`PROGRAM_FILE`](super::compile::PROGRAM_FILE) is. The key is already a C++ identifier
 /// ([`binding_name`](super::binding_name)) so it cannot produce a path component that is not one.
 ///
-/// `.hpp` rather than `.cpp` because of how a module reaches a program: it is put in front of the
-/// model's file with `clang++ -include`, which is the same thing a header is for and the one way to
-/// add a declaration to a translation unit whose first line must stay the model's own.
+/// `.cppm` because a code module here is a **C++ named module** rather than a header: it is
+/// precompiled into a module interface of its own and the program's translation unit imports it.
 pub(super) fn module_file(key: &str) -> String {
-    format!("{MODULE_FILE_PREFIX}{key}.hpp")
+    format!("{MODULE_FILE_PREFIX}{key}.cppm")
+}
+
+/// The name a code module is declared and imported under, given its binding key — `lib.csv_tools`.
+///
+/// A module name is a dotted sequence of identifiers where a namespace is a `::`-separated one, so
+/// the two spellings of the same module differ by that and nothing else — except for the two words
+/// a module-name component may not be. `module` and `import` are legal namespace names and illegal
+/// module-name components, and both are reachable keys: [`binding_name`](super::binding_name)
+/// answers `module` for a slug that is nothing but separators. They are escaped by upper-casing the
+/// first letter, which no key can collide with because that function lower-cases everything it
+/// produces.
+pub(super) fn module_name(key: &str) -> String {
+    match key {
+        "module" | "import" => format!("lib.{}{}", key[..1].to_uppercase(), &key[1..]),
+        _ => format!("lib.{key}"),
+    }
+}
+
+/// The line that brings one code module's namespace into a translation unit — `import lib.csv_tools;`.
+pub(super) fn module_import(key: &str) -> String {
+    format!("import {};\n", module_name(key))
 }
 
 /// What a code module's file name begins with — which is also how a diagnostic located in one is
@@ -116,13 +144,23 @@ pub(super) const MODULE_FILE_PREFIX: &str = "module_";
 /// resolves under all of them.
 pub(super) const CHECK_KEY: &str = "module";
 
-/// A code module's own file: `namespace lib::<key> {`, the author's source verbatim, and the brace
-/// that closes it — with a `#line` directive in between so the author's first line is line 1.
+/// A code module's own file: a global module fragment carrying gg's surface, the module declaration,
+/// and `export namespace lib::<key> {` around the author's source verbatim — with a `#line` directive
+/// in between so the author's first line is line 1.
 ///
-/// This is what a program's compile writes beside the entry file, and it is **source rather than an
-/// artifact** — which is what a linked language's module has to be. A module cannot be compiled into
-/// anything reachable on its own: C++ links, so the only artifact a module can end up in is the
-/// artifact of a program that was built against it.
+/// ```text
+/// module;                                       // gg's line
+/// #include <gg.hpp>                             // gg's line
+/// export module lib.csv_tools;                  // gg's line
+/// export namespace lib::csv_tools {             // gg's line
+/// #line 1 "module_csv_tools.cppm"               // gg's line
+/// std::vector<row> parse(std::string_view text, char delimiter = ',') {   // as authored
+/// ```
+///
+/// **A named module is what keeps gg's surface out of the program that binds this one.** Everything
+/// the global module fragment includes is attached to the global module and is invisible to whoever
+/// imports this one, so a program with a code module in scope reaches `lib::<key>` and still earns
+/// `use of undeclared identifier 'gg'` for a gg name it wrote no line for.
 ///
 /// The refusal is [`refuse_include`]'s and is made here rather than at the program's compile,
 /// because a module is read once and used by every program the agent writes afterwards — so the
@@ -135,14 +173,15 @@ pub(super) fn namespaced(source: &str, key: &str) -> Result<String, PrepareError
     // it is unconditional: a module whose final line is `int last() { return 1; }` with no trailing
     // newline would otherwise have gg's brace glued to it.
     Ok(format!(
-        "{SURFACE_INCLUDE}\nnamespace lib::{key} {{\n#line 1 {}\n{source}\n}}  // namespace \
-         lib::{key}\n",
+        "module;\n{SURFACE_INCLUDE}\nexport module {};\nexport namespace lib::{key} {{\n#line 1 \
+         {}\n{source}\n}}  // namespace lib::{key}\n",
+        module_name(key),
         serde_json::Value::String(file)
     ))
 }
 
-/// The one line gg writes above a code module's namespace: gg's whole surface, included **outside**
-/// the namespace the module's declarations are opened inside.
+/// The one line gg writes into a code module's global module fragment: gg's whole surface, included
+/// **above** the module declaration so it is attached to the global module rather than exported.
 ///
 /// It is here rather than in the module because a module may not `#include` anything
 /// ([`refuse_include`]) — `#include` is textual, so one written inside `namespace lib::<key>` would
@@ -152,8 +191,7 @@ pub(super) fn namespaced(source: &str, key: &str) -> Result<String, PrepareError
 /// model's reply, and it never crosses the line an authorship rule is about.
 ///
 /// The umbrella rather than a module header, because gg has no way to know which of the thirteen an
-/// author will reach for and a wrong guess is a diagnostic in somebody else's coordinates. Its cost
-/// is the 31 ms of parse [`compile`](super::compile) measures, paid once per module per compile.
+/// author will reach for and a wrong guess is a diagnostic in somebody else's coordinates.
 ///
 /// Above the `#line 1` directive, so it cannot move a number: the directive is what says the
 /// author's first line is line 1, whatever stands in front of it.
@@ -190,8 +228,8 @@ fn refuse_include(source: &str) -> Result<(), PrepareError> {
          compiled inside `namespace lib::<key>`, and `#include` is textual — so the header would be \
          pulled into that namespace rather than into the file. Delete the line and write nothing in \
          its place: this sandbox compiles every module against a precompiled C++ standard library \
-         and writes `{SURFACE_INCLUDE}` above the namespace itself, so `std::vector`, `std::format` \
-         and `gg::files::read_file` are in scope with no include of your own."
+         and writes `{SURFACE_INCLUDE}` into the module's own global fragment, so `std::vector`, \
+         `std::format` and `gg::files::read_file` are in scope with no include of your own."
     )))
 }
 

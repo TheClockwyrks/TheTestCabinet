@@ -191,6 +191,10 @@ fn the_opening_program_is_a_translation_unit() {
 /// declaration is moved and none is re-synthesized. What makes the line numbers survive is the one
 /// thing only this language has — a line-control directive — so gg *says* what the author's first
 /// line is instead of subtracting from every diagnostic afterwards.
+///
+/// The namespace is exported from a **named module**, which is what keeps gg's surface out of the
+/// program that binds it: the `#include` is in the module's global fragment, and a global fragment
+/// reaches nobody who imports the module.
 #[test]
 fn a_code_module_is_a_namespace_opened_in_place() {
     let module = "std::vector<std::string> split(std::string_view text, char sep = ',') {\n  \
@@ -198,7 +202,8 @@ fn a_code_module_is_a_namespace_opened_in_place() {
     let wrapped = source::namespaced(module, "csv_tools").expect("an ordinary module is wrapped");
     assert!(
         wrapped.starts_with(
-            "#include <gg.hpp>\nnamespace lib::csv_tools {\n#line 1 \"module_csv_tools.hpp\"\n"
+            "module;\n#include <gg.hpp>\nexport module lib.csv_tools;\nexport namespace \
+             lib::csv_tools {\n#line 1 \"module_csv_tools.cppm\"\n"
         ),
         "{wrapped}"
     );
@@ -222,6 +227,21 @@ fn a_code_module_is_a_namespace_opened_in_place() {
         glued.contains("int one() { return 1; }\n}"),
         "the closing brace was glued to the author's last line:\n{glued}"
     );
+
+    // `module` and `import` are legal namespaces and illegal module-name components, and both are
+    // reachable keys — `binding_name` answers `module` for a slug that is nothing but separators —
+    // so each is escaped where the module name is written and left alone where the namespace is.
+    for (key, escaped) in [("module", "lib.Module"), ("import", "lib.Import")] {
+        let reserved = source::namespaced("int one() { return 1; }\n", key).expect("wrapped");
+        assert!(
+            reserved.contains(&format!("export module {escaped};")),
+            "{reserved}"
+        );
+        assert!(
+            reserved.contains(&format!("export namespace lib::{key} {{")),
+            "{reserved}"
+        );
+    }
 }
 
 /// **A `#include` in a module is refused by name, at the author's own line.**

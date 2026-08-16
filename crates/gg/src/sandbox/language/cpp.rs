@@ -260,9 +260,11 @@ impl ProgramLanguage for Cpp {
 
     /// **`.hpp`, and nothing else.**
     ///
-    /// A code module here is compiled as a **header** — it is put in front of the model's file with
-    /// `clang++ -include`, which is what a header is for — so a header's extension is what it is
-    /// spelled with, and `.hpp` is the one C++ uses when it means C++ rather than C.
+    /// What a skill author's C++ file is called. A code module's declarations are what a program
+    /// links against rather than a translation unit of their own, which is what a header holds, and
+    /// `.hpp` is the extension C++ uses for one when it means C++ rather than C. gg compiles the
+    /// file as a [named module](compile::compile_module) of its own and that is gg's
+    /// business rather than the author's.
     ///
     /// One rather than the several a C++ author might reach for (`.h`, `.hh`, `.hxx`), because the
     /// seam's reason for the list being a list does not apply here: it is for two languages that

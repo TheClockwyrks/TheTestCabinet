@@ -33,7 +33,7 @@
 # source and the PCH is built **once per machine**, by the first compile, into a content-keyed
 # shared toolchain directory. A PCH may only be read by the clang that wrote it and it records the
 # absolute paths of every header it precompiled — so one built in this checkout could not be read by
-# the wasi-sdk in a run image, and putting 26 MB of it in the archive would be shipping something no
+# the wasi-sdk in a run image, and putting 28 MB of it in the archive would be shipping something no
 # other machine can use. See `cpp.compile.rs`.
 #
 # THIS SET IS BYTE-REPRODUCIBLE, unlike the Swift arm's: clang stamps no per-invocation nonce into

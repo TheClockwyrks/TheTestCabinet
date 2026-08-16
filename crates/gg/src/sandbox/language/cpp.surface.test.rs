@@ -364,7 +364,7 @@ fn crossings() -> Vec<Crossing> {
 fn every_tool_crosses_the_membrane_from_its_cpp_spelling() {
     let crossings = crossings();
 
-    // One program rather than one per crossing: a compile here is ~85 ms warm, so thirty-five of
+    // One program rather than one per crossing: a compile here is ~90 ms warm, so thirty-five of
     // them would be three seconds of `clang++` for a table that reads the same. It is also the
     // stronger check — the calls must arrive in the order the program made them, so a call that
     // reached gg's dispatch under a NEIGHBOUR's name fails here as well.
@@ -1189,6 +1189,43 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
         .expect(
             "the precompiled prelude declares the standard library with no line of the program's",
         );
+
+    // **And the same question with a code module bound**, which is the one state in which this arm
+    // has anything of gg's to put in front of a program that never asked. A module reaches gg's
+    // whole surface through gg's own `#include` in its global module fragment, and the program that
+    // binds it reaches the module's namespace and nothing else — so the same call is refused for
+    // the same reason with a skill loaded as without one.
+    let modules = [crate::sandbox::CodeModule {
+        name: "csv_tools".to_string(),
+        source: "std::string greeting() {\n  gg::log(\"from the module\");\n  return \
+                 \"hi\";\n}\n"
+            .to_string(),
+    }];
+    let with_module = |source: &str| {
+        super::compile::compile_program(source, &modules, &crate::sandbox::PrepareContext::new())
+    };
+    with_module("int main() {\n  return (int)lib::csv_tools::greeting().size() - 2;\n}\n")
+        .expect("a module a program binds reaches gg's surface through gg's own line");
+    let bound = with_module(CALL).expect_err("a module in scope declares no gg name for a program");
+    match bound {
+        // Refused one step further in than the bare program above, and that is the module system
+        // rather than a weaker answer: a name attached to the global module exists in the program's
+        // translation unit and is not VISIBLE in it, which clang says by naming the include the
+        // program has to write. Either way the call does not compile.
+        crate::sandbox::PrepareFailure::Program(crate::sandbox::PrepareError::Compile(
+            diagnostic,
+        )) => assert!(
+            diagnostic.starts_with("main.cpp:2:")
+                && diagnostic.contains("missing '#include'")
+                && diagnostic.contains("'open_text' must be declared before it is used"),
+            "a program naming gg's surface with a code module in scope was refused for another \
+             reason: {diagnostic}"
+        ),
+        other => panic!(
+            "a name that is not in scope is the model's compile error, not {other:?}. gg's surface \
+             is reaching a program through the code module in its scope."
+        ),
+    }
 }
 
 /// **The bytes `clang++` reads are the bytes the model sent**, compared byte for byte in the

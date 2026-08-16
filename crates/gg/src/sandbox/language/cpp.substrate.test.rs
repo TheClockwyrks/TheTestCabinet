@@ -671,7 +671,7 @@ fn a_module_is_read_at_its_own_line_and_may_not_include_anything() {
     match broken {
         Err(PrepareFailure::Program(PrepareError::Compile(rendered))) => {
             assert!(
-                rendered.contains("module_module.hpp:3:"),
+                rendered.contains("module_module.cppm:3:"),
                 "a module's diagnostic is not at its author's own line: {rendered}"
             );
         }

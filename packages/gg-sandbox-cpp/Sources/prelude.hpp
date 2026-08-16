@@ -23,7 +23,7 @@
 // wrote, so `gg::files::read_file` is undeclared until the reply writes `#include <gg/files.hpp>`.
 // The SDK is still *available* — its headers are on the include path and its bodies are in the
 // `sdk.o` every artifact links, which is packaging — and what it is not is in scope. Measured, best
-// of five on the same machine: carrying the SDK here saved 31 ms of a 952 ms turn, and cost the arm
+// of five on the same machine: carrying the SDK here saved 33 ms of a 952 ms turn, and cost the arm
 // the one line that says where a call came from.
 //
 // WHAT DECIDES THE SET BELOW. Two rules, and both are the seam's rather than this file's.

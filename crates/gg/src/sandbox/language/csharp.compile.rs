@@ -30,7 +30,7 @@
 //! | Every compile after that | **~0.28 s** |
 //! | Of which the SDK's own 2,500 lines | ~70 ms, against ~210 ms for a program alone |
 //!
-//! Which puts it **second among the compiled arms**, behind [C++](super::super::cpp)'s ~85 ms — and
+//! Which puts it **second among the compiled arms**, behind [C++](super::super::cpp)'s ~90 ms — and
 //! that arm is only there because it precompiles a header once per machine — and comfortably ahead
 //! of `swiftc`, both JVM arms and `purs`. What it costs *beyond* the compiler is where this arm
 //! differs from those: none of them instantiates a prebuilt guest, and this one instantiates the

@@ -36,7 +36,7 @@ three compiled arms per turn rather than the dearest.
 
 **gg's own surface is deliberately not in it.** Every SDK name a program writes is reached through
 an `#include` that program wrote, so `gg` is undeclared until the reply asks for it. The cost is a
-measured 31 ms of a turn on both programs above.
+measured 33 ms of a turn on both programs above.
 
 **Exceptions work.** `-fwasm-exceptions` with the standardised encoding (`-mllvm
 -wasm-use-legacy-eh=false`, because clang still defaults to the legacy one and the pinned wasmtime
@@ -266,7 +266,7 @@ reading them.
 
 **The precompiled header is deliberately not shipped.** A PCH may only be read by the clang that
 wrote it and records the absolute path of every header in it, so one built in this checkout is
-unreadable by the wasi-sdk in a run image — and it is 26 MB. It is built once per *machine* instead,
+unreadable by the wasi-sdk in a run image — and it is 28 MB. It is built once per *machine* instead,
 by the first compile, into a content-keyed shared toolchain directory that is sealed read-only.
 
 **This set is byte-reproducible**, unlike the Swift arm's: clang stamps no per-invocation nonce into

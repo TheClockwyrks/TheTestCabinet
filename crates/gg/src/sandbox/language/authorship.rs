@@ -290,8 +290,10 @@ const UNCONVERTED: &[Unconverted] = &[
         arm: GgProgramLanguage::Cpp,
         half: Half::Module,
         did: Did::Wrapped,
-        adds: "namespace lib::module {",
-        instead: "puts the module in a namespace it declares, anchored by a `#line` directive",
+        adds: "export module lib.Module;\nexport namespace lib::module {",
+        instead: "compiles the module as a named C++ module exporting a namespace it declares, \
+                  under an include of gg's surface in the module's own global fragment, anchored by \
+                  a `#line` directive",
     },
     // ---- csharp ---------------------------------------------------------------------------------
     Unconverted {

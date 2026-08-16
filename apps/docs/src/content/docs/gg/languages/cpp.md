@@ -24,14 +24,15 @@ cleanly and traps having run nothing. The reply is read lexically for the token
 `main` followed by an open parenthesis in its code bytes, so the reading can
 only be wrong in the accepting direction.
 
-`member_separator` is `::`, code modules are compiled from `.hpp` files, and
-`checker()` is `"clang++"`, so compile time is recorded on every turn.
+`member_separator` is `::`, a code skill's C++ file is a `.hpp`, and `checker()`
+is `"clang++"`, so compile time is recorded on every turn.
 
 Every name gg offers is reached through an `#include` the program wrote. The
 precompiled header carries the C++ standard library and nothing else, so `gg` is
 undeclared until the reply writes `#include <gg/files.hpp>` or the umbrella
-`#include <gg.hpp>`. The SDK's headers are on the compile's include path and its
-bodies are linked into every artifact, which is packaging rather than scope.
+`#include <gg.hpp>`, and a code module in scope does not change that. The SDK's
+headers are on the compile's include path and its bodies are linked into every
+artifact, which is packaging rather than scope.
 
 ## Toolchain and build outputs
 
@@ -75,7 +76,7 @@ the first compile of a process, because building one means running a compiler.
 Measured on this repository's dev container, aarch64, best of five: a small
 program compiles in 90 ms with the header and 836 ms without it, and a program
 using ranges, `std::format` and `std::map` in 952 ms with and 1581 ms without.
-Keeping gg's own surface out of the header costs 31 ms of a turn, which is the
+Keeping gg's own surface out of the header costs 33 ms of a turn, which is the
 parse the reply's own `#include` asks for.
 
 ## SDK and catalogue
@@ -120,18 +121,28 @@ it while building the crate. The reflection enforces four rules:
 
 A code skill's or memory's namespace is bound at `lib::<key>`, and on this arm
 that binding is a link. Each module in scope is written into the preparation's
-workspace with its declarations opened inside `namespace lib::<key>` where they
-stand, and named on the program's command line with `-include`, in binding order
-so one module may reach another's namespace. A `#line` directive states what the
-author's first line is, so no line number moves for a module either.
+workspace as a named C++ module — `export module lib.<key>;` over an
+`export namespace lib::<key>` opened around the author's declarations where they
+stand — precompiled into a module interface of its own, and named to the
+program's compile as `-fmodule-file=lib.<key>=…` and as a link input. The
+`import lib.<key>;` lines are in one generated file put in front of the model's
+own with `-include`, which leaves the primary file's line numbering alone. A
+`#line` directive states what the author's first line is, so no line number moves
+for a module either. Each module is compiled on its own and reaches gg's surface
+and the standard library.
+
+The module declaration is what keeps gg's surface out of the program. gg writes
+`#include <gg.hpp>` into the module's global module fragment, whose names are
+attached to the global module and reach nobody who imports the module, so a
+program with a code module in scope reaches `lib::<key>` and reaches gg only
+through a line it wrote. `module` and `import` are the two words a module-name
+component may not be and are both reachable keys, so each is escaped in the
+module name and left alone in the namespace.
 
 A `#include` at a module's top level is refused by name, and the refusal says to
 delete the line. `#include` is textual, so one inside a namespace puts the
 included header inside `lib::<key>`, and a header the prelude already read
-expands to nothing at all. gg writes `#include <gg.hpp>` above the namespace
-itself, so a module reaches gg's surface and the standard library with no include
-of its own. That wrapper is the module half's alone: a program is a model's reply
-and is compiled exactly as sent.
+expands to nothing at all.
 
 A module is also compiled alone with `-fsyntax-only` when it is read, so a
 module that does not build is reported to its author rather than to every

@@ -396,10 +396,9 @@ def with_tail(detail, comment):
 class Declared:
     """One type this SDK declares, and the two names it answers to.
 
-    ``fqn`` is the key a documentation view is opened by and the string a program could write in
-    full; ``spelled`` is what a signature writes, which is the module-qualified form the prelude's
-    ``using namespace gg;`` leaves resolvable — `files::text_file` rather than `gg::files::text_file`
-    or a bare `text_file`.
+    ``fqn`` is the key a documentation view is opened by and the string a program writes; ``spelled``
+    is what a signature writes, which is that same fully-qualified form — `gg::files::text_file`
+    rather than `files::text_file` — because an ``#include`` declares names and shortens nothing.
     """
 
     def __init__(self, module, node):
@@ -914,9 +913,9 @@ class Reflector:
             "receiver": receiver,
             "name": name,
             "fqn": fqn,
-            # `null`, because on this arm the fully-qualified name IS what a program writes: the
-            # prelude's `using namespace gg;` puts every module in scope, so `files::read_file` and
-            # `gg::files::read_file` are the same path written short and long.
+            # `null`, because on this arm the fully-qualified name IS what a program writes: an
+            # `#include` declares `gg::files::read_file` and shortens nothing, so there is no second
+            # spelling for a call to be given in.
             "call": None,
             "brief": brief,
             # The tail is read off the SAME declaration the prose came from — `documented`, the
