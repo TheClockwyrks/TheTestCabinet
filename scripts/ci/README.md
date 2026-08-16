@@ -35,6 +35,7 @@ and can be run from anywhere, including locally:
 | `binary-smoke.sh`    | release-build, `cargo nextest run --release` + doctests, run binary | yes |
 | `smoke-binary.sh`  | run a built binary (`--version`/`--help`/commands) | yes      |
 | `web-build.sh`     | `npm ci`, type-check + `vite build` of the front ends | yes   |
+| `web-test.sh`      | `npm ci`, `vitest run` across every workspace, plus the Worker + Pages Functions type-checks | yes |
 | `specs-lint.sh`    | markdownlint + cspell over `test-cases/**`         | no       |
 | `contract-drift.sh`| regenerate TS bindings + JSON Schemas, fail on diff | yes     |
 | `frozen-check.sh`  | `.frozen` test-case versions match their recorded digests | yes |
@@ -51,6 +52,15 @@ do not, so every job that runs tests installs it first — pinned to
 `NEXTEST_VERSION` so CI matches the devcontainer. It is cross-platform (Linux,
 Windows, macOS) because `binary-smoke.sh` runs on all three. nextest does not
 execute doctests, so the test scripts additionally run `cargo test --doc`.
+
+`web-test.sh` is the TypeScript counterpart of `rust-test.sh`, and is separate
+from `web-build.sh` for two reasons. A failing assertion should report as a failing
+test rather than as a failing build; and the two need different things, so they
+run in parallel — the tests need only the small workspace runtime packages built
+(`npm run build:packages`), never the app bundles. It also owns the two
+type-checks no build covers: `apps/edge` (the `tcab.ai` Worker) and `functions/`
+(the gallery's Cloudflare Pages Functions, which live at the repository root
+because Pages resolves them from the project root, and so belong to no workspace).
 
 `binary-smoke.sh` is the release gate that keeps a flat-out-broken binary from
 ever being published: it builds `tcab` in the shipped release profile, runs the
@@ -75,7 +85,9 @@ the `tcab-backend` (`crates/backend`) server, the run-topology services
 `crates/core`/`crates/telemetry` libraries they share. On the TypeScript
 side it is the front ends built by `web-build.sh`: the gallery (`apps/site`), the
 operator web console (`apps/web`), and these docs (`apps/docs`), all on top of
-`packages/run-record` and the source-consumed `packages/ui`.
+`packages/run-record` and the source-consumed `packages/ui`; plus, through
+`web-test.sh`, every workspace's unit suite and the two edge components no build
+covers (`apps/edge` and the root `functions/`).
 
 The Tauri desktop app (`crates/desktop`, `apps/desktop`) is deliberately **not**
 built by these per-change CI scripts, so their runners do not need the desktop
