@@ -1,0 +1,35 @@
+# The short-link resolver behind tcab.ai.
+#
+# Deployed with `npm run deploy -w @test-cabinet/edge` (wrangler), not by a
+# git-connected build: it is a Worker rather than a Pages project, and it has no
+# build output to publish beyond the bundled script. See
+# `apps/docs/src/content/docs/development/releasing.md`.
+#
+# It holds no state. The share index it resolves against is an asset of the gallery
+# deployment, fetched over HTTP and edge-cached, so there is no KV namespace, no
+# database, and nothing to redeploy when a run is published — the gallery rebuild
+# that publishes the run is what makes its link resolvable.
+
+name = "tcab-short-links"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+
+# Both the apex and www, so a link pasted either way resolves. `zone_name` is the
+# registrable domain the route is attached to.
+routes = [
+  { pattern = "tcab.ai/*", zone_name = "tcab.ai" },
+  { pattern = "www.tcab.ai/*", zone_name = "tcab.ai" },
+]
+
+[vars]
+# The gallery every link resolves to, and the origin the share index is read from.
+# Overridden per environment below.
+GALLERY_ORIGIN = "https://testcabinet.ai"
+
+# A staging resolver pointed at a staging gallery, so the redirect and preview
+# paths can be exercised without touching the live short domain.
+[env.staging]
+name = "tcab-short-links-staging"
+
+[env.staging.vars]
+GALLERY_ORIGIN = "https://staging.testcabinet.ai"
