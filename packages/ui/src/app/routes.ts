@@ -292,3 +292,50 @@ export const routePatterns = {
   gameJamMetrics: "/game-jams/:slug/metrics",
   tournamentDetail: "/tournaments/:id",
 } as const;
+
+// A path's non-empty segments. Leading, trailing, and repeated slashes collapse
+// away, which matches how react-router treats them.
+function segmentsOf(path: string): string[] {
+  return path.split("/").filter(Boolean);
+}
+
+// Every pattern above, pre-split into path segments, for `isKnownRoute`.
+const PATTERN_SEGMENTS: ReadonlyArray<readonly string[]> =
+  Object.values(routePatterns).map(segmentsOf);
+
+/**
+ * Whether a path is addressed by any route in {@link routePatterns}.
+ *
+ * This exists for the **edge**, not for the app: the gallery is a client-routed
+ * single-page app served from one `index.html`, so a static host answers every
+ * path with the shell and a `200` — including paths the app has no route for.
+ * `functions/_middleware.ts` calls this to tell an unrecognized URL apart from a
+ * real page, and answers the former with a `404` status. Nothing in the app needs
+ * it; the router's own catch-all renders the not-found *page*.
+ *
+ * A `:param` segment matches any one segment, so this answers whether the path is
+ * *shaped* like a route, not whether the thing it names exists. Whether a run id
+ * addresses a real run is a separate question the middleware answers from the
+ * share index.
+ *
+ * **It deliberately ignores the host gates.** Several patterns mount only where
+ * the host can execute runs (`/runs/new`, the whole account section, the
+ * console-only settings tabs), and that gating lives in each section's
+ * `router.tsx` — where it belongs, next to the elements it gates. Duplicating it
+ * here would be a second source of truth that drifts. The cost is that a
+ * console-only path requested on the gallery is answered `200` with the
+ * router's not-found page rather than a `404`. It renders correctly either way,
+ * and it is not a URL anything links to; being coarse here beats being wrong
+ * about the whole table later.
+ */
+export function isKnownRoute(pathname: string): boolean {
+  const segments = segmentsOf(pathname);
+  return PATTERN_SEGMENTS.some(
+    (pattern) =>
+      pattern.length === segments.length &&
+      pattern.every(
+        (segment, index) =>
+          segment.startsWith(":") || segment === segments[index],
+      ),
+  );
+}

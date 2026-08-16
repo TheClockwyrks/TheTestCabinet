@@ -10,6 +10,7 @@
     "./tokens.css": "./src/styles/tokens.css",
     "./client": "./src/client/index.ts",
     "./app": "./src/app/index.ts",
+    "./routes": "./src/app/routes.ts",
     "./transport": "./src/transport/index.ts"
   },
   "scripts": {
