@@ -101,7 +101,8 @@ rather than binding a missing parameter to `undefined`.
 Requiring the SDK is what a turn pays for the invariant: measured on this
 repository's dev container, a program costs 2.7 ms without the line and 20.4 ms
 with it, against 2.1 ms for a plain JavaScript program on the same component.
-The compile above dominates either figure.
+The compile above dominates either figure, at roughly 127 ms for the same
+program.
 
 `packages/gg-sandbox-ruby/src/knowledge.rb` is the `lib` unit. Requiring it
 evaluates each code module the agent read, binds each namespace under the key gg

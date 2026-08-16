@@ -1365,8 +1365,8 @@ fn the_baked_runtime_makes_a_turn_affordable_and_requiring_gg_is_what_it_costs()
     //
     // Measured on this repository's dev container, best of five, interleaved with the two readings
     // above: 2.1 ms plain JavaScript, 2.7 ms Ruby, 20.4 ms Ruby under `require "gg"`. So the line
-    // costs about 17.7 ms of a turn — against the 176–190 ms this arm spends compiling that same
-    // program, which is where a Ruby turn's time actually goes.
+    // costs about 17.7 ms of a turn — against the ~127 ms this arm spends in `node` compiling that
+    // same program, which is where a Ruby turn's time actually goes.
     //
     // The bound is set on the RATIO to the same turn without the line, loose for the reason the
     // bound above is loose: what it has to catch is the SDK being loaded more than once per program
