@@ -4,9 +4,10 @@ import { BrowserRouter } from "react-router";
 import { GalleryApp, GalleryDataProvider } from "@test-cabinet/ui/app";
 import { useStaticGallery } from "./staticGallery";
 
-// A deep link such as /runs/<id> arrives at its own URL: `public/_redirects`
-// rewrites unmatched paths to the app shell with a 200, so the router reads the
-// real location and nothing has to be restored here before it mounts.
+// A deep link such as /runs/<id> arrives at its own URL: with no `404.html` in the
+// build, Cloudflare Pages answers an unmatched path with the app shell and a 200
+// at the requested URL (see `public/_redirects`), so the router reads the real
+// location and nothing has to be restored here before it mounts.
 const rootElement = document.getElementById("root");
 if (!rootElement) {
   throw new Error("Missing #root element");

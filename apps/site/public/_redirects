@@ -1,18 +1,20 @@
-# SPA fallback for the client-routed gallery.
+# No rules — deliberately. This file exists to record why there are none.
 #
-# The gallery is a single-page app, so a deep link such as /runs/<id> has no file
-# behind it. This rule REWRITES those requests to the app shell (status 200, not a
-# redirect): the shell is served at the original URL, the router resolves the route
-# client-side, and the address bar never changes.
+# The gallery is a client-routed single-page app, so a deep link such as
+# /runs/<id> has no file behind it and must still be answered with the app shell
+# and a 200. Cloudflare Pages does that on its own: a project with **no
+# `404.html`** serves `/index.html` for an unmatched path, at the requested URL,
+# with a 200. Deleting the old `404.html` is therefore the whole fix, and there is
+# nothing left to configure.
 #
-# The 200 is the point. It replaces a `public/404.html` that stashed the requested
-# path in sessionStorage and bounced through `/` to restore it — a workaround for
-# GitHub Pages, which has no rewrite configuration at all, carried over unnoticed
-# when the gallery moved to Cloudflare Pages. That trick cost a visible flash, and
-# it served every run page to crawlers as an HTTP 404 with no markup, so a shared
-# or indexed run link resolved to an error. A rewrite fixes both.
+# Do not add `/*  /index.html  200` here. Pages rejects it as an infinite loop —
+# it strips `/index.html` back to `/`, which re-matches `/*` — and logs
+# "Infinite loop detected in this rule and has been ignored" at build time. The
+# rule does nothing except make the build look broken.
 #
-# Cloudflare Pages matches existing static assets before applying these rules, so
-# the per-run assets the build emits (/runs/<id>.json, /run-events/<id>.json) are
-# still served as themselves rather than being swallowed by the wildcard.
-/*    /index.html    200
+# What this replaced: a `public/404.html` that stashed the requested path in
+# sessionStorage and bounced through `/` to restore it client-side. That is the
+# GitHub Pages workaround, correct when the gallery was hosted there and carried
+# over unnoticed when it moved to Cloudflare Pages. It cost a visible flash, and
+# it served every run page to crawlers as an HTTP 404 with no markup — so a run
+# link resolved to an error when shared and no run was indexable.
