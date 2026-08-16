@@ -4693,8 +4693,9 @@ pub enum GgProgramLanguage {
     /// and an arm that forbade `extension` would forbid the construct the language is built around.
     /// So nothing is prepended, nothing appended and no line moves: a diagnostic at line 7 is line
     /// 7. gg's shell is a second file of the same module, which is how it names the entry point
-    /// Swift lowers top-level code into and how `@_exported import gg` puts the whole SDK in the
-    /// model's file with no import line.
+    /// Swift lowers top-level code into. The SDK is a Swift module of its own, reached by the
+    /// `import gg` the program writes on its own first line; the shell's imports are file-scoped
+    /// and reach nothing the model wrote.
     ///
     /// It is also the arm with the **most expensive instantiate and the cheapest compile of its
     /// shape**: `swiftc` takes about a third of a second and the ~7 MB component it produces takes

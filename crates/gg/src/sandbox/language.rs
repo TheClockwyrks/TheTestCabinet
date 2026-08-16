@@ -52,7 +52,7 @@
 //!   include path, a linked archive: everything that puts gg's SDK where this language's compiler
 //!   can find it is how a library is delivered. What is not allowed is a **name in scope with no
 //!   line the model wrote** — a prelude glob, a `global using`, a precompiled header carrying the
-//!   surface, an `@_exported import`, a scope of names handed to an evaluator. The test is whether
+//!   surface, a re-exported import, a scope of names handed to an evaluator. The test is whether
 //!   the program contains the line that reaches the name.
 //! * **A line number is reached through a source map or not at all.** An arm that arrives at one by
 //!   arithmetic over its own wrapper is reporting a program other than the one the model sees, and a
@@ -332,7 +332,7 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// **Making the SDK available is packaging and is allowed** — a classpath entry, an `--extern`,
     /// an include path, a linked archive. **A name in scope with no line the model wrote is not**: a
     /// prelude glob, a `global using`, a precompiled header carrying gg's surface, an
-    /// `@_exported import`, a scope of names handed to an evaluator. Every SDK name a program writes
+    /// re-exported import, a scope of names handed to an evaluator. Every SDK name a program writes
     /// is reached through an import that program writes, and the
     /// [documentation view](crate::sandbox::ModuleView) of a symbol states that line.
     ///

@@ -164,18 +164,20 @@ below is in scope under the last segment of its path, because
 {{#if (eq language.id "swift")}}
 Your response is compiled verbatim, as a whole Swift file. It is the top level of
 a program, so bare statements run in the order you wrote them and every
-declaration Swift has is legal beside them.
+declaration Swift has is legal beside them. The Swift standard library is there;
+every other module is reached by writing its `import`.
 
-Every call throws, so every one of them is written with `try`. A failure you
-expect is caught with `catch let failure as core.ToolError`, whose `code` is an
-`enum`; let the rest escape, and gg names the call that failed.
+A call that can fail is `throws` and its signature says so, so `try` is the whole
+of the ceremony. A failure you expect is caught with
+`catch let failure as core.ToolError`, whose `code` is an `enum`; let the rest
+escape, and gg names the call that failed.
 
 Required arguments are positional and optional ones have default values.
 Everything whose role its name does not already carry has an argument label, so a
-signature you look up shows you the labels the call is written with. Each module
-below is a caseless `enum` already in scope, so its path is what you write —
-written out in full, with `gg` in front of it, where a declaration of your own
-takes the short name.
+signature you look up shows you the labels the call is written with. `import gg`
+is the line that brings every module below into scope, each a caseless `enum`
+whose path is what you write — written out in full, with `gg` in front of it,
+where a declaration of your own takes the short name.
 {{/if}}
 {{#if (eq language.id "typescript")}}
 Your response is evaluated as the body of a function whose parameters include

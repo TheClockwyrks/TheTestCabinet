@@ -62,17 +62,19 @@ it buys:
 ```text
 C#     using Gg;                 →  Files.WriteFile(…)   unshortened  Gg.Files.WriteFile(…)
 C++    #include <gg/files.hpp>   →  gg::files::read_file(…)
+Swift  import gg                 →  files.readFile(…)    unshortened  gg.files.readFile(…)
 Rust   use gg::files;            →  files::read_file(…)  unshortened  gg::files::read_file(…)
 ```
 
-Rust's is the form that arm is converting to. PureScript, C# and C++ hold the
-condition today: a PureScript program writes `import Gg.Files as Gg.Files` for
-every module it calls, a C# program writes `using Gg;` once or names each module
-in full, and a C++ program writes one `#include` per module it calls and then the
-full path, since an include declares a name rather than shortening one. Every
-other arm puts its SDK in a program's scope before the program compiles, through
-a prelude, a re-exported import or a scope handed to an evaluator, and each arm's
-page states which of those its own is.
+Rust's is the form that arm is converting to. PureScript, C#, C++ and Swift hold
+the condition today: a PureScript program writes `import Gg.Files as Gg.Files`
+for every module it calls, a C# program writes `using Gg;` once or names each
+module in full, a C++ program writes one `#include` per module it calls and then
+the full path, since an include declares a name rather than shortening one, and
+a Swift program writes `import gg` once, which is the one line that reaches gg's
+Swift module at all. Every other arm puts its SDK in a program's scope before the
+program compiles, through a prelude or a scope handed to an evaluator, and each
+arm's page states which of those its own is.
 
 What survives a converted arm without a line is package availability: a classpath
 entry, an extern prelude, an include path, a linked archive. That is how a

@@ -2,13 +2,6 @@
 title: "Swift"
 ---
 
-This arm compiles a program's own bytes and locates every diagnostic in the
-model's coordinates. It does not keep the rest of the
-[invariants](/gg/responses-as-code/invariants/) yet, and this page states what it
-does today: gg's shell writes `@_exported import gg`, so gg's names are in scope
-with no line the model wrote, and a code module's declarations are moved into an
-extension and made `static`.
-
 ## Preparation
 
 The arm is selected per agent by the responses-as-code capability's `language`
@@ -21,6 +14,12 @@ declarations and bare statements together, so the file the compiler reads is the
 reply itself. gg's shell is a second file of the same Swift module: Swift lowers
 a top-level file's statements into the target's C entry point, and the shell
 names that symbol and calls it from the component's `run` export.
+
+The shell's own two `import` lines are file-scoped, so what they name is in
+scope in the shell and in no other file of the module. One is the SDK, for the
+one function the shell asks it for. The other is the clang module declared by
+`Sources/module.modulemap`, which carries the generated canonical ABI, `malloc`,
+`free` and the entry-point symbol the shell calls.
 
 One `swiftc` invocation compiles the model's file, the shell, the code modules
 in scope, the prebuilt SDK module and the library archive at `-Osize -g`. gg
@@ -50,7 +49,7 @@ and publishes four files, none of them committed. The arm reaches them through
 
 | Artifact | What it carries |
 | --- | --- |
-| `swift.guest.tar.gz` | The bridging header, the C bindings generated from `crates/gg/wit` compiled to a wasm object, the component-type object, the shell's source, and this arm's SDK prebuilt as `gg.swiftmodule` plus `gg.o` |
+| `swift.guest.tar.gz` | The shell's header and the clang module map that names it, the C bindings generated from `crates/gg/wit` compiled to a wasm object, the component-type object, the shell's source, and this arm's SDK prebuilt as `gg.swiftmodule` plus `gg.o` |
 | `swift.libraries.tar.gz` | The curated library set as one static archive, plus the `.swiftmodule` files a program's `import` resolves against |
 | `swift.adapter.wasm` | The pinned `wasi_snapshot_preview1` reactor adapter |
 | `swift.toolchain.json` | What built the above, and what is in it |
@@ -61,9 +60,11 @@ rename and sealed read-only.
 
 ## SDK and signature catalogue
 
-The SDK is compiled ahead of time into a module named `gg`, and the shell writes
-`@_exported import gg`. A re-export is module-scoped, so the whole surface is in
-scope in the model's own file with no import line. A separate module is also
+The SDK is compiled ahead of time into a Swift module named `gg`, and a program
+reaches it by writing `import gg`. What the compile supplies is the `-I` that
+resolves the module, which tells the compiler the module exists and puts no name
+in scope, so a reply that writes no import reaches nothing gg carries. That is
+the line every module of this arm's catalogue states. A separate module is also
 what lets a program shadow a name gg bound rather than collide with it.
 
 Twelve capability modules are caseless `enum`s, so `files.readFile("a.swift")`
@@ -109,7 +110,9 @@ compiler reads.
 
 Declarations Swift keeps out of a type stay at file scope, which here is the
 program's own module, so a `protocol` two code modules both declare is a
-redeclaration the turn's compile reports. A compiler conditional at a module's
+redeclaration the turn's compile reports. An `import` is one of them, so a code
+module that calls gg's surface writes `import gg` exactly as a program does, and
+gg writes no line above the author's first. A compiler conditional at a module's
 top level is refused by name as unsupported, because its two halves would land
 in two different `extension` bodies.
 
@@ -148,10 +151,19 @@ Swift runtime failure: Index out of range
   … at /gg/work/main.swift:3:22
 ```
 
-An uncaught throw is the exception. The runtime hands the error to
-`swift_errorInMain` from the entry point's synthesized epilogue, so what reaches
-the model is gg's own sentence naming the failed call, with no line. Catching an
+An uncaught throw is the exception, because Swift propagates an error by return
+rather than by unwinding. By the time the entry point's synthesized epilogue
+hands the error to `swift_errorInMain`, the throwing call's frame has been
+popped, so what the model reads is the runtime's own sentence naming the failed
+call and the standard library's location rather than its own line. Catching an
 expected failure is what buys the line back.
+
+Two further failures are not reported faithfully, and both are the language or
+the adapter rather than this arm. A `Task` never runs: Swift's cooperative
+executor needs a drain, an `@main async` performs one and a top-level file has
+none, so an unobserved failing task is a turn recorded as a success. And
+`exit(3)` arrives as `exit(1)`, because the pinned preview1 adapter imports
+`wasi:cli/exit.exit`, which carries a boolean rather than a status.
 
 ## Prompt segment
 
@@ -161,11 +173,13 @@ writes a function name or a signature: every spelling they quote is resolved
 from this arm's catalogue when the template renders. The segment states:
 
 - the reply is compiled verbatim as a whole Swift file, whose top-level
-  statements are the program;
-- every call throws, so `try` is required, and an expected failure is caught as
-  `core.ToolError` and branched on by its `code`;
-- optional arguments are default values passed by label, and each module is a
-  caseless `enum` in scope, with the fully qualified form always reaching gg's.
+  statements are the program, and every module beyond the standard library is
+  reached by writing its `import`;
+- a fallible call is `throws`, so `try` is required, and an expected failure is
+  caught as `core.ToolError` and branched on by its `code`;
+- optional arguments are default values passed by label, and `import gg` is the
+  line that brings each module into scope as a caseless `enum`, with the fully
+  qualified form always reaching gg's.
 
 The arm names `swiftc` as its [checker](/gg/languages/compilation/), so the
 shared body states that a program is compiled before it runs, that one `swiftc`
@@ -173,9 +187,9 @@ refuses comes back as diagnostics at the model's own line and column instead of
 running, and that a call the run withheld compiles and fails when it runs. The
 linked library set is carried by a compile failure rather than by the prompt.
 
-Source gg synthesizes for this arm is written in the same idiom:
-`try views.openFile("src/main.swift")`, with a window passed as the call's own
-`offset:` and `limit:` arguments.
+Source gg synthesizes for this arm is written in the same idiom, under the same
+import line: `import gg` and then `try gg.views.openFile("src/main.swift")`,
+with a window passed as the call's own `offset:` and `limit:` arguments.
 
 ## Healing dialect
 
@@ -193,6 +207,8 @@ The argument label is Swift's defining feature, so a call reads as a sentence
 and the label is part of the function's name.
 
 ```swift
+import gg
+
 try files.editFile("src/main.swift", replacing: "old", with: "new")
 let built = try shell.run("swift build", timeout: 300)
 try views.openText("build", body: built.output)

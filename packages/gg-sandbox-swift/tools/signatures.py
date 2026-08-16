@@ -51,6 +51,14 @@ SCHEMA = 1
 #: What the emitted catalogue records itself as reflected from.
 GENERATED_FROM = "packages/gg-sandbox-swift/Sources/SDK/ (swiftc -emit-symbol-graph)"
 
+#: The one line a Swift program writes to reach this surface, stated by every module.
+#:
+#: Composed here rather than reflected, which is the one thing the invariants let an arm compose
+#: itself: a Swift symbol graph records the module a declaration belongs to and no import line.
+#: ``crates/gg/src/sandbox/language/swift.rs``'s ``SURFACE_IMPORT`` is the other copy, and
+#: ``swift.test.rs`` holds this catalogue's modules to it.
+SURFACE_IMPORT = "import gg"
+
 #: The types every call's failure arm refers to, closed over on every entry because every fallible
 #: function in this SDK throws a ``core.ToolError`` — including the one that cannot fail, whose
 #: declaration says so by not being ``throws`` at all.
@@ -808,10 +816,11 @@ class Reflector:
                     "path": module.path,
                     "brief": brief,
                     "detail": detail,
-                    # `null`, and truthfully: gg's own shell re-exports this SDK into the program's
-                    # module with `@_exported import gg`, so there is no import line a program would
-                    # be right to write.
-                    "import": None,
+                    # The one line a Swift program writes to reach any of this, and the same
+                    # string on every module: the thirteen are caseless `enum`s in ONE Swift
+                    # module, so one `import` brings all of them. `crates/gg`'s own
+                    # `SURFACE_IMPORT` is the other copy and a test holds the two equal.
+                    "import": SURFACE_IMPORT,
                 }
             )
         return out

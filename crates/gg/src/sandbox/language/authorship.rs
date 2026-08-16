@@ -39,8 +39,8 @@
 //! * **A second compilation unit that names the model's.** A generated entry class calling into a
 //!   class the model's statements were placed in, a `GlobalUsings.cs` beside the program, a shell
 //!   that calls `main`. Every byte the model wrote is still there, in its own file.
-//! * **An SDK in scope with no line the model wrote.** A precompiled header carrying gg's surface, an
-//!   `@_exported import`, a prelude glob, a scope of names handed to an evaluator. Nothing is added
+//! * **An SDK in scope with no line the model wrote.** A precompiled header carrying gg's surface, a
+//!   re-exported import, a prelude glob, a scope of names handed to an evaluator. Nothing is added
 //!   to the source; the compiler is simply told the names already exist.
 //!
 //!   The ECMAScript arms deliver that scope by evaluating the program as the body of a function,
@@ -306,12 +306,6 @@ const UNCONVERTED: &[Unconverted] = &[
     // No row, because there is nothing here to record: these arms hand the compiler what they were
     // handed, and what they do besides is a shape this measurement says it cannot see.
     //
-    // * A Swift program reaches gg's surface with no line the program wrote — a shell writing
-    //   `@_exported import gg` behind `-import-objc-header`. Neither C# nor C++ belongs on that
-    //   list any more: C#'s SDK is compiled beside the program and C++'s is an include path and a
-    //   linked object, each of which tells the compiler the library exists and puts nothing in
-    //   scope, and `csharp.surface.test.rs` and `cpp.surface.test.rs` ask the two compilers to say
-    //   so.
     // * Kotlin lifts a model's `import` lines to the head of the file when it wrote any, and gg's
     //   own opening program writes none.
     // * PureScript supplies a module header when the reply has none and renames one that names

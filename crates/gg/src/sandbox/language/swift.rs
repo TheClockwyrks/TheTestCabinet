@@ -37,13 +37,14 @@
 //! `delegation.sendMessage("note", to: id)`. A value a call hands back may carry the call that
 //! belongs to it: `handle.send(…)`, `view.close()`, `hit.read()`.
 //!
-//! It is in scope with **no import line**, and that is what lets the reply stay verbatim. The SDK is
-//! compiled ahead of time into a module called `gg`, and gg's shell — a second file of the model's
-//! own module — writes `@_exported import gg`. A plain `import` is file-scoped and would put nothing
-//! in `main.swift`; a re-export is module-scoped, so the model's file opens with the whole surface
-//! already there. A separate module is also what makes the SDK **shadowable**: a program that
-//! declares its own `files` or its own `DirEntry` wins, where source compiled into the program's own
-//! module would be a redeclaration error on the model's own line.
+//! It is reached through **one line the program writes**, and that line is
+//! [`import gg`](SURFACE_IMPORT). The SDK is compiled ahead of time into a Swift module called `gg`,
+//! and what the compile supplies is the `-I` that resolves it — packaging, which tells the compiler
+//! the module exists and puts no name in scope. A reply that writes no import reaches nothing gg
+//! carries, and `swift.surface.test.rs` asks `swiftc` to say so. A separate module is also what
+//! makes the SDK **shadowable**: a program that declares its own `files` or its own `DirEntry`
+//! wins, where source compiled into the program's own module would be a redeclaration error on the
+//! model's own line.
 //!
 //! The library set is the Swift standard library, the modules the Swift SDK for WebAssembly ships
 //! (Foundation and its companions, `RegexBuilder`, `Synchronization`, `Observation`, `WASILibc`) and
@@ -66,8 +67,8 @@
 //!
 //! **The model's reply, unaltered, as a top-level Swift file.** Not a function body, not a
 //! declaration list, and not anything gg wrapped: the bytes the model wrote are the bytes `swiftc`
-//! reads, so a diagnostic at line 7 is line 7 and there is no offset to subtract anywhere in this
-//! arm.
+//! reads — its own `import gg` on line 1 included — so a diagnostic at line 7 is line 7 and there
+//! is no offset to subtract anywhere in this arm.
 //!
 //! That is forced rather than chosen. Swift refuses `extension`, `protocol` and `import` inside a
 //! function body, so the wrapper the Rust arm uses — and that every statement-shaped arm before it
@@ -77,7 +78,8 @@
 //!
 //! What makes it work is that gg's shell is a second file of the **same module**: Swift lowers a
 //! top-level file's statements into the target's C entry point, and the shell, sharing the module,
-//! names that symbol and calls it from the `run` export. See [`compile`].
+//! names that symbol and calls it from the `run` export. The shell's own two `import` lines are
+//! file-scoped, so nothing they name is in scope in the reply. See [`compile`].
 //!
 //! # What this arm has that no other does
 //!
@@ -120,7 +122,9 @@
 //! scope, and each becomes a further file of the program's **own Swift module**, with its top-level
 //! declarations moved into `lib.<key>` by being wrapped where they stand — see [`source`] for the
 //! shape, for what it preserves that the two alternatives would have given up, and for the one
-//! construct it refuses. The consequence a model can see is that `lib.csvTools.parse` is a **name
+//! construct it refuses. An `import` is one of the declarations Swift keeps at file scope, so a
+//! module that calls gg's surface writes [`import gg`](SURFACE_IMPORT) exactly as a program does,
+//! and gg writes no line above the author's first. The consequence a model can see is that `lib.csvTools.parse` is a **name
 //! the compiler resolves** rather than a property looked up on a value: a key that does not exist
 //! is a diagnostic on the turn that wrote it, where an interpreted arm finds out when the call is
 //! reached.
@@ -213,7 +217,7 @@ impl ProgramLanguage for Swift {
 
     /// Unpack the embedded guest archive and library set now, so the first code turn does not.
     ///
-    /// The whole of this arm's warm-up: 182 KB and 3.4 MB decompressed, once per machine. There is
+    /// The whole of this arm's warm-up: 185 KB and 3.4 MB decompressed, once per machine. There is
     /// no daemon to start and no compiler to load, because `swiftc` is a one-shot process whose cost
     /// is the compile rather than the start-up. Idempotent and best effort — a failure here is the
     /// failure the first compile makes, and there it is classified, counted and reported as a
@@ -276,10 +280,24 @@ impl ProgramLanguage for Swift {
         &healing::SWIFT_DIALECT
     }
 
-    /// [`try views.openFile("src/main.swift")`](self::open_file_statement) — with the window as the
-    /// call's own two optional arguments, passed by label.
+    /// [`try gg.views.openFile("src/main.swift")`](self::open_file_statement) — with the window as
+    /// the call's own two optional arguments, passed by label.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
         open_file_statement(&spell(self, VIEWS_OPEN_FILE), path, window)
+    }
+
+    /// The statements under [the one line](SURFACE_IMPORT) that puts the call they make in scope.
+    ///
+    /// The seam's default is the statement list alone, which on this arm is a text that would not
+    /// compile: `gg` is a module, so a program that names it and imports nothing reaches nothing.
+    /// gg pushes this into an agent's transcript as an assistant turn a model reads as the example
+    /// of a well-formed reply, so the example has to be one.
+    fn open_file_program(&self, views: &[(&str, Option<FileWindow>)]) -> String {
+        let statements: Vec<String> = views
+            .iter()
+            .map(|(path, window)| self.open_file_statement(path, *window))
+            .collect();
+        format!("{SURFACE_IMPORT}\n\n{}", statements.join("\n"))
     }
 
     /// [An array of names and a `for` over it](self::open_docs_views_statement), each iteration
@@ -322,6 +340,20 @@ impl ProgramLanguage for Swift {
 // ---------------------------------------------------------------------------------------------
 // The syntax this arm writes
 // ---------------------------------------------------------------------------------------------
+
+/// **The one line a Swift program writes to reach gg's surface.**
+///
+/// `gg` is an ordinary Swift module the compile resolves through an `-I`, so a program either
+/// writes this line or reaches nothing gg carries — including the qualified `gg.files.readFile`,
+/// since `gg` is itself the module's name. It is the line every module of this arm's catalogue
+/// states as its [import](crate::sandbox::ModuleDoc::import), which a documentation view quotes and
+/// which `swift.test.rs` holds this constant to; the same string is written by
+/// `packages/gg-sandbox-swift/tools/signatures.py`, which is where the catalogue gets it.
+///
+/// One line for thirteen modules rather than a line each, because that is what a Swift module is:
+/// the thirteen are caseless `enum`s declared in one module, and an `import` of it brings all of
+/// them.
+pub(super) const SURFACE_IMPORT: &str = "import gg";
 
 /// `csv-tools` → `csvTools`, `my_helpers.v2` → `myHelpersV2`, `9lives` → `_9lives`.
 ///
@@ -401,6 +433,10 @@ pub(super) fn open_file_statement(
 ///
 /// The empty case carries a type annotation, because an empty array literal has no element type to
 /// infer and `[]` alone is *empty collection literal requires an explicit type*.
+///
+/// It opens with [the one line](SURFACE_IMPORT) that puts the call in scope, because this is a whole
+/// program rather than a fragment: it is the on-use script of every built-in family skill, and a
+/// script that named `gg` without importing it would not compile.
 pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) -> String {
     let entries: Vec<String> = names
         .iter()
@@ -410,7 +446,9 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
         true => "let functions: [String] = []\n".to_string(),
         false => format!("let functions = [\n{},\n]\n", entries.join(",\n")),
     };
-    format!("{listed}for name in functions {{\n    try {open_docs_view}(name)\n}}\n")
+    format!(
+        "{SURFACE_IMPORT}\n\n{listed}for name in functions {{\n    try {open_docs_view}(name)\n}}\n"
+    )
 }
 
 /// The opening turn: one array of module paths listed in full, then one of the names opened as
@@ -428,6 +466,9 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
 /// Every call is fallible, so every one is written with `try` and nothing catches: that is this
 /// arm's failure model, and a bootstrap that swallowed its own failure would be a worked example of
 /// doing so.
+///
+/// It opens with [the one line](SURFACE_IMPORT) every Swift program that calls gg opens with, which
+/// is the first thing this example teaches and the reason it compiles.
 pub(super) fn bootstrap_program(
     search: &str,
     open_docs_view: &str,
@@ -447,7 +488,9 @@ pub(super) fn bootstrap_program(
     let paths = listed("modules", modules);
     let functions = listed("functions", docs);
     format!(
-        "{paths}for path in modules {{\n    \
+        "{SURFACE_IMPORT}\n\
+         \n\
+         {paths}for path in modules {{\n    \
              _ = try {search}(\"\", module: path, limit: {MAX_SEARCH_LIMIT})\n\
          }}\n\
          \n\

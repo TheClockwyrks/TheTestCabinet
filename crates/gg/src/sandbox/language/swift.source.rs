@@ -46,6 +46,12 @@
 //! compile reports. That is the narrowest of the three prices, and the two rejected shapes each paid a
 //! wider one.
 //!
+//! Staying at file scope is also what makes a module's own `import gg` work, and what makes it
+//! **necessary**: a Swift `import` reaches the file that wrote it and no other file of the module,
+//! so a code module that calls gg's surface writes the line its program writes. gg puts no import
+//! above a module's first line — which is what keeps a module diagnostic at the author's own line
+//! with no directive and no offset.
+//!
 //! # What refuses, and why it is the only refusal
 //!
 //! A `#if` at a module's top level. Its lines are not a declaration, they bracket declarations that

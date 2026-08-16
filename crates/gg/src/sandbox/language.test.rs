@@ -294,7 +294,7 @@ fn every_language_writes_the_program_that_opens_the_session() {
 /// [`ModuleView::import`](crate::sandbox::ModuleView): a line to write, or nothing to write because
 /// this arm's SDK is in a program's scope before the model's code is compiled. Nine of the eleven
 /// arms are in the second state, and the second state is a claim about **how that arm delivers its
-/// SDK** — a prelude, a precompiled header, an `@_exported import`, a scope injection. Nothing
+/// SDK** — a prelude, a precompiled header, a re-exported import, a scope injection. Nothing
 /// about the catalogue notices when that stops being true. The day an arm's SDK
 /// has to be imported, every view on that arm quietly tells every model the opposite, and the model
 /// pays with a compile error naming a symbol it was told it already had.

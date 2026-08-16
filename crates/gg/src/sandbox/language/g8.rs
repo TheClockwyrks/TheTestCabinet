@@ -362,17 +362,23 @@ const KNOWN_HOLES: &[Hole] = &[
     Hole {
         arm: GgProgramLanguage::Swift,
         shape: Shape::ToolError,
-        // The words are whole and the location is the STANDARD LIBRARY's: an error that escapes
-        // top-level code is reported where Swift's runtime raises it, and no frame of the model's
-        // own file survives. This is the shape an uncaught gg failure takes, i.e. the likeliest
-        // runtime failure a gg program has.
+        // The words are whole — Swift's own `Fatal error: Error raised at top level:` in front of
+        // the failed call's name and code — and the location is the STANDARD LIBRARY's. Swift
+        // propagates an error by RETURN, so by the time the entry point's synthesized epilogue
+        // hands it to `swift_errorInMain` the throwing call's frame has already been popped: what
+        // the runtime reports is where it raised the fatal error, and no frame of the model's own
+        // file survives to symbolicate. Nothing this arm can do reaches past that, since catching
+        // the error is the one thing that keeps the frame and catching is interception.
         instead: Instead::Says("Swift/ErrorType.swift:254"),
     },
     Hole {
         arm: GgProgramLanguage::Swift,
         shape: Shape::FailureValue,
-        // Nothing. A `Task` that throws runs to completion silently: the SDK binds `feedback.log`
-        // and nothing else, so there is no channel a deferred failure could arrive on.
+        // Nothing, and the reason is one step earlier than it looks: the `Task`'s body never runs
+        // at all. Swift's cooperative executor needs a drain, an `@main async` is what performs
+        // one, and a top-level file has none — so the task is enqueued, the entry point returns and
+        // the shell hands control back. Measured by logging inside the body: `before` and `after`
+        // arrive and the body's own line never does. Nothing gg can capture, because nothing ran.
         instead: Instead::Nothing,
     },
     Hole {

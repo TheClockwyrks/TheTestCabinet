@@ -113,17 +113,17 @@ fn a_quoted_path_is_escaped() {
     );
 }
 
-/// **The documentation program is an array and a loop**, and the empty case carries a type
-/// annotation because an empty array literal has none to infer.
+/// **The documentation program is an array and a loop under the one import line**, and the empty
+/// case carries a type annotation because an empty array literal has none to infer.
 #[test]
 fn the_documentation_program_is_an_array_and_a_loop() {
     assert_eq!(
         swift().open_docs_views_statement(&["openText", "openFile"]),
-        "let functions = [\n    \"openText\",\n    \"openFile\",\n]\nfor name in functions {\n    try gg.views.openDocsView(name)\n}\n",
+        "import gg\n\nlet functions = [\n    \"openText\",\n    \"openFile\",\n]\nfor name in functions {\n    try gg.views.openDocsView(name)\n}\n",
     );
     assert_eq!(
         swift().open_docs_views_statement(&[]),
-        "let functions: [String] = []\nfor name in functions {\n    try gg.views.openDocsView(name)\n}\n",
+        "import gg\n\nlet functions: [String] = []\nfor name in functions {\n    try gg.views.openDocsView(name)\n}\n",
     );
 }
 
@@ -141,7 +141,9 @@ fn the_opening_program_writes_every_call_with_try() {
     assert_eq!(
         swift().bootstrap_program(&["files", "views"], &["openText"]),
         format!(
-            "let modules = [\n    \"files\",\n    \"views\",\n]\n\
+            "import gg\n\
+             \n\
+             let modules = [\n    \"files\",\n    \"views\",\n]\n\
              for path in modules {{\n    \
                  _ = try gg.docs.search(\"\", module: path, limit: {limit})\n\
              }}\n\
@@ -150,6 +152,31 @@ fn the_opening_program_writes_every_call_with_try() {
              for name in functions {{\n    try gg.views.openDocsView(name)\n}}\n"
         )
     );
+}
+
+/// **Every module of this arm's catalogue states the one line gg writes down beside it.**
+///
+/// Two copies of `import gg` exist and they have to be the same string: the one
+/// `packages/gg-sandbox-swift/tools/signatures.py` composes into every module's
+/// [import](crate::sandbox::ModuleDoc::import), which is what a documentation view quotes to a
+/// model, and [`SURFACE_IMPORT`](super::SURFACE_IMPORT), which is what gg's own synthesized
+/// programs write. A model told one line and handed another is a compile error on the turn it
+/// copied.
+///
+/// Every module rather than one, because the field is per module and an arm that stated a line for
+/// half its surface would be telling models the other half is in scope already.
+#[test]
+fn every_module_states_the_one_import_line_this_arm_writes() {
+    let modules = crate::sandbox::catalogue_modules(swift());
+    assert!(!modules.is_empty(), "this arm declares modules");
+    for module in modules {
+        assert_eq!(
+            module.import,
+            Some(super::SURFACE_IMPORT),
+            "`{}` states an import line gg does not write",
+            module.path
+        );
+    }
 }
 
 /// **A code module is not the same shape as a program here**, so this arm answers the isolation

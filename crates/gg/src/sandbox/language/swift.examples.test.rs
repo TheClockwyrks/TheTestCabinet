@@ -196,7 +196,12 @@ fn every_swift_example_a_model_is_shown_compiles() {
     // Each snippet is the body of its own `throws` function, which is what admits the `try` every
     // call on this surface needs — and what keeps one snippet's bindings out of the next one's
     // scope. Nothing calls them: this gate compiles examples rather than running them.
-    let mut program = String::new();
+    //
+    // The one line above them is [the import](super::SURFACE_IMPORT) an example is written to be
+    // read under, and it is written here rather than in each snippet for the reason a model writes
+    // it once: it is a property of the file, not of the call. An example that named a module the
+    // catalogue does not carry still fails, because this line brings that one module and no other.
+    let mut program = format!("{}\n\n", super::SURFACE_IMPORT);
     for (index, (label, snippet)) in snippets.iter().enumerate() {
         program.push_str(&format!(
             "// {label}\nfunc __ggExample{index}() throws {{\n{}\n}}\n",
