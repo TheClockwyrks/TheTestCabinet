@@ -16,7 +16,9 @@ Keyboard only. Both paddles move at the constant speed defined in
 - Player one moves the left paddle with `W`/`S`.
 - Player two moves the right paddle with `Up`/`Down`.
 - Each movement key moves only its own player's paddle.
-- `Esc` or `P` pauses at any time (the Paused screen in `specs/ui.md`).
+- `Esc` or `P` pauses at any time (the Paused screen in `specs/ui.md`). Either key
+  also resumes: pressing it on the Paused screen returns to the match, so the pause
+  key toggles.
 - `M` toggles mute.
 
 ## HUD

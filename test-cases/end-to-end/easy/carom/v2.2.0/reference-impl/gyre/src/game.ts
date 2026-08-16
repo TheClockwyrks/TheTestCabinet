@@ -235,7 +235,10 @@ export class Game {
           if (isPause(code)) this.pause();
           break;
         case "paused":
-          if (isBack(code)) {
+          // Both routes out of a pause (specs/ui.md): the pause key toggles — `isPause`
+          // covers `Esc` and `P`, and subsumes the menus' `Esc` back key — and RESUME,
+          // the entry the menu opens on, confirms through `selectPause`.
+          if (isPause(code)) {
             this.resume();
           } else {
             this.menuInput(code, PAUSE_ITEMS.length, (i) =>
@@ -403,7 +406,10 @@ export class Game {
 
   // Countdown digit (a snappy 3-2-1 rendered across the 1.0 s hold).
   countdownNumber(): number {
-    return Math.min(3, Math.max(1, Math.ceil((this.holdTimer / HOLD_TIME) * 3)));
+    return Math.min(
+      3,
+      Math.max(1, Math.ceil((this.holdTimer / HOLD_TIME) * 3)),
+    );
   }
 
   // Progress 0..1 within the current countdown digit, for a pop animation.

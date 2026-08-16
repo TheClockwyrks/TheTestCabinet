@@ -3,12 +3,28 @@
 // — rather than teleporting to a fresh spot (a re-serve or a jump back to center).
 //
 // A live ball is posed mid-flight and allowed to travel, then the game is paused. The
-// ball is confirmed frozen, then the game is resumed and stepped a single tick: the
-// ball must be exactly one step's travel on from where it was paused, at its
-// preserved velocity. A build that re-centered or re-served the ball on resume lands
-// far from that continuation and fails. See validation/_helpers.mjs.
+// ball is confirmed frozen, then the game is resumed and stepped a short way on: the
+// ball must be exactly that much of its preserved velocity on from where it was
+// paused. A build that re-centered or re-served the ball on resume lands far from that
+// continuation, and one that never resumed at all has not moved from it, so both fail.
+// See validation/_helpers.mjs.
 
-import { arrangeLiveBall, TICK_HZ, ball0 } from "../_helpers.mjs";
+import {
+  arrangeLiveBall,
+  resumeWithKeys,
+  TICK_HZ,
+  ball0,
+} from "../_helpers.mjs";
+
+// How far the resumed ball is carried before it is read. The posed flight travels
+// 3.33 px per tick horizontally and 1 px vertically, so a single tick moves the ball
+// less than the 2 px tolerance the reading is compared within — a ball that never
+// resumed at all would sit inside it on the vertical axis, and only 1.33 px outside it
+// on the horizontal. Reading 12 ticks on instead puts a continued ball 40 px and 12 px
+// from where it was suspended, an order of magnitude clear of the tolerance either way,
+// while still landing well short of the obstacles (x 480-500 and 780-800) and the
+// walls, so the continuation stays the straight line the assertions predict.
+const RESUMED_TICKS = 12;
 
 export default function item() {
   let paused;
@@ -32,11 +48,11 @@ export default function item() {
       paused = ball0(await api.snapshot());
       await api.advance(120); // 1 s paused
       stillPaused = ball0(await api.snapshot());
-      await api.call("press", "Escape"); // resume
-      await api.advance(1); // a single live step
+      await resumeWithKeys(api); // resume through the pause menu
+      await api.advance(RESUMED_TICKS);
       resumed = ball0(await api.snapshot());
-      // A tail so the clip shows the ball flying on, not the single resumed frame.
-      await api.advance(72);
+      // A tail so the clip shows the ball flying on, not the frame it restarted from.
+      await api.advance(61); // out to the same 73 ticks the resumed flight always filmed
     },
 
     async assert(api, check) {
@@ -55,17 +71,18 @@ export default function item() {
         1,
       );
 
-      // One resumed step advances the ball by exactly its velocity — no teleport.
+      // The resumed steps carry the ball exactly its preserved velocity's worth on
+      // from where it hung — no teleport, and no stall.
       check.expectClose(
         "the resumed ball continues from its paused position (x)",
         resumed.x,
-        paused.x + paused.vx / TICK_HZ,
+        paused.x + (paused.vx * RESUMED_TICKS) / TICK_HZ,
         2,
       );
       check.expectClose(
         "the resumed ball continues from its paused position (y)",
         resumed.y,
-        paused.y + paused.vy / TICK_HZ,
+        paused.y + (paused.vy * RESUMED_TICKS) / TICK_HZ,
         2,
       );
       check.expectClose(

@@ -669,10 +669,22 @@ validation = { script = "validation/spin/decay.mjs", outputs = [
 # While the game is paused nothing advances: no paddle moves — neither a human paddle
 # with a movement key held (checked for each control context, as the paddle-speed
 # points are) nor the AI chasing a ball — and a ball in flight hangs where it was.
-# Unpausing resumes from exactly that state rather than teleporting the ball.
+# Unpausing resumes from exactly that state rather than teleporting the ball, and is
+# reachable both ways specs/ui.md pins down — the pause key again, and the pause menu's
+# RESUME entry.
 [[review.categories]]
 id = "pause"
 title = "Pause"
+[[review.categories.items]]
+id = "resume"
+title = "Both ways back out of a pause work"
+description = "A paused match resumes both ways the specification defines: pressing the pause key (Esc or P) again, and confirming RESUME on the pause menu. Either returns to the live match rather than quitting it or leaving the menu up."
+# Automated validation: pause and resume four times over — Esc, P, and Enter and Space
+# on the pause menu's RESUME entry — confirming each pauses and then returns to the
+# match it was in. See validation/pause/resume.mjs.
+validation = { script = "validation/pause/resume.mjs", outputs = [
+  { id = "resume", name = "Leaving the pause menu back into the match", kind = "video" },
+] }
 [[review.categories.items]]
 id = "paddle-solo-player"
 title = "Human paddle frozen while paused (Solo)"

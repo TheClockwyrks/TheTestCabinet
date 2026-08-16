@@ -36,8 +36,13 @@ moves between them as below.
    `specs/modes/versus.md`.
 4. Countdown. The brief pre-serve hold before a ball is launched, rendered over
    the in-match field. When it applies is defined in `specs/balls.md`.
-5. Paused. Reachable from the match. Offers Resume, Restart, and Quit to menu.
-   The field is visible but frozen behind the pause menu.
+5. Paused. Reachable from the match. Offers Resume, Restart, and Quit to menu, and
+   opens with Resume selected. The field is visible but frozen behind the pause
+   menu. There are two ways back into the match, and a build provides both:
+   confirming Resume, and pressing the pause key (`Esc` or `P`) again. Resuming
+   returns the match to exactly the state it was paused in — a countdown resumes as
+   a countdown, with the hold it had left still to run. Leaving the match is the
+   Quit to menu entry, so `Esc` here resumes rather than quitting.
 6. Match over. Shown when a player wins. Displays the winner and the final score,
    with PLAY AGAIN and MENU.
 
@@ -45,8 +50,11 @@ moves between them as below.
 
 Keyboard only. On the menus, the pause menu, and the match-over screen:
 `Up`/`Down` (or `W`/`S`) move the selection, `Enter` or `Space` confirms, and
-`Esc` goes back. The controls for playing a match — moving the paddles, pausing,
-and muting — are defined per way to play in `specs/modes/single-player.md` and
+`Esc` goes back. Every one of these menus opens on its first entry. What "back"
+means is per screen: from how-to-play it returns to the main menu, and from the
+pause menu it returns to the match (the pause menu's "back" is a resume, as above).
+The controls for playing a match — moving the paddles, pausing, and muting — are
+defined per way to play in `specs/modes/single-player.md` and
 `specs/modes/versus.md`.
 
 ## Audio

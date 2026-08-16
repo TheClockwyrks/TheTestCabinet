@@ -15,7 +15,9 @@ Keyboard only.
 - The human moves player one (the left paddle) with `W`/`S` or `Up`/`Down`. The
   paddle moves at the constant speed defined in `specs/playfield.md` while a
   movement key is held, and is otherwise stationary.
-- `Esc` or `P` pauses at any time (the Paused screen in `specs/ui.md`).
+- `Esc` or `P` pauses at any time (the Paused screen in `specs/ui.md`). Either key
+  also resumes: pressing it on the Paused screen returns to the match, so the pause
+  key toggles.
 - `M` toggles mute.
 
 The right paddle is not player-controlled in Solo; the AI drives it (below).

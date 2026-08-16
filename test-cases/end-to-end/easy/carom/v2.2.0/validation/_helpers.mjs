@@ -417,6 +417,27 @@ export async function actPause(
   return (await api.snapshot()).screen;
 }
 
+/**
+ * Leave the pause menu back into the match, the way a player does: confirm its
+ * first entry, RESUME.
+ *
+ * `specs/ui.md` requires two routes out of a pause — this one and the pause key
+ * pressed again — and `pause.resume` (validation/pause/resume.mjs) is the point that
+ * grades both. Everything else that merely has to GET out of a pause on its way to
+ * checking something else comes through here, so a build that implements only one
+ * route loses the point that names the other rather than every point that had to
+ * unpause along the way.
+ *
+ * The menu is confirmed straight away because the pause menu opens with RESUME
+ * selected, the same "a menu opens on its first entry" convention `startWithKeys`
+ * uses to pick `SOLO` at the title.
+ *
+ * A single press, so this is instant and callable from either phase.
+ */
+export async function resumeWithKeys(api) {
+  await api.call("press", "Enter");
+}
+
 /** ARRANGE half of the mute check: sit at the title, where mute starts off. Pair with `actMuteToggle`. */
 export async function arrangeTitle(api) {
   await api.reset();
