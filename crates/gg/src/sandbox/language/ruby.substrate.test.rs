@@ -609,6 +609,19 @@ end
         error.message
     );
 
+    // `exit` STOPS THE PROGRAM. Opal hands process termination to its host and this guest is that
+    // host, so `exit` raises the `SystemExit` CRuby raises there, carrying the status the program
+    // chose. What is asserted is the half a report cannot show: the statement after it did not run.
+    let outcome = run("puts \"before\"\nexit(3)\nputs \"after\"\n");
+    let error = program_error(&outcome);
+    assert_eq!(error.message, "SystemExit: 3");
+    assert_eq!(error.location.as_deref(), Some("line 2"));
+    assert_eq!(
+        outcome.logs,
+        ["before"],
+        "a program that called exit did not go on running"
+    );
+
     // A raise inside a CODE MODULE is located at the line of the model's own program that reached
     // into it, and at no other line at all.
     //

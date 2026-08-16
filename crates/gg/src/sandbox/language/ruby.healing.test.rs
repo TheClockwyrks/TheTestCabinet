@@ -27,14 +27,14 @@ use super::*;
 /// quote, a `%w` list, a doubled program that must be left doubled, a comment-only reply, and a
 /// reply that is nothing but prose.
 pub(super) const FIXTURES: &[&str] = &[
-    "Here is the program.\n\n```ruby\nrows = fs.list_dir(\"src\")\nview.open_text(\"rows\", rows.inspect)\n```\n\nThat should list the directory.",
-    "Thread.new do\n  rows = fs.list_dir(\"src\")\n  view.open_text(\"rows\", rows.inspect)\nend.join",
-    "worker = Thread.new do\n  view.open_text(\"note\", \"done\")\nend\nworker.join",
-    "require \"json\"\nrequire \"set\"\n\npayload = JSON.generate({ \"ok\" => true })\nfs.write_file(\"out.json\", payload)",
+    "Here is the program.\n\n```ruby\nrequire \"gg\"\n\nrows = GG::Files.list_dir(\"src\")\nGG::Views.open_text(\"rows\", rows.inspect)\n```\n\nThat should list the directory.",
+    "require \"gg\"\n\nThread.new do\n  rows = GG::Files.list_dir(\"src\")\n  GG::Views.open_text(\"rows\", rows.inspect)\nend.join",
+    "require \"gg\"\n\nworker = Thread.new do\n  GG::Views.open_text(\"note\", \"done\")\nend\nworker.join",
+    "require \"gg\"\nrequire \"json\"\nrequire \"set\"\n\npayload = JSON.generate({ \"ok\" => true })\nGG::Files.write_file(\"out.json\", payload)",
     "USAGE = <<~TEXT\n  Example:\n\n  Thread.new do\n    total = 1\n  end.join\nTEXT\ntotal = 2\n",
-    "name = \"world\"\nview.open_text(\"greeting\", \"hello #{name.split(\"o\").first}\")",
-    "wanted = %w[cargo nextest]\nview.open_text(\"wanted\", wanted.join(\", \"))",
-    "total = 1\nview.open_text(\"total\", total.to_s)\n\ntotal = 1\nview.open_text(\"total\", total.to_s)",
+    "require \"gg\"\n\nname = \"world\"\nGG::Views.open_text(\"greeting\", \"hello #{name.split(\"o\").first}\")",
+    "require \"gg\"\n\nwanted = %w[cargo nextest]\nGG::Views.open_text(\"wanted\", wanted.join(\", \"))",
+    "total = 1\nGG::Views.open_text(\"total\", total.to_s)\n\ntotal = 1\nGG::Views.open_text(\"total\", total.to_s)",
     "# I have already written MANIFEST.md.\n# Nothing left to do.",
     "I have finished the task. Everything works.",
 ];
@@ -65,7 +65,7 @@ fn ruby() -> &'static dyn Dialect {
 /// not arm by default.
 #[test]
 fn a_doubled_response_is_still_halved() {
-    let program = "rows = fs.list_dir(\"src\")\nview.open_text(\"rows\", rows.inspect)";
+    let program = "rows = GG::Files.list_dir(\"src\")\nGG::Views.open_text(\"rows\", rows.inspect)";
     let mut config = HealingConfig::default();
     config.set(HealingStrategy::DropDoubledResponse, true);
     let result = heal(
@@ -106,9 +106,9 @@ fn a_heredoc_is_not_code() {
 /// and reading it as a heredoc would swallow the rest of the program as string text.
 #[test]
 fn the_shift_operator_is_not_a_heredoc() {
-    let reply = "rows = []\nrows << \"one\"\nview.open_text(\"rows\", rows.inspect)";
+    let reply = "rows = []\nrows << \"one\"\nGG::Views.open_text(\"rows\", rows.inspect)";
     let mask = ruby().code_mask(reply).expect("the shift lexes");
-    assert!(mask.is_code(reply.rfind("view").expect("the last call is code")));
+    assert!(mask.is_code(reply.rfind("GG::Views").expect("the last call is code")));
     assert_eq!(healed(reply).program, reply);
 }
 
@@ -118,9 +118,10 @@ fn the_shift_operator_is_not_a_heredoc() {
 /// quote would lose its place on exactly the input hardest to notice.
 #[test]
 fn an_interpolation_carrying_the_outer_quote_still_lexes() {
-    let source = "view.open_text(\"greeting\", \"hello #{rows[\"name\"]}, #{rows.size} rows\")";
+    let source =
+        "GG::Views.open_text(\"greeting\", \"hello #{rows[\"name\"]}, #{rows.size} rows\")";
     let mask = ruby().code_mask(source).expect("the interpolation lexes");
-    assert!(mask.is_code(source.find("view").expect("the call is code")));
+    assert!(mask.is_code(source.find("GG::Views").expect("the call is code")));
     assert!(!mask.is_code(source.find("hello").expect("the literal is text")));
     // The tail after the interpolation is still inside the same string.
     assert!(!mask.is_code(source.find(" rows\")").expect("still inside")));
@@ -172,10 +173,10 @@ fn an_unterminated_string_declines_the_mask() {
 fn a_fenced_program_is_unwrapped() {
     for tag in ["ruby", "rb", ""] {
         let result = healed(&format!(
-            "Here is the program.\n\n```{tag}\ntotal = 1\nview.open_text(\"total\", total.to_s)\n```"
+            "Here is the program.\n\n```{tag}\ntotal = 1\nGG::Views.open_text(\"total\", total.to_s)\n```"
         ));
         assert_eq!(
-            result.program, "total = 1\nview.open_text(\"total\", total.to_s)",
+            result.program, "total = 1\nGG::Views.open_text(\"total\", total.to_s)",
             "a block tagged `{tag}` was not unwrapped"
         );
     }
@@ -239,17 +240,17 @@ fn a_capitalised_keyword_is_prose() {
 #[test]
 fn each_code_clause_reads_its_own_shape() {
     for line in [
-        "require \"json\"",             // a statement keyword
-        "end",                          // the closer every block has
-        "@count = 0",                   // an instance variable
-        "rows = fs.list_dir(\"src\")",  // an assignment
-        "Config::LIMIT = 3",            // a qualified constant
-        "total += 1",                   // an augmented assignment
-        "view.open_text(\"a\", \"b\")", // a call
-        "entries = [",                  // left open
-        "  \"one\",",                   // left open
-        "rows.each { |row|",            // left open on a block parameter
-        "attr_reader :name",            // a declaration macro
+        "require \"json\"",                   // a statement keyword
+        "end",                                // the closer every block has
+        "@count = 0",                         // an instance variable
+        "rows = GG::Files.list_dir(\"src\")", // an assignment
+        "Config::LIMIT = 3",                  // a qualified constant
+        "total += 1",                         // an augmented assignment
+        "GG::Views.open_text(\"a\", \"b\")",  // a call
+        "entries = [",                        // left open
+        "  \"one\",",                         // left open
+        "rows.each { |row|",                  // left open on a block parameter
+        "attr_reader :name",                  // a declaration macro
     ] {
         assert!(
             ruby().looks_like_code(line),
@@ -263,13 +264,13 @@ fn each_code_clause_reads_its_own_shape() {
 fn prose_around_a_bare_program_is_deleted() {
     let result = healed(
         "I will list the source directory and show myself the result.\n\
-         rows = fs.list_dir(\"src\")\n\
-         view.open_text(\"rows\", rows.inspect)\n\
+         rows = GG::Files.list_dir(\"src\")\n\
+         GG::Views.open_text(\"rows\", rows.inspect)\n\
          That should be everything.",
     );
     assert_eq!(
         result.program,
-        "rows = fs.list_dir(\"src\")\nview.open_text(\"rows\", rows.inspect)"
+        "rows = GG::Files.list_dir(\"src\")\nGG::Views.open_text(\"rows\", rows.inspect)"
     );
     assert_eq!(result.strategies(), vec![HealingStrategy::StripProse]);
 }
