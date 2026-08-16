@@ -78,6 +78,30 @@ fn the_synthesized_file_view_is_ruby() {
     );
 }
 
+/// **Every module of this arm's catalogue states the one line a program writes to reach it.**
+///
+/// Two things have to agree: the line `packages/gg-sandbox-ruby/tools/signatures.rb` composes into
+/// every module's [import](crate::sandbox::ModuleDoc::import), which is what a documentation view
+/// quotes to a model, and [`SURFACE_IMPORT`](super::SURFACE_IMPORT), which is what gg's own
+/// synthesized programs write. A model told one line and handed another spends its first turn on a
+/// `NameError`.
+///
+/// Every module rather than one, because the field is per module and an arm that stated a line for
+/// half its surface would be telling models the other half is in scope already.
+#[test]
+fn every_module_states_the_one_import_line_this_arm_writes() {
+    let modules = crate::sandbox::catalogue_modules(ruby());
+    assert!(!modules.is_empty(), "this arm declares modules");
+    for module in modules {
+        assert_eq!(
+            module.import,
+            Some(super::SURFACE_IMPORT),
+            "`{}` states an import line gg does not write",
+            module.path
+        );
+    }
+}
+
 /// **The generated documentation program is Ruby** — an array and an `each` with a block, which is
 /// how a Ruby programmer walks a list and deliberately not the `for` the language also has.
 ///
@@ -88,8 +112,11 @@ fn the_synthesized_file_view_is_ruby() {
 fn the_generated_documentation_program_is_ruby() {
     assert_eq!(
         ruby().open_docs_views_statement(&["read_file", "write_file"]),
-        "functions = [\n  \"read_file\",\n  \"write_file\",\n]\n\
-         functions.each { |name| GG::Views.open_docs_view(name) }\n"
+        format!(
+            "{}\n\nfunctions = [\n  \"read_file\",\n  \"write_file\",\n]\n\
+             functions.each {{ |name| GG::Views.open_docs_view(name) }}\n",
+            super::SURFACE_IMPORT
+        )
     );
 }
 
@@ -107,11 +134,12 @@ fn the_opening_program_is_ruby() {
     assert_eq!(
         ruby().bootstrap_program(&["files", "views"], &["read_file"]),
         format!(
-            "modules = [\n  \"files\",\n  \"views\",\n]\n\
+            "{}\n\nmodules = [\n  \"files\",\n  \"views\",\n]\n\
              modules.each {{ |path| GG::Docs.search(\"\", in_module: path, limit: {limit}) }}\n\
              \n\
              functions = [\n  \"read_file\",\n]\n\
-             functions.each {{ |name| GG::Views.open_docs_view(name) }}\n"
+             functions.each {{ |name| GG::Views.open_docs_view(name) }}\n",
+            super::SURFACE_IMPORT
         )
     );
 }

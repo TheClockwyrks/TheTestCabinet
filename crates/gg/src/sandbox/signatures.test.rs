@@ -721,15 +721,30 @@ fn covers(candidate: &str, path: &str, separator: &str) -> bool {
 
 /// Whether `line` names `path` or any namespace `path` sits inside, which is the set of things an
 /// import line may name and still bring `path` into scope.
-fn reaches(line: &str, path: &str, separator: &str) -> bool {
+///
+/// **ASCII case is ignored**, and for the arms whose line names a *file* rather than a namespace:
+/// Ruby's `require "gg"` brings in `GG::Docs`, because a Ruby file's name and the constant it
+/// defines are two different things and the language's convention is that they differ in exactly
+/// this way. C++'s `#include <gg/files.hpp>` is the same shape without the case difference. What the
+/// relaxation does not touch is the second half of the rule below, which still matches another
+/// module's path exactly, so a line filed under the wrong module still fails.
+fn reaches(line: &str, path: &str) -> bool {
+    let line = line.to_ascii_lowercase();
+    let identifier = |ch: char| ch.is_alphanumeric() || ch == '_';
     let mut candidate = path;
     loop {
-        if line.contains(candidate) {
+        if line.contains(&candidate.to_ascii_lowercase()) {
             return true;
         }
-        match candidate.rsplit_once(separator) {
-            Some((head, _)) => candidate = head,
-            None => return false,
+        // Step out one namespace, whatever this arm punctuates one with — `.`, `::`, `/`. Read off
+        // the path rather than taken from `member_separator`, because the two are not always the
+        // same character: Ruby separates its modules with `::` and reaches a member with `.`.
+        let Some(cut) = candidate.rfind(|ch: char| !identifier(ch)) else {
+            return false;
+        };
+        candidate = candidate[..cut].trim_end_matches(|ch: char| !identifier(ch));
+        if candidate.is_empty() {
+            return false;
         }
     }
 }
@@ -763,7 +778,8 @@ fn reaches(line: &str, path: &str, separator: &str) -> bool {
 ///   the path. C#'s modules are types in one namespace, and `using Gg;` reaches all of them at once,
 ///   so its line names the namespace their paths sit in. C++'s line is a header path rather than a
 ///   namespace path — `#include <gg/files.hpp>` for `gg::files` — so it names the enclosing
-///   namespace and nothing narrower. That is why the ancestor form is accepted, and the second half
+///   namespace and nothing narrower, and Ruby's `require "gg"` for `GG::Docs` is that same form with
+///   the case difference a Ruby file name has from the constant it defines. That is why the ancestor form is accepted, and the second half
 ///   of the rule is what keeps it honest: a `using Gg.Views;` filed under `Gg.Files` names a module
 ///   that does not contain `Gg.Files`, and fails. What the ancestor form cannot see is an arm whose
 ///   line names its module in a spelling of its own, so `cpp.surface.test.rs` holds all thirteen of
@@ -843,7 +859,7 @@ fn every_arm_declares_an_import_line_or_says_why_not() {
                     );
                     let separator = arm.member_separator();
                     assert!(
-                        reaches(line, module.path, separator),
+                        reaches(line, module.path),
                         "{name}: `{}` is reached with `{line}`, which names neither `{}` nor a \
                          namespace it sits in — a line a model copies has to be the line that \
                          brings *that* module into scope",

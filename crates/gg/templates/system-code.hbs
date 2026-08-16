@@ -134,17 +134,20 @@ defaults. `import gg` is the line that reaches every module below, each an
 ordinary Python module whose path is what you write.
 {{/if}}
 {{#if (eq language.id "ruby")}}
-Your response is executed as the body of a `program.rb`, at the top level. Its
-last expression's value goes nowhere.
+Your response is executed exactly as you wrote it, as the whole of a
+`program.rb`, at its top level. Statements and definitions sit side by side, and
+the last expression's value goes nowhere. Write the `require` lines you would
+normally write.
 
 A failed call raises `GG::Core::ToolError`, which is a `StandardError` — so
 `rescue GG::Core::ToolError => failure` is how you handle one, and
-`failure.code` is a Symbol rather than free text.
+`failure.code` is a Symbol rather than free text; let the rest escape, and gg
+names the call that failed.
 
 Required arguments are positional, optional ones are keyword arguments with
-defaults, `*items` takes as many as you like, and a `&body` is a block. Each
-module below is a constant the guest already carries, so a module's path is what
-you write and there is nothing to require.
+defaults, `*items` takes as many as you like, and a `&body` is a block.
+`require "gg"` is the line that reaches every module below, each a constant whose
+path is what you write.
 {{/if}}
 {{#if (eq language.id "rust")}}
 Your response is compiled as the body of a function gg declares, so it is a

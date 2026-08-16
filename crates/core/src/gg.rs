@@ -4607,17 +4607,19 @@ pub enum GgProgramLanguage {
     /// for the wire's error arm.
     Python,
     /// Ruby: **compiled to JavaScript on the host by Opal**, and evaluated by a guest that carries
-    /// Opal's runtime, gg's Ruby SDK and the libraries a program may `require`, all pre-initialised
-    /// into it.
+    /// Opal's runtime pre-initialised into it.
     ///
     /// The first arm whose program is neither evaluated as written nor lowered by a parse gg carries
     /// in-process: a real compiler runs in a real process on the turn path, so this arm reports a
     /// compile time and can tell a model *the compiler read your program and refused it* — which is
     /// the band [`Python`](Self::Python) has no producer for. The compiler is itself Ruby compiled to
-    /// JavaScript, so it rides inside gg's binary and the run image gains nothing. Its SDK is
-    /// hand-written and reads as Ruby reads — `snake_case`, keyword arguments, blocks for a long
-    /// body, `Range` for a span, splats for a list, `?` on a predicate, Symbols for a fixed choice,
-    /// and a raised `ToolError` that is a `StandardError`.
+    /// JavaScript, so it rides inside gg's binary and the run image gains nothing. gg's SDK, the
+    /// agent's code modules and the libraries a program may require are all compiled into the guest
+    /// as requirable units and none is loaded: a program reaches gg's surface by writing
+    /// `require "gg"` and its own loaded code by writing `require "lib"`. Its SDK is hand-written
+    /// and reads as Ruby reads — `snake_case`, keyword arguments, blocks for a long body, `Range`
+    /// for a span, splats for a list, `?` on a predicate, Symbols for a fixed choice, and a raised
+    /// `ToolError` that is a `StandardError`.
     Ruby,
     /// PureScript: **compiled to JavaScript on the host by `purs`**, flattened into one script by
     /// `esbuild`, and evaluated by the same ECMAScript guest

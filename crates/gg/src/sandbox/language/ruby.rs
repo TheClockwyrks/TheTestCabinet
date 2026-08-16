@@ -52,16 +52,28 @@
 //!
 //! # What a Ruby program is given
 //!
-//! The guest owns its own `run`, and everything it puts in front of a program is **Ruby**: the API
-//! objects are methods on `Object` — which is what a top-level `def` in Ruby produces, so
-//! `fs.read_file("main.rb")` works with no receiver and no `require` line — the types are top-level
-//! constants, a failure is a raised `GG::ToolError` carrying a Symbol code, and a
-//! [code module](crate::skills) is an anonymous `Module` bound at `lib.<key>`. The SDK behind that
-//! is hand-written and idiomatic (`packages/gg-sandbox-ruby/src/gg/`), and its
-//! [catalogue](crate::sandbox::signatures) is reflected out of its own YARD documentation.
+//! **Nothing, until it asks.** gg's SDK is compiled into the guest as `gg` and the agent's own
+//! [code modules](crate::skills) as `lib`, both *registered* in Opal's require registry and neither
+//! *loaded* — the same mechanism, and the same file format, as the libraries
+//! `packages/gg-sandbox-ruby/src/library.rb` declares. A program reaches gg's surface by writing
+//! [`require "gg"`](SURFACE_IMPORT) and its own loaded code by writing
+//! [`require "lib"`](LIB_IMPORT), and a program that writes neither has Opal's corelib and its own
+//! text.
+//!
+//! What those lines reach is **Ruby**: the capability modules are constants under `GG`, a call is a
+//! module function (`GG::Files.read_file`), the types are declared inside the module that produces
+//! them, a failure is a raised `GG::Core::ToolError` carrying a Symbol code, and a code module is an
+//! anonymous `Module` at `lib.<key>`. The SDK behind that is hand-written and idiomatic
+//! (`packages/gg-sandbox-ruby/src/gg/`), and its [catalogue](crate::sandbox::signatures) is
+//! reflected out of its own YARD documentation.
 //!
 //! Three further consequences of the strategy, stated here so they are not discovered later:
 //!
+//! * **`require` is process-wide, and this arm does not pretend otherwise.** A code module whose own
+//!   body calls gg writes `require "gg"` in it, and from that moment `GG::` resolves for the program
+//!   too — which is what `require` does in any Ruby program. What gg guarantees is the half it owns:
+//!   it writes no `require` on anybody's behalf, and nothing of its surface is loaded before the
+//!   program's first line, because a code module is not evaluated until the program requires `lib`.
 //! * **The libraries are a bake-time fact about the artifact.** `packages/gg-sandbox-ruby/src/library.rb`
 //!   declares what a program may `require`, the guest build compiles exactly that set (and whatever
 //!   it in turn requires) out of the pinned Opal's own sources, and the catalogue's `libraries`
@@ -108,6 +120,30 @@ mod modules;
 
 #[path = "ruby.healing.rs"]
 pub(super) mod healing;
+
+/// The one line a program writes to reach gg's surface, and the line every module of this arm's
+/// catalogue states.
+///
+/// `gg` is an ordinary requirable unit baked into the guest — `Opal.modules["gg"]`, registered and
+/// not loaded, exactly as `json` and `set` are — so this is an ordinary `require` and what it
+/// defines is the `GG` constant. Everything gg quotes back at a model is written from there
+/// (`GG::Files.read_file` in a search hit, in a documentation view, in a refusal and in the programs
+/// gg synthesizes), so one line makes every string a model reads a string it can type.
+///
+/// [`LIB_IMPORT`] is the other line, and it is the agent's own code rather than gg's surface.
+pub(super) const SURFACE_IMPORT: &str = "require \"gg\"";
+
+/// The line a program writes to reach the code [skills](crate::skills) and
+/// [memories](crate::memories) this session has read.
+///
+/// `lib` is its own requirable unit (`packages/gg-sandbox-ruby/src/knowledge.rb`), and requiring it
+/// is what evaluates the modules gg handed the guest — so a program that never writes this line
+/// never runs a line of anybody's skill. It names nothing of gg's surface, so it is not a second
+/// way to reach [`SURFACE_IMPORT`]'s names.
+///
+/// The line is quoted in the read that binds the module
+/// ([`Loaded::note`](crate::knowledge::Loaded::note)), which is the moment it matters.
+pub(super) const LIB_IMPORT: &str = "require \"lib\"";
 
 /// The interpreter component: the ECMAScript guest with Opal's runtime, gg's Ruby SDK and the
 /// declared library set pre-initialised into it, built by `packages/gg-sandbox-ruby/build.sh`.
@@ -247,16 +283,34 @@ impl ProgramLanguage for Ruby {
         &healing::RUBY_DIALECT
     }
 
-    /// [`view.open_file("src/main.rb")`](self::open_file_statement), with the window as keyword
+    /// [`GG::Views.open_file("src/main.rb")`](self::open_file_statement), with the window as keyword
     /// arguments and no terminator.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
         open_file_statement(&spell(self, VIEWS_OPEN_FILE), path, window)
+    }
+
+    /// The statements, under the [`require`](SURFACE_IMPORT) that makes the call in them resolve.
+    ///
+    /// The default statement list would be a program with an undefined `GG` in it, which is the one
+    /// thing a synthesized turn must not teach: gg pushes this into the agent's own transcript as an
+    /// example of its own output.
+    fn open_file_program(&self, views: &[(&str, Option<FileWindow>)]) -> String {
+        let statements: Vec<String> = views
+            .iter()
+            .map(|(path, window)| self.open_file_statement(path, *window))
+            .collect();
+        format!("{SURFACE_IMPORT}\n\n{}", statements.join("\n"))
     }
 
     /// [An array of names and an `each` with a
     /// block](self::open_docs_views_statement), each iteration opening one documentation view.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
+    }
+
+    /// [`lib.<key>.<name>`](super::ProgramLanguage::lib_access), under [`LIB_IMPORT`].
+    fn lib_import(&self) -> Option<&'static str> {
+        Some(LIB_IMPORT)
     }
 
     /// [Two arrays and two `each` blocks](self::bootstrap_program), with both calls resolved from
@@ -340,7 +394,8 @@ pub(super) fn open_file_statement(
     }
 }
 
-/// An array of names and an `each` with a block, each iteration opening one documentation view.
+/// The [`require`](SURFACE_IMPORT) that reaches the call, then an array of names and an `each` with
+/// a block, each iteration opening one documentation view.
 ///
 /// A block rather than one statement per name because the list is as long as the family — eleven
 /// calls written out would be a program a model reads as a style to copy — and a block rather than a
@@ -352,11 +407,15 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
         .iter()
         .map(|name| format!("  {},\n", serde_json::Value::String((*name).to_string())))
         .collect();
-    format!("functions = [\n{entries}]\nfunctions.each {{ |name| {open_docs_view}(name) }}\n")
+    format!(
+        "{SURFACE_IMPORT}\n\nfunctions = [\n{entries}]\n\
+         functions.each {{ |name| {open_docs_view}(name) }}\n"
+    )
 }
 
-/// The opening turn: one array of module paths listed in full, then one array of names opened as
-/// documentation views, each with an `each` block over it.
+/// The opening turn: the [`require`](SURFACE_IMPORT) that reaches both calls, one array of module
+/// paths listed in full, then one array of names opened as documentation views, each with an `each`
+/// block over it.
 ///
 /// Two arrays and two blocks rather than one call per entry, because a granted surface is a dozen
 /// modules and a dozen calls written out is a shape a model would copy for its own work. The filter
@@ -381,7 +440,9 @@ pub(super) fn bootstrap_program(
     let paths = listed(modules);
     let functions = listed(docs);
     format!(
-        "modules = [\n{paths}]\nmodules.each {{ |path| \
+        "{SURFACE_IMPORT}\n\
+         \n\
+         modules = [\n{paths}]\nmodules.each {{ |path| \
          {search}(\"\", in_module: path, limit: {MAX_SEARCH_LIMIT}) }}\n\
          \n\
          functions = [\n{functions}]\nfunctions.each {{ |name| {open_docs_view}(name) }}\n"

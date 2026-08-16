@@ -3,16 +3,15 @@ title: "Ruby"
 ---
 
 A Ruby program is compiled to JavaScript on the host by Opal, and evaluated by a
-guest component carrying Opal's runtime, gg's Ruby SDK and the declared library
-set pre-initialised into it. The program crosses the membrane as JavaScript, and
-everything it is evaluated against is Ruby.
+guest component carrying Opal's runtime pre-initialised into it. The program
+crosses the membrane as JavaScript, and everything it is evaluated against is
+Ruby.
 
-This arm compiles a program's own bytes and locates a failure through a source
-map. It does not keep the rest of the
-[invariants](/gg/responses-as-code/invariants/) yet, and this page states what it
-does today: the guest carries gg's `GG::*` constants, so a call is written with
-no line the model wrote, and a code module is wrapped in a block whose line a
-diagnostic is moved back over by arithmetic.
+gg's SDK, the agent's own code modules and the declared library set are all
+compiled into the guest as requirable units and none of them is loaded. A
+program reaches gg's surface by writing `require "gg"`, its own loaded code by
+writing `require "lib"`, and a library by writing `require "json"`. A program
+that writes none of those lines has Opal's corelib and its own text.
 
 ## Preparation
 
@@ -23,11 +22,11 @@ JavaScript the guest evaluates, and appends a v3 source map with
 raised, so a located run-time error names the line of Ruby the model wrote.
 
 A code module, the code half of a skill or a memory, is compiled the same way
-with its source wrapped in `GG::Lib.define do … end`. The block is evaluated
-against a fresh anonymous `Module` which extends itself, so what the body
-defines is what `lib.<key>` offers and an author writes no export protocol. The
-wrapper adds one line, and a diagnostic's line number is moved back over it so
-an author reads their own.
+with its source wrapped in `Module.new do … end`. The block is evaluated against
+a fresh anonymous `Module`, so what the body defines is what `lib.<key>` offers
+and an author writes no export protocol. The wrapper names nothing of gg's and
+shares the author's first line, so every module diagnostic is already at the
+author's own number and nothing corrects one afterwards.
 
 The names gg reports for that module are its top-level methods, `def name` and
 `def self.name`, in source order, with Ruby's own privacy honoured. A bare
@@ -65,9 +64,8 @@ lowerings to JavaScript are of one vintage.
 This arm has a guest component of its own rather than sharing the ECMAScript
 one. `componentize-js` runs the entry module's top level under `wizer` and
 snapshots the heap, so Opal's runtime is built once into the artifact instead of
-once per program, and a code module, which is evaluated before the program
-against the same scope, can see it. That component's imported interfaces must be
-exactly the ECMAScript guest's.
+once per program. That component's imported interfaces must be exactly the
+ECMAScript guest's.
 
 Two further guest requirements follow from that substrate. Ruby's `$stdout` and
 `$stderr` are pointed at `console` on every run, because Opal picks its write
@@ -77,27 +75,45 @@ generated bindings built carries prototypes Opal never patched.
 
 ## The SDK and the signature catalogue
 
-The SDK is hand-written Ruby under `packages/gg-sandbox-ruby/src/gg/` and baked
-into the component. Thirteen modules are declared, `GG::Core` last and carrying
-types alone. A call is a module function on the module that owns the capability,
-`GG::Files.read_file`, and a type is written under the module that produces it,
-`GG::Files::TextFile`. A failed call raises `GG::Core::ToolError`, which is a
-`StandardError` with a Symbol `code`.
+The SDK is hand-written Ruby under `packages/gg-sandbox-ruby/src/gg/`, compiled
+into the component as the requirable unit `gg`. Thirteen modules are declared,
+`GG::Core` last and carrying types alone. A call is a module function on the
+module that owns the capability, `GG::Files.read_file`, and a type is written
+under the module that produces it, `GG::Files::TextFile`. A failed call raises
+`GG::Core::ToolError`, which is a `StandardError` with a Symbol `code`. Every
+module of the catalogue states `require "gg"` as the line a program writes to
+reach it, and a documentation view quotes it.
 
-Every declaration is bound onto its module at load time and stays bound for
-every program of every run. A call this agent was not granted reaches the host
-and comes back as a `ToolError` naming the capability it needed. The rules that
-surface obeys are on [the agent surface](/gg/languages/agent-surface/).
+`require "gg"` runs the SDK's whole top level, which binds every declaration
+onto its module. A call this agent was not granted reaches the host and comes
+back as a `ToolError` naming the capability it needed. The rules that surface
+obeys are on [the agent surface](/gg/languages/agent-surface/).
 
 `GG::Scope` lifts each module function off its module and puts it back behind a
 forwarder that checks the positional count and refuses a keyword the target does
 not declare, raising `ArgumentError` naming the accepted set. Opal lowers
 keyword arguments to a trailing hash and ignores keys the target does not
 declare, so `create_issue(reviewer: [...])` would otherwise file an issue with
-no reviewer. The lifting and the reflection happen at load, inside the
-snapshotted heap. Programs, the SDK and the libraries are compiled with Opal's
+no reviewer. Programs, the SDK and the libraries are compiled with Opal's
 `arity_check` on, so a call with the wrong number of positional arguments raises
 rather than binding a missing parameter to `undefined`.
+
+Requiring the SDK is what a turn pays for the invariant: measured on this
+repository's dev container, a program costs 2.7 ms without the line and 20.4 ms
+with it, against 2.1 ms for a plain JavaScript program on the same component.
+The compile above dominates either figure.
+
+`packages/gg-sandbox-ruby/src/knowledge.rb` is the `lib` unit. Requiring it
+evaluates each code module the agent read, binds each namespace under the key gg
+named when it answered the read, and defines the top-level `lib`. It names
+nothing of gg's surface, so it is not a second way to reach `GG::Files`, and a
+program that never requires it never runs a line of anybody's skill. A module
+whose body raises leaves an empty namespace and is reported on its own channel.
+
+Ruby's `require` is process-wide. A code module whose own body calls gg writes
+`require "gg"` in it, and from that point `GG::` resolves for the program too.
+gg writes no `require` on anybody's behalf, and nothing of its surface is loaded
+before the program's first line.
 
 `packages/gg-sandbox-ruby/src/library.rb` declares what a program may `require`.
 The build compiles exactly that set, together with whatever those in turn
@@ -139,12 +155,15 @@ check off.
 
 At run time an uncaught exception ends the program and is reported with its
 class, its message and the line of the model's own Ruby. The program and each
-code module are evaluated under a name of their own, so the guest locates the
-program's own frame and maps it through the program's own map. A raise inside a
-code module is therefore reported at the line of the program that called into
-it. Opal's `sleep` is a
-busy wait rather than a park in a host call, so the execution deadline reaches
-it as it reaches any other runaway.
+code module are evaluated as their own unit, under a name of their own, so the
+guest locates the program's own frame and maps it through the program's own map.
+A raise inside a code module is therefore reported at the line of the program
+that called into it. A frame's line is the compiled unit's line, because each
+unit is evaluated by an indirect `eval` rather than through the `Function`
+constructor, and the source map is the only thing that moves a location.
+
+Opal's `sleep` is a busy wait rather than a park in a host call, so the
+execution deadline reaches it as it reaches any other runaway.
 
 ## Prompt segment
 
@@ -152,13 +171,13 @@ it as it reaches any other runaway.
 `ruby`, and `code-nothing-shown.hbs` through a clause naming `puts`. The segment
 states:
 
-- the reply is the top-level body of a program, whose last expression's value
-  goes nowhere;
+- the reply is executed exactly as written, as the whole of a `program.rb` at its
+  top level, whose last expression's value goes nowhere;
 - a failed call raises `GG::Core::ToolError`, a `StandardError` that `rescue`
-  catches, and its `code` is a Symbol;
+  catches, and its `code` is a Symbol, and gg names the call that failed;
 - optional arguments are keyword arguments with defaults, `*items` is variadic
-  and `&body` is a block, and each module is a constant the guest already
-  carries.
+  and `&body` is a block, and `require "gg"` is the line that reaches every
+  module.
 
 The arm names `opal` as its [checker](/gg/languages/compilation/), so the shared
 body states that a program is compiled before it runs and one the compiler

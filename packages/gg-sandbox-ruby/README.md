@@ -10,7 +10,7 @@ entry module and a directory of Ruby. All four things it produces are generated 
 
 | Artifact | Written by | What it is |
 | --- | --- | --- |
-| `ruby.component.wasm`, in the build's `OUT_DIR` | `build.sh`, run by `gg-artifact-ruby` | the JavaScript engine with Opal's runtime, this SDK and the curated libraries pre-initialised into it |
+| `ruby.component.wasm`, in the build's `OUT_DIR` | `build.sh`, run by `gg-artifact-ruby` | the JavaScript engine with Opal's runtime pre-initialised into it, and this SDK, `lib` and the curated libraries registered in its require registry |
 | `ruby.signatures.json`, in the build's `OUT_DIR` | `signatures.sh`, run by `crates/gg/build.rs` | the signature catalogue, reflected out of this SDK's own YARD documentation |
 | `ruby.opal.cjs`, in the build's `OUT_DIR` | `build.sh`, run by `gg-artifact-ruby` | Opal — runtime, self-hosted compiler and gg's driver — as one CommonJS bundle |
 | `ruby.compiler.json`, in the same place | `build.sh`, run by `gg-artifact-ruby` | which Opal that is, and which Ruby it emulates |
@@ -34,6 +34,10 @@ program is evaluated *against* is Ruby: the capability modules are constants und
 (`GG::Files`, `GG::Views`), each declaring the types it produces, a failure is a raised
 `GG::Core::ToolError`, and a code module is an anonymous `Module` bound at `lib.<key>`.
 
+A program reaches any of it by writing Ruby's own `require`. This SDK is the requirable
+unit `gg`, the agent's loaded code modules are `lib`, and the curated set is `json`, `set`
+and the rest. None of them is loaded until a line of the program says so.
+
 That is what makes this arm cheap in the two places a language arm is usually expensive.
 There is no second engine — the compiled program is JavaScript, so a `componentize-js`
 guest evaluates it — and there is nothing to install in the run container, because Opal's
@@ -46,8 +50,9 @@ toolchain.
 | | |
 | --- | --- |
 | `src/gg/` | the SDK: one file per capability module, each declaring that module's functions and the types they produce, plus `core.rb` for what every one of them names. Which gg operation a method binds is written under that method's own `end`, as the `operation` line `surface.rb` records — there is no table naming a function twice. `wire.rb` is the one file that touches the membrane, and the only Ruby here written in JavaScript. |
+| `src/knowledge.rb` | the `lib` a program requires to reach its own code modules. Requiring it is what evaluates them. It names nothing of `GG`, so it is not a second way to reach the SDK. |
 | `src/library.rb` | the manifest of what a program may `require`. `build.sh` compiles exactly this set out of the pinned Opal's own sources; `signatures.sh` reflects the same lines into the catalogue's `libraries` section. One file decides both. |
-| `src/shim.js` | the entry module: it imports the runtime, the libraries and the SDK at top level (so `wizer` snapshots them), publishes the membrane where `GG::Wire` can reach it, and owns `run`. |
+| `src/shim.js` | the entry module: it imports the runtime at top level (so `wizer` snapshots it) and the two files that register `gg`, `lib` and the libraries, publishes the membrane where `GG::Wire` can reach it, and owns `run`. |
 
 Its documentation is **the** documentation. Every YARD comment on a catalogued method,
 parameter, type and type member is what gg answers a documentation search and every
@@ -67,21 +72,15 @@ costs. Measured through gg's own store and linker, on this repository's dev cont
 | (a plain JavaScript program on the same component, for scale) | 1.2–1.4 ms |
 
 `componentize-js` runs the entry module's top level at build time under `wizer` and
-snapshots the resulting heap, so the corelib, the libraries and this SDK's classes are
-built once, into the artifact, instead of once per turn. Building the run's *surface* is
-still per run and costs the rest of what a turn costs: **4.8 ms with no tool bound and
-7.7 ms with all thirty-five**.
+snapshots the resulting heap, so Opal's corelib is built once, into the artifact, instead
+of once per turn. Loading this SDK is a turn's own cost, because `require "gg"` is the
+model's line rather than the build's: **2.7 ms for a program without it, 20.4 ms with it**,
+against 2.1 ms for a plain JavaScript program on the same component.
 
-Two further things settled the question, and either would have on its own:
-
-- **A code module could not have seen a prepended runtime.** A skill's or memory's module
-  is evaluated *before* the program and against the same surface, so a runtime living
-  inside the program's own source would not exist yet. `lib.<key>` in Ruby would have been
-  unimplementable.
-- **Baking it into the *shared* component was worse.** It would put `globalThis.Opal` in
-  front of the TypeScript and JavaScript arms too, and those two must differ in the type
-  check and in nothing else — a checked program cannot name `Opal` (no declaration covers
-  it) and an unchecked one can.
+Baking the runtime into the *shared* component was worse than either. It would put
+`globalThis.Opal` in front of the TypeScript and JavaScript arms too, and those two must
+differ in the type check and in nothing else — a checked program cannot name `Opal` (no
+declaration covers it) and an unchecked one can.
 
 ## Two things `src/shim.js` does that no SDK could
 

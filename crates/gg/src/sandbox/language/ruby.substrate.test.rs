@@ -365,6 +365,7 @@ fn the_sdk_hands_a_program_values_ruby_can_read() {
     // means concretely on this arm.
     let (outcome, _log) = run_with(
         r##"
+require "gg"
 read = GG::Files.read_file("notes.md")
 case read
 when GG::Files::TextFile
@@ -419,6 +420,7 @@ puts "#{out.exit_code} #{out.truncated?}"
     // Ruby library raises.
     let (outcome, _log) = run_with(
         r##"
+require "gg"
 begin
   GG::Files.read_file("missing.md")
 rescue GG::Core::ToolError => failure
@@ -459,7 +461,7 @@ fn a_ruby_program_is_gated_by_the_host_and_told_what_it_does_have() {
     // A tool this run does not offer is bound onto its module like every other — this arm's SDK is
     // static — so reaching for it is an ordinary Ruby call that reaches the HOST, and what comes
     // back is gg's own sentence naming the capability that buys it.
-    let outcome = run("GG::Shell.run(\"ls\")\n");
+    let outcome = run("require \"gg\"\nGG::Shell.run(\"ls\")\n");
     let error = program_error(&outcome);
     assert_eq!(error.kind, ProgramErrorKind::UnknownName);
     assert!(
@@ -471,7 +473,7 @@ fn a_ruby_program_is_gated_by_the_host_and_told_what_it_does_have() {
     // The same for a module the run does buy something else from: the gate is per operation, so a
     // run with reading is still refused a write, on the same terms and in the same words.
     let (outcome, _log) = run_with(
-        "GG::Files.write_file(\"a\", \"b\")\n",
+        "require \"gg\"\nGG::Files.write_file(\"a\", \"b\")\n",
         &[crate::sandbox::operations::FILES_READ_FILE],
         &[],
         canned_outcome,
@@ -490,7 +492,7 @@ fn a_ruby_program_is_gated_by_the_host_and_told_what_it_does_have() {
     // itself: the module's `method_missing` says what that module declares, which is now the whole
     // of what gg declares there.
     let (outcome, _log) = run_with(
-        "GG::Files.read_fil(\"notes.md\")\n",
+        "require \"gg\"\nGG::Files.read_fil(\"notes.md\")\n",
         &[crate::sandbox::operations::FILES_READ_FILE],
         &[],
         canned_outcome,
@@ -509,7 +511,7 @@ fn a_ruby_program_is_gated_by_the_host_and_told_what_it_does_have() {
     // anything is dispatched, so the effect a program was refused is an effect that did not happen
     // — which is the property the whole gate exists for.
     let (outcome, log) = run_with(
-        "GG::Files.read_file(\"notes.md\")\n",
+        "require \"gg\"\nGG::Files.read_file(\"notes.md\")\n",
         &[crate::sandbox::operations::FILES_WRITE_FILE],
         &[],
         canned_outcome,
@@ -529,7 +531,7 @@ fn a_ruby_program_is_gated_by_the_host_and_told_what_it_does_have() {
     // And it is a VALUE: a `rescue` clause catches it, reads the code off it, and the program runs
     // on. That is what a `NoMethodError` could never be.
     let (outcome, _log) = run_with(
-        "begin\n  GG::Files.read_file(\"notes.md\")\nrescue GG::Core::ToolError => failure\n           puts \"#{failure.tool} #{failure.code}\"\nend\n",
+        "require \"gg\"\nbegin\n  GG::Files.read_file(\"notes.md\")\nrescue GG::Core::ToolError => failure\n           puts \"#{failure.tool} #{failure.code}\"\nend\n",
         &[crate::sandbox::operations::FILES_WRITE_FILE],
         &[],
         canned_outcome,
@@ -586,7 +588,7 @@ end
     // A failed tool call is reported as the tool failure it is, carrying the membrane's own code, so
     // gg classifies the turn from the code rather than from what this guest made of the raise.
     let (outcome, _log) = run_with(
-        "GG::Files.read_file(\"gone.md\")\n",
+        "require \"gg\"\nGG::Files.read_file(\"gone.md\")\n",
         &all_operations(),
         &[],
         |name: &str, args: &Value| {
@@ -623,6 +625,7 @@ end
     // program met the skill's failure.
     let (outcome, _log) = run_with(
         r##"
+require "lib"
 def summarise(rows)
   rows.map { |row| row.strip }.reject(&:empty?)
 end
@@ -665,7 +668,7 @@ end
     );
     assert_eq!(
         error.location.as_deref(),
-        Some("line 20"),
+        Some("line 21"),
         "a module's raise is located at the model's own call into it, never at a line read through \
          the wrong unit's source map"
     );
@@ -684,6 +687,7 @@ fn code_modules_become_a_ruby_namespace_the_program_reaches_at_lib() {
     // body an anonymous `Module`: what it defines is what the namespace offers.
     let (outcome, log) = run_with(
         r##"
+require "lib"
 puts lib.helpers.double(21)
 puts lib.helpers.greeting
 puts lib.helpers.first_line("notes.md")
@@ -693,6 +697,7 @@ puts lib.helpers.first_line("notes.md")
             name: "helpers".to_string(),
             source: prepare_module(
                 r##"
+require "gg"
 def double(n) = n * 2
 
 def greeting = "from a skill"
@@ -720,6 +725,7 @@ end
     // then gets is a `NoMethodError` naming the member it wanted rather than one naming `lib`.
     let (outcome, _log) = run_with(
         r##"
+require "lib"
 puts "the program still ran"
 begin
   lib.broken.anything
@@ -759,7 +765,8 @@ end
 struct Crossing {
     /// The gg tool name the call must arrive under.
     tool: &'static str,
-    /// The program, exactly as a model would write it.
+    /// The call, exactly as a model would write it. The [`require`](super::SURFACE_IMPORT) that
+    /// reaches it is written by the loop below rather than thirty-five times here.
     program: &'static str,
     /// The JSON the invoker must have seen.
     expected: fn() -> Value,
@@ -991,7 +998,8 @@ fn every_tool_crosses_the_membrane_from_its_ruby_spelling() {
     let operations = all_operations();
 
     for crossing in &crossings {
-        let (outcome, log) = run_with(crossing.program, &operations, &[], canned_outcome);
+        let program = format!("{}\n{}\n", super::SURFACE_IMPORT, crossing.program);
+        let (outcome, log) = run_with(&program, &operations, &[], canned_outcome);
         assert!(
             matches!(&outcome.result, Ok(result) if result.error.is_none()),
             "`{}` did not run cleanly: {:?}",
@@ -1031,6 +1039,7 @@ fn the_views_docs_program_library_and_endings_modules_are_reached_in_ruby_too() 
     // at all, which makes them the ones a silent bridging mistake would cost the most.
     let (outcome, _log) = run_as(
         r##"
+require "gg"
 GG::Views.open_text("summary", "eight files, two failing")
 GG::Views.open_text("scratch") { ["a", "b"].join("\n") }
 open = GG::Views.current
@@ -1064,6 +1073,7 @@ GG::Session.finish("done")
     // gets the other ending group and no `finish` at all.
     let (outcome, _log) = run_as(
         r##"
+require "gg"
 puts GG::Programs.history.size
 GG::Programs.rerun("puts 'the replacement'\n")
 GG::Session.request_changes("widen the test", "name the file")
@@ -1101,7 +1111,7 @@ GG::Session.request_changes("widen the test", "name the file")
         outcome.views_opened
     );
 
-    let outcome = run("GG::Session.finish(\"done\")\n");
+    let outcome = run("require \"gg\"\nGG::Session.finish(\"done\")\n");
     assert_eq!(
         program_error(&outcome).kind,
         ProgramErrorKind::UnknownName,
@@ -1131,6 +1141,7 @@ GG::Session.request_changes("widen the test", "name the file")
     let bound = Sandbox::instantiate(&mut store, component, &linker).expect("instantiates");
     let searching = prepare(
         r##"
+require "gg"
 page = GG::Docs.search("read", in_module: "files", type: "FileRead",
                        kind: GG::Docs::DocKind::FUNCTION, limit: 5)
 puts "#{page.class} #{page.total} #{page.offset} #{page.hits.inspect}"
@@ -1165,6 +1176,7 @@ puts "#{GG::Docs.close("GG::Files.read_file")} #{GG::Docs.close_all}"
     // module — the same shape every other bought call refuses in, and a value a `rescue` can catch.
     let (outcome, _log) = run_with(
         r##"
+require "gg"
 begin
   GG::Docs.close_all
 rescue GG::Core::ToolError => failure
@@ -1179,7 +1191,7 @@ end
 }
 
 #[test]
-fn the_baked_runtime_and_sdk_are_what_make_a_turn_affordable() {
+fn the_baked_runtime_makes_a_turn_affordable_and_requiring_gg_is_what_it_costs() {
     // The measurement this artifact exists for, held as a bound rather than as a number: evaluating
     // a Ruby program on this component must cost what a JavaScript program costs plus a little, not
     // the 45–51 ms that prepending Opal's 743 KB runtime to every program measured.
@@ -1197,15 +1209,21 @@ fn the_baked_runtime_and_sdk_are_what_make_a_turn_affordable() {
     //
     // The control is the same program's language, removed: plain JavaScript through the same
     // `evaluate`, on the same component, in the same process, with the same thirty-five tools
-    // operations — so instantiating a 21 MB guest and building this SDK's surface are paid by both
-    // readings and cancel, and what is left is exactly the thing this artifact exists to have made
-    // free, the Opal runtime the compiled program requires. The two are interleaved rather than
-    // measured in blocks, so a bad scheduling window lands on both. This is the idiom the PureScript
-    // arm already uses for the same question about its own compiler output.
+    // operations — so instantiating a 21 MB guest is paid by both readings and cancels, and what is
+    // left is exactly the thing this artifact exists to have made free, the Opal runtime the
+    // compiled program requires. The two are interleaved rather than measured in blocks, so a bad
+    // scheduling window lands on both. This is the idiom the PureScript arm already uses for the
+    // same question about its own compiler output.
+    //
+    // A THIRD READING is the same program with `require "gg"` above it, which is what a program that
+    // calls gg writes. gg's SDK is registered in the guest and loaded by that line and by nothing
+    // else, so its cost is a turn's cost rather than the artifact's — and it is measured here rather
+    // than argued about.
     //
     // Compiled ONCE, outside the reading: what is being measured is a turn, and the compile is
     // measured — and recorded per program — in its own right.
     let program = prepare("puts (1..20).reduce(:+)\n");
+    let with_gg = prepare("require \"gg\"\nputs (1..20).reduce(:+)\n");
     // Not a compiled Ruby program: a line of JavaScript that reaches the same `console.log` the
     // compiled one reaches, which is what makes it the same turn minus the runtime.
     let javascript = "console.log(210)";
@@ -1228,7 +1246,21 @@ fn the_baked_runtime_and_sdk_are_what_make_a_turn_affordable() {
 
     let mut ruby = std::time::Duration::MAX;
     let mut plain = std::time::Duration::MAX;
+    let mut required = std::time::Duration::MAX;
     for _ in 0..5 {
+        let started = Instant::now();
+        let outcome = evaluate(
+            &with_gg,
+            &operations,
+            &[],
+            RunEnding::None,
+            false,
+            canned_outcome,
+        )
+        .0;
+        required = required.min(started.elapsed());
+        assert_eq!(logs(&outcome), ["210"]);
+
         let started = Instant::now();
         let outcome = evaluate(
             &program,
@@ -1293,24 +1325,41 @@ fn the_baked_runtime_and_sdk_are_what_make_a_turn_affordable() {
          ratio above cannot see because it cancels",
     );
 
-    // One thing the threshold above is too coarse to catch, and which was measured costing ~3 ms of
-    // the reading — a third of a turn — before it was moved: the implementation and the calling
-    // shape of every declaration, which `GG::Scope` needs in order to put back what a run offers
-    // and to refuse a wrong argument count or an unknown keyword. Reflecting it with
-    // `Method#parameters` when a run builds its surface is per-turn work; lifting it at the SDK's
-    // top level puts it in the snapshot `wizer` takes. That it really is in the snapshot is
-    // asserted rather than assumed, because the two are indistinguishable from inside a program and
-    // the slow one is the one that happens by default.
-    let outcome = run("puts GG::Scope::IMPLEMENTATIONS.size
+    // WHAT THE INVARIANT COSTS, measured rather than estimated. `require "gg"` runs the SDK's whole
+    // top level — thirteen modules, every type they declare, and `GG::Scope` reflecting the calling
+    // shape of all thirty-five bound functions with `Method#parameters` twice each — and that used
+    // to happen once, at bake time, inside the heap `wizer` snapshots. It cannot any more: a
+    // constant carried in the snapshot is a constant a program reaches with no line it wrote, which
+    // is the thing this arm was converted to stop doing.
+    //
+    // Measured on this repository's dev container, best of five, interleaved with the two readings
+    // above: 2.1 ms plain JavaScript, 2.7 ms Ruby, 20.4 ms Ruby under `require "gg"`. So the line
+    // costs about 17.7 ms of a turn — against the 176–190 ms this arm spends compiling that same
+    // program, which is where a Ruby turn's time actually goes.
+    //
+    // The bound is set on the RATIO to the same turn without the line, loose for the reason the
+    // bound above is loose: what it has to catch is the SDK being loaded more than once per program
+    // or the reflection growing without bound, not machine weather.
+    assert!(
+        required < ruby * 20,
+        "`require \"gg\"` took {required:?} against {ruby:?} for the same program without it; \
+         loading gg's SDK has got dramatically dearer, or it is being loaded more than once",
+    );
+
+    // And what that line buys, asserted from inside a program: the lifted table `GG::Scope` needs in
+    // order to refuse a wrong argument count or an unknown keyword is built and closed. Two
+    // requires do not build it twice — Ruby's `require` is idempotent and this arm relies on it.
+    let outcome = run("require \"gg\"
+require \"gg\"
+puts GG::Scope::IMPLEMENTATIONS.size
 puts GG::Scope::IMPLEMENTATIONS.frozen?
 ");
-    let baked = logs(&outcome);
-    assert_eq!(baked[1], "true", "the table is closed once it is built");
+    let lifted = logs(&outcome);
+    assert_eq!(lifted[1], "true", "the table is closed once it is built");
     assert!(
-        baked[0].parse::<usize>().expect("a count") >= 35,
-        "the lifted table came out of the snapshot with only {} entries, so it is being built per \
-         turn instead",
-        baked[0]
+        lifted[0].parse::<usize>().expect("a count") >= 35,
+        "the lifted table has only {} entries",
+        lifted[0]
     );
 }
 
@@ -1597,7 +1646,8 @@ fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
     let calls: Vec<String> = functions.iter().filter_map(asked).collect();
 
     let program = format!(
-        "puts [{}].map {{ |ok| ok ? \"ok\" : \"missing\" }}.join(\",\")\n",
+        "{}\nputs [{}].map {{ |ok| ok ? \"ok\" : \"missing\" }}.join(\",\")\n",
+        super::SURFACE_IMPORT,
         calls.join(", ")
     );
     let (outcome, _log) = run_as(
@@ -1629,7 +1679,8 @@ fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
         .collect();
     let (outcome, _log) = run_as(
         &format!(
-            "puts [{}].map {{ |ok| ok ? \"ok\" : \"missing\" }}.join(\",\")\n",
+            "{}\nputs [{}].map {{ |ok| ok ? \"ok\" : \"missing\" }}.join(\",\")\n",
+            super::SURFACE_IMPORT,
             review.join(", ")
         ),
         &[],
@@ -1651,7 +1702,11 @@ fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
         .iter()
         .map(|entry| entry["fqn"].as_str().expect("a fully-qualified name"))
         .collect();
-    let outcome = run(&format!("puts [{}].size\n", types.join(", ")));
+    let outcome = run(&format!(
+        "{}\nputs [{}].size\n",
+        super::SURFACE_IMPORT,
+        types.join(", ")
+    ));
     assert_eq!(logs(&outcome), [types.len().to_string()]);
 }
 
@@ -1741,6 +1796,7 @@ puts "carried on"
     // Ruby's negative arity encoding (`expected -3`), a number no CRuby message ever prints.
     let (outcome, log) = run_with(
         r##"
+require "gg"
 def why
   yield
   puts "NOT REFUSED"
@@ -1784,6 +1840,7 @@ why { GG::Files.edit_file("a.rb", "old") }
     // and naming the set that would have worked.
     let (outcome, log) = run_with(
         r##"
+require "gg"
 def why
   yield
   puts "NOT REFUSED"
@@ -1836,6 +1893,7 @@ why { GG::Views.current(deep: true) }
     // body, and a splat.
     let (outcome, log) = run_with(
         r##"
+require "gg"
 GG::Files.write_file("out/a.rb") { "from a block" }
 GG::Tasks.add_task("t1", "title", description: "d", blocked_by: ["t0"])
 GG::Tasks.set_blocked_by("t1", "t0", "t2")
@@ -1873,6 +1931,7 @@ fn g8_a_runtime_failure_reaches_the_model() {
             Case {
                 shape: Shape::ToolError,
                 program: r#"# G8 (a): a gg call the host answers `not-found`, uncaught.
+require "gg"
 
 text = GG::Files.read_file(
   "missing.md",
@@ -1880,7 +1939,7 @@ text = GG::Files.read_file(
 puts text
 "#,
                 names: &["read_file", "not-found", "missing.md"],
-                located: Located::At("line 3"),
+                located: Located::At("line 4"),
                 answered: Answered::AtRuntime,
             },
             Case {
@@ -1939,5 +1998,167 @@ puts "after the exit"
                 answered: Answered::AtRuntime,
             },
         ],
+    );
+}
+
+/// **Nothing gg offers resolves without a line the program wrote** — the assertion behind
+/// [ruling D3](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) on this arm.
+///
+/// Every program below is driven through the real guest. The negative half is what makes the
+/// positive half mean anything: gg's SDK, the agent's own code and the library set are all
+/// registered in Opal's require registry and none of them is loaded, so a program that writes no
+/// `require` has Opal's corelib and its own text.
+#[test]
+fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
+    // The commonest call there is, written without the line that reaches it. Ruby's own answer,
+    // from Ruby's own constant lookup: there is no `GG`.
+    let outcome = run("text = GG::Files.read_file(\"notes.md\")\nputs text.contents\n");
+    let error = program_error(&outcome);
+    assert_eq!(error.kind, ProgramErrorKind::UnknownName);
+    assert!(
+        error.message.starts_with("uninitialized constant GG"),
+        "the reach for gg's surface is refused in Ruby's own words: {}",
+        error.message
+    );
+    // And the sentence gg adds to it is the line that would have worked, with the modules it
+    // reaches — the model's next program is one edit away.
+    assert!(
+        error
+            .message
+            .contains("`require \"gg\"` reaches GG::Docs, GG::Files"),
+        "the refusal names the line that reaches the surface: {}",
+        error.message
+    );
+
+    // A type is behind the same line, and so is the constant a `rescue` clause names — this arm
+    // has no half of its surface that arrives some other way.
+    for reach in ["GG::Core::ToolError", "GG::Tasks::TaskStatus::DONE"] {
+        let outcome = run(&format!("puts {reach}\n"));
+        let error = program_error(&outcome);
+        assert_eq!(error.kind, ProgramErrorKind::UnknownName);
+        assert!(
+            error.message.starts_with("uninitialized constant GG"),
+            "{reach} resolves to nothing without the line: {}",
+            error.message
+        );
+    }
+
+    // The agent's own loaded code is behind a second line, and it is not the first one: `require
+    // "gg"` is gg's surface and reaches no skill of the agent's.
+    let module = CodeModule {
+        name: "helpers".to_string(),
+        source: prepare_module("def double(n) = n * 2\n"),
+    };
+    let outcome = run_with(
+        "puts lib.helpers.double(21)\n",
+        &[],
+        std::slice::from_ref(&module),
+        canned_outcome,
+    )
+    .0;
+    assert_eq!(program_error(&outcome).kind, ProgramErrorKind::UnknownName);
+    let outcome = run_with(
+        "require \"gg\"\nputs lib.helpers.double(21)\n",
+        &[],
+        std::slice::from_ref(&module),
+        canned_outcome,
+    )
+    .0;
+    assert_eq!(
+        program_error(&outcome).kind,
+        ProgramErrorKind::UnknownName,
+        "gg's surface is not a second way to reach the agent's own code"
+    );
+
+    // A library is behind the same mechanism, which is the point: there is no special case for
+    // gg's own file in this guest's require registry.
+    let outcome = run("puts JSON.parse('{\"a\": 1}')[\"a\"]\n");
+    assert_eq!(program_error(&outcome).kind, ProgramErrorKind::UnknownName);
+
+    // THE POSITIVE HALF, with the line read out of the catalogue rather than typed here — so what
+    // is proven is that the line gg TELLS a model to write is the line that works.
+    let import = ruby()
+        .catalogue()
+        .modules
+        .iter()
+        .find(|module| module.id == "files")
+        .expect("this arm's catalogue declares the files module")
+        .import
+        .clone()
+        .expect("this arm states an import line for every module");
+    let (outcome, log) = run_with(
+        &format!(
+            "{import}\n\ntext = GG::Files.read_file(\"notes.md\")\nputs text.contents.lines.first.strip\n"
+        ),
+        &[crate::sandbox::operations::FILES_READ_FILE],
+        &[],
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["contents of notes.md"]);
+    assert_eq!(log.names(), ["read_file"]);
+
+    // And the other two lines, each reaching exactly what it names.
+    let (outcome, _log) = run_with(
+        "require \"lib\"\nputs lib.helpers.double(21)\n",
+        &[],
+        std::slice::from_ref(&module),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["42"]);
+    let outcome = run("require \"json\"\nputs JSON.parse('{\"a\": 1}')[\"a\"]\n");
+    assert_eq!(logs(&outcome), ["1"]);
+}
+
+/// **A whole Ruby program, of the shape a model writes one**, driven through
+/// [`run_program`](crate::sandbox::run_program) — the function a turn calls, so the arm answers
+/// through the registry, its real compiler, its real guest and the real membrane.
+#[test]
+fn a_whole_ruby_program_a_model_would_write_runs_through_the_turn_path() {
+    let program = r##"require "gg"
+require "json"
+
+# The reading this turn is about, and what it is worth saying about it.
+Reading = Struct.new(:path, :lines) do
+  def summary = "#{path}: #{lines} lines"
+end
+
+file = GG::Files.read_file("notes.md")
+reading = Reading.new("notes.md", file.contents.lines.size)
+puts reading.summary
+
+GG::Views.open_text("notes", JSON.parse(%({"label": "notes"}))["label"] + " #{reading.lines}")
+"##;
+
+    let log = CallLog::default();
+    let api = FakeToolApi::with(&log, canned_outcome);
+    let operations = granted_operations(&all_operations(), false);
+    let scope = ProgramScope {
+        capabilities: &all_capabilities(),
+        operations: &operations,
+        modules: &[],
+        ending: RunEnding::None,
+    };
+    let (outcome, _api) = crate::sandbox::run_program(
+        crate::sandbox::language(GgProgramLanguage::Ruby),
+        program,
+        scope,
+        SandboxLimits::default(),
+        None,
+        api,
+    );
+
+    assert_eq!(logs(&outcome), ["notes.md: 2 lines"]);
+    assert_eq!(
+        log.args("read_file"),
+        Some(json!({ "path": "notes.md", "offset": null, "limit": null })),
+        "the call the program wrote arrived at the host as itself"
+    );
+    assert!(
+        outcome
+            .views_opened
+            .iter()
+            .any(|view| view.selector.contains("notes")),
+        "the view the program opened on the answer is in the turn's outcome: {:?}",
+        outcome.views_opened
     );
 }

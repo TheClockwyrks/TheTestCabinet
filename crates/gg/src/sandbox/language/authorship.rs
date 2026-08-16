@@ -230,9 +230,9 @@ const UNCONVERTED: &[Unconverted] = &[
         arm: GgProgramLanguage::Ruby,
         half: Half::Module,
         did: Did::Wrapped,
-        adds: "GG::Lib.define do",
-        instead: "opens the module inside a block whose lines the arm then subtracts from a \
-                  diagnostic by arithmetic",
+        adds: "Module.new do ",
+        instead: "opens the module inside a block that makes its body a namespace, on the author's \
+                  own first line so that no diagnostic moves",
     },
     // ---- java -----------------------------------------------------------------------------------
     Unconverted {

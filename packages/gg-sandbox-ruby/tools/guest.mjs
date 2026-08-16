@@ -1,7 +1,15 @@
 // Compile the two Ruby halves of the guest into the JavaScript `componentize-js` bakes:
 //
-//   src/gg/**.rb   --this script-->  .build/gg.js         gg's hand-written Ruby SDK
-//   src/library.rb --this script-->  .build/libraries.js  the libraries a program may `require`
+//   src/gg/**.rb    --this script-->  .build/gg.js         gg's hand-written Ruby SDK, as `gg`
+//   src/knowledge.rb --this script-->  .build/gg.js        the agent's own code modules, as `lib`
+//   src/library.rb  --this script-->  .build/libraries.js  the libraries a program may `require`
+//
+// EVERY ONE OF THEM IS REQUIRABLE AND NONE OF THEM IS LOADED. `requirable: true` compiles a source
+// into `Opal.modules[<path>]` — registered in the guest's require registry and not executed — so
+// `require "gg"` reaches gg's surface, `require "lib"` reaches the code modules this session read,
+// and `require "json"` reaches a library, by one mechanism with no exception for gg's own. A
+// program that writes none of those lines has no `GG` constant and no `lib`, which is what
+// `nothing_this_arm_offers_resolves_without_a_line_the_program_wrote` measures.
 //
 // Both are compiled by the SAME pinned Opal that compiles a model's program on the host, out of
 // `packages/gg-sandbox-ruby/opal-version.sh`, because a program and the SDK it calls have to be
@@ -47,9 +55,8 @@ const SOURCES = process.env.GG_OPAL_SOURCES ?? path.join(BUILD_DIR, "opal-gem");
 /**
  * gg's SDK, in load order.
  *
- * Concatenated rather than compiled file by file, because Opal's `require` resolves against a
- * module registry this build has no reason to populate: the SDK is one unit and its files have one
- * order. `scope.rb` is last because it names every other module at load.
+ * Concatenated rather than compiled file by file, because the SDK is one requirable unit — `gg` —
+ * and its files have one order. `scope.rb` is last because it names every other module at load.
  */
 const SDK = [
   "gg/value.rb",
@@ -57,7 +64,6 @@ const SDK = [
   "gg/check.rb",
   "gg/surface.rb",
   "gg/wire.rb",
-  "gg/lib.rb",
   "gg/docs.rb",
   "gg/files.rb",
   "gg/shell.rb",
@@ -235,16 +241,21 @@ fs.writeFileSync(
 );
 
 const sdk = SDK.map((file) => read(path.join(PACKAGE_DIR, "src", file))).join("\n");
+const knowledge = read(path.join(PACKAGE_DIR, "src", "knowledge.rb"));
 fs.writeFileSync(
   path.join(BUILD_DIR, "gg.js"),
   [
-    "// gg's Ruby SDK, compiled by packages/gg-sandbox-ruby/tools/guest.mjs from",
-    "// packages/gg-sandbox-ruby/src/gg/. Do not edit: it is generated.",
-    compile(sdk, "gg.rb", false),
+    "// gg's Ruby SDK and the `lib` a program reaches its own code modules through, compiled by",
+    "// packages/gg-sandbox-ruby/tools/guest.mjs from packages/gg-sandbox-ruby/src/. Both are",
+    "// REGISTERED and neither is LOADED: a program reaches either one by writing its own `require`.",
+    "// Do not edit: it is generated.",
+    compile(sdk, "gg.rb", true),
+    compile(knowledge, "lib.rb", true),
     "",
   ].join("\n"),
 );
 
 process.stdout.write(
-  `Wrote .build/libraries.js (${compiled.size} modules) and .build/gg.js (${SDK.length} sources).\n`,
+  `Wrote .build/libraries.js (${compiled.size} modules) and .build/gg.js ` +
+    `(gg, from ${SDK.length} sources, and lib).\n`,
 );
