@@ -39,19 +39,25 @@ function StatsContent({ model }: { model: ModelSummary }) {
     // recomputation of the same figures — reduces the run set with this same
     // function, so the numbers agree by construction.
     const { outcomes, runs } = rollupRuns(summaries);
-    // Order: the positive outcome first, then the published failure tiers. The
-    // rollup also counts `catastrophic` and `infrastructure`; the ring has never
-    // shown them, so they stay out of the segments while still counting toward the
-    // total.
+    // One segment per publishable state, in `RunState::ALL` order: the positive
+    // outcome first, then the failure tiers as the contract enumerates them. That
+    // covers every run this page can see — `infrastructure` is the only state
+    // without a segment, and it is never publishable and excluded from every model
+    // statistic — so the legend tallies sum to the ring's center total.
     const segments: ReliabilitySegment[] = [
       { label: "Completed", value: outcomes.completed, tone: "success" },
+      {
+        label: "Catastrophic",
+        value: outcomes.catastrophic,
+        tone: "catastrophic",
+      },
+      { label: "Timeouts", value: outcomes.timed_out, tone: "timeout" },
       {
         label: "Harness errors",
         value: outcomes.harness_error,
         tone: "harnessError",
       },
       { label: "Hangs", value: outcomes.hung, tone: "hung" },
-      { label: "Timeouts", value: outcomes.timed_out, tone: "timeout" },
     ];
     return { segments, totalRuns: runs };
   }, [summaries]);
@@ -59,8 +65,9 @@ function StatsContent({ model }: { model: ModelSummary }) {
   return (
     <>
       {/* Reliability: how the model's published runs broke down — completed vs
-          the publishable failure tiers (harness errors, timeouts). Hidden while
-          the runs are still loading so the ring never flashes a misleading 0%. */}
+          every publishable failure tier (catastrophic, timeouts, harness errors,
+          hangs). Hidden while the runs are still loading so the ring never flashes
+          a misleading 0%. */}
       {!loading && (
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>Reliability</h2>
