@@ -157,11 +157,20 @@ never dropped at any depth, and clang's own `N errors generated.` summary is
 kept. The band is decided on the whole rendering before the cap runs, so capping
 can never turn a compile error into a toolchain failure.
 
-At run time there are three shapes. An uncaught `throw` is caught by gg's shell
+At run time there are four shapes. An uncaught `throw` is caught by gg's shell
 and reported as a recoverable program error carrying the exception's demangled
 class and its `what()`, with no location. A libc++ hardening check traps with
-libc++'s own sentence at the model's own line. Any other undefined behaviour is
-a trap with no words, located at the model's own line and no more.
+libc++'s own sentence at the model's own line. A non-zero status returned from
+`main` is read by the shell and reported with the number the program chose, which
+is the one failure channel C++ gives an entry point. Any other undefined
+behaviour is a trap with no words, located at the model's own line and no more.
+
+Two failures this arm cannot report faithfully are recorded by
+[gate G8](/gg/responses-as-code/invariants/). `std::exit(3)` reaches the model as
+`exit(1)`, because the pinned preview1 adapter imports `wasi:cli/exit.exit` and
+that import carries a boolean rather than a status. A null dereference is not a
+fault at all: address zero is ordinary linear memory in wasm, so reading and
+writing through a null pointer succeeds and the turn is recorded as a clean one.
 
 ## Prompt segment
 

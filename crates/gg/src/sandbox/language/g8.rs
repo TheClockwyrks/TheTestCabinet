@@ -386,14 +386,6 @@ const KNOWN_HOLES: &[Hole] = &[
     // ---- cpp --------------------------------------------------------------------------------
     Hole {
         arm: GgProgramLanguage::Cpp,
-        shape: Shape::FailureValue,
-        // Nothing. `main`'s status is read and discarded by the shell that calls it, so the one
-        // failure channel C++ gives an entry point reaches the model nowhere — and the program's
-        // own last log line is not fed back either, since a clean turn carries no message.
-        instead: Instead::Nothing,
-    },
-    Hole {
-        arm: GgProgramLanguage::Cpp,
         shape: Shape::Abort,
         // The status the program chose is destroyed on the way out: `std::exit(3)` is reported as
         // `exit(1)`.

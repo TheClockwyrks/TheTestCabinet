@@ -518,6 +518,31 @@ fn the_three_ways_a_cpp_program_fails_reach_the_model_differently() {
          it: {failure}"
     );
     assert_eq!(undefined.logs, ["before"]);
+
+    // 4. THE SHAPE OF UNDEFINED BEHAVIOUR THAT SAYS NOTHING AND DOES NOT EVEN FAIL. A null
+    //    dereference is a fault on every other arm here and is not one on this target: address zero
+    //    is ordinary linear memory in a wasm module, so a read through a null pointer returns
+    //    whatever is at offset zero and a write through one succeeds. The turn is recorded a
+    //    success, and the run record shows a program that ran.
+    //
+    //    It is MEASURED here rather than left unstated, because this arm's own documentation makes
+    //    the claim and the claim is the whole of the comparability risk: gg cannot make it a fault
+    //    without an address-sanitizer runtime in every artifact, and what it can do is say so.
+    let dereferenced = run("#include <gg.hpp>\n\n\
+         int main() {\n\
+         \x20 int *missing = nullptr;\n\
+         \x20 *missing = 7;\n\
+         \x20 gg::log(std::to_string(*missing));\n\
+         \x20 return 0;\n\
+         }\n");
+    assert_eq!(
+        logs(&dereferenced),
+        ["7"],
+        "MEASURED, and recorded rather than asserted as desirable: a null dereference is not a \
+         fault on `wasm32-wasip1`, because address zero is ordinary linear memory — the write \
+         succeeds and the read hands the value back. If this ever starts failing the turn, this arm \
+         has gained a check and its documentation has to say so"
+    );
 }
 
 #[test]
@@ -1072,6 +1097,50 @@ int main() {
     );
 }
 
+/// **Every way a C++ program can end by a status is read**, not only the one G8 drives.
+///
+/// C++ gives an entry point exactly one channel of its own — what `main` returns — and gg's shell
+/// reads it. Both spellings are driven: an explicit `return 3;` and a fall off the end of `main`,
+/// which the language defines as `return 0` and which must therefore *not* be reported. `std::exit`
+/// is measured beside them and is the one this arm cannot report faithfully: the committed preview1
+/// adapter imports `wasi:cli/exit.exit`, which carries a boolean rather than a status, so the number
+/// the program chose is gone before gg sees it. It is asserted rather than left out, so the gap is a
+/// measurement and not a silence.
+#[test]
+fn a_status_a_cpp_program_ends_with_reaches_the_model_however_it_was_written() {
+    let said = |source: &str| {
+        let (outcome, _log) = evaluate(
+            &prepare(source),
+            &[],
+            RunEnding::None,
+            false,
+            canned_outcome,
+        );
+        match outcome.result {
+            Ok(result) => result.error.map(|error| error.message),
+            Err(error) => Some(format!("{error:?}")),
+        }
+    };
+    assert_eq!(
+        said("int main() { return 3; }\n").as_deref(),
+        Some("the program's entry point returned 3"),
+        "a returned status did not reach the model"
+    );
+    assert_eq!(
+        said("int main() { }\n"),
+        None,
+        "C++ defines falling off the end of `main` as returning zero, and a clean turn must stay one"
+    );
+    assert!(
+        said("#include <cstdlib>\nint main() { std::exit(3); }\n")
+            .expect("a program that exits says so")
+            .contains("exit(1)"),
+        "MEASURED, and recorded rather than asserted as desirable: the pinned preview1 adapter's \
+         `wasi:cli/exit.exit` carries a boolean, so the status a program exits with is destroyed on \
+         the way out. gate G8 carries the row"
+    );
+}
+
 // ---------------------------------------------------------------------------------------------
 // Isolation
 // ---------------------------------------------------------------------------------------------
@@ -1196,7 +1265,11 @@ int main() {
   return 3;
 }
 "#,
-                names: &["the third step did not finish"],
+                // The status, which is every word the program produced that reaches the model:
+                // `gg::log` is the operator's channel, so the line above is not fed back. C++
+                // locates a returned status nowhere, because it is not a fault raised at a
+                // statement — it is how the program chose to end.
+                names: &["returned 3"],
                 located: Located::Nowhere,
                 answered: Answered::AtRuntime,
             },

@@ -90,18 +90,22 @@
 //!
 //! # What this arm has that is worse than any other, and cannot be engineered away
 //!
-//! **A failure that says nothing.** Two of the three ways a C++ program fails here carry their own
-//! words, and both take a decision to get there. An uncaught `throw` is caught by gg's shell and
+//! **A failure that says nothing.** Three of the four ways a C++ program fails here carry their own
+//! words, and each takes a decision to get there. An uncaught `throw` is caught by gg's shell and
 //! reported as an ordinary model-facing error carrying the exception's own class and `what()` —
 //! without which it would be a bare `thrown Wasm exception`, since an exception escaping `main`
 //! under `-fwasm-exceptions` never reaches `std::terminate`. A libc++ **hardening** check —
 //! `v[10]`, `.front()` on an empty container — carries libc++'s own sentence *and* the model's own
 //! line, out of the artifact's debug information, and only because gg turns hardening on: wasi-sdk
-//! ships libc++ configured to check nothing.
+//! ships libc++ configured to check nothing. A non-zero status returned from `main` is read by that
+//! same shell and reported with the number the program chose, which is the one failure channel C++
+//! gives an entry point and the one that walks past every `catch` there is.
 //!
-//! The third is undefined behaviour, and it arrives as a bare trap: an integer division by zero, a
-//! dereferenced null, a pointer past the end of an array. `-g1` locates it at the model's own line
-//! and that is all anything can do.
+//! The fourth is undefined behaviour, and it arrives as a bare trap: an integer division by zero, a
+//! pointer past the end of an array. `-g1` locates it at the model's own line and that is all
+//! anything can do. A dereferenced null is worse still and is not a trap at all: address zero is
+//! ordinary linear memory on this target, so reading and writing through a null pointer succeeds and
+//! the turn is recorded a success.
 //!
 //! It is worth stating plainly because it is a **comparability** risk rather than only a usability
 //! one: on this arm, and on no other here, a failure caused by the language can be hard to tell in
