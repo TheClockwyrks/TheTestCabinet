@@ -26,12 +26,12 @@
 // ticks with the closest approach between samples computed from the pair
 // (`segmentMinToStar`).
 //
-// THE CLIP is one crossing at the speed it actually runs: `FILMED`, the dead-on approach
-// along the star's own row, an ordinary member of the sweep measured with the rest. `arrange`
-// poses it and `act` flies it; the measurements then sit behind an `advance` that overruns
-// the filming budget, which ends the record pass there and leaves them to the validate pass.
-// The assertion names the crossing that came closest, which the clip does not show — the
-// sweep that finds it has to run after the filming.
+// THE CLIP is one crossing at the speed it actually runs — the one that came closest, so a
+// reviewer watches the approach the verdict was decided on. `arrange` poses it and `act`
+// flies it; the measurements then sit behind an `advance` that overruns the filming budget,
+// which ends the record pass there and leaves them to the validate pass. Which crossing that
+// is comes from `worstCrossing`, filled in by the validate pass's sweep and read by the
+// record pass's `arrange`.
 //
 // A bystander rock keeps the field occupied. `newGame` leaves it empty, an empty field is a
 // cleared wave, and a build may treat the wave banner that raises as a lull with nothing to
@@ -126,12 +126,28 @@ function allCrossings() {
 
 const CROSSINGS = allCrossings();
 
-// The crossing the clip shows: straight along the star's own row, from the left, on the
-// first game — the approach that runs dead at the core.
-const FILMED = CROSSINGS.find(
+// The crossing filmed when nothing has told us which one to film: straight along the star's
+// own row, from the left, on the first game — the approach that runs dead at the core.
+const DEFAULT_FILMED = CROSSINGS.find(
   (crossing) =>
     crossing.row === 0 && crossing.fromLeft && crossing.repeat === 0,
 );
+
+/**
+ * The crossing the clip should show — the one that came closest, which is the one the
+ * verdict was decided on.
+ *
+ * It is MODULE state rather than item state, deliberately, because the two passes need to
+ * agree on it and an item's own closures are per-pass by design. The driver imports this
+ * module once and instantiates it per pass, validate first, so the sweep in the validate
+ * pass leaves its answer here for the record pass's `arrange` to read. The sweep cannot
+ * simply run again in the record pass: it is thousands of round trips and the recording is
+ * already going, which is the fast-forward the clip is arranged to avoid.
+ *
+ * `null` until a sweep has run, and `arrange` falls back to `DEFAULT_FILMED`, so a pass that
+ * runs without one still films a real crossing.
+ */
+let worstCrossing = null;
 
 /**
  * Put a fresh saucer on the line for one crossing, in a game of its own.
@@ -208,10 +224,12 @@ export default function item() {
 
     clipMs: CLIP_MS,
 
-    // Pose the one crossing the clip shows; everything else runs in `act`, behind the
+    // Pose the one crossing the clip shows — the closest a sweep has found, or the
+    // dead-on approach before any sweep has run. Everything else is in `act`, behind the
     // budget overrun.
     async arrange(api) {
-      await poseCrossing(api, FILMED.pose, FILMED.seed);
+      const filmed = worstCrossing ?? DEFAULT_FILMED;
+      await poseCrossing(api, filmed.pose, filmed.seed);
     },
 
     async act(api) {
@@ -244,7 +262,8 @@ export default function item() {
         endD = distToStar(saucer);
       }
 
-      // Scenario 2: the crossings, the filmed one among them.
+      // Scenario 2: the crossings, the filmed one among them. The closest is left in
+      // `worstCrossing` for the record pass to film — see there.
       worst = Infinity;
       worstLabel = "";
       allSurvived = true;
@@ -258,6 +277,7 @@ export default function item() {
         if (min < worst) {
           worst = min;
           worstLabel = crossing.label;
+          worstCrossing = crossing;
         }
       }
     },

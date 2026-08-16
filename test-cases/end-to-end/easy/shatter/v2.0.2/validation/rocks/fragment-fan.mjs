@@ -22,8 +22,9 @@
 // the rock's own course", which a parent drifting along the shot's line would leave pointing
 // the same way. Against this pose the two differ by 60 degrees.
 //
-// Posing the parent is instant (`arrange`); the shot and the fan it produces are the behavior
-// (`act`), so the clip shows the fragments spring apart.
+// Posing the parent is instant (`arrange`); the drift, the shot and the fan it produces are
+// the behavior (`act`), so the clip opens on the rock travelling, then shows the fragments
+// spring apart from it.
 
 import {
   arrangePosedRock,
@@ -46,8 +47,12 @@ const FAN_TOLERANCE = 60;
 const ALONG_SHOT = 30;
 
 // How much of the posed drift must survive into the fragments. The parent is posed at 60 px/s
-// on each axis and gravity trims about 13 px/s from that over the shots.
+// on each axis and gravity trims about 26 px/s from that over the lead-in and the shots.
 const DRIFT = -20;
+
+// How long the parent is watched drifting before the first shot, so the clip establishes the
+// motion the fragments are then read for.
+const LEAD_IN = 60; // 0.5 s
 
 export default function item() {
   // The field just after the Large died, read by `assert`.
@@ -62,6 +67,7 @@ export default function item() {
     },
 
     async act(api) {
+      await api.advance(LEAD_IN); // establish the parent's drift — see LEAD_IN
       outcome = await actFireUntilGone(api, "large");
     },
 

@@ -55,13 +55,15 @@ and reads the same line as one more instant step. The clip is down from 10.2 s t
 which 5.5 is the crossing itself and the rest is the same posing every other item in this
 case opens with.
 
-What the clip shows is the dead-on crossing along the star's own row, which is an ordinary
-member of the sweep — reached from its own seed, measured with the other fifty-three — not
-a lookalike staged for the camera. It is not the WORST crossing, because that cannot be
-known until the sweep has run and the sweep has to follow the filming. The assertion names
-the worst instead (`row +80, from the right, game 3`), so a reviewer reads which crossing
-decided the verdict and watches what a crossing looks like, rather than watching a minute
-of fast-forward to reach either.
+What the clip shows is the crossing that came CLOSEST — the one the verdict was decided on,
+so a reviewer watches the approach being complained about rather than a representative one.
+Which crossing that is cannot be known until the sweep has run, and the sweep has to follow
+the filming, so the validate pass leaves its answer in a module-level `worstCrossing` for
+the record pass's `arrange` to read. The two passes reach the same crossing because each is
+posed from its own seed, so `arrange` reproduces it exactly rather than staging a lookalike.
+A first cut of this revision filmed the dead-on approach instead, which on a failing build
+is frequently one it handles cleanly — the item read as a false positive to anyone watching
+the playback.
 
 ## The three `waves` items clear a wave by shooting it, not with `clearRocks`
 
@@ -140,6 +142,10 @@ off-spec builds, 144 of their 180 px/s fan lies along the shot, against a thresh
 Mutants confirm neither half is vacuous: fragments that carry no parent velocity fail all
 three drift assertions, and a kick rotated to lie along the shot fails the perpendicularity
 one at 180 against the same threshold.
+
+The clip also opens with half a second of the parent drifting before the first round is
+placed, so the motion the fragments are then read for is established on screen rather than
+inferred from the split.
 
 ## Six torpedo items hold on the thing they are grading
 
