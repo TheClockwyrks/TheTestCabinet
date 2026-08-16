@@ -3,6 +3,7 @@ import {
   ReliabilityRingWidget,
   type ReliabilitySegment,
 } from "@test-cabinet/ui";
+import { rollupRuns } from "@test-cabinet/run-stats/rollup";
 import type { ModelSummary } from "../../../data/models";
 import { useModelRunSummaries } from "../../../data/useModelRunSummaries";
 import {
@@ -33,24 +34,26 @@ function StatsContent({ model }: { model: ModelSummary }) {
   // the set is exactly the published runs) and the console.
   const { summaries, loading } = useModelRunSummaries(model.modelIds);
   const { segments, totalRuns } = useMemo(() => {
-    let completed = 0;
-    let harnessErrors = 0;
-    let hangs = 0;
-    let timeouts = 0;
-    for (const run of summaries) {
-      if (run.state === "completed") completed += 1;
-      else if (run.state === "harness_error") harnessErrors += 1;
-      else if (run.state === "hung") hangs += 1;
-      else if (run.state === "timed_out") timeouts += 1;
-    }
-    // Order: the positive outcome first, then the published failure tiers.
+    // The shared rollup, rather than a tally written out here: anything else that
+    // reports this model's outcomes — a write-up that freezes them, a later live
+    // recomputation of the same figures — reduces the run set with this same
+    // function, so the numbers agree by construction.
+    const { outcomes, runs } = rollupRuns(summaries);
+    // Order: the positive outcome first, then the published failure tiers. The
+    // rollup also counts `catastrophic` and `infrastructure`; the ring has never
+    // shown them, so they stay out of the segments while still counting toward the
+    // total.
     const segments: ReliabilitySegment[] = [
-      { label: "Completed", value: completed, tone: "success" },
-      { label: "Harness errors", value: harnessErrors, tone: "harnessError" },
-      { label: "Hangs", value: hangs, tone: "hung" },
-      { label: "Timeouts", value: timeouts, tone: "timeout" },
+      { label: "Completed", value: outcomes.completed, tone: "success" },
+      {
+        label: "Harness errors",
+        value: outcomes.harness_error,
+        tone: "harnessError",
+      },
+      { label: "Hangs", value: outcomes.hung, tone: "hung" },
+      { label: "Timeouts", value: outcomes.timed_out, tone: "timeout" },
     ];
-    return { segments, totalRuns: summaries.length };
+    return { segments, totalRuns: runs };
   }, [summaries]);
 
   return (
@@ -111,9 +114,7 @@ function StatsContent({ model }: { model: ModelSummary }) {
           />
           <Stat
             label="Release date"
-            value={
-              model.releasedAt ? formatReleaseDate(model.releasedAt) : "—"
-            }
+            value={model.releasedAt ? formatReleaseDate(model.releasedAt) : "—"}
             muted={!model.releasedAt}
           />
         </div>
@@ -133,9 +134,7 @@ function Stat({ label, value, muted = false }: StatProps) {
   return (
     <div className={styles.stat}>
       <span className={styles.statLabel}>{label}</span>
-      <span
-        className={`${styles.statValue}${muted ? ` ${styles.muted}` : ""}`}
-      >
+      <span className={`${styles.statValue}${muted ? ` ${styles.muted}` : ""}`}>
         {value}
       </span>
     </div>
