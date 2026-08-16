@@ -105,26 +105,53 @@ describe("resolveShortLink", () => {
     });
   });
 
-  it("sends an unknown code to the run index rather than erroring", () => {
+  it("404s a code that names no run, offering the run index", () => {
     expect(resolveShortLink("/r/ffffffff", INDEX)).toEqual({
-      kind: "elsewhere",
+      kind: "notFound",
       url: "https://testcabinet.ai/runs",
     });
   });
 
-  it("sends the bare root and any other path to the gallery", () => {
-    for (const path of ["/", "/about", "/r", "/r/a/b", "/x/2f81c4a9"]) {
+  it("404s an ambiguous code rather than picking one of its candidates", () => {
+    // `2f81` prefixes only one id here, so lengthen the corpus until it does not.
+    const ambiguous: ShareIndex = {
+      ...INDEX,
+      entries: {
+        ...INDEX.entries,
+        "2f81c4a8": entry({
+          code: "2f81c4a8",
+          runId: "2f81c4a8-0000-4000-8000-000000000000",
+        }),
+      },
+    };
+    expect(resolveShortLink("/r/2f81c4a", ambiguous)).toEqual({
+      kind: "notFound",
+      url: "https://testcabinet.ai/runs",
+    });
+  });
+
+  it("sends the bare root to the gallery: it is the domain's front door", () => {
+    expect(resolveShortLink("/", INDEX)).toEqual({
+      kind: "gallery",
+      url: "https://testcabinet.ai",
+    });
+  });
+
+  it("404s any path that is not a short link at all", () => {
+    // Quietly redirecting these would alias the gallery's own paths onto the
+    // short domain and hide a typo behind a page that looks like an arrival.
+    for (const path of ["/about", "/r", "/r/a/b", "/x/2f81c4a9"]) {
       expect(resolveShortLink(path, INDEX), path).toEqual({
-        kind: "elsewhere",
+        kind: "notFound",
         url: "https://testcabinet.ai",
       });
     }
   });
 
-  it("sends every link to the gallery when nothing is published yet", () => {
+  it("404s every link when nothing is published yet", () => {
     const empty: ShareIndex = { ...INDEX, entries: {} };
     expect(resolveShortLink("/r/2f81c4a9", empty)).toEqual({
-      kind: "elsewhere",
+      kind: "notFound",
       url: "https://testcabinet.ai/runs",
     });
   });

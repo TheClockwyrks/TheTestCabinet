@@ -27,9 +27,17 @@ export type Resolution =
       downgraded: boolean;
     }
   | {
-      /** The path names no run; send the visitor somewhere useful on the gallery
-       * rather than answering with an error. */
-      kind: "elsewhere";
+      /** The domain's front door: the bare root, which is not a link to anything
+       * in particular and so sends the visitor to the gallery. */
+      kind: "gallery";
+      url: string;
+    }
+  | {
+      /** The path addresses nothing on this domain — a code that names no run, or
+       * a path that is not a short link at all. Answered with a 404. */
+      kind: "notFound";
+      /** The gallery URL to offer on the 404 page, so the visitor has somewhere
+       * to go from a domain that has nothing else on it. */
       url: string;
     };
 
@@ -45,13 +53,16 @@ function codeMap(index: ShareIndex): Map<string, string> {
 /**
  * Resolve a short-link path against the published index.
  *
- * Only `/r/<code>` and `/p/<code>` are short links. Everything else — including
- * the bare root — is sent to the gallery, so the short domain has exactly one job
- * and no surprising aliasing of the gallery's own paths.
+ * Only `/r/<code>` and `/p/<code>` are short links. The bare root is the domain's
+ * front door and goes to the gallery. Everything else addresses nothing here and
+ * is a 404 — the short domain has exactly one job, and quietly redirecting a path
+ * it does not serve would alias the gallery's own paths and hide typos.
  *
- * A link that names no run lands on the run index rather than a 404: someone
- * following a dead or mistyped link is better served by the thing they were
- * looking for than by an error page on a domain that has nothing else on it.
+ * A code that names no run is a 404 for the same reason a wrong address on the
+ * gallery is: a link that resolves to *something* when it should have resolved to
+ * nothing tells the person who followed it that they arrived, and tells a crawler
+ * the URL is real. The 404 page offers the gallery, so nobody is left at a dead
+ * end on a domain with nothing else on it.
  */
 export function resolveShortLink(
   pathname: string,
@@ -59,15 +70,17 @@ export function resolveShortLink(
 ): Resolution {
   const origin = index.origin.replace(/\/+$/, "");
   const segments = pathname.split("/").filter(Boolean);
+  if (segments.length === 0) return { kind: "gallery", url: origin };
+
   const requested =
     segments.length === 2 ? targetForPrefix(segments[0]!) : null;
-  if (!requested) return { kind: "elsewhere", url: origin };
+  if (!requested) return { kind: "notFound", url: origin };
 
   const runId = resolveCode(decodeURIComponent(segments[1]!), codeMap(index));
-  if (!runId) return { kind: "elsewhere", url: `${origin}/runs` };
+  if (!runId) return { kind: "notFound", url: `${origin}/runs` };
 
   const entry = Object.values(index.entries).find((e) => e.runId === runId);
-  if (!entry) return { kind: "elsewhere", url: `${origin}/runs` };
+  if (!entry) return { kind: "notFound", url: `${origin}/runs` };
 
   // A run that released no playable build has nothing for a play link to open —
   // a harness-error or hung run releases none, and a catastrophic one produced
