@@ -680,10 +680,9 @@ end
 
 #[test]
 fn code_modules_become_a_ruby_namespace_the_program_reaches_at_lib() {
-    // A code skill's or code memory's module is evaluated BEFORE the program and against the same
-    // surface, which is the half of this arm that a runtime living inside the program's own source
-    // could not have satisfied — and the reason this guest bakes Opal in rather than prepending it.
-    // A Ruby file has no exports, so the host wraps the author's source in the call that makes its
+    // A code skill's or code memory's module is evaluated when the program requires `lib`, and its
+    // author writes the same `require "gg"` a program does to reach gg from inside it. A Ruby file
+    // has no exports, so the host wraps the author's source in the `Module.new do` that makes its
     // body an anonymous `Module`: what it defines is what the namespace offers.
     let (outcome, log) = run_with(
         r##"
@@ -747,18 +746,37 @@ end
         logs(&outcome)[1]
     );
 
-    // No modules, no `lib` — the rule every family obeys: what a run does not offer is not a name.
+    // No line, no `lib`, whatever the run bound.
     let outcome = run("puts lib\n");
     assert_eq!(program_error(&outcome).kind, ProgramErrorKind::UnknownName);
 
-    // A syntax error in a module is reported at the AUTHOR's line, not one further down where the
-    // wrapper put it.
-    let failure = compile_module("ok = 1\ny = 2 +* 3\n", &PrepareContext::new())
-        .expect_err("the module does not compile");
+    // And with the line but no modules, the name is there and every key is refused by the object
+    // that says where the real ones came from.
+    let outcome = run("require \"lib\"\nputs lib.anything\n");
+    let error = program_error(&outcome);
+    assert_eq!(error.kind, ProgramErrorKind::UnknownName);
     assert!(
-        failure.to_string().contains("module.rb:2:"),
-        "the diagnostic is corrected back over the wrapper: {failure}"
+        error
+            .message
+            .contains("`lib.anything` is not bound this run"),
+        "{}",
+        error.message
     );
+
+    // A syntax error in a module is reported at the author's own line, because the wrapper shares
+    // it and nothing moves a number afterwards. Line 1 is the case that matters, since that is the
+    // line the wrapper sits on.
+    for (source, at) in [
+        ("y = 2 +* 3\n", "module.rb:1:"),
+        ("ok = 1\ny = 2 +* 3\n", "module.rb:2:"),
+    ] {
+        let failure = compile_module(source, &PrepareContext::new())
+            .expect_err("the module does not compile");
+        assert!(
+            failure.to_string().contains(at),
+            "the diagnostic names the author's own line: {failure}"
+        );
+    }
 }
 
 /// One tool, called through the Ruby spelling of it, and the JSON gg's dispatch must have seen.

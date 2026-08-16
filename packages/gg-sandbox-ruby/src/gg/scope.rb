@@ -18,7 +18,7 @@ module GG
   # **The types are not built at all**, for the same reason they never were: a type is not a
   # capability. `GG::Core::ToolError` is what a `rescue` clause catches and
   # `GG::Tasks::TaskStatus::DONE` is what a status argument is, and both are declared by this SDK
-  # once, into the pre-initialised heap, where they stay.
+  # once, when it is required.
   #
   # ## Why the implementations are still lifted off and put back
   #

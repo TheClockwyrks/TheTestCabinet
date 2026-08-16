@@ -11,8 +11,9 @@
 //!   response healing asks its lexical questions of, beside the five-string-shape lexer it never
 //!   asks for and [`modules`] reads;
 //! * [`COMPONENT`] — the guest, built by
-//!   `packages/gg-sandbox-ruby/build.sh`, carrying Opal's runtime, gg's hand-written Ruby SDK and
-//!   the declared library set pre-initialised into it;
+//!   `packages/gg-sandbox-ruby/build.sh`, carrying Opal's runtime pre-initialised into it and gg's
+//!   hand-written Ruby SDK, the agent's own code and the declared library set registered in its
+//!   require registry;
 //! * the **signature catalogue** — reflected out of that SDK's own YARD documentation, and
 //!   generated into this build's `OUT_DIR` rather than committed anywhere (see
 //!   `crates/gg/build.rs`);
@@ -32,16 +33,12 @@
 //! It would be cheaper not to be. [JavaScript](super::javascript) serves
 //! [TypeScript](super::typescript)'s component byte for byte, and the obvious reading of "Ruby
 //! compiles to JavaScript" is that Ruby could serve it too, with Opal's 743 KB runtime prepended to
-//! each program. That was built and measured before this artifact was, and three things came back:
+//! each program. That was built and measured before this artifact was, and two things came back:
 //!
 //! * **Per turn it costs 45.6–51.0 ms** to evaluate that runtime, against 2.1–2.6 ms when
 //!   `componentize-js` pre-initialises it into the artifact — and 1.2–1.4 ms is what a plain
 //!   JavaScript program costs on the same component. A twentyfold difference, paid out of the
 //!   guest's own [execution budget](crate::sandbox::SandboxLimits) on every program.
-//! * **A code module could not see it.** A [skill](crate::skills)'s or [memory](crate::memories)'s
-//!   module is evaluated *before* the program and against the same scope, so a runtime living inside
-//!   the program's own source would not exist yet when the module ran. `lib.<key>` in Ruby would
-//!   have been unimplementable.
 //! * **Baking it into the *shared* component instead was worse.** It would put `globalThis.Opal` in
 //!   front of the TypeScript and JavaScript arms as well, and those two must differ in the type
 //!   check and in nothing else — a checked program cannot name `Opal` (no declaration covers it)
@@ -67,7 +64,7 @@
 //! (`packages/gg-sandbox-ruby/src/gg/`), and its [catalogue](crate::sandbox::signatures) is
 //! reflected out of its own YARD documentation.
 //!
-//! Three further consequences of the strategy, stated here so they are not discovered later:
+//! Four further consequences of the strategy, stated here so they are not discovered later:
 //!
 //! * **`require` is process-wide, and this arm does not pretend otherwise.** A code module whose own
 //!   body calls gg writes `require "gg"` in it, and from that moment `GG::` resolves for the program
@@ -145,8 +142,9 @@ pub(super) const SURFACE_IMPORT: &str = "require \"gg\"";
 /// ([`Loaded::note`](crate::knowledge::Loaded::note)), which is the moment it matters.
 pub(super) const LIB_IMPORT: &str = "require \"lib\"";
 
-/// The interpreter component: the ECMAScript guest with Opal's runtime, gg's Ruby SDK and the
-/// declared library set pre-initialised into it, built by `packages/gg-sandbox-ruby/build.sh`.
+/// The interpreter component: the ECMAScript guest with Opal's runtime pre-initialised into it and
+/// gg's Ruby SDK, the agent's own code and the declared library set registered in its require
+/// registry, built by `packages/gg-sandbox-ruby/build.sh`.
 ///
 /// **Embedded in the binary**, like every other guest, because gg is copied as a single file into an
 /// ephemeral run container and must carry everything it needs with it.

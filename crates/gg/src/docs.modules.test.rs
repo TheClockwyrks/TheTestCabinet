@@ -25,8 +25,8 @@
 //! [a line a program writes](crate::sandbox::ModuleView::import) to bring the module into scope, the
 //! body quotes that line verbatim.
 //!
-//! Both states of that field are live: PureScript, C# and C++ each declare a real import line, and
-//! the arms that have not converted yet declare none because gg puts their SDK in a program's scope
+//! Both states of that field are live: the converted arms each declare a real import line, and the
+//! arms that have not converted yet declare none because gg puts their SDK in a program's scope
 //! before the model's code is compiled. A gate that only asserted the state it happened to find
 //! would be satisfied by a renderer that handled one and dropped the other, so the `Some` half is
 //! asserted wherever an arm declares one and the run is checked at the end to have actually

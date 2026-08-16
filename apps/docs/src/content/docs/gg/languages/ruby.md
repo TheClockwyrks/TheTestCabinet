@@ -54,7 +54,7 @@ artifacts into the artifact crate's `OUT_DIR`, from which gg embeds them:
 
 | Artifact | What it is |
 | --- | --- |
-| `ruby.component.wasm` | the guest: the ECMAScript component with Opal's runtime, gg's Ruby SDK and the declared libraries pre-initialised |
+| `ruby.component.wasm` | the guest: the ECMAScript component with Opal's runtime pre-initialised, and gg's SDK, `lib` and the declared libraries registered in its require registry |
 | `ruby.opal.cjs` | the host-side compiler, as one CommonJS bundle with gg's driver at the end of it |
 | `ruby.compiler.json` | which Opal that is, and which Ruby it emulates |
 

@@ -2,8 +2,9 @@
 #
 # Build this arm's three artifacts, into `$GG_ARTIFACTS_OUT_DIR`:
 #
-#   ruby.component.wasm   the ECMAScript engine with Opal's runtime, gg's Ruby SDK and the libraries
-#                         a program may require, all pre-initialised into it
+#   ruby.component.wasm   the ECMAScript engine with Opal's runtime pre-initialised into it, and
+#                         gg's Ruby SDK, the agent's own code and the libraries a program may
+#                         require registered in its require registry
 #   ruby.opal.cjs         the host-side Opal compiler, as one CommonJS bundle with gg's driver
 #   ruby.compiler.json    which Opal that is, and which Ruby it emulates
 #
