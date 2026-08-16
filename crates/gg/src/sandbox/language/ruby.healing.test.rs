@@ -247,6 +247,7 @@ fn each_code_clause_reads_its_own_shape() {
         "Config::LIMIT = 3",                  // a qualified constant
         "total += 1",                         // an augmented assignment
         "GG::Views.open_text(\"a\", \"b\")",  // a call
+        "ledger.add(3)",                      // a call on the program's own object
         "entries = [",                        // left open
         "  \"one\",",                         // left open
         "rows.each { |row|",                  // left open on a block parameter

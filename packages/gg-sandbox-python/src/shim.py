@@ -187,7 +187,10 @@ def _render(exc: BaseException, filenames: frozenset) -> str:
     parts.extend(traceback.format_exception_only(type(exc), exc))
     rendered = "".join(parts).rstrip()
     if len(rendered) > MESSAGE_LIMIT:
-        rendered = rendered[:MESSAGE_LIMIT] + "\n… truncated"
+        # Counted, because a trim is a deletion and a report that does not say what it dropped is
+        # one a model cannot tell from a whole one.
+        dropped = len(rendered) - MESSAGE_LIMIT
+        rendered = rendered[:MESSAGE_LIMIT] + f"\n… {dropped} characters dropped"
     return rendered
 
 

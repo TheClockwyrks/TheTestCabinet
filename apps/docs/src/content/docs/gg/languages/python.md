@@ -134,7 +134,7 @@ exception once and reports it as a located `ProgramError`:
 - a `NameError`, and an `AttributeError` against a module of the `gg` package, are
   an unknown name;
 - anything else is reported with the program's own frames and the exception,
-  truncated at the message limit.
+  trimmed at the message limit and closing with the number of characters dropped.
 
 A location is the innermost frame the program or one of its code modules owns,
 with the column of the instruction that stopped, and what the model reads holds

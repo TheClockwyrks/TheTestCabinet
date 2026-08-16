@@ -68,8 +68,9 @@ import * as views from "test-cabinet:gg/views";
  *
  * The SDK is Ruby and the bindings are JavaScript modules, so there has to be one hand-off, and
  * this is it: one object, keyed by the interface name the WIT gives, read by Opal's
- * inline-JavaScript interop. Nothing here is model-facing: `__ggWire` is not a name any Ruby a
- * model writes can reach.
+ * inline-JavaScript interop. It is not part of the surface `GG::Scope` builds: a program that
+ * reaches it has written inline JavaScript to do so, and every call it makes is checked at the
+ * membrane like any other.
  */
 globalThis.__ggWire = {
   board,
@@ -272,11 +273,34 @@ function replaceGlobal(name, value) {
  * A `SystemExit` carrying the status is what CRuby raises there, so it is what this supplies. It is
  * not caught: it unwinds the program the way any other exception does and is reported by `report`,
  * which is the whole of D8a's "let the program die the way its runtime kills it".
+ *
+ * `status` and `success?` are defined on the raised object because Opal's `SystemExit` has neither
+ * and a program that rescues one asks for both. `abort` and `exit!` are Ruby's other two spellings
+ * of the same ending and Opal defines neither, so a model that reached for either had its program
+ * fail on the spelling rather than end on it.
  */
 function installExit() {
-  Opal.exit = (status) => {
-    throw Opal.send(Opal.const_get_relative([], "SystemExit"), "new", [status]);
+  const systemExit = () => Opal.const_get_relative([], "SystemExit");
+  const raise = (status) => {
+    const error = Opal.send(systemExit(), "new", [status]);
+    error.$status = () => status;
+    error["$success?"] = () => status === 0;
+    throw error;
   };
+  Opal.exit = raise;
+  // `exit!` skips the `at_exit` blocks `Kernel#exit` runs, and `abort` writes its message to
+  // standard error first and ends with status 1. Both are defined on the object the program's own
+  // top level runs as, which is where `Kernel`'s private instance methods are reached from.
+  const kernel = Opal.const_get_relative([], "Kernel");
+  Opal.def(kernel, "$exit!", function (status) {
+    raise(status === undefined || status === null ? 0 : status);
+  });
+  Opal.def(kernel, "$abort", function (message) {
+    if (message !== undefined && message !== null) {
+      feedback.log(String(message));
+    }
+    raise(1);
+  });
 }
 
 /** Shadow every denied global with a thrower, and route `console` to gg's feedback channel. */
@@ -500,17 +524,21 @@ function report(thrown, program, lib) {
     };
   }
   if (klass === "NoMethodError" || klass === "NameError") {
-    // Two causes, and one sentence answers both: a name gg does not have, and a name gg has behind
-    // a `require` this program did not write. So the modules are listed WITH the line that reaches
-    // them — the SDK is loaded here to read the list, which is safe because the program has already
-    // failed and nothing it could observe is left to run.
-    const lend = lib ? ", and `require \"lib\"` for the code you have read" : "";
-    return {
-      kind: "unknown-name",
-      code: undefined,
-      message: `${message}; \`require "gg"\` reaches ${modulePaths().join(", ")}${lend}`,
-      location,
-    };
+    // The hint is a REMEDY, so it is only written where it is one: the name that could not be
+    // resolved is gg's own or the code the agent has read, and nothing has loaded it yet. A model
+    // whose `nil.upcase` failed, or one that already wrote the require, is told to write a line
+    // that cannot fix its program — which is tokens spent to say something untrue.
+    const missing = missingName(thrown);
+    if ((missing === "GG" || missing === "lib") && !alreadyLoaded(missing)) {
+      const lend = lib ? ", and `require \"lib\"` for the code you have read" : "";
+      return {
+        kind: "unknown-name",
+        code: undefined,
+        message: `${message}; \`require "gg"\` reaches ${modulePaths().join(", ")}${lend}`,
+        location,
+      };
+    }
+    return { kind: "unknown-name", code: undefined, message, location };
   }
   return {
     kind: "other",
@@ -571,6 +599,32 @@ globalThis.__ggBindModules = function () {
   }
   return Opal.hash2(keys, namespaces);
 };
+
+/**
+ * The name a `NameError` or a `NoMethodError` could not resolve, or `undefined` where the exception
+ * does not carry one.
+ *
+ * Read through Ruby's own `NameError#name` rather than off the message, because the message is
+ * Opal's wording and a hint that keyed on it would be a second statement of what the exception
+ * already says. A failure to read it costs the hint and nothing else.
+ */
+function missingName(thrown) {
+  try {
+    const name = Opal.send(thrown, "name");
+    return name === null || name === undefined ? undefined : String(name);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Whether the name the hint would tell a program to reach for is already there — which makes the
+ * hint a remedy for a failure that has some other cause.
+ */
+function alreadyLoaded(missing) {
+  const root = Opal.Object.$$const || {};
+  return missing === "GG" ? root.GG !== undefined : root.Lib !== undefined;
+}
 
 /**
  * The capability modules gg's SDK declares, for the unknown-name hint alone.

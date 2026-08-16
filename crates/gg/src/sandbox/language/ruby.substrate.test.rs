@@ -622,6 +622,23 @@ end
         "a program that called exit did not go on running"
     );
 
+    // And the object a `rescue` catches answers what CRuby's answers, because Opal's `SystemExit`
+    // has neither method and a program that rescues one asks for both.
+    let outcome = run(
+        "begin\n  exit 5\nrescue SystemExit => e\n  puts \"#{e.status} #{e.success?}\"\nend\nbegin\
+         \n  exit 0\nrescue SystemExit => e\n  puts e.success?\nend\n",
+    );
+    assert_eq!(outcome.logs, ["5 false", "true"]);
+
+    // Ruby's other two spellings of the same ending, which Opal defines neither of: a model that
+    // reached for either had its program fail on the spelling rather than end on it.
+    let outcome = run("puts \"one\"\nabort(\"stop now\")\nputs \"two\"\n");
+    assert_eq!(program_error(&outcome).message, "SystemExit: 1");
+    assert_eq!(outcome.logs, ["one", "stop now"]);
+    let outcome = run("puts \"one\"\nexit!(4)\nputs \"two\"\n");
+    assert_eq!(program_error(&outcome).message, "SystemExit: 4");
+    assert_eq!(outcome.logs, ["one"]);
+
     // A raise inside a CODE MODULE is located at the line of the model's own program that reached
     // into it, and at no other line at all.
     //
@@ -2060,6 +2077,27 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
         "the refusal names the line that reaches the surface: {}",
         error.message
     );
+
+    // And it is written only where it is a REMEDY. A `NoMethodError` on the program's own value has
+    // nothing to do with gg's surface, and a program that already wrote the require cannot be told
+    // to write it again — either way the sentence would be a fix for a failure with another cause.
+    for (program, missing) in [
+        ("puts 1\nputs nil.upcase\n", "undefined method"),
+        ("require \"gg\"\nputs nil.upcase\n", "undefined method"),
+    ] {
+        let outcome = run(program);
+        let error = program_error(&outcome);
+        assert!(
+            error.message.contains(missing),
+            "`{program}` failed some other way: {}",
+            error.message
+        );
+        assert!(
+            !error.message.contains("`require \"gg\"` reaches"),
+            "a failure gg's own line cannot fix was told to write it: {}",
+            error.message
+        );
+    }
 
     // A type is behind the same line, and so is the constant a `rescue` clause names — this arm
     // has no half of its surface that arrives some other way.

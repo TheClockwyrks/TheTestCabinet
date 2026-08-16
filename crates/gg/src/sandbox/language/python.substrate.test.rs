@@ -361,6 +361,40 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
         assert!(log.calls().is_empty(), "`{program}` reached the host");
     }
 
+    // And the same question asked of `run_program` — the function a turn calls, so the arm's own
+    // registered prepare step runs rather than being stepped around. `run_with` above leaves that
+    // step out deliberately, and on this arm it is the identity function, but the claim this test
+    // carries is about the production path and so is at least one of its cells.
+    let log = CallLog::default();
+    let (outcome, _api) = crate::sandbox::run_program(
+        python(),
+        r#"notes = gg.files.read_text_file("notes.md")
+gg.views.open_text("notes", notes)
+"#,
+        ProgramScope {
+            capabilities: &all_capabilities(),
+            operations: &granted_operations(&all_operations(), false),
+            modules: &[],
+            ending: RunEnding::None,
+        },
+        SandboxLimits::default(),
+        None,
+        FakeToolApi::with(&log, canned_outcome),
+    );
+    let error = program_error(&outcome);
+    assert_eq!(error.kind, ProgramErrorKind::UnknownName);
+    assert!(
+        error
+            .message
+            .contains("NameError: name 'gg' is not defined"),
+        "the turn path refused a program that wrote no import in some other way: {}",
+        error.message
+    );
+    assert!(
+        log.calls().is_empty(),
+        "a program that never reached its import reached the host"
+    );
+
     // And with the line the catalogue states, the same call resolves and crosses. Read out of the
     // catalogue rather than typed here, so this is the line a model is really shown.
     let stated = crate::sandbox::catalogue_modules(python())
