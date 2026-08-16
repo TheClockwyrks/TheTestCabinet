@@ -34,9 +34,9 @@
 //! [C++](super::cpp) and [Swift](super::swift) are: [`guest_component`](Java::guest_component)
 //! answers `None`, the compiled bytes ride on the prepared program, and the engine instantiates a
 //! fresh component every turn. What that costs is measured rather than asserted
-//! (`java.substrate.test.rs`): a ~430 KB component for a program that logs one line, ~1.7 s of
-//! `javac` and TeaVM, and `Component::new` at ~50 ms on this repository's dev container, against
-//! the Rust arm's ~15 ms at ~64 KB. It is paid per turn and cannot be otherwise.
+//! (`java.substrate.test.rs`): a ~360 KB component for a program that logs one line, ~1.4 s of
+//! `javac` and TeaVM, and `Component::new` at ~43 ms on this repository's dev container, against
+//! the Rust arm's ~14 ms at ~64 KB. It is paid per turn and cannot be otherwise.
 //!
 //! # What a Java program is, here
 //!
