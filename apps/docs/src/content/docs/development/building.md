@@ -67,6 +67,12 @@ dependency versions are declared once in the root `Cargo.toml` under
   rather than two implementations that drift. `packages/ui`'s `ratings` module
   re-exports the scoring half alongside the display metadata (labels, emoji) it
   keeps.
+- `packages/share-links` — `@test-cabinet/share-links`. The framework-free
+  short-link contract: how a run id becomes the short code in a `tcab.ai` link and
+  back, the `share-index.json` the gallery build publishes, and the preview meta
+  tags a shared link unfurls into. Shared because three things must agree about a
+  link — the gallery build that mints the codes, the gallery that tags its own run
+  pages, and the resolver on the short domain.
 - `packages/browser-driver` — `@test-cabinet/browser-driver`. A small Playwright
   driver script (`driver.mjs`) the [validator](/components/core/validation/)
   shells out to, used both to render reference mockups to screenshots and to
@@ -82,6 +88,10 @@ dependency versions are declared once in the root `Cargo.toml` under
 - `apps/web` — `@test-cabinet/web`. The browser
   [web console](/components/web/overview/) (React + TypeScript + Vite) that
   enqueues runs at the backend (drained into per-run driver Jobs).
+- `apps/edge` — `@test-cabinet/edge`. The Cloudflare Worker behind the `tcab.ai`
+  short domain, which resolves a run's short code to its page on the gallery and
+  answers a crawler with the run's preview card. Deployed with `wrangler`; see
+  [Releasing](/development/releasing/).
 - `apps/docs` — `@test-cabinet/docs`. This Astro Starlight documentation site.
 
 ## Building Rust
