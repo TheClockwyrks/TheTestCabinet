@@ -151,13 +151,27 @@ connected to the GitHub mirror:
   indexable — a deep link that 404s is invisible to every crawler. Do **not** add
   a `/* /index.html 200` rule to `_redirects`: Pages rejects it as an infinite
   loop and ignores it. `apps/site/public/_redirects` is kept, with no rules, to
-  say so.
-- The gallery's **preview tags** are injected at request time by
-  `functions/_middleware.ts`, a Pages Function. It reads `share-index.json` (an
-  asset the build emits) and gives `/runs/<id>` and `/runs/<id>/play` their
-  OpenGraph and Twitter tags, so a shared or indexed run link unfurls as that run
-  rather than as a bare URL. The tags go into the same document every visitor
-  gets — serving crawlers something different is cloaking.
+  say so. Do **not** re-add a `404.html` either: Pages would then serve it for
+  every deep link and break exactly what this arrangement buys.
+- **Unrecognized URLs still 404**, and that is the middleware's job rather than
+  the host's. The SPA fallback above is indiscriminate — a mistyped path is
+  answered with the shell and a `200` just as a real run page is — so
+  `functions/_middleware.ts` sets the status itself: it matches the path against
+  the app's own route table (`isKnownRoute`, imported from
+  `@test-cabinet/ui/routes`) and, for a `/runs/<id>` path, against the share index,
+  and answers a path that addresses nothing with the shell, a `404`, and
+  `x-robots-tag: noindex`. The app's catch-all route draws the not-found page
+  inside it. Two consequences worth knowing: a console-only route requested on the
+  gallery (`/runs/new`, say) is answered `200` with that same not-found page,
+  because the middleware reads the route table and not the host gates; and if the
+  share index cannot be read, no 404 is manufactured — the page is served as-is,
+  since an infrastructure hiccup must not turn real pages into errors.
+- The gallery's **preview tags** are injected at request time by the same
+  middleware. It reads `share-index.json` (an asset the build emits) and gives
+  `/runs/<id>` and `/runs/<id>/play` their OpenGraph and Twitter tags, so a shared
+  or indexed run link unfurls as that run rather than as a bare URL. The tags go
+  into the same document every visitor gets — serving crawlers something different
+  is cloaking.
 - **Where the Functions live:** Pages resolves `functions/` from the *project*
   root, which for this repo is the repository root (the build command runs there
   because the gallery is one workspace of an npm workspace repo). So the
