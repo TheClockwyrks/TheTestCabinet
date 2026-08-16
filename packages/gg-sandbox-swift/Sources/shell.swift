@@ -1,16 +1,27 @@
 // The **shell** a model's Swift program runs inside: what the sandbox world's two exports do,
 // and how the program's own top-level code is reached.
 //
-// It is compiled as a second file of the SAME module as the model's `main.swift`, once per
-// turn, by `crates/gg/src/sandbox/language/swift.compile.rs`. Being in one module is what buys
-// this arm its defining property: a model's reply is compiled **verbatim**, with no wrapper
-// line and no line offset, so every diagnostic and every located trap carries the model's own
-// coordinates.
+// It is compiled ahead of time by `build.sh` into `shell.o` as a module of its own, and every
+// turn links that object beside the model's `main.swift`. The model's own module holds its
+// reply and the code modules in its scope and nothing else, which is what makes a reply
+// compiled **verbatim**, with no wrapper line and no line offset, carry the model's own
+// coordinates in every diagnostic and every located trap.
 //
-// Both lines below are FILE-scoped, which is the whole point of them. A Swift `import` puts
+// It reaches the model's top-level code the way anything reaches a C symbol: `__main_argc_argv`
+// is what Swift lowers a top-level file into on this target, declared by the clang module
+// below and resolved by the linker.
+//
+// Both imports below are FILE-scoped, which is the whole point of them. A Swift `import` puts
 // names in the file that wrote it and in no other file of the module, so nothing here reaches
 // the model's own `main.swift`: a reply that calls gg writes its own `import gg`, and nothing
 // gg carries is in scope in a reply that wrote no line at all.
+//
+// The two `@_cdecl` functions below are `public`, and this file is a MODULE of its own, compiled
+// ahead of time by `build.sh` into `shell.o` and only linked per turn. Both halves are needed and
+// neither is optional: an access level is module-wide where an `import` is file-scoped, so
+// `public` or `internal` in the model's own module would put a name the model was never told
+// about into the model's file, and anything narrower than `public` gives the `@_cdecl` symbol
+// internal linkage, which the linker then drops and the world's `run` export goes undefined.
 //
 // It is not the SDK. Nothing here is model-facing and nothing here is in the signature
 // catalogue; a program written by a model calls the curated surface in `Sources/SDK/`, which

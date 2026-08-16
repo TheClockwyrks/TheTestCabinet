@@ -1147,6 +1147,16 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
         "let entry = __main_argc_argv\n",
         "cannot find '__main_argc_argv' in scope",
     );
+
+    // And gg's own two exports, which the shell declares in the SAME module as `main.swift` —
+    // where an `import` is file-scoped, an access level is not, so `public` or `internal` on
+    // either of these would put a name the model was never told about into the model's own file.
+    // `@_cdecl` emits the C symbol at any access level, so `fileprivate` costs the world nothing.
+    refusal(
+        "let bound = ggBoundTools\n",
+        "cannot find 'ggBoundTools' in scope",
+    );
+    refusal("let run = ggRun\n", "cannot find 'ggRun' in scope");
 }
 
 /// **The bytes `swiftc` reads are the bytes the model sent**, compared byte for byte in the
@@ -1174,5 +1184,31 @@ fn the_bytes_the_compiler_reads_are_the_bytes_the_model_sent() {
     assert_eq!(
         written, source,
         "gg wrote something other than the model's own text into the file swiftc read"
+    );
+}
+
+/// **The file-view program gg synthesizes is a program this arm compiles.**
+///
+/// gg pushes it into an agent's transcript as an assistant turn — every file a test case provided,
+/// or one restored view — and a model reads its own transcript as the example of what a well-formed
+/// reply looks like. Nothing on the turn path compiles it, so a text that could not have been sent
+/// would teach the wrong shape and never fail anything, which is what this is for. On this arm the
+/// thing it could get wrong is the import line, and the discarded result of a call that returns one.
+#[test]
+fn the_file_view_program_gg_synthesizes_is_a_program_that_compiles() {
+    let arm = crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::Swift);
+    let window = crate::sandbox::FileWindow {
+        offset: 400,
+        limit: 200,
+    };
+    let program =
+        arm.open_file_program(&[("src/main.swift", None), ("docs/spec.md", Some(window))]);
+    compile::compile_program(&program, &[], &crate::sandbox::PrepareContext::new()).unwrap_or_else(
+        |failure| {
+            panic!(
+                "gg pushes a Swift program that does not compile into the transcript: \
+                 {failure}\n\n{program}"
+            )
+        },
     );
 }

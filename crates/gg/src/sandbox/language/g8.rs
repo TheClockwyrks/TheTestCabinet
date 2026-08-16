@@ -370,6 +370,12 @@ const KNOWN_HOLES: &[Hole] = &[
         // one, and a top-level file has none — so the task is enqueued, the entry point returns and
         // the shell hands control back. Measured by logging inside the body: `before` and `after`
         // arrive and the body's own line never does. Nothing gg can capture, because nothing ran.
+        //
+        // The drain Swift itself uses is in the pinned SDK and is not reachable from here, which is
+        // measured rather than assumed: `_Concurrency.swiftinterface` declares
+        // `swift_task_asyncMainDrainQueue` returning `Never`, and this arm's `run` export has to
+        // RETURN for the component's own `run` to return. So closing this shape would take an
+        // executor that drains and yields, which is a runtime this arm does not have.
         instead: Instead::Nothing,
     },
     Hole {

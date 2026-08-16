@@ -227,6 +227,19 @@ echo "==> compiling the SDK as the module a program imports"
 test -s "$STAGE/gg.o"
 test -s "$STAGE/gg.swiftmodule"
 
+echo "==> compiling the shell as a module of its own"
+# A MODULE OF ITS OWN, and ahead of time rather than per turn. Both halves are the same rule: a
+# Swift access level is module-wide, so gg's two `@_cdecl` functions compiled beside the model's
+# `main.swift` would be names in the model's own file that no line of the model's put there. Built
+# here, the model's module holds its reply and the code modules in its scope and nothing else, and
+# every turn links this object. It reaches the program's top-level code through `__main_argc_argv`,
+# a C symbol the clang module map declares and the linker resolves.
+(cd "$STAGE" && "$SWIFTC" "${SDK_ARGS[@]}" "${BUILD_ARGS[@]}" \
+	-file-prefix-map "$HERE=/gg/sdk" \
+	-Xcc "-fmodule-map-file=$STAGE/module.modulemap" -I "$STAGE" \
+	-module-name GgShellRuntime -c -o "$STAGE/shell.o" "$STAGE/shell.swift")
+test -s "$STAGE/shell.o"
+
 echo "==> the wasi_snapshot_preview1 reactor adapter $GG_WASMTIME_ADAPTER_VERSION"
 # COPIED FROM A CACHE, NOT DOWNLOADED. This used to `curl` a GitHub release asset unconditionally,
 # with no marker of any kind, every single time this script ran. `scripts/gg-downloads.sh` resolves
@@ -243,7 +256,7 @@ echo "==> writing swift.guest.tar.gz"
 # stamps into an object, which is the module hash named at the top of this file.
 tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner --mode='u=rw,go=r' \
 	-C "$STAGE" -cf - gg-shell.h gg.o gg.swiftmodule module.modulemap sandbox.h sandbox.o \
-	sandbox_component_type.o shell.swift |
+	sandbox_component_type.o shell.o |
 	gzip -9 -n >"$GG_ARTIFACTS_OUT_DIR/swift.guest.tar.gz"
 
 echo "==> writing swift.toolchain.json"
@@ -253,7 +266,7 @@ import json, os, sys
 stage, libs, out = sys.argv[1], sys.argv[2], sys.argv[3]
 files = [
     "gg-shell.h", "gg.o", "gg.swiftmodule", "module.modulemap", "sandbox.h", "sandbox.o",
-    "sandbox_component_type.o", "shell.swift",
+    "sandbox_component_type.o", "shell.o",
 ]
 modules = sorted(
     name[: -len(".swiftmodule")]
@@ -292,8 +305,8 @@ PY
 #
 # It covered the widest hole of the three compiled arms and that is worth recording.
 # `swift.toolchain.json` answers what the artifacts were built BY, and `swift.compile.test.rs` could
-# compare the three files the guest archive happens to carry verbatim — `shell.swift`,
-# `gg-shell.h` and `module.modulemap` — against the checkout. The SDK does NOT ride in as source: it is `gg.o` and `gg.swiftmodule`, which is the whole
+# compare the two files the guest archive happens to carry verbatim — `gg-shell.h` and
+# `module.modulemap` — against the checkout. The SDK does NOT ride in as source: it is `gg.o` and `gg.swiftmodule`, which is the whole
 # model-facing surface, and nothing could read it back out. An edit to `Sources/SDK/**` matched
 # nothing anything could compare. What answers it now is cargo — `packages/gg-sandbox-swift/Sources`
 # is in this arm's rerun set, so an SDK edit re-cuts `gg.swiftmodule` rather than being reported on.

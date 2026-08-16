@@ -24,8 +24,10 @@ offset — the model's own `import gg` on line 1 included. That is forced rather
 refuses `extension`, `protocol` and `import` inside a function body, so the wrapper every other
 statement-shaped arm uses would forbid three things a Swift author writes without thinking. A
 top-level file is the only Swift context that admits declarations and bare statements together, and
-`Sources/shell.swift` is a second file of the *same module*, which is what lets it name the entry
-point Swift lowers that file's statements into and call it from the sandbox world's `run` export.
+`Sources/shell.swift` calls the entry point Swift lowers that file's statements into from the
+sandbox world's `run` export. It is a module of its own, built ahead of time and linked per turn,
+because a Swift access level is module-wide and gg's two exports compiled beside the reply would be
+names in the model's own file.
 
 **The SDK reaches that file through one line the program writes, and the line is `import gg`.**
 A Swift `import` is file-scoped, so what the shell imports is in scope in the shell and in no other
@@ -44,7 +46,7 @@ which is what gets both the message and the model's own line and column out.
 | | |
 | --- | --- |
 | `Sources/SDK/` | **The SDK a model writes against.** One file per capability module under `Modules/`, each carrying its functions and the types they produce, plus `Internal/` — the wire bridge and the two public functions that belong to no module. Compiled ahead of time into a module called `gg`. |
-| `Sources/shell.swift` | gg's shell — the two exports the sandbox world declares and the call into the model's own top-level code, under two file-scoped imports that reach nothing the model wrote. Compiled beside every program, once per turn. |
+| `Sources/shell.swift` | gg's shell — the two exports the sandbox world declares and the call into the model's own top-level code, under two file-scoped imports that reach nothing the model wrote. Compiled ahead of time into `shell.o` as a module of its own and linked into every program. |
 | `Sources/gg-shell.h` | The shell's header: the generated WIT surface as C, `stdlib.h` for the allocator the canonical ABI's post-return frees with, and the one declaration that is not generated (the program's entry point). |
 | `Sources/module.modulemap` | The clang module the shell imports that header through, which is what keeps the header out of the model's own file. |
 | `libraries.txt` | Every module a program may `import`, grouped as the catalogue renders them. One declaration, two readers: `tools/signatures.py` and a gg test that compiles a program importing all of them. |

@@ -11,18 +11,25 @@ line 7 is line 7 of what the model wrote and this arm subtracts no offset
 anywhere. Swift admits `extension`, `protocol` and `import` only outside a
 function body, and a top-level file is the only Swift context carrying
 declarations and bare statements together, so the file the compiler reads is the
-reply itself. gg's shell is a second file of the same Swift module: Swift lowers
-a top-level file's statements into the target's C entry point, and the shell
-names that symbol and calls it from the component's `run` export.
+reply itself. Swift lowers a top-level file's statements into the target's C
+entry point, and gg's shell names that symbol and calls it from the component's
+`run` export.
 
-The shell's own two `import` lines are file-scoped, so what they name is in
-scope in the shell and in no other file of the module. One is the SDK, for the
-one function the shell asks it for. The other is the clang module declared by
+The shell is a module of its own, built ahead of time into `shell.o` and linked
+into every program. A Swift access level is module-wide, so a shell compiled
+beside the reply would put gg's two exports into the model's own file with no
+line the model wrote, and an access level narrow enough to prevent that gives
+the exported symbol internal linkage. The model's module holds the reply and the
+code modules in its scope and nothing else.
+
+The shell's own two `import` lines are file-scoped. One is the SDK, for the one
+function the shell asks it for. The other is the clang module declared by
 `Sources/module.modulemap`, which carries the generated canonical ABI, `malloc`,
 `free` and the entry-point symbol the shell calls.
 
-One `swiftc` invocation compiles the model's file, the shell, the code modules
-in scope, the prebuilt SDK module and the library archive at `-Osize -g`. gg
+One `swiftc` invocation compiles the model's file, the code modules in scope,
+and links the prebuilt shell, the prebuilt SDK module and the library archive at
+`-Osize -g`. gg
 then encodes the linked core module in process, with the pinned
 `wasi_snapshot_preview1` reactor adapter that turns the preview1 module the
 Swift SDK emits into a preview 2 component. That component is what the turn is
@@ -49,7 +56,7 @@ and publishes four files, none of them committed. The arm reaches them through
 
 | Artifact | What it carries |
 | --- | --- |
-| `swift.guest.tar.gz` | The shell's header and the clang module map that names it, the C bindings generated from `crates/gg/wit` compiled to a wasm object, the component-type object, the shell's source, and this arm's SDK prebuilt as `gg.swiftmodule` plus `gg.o` |
+| `swift.guest.tar.gz` | The shell's header and the clang module map that names it, the C bindings generated from `crates/gg/wit` compiled to a wasm object, the component-type object, the shell prebuilt as `shell.o`, and this arm's SDK prebuilt as `gg.swiftmodule` plus `gg.o` |
 | `swift.libraries.tar.gz` | The curated library set as one static archive, plus the `.swiftmodule` files a program's `import` resolves against |
 | `swift.adapter.wasm` | The pinned `wasi_snapshot_preview1` reactor adapter |
 | `swift.toolchain.json` | What built the above, and what is in it |
@@ -214,8 +221,8 @@ let built = try shell.run("swift build", timeout: 300)
 try views.openText("build", body: built.output)
 ```
 
-Every call throws and `core.ToolError` is an ordinary Swift `Error` carrying a
-`code`. Required arguments are positional and optional ones are default values.
+Every fallible call throws and `core.ToolError` is an ordinary Swift `Error`
+carrying a `code`. Required arguments are positional and optional ones are default values.
 A fixed choice is an `enum` and a choice that carries something is an `enum`
 with an associated value, so a wrong value is a program that does not compile. A
 three-way patch field is an `enum` whose default is `.keep`, and a span of turns

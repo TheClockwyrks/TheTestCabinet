@@ -54,7 +54,7 @@ fn the_archive_is_placed_read_only() {
     // reads these files and must never be able to write beside them, because a shared tree a
     // compilation writes into is the measured `purs` corruption exactly.
     let guest = guest().expect("the Swift guest this build cut unpacks");
-    let path = guest.file("shell.swift");
+    let path = guest.file("shell.o");
     let metadata = std::fs::metadata(&path).expect("the shell is in the unpacked guest");
     #[cfg(unix)]
     {

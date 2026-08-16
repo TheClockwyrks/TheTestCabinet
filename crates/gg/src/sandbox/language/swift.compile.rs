@@ -29,11 +29,13 @@
 //! top-level file admits all of them together with bare statements, which no other Swift context
 //! does.
 //!
-//! What makes it work is that gg's shell is a second file of the **same module**
-//! (`packages/gg-sandbox-swift/Sources/shell.swift`). Swift lowers a top-level file's statements
-//! into the target's C entry point — `__main_argc_argv` on wasm — and the shell, being in the same
-//! module, can name that symbol and call it from the `run` export. The model's file is never
-//! edited, quoted or re-indented.
+//! What makes it work is that Swift lowers a top-level file's statements into the target's C entry
+//! point — `__main_argc_argv` on wasm — which gg's shell
+//! (`packages/gg-sandbox-swift/Sources/shell.swift`) calls from the `run` export. The shell is a
+//! module of its own, compiled ahead of time into `shell.o` and only linked here, because a Swift
+//! access level is module-wide: compiled beside the reply, gg's two exports would be names in the
+//! model's own file that no line of the model's put there. The model's file is never edited, quoted
+//! or re-indented.
 //!
 //! ## What it costs, and it is the error surface
 //!
@@ -555,16 +557,17 @@ fn invoke_swiftc(
         // A component is one self-contained module; there is nothing inside it to dynamically link
         // against, and the SDK's own toolset says so too.
         .arg("-static-stdlib")
-        // Whole-module, which is what puts the model's file, every code module in scope and gg's
-        // shell in one module — the arrangement that lets the shell name the program's entry point,
-        // and the one that lets a code module's declarations be reached without an import.
+        // Whole-module, which is what puts the model's file and every code module in scope in one
+        // module — the arrangement that lets a code module's declarations be reached without an
+        // import. gg's shell is NOT in it: an access level is module-wide, so a shell compiled here
+        // would put gg's own two exports into the model's file with no line the model wrote.
         .arg("-wmo")
         // The generated WIT surface, reached from Swift as C — what gg's shell calls, and what
         // declares the model program's own entry point so the shell can call *it*. A clang
         // **module map** rather than `-import-objc-header`, and the difference is which files see
         // it: a bridging header is module-scoped and put gg's wire, `malloc` and the entry-point
         // symbol into the model's own `main.swift` with no line the model wrote, where an `import
-        // GgShell` reaches them in `shell.swift` alone.
+        // GgShell` reaches them in the shell's own module alone.
         .arg("-Xcc")
         .arg(format!(
             "-fmodule-map-file={}",
@@ -636,9 +639,13 @@ fn invoke_swiftc(
     if let Some(library) = build.library {
         command.arg(library);
     }
-    command.arg(guest.file("shell.swift"));
     if build.artifact.is_some() {
         command
+            // gg's shell, compiled ahead of time as a module of its own and only linked here. It
+            // is what the world's two exports resolve to, and it reaches the model's top-level
+            // code through `__main_argc_argv`, which is what Swift lowers a top-level file into on
+            // this target and which the linker resolves like any other C symbol.
+            .arg(guest.file("shell.o"))
             .arg(guest.file("gg.o"))
             .arg(guest.file("sandbox.o"))
             .arg(guest.file("sandbox_component_type.o"))
