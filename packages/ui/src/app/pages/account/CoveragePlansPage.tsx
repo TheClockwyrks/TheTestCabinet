@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import type { CoveragePlanSummary } from "@test-cabinet/run-record/coverage";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
+import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { routes } from "../../routes";
@@ -130,7 +131,7 @@ export function CoveragePlansPage() {
       {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
 
       {loading ? (
-        <p className={styles.empty}>Loading plans…</p>
+        <LoadingState size="section" label="Loading plans…" />
       ) : !plans || plans.length === 0 ? (
         <div className={styles.emptyState}>
           <p className={styles.empty}>

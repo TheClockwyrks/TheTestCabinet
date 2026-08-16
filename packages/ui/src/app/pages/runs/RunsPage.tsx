@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
+import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { Pagination } from "@test-cabinet/ui";
 import { PromptHeader } from "../../components/PromptHeader";
@@ -164,7 +165,7 @@ export function RunsPage() {
 
       {!hasContent ? (
         loading ? (
-          <p className={styles.empty}>Loading runs…</p>
+          <LoadingState size="section" label="Loading runs…" />
         ) : (
           <p className={styles.empty}>
             {filters.activeCount > 0
