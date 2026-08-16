@@ -89,11 +89,29 @@ its own domain; they differ only in how they are built.
 
 | Site | Project | Address | Built by |
 | ---- | ------- | ------- | -------- |
-| [Gallery](/components/site/overview/) (`apps/site`) | `test-cabinet-site` | `testcabinet.ai` (apex) | Cloudflare (git-connected) |
+| [Gallery](/components/site/overview/) (`apps/site`) | `the-test-cabinet` | `testcabinet.ai` (apex) | Cloudflare (git-connected) |
 | [Docs](/components/docs/overview/) (`apps/docs`) | `test-cabinet-docs` | `docs.testcabinet.ai` | GitHub Actions → `wrangler` (`deploy-docs.yml`) |
 | Per-run playable builds | `test-cabinet-runs` | a per-run `*.pages.dev` URL | `tcab publish` → `wrangler` |
 | [Reference implementations](/components/core/results/#reference-implementations) | `test-cabinet-references` | a per-variant `*.pages.dev` URL | `tcab publish-reference` → `wrangler` |
 | Short links (`apps/edge`) | `tcab-short-links` (Worker) | `tcab.ai` | `wrangler` |
+
+**Staging mirrors this.** Staging is a full mirror of production, not a reduced
+one, so the surfaces a change has to be verified on exist there too, under their
+own names — sharing a name between the two would mean staging traffic resolving
+against production's data:
+
+| Site | Staging project | Staging address |
+| ---- | --------------- | --------------- |
+| Gallery | `the-test-cabinet-staging` | `the-test-cabinet-staging.pages.dev` |
+| Reference implementations | `test-cabinet-references-staging` | a per-variant `*.pages.dev` URL |
+| Short links | `tcab-short-links-staging` (Worker) | `staging.tcab.ai` |
+
+The staging gallery has **no custom domain** — its `*.pages.dev` address is the
+address, and everything that needs to name it (the staging Worker's
+`GALLERY_ORIGIN`, the staging build's `TCAB_SITE_ORIGIN`) names that. The docs and
+per-run builds have no staging counterpart: the docs are one published site, and a
+per-run build is addressed by the run that produced it rather than by an
+environment.
 
 The docs and per-run builds are **Direct Upload** projects — built elsewhere and
 pushed with `wrangler` — while the gallery is **git-connected**: Cloudflare clones
@@ -121,7 +139,7 @@ come from the [backend's public R2 snapshot](/components/backend/snapshot/),
 fetched at build time. There is no GitHub Actions workflow for it; Cloudflare's
 git integration is the whole pipeline.
 
-In the Cloudflare dashboard, create a Pages project named `test-cabinet-site`
+In the Cloudflare dashboard, create a Pages project named `the-test-cabinet`
 (distinct from the `test-cabinet-docs` and `test-cabinet-runs` projects)
 connected to the GitHub mirror:
 
@@ -144,6 +162,22 @@ connected to the GitHub mirror:
   publish, not a repo commit and rebuild.
 - Add `testcabinet.ai` as a **custom domain** on the project (apex), so the
   gallery is served from the apex.
+- Set the three **build variables**, all of them per-environment. Each names
+  something outside the repository, which is exactly why none of them can be
+  compiled in:
+  - **`TCAB_SNAPSHOT_URL`** — the public read base of this environment's snapshot
+    bucket, the dataset the build fetches. Must equal the backend's
+    `TCAB_SNAPSHOT_PUBLIC_URL` for the same environment (mirrored in
+    `scripts/lib/env.sh`). Unset, the gallery builds with an empty published
+    dataset rather than failing, which is the fresh-deployment case.
+  - **`TCAB_SITE_ORIGIN`** — this gallery's own public address, recorded in the
+    `share-index.json` the build emits as the origin every short link resolves
+    against. Defaults to `https://testcabinet.ai`, so **the staging project must
+    set it** or staging's index will claim production's origin and send anyone
+    following a staging short link into production.
+  - **`VITE_TCAB_SHARE_BASE_URL`** — the short domain the gallery's own share
+    control builds links against. Defaults to `https://tcab.ai`; staging sets
+    `https://staging.tcab.ai`. An empty string offers no share control at all.
 - Nothing to configure for **client-side routing**, and nothing to add: because
   the build ships **no `404.html`**, Pages answers an unmatched path with
   `/index.html` at the requested URL with a `200`, which is exactly the SPA
@@ -200,6 +234,22 @@ connected to the GitHub mirror:
   backend fires it after each snapshot upload, so a published run rebuilds the
   gallery without a code push.
 
+The **staging gallery** is a second project of the same shape, named
+`the-test-cabinet-staging`, connected to the same mirror with its production
+branch set to `staging`. Everything above applies to it unchanged except its
+address and the three build variables, which name staging's own snapshot bucket,
+its own `*.pages.dev` origin, and its own short domain:
+
+| Variable | Production | Staging |
+| -------- | ---------- | ------- |
+| `TCAB_SNAPSHOT_URL` | `https://snapshot.testcabinet.ai` | `https://snapshot.staging.testcabinet.ai` |
+| `TCAB_SITE_ORIGIN` | `https://testcabinet.ai` | `https://the-test-cabinet-staging.pages.dev` |
+| `VITE_TCAB_SHARE_BASE_URL` | `https://tcab.ai` | `https://staging.tcab.ai` |
+
+It gets its own **deploy hook**, given to the *staging* backend as its
+`TCAB_SITE_DEPLOY_HOOK_URL`, so a staging publish rebuilds the staging gallery and
+nothing else. There is no custom domain to add.
+
 Per-run builds and the docs are separate Cloudflare Pages projects; because every
 build is served from `*.pages.dev` or a subdomain, no `*.testcabinet.ai` wildcard
 or organization domain verification is required.
@@ -228,12 +278,43 @@ so little setup:
   no deploy when a run is published: the gallery rebuild that publishes the run is
   what makes its link resolvable.
 
-Setup:
+A path the resolver cannot serve — a code that names no run, or anything that is
+not a short link — answers **404** with `noindex`, offering the gallery as the way
+out. It does not quietly redirect: a dead link that lands somewhere tells the
+person who followed it that they arrived, and tells a crawler the URL is real. The
+one exception is a resolver that cannot read the index at all, which redirects
+rather than manufacture a 404 out of an infrastructure failure.
 
-- Add `tcab.ai` as a zone in the same Cloudflare account.
-- Deploy with `npm run deploy -w @test-cabinet/edge`, which reads
-  `apps/edge/wrangler.toml` (the routes for the apex and `www`, and the
-  `GALLERY_ORIGIN` var naming the gallery it resolves to). It reuses the same
+### Two environments, two namespaces
+
+The short domain is namespaced by environment exactly like everything else, and
+for a sharper reason: a short code addresses **one** corpus of published runs, so
+the same code resolved against the wrong environment points at a different run or
+at none. Sharing a hostname between the two would make that a coin flip.
+
+| | Production | Staging |
+| --- | --- | --- |
+| Worker | `tcab-short-links` | `tcab-short-links-staging` |
+| Hostname | `tcab.ai`, `www.tcab.ai` | `staging.tcab.ai` |
+| Resolves against | `https://testcabinet.ai` | `https://the-test-cabinet-staging.pages.dev` |
+| Deploy | `npm run deploy -w @test-cabinet/edge` | `npm run deploy:staging -w @test-cabinet/edge` |
+
+The apex is production's alone. Staging takes a subdomain because the *point* of
+the short apex is the shortness, and that only pays off on links people actually
+share; a staging link goes to a developer or into a test, where nine more
+characters cost nothing. Sharing must nonetheless work on staging — staging
+mirrors production, and it is where a share link is verified before the change
+reaches the live domain.
+
+### Setup
+
+- Add `tcab.ai` as a zone in the same Cloudflare account, and a DNS record for
+  `staging.tcab.ai` alongside the apex. A Worker route needs a record to attach
+  to; a proxied `AAAA` to `100::` (the discard prefix) is the usual placeholder,
+  since nothing but the Worker ever answers on it.
+- Deploy each environment with the command in the table above. Both read
+  `apps/edge/wrangler.toml` — the top level is production, `[env.staging]`
+  overrides the name, route, and `GALLERY_ORIGIN`. They reuse the same
   `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as the other `wrangler`
   deploys, but the token needs the *Workers Scripts: Edit* permission rather than
   *Cloudflare Pages: Edit*.
@@ -241,16 +322,17 @@ Setup:
   the Worker's own code changes.
 
 Then tell the two UIs the domain exists, so each offers its run pages a **share**
-control (each hides it when unset, so nothing breaks if you skip one):
+control (each hides it when unset, so nothing breaks if you skip one). Both are
+per-environment, and both name that environment's *own* resolver:
 
-- The **gallery** builds its links against `https://tcab.ai` by default. Set
-  `VITE_TCAB_SHARE_BASE_URL` as a build variable to point a staging gallery
-  elsewhere, or to an empty string to offer no share control.
+- The **gallery** builds its links against `https://tcab.ai` by default; the
+  staging project sets `VITE_TCAB_SHARE_BASE_URL` to `https://staging.tcab.ai`
+  (see the [build variables](#gallery-cloudflare-pages-one-time) above). An empty
+  string offers no share control at all.
 - The **consoles** read it from the backend's `GET /config`, so set
-  `TCAB_SHARE_BASE_URL` on the backend (see
-  [Kubernetes](/deployment/kubernetes/)). Set it per environment: a short code
-  addresses one corpus of published runs, so a staging console must not hand out
-  production short links.
+  `TCAB_SHARE_BASE_URL` on the backend — `https://tcab.ai` on production,
+  `https://staging.tcab.ai` on staging (see
+  [Kubernetes](/deployment/kubernetes/)).
 
 ## Docs (Cloudflare Pages, one-time)
 

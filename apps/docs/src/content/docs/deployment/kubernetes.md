@@ -391,10 +391,13 @@ The backend also carries two values that wire it into the new run path:
   (`https://tcab.ai`), reported through the same `GET /config` so the console can
   offer a share control on a published run. Like the Grafana URL this is not a
   data-plane URL — nothing fetches from it; it is only ever copied to a clipboard.
-  Set it **per environment**: a short code addresses one corpus of *published*
-  runs, so a staging console handing out a production short link would point at a
-  different run or at none. Only production names the production short domain;
-  left unset, the console offers no share control at all.
+  Set it **per environment**, to that environment's *own* resolver: a short code
+  addresses one corpus of *published* runs, so a staging console handing out a
+  `tcab.ai` link would point at a different run or at none. Production names
+  `https://tcab.ai`; staging names `https://staging.tcab.ai`. Left unset the
+  console offers no share control at all — which is the right answer only for a
+  deployment that genuinely fronts no resolver, not for staging, where sharing has
+  to work in order to be verified before it reaches the live short domain.
 
 Constraints 1 and 2 are properties of the **SQLite** store, not the backend
 itself. Point `TCAB_BACKEND_DATABASE_URL` at a managed **PostgreSQL** instance

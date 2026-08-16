@@ -48,3 +48,16 @@ spec:
             # asset-generation cases.
             - name: TCAB_SNAPSHOT_PUBLIC_URL
               value: "https://snapshot.staging.testcabinet.ai"
+            # The SHORT-LINK domain, reported through the same GET /config so the
+            # console can offer a share control on a published run. Like Grafana's
+            # above this is not a data-plane URL — nothing fetches from it — it is
+            # only ever copied to a clipboard and opened in a browser.
+            #
+            # STAGING'S OWN, not prod's. A short code addresses one corpus of
+            # PUBLISHED runs, so a staging console handing out a tcab.ai link would
+            # point at a different run, or at none. That is an argument for giving
+            # staging its own resolver, not for leaving it without one: staging
+            # mirrors prod, and sharing is a feature that has to be verified there
+            # before it reaches the live short domain.
+            - name: TCAB_SHARE_BASE_URL
+              value: "https://staging.tcab.ai"
