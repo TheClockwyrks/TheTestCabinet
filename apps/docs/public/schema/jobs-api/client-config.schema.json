@@ -15,10 +15,6 @@
       "description": "Grafana's base URL, or `null` when the deployment runs no observability\nstack. The console uses it to link a run to the traces it emitted; absent,\nthat link is simply not rendered.",
       "type": ["string", "null"]
     },
-    "shareBaseUrl": {
-      "description": "The short-link domain's base URL (e.g. `https://tcab.ai`), or `null` when the\ndeployment fronts no short-link resolver. The console builds a run's share\nlinks against it; absent, it offers no share control at all.\n\nAdvertised per-environment rather than compiled into the console: a staging\nconsole must not hand out production short links, since a code minted against\none corpus of published runs means nothing against another.",
-      "type": ["string", "null"]
-    },
     "snapshotUrl": {
       "description": "The public snapshot bucket's **read** base URL, or `null` when the deployment\npublishes no public snapshot. The client joins it with the deterministic keys\nit derives — today an asset-generation variant's published reference frames,\n`media/references/<slug>/<version>/<variant>/frames/<index>.png`. This is never\nthe S3 write endpoint (`TCAB_R2_ENDPOINT`), which is credentialed and stays\nserver-side.",
       "type": ["string", "null"]

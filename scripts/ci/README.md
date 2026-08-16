@@ -57,10 +57,7 @@ execute doctests, so the test scripts additionally run `cargo test --doc`.
 from `web-build.sh` for two reasons. A failing assertion should report as a failing
 test rather than as a failing build; and the two need different things, so they
 run in parallel — the tests need only the small workspace runtime packages built
-(`npm run build:packages`), never the app bundles. It also owns the two
-type-checks no build covers: `apps/edge` (the `tcab.ai` Worker) and `functions/`
-(the gallery's Cloudflare Pages Functions, which live at the repository root
-because Pages resolves them from the project root, and so belong to no workspace).
+(`npm run build:packages`), never the app bundles.
 
 `binary-smoke.sh` is the release gate that keeps a flat-out-broken binary from
 ever being published: it builds `tcab` in the shipped release profile, runs the
@@ -86,8 +83,7 @@ the `tcab-backend` (`crates/backend`) server, the run-topology services
 side it is the front ends built by `web-build.sh`: the gallery (`apps/site`), the
 operator web console (`apps/web`), and these docs (`apps/docs`), all on top of
 `packages/run-record` and the source-consumed `packages/ui`; plus, through
-`web-test.sh`, every workspace's unit suite and the two edge components no build
-covers (`apps/edge` and the root `functions/`).
+`web-test.sh`, every workspace's unit suite.
 
 The Tauri desktop app (`crates/desktop`, `apps/desktop`) is deliberately **not**
 built by these per-change CI scripts, so their runners do not need the desktop

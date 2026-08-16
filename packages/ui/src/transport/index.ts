@@ -25,7 +25,6 @@ export {
   fetchArenaUrl,
   fetchArtifactsUrl,
   fetchGrafanaUrl,
-  fetchShareBaseUrl,
   fetchSnapshotUrl,
   referenceMediaKey,
 } from "./httpBackend";

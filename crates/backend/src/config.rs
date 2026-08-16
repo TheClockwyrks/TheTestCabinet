@@ -162,21 +162,6 @@ pub struct Config {
     /// consumed by different processes. The name here follows the backend's own
     /// `TCAB_*_PUBLIC_URL` convention for the URLs it advertises.
     pub snapshot_url: Option<String>,
-    /// The base URL of the **short-link domain** (`TCAB_SHARE_BASE_URL`, e.g.
-    /// `https://tcab.ai`), reported to the console via `GET /config`. `None` when the
-    /// deployment fronts no short-link resolver, in which case the console simply
-    /// offers no share control.
-    ///
-    /// This is advertised rather than compiled into the console for the same reason
-    /// `grafana_url` is: it is per-environment. A staging console must not hand out
-    /// production short links — a code minted against production would resolve to
-    /// some other run, or to none — so the environment that knows which resolver
-    /// fronts it is the one that says so.
-    ///
-    /// The backend never calls it and it never calls the backend; like
-    /// `grafana_url` this is a convenience URL on an endpoint that already carries
-    /// the console's per-environment configuration.
-    pub share_base_url: Option<String>,
 }
 
 /// A missing or invalid configuration variable.
@@ -239,9 +224,6 @@ impl Config {
         let snapshot_url =
             nonempty("TCAB_SNAPSHOT_PUBLIC_URL").map(|url| url.trim_end_matches('/').to_string());
 
-        let share_base_url =
-            nonempty("TCAB_SHARE_BASE_URL").map(|url| url.trim_end_matches('/').to_string());
-
         Ok(Self {
             bind,
             env,
@@ -260,7 +242,6 @@ impl Config {
             arena_url,
             grafana_url,
             snapshot_url,
-            share_base_url,
             allow_experimental,
         })
     }

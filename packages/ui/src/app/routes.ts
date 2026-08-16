@@ -306,17 +306,21 @@ const PATTERN_SEGMENTS: ReadonlyArray<readonly string[]> =
 /**
  * Whether a path is addressed by any route in {@link routePatterns}.
  *
- * This exists for the **edge**, not for the app: the gallery is a client-routed
- * single-page app served from one `index.html`, so a static host answers every
- * path with the shell and a `200` — including paths the app has no route for.
- * `functions/_middleware.ts` calls this to tell an unrecognized URL apart from a
- * real page, and answers the former with a `404` status. Nothing in the app needs
- * it; the router's own catch-all renders the not-found *page*.
+ * This exists for whatever **serves** the app, not for the app itself: the gallery
+ * is a client-routed single-page app served from one `index.html`, so a static host
+ * answers every path with the shell and a `200` — including paths the app has no
+ * route for. A server that holds this table can tell an unrecognized URL apart from
+ * a real page and answer the former with a `404`. Nothing in the app needs it; the
+ * router's own catch-all renders the not-found *page* regardless of status.
+ *
+ * No host calls it today — the gallery is still served as a static bundle. It is
+ * exported and tested here so the table stays a single source of truth for the
+ * server that will.
  *
  * A `:param` segment matches any one segment, so this answers whether the path is
  * *shaped* like a route, not whether the thing it names exists. Whether a run id
- * addresses a real run is a separate question the middleware answers from the
- * share index.
+ * addresses a real run is a separate question, answerable only from the published
+ * set.
  *
  * **It deliberately ignores the host gates.** Several patterns mount only where
  * the host can execute runs (`/runs/new`, the whole account section, the

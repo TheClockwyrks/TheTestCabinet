@@ -556,7 +556,6 @@ async fn client_config(
         arena_url: state.config.arena_url.clone(),
         grafana_url: state.config.grafana_url.clone(),
         snapshot_url: state.config.snapshot_url.clone(),
-        share_base_url: state.config.share_base_url.clone(),
     })
 }
 
@@ -588,13 +587,4 @@ pub struct ClientConfig {
     /// server-side.
     #[cfg_attr(feature = "contract", ts(optional))]
     pub snapshot_url: Option<String>,
-    /// The short-link domain's base URL (e.g. `https://tcab.ai`), or `null` when the
-    /// deployment fronts no short-link resolver. The console builds a run's share
-    /// links against it; absent, it offers no share control at all.
-    ///
-    /// Advertised per-environment rather than compiled into the console: a staging
-    /// console must not hand out production short links, since a code minted against
-    /// one corpus of published runs means nothing against another.
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub share_base_url: Option<String>,
 }
