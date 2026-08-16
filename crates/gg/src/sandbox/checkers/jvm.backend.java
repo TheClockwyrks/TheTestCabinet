@@ -8,17 +8,19 @@
 // package, no imports and no class of its own — the front end's import block serves this
 // text too, which is stated in each front end's own header.
 //
-// WHY IT IS SHARED RATHER THAN COPIED. Two arms reach gg through TeaVM, and three of TeaVM's
+// WHY IT IS SHARED RATHER THAN COPIED. Two arms reach gg through TeaVM, and four of TeaVM's
 // settings are not optional — each of them failing SILENTLY when it is missing:
 // `setStrict(true)`, without which a `NullPointerException` is not an exception at all and a
 // program that failed is recorded as one that succeeded; `setClassesToPreserve(PRESERVED)` on
 // the wasm route, without which the entry class is dead-stripped and the component is encoded
-// with no exports and no diagnostic; and `setJsModuleType(NONE)` on the JavaScript route,
-// without which the entry point is not a bare name the guest's scope can reach. A second copy
-// of `teavm(…)` would be a standing chance for one arm to lose any of them silently — which is
-// the same argument that has JavaScript serve TypeScript's prebuilt component rather than a
-// byte-identical copy of it. The single-file launcher compiles one file, so "shared" here means
-// gg assembles the file rather than that javac does.
+// with no exports and no diagnostic; an equal minimum and maximum heap on the same route,
+// without which a program gets the minimum and a generous maximum reads as an allowance it
+// never has; and `setJsModuleType(NONE)` on the JavaScript route, without which the entry
+// point is not a bare name the guest's scope can reach. A second copy of `teavm(…)` would be a
+// standing chance for one arm to lose any of them silently — which is the same argument that
+// has JavaScript serve TypeScript's prebuilt component rather than a byte-identical copy of it.
+// The single-file launcher compiles one file, so "shared" here means gg assembles the file
+// rather than that javac does.
 
     /**
      * Compile Java sources to bytecode, collecting whatever javac disagreed with.
