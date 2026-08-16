@@ -317,3 +317,6 @@ tcab-backend.sqlite*
 # imported during local development — see containers/blender/). Never source.
 __pycache__/
 *.pyc
+
+# Wrangler local state (Pages/Worker dev servers).
+.wrangler/
