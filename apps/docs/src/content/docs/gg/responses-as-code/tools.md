@@ -191,7 +191,8 @@ in the language's own convention. Two things that spell alike are deduplicated
 with a numeric suffix: a skill `csv-tools` and a memory `csv_tools` both want
 `lib.csvTools`, the first read gets it and the second gets `csvTools2`. The
 reply to the read that loaded it states the key it really got, in that agent's
-own syntax, and lists what it exports.
+own syntax, lists what it exports, and states the line that brings `lib` into
+scope on an arm that needs one.
 
 ```ts
 const rows = lib.csvTools.parseCsv(gg.files.readTextFile("data/vendor.csv"));
@@ -233,7 +234,9 @@ before the parse, because a module is untrusted input whoever wrote it.
 ### Module scope
 
 A module reaches the same surface a program does, so it may call any gg function
-the run offers and a helper may be a whole procedure.
+the run offers and a helper may be a whole procedure. Where an arm reaches that
+surface through a line the program writes, a module's author writes the same
+line.
 
 Modules are evaluated in order, and none of them is evaluated against the `lib`
 being built, so a module sees no other module. Load order is the order the agent

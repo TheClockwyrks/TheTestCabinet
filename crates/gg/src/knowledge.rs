@@ -167,10 +167,12 @@ impl Loaded {
     /// accept, and on the three that reach a module by string it is not a path at all — a binding
     /// quoted in a syntax the model cannot use is a binding it has not been given.
     ///
-    /// This note is the **only** place a model is told the spelling. `lib` binds no catalogued
-    /// function, so there is nothing to search for, and the system prompt says a skill *carries*
-    /// code without saying how it is reached, because the read that binds it is the moment that
-    /// answer matters.
+    /// This note is the **only** place a model is told the spelling, and on an arm that reaches a
+    /// code module through its own module system it is the only place it is told the
+    /// [line](ProgramLanguage::lib_import) that makes the spelling resolve. `lib` binds no
+    /// catalogued function, so there is nothing to search for, and the system prompt says a skill
+    /// *carries* code without saying how it is reached, because the read that binds it is the moment
+    /// that answer matters.
     pub fn note(
         &self,
         origin: KnowledgeOrigin,
@@ -182,8 +184,12 @@ impl Loaded {
         let mut note = String::new();
         if let Some(key) = &self.key {
             note.push_str(&format!(
-                "\n\n---\nThe code this {} carries is loaded: call it as `{}`",
+                "\n\n---\nThe code this {} carries is loaded: {}call it as `{}`",
                 origin.noun(),
+                match language.lib_import() {
+                    Some(line) => format!("write `{line}` and "),
+                    None => String::new(),
+                },
                 language.lib_access(key)
             ));
             if self.exports.is_empty() {

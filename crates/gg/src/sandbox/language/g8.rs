@@ -233,8 +233,10 @@ const KNOWN_HOLES: &[Hole] = &[
         arm: GgProgramLanguage::Python,
         shape: Shape::Abort,
         // The status the program chose is destroyed on the way out: `os._exit(3)` is reported as
-        // `exit(1)`. The sentence is gg's and it is right about everything except the one number
-        // the program picked.
+        // `exit(1)`, for the reason Swift, C++ and C# report the same thing — the preview1 adapter
+        // this guest is linked through imports only `wasi:cli/exit.exit`, and that import carries a
+        // boolean rather than a status. The sentence is gg's and it is right about everything
+        // except the one number the program picked.
         instead: Instead::Says("the program called exit(1) instead of returning"),
     },
     // ---- ruby -------------------------------------------------------------------------------

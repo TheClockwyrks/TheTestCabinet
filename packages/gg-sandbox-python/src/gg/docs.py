@@ -17,7 +17,7 @@ from enum import Enum
 
 from wit_world.imports import docs as wire
 
-from ._registry import operation
+from ._registry import missing, operation
 from .core import ToolError, ToolErrorCode, _call, _uint
 
 __all__ = [
@@ -208,3 +208,7 @@ def close_all() -> int:
         ToolError: `unavailable` under a run that did not enable closing documentation views.
     """
     return _call(wire.close_doc_views)
+
+
+__getattr__ = missing(__name__, __all__)
+"""What this module answers for a name it does not declare — see `gg._registry.missing`."""

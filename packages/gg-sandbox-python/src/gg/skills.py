@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from wit_world.imports import skills as wire
 
-from ._registry import operation
+from ._registry import missing, operation
 from .core import _call
 
 __all__ = ["read_skill"]
@@ -37,3 +37,7 @@ def read_skill(name: str) -> str:
         ToolError: `not-found` — listing the skills that do exist — when the name is unknown.
     """
     return _call(wire.read_skill, name)
+
+
+__getattr__ = missing(__name__, __all__)
+"""What this module answers for a name it does not declare — see `gg._registry.missing`."""

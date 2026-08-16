@@ -27,15 +27,14 @@ What this shim does, and what each part is load-bearing for
    unwinding the traceback of a ``RecursionError`` it already caught — so ``except`` gives no
    protection and the turn dies as an opaque trap. The limit is clamped instead, and the program
    gets an ordinary catchable ``RecursionError``.
-3. **The scope is the whole SDK** (:func:`gg.scope.build_scope`): every capability module, every
-   function each declares, and the types they speak in — whatever this run enabled and whatever role
-   this agent holds. It never was the enforcement (an ordinary ``import gg.files`` reached past it),
-   and it is no longer even a hint: the **host** refuses a call this agent was not granted, with a
-   ``ToolError`` naming the missing capability, which is a value the program can catch and act on
-   where an ``AttributeError`` from Python was not.
-4. **The agent's code modules are evaluated first** (:func:`_load_modules`), each into its own
-   namespace bound at ``lib.<name>``. A module that throws is reported and left empty rather than
-   taking the program down with it: a broken skill belongs to whoever authored it.
+3. **A program starts with an empty namespace.** Nothing gg offers is in it: the SDK is the ordinary
+   Python package ``gg``, baked into the component, and a program reaches it by writing ``import
+   gg``. A program that writes no import gets CPython's own ``NameError``, which is the answer the
+   invariants ask for and the one a Python programmer expects.
+4. **The agent's code modules are evaluated first** (:func:`_load_modules`), each as a real module
+   registered at ``lib.<name>``, which a program reaches by writing ``import lib``. A module that
+   throws is reported and left empty rather than taking the program down with it: a broken skill
+   belongs to whoever authored it.
 5. **Everything the program has to say is said through ``feedback``**, never through a trap and
    never through a return value. An uncaught exception is caught once, classified, rendered with a
    traceback containing only the program's own frames, and reported at the program's own
@@ -50,7 +49,7 @@ import io
 import linecache
 import sys
 import traceback
-from types import SimpleNamespace
+from types import ModuleType
 from typing import Any, Dict, List, Optional
 
 import wit_world
@@ -64,10 +63,12 @@ from componentize_py_types import Err
 # reaches the rest of the membrane. Importing it is also what BAKES the rest of the membrane in —
 # `componentize-py` bundles only the modules the entry module's import closure reached, so an
 # interface nothing imports is a binding a program could not reach even though the component
-# declares the import, and every one of `gg`'s tool modules imports the interface it wraps. See
-# `library` for the same mechanism applied to the standard library, and for why what a program can
-# import is a bake-time fact rather than a policy.
-from gg import scope as gg_scope
+# declares the import, and every one of `gg`'s tool modules imports the interface it wraps. It is
+# what makes `import gg` resolve inside the guest at all, and therefore what a program's own import
+# line finds. See `library` for the same mechanism applied to the standard library, and for why what
+# a program can import is a bake-time fact rather than a policy.
+import gg
+from gg._registry import bound_tools as gg_bound_tools
 from gg.core import ToolError
 
 # Every library a program may reach for, likewise imported for its side effect. Its own docstring is
@@ -78,6 +79,11 @@ import library  # noqa: F401
 #: :attr:`location` are stated in. Fixed and unqualified so that what a model reads back names the
 #: thing it wrote — "line 5 of program.py" — rather than a path inside a component.
 PROGRAM_FILENAME = "program.py"
+
+#: The package the agent's own code modules are registered under, and the name a program imports to
+#: reach them. One level deep: a module bound as `notes` is `lib.notes`, which is what gg tells the
+#: model when the read that carries the code comes back.
+LIB_PACKAGE = "lib"
 
 #: The deepest Python call stack a program may ask for.
 #:
@@ -270,61 +276,76 @@ def _classify(exc: BaseException, filenames: frozenset) -> feedback.ProgramError
 def _unknown_gg_name(exc: BaseException) -> bool:
     """Whether ``exc`` is a program reaching for a gg name that does not exist.
 
-    This arm's spelling of the mistake other guests report as a ``NameError``. gg's modules are
-    namespaces this guest assembled, so ``files.read_fil`` is an ``AttributeError`` rather than an
-    unknown name — the same fact, and it has to be classified the same way or gg would count one
-    typo as an unknown name on one arm and as an ordinary program bug on another.
+    This arm's spelling of the mistake other guests report as a ``NameError``. ``gg.files.read_fil``
+    is an attribute of a module rather than a free name, so Python raises ``AttributeError`` — the
+    same fact, and it has to be classified the same way or gg would count one typo as an unknown
+    name on one arm and as an ordinary program bug on another.
 
-    It is **not** how a withheld capability arrives, and has not been since the surface went static:
-    every function gg declares is on its module whatever the run enabled, so reaching for one that
-    this agent was not granted is a refusal from the host carrying the wire's own ``unavailable``
-    code, classified from that code rather than from anything read here.
+    It is **not** how a withheld capability arrives: every function gg declares is on its module
+    whatever the run enabled, so reaching for one that this agent was not granted is a refusal from
+    the host carrying the wire's own ``unavailable`` code, classified from that code rather than
+    from anything read here.
 
-    The check is on the namespace the failure happened on, not on the exception's type: an
+    The check is on the module the failure happened on, not on the exception's type: an
     ``AttributeError`` against anything else is exactly the ordinary program bug it looks like.
+    CPython puts the object on the exception, and `gg._registry.missing` puts the same thing on the
+    one it raises itself.
     """
-    return isinstance(exc, AttributeError) and isinstance(
-        getattr(exc, "obj", None), gg_scope.Bound
-    )
+    obj = getattr(exc, "obj", None)
+    if not isinstance(exc, AttributeError) or not isinstance(obj, ModuleType):
+        return False
+    name = getattr(obj, "__name__", "")
+    return name == gg.__name__ or name.startswith(f"{gg.__name__}.")
 
 
-def _load_modules(
-    modules: List[CodeModule], scope: Dict[str, Any], filenames: set
-) -> SimpleNamespace:
-    """Evaluate each code module against ``scope`` and collect its namespace for ``lib.<name>``.
+def _load_modules(modules: List[CodeModule], filenames: set) -> None:
+    """Evaluate each code module and register it at ``lib.<name>``, for a program that imports it.
 
-    A Python module's exports *are* its namespace, so — unlike the JavaScript guest, whose host
-    appends a ``return { … }`` — nothing is added to the source: it is executed as a module body and
-    the public names it leaves behind are what the program reaches through ``lib``. Names beginning
-    with an underscore are private by the language's own convention and are not bound; neither are
-    the names the module inherited from the scope it was given.
+    Nothing is added to the source — unlike the JavaScript guest, whose host appends a
+    ``return { … }`` — and nothing is put in front of it: a module body is executed in a namespace of
+    its own with nothing in it, so a module's author writes ``import gg`` exactly as a program does
+    and reaches the same objects.
+
+    ``lib`` is an ordinary package in :data:`sys.modules`, so ``import lib``, ``from lib import
+    notes`` and ``import lib.notes`` all resolve, and a program that writes none of them has no such
+    name — which is the same rule the SDK is under.
+
+    What each module carries is the public names its own body left behind. A name beginning with an
+    underscore is private by the language's own convention and is not one of them, and the module's
+    own code still reads it: a function it defined closes over the namespace the body ran in rather
+    than over the module this hands back.
 
     A module that throws is **reported, not raised**: a broken skill belongs to whoever authored it,
-    not to the program that merely has it in scope, so its binding is left empty and the program
-    runs.
+    not to the program that merely imports it, so its binding is left empty and the program runs.
     """
-    loaded: Dict[str, Any] = {}
+    if not modules:
+        return
+    package = ModuleType(LIB_PACKAGE)
+    # An empty `__path__` is what makes it a package rather than a plain module: `import lib.notes`
+    # asks the machinery for a submodule, and the machinery answers from `sys.modules` without ever
+    # looking at the path.
+    package.__path__ = []  # type: ignore[attr-defined]
+    sys.modules[LIB_PACKAGE] = package
     for module in modules:
         filename = f"{module.name}.py"
         filenames.add(filename)
         _register_source(filename, module.source)
-        namespace: Dict[str, Any] = dict(scope)
+        qualified = f"{LIB_PACKAGE}.{module.name}"
+        loaded = ModuleType(qualified)
+        loaded.__file__ = filename
+        namespace: Dict[str, Any] = {}
         try:
             exec(compile(module.source, filename, "exec"), namespace, namespace)
         except BaseException as exc:  # noqa: BLE001 — a module may throw anything.
             feedback.report_module_error(
                 module.name, _render(exc, frozenset(filenames))
             )
-            loaded[module.name] = SimpleNamespace()
-            continue
-        loaded[module.name] = SimpleNamespace(
-            **{
-                name: value
-                for name, value in namespace.items()
-                if not name.startswith("_") and name not in scope
-            }
-        )
-    return SimpleNamespace(**loaded)
+            namespace = {}
+        for name, value in namespace.items():
+            if not name.startswith("_"):
+                setattr(loaded, name, value)
+        sys.modules[qualified] = loaded
+        setattr(package, module.name, loaded)
 
 
 class WitWorld(wit_world.WitWorld):
@@ -340,15 +361,15 @@ class WitWorld(wit_world.WitWorld):
     ) -> None:
         """Evaluate one program, reporting everything it did over ``feedback``.
 
-        The code modules are evaluated against the **same** scope the program gets, so a skill's
-        module may call ``files.read_file`` exactly as a program does.
+        The code modules are evaluated first and under the same rule the program is: each one writes
+        its own ``import gg``, and what it leaves behind is registered at ``lib.<name>``.
 
         ``tools``, ``ending`` and ``library`` are **read by nothing here**, and the names are the
-        WIT's rather than underscored because that is what gg calls them. They used to build the
-        scope; the scope is now the whole SDK and every capability question is answered at the
-        membrane, which is the one place that can answer it the same way for all eleven language
-        arms. gg still sends them — the world is shared with ten sibling guests — so they arrive and
-        are ignored.
+        WIT's rather than underscored because that is what gg calls them. They used to build a scope
+        the program was given; a program now writes its own imports, and every capability question is
+        answered at the membrane, which is the one place that can answer it the same way for all
+        eleven language arms. gg still sends them — the world is shared with ten sibling guests — so
+        they arrive and are ignored.
         """
         del tools, ending, library
         stream = _FeedbackStream()
@@ -357,14 +378,11 @@ class WitWorld(wit_world.WitWorld):
         _clamp_recursion()
 
         filenames = {PROGRAM_FILENAME}
+        _load_modules(modules, filenames)
         # `__name__` is `__main__` because that is what a script is, and because a model that
         # guards its entry point with `if __name__ == "__main__":` has written correct Python and
-        # must not be silently skipped.
+        # must not be silently skipped. It is the whole of what a program starts with.
         scope: Dict[str, Any] = {"__name__": "__main__"}
-        scope.update(gg_scope.build_scope())
-        lib = _load_modules(modules, scope, filenames)
-        if modules:
-            scope["lib"] = lib
         _register_source(PROGRAM_FILENAME, program)
 
         try:
@@ -380,10 +398,10 @@ class WitWorld(wit_world.WitWorld):
     def bound_tools(self) -> List[str]:
         """The gg tool names this component can bind.
 
-        Derived from the SDK's own catalogue rather than listed here, and filtered by whether the
-        module really defines the function — so a catalogue entry pointing at a name that does not
-        exist is a missing name in this answer rather than an attribute a program discovers by
-        calling it. gg compares it with ``ALL_TOOL_NAMES`` on the *committed artifact*, which is the
+        Derived from the SDK's own catalogue rather than listed here, and filtered by whether an
+        `@operation` really claimed the row — so a catalogue entry pointing at a declaration that
+        does not exist is a missing name in this answer rather than a call a program discovers by
+        making it. gg compares it with ``ALL_TOOL_NAMES`` on the artifact it embedded, which is the
         one drift check that catches a stale ``.wasm``.
         """
-        return gg_scope.bound_tools()
+        return gg_bound_tools()

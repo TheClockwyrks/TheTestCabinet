@@ -13,15 +13,11 @@ first thing to read a program is the CPython inside the guest, which
 compiles it as `program.py` with `__name__` set to `"__main__"` and runs it at
 the top level.
 
-This arm compiles the bytes it was handed and locates a failure through the
-interpreter's own traceback. It does not keep the
-[invariants](/gg/responses-as-code/invariants/) import rule yet, and this page
-states what it does today: the guest binds every capability module into the
-program's namespace before the program runs, so a call is written with no line
-the model wrote. The arm puts no compiler on the turn path, installs nothing in
-the run container, and opens no workspace during preparation. For the shared
-account of how the other arms compile a reply, see
-[compilation](/gg/languages/compilation/).
+The guest executes it in a namespace of its own with nothing in it, so every
+name a program uses comes from a line that program wrote. The arm puts no
+compiler on the turn path, installs nothing in the run container, and opens no
+workspace during preparation. For the shared account of how the other arms
+compile a reply, see [compilation](/gg/languages/compilation/).
 
 ## The guest artifact
 
@@ -80,13 +76,19 @@ Python library rather than as a transliteration of another arm's surface:
 - Each module owns the types it produces, so `gg.files.FileRead` and
   `gg.tasks.TaskStatus` are written under the module that hands them back.
 
-A program starts with every capability module bound under its bare id, the same
-modules under `gg`, and every type the SDK declares bound bare.
-`files.read_file` and `gg.files.read_file` are one object, and the qualified
-name is what documentation views and search are keyed by. The scope is static:
-every function is bound whatever the run enabled, and a call the agent was not
-granted is refused by the host. The rules every arm's surface obeys are on
+`import gg` is the line a program writes to reach any of it, and it is the line
+every module of the catalogue states. After it the fully-qualified name is what a
+program writes, which is the same string documentation views and search are keyed
+by and the same string gg quotes back in a refusal. Python's other spellings
+reach the same objects, so `from gg import files` and `from gg.files import
+read_file` mean what they say. The package is static: every function is in it
+whatever the run enabled, and a call the agent was not granted is refused by the
+host. The rules every arm's surface obeys are on
 [the agent surface](/gg/languages/agent-surface/).
+
+A name a gg module does not declare raises an `AttributeError` naming the module,
+the name that was reached for and everything the module declares, and gg records
+it as an unknown name rather than as an ordinary program fault.
 
 The shim points `sys.stdout` and `sys.stderr` at gg's feedback log, one call per
 line, and clamps `sys.setrecursionlimit` to 1000, so that exhausting the wasm
@@ -109,6 +111,8 @@ the reflector fails the build rather than emitting a gap:
   claims;
 - the brief is the docstring's first line and the detail is what follows the
   blank line after it, so a first paragraph running over one line is an error;
+- the import line every module states is composed by the reflector, because
+  griffe describes what a package declares and not how another file reaches it;
 - every parameter carries an `Args:` entry and every `Args:` entry names a
   parameter;
 - every type and every type member is documented, and every type a signature
@@ -126,7 +130,7 @@ exception once and reports it as a located `ProgramError`:
   1-based column, and has no traceback;
 - a raised `ToolError`, and the generated `Err` a program reaching past the SDK
   receives, are a tool failure carrying the wire's error code;
-- a `NameError`, and an `AttributeError` against one of gg's own namespaces, are
+- a `NameError`, and an `AttributeError` against a module of the `gg` package, are
   an unknown name;
 - anything else is reported with the program's own frames and the exception,
   truncated at the message limit.
@@ -145,9 +149,14 @@ that hop out.
 
 A skill's or memory's code is a module when it is spelled `.py`, and that is the
 arm's only extension. A Python module's namespace is its exports, so the source
-crosses untouched and the guest binds whatever the module body defined at
-`lib.<key>`, which is `snake_case` and ASCII-only. The names that travel beside
-the source are read by a line scan over the dialect's code mask: unindented
+crosses untouched, the guest executes it in a namespace of its own, and the public
+names its body left behind become the module `lib.<key>`, which is `snake_case`
+and ASCII-only. A module's author writes `import gg` exactly as a program does.
+
+`lib` is an ordinary package in the guest's `sys.modules`, so a program reaches a
+module by writing `import lib`, `from lib import notes` or `import lib.notes`, and
+the read that binds the module is where gg states that line. The names that travel
+beside the source are read by a line scan over the dialect's code mask: unindented
 `def`, `async def`, `class` and plain top-level assignments, in source order,
 first spelling wins, skipping names opening with `_`. An imported name is left
 out of that list.
@@ -177,19 +186,20 @@ questions in Python's terms:
 writes a function name or a signature: every spelling they quote is resolved
 from this arm's catalogue when the template renders. The segment states:
 
-- the reply is executed as a module body, at the top level, with `__name__` set
-  to `"__main__"` and no `return` to write;
-- a failed call raises `ToolError`, which `except ToolError` catches, and its
-  `code` is an enum member;
-- optional arguments are keyword arguments with defaults, and every module is
-  bound bare and under `gg`.
+- the reply is executed as written, as the whole of a `program.py` with
+  `__name__` set to `"__main__"`, and the model writes the `import` lines it
+  would normally write;
+- a failed call raises `gg.core.ToolError`, whose `code` is an enum member, and an
+  escaping failure is named by gg;
+- optional arguments are keyword arguments with defaults, and `import gg` is the
+  line that reaches every module.
 
 The arm names no [checker](/gg/languages/compilation/), so nothing in the prompt
 describes a compile step. A program that imports outside the set the guest
 carries learns so from the guest's own `ModuleNotFoundError`.
 
-Source gg synthesizes for this arm is written in the same idiom. A file view is
-`gg.views.open_file("src/main.py")`, with a window as `offset` and `limit`
-keyword arguments and no terminator. A set of documentation views is a list of
-names and a `for` loop over it, and the bootstrap program is top-level
-statements in the same shape.
+Source gg synthesizes for this arm is written in the same idiom and opens with
+`import gg`. A file view is `gg.views.open_file("src/main.py")`, with a window as
+`offset` and `limit` keyword arguments and no terminator. A set of documentation
+views is a list of names and a `for` loop over it, and the bootstrap program is
+top-level statements in the same shape.

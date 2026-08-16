@@ -4,7 +4,10 @@
 //! Everything this arm owns lives here or in one of this module's siblings:
 //!
 //! * [`prepare_program`](Python::prepare_program) — nothing at all, deliberately: the source crosses
-//!   the membrane as the model wrote it and CPython is the first thing to read it;
+//!   the membrane as the model wrote it and CPython is the first thing to read it. What the guest
+//!   evaluates it in is a namespace with nothing in it, so the SDK is reached through the
+//!   [import](SURFACE_IMPORT) the program writes and the agent's own code modules through
+//!   [theirs](LIB_IMPORT);
 //! * [`modules`] — reading a code [skill](crate::skills)'s or [memory](crate::memories)'s own top
 //!   level to say what its namespace offers;
 //! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
@@ -80,6 +83,25 @@ use super::{
     CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
     ProgramLanguage, spell,
 };
+
+/// The one line a program writes to reach gg's surface, and the line every module of this arm's
+/// catalogue states.
+///
+/// `gg` is an ordinary Python package baked into the guest, so this is an ordinary import and the
+/// name it binds is the package itself. Everything gg quotes back at a model is written from that
+/// package root — `gg.files.read_file` in a search hit, in a documentation view, in a refusal and in
+/// the programs gg synthesizes — so one line makes every string a model reads a string it can type.
+///
+/// [`LIB_IMPORT`] is the other line, and it is the agent's own code rather than gg's surface.
+pub(super) const SURFACE_IMPORT: &str = "import gg";
+
+/// The line a program writes to reach the code [skills](crate::skills) and
+/// [memories](crate::memories) this session has read.
+///
+/// `lib` is a package the guest assembles per turn out of the modules gg handed it, so it is reached
+/// the way any other package is. The line is quoted in the read that binds the module
+/// ([`Loaded::note`](crate::knowledge::Loaded::note)), which is the moment it matters.
+pub(super) const LIB_IMPORT: &str = "import lib";
 use crate::docs::MAX_SEARCH_LIMIT;
 use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
@@ -243,10 +265,28 @@ impl ProgramLanguage for Python {
         open_file_statement(&spell(self, VIEWS_OPEN_FILE), path, window)
     }
 
+    /// The statements, under the [import](SURFACE_IMPORT) that makes the call in them resolve.
+    ///
+    /// The default statement list would be a program with an unbound `gg` in it, which is the one
+    /// thing a synthesized turn must not teach: gg pushes this into the agent's own transcript as an
+    /// example of its own output.
+    fn open_file_program(&self, views: &[(&str, Option<FileWindow>)]) -> String {
+        let statements: Vec<String> = views
+            .iter()
+            .map(|(path, window)| self.open_file_statement(path, *window))
+            .collect();
+        format!("{SURFACE_IMPORT}\n\n{}", statements.join("\n"))
+    }
+
     /// [A list of names and a `for` over
     /// it](self::open_docs_views_statement), each iteration opening one documentation view.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
         open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
+    }
+
+    /// [`lib.<key>.<name>`](super::ProgramLanguage::lib_access), under [`LIB_IMPORT`].
+    fn lib_import(&self) -> Option<&'static str> {
+        Some(LIB_IMPORT)
     }
 
     /// [Two lists and two `for` loops](self::bootstrap_program), with both calls resolved from this
@@ -330,7 +370,8 @@ pub(super) fn open_file_statement(
     }
 }
 
-/// A list of names and a `for` over it, each iteration opening one documentation view.
+/// A list of names and a `for` over it, each iteration opening one documentation view, under the
+/// [import](SURFACE_IMPORT) the call in it needs.
 ///
 /// A loop rather than one statement per name because the list is as long as the family — eleven
 /// calls written out would be a program a model reads as a style to copy. The names are rendered
@@ -341,7 +382,10 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
         .iter()
         .map(|name| format!("    {},\n", serde_json::Value::String((*name).to_string())))
         .collect();
-    format!("functions = [\n{entries}]\nfor name in functions:\n    {open_docs_view}(name)\n")
+    format!(
+        "{SURFACE_IMPORT}\n\nfunctions = [\n{entries}]\nfor name in functions:\n    \
+         {open_docs_view}(name)\n"
+    )
 }
 
 /// The opening turn: one list of module paths listed in full, then one list of names opened as
@@ -369,7 +413,9 @@ pub(super) fn bootstrap_program(
     let paths = listed(modules);
     let functions = listed(docs);
     format!(
-        "modules = [\n{paths}]\nfor path in modules:\n    \
+        "{SURFACE_IMPORT}\n\
+         \n\
+         modules = [\n{paths}]\nfor path in modules:\n    \
          {search}(\"\", module=path, limit={MAX_SEARCH_LIMIT})\n\
          \n\
          functions = [\n{functions}]\nfor name in functions:\n    {open_docs_view}(name)\n"

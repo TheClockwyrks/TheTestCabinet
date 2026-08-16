@@ -1,4 +1,4 @@
-"""What this guest needs in order to build a program's surface — and nothing a model ever reads.
+"""The module vocabulary this guest is built around — and nothing a model ever reads.
 
 It is deliberately much smaller than it was, and it lost its whole reason for existing in the
 process. Every fact about what a function is *called*, what it *does*, which module it lives in and
@@ -8,14 +8,13 @@ buys a call at run time** — is no longer this guest's business at all.
 
 gg owns that, and gg enforces it. Its operations table says whether an operation is bought by a gg
 tool, by a capability, by a role's ending, or by nothing, and the **membrane** checks it when the
-call arrives. This guest binds every function it has into every program's surface,
-unconditionally: the SDK is static, a withheld call is a call that reaches the host and is refused
-there with a sentence naming what is missing, and there is no reading of a run's enabled set anywhere
-in this package any more.
+call arrives. This package carries every function it has, unconditionally: the SDK is static, a
+withheld call is a call that reaches the host and is refused there with a sentence naming what is
+missing, and there is no reading of a run's enabled set anywhere in this package any more.
 
-What is left here is the module vocabulary a surface is assembled from, and the one table that is a
+What is left here is the module vocabulary the SDK is divided into, and the one table that is a
 claim about *this package* rather than about a run: which gg tool each operation this SDK implements
-would dispatch, read by `gg.scope.bound_tools` and by nothing else.
+would dispatch, read by `gg._registry.bound_tools` and by nothing else.
 """
 
 from __future__ import annotations
@@ -35,7 +34,7 @@ MODULE_ORDER: tuple[str, ...] = (
     "session",
     "core",
 )
-"""Every capability module, in the order a program's surface is presented in.
+"""Every capability module, in the order gg presents them in.
 
 The ids are gg's own module vocabulary — the same namespaces its operation ids are built on — so this
 tuple is the join between `gg.files` the Python module and `files.read_file` the gg operation. The
@@ -99,7 +98,7 @@ GG_TOOLS: tuple[str, ...] = (
 """Every gg tool, in `ALL_TOOL_NAMES` order.
 
 This is gg's tool vocabulary rather than this SDK's, and the guest carries it for exactly one reason:
-`gg.scope.bound_tools` answers the component's `bound-tools` export with it, and gg compares that
+`gg._registry.bound_tools` answers the component's `bound-tools` export with it, and gg compares that
 answer against its own `ALL_TOOL_NAMES` on the **committed artifact**. It is the one drift check that
 catches a stale `.wasm` rather than a stale source file, so a tool added, renamed or removed in gg
 fails against the binary that would otherwise silently not implement it.
@@ -147,7 +146,7 @@ TOOL_BOUND: dict[str, str] = {
 """Every operation a gg **tool** would dispatch, and which tool it is.
 
 It no longer decides anything a program can see: the surface is static, so this table is read by
-`gg.scope.bound_tools` alone — the export gg compares against its own tool vocabulary on the
+`gg._registry.bound_tools` alone — the export gg compares against its own tool vocabulary on the
 committed artifact. What buys a call at *run time* is gg's own operations table, checked at the
 membrane; what is here is only "which gg tool does this SDK implement a function for", which is a
 claim about this package rather than about a run.

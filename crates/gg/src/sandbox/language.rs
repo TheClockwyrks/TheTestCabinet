@@ -307,6 +307,18 @@ pub trait ProgramLanguage: Send + Sync + 'static {
         format!("lib{step}{key}{step}<name>")
     }
 
+    /// The line a program writes to bring `lib` into scope, on an arm that needs one.
+    ///
+    /// `None` on the arms where a code module lands somewhere a program can already name: a
+    /// namespace of the compiled program, a value the guest hands the evaluator, a lookup by string.
+    /// Where the module is a real unit of the language's own module system, the program reaches it
+    /// the way it reaches any other, and the read that binds it
+    /// ([`Loaded::note`](crate::knowledge::Loaded::note)) is the one place a model is told the line
+    /// — the same place it is told the [access](Self::lib_access) that line makes resolve.
+    fn lib_import(&self) -> Option<&'static str> {
+        None
+    }
+
     /// This language's name as a **human** reads it — `"TypeScript"`.
     ///
     /// Read by the operator — the launch warning that lists the languages gg can drive, the warm-up

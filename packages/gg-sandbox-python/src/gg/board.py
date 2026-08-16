@@ -17,7 +17,7 @@ from enum import Enum
 from wit_world.imports import board as wire
 from wit_world.imports import types as wire_types
 
-from ._registry import alias, operation
+from ._registry import alias, missing, operation
 from .core import UNCHANGED, Unchanged, _call, _strings
 
 __all__ = [
@@ -350,3 +350,7 @@ def wait_for_issue(id: str) -> str:
             board.
     """
     return _call(wire.wait_for_issue, id)
+
+
+__getattr__ = missing(__name__, __all__)
+"""What this module answers for a name it does not declare — see `gg._registry.missing`."""

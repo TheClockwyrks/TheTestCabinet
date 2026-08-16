@@ -25,12 +25,12 @@ use super::*;
 /// stay because the invariant this corpus re-earns is that a reply nothing repairs comes out exactly
 /// as it went in.
 pub(super) const FIXTURES: &[&str] = &[
-    "Here is the program.\n\n```python\nrows = files.list_dir(\"src\")\nviews.open_text(\"rows\", repr(rows))\n```\n\nThat should list the directory.",
-    "import asyncio\n\nasync def main():\n    rows = await files.list_dir(\"src\")\n    views.open_text(\"rows\", repr(rows))\n\nasyncio.run(main())",
+    "Here is the program.\n\n```python\nimport gg\n\nrows = gg.files.list_dir(\"src\")\ngg.views.open_text(\"rows\", repr(rows))\n```\n\nThat should list the directory.",
+    "import asyncio\n\nimport gg\n\nasync def main():\n    rows = await gg.files.list_dir(\"src\")\n    gg.views.open_text(\"rows\", repr(rows))\n\nasyncio.run(main())",
     "import json\nimport re\n\npayload = json.dumps({\"ok\": True})\nfs.write_file(\"out.json\", payload)",
     "\"\"\"Usage:\n\nimport asyncio\ntotal = 1\n\"\"\"\ntotal = 2\n",
-    "name = \"world\"\nviews.open_text(\"greeting\", f\"hello {name!r}, {len(name)} letters\")",
-    "total = 1\nviews.open_text(\"total\", str(total))\n\ntotal = 1\nviews.open_text(\"total\", str(total))",
+    "import gg\n\nname = \"world\"\ngg.views.open_text(\"greeting\", f\"hello {name!r}, {len(name)} letters\")",
+    "import gg\n\ntotal = 1\ngg.views.open_text(\"total\", str(total))\n\ntotal = 1\ngg.views.open_text(\"total\", str(total))",
     "# I have already written MANIFEST.md.\n# Nothing left to do.",
     "I have finished the task. Everything works.",
 ];

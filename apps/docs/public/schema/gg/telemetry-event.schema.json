@@ -899,7 +899,7 @@
         },
         {
           "const": "python",
-          "description": "Python: evaluated by a **committed CPython**, with no compiler anywhere on the turn path.\n\nThe first arm whose guest carries its own interpreter rather than an engine gg lowers to.\n`componentize-py` links a real CPython 3.14 against gg's WIT world, so a program crosses the\nmembrane as *source*, the standard library it is baked with is what a program may `import`,\nand nothing is installed in the run container. Its SDK is hand-written and reads as Python\nreads — `snake_case`, keyword arguments with real defaults, dataclasses for results, enums\nfor fixed choices, and a raised `ToolError` for the wire's error arm.",
+          "description": "Python: evaluated by a **committed CPython**, with no compiler anywhere on the turn path.\n\nThe first arm whose guest carries its own interpreter rather than an engine gg lowers to.\n`componentize-py` links a real CPython 3.14 against gg's WIT world, so a program crosses the\nmembrane as *source*, the standard library it is baked with is what a program may `import`,\nand nothing is installed in the run container. A program is executed in a namespace of its\nown with nothing in it: the SDK is the ordinary package `gg`, baked into the guest and\nreached by writing `import gg`, and the agent's code modules are the package `lib`. Its SDK\nis hand-written and reads as Python reads — `snake_case`, keyword arguments with real\ndefaults, dataclasses for results, enums for fixed choices, and a raised `gg.core.ToolError`\nfor the wire's error arm.",
           "type": "string"
         },
         {

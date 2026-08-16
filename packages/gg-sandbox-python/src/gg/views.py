@@ -19,7 +19,7 @@ from typing import Callable
 
 from wit_world.imports import views as wire
 
-from ._registry import alias, operation
+from ._registry import alias, missing, operation
 from .core import ToolError, ToolErrorCode, _call, _uint
 from .files import FileRead, _as_file_read
 
@@ -262,3 +262,7 @@ def current() -> list[OpenView]:
         )
         for view in _call(wire.current_views)
     ]
+
+
+__getattr__ = missing(__name__, __all__)
+"""What this module answers for a name it does not declare — see `gg._registry.missing`."""

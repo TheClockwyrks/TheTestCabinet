@@ -120,16 +120,18 @@ left out and one written without the `?` must be there. Pass `{}` when you want
 none of them — the record is part of the signature.
 {{/if}}
 {{#if (eq language.id "python")}}
-Your response is executed as a module — the body of a `program.py`, at the top
-level, with `__name__` set to `"__main__"`. There is no function to return from.
+Your response is executed exactly as you wrote it, as the whole of a `program.py`
+with `__name__` set to `"__main__"`. It is a module body, so statements and
+definitions sit side by side at the top level and there is no function to return
+from. Write the `import` lines you would normally write.
 
-A failed call raises `ToolError`, so `try`/`except ToolError` is how you handle
-one, and its `code` is an enum member rather than a string.
+A failed call raises `gg.core.ToolError`, so `except gg.core.ToolError as
+failure` is how you handle one and `failure.code` is an enum member; let the rest
+escape, and gg names the call that failed.
 
 Required arguments are positional; optional ones are keyword arguments with
-defaults. Every module below is already bound in your namespace under its own
-name, and under `gg` as well, so a module's full path and its last segment are
-the same call.
+defaults. `import gg` is the line that reaches every module below, each an
+ordinary Python module whose path is what you write.
 {{/if}}
 {{#if (eq language.id "ruby")}}
 Your response is executed as the body of a `program.rb`, at the top level. Its

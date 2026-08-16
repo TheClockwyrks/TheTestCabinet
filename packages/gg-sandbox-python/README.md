@@ -25,7 +25,8 @@ each is generated into the `OUT_DIR` of a crate that builds it, on every build o
 
 CPython is *inside* the component. `componentize-py` links a real CPython against
 gg's WIT world, so a model's program crosses the membrane as an ordinary string and
-is `exec`'d by an interpreter that is already there. Nothing is installed in the run
+is `exec`'d by an interpreter that is already there, in a namespace of its own that
+holds nothing until the program's own `import` lines fill it. Nothing is installed in the run
 container, there is no compiler on the turn path, and gg's binary stays the single
 static file it has to be. That makes this arm the exact peer of the JavaScript one —
 a language whose programs are evaluated rather than compiled — which is precisely what
@@ -44,17 +45,17 @@ reads. Every difference above them is deliberate:
   documentation view is opened by and a path a program can write, and the module a
   function lives in is the module its `def` is in rather than a label attached to it.
 * **Required arguments positional, optional ones keyword arguments with real
-  defaults.** `files.read_file(path, limit=200)`, not a trailing options object. A
+  defaults.** `gg.files.read_file(path, limit=200)`, not a trailing options object. A
   membrane record's fields are the function's own arguments, so
-  `memories.create_memory(name, description, body, code=...)` never asks a model to
+  `gg.memories.create_memory(name, description, body, code=...)` never asks a model to
   construct a value before it can make a call.
 * **Frozen dataclasses for results, enums for fixed choices.** `entry.kind is
-  EntryKind.FILE`, never a string comparison a misspelling would turn into a branch
+  gg.files.EntryKind.FILE`, never a string comparison a misspelling would turn into a branch
   that quietly never runs.
 * **A union of two classes for a read**, narrowed with `isinstance` or a `match`,
   rather than the wire's tagged wrapper.
-* **A raised `ToolError`** carrying a typed `code`, because that is where a Python
-  programmer expects a failure to be handled.
+* **A raised `gg.core.ToolError`** carrying a typed `code`, because that is where a
+  Python programmer expects a failure to be handled.
 * **`UNCHANGED` for a patch field that can also be cleared** — leave the argument
   out to keep it, pass `None` to empty it — because Python already spells "absent"
   as `None` and the third state needs a name.
@@ -63,7 +64,7 @@ What must *not* differ from any other arm is the **capability**: which gg operat
 this SDK offers. The shape is free — Java may hang a call off an object where this
 one declares a function — and the identity is not: every model-facing function
 carries the gg operation it binds, written on the declaration as
-`@operation("files.read_file")` and read both by `gg.scope` at run time and by the
+`@operation("files.read_file")` and read both by `gg._registry.bound_tools` at run time and by the
 reflector out of the source. gg holds the set to its own operations table, and
 [`python.substrate.test.rs`](../../crates/gg/src/sandbox/language/) runs every one of
 the 35 tools through the real membrane and requires the JSON that reaches gg's
@@ -93,8 +94,8 @@ to it, because CPython is inside the component and is the first thing to read it
 
 | Path | What it holds |
 | --- | --- |
-| `src/shim.py` | The component's entry point: it rebinds `print` to gg's feedback channel, defuses the interpreter's one store-killing landmine, builds the program's scope from the SDK, evaluates the program and the code modules, and reports every failure at the program's own coordinates. |
-| `src/gg/` | The SDK: one module per capability (`files.py`, `board.py`, `views.py`, …) holding that capability's functions **and the types it produces**, plus `core.py` for the types they all speak in. `_registry.py` is the `@operation` decorator; `catalogue.py` is the run-time binding data (what buys a call), and nothing a model reads; `scope.py` builds what a program starts with. |
+| `src/shim.py` | The component's entry point: it rebinds `print` to gg's feedback channel, defuses the interpreter's one store-killing landmine, registers the agent's code modules as the `lib` package, evaluates the program in a namespace of its own, and reports every failure at the program's own coordinates. |
+| `src/gg/` | The SDK: one module per capability (`files.py`, `board.py`, `views.py`, …) holding that capability's functions **and the types it produces**, plus `core.py` for the types they all speak in. `_registry.py` is the `@operation` decorator, the answer to the `bound-tools` export and the message a module gives for a name it does not declare; `catalogue.py` is the module vocabulary and the tool table, and nothing a model reads. |
 | `tools/signatures.py` | The reflector: reads the SDK statically with `griffe` and emits the catalogue. It refuses to emit one with a blank in it. |
 | `signatures.sh` | The pinned-`griffe` wrapper the build runs, and a developer runs to read the result. |
 | `src/library.py` | Every library a program may reach for, imported for its side effect. Its docstring is the authority on what this arm offers, what it deliberately does not, and why the list has to exist at all. |
@@ -104,16 +105,17 @@ to it, because CPython is inside the component and is the first thing to read it
 
 ## What a program can reach
 
-* **The gg surface**, as the capability modules `scope.py` binds — `docs`, `files`,
-  `shell`, `board`, `tasks`, `memories`, `views`, `context`, `delegation`, `skills`,
-  `programs`, `session` — plus every type they speak in, written bare. Each module is
-  bound twice, under its own id and on a `gg` name, and the two are the same object:
-  `gg.files.read_file` is the fully-qualified name the documentation is keyed by and
-  `files.read_file` is the short way to write it. The modules follow the run: a
-  withheld function is not an attribute, and a module with nothing on it is not a
-  name at all. That is the *surface*, not the enforcement — the SDK is an ordinary
-  package a program can `import gg` and reach past, and the **host** is what refuses
-  a call outside the run's enabled set.
+* **The gg surface**, reached by writing `import gg` — `gg.docs`, `gg.files`,
+  `gg.shell`, `gg.board`, `gg.tasks`, `gg.memories`, `gg.views`, `gg.context`,
+  `gg.delegation`, `gg.skills`, `gg.programs`, `gg.session`, and `gg.core` for the
+  types they speak in. The fully-qualified name is what a program writes and what the
+  documentation is keyed by, so `gg.files.read_file` is one string everywhere. A
+  program that writes no import has no such name, which is Python's own `NameError`.
+  Every function is in the package whatever the run enabled, and the **host** is what
+  refuses a call outside the run's enabled set.
+* **The agent's own code**, reached by writing `import lib`: each code skill or code
+  memory this session has read is a module at `lib.<key>`, carrying the public names
+  its own body left behind.
 * **Everything in `src/library.py`** — around ninety modules, a *curated subset* of
   the standard library rather than all of it, plus `PyYAML` and `tomli-w`. That list
   is a **bake-time fact about the artifact**, not a policy: `componentize-py` bundles

@@ -116,6 +116,45 @@ fn the_synthesized_file_view_is_python() {
     );
 }
 
+/// **The file view gg synthesizes is a whole program**, opening with the line its call needs.
+///
+/// The seam's default is the statement list, which on this arm would be a program with an unbound
+/// `gg` in it — and gg pushes this text into the agent's own transcript as an example of its own
+/// output, so a model reading it would learn to write a program that fails on its first line.
+#[test]
+fn the_synthesized_file_view_program_carries_its_import() {
+    assert_eq!(
+        python().open_file_program(&[("src/main.py", None), ("README.md", None)]),
+        "import gg\n\n\
+         gg.views.open_file(\"src/main.py\")\n\
+         gg.views.open_file(\"README.md\")"
+    );
+}
+
+/// **Every module of this arm's catalogue states the one line a program writes to reach it.**
+///
+/// Two things have to agree: the line
+/// `packages/gg-sandbox-python/tools/signatures.py` composes into every module's
+/// [import](crate::sandbox::ModuleDoc::import), which is what a documentation view quotes to a
+/// model, and [`SURFACE_IMPORT`](super::SURFACE_IMPORT), which is what gg's own synthesized
+/// programs write. A model told one line and handed another spends its first turn on a `NameError`.
+///
+/// Every module rather than one, because the field is per module and an arm that stated a line for
+/// half its surface would be telling models the other half is in scope already.
+#[test]
+fn every_module_states_the_one_import_line_this_arm_writes() {
+    let modules = crate::sandbox::catalogue_modules(python());
+    assert!(!modules.is_empty(), "this arm declares modules");
+    for module in modules {
+        assert_eq!(
+            module.import,
+            Some(super::SURFACE_IMPORT),
+            "`{}` states an import line gg does not write",
+            module.path
+        );
+    }
+}
+
 /// **The generated documentation program is Python, and this arm can read back what it wrote.**
 ///
 /// It is the on-use script of every built-in family skill, so gg generates it and hands it straight
@@ -127,7 +166,7 @@ fn the_generated_documentation_program_is_python() {
     let program = python().open_docs_views_statement(&["read_file", "write_file"]);
     assert_eq!(
         program,
-        "functions = [\n    \"read_file\",\n    \"write_file\",\n]\n\
+        "import gg\n\nfunctions = [\n    \"read_file\",\n    \"write_file\",\n]\n\
          for name in functions:\n    gg.views.open_docs_view(name)\n"
     );
     python()
@@ -149,7 +188,8 @@ fn the_opening_program_is_python() {
     assert_eq!(
         program,
         format!(
-            "modules = [\n    \"files\",\n    \"views\",\n]\n\
+            "import gg\n\n\
+             modules = [\n    \"files\",\n    \"views\",\n]\n\
              for path in modules:\n    gg.docs.search(\"\", module=path, limit={limit})\n\
              \n\
              functions = [\n    \"read_file\",\n]\n\

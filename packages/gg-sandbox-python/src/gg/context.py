@@ -12,7 +12,7 @@ from enum import Enum
 
 from wit_world.imports import context as wire
 
-from ._registry import operation
+from ._registry import missing, operation
 from .core import ToolError, ToolErrorCode, _call, _strings, _uint
 
 __all__ = [
@@ -163,9 +163,9 @@ def archive_thread(ranges: list[TurnRange]) -> ReclaimReport:
     """Move whole turns out of the context window.
 
     Every result carries a header with its turn number and roughly what holding it costs, which is
-    what names the turns worth dropping: `context.archive_thread([TurnRange(4, 19)])` archives turns
-    4 through 19, both ends included. The agent's own messages in an archived turn are dropped; the
-    results are kept and stay searchable with `search_archive`.
+    what names the turns worth dropping: `gg.context.archive_thread([gg.context.TurnRange(4, 19)])`
+    archives turns 4 through 19, both ends included. The agent's own messages in an archived turn are
+    dropped; the results are kept and stay searchable with `search_archive`.
 
     Args:
         ranges: The inclusive spans of turn numbers to move out of the window. They may overlap.
@@ -231,3 +231,7 @@ def compact(summary: str, files: list[str] | None = None) -> None:
             while a compaction is in flight, since nothing else can clear the window.
     """
     _call(wire.compact, summary, _strings("compact", "files", files))
+
+
+__getattr__ = missing(__name__, __all__)
+"""What this module answers for a name it does not declare — see `gg._registry.missing`."""

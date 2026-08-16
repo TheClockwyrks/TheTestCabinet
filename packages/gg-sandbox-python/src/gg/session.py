@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from wit_world.imports import session as wire
 
-from ._registry import operation
+from ._registry import missing, operation
 from .core import _call, _strings
 
 __all__ = ["approve", "finish", "request_changes"]
@@ -67,3 +67,7 @@ def request_changes(items: list[str]) -> None:
             role ends its session some other way.
     """
     _call(wire.request_changes, _strings("request_changes", "items", items))
+
+
+__getattr__ = missing(__name__, __all__)
+"""What this module answers for a name it does not declare — see `gg._registry.missing`."""

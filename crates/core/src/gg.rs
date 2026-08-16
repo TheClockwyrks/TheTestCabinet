@@ -4599,9 +4599,12 @@ pub enum GgProgramLanguage {
     /// The first arm whose guest carries its own interpreter rather than an engine gg lowers to.
     /// `componentize-py` links a real CPython 3.14 against gg's WIT world, so a program crosses the
     /// membrane as *source*, the standard library it is baked with is what a program may `import`,
-    /// and nothing is installed in the run container. Its SDK is hand-written and reads as Python
-    /// reads — `snake_case`, keyword arguments with real defaults, dataclasses for results, enums
-    /// for fixed choices, and a raised `ToolError` for the wire's error arm.
+    /// and nothing is installed in the run container. A program is executed in a namespace of its
+    /// own with nothing in it: the SDK is the ordinary package `gg`, baked into the guest and
+    /// reached by writing `import gg`, and the agent's code modules are the package `lib`. Its SDK
+    /// is hand-written and reads as Python reads — `snake_case`, keyword arguments with real
+    /// defaults, dataclasses for results, enums for fixed choices, and a raised `gg.core.ToolError`
+    /// for the wire's error arm.
     Python,
     /// Ruby: **compiled to JavaScript on the host by Opal**, and evaluated by a guest that carries
     /// Opal's runtime, gg's Ruby SDK and the libraries a program may `require`, all pre-initialised

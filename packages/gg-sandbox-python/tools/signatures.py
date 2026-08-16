@@ -97,6 +97,12 @@ GENERATED_FROM = "packages/gg-sandbox-python/src/gg/ (griffe, static)"
 """The provenance string written into the catalogue, so a reader of the JSON knows it is generated
 and where from."""
 
+SURFACE_IMPORT = "import gg"
+"""The line a program writes to reach this SDK, carried by every module this catalogue declares.
+
+The same string as `python.rs`'s `SURFACE_IMPORT`, which the host holds this catalogue to, and the
+line the programs gg synthesizes for this arm open with."""
+
 OPERATION_DECORATOR = "operation"
 """The decorator that names the gg operation a declaration binds.
 
@@ -865,9 +871,12 @@ def build() -> str:
                 "path": path,
                 "brief": prose.brief,
                 "detail": prose.detail,
-                # `None`, and honestly: gg injects this SDK into a program's scope, so a documented
-                # import would be a line a model would be wrong to think it had to write.
-                "import": None,
+                # Composed rather than reflected: griffe describes what a package declares and says
+                # nothing about how another file reaches it, and this is the one field the
+                # invariants let an arm write for itself where its generator does not report it.
+                # One line for all thirteen, because `gg` is one package and importing it is what
+                # makes every path this catalogue carries resolve exactly as written.
+                "import": SURFACE_IMPORT,
             }
         )
         for name in public_names(module, f"`{path}`"):
@@ -924,8 +933,8 @@ def build() -> str:
                 "name": name,
                 "fqn": fqn,
                 # The fully-qualified name IS what a program writes: `gg.files.read_file` resolves
-                # after `import gg`, and the module the scope binds makes `files.read_file` the same
-                # object. There is no third spelling for a call site to need.
+                # after `import gg`, which is the line every module of this catalogue states. There
+                # is no second spelling for a call site to need.
                 "call": None,
                 "brief": prose.brief,
                 "detail": prose.detail,

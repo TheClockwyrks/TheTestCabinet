@@ -17,7 +17,7 @@ from enum import Enum
 
 from wit_world.imports import delegation as wire
 
-from ._registry import alias, operation
+from ._registry import alias, missing, operation
 from .core import ToolError, ToolErrorCode, _call, _strings
 
 __all__ = [
@@ -271,3 +271,7 @@ def fork(prompt: str) -> SubagentHandle:
             cap, and `unavailable` when the run has no delegation runtime to copy this agent into.
     """
     return _handle(_call(wire.fork, prompt))
+
+
+__getattr__ = missing(__name__, __all__)
+"""What this module answers for a name it does not declare — see `gg._registry.missing`."""
