@@ -125,24 +125,18 @@ credentials from the environment.
 
 ## Static-site topology
 
-The project deploys four static sites, all on Cloudflare Pages. Each is its own
-Pages project under its own domain; they differ in how they are built.
+The project deploys three static sites, all on Cloudflare Pages. Each is its own
+Pages project under its own domain, built elsewhere and pushed with `wrangler`
+as a Direct Upload project.
 
 | Site | Project | Address | Built by |
 | ---- | ------- | ------- | -------- |
-| [Gallery](/components/site/overview/) (`apps/site`) | `test-cabinet-site` | `testcabinet.ai` (apex) | Cloudflare (git-connected) |
 | [Docs](/components/docs/overview/) (`apps/docs`) | `test-cabinet-docs` | `docs.testcabinet.ai` | GitHub Actions → `wrangler` (`deploy-docs.yml`) |
 | Per-run playable builds | `test-cabinet-runs` | a per-run `*.pages.dev` URL | `tcab publish` → `wrangler` |
 | [Reference implementations](/components/core/results/#reference-implementations) | `test-cabinet-references` | a per-variant `*.pages.dev` URL | `tcab publish-reference` → `wrangler` |
 
-The docs, per-run builds, and reference implementations are Direct Upload
-projects, built elsewhere and pushed with `wrangler`. The gallery is
-git-connected: Cloudflare clones the GitHub mirror and builds it itself. The
-gallery is git-connected because it is the only site that must rebuild when
-something other than a code push changes, namely the backend's snapshot. A
-git-connected project has a deploy hook, a unique URL that triggers a rebuild on a
-bare POST, which is what the backend fires after it uploads a new snapshot (see
-[`TCAB_SITE_DEPLOY_HOOK_URL`](#gallery-cloudflare-pages-one-time)).
+The [gallery](/components/site/overview/) is served by an origin rather than
+built as a static site; see [Public Gallery](/deployment/public-gallery/).
 
 Per-run builds are served from the root of their own `pages.dev` subdomain (see
 [Site Hosting](/components/site/overview/#hosting) and
@@ -150,38 +144,7 @@ Per-run builds are served from the root of their own `pages.dev` subdomain (see
 a subpath keeps it playable exactly as the test case's
 [build interface](/testing/end-to-end/overview/#design-requirements) requires.
 
-## Gallery (Cloudflare Pages, one-time)
-
-Cloudflare clones the GitHub mirror and builds `apps/site` itself, on every push
-to the production branch and whenever the deploy hook is fired. The test-case and
-run data the gallery shows come from the
-[backend's public R2 snapshot](/components/backend/snapshot/), fetched at build
-time. Cloudflare's git integration is the whole pipeline.
-
-In the Cloudflare dashboard, create a Pages project named `test-cabinet-site`
-connected to the GitHub mirror:
-
-- Set the production branch to `master`.
-- Build command: `npm ci && npm run build:site`. The `build:site` root script
-  builds the site's transitive workspace runtime packages in dependency order
-  before the site itself: `run-record`, then `voxel-runtime` and
-  `particle-runtime` (whose types the `ui` package imports and which publish
-  types only from their built `dist/`), then `apps/site`. Keep that list in the
-  root script rather than inline here, so it stays the single source of truth
-  when `ui` gains another workspace runtime dependency.
-- Build output directory: `apps/site/dist`.
-- The build is pure Node. Cloudflare's build image has no Rust and needs none.
-  The model catalog is owned by the backend and baked into the public R2 snapshot
-  as `models.json`, which the site consumes at runtime, so model curation and
-  refreshed prices reach the gallery through the next snapshot publish.
-- Add `testcabinet.ai` as a custom domain on the project, so the gallery is
-  served from the apex.
-- Create the project's deploy hook and give its URL to the backend as
-  `TCAB_SITE_DEPLOY_HOOK_URL` (see [Deployment](/deployment/overview/)). The
-  backend fires it after each snapshot upload, so a published run rebuilds the
-  gallery without a code push.
-
-Every other project is served from `*.pages.dev` or a subdomain, so no
+Every Pages project is served from `*.pages.dev` or a subdomain, so no
 `*.testcabinet.ai` wildcard or organization domain verification is required.
 
 Each per-run build is deployed under its own Cloudflare Pages branch alias

@@ -333,6 +333,7 @@ export default defineConfig({
                 "components/backend/overview",
                 "components/backend/api",
                 "components/backend/snapshot",
+                "components/backend/projection",
               ],
             },
             {
@@ -343,7 +344,7 @@ export default defineConfig({
             {
               label: "Site",
               collapsed: true,
-              items: ["components/site/overview"],
+              items: ["components/site/overview", "components/site/serving"],
             },
             {
               label: "UI",
@@ -392,6 +393,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             "deployment/overview",
+            "deployment/public-gallery",
             // The cluster itself, split by plane: what always runs, what a run
             // is scheduled onto, the database, and how they reach each other.
             {

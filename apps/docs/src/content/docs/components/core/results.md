@@ -247,7 +247,7 @@ prefix and requiring a long enough body, along with the exact key values from
 the release Job's environment where it holds them. Each match is replaced with
 `[REDACTED]`. The third public surface, the run's record and event stream in the
 public snapshot, is scrubbed by the backend as it builds that snapshot; see [the
-per-run record](/components/backend/snapshot/#runsrun-idjson--per-run-record).
+per-run record](/components/backend/snapshot/#run-documents).
 
 ### Combined review and publish
 

@@ -407,9 +407,7 @@ not a publishable failure, so the other selectors omit it.
   without fetching each full record; the [detail endpoint](#get-runsid) loads
   the full record and the run's reviews one run at a time. This is the same
   summary shape the [public
-  snapshot](/components/backend/snapshot/#runsjson--the-run-index) ships as its
-  run index, whose schema is
-  [`snapshot/runs.schema.json`](https://docs.testcabinet.ai/schema/snapshot/runs.schema.json).
+  projection](/components/backend/projection/) holds as its run row.
 
 #### Two pagination modes
 

@@ -27,7 +27,7 @@ through the same library.
 | [Web console](/components/web/overview/) | The same launcher and reporter as the Tauri app, running in a browser. |
 | [Backend](/components/backend/overview/) | A private Rust server that distributes test case definitions, owns the run queue, and stores run results. |
 | [Auth service](/components/auth/overview/) | A standalone Rust server for user accounts: self-registration, password login, and the bearer tokens the backend verifies. |
-| [Site](/components/site/overview/) | The public static gallery at [testcabinet.ai](https://testcabinet.ai) where published runs are browsed and played. |
+| [Site](/components/site/overview/) | The public gallery at [testcabinet.ai](https://testcabinet.ai) where published runs are browsed and played. |
 | [UI library](/components/ui/overview/) | Shared frontend code (`@test-cabinet/ui`): the routed gallery application all three GUIs mount, the primitives they render, and the backend client interfaces. |
 | [Voxel runtime](/components/voxel-runtime/overview/) | Poses and renders a produced voxel rig. |
 | [Particle runtime](/components/particle-runtime/overview/) | Simulates and renders a produced particle system. |
@@ -90,9 +90,10 @@ that every [review](/components/core/results/#reviews) is attributed to a
 person. The backend verifies the auth service's bearer tokens on the mutating
 run endpoints, review and publish; reads stay open.
 
-The [public site](/components/site/overview/) is a fully static, backend-less
-deployment. Publishing exports a public snapshot of the published runs that the
-site builds from, so the gallery has no live dependency on the private backend.
+The [public site](/components/site/overview/) runs on its own public plane.
+Publishing writes the run's documents and media to a public bucket and its index
+row to a public projection, both of which the gallery reads, so the gallery
+serves published runs while the backend stays private.
 
 ## A run
 

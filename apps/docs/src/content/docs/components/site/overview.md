@@ -9,34 +9,25 @@ above all by playing them. Each run also carries a numeric score and
 [rating](/components/core/results/#reviews) aggregated across its reviews, and
 each test case has a [leaderboard](#leaderboard). Only published runs appear.
 
-## A static site
+## How it is served
 
-The site is fully static, with no backend, no accounts, and no database of its
-own. Interactivity such as filtering and sorting is handled client-side. The
-built bundle is deployed to Cloudflare Pages at the project's custom domain, and
-Cloudflare builds it directly from the repository.
+The gallery is served by an origin that resolves routes and reads the published
+set at request time, so a run appears as soon as it is published. The origin
+answers each URL with the status that URL deserves and writes each run page's
+preview tags. See [Serving](/components/site/serving/).
 
 The gallery is the same routed application the [web](/components/web/overview/)
 and [Tauri](/components/tauri/overview/) consoles render, shared through the [UI
-library](/components/ui/overview/). The site mounts it with the build-time
-snapshot as its data source and `canExecute` false, so it shows the published
-gallery without the consoles' run, monitor, review, or connection screens.
+library](/components/ui/overview/). The origin mounts it with `canExecute`
+false, so it shows the published gallery without the consoles' run, monitor,
+review, or connection screens. Signing in and launching runs stay with the
+consoles.
 
-The dataset is the public snapshot the
-[backend](/components/backend/overview/#public-snapshot) exports to a Cloudflare
-R2 bucket. A build-time Vite plugin fetches that snapshot once from
-`TCAB_SNAPSHOT_URL` and inlines it, so the shipped output never queries the
-backend or R2 at runtime. A backend deploy hook triggers a rebuild whenever the
-snapshot changes. An unset URL, or a bucket whose `index.json` is absent because
-nothing has been published yet, resolves to an empty dataset and still builds; a
-reachable but broken snapshot fails the build.
-
-The build inlines the snapshot's [summary
-index](/components/backend/snapshot/#runsjson--the-run-index), one `RunSummary`
-card per published run, as the in-memory dataset every list, card, leaderboard,
-and metric reads. Each run's full record is emitted as a per-run
-`runs/<id>.json` static asset, fetched when that run's detail page opens, so the
-bundle does not grow with each record.
+The dataset is split by shape. Run listings, search, and leaderboards read the
+[public projection](/components/backend/projection/) the backend writes as it
+publishes. A run's full record, its events, and all media are objects in the
+public bucket, fetched when that run's page opens, so what a page carries stays
+the same as the corpus grows.
 
 ## Gallery
 
@@ -98,7 +89,7 @@ average cost are shown by default and the rest come from the column picker. A
 game jam carries a whole-game overall grade in place of a domain rating, and its
 rows show that grade.
 
-Scores are computed client-side from the snapshot. Each review contributes its
+A run's score is carried on its projection row. Each review contributes its
 earned share of the declared checklist weight, and those are averaged across a
 run's reviews.
 
@@ -128,8 +119,8 @@ from the machine-generated [run record](/components/core/run-records/) and each
 is attributed to the [account](/components/auth/overview/) that wrote it. Every
 published run carries at least one, because publishing requires a review, and
 may carry several from different reviewers. A run's score is the average across
-them and its overall rating the worst across them. Reviews travel to the site in
-the exported snapshot alongside the run record.
+them and its overall rating the worst across them. Reviews travel to the gallery
+in the run's published document alongside the record.
 
 ## Hosting
 

@@ -10,8 +10,10 @@ instance.
 To run the same services on one machine for development, see
 [Running](/development/running/). Local development applies the same manifests to
 a local [k3d](https://k3d.io) cluster, so a run is a Kubernetes `Job` there as it
-is in the cloud. The static surfaces (the public gallery, this docs site, and the
-per-run playable builds) are covered by [Releasing](/development/releasing/).
+is in the cloud. The public gallery runs on a plane of its own, covered by
+[Public Gallery](/deployment/public-gallery/). This docs site and the per-run
+playable builds are static and are covered by
+[Releasing](/development/releasing/).
 
 ## Deployed components
 
@@ -25,7 +27,8 @@ per-run playable builds) are covered by [Releasing](/development/releasing/).
 | [Artifact service](/components/artifacts/overview/) (`tcab-artifacts`) | `StatefulSet` (1 replica) + `Service` + `PersistentVolumeClaim`; serves produced run trees |
 | [Arena](/components/arena/overview/) (`tcab-arena`) | `Deployment` (1 replica) + `Service`; runs adversarial matches and tournaments |
 | [Web console](/components/web/overview/) (`tcab-web`) | `Deployment` + `Service` serving a static bundle, reached over the VPN through the internal `Ingress` |
-| Gallery, docs, per-run builds | Static Cloudflare Pages sites; see [Releasing](/development/releasing/) |
+| [Gallery](/components/site/serving/) (`tcab-gallery`) | A Container App on the public plane; see [Public Gallery](/deployment/public-gallery/) |
+| Docs, per-run builds | Static Cloudflare Pages sites; see [Releasing](/development/releasing/) |
 | [CLI](/components/cli/overview/) (`tcab`), [Tauri app](/components/tauri/overview/) | Local tools an operator installs; see [Building](/development/building/) |
 
 ## The control plane and the run plane
@@ -66,7 +69,7 @@ exists for the duration of one run.
 
 | Service | Kubernetes shape | Persistent storage | External egress |
 | ------- | ---------------- | ------------------ | --------------- |
-| Backend | `StatefulSet` (1) + `Service` + `PVC`, or `Deployment` + external PostgreSQL | Database, definition store, ingest checkout | Cloudflare R2 snapshot upload and the site's deploy hook |
+| Backend | `StatefulSet` (1) + `Service` + `PVC`, or `Deployment` + external PostgreSQL | Database, definition store, ingest checkout | Cloudflare R2 uploads and the public projection |
 | Auth service | `StatefulSet` (1) + `Service` + `PVC`, or `Deployment` + external database | Its own accounts database | None |
 | Dispatcher | `Deployment` (1), no `Service` | None | None |
 | Driver | One `Job` per run | Scratch only | Model APIs and package registries, from inside the sandbox pod |
@@ -135,6 +138,11 @@ namespace restricts traffic to the components that need to talk to each other.
 The full build is in
 [Internal ingress](/deployment/kubernetes/internal-ingress/).
 
+The backend opens every connection to the
+[public plane](/deployment/public-gallery/), writing objects to the public bucket
+and rows to the public projection. Those connections are outbound, so the cluster
+keeps its VPN-only reachability while published runs reach the gallery.
+
 On top of that boundary the [auth service](/components/auth/overview/) adds user
 accounts, so the mutating run actions (push, review, publish) are attributed to a
 person; the backend verifies each request's bearer token against it.
@@ -162,7 +170,8 @@ files, created from your secret manager rather than committed. The set is:
   `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET`, mounted read-only as files.
 - The shared service token. The backend and the dispatcher must carry the same
   `TCAB_BACKEND_SERVICE_TOKEN` or the queue never drains.
-- The backend's R2 credentials and deploy-hook URL, for the public snapshot.
+- The backend's R2 credentials and its public-projection connection string, for
+  publishing to the [public plane](/deployment/public-gallery/).
 - The publisher's `GH_TOKEN` and `CLOUDFLARE_API_TOKEN`, in the Secret named by
   `TCAB_DISPATCHER_PUBLISHER_SECRETS`.
 

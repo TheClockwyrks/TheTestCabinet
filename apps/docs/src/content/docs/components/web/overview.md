@@ -68,7 +68,7 @@ The home page fetches a recent window, and the case-scoped leaderboard and
 metrics views fetch one bounded, case-scoped summary set. Only a run's detail
 page loads that run's full [record](/components/core/run-records/) and its
 reviews, [one run at a time](/components/backend/api/#get-runsid). Lightweight
-[`RunSummary`](/components/backend/snapshot/#runsjson--the-run-index) cards back
+`RunSummary` cards back
 every list, card, leaderboard, and metric.
 
 ## Deployment

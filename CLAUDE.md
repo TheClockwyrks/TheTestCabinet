@@ -34,7 +34,7 @@ Read the doc first; the code location is where the implementation lives.
 | Tauri desktop app | [`components/tauri/overview.md`](apps/docs/src/content/docs/components/tauri/overview.md) | `crates/desktop/` (Rust shell) + `apps/desktop/` (React UI) |
 | Web console | [`components/web/overview.md`](apps/docs/src/content/docs/components/web/overview.md) | `apps/web/` |
 | Backend (private def/results server) | [`components/backend/`](apps/docs/src/content/docs/components/backend/) | `crates/backend/` |
-| Site (public static gallery) | [`components/site/overview.md`](apps/docs/src/content/docs/components/site/overview.md) | `apps/site/` |
+| Site (public gallery) | [`components/site/`](apps/docs/src/content/docs/components/site/) | `apps/site/` |
 | UI library (`@test-cabinet/ui`) | [`components/ui/overview.md`](apps/docs/src/content/docs/components/ui/overview.md) | `packages/ui/` |
 | Voxel runtime (`@test-cabinet/voxel-runtime` — poses/renders a produced voxel rig; pure-core + three) | [`components/voxel-runtime/overview.md`](apps/docs/src/content/docs/components/voxel-runtime/overview.md) | `packages/voxel-runtime/` |
 | Particle runtime (`@test-cabinet/particle-runtime` — simulates/renders a produced particle `system.json`; pure-core + three + canvas) | [`components/particle-runtime/overview.md`](apps/docs/src/content/docs/components/particle-runtime/overview.md) | `packages/particle-runtime/` |
@@ -71,7 +71,7 @@ Cargo and npm workspaces live in
 Running the services locally on one machine (the development mirror of a
 deployment):
 [`development/running.md`](apps/docs/src/content/docs/development/running.md).
-Releasing the `tcab` binary and the static sites (gallery, docs, per-run builds):
+Releasing the `tcab` binary and the static sites (docs, per-run builds):
 [`development/releasing.md`](apps/docs/src/content/docs/development/releasing.md).
 Deploying the always-on **services** (backend + workers) as **remote**
 staging/prod environments — with runnable templates in

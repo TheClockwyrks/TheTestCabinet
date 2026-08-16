@@ -2,67 +2,43 @@
 title: Public Snapshot
 ---
 
-The public snapshot is the dataset the [site](/components/site/overview/) is
-built from. The backend exports its published runs to a public [Cloudflare
-R2](https://developers.cloudflare.com/r2/) bucket, and the site build fetches
-that export. This page is the authoritative contract for the snapshot's layout,
-the surface between the backend that writes it and the site that reads it.
+The public snapshot is the document half of the public dataset. The backend
+uploads a published run's record, its events, and all media to a public
+[Cloudflare R2](https://developers.cloudflare.com/r2/) bucket, and the
+[gallery](/components/site/serving/) fetches those objects by key. The index half
+is the [public projection](/components/backend/projection/), whose rows name
+these objects. This page is the authoritative contract for the bucket's layout.
 
-The snapshot's run documents hold only published runs. A produced run that has
-not been published is private, and a run that can never be published, such as an
+The bucket holds documents for published runs. A produced run that has not been
+published is private, and a run that can never be published, such as an
 infrastructure failure or a [`canceled`](/components/core/run-records/#status)
-run, never reaches them. The [gg document
-corpus](#gg-runsjson--the-gg-document-corpus) is the one exception, and it is
+run, has no document here. The [gg document
+corpus](#the-gg-document-corpus) is the one exception, and it is
 redacted rather than gated on publication.
 
-The backend regenerates the whole snapshot from its full published set on each
-coalesced publish, uploads it, and swaps it into place. Regenerating everything
-rather than applying deltas keeps the operation idempotent.
+## Content addressing
 
-The JSON documents are small and are rewritten every publish. Media is not. Two
-families of media live outside any single snapshot's prefix, are uploaded once,
-and are referenced by every later snapshot:
+Every object's key carries a digest of its content, so a key changes only when
+the bytes do. A publish computes each key and uploads the objects the bucket does
+not already hold.
 
-- A run's media under [`media/runs/<run-id>/`](#run-media), keyed by run id and
-  immutable once the run is published.
-- A case version's media under [`media/cases/<slug>/<version>/`](#case-media). A
-  version with a published run is [frozen](/development/frozen-versions/), so
-  this is effectively immutable too.
+This gives a publish a cost proportional to what changed. A run's media and a
+[frozen](/development/frozen-versions/) case version's baselines are written once
+and referenced by every later publish. A run document that gains a review lands
+on a new key and is uploaded, and one whose content is unchanged is skipped.
 
-Writing media once keeps a publish cheap as runs and cases accumulate, and it
-lets a publish keep a run's media after the volumes the bytes were read from are
-gone.
-
-## Atomic swap
-
-A site build must never read a half-written dataset. The backend writes every
-file of a new snapshot under a content-addressed prefix
-`snapshots/<snapshotId>/` first, and writes the small top-level `index.json`
-pointer last. `index.json` is a single small object, so overwriting it is the
-atomic cut-over: until that write lands the site keeps reading the previous
-snapshot, and a new snapshot never clobbers the previous one's files. Superseded
-prefixes are [pruned](#pruning-superseded-generations) after a grace period.
-
-`<snapshotId>` is a timestamp plus a hash, for example `2026-06-17T2148Z-1a7b9c3d`.
+An object at a given key is immutable, so the gallery and the browser cache it
+indefinitely, and a projection row naming a key always names complete content.
+Writing media once also lets a publish keep a run's media after the volumes the
+bytes were read from are gone.
 
 ## Keys
 
-The documents, rewritten every publish:
-
 ```text
-index.json
-snapshots/<snapshotId>/runs.json
-snapshots/<snapshotId>/runs/<run-id>.json
-snapshots/<snapshotId>/cases/<slug>/<version>.json
-snapshots/<snapshotId>/models.json
-snapshots/<snapshotId>/comparisons.json
-snapshots/<snapshotId>/comparisons/<id>.json
-snapshots/<snapshotId>/gg-runs.json
-```
-
-The objects written once and shared across every later snapshot:
-
-```text
+documents/runs/<run-id>/<digest>.json
+documents/cases/<slug>/<version>/<digest>.json
+documents/comparisons/<id>/<digest>.json
+documents/gg-runs/<digest>.json
 media/runs/<run-id>/proof/<file>
 media/runs/<run-id>/asset/<file>
 media/runs/<run-id>/validation/<file>
@@ -72,64 +48,14 @@ media/cases/<slug>/<version>/validation-baseline/<variant>/<digest>-<file>
 pfp/<account-id>
 ```
 
-`index.json` is the pointer, overwritten last. A per-run or per-case document
-references its media by these snapshot-relative keys, so the atomic `index.json`
-swap still points a site build at a complete, self-consistent dataset.
-
 `<scope>` is `_common` for a reference shown on every variant, or a variant slug
 for one scoped to that variant.
 
-The site reads `index.json`, then follows its prefixes to the rest. Every JSON
-file carries a `schemaVersion`, currently `1`.
+A document is reached through the projection row that names its key, so a reader
+follows a key rather than composing a path. Every document carries a
+`schemaVersion`, currently `1`.
 
-## `index.json` — the pointer
-
-The top-level pointer and summary: the snapshot id, when it was generated, the
-run count, and the keys and prefixes the rest of the snapshot lives under.
-
-```jsonc
-{
-  "schemaVersion": 1,
-  "snapshotId": "2026-06-17T2148Z-1a7b9c3d",
-  "generatedAt": "2026-06-17T21:48:00Z",
-  "runCount": 128,
-  "runsKey": "snapshots/2026-06-17T2148Z-1a7b9c3d/runs.json",
-  "runsPrefix": "snapshots/2026-06-17T2148Z-1a7b9c3d/runs/",
-  "casesPrefix": "snapshots/2026-06-17T2148Z-1a7b9c3d/cases/",
-  "modelsKey": "snapshots/2026-06-17T2148Z-1a7b9c3d/models.json",
-  "comparisonsKey": "snapshots/2026-06-17T2148Z-1a7b9c3d/comparisons.json",
-  "comparisonsPrefix": "snapshots/2026-06-17T2148Z-1a7b9c3d/comparisons/",
-  "ggRunsKey": "snapshots/2026-06-17T2148Z-1a7b9c3d/gg-runs.json"
-}
-```
-
-Schema:
-[`snapshot/index.schema.json`](https://docs.testcabinet.ai/schema/snapshot/index.schema.json).
-
-## `runs.json` — the run index
-
-A `runs` array of summary cards, newest first, one per published run. It is
-enough for the gallery's cards and its client-side filter, sort and paging
-without fetching every per-run file.
-
-Each summary carries the run's id and timestamps, its
-[subject](/components/core/run-records/#subject) including the [test
-type](/testing/overview/), its [metrics](/components/core/metrics/), the
-denormalized case name, the `validationLoaded` signal, the run state, the links,
-and the review aggregates: `rating` (the worst rating any reviewer gave any
-domain), `score` (the mean earned checklist weight across the run's reviews),
-and `reviewCount`. A performance run's fuel result and the ranking slice of a
-run's [code analysis](#code-analysis) ride along too. `rating` and `score` are
-nullable in the contract, and the snapshot holds only reviewed runs, so both are
-present here.
-
-The site fetches full records lazily, one per run page. This summary index is
-the whole dataset the list, home, leaderboard, and metrics views read.
-
-Schema:
-[`snapshot/runs.schema.json`](https://docs.testcabinet.ai/schema/snapshot/runs.schema.json).
-
-## `runs/<run-id>.json` — per-run record
+## Run documents
 
 The full [run record](/components/core/run-records/) blob, verbatim, with its
 links populated, plus the array of [reviews](/components/core/results/#reviews)
@@ -244,9 +170,9 @@ tiers it is computed in, which is what keeps a run's page load bounded.
 
 The bounded summary rides on the record inside the per-run document, and its
 ranking-relevant slice (code lines, the size Gini, mean cognitive complexity) is
-lifted onto the run's summary card in `runs.json` as `code`, alongside the
-analyzer generation, the authored-or-tree basis, and the truncation flag. One
-file therefore ranks every run's code without a fetch per run. The provenance
+lifted onto the run's projection row as `code`, alongside the analyzer
+generation, the authored-or-tree basis, and the truncation flag. A listing
+therefore ranks every run's code without a fetch per run. The provenance
 travels with the figures, because two analysed runs are comparable only under
 the same generation and basis.
 
@@ -276,43 +202,21 @@ Two things follow that the surfaces above must honour:
   so a run that finished before the analyzer shipped carries no figures. A view
   must render that absence as a gap rather than as a zero.
 
-## `models.json` — the model catalog
+## Comparison documents
 
-The composed model catalog: the curated model configuration unioned with the
-models derived from recorded runs, each with its price history. The public site
-renders its Models section from this file rather than a bundled dataset.
+One document per published [harness comparison](/comparisons/experiments/), a
+full read model of arms, distributions and diagnostics. Each is scrubbed like
+every other published document, and the projection holds the row a comparison is
+listed and reached by.
 
-## `comparisons.json` — published comparisons
+## Superseded objects
 
-The index of published [harness comparisons](/comparisons/experiments/), each a
-full read model of arms, distributions and diagnostics, with a per-comparison
-`comparisons/<id>.json` for a direct fetch. Each document is scrubbed like every
-other published document. An empty list is a valid index.
+A run whose content changes mints a new key, so the object it previously occupied
+is left with nothing referencing it. Reclaiming those, and the media of a deleted
+run, is a future cleanup. The accumulation is proportional to content changes
+rather than to publishes, so it settles at a small multiple of the live set.
 
-## Pruning superseded generations
-
-Every refresh writes a whole new `snapshots/<snapshotId>/` generation and cuts
-over by overwriting `index.json`. Nothing can reach an earlier generation
-afterwards, so after the cut-over the refresh prunes the ones that are done
-with. A generation is deleted only when both hold:
-
-1. It is not the one `index.json` points at. The live generation is kept however
-   old it is, so a bucket whose live snapshot predates the retention window
-   keeps serving the site.
-2. It is older than `TCAB_SNAPSHOT_RETENTION_HOURS`, default `24`. A site build
-   that already read `index.json` is still fetching that generation's files, so
-   a just-superseded generation has to outlive the build it is serving.
-
-A generation id that does not parse as a timestamp is kept. The prune is
-best-effort: it runs after the snapshot is already live, so a failure logs and
-leaves the work to the next refresh rather than failing the publish. Without it
-the bucket grows by a full generation per publish and never shrinks.
-
-Run and case media under `media/` are never generation-scoped and are untouched
-by the prune. Media orphaned by a deleted run is harmless, since no snapshot
-references it; collecting it is a future cleanup.
-
-## `cases/<slug>/<version>.json` — case metadata
+## Case documents
 
 The site-facing slice of a [test case version](/testing/end-to-end/overview/):
 what the gallery shows to frame a run. It carries the name, test type,
@@ -337,17 +241,15 @@ This metadata is read from the backend's ingested definition store rather than
 from the run record, which carries only the run's `(slug, version, variant)`
 subject. The store is regenerable, and on a deployment where it lives on
 ephemeral local disk a pod reschedule empties it until the ingest repopulates
-it. A snapshot regenerated while the store is momentarily empty would emit each
-published run with no case file for it, and the gallery would show a run with no
-case to browse. To keep the snapshot self-consistent, an ingest that actually
-(re)ingests a version queues a snapshot refresh, the same coalesced regeneration
-a publish triggers. A no-op ingest does not, so the periodic refresh does not
-rebuild the gallery on every cycle.
+it. A publish taken while the store is momentarily empty would leave a run with
+no case document to frame it. To keep the dataset self-consistent, an ingest that
+(re)ingests a version republishes the case documents and rows it touched. A no-op
+ingest leaves them as they are.
 
 Schema:
 [`snapshot/case.schema.json`](https://docs.testcabinet.ai/schema/snapshot/case.schema.json).
 
-## `gg-runs.json` — the gg document corpus
+## The gg document corpus
 
 Every recorded [gg](/gg/overview/) run as one flat
 [document](/gg/analysis/query-language/) of dotted, typed fields, plus the
