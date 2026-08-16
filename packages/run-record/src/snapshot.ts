@@ -30,7 +30,15 @@ export type SnapshotIndex = {
   generatedAt: string;
   runCount: number;
   runsKey: string;
-  runsPrefix: string;
+  /**
+   * The shared prefix the per-run documents live under
+   * (`documents/runs/`) — snapshot-independent, so it is the same string in every
+   * generation. Informational: a reader resolves a run's document through the
+   * `documentKey` on its summary, because the key carries a content digest and so
+   * cannot be composed from the run id. Operators and
+   * `scripts/recover-run-media-from-snapshot.sh` use it to scope a listing.
+   */
+  runDocumentsPrefix: string;
   casesPrefix: string;
   /**
    * Where this snapshot's model catalog lives (`<prefix>/models.json`).
@@ -105,6 +113,18 @@ export type RunSummary = {
    * fuel needs no checklist weights — so [`RunSummary::from_stored`] fills it.
    */
   performance?: PerformanceSummaryOut | null;
+  /**
+   * Where this run's full document lives: its content-addressed
+   * `documents/runs/<id>/<digest>.json` key. The digest is over the document's own
+   * bytes, so the key cannot be composed from the run id — the summary index is how
+   * a reader learns it, and following it is the only supported way to reach a run's
+   * record from the snapshot.
+   *
+   * `None` on a console card, which has no published document at all;
+   * [`RunSummary::from_stored`] leaves it unset and the snapshot builder fills it.
+   * Always `Some` in `runs.json`.
+   */
+  documentKey?: string | null;
   links: LinksOut;
 };
 

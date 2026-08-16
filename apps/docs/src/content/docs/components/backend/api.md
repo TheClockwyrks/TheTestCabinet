@@ -163,14 +163,39 @@ rather than a local checkout.
 ### `GET /test-cases`
 
 The catalog: every ingested case and its available versions, under `testCases`.
+Each entry also carries the **display metadata a listing renders** — the name,
+test type, asset shape, difficulty, tags, and summary — read from the case's
+latest visible version.
 
 ```jsonc
 {
   "testCases": [
-    { "slug": "carom", "versions": ["v1.0.0", "v1.1.0"] }
+    {
+      "slug": "carom",
+      "versions": ["v1.0.0", "v1.1.0"],
+      "name": "Carom",
+      "testType": "end-to-end",
+      "assetKind": "sprite",
+      "difficulty": "easy",
+      "tags": ["arcade"],
+      "summary": "A duel of angles."
+    }
   ]
 }
 ```
+
+This is the **summary** half of the catalog contract, and it is deliberately
+self-sufficient: a client renders a whole catalog grid from this one request.
+Anything heavier than a card — the description, the variants with their prompts,
+seeded specs, references and checklists, plus the changelog and errata — lives on
+[`GET /test-cases/{slug}/versions/{version}`](#get-test-casesslugversionsversion)
+and is fetched only for the case a visitor opens. Folding that detail into the
+listing costs a request per version *and* per variant, for every case in the
+catalog, before the grid can paint.
+
+A case whose latest manifest cannot be read is omitted from this listing rather
+than failing it, so one unreadable sidecar costs that case's card and not the
+whole catalog.
 
 Schema:
 [`backend-api/test-case-catalog.schema.json`](https://docs.testcabinet.ai/schema/backend-api/test-case-catalog.schema.json).
@@ -391,6 +416,12 @@ List stored runs, newest first. A `state` query parameter selects which runs:
   "produced" worklist — every run that exists but is not yet public, so an
   infrastructure failure stays inspectable rather than appearing in no list.
   Disjoint from the default published listing.
+- `state=any` — the **union** of the published and unpublished slices: every
+  stored run, whatever its terminal state. This is what the consoles' run
+  listings draw from, so a produced (and therefore unreviewed) run sorts and
+  pages in the *same* listing as the published ones instead of being merged in
+  ahead of them client-side. Offered only in the numbered-offset mode below (the
+  cursor listings walk one lifecycle slice at a time).
 
 #### Two projections
 
@@ -423,8 +454,23 @@ List stored runs, newest first. A `state` query parameter selects which runs:
 
 The offset mode additionally accepts:
 
-- **Filters** `testCase`, `model`, and `harness` — each narrows to runs matching
-  that lifted subject value.
+- **Filters** `testCase`, `model`, `harness`, `variant`, and `version` — each
+  narrows to runs matching that lifted subject value, and they **AND** together
+  (so `testCase=carom&model=…` is expressible, which the free-text `q` alone
+  cannot do). A variant slug is unique only within its case, so `variant` is
+  paired with `testCase` (the case-detail Runs tab's slice), as `version`
+  normally is.
+- **Current versions** `latestVersions=true` — restrict every run to its case's
+  **current** `major.minor`: the newest one that case has a run for *within the
+  selected `state` slice*. A case version is frozen once it has runs, so an older
+  minor is a different spec whose runs are not comparable with the current one's;
+  this is the console listings' default. The current version is read off the runs
+  rather than the definition store, so a newly authored version does not blank the
+  listing before anything has run against it, and the static gallery — which has
+  only its run index — answers the identical question from the same data.
+  `latestVersions` is **ignored** when `version` names an exact version: an
+  explicit version is the more specific instruction, and AND'ing the two would
+  silently empty the listing whenever the picked version is not the current one.
 - **Search** `q` — a free-text match across the lifted subject columns (test case
   slug, model id, harness slug, variant). It matches the **raw** recorded ids, not
   a model's resolved display name.
@@ -478,6 +524,175 @@ Force an immediate [public snapshot](/components/backend/snapshot/) regeneration
 upload, and deploy-hook fire, outside the normal coalescing window. For operator
 recovery. The response reports whether the snapshot was refreshed, the run count
 it covers, and whether the deploy hook fired.
+
+## Coverage plans, ladders, and the review buffer
+
+The reviewer scheduling surface: what runs an account wants to exist, and how fast
+it wants them arriving. Every endpoint here requires a bearer token and is **keyed
+to the token's account** — there is no path parameter naming a user, and an id that
+belongs to another account answers `404` rather than `403`, so one account cannot
+probe another's plan ids. The concepts, and the reasoning behind them, live on
+[Coverage plans](/components/backend/coverage/) and
+[Ladders](/components/backend/ladders/); this section is the wire contract.
+
+Two conventions differ from the rest of this page, both because this is a
+console-only surface rather than a cross-component one: the collections return
+**bare JSON arrays** rather than the wrapped object [above](#conventions), and a
+plan's or ladder's *declaration* and its *schedule* (`outerAxis`, `paused`,
+`autoTopUp`, `bufferTarget`) are flattened into one object on the way out while
+being written separately — an absent `schedule` on a `PUT` means "leave it alone",
+so saving an edited model list can never un-pause a running plan.
+
+### Groups and plans
+
+- `GET|POST /coverage-groups`, `PUT|DELETE /coverage-groups/{id}` — reusable member
+  groups, each holding either harness+model combinations (`kind: "combo"`) or
+  version-pinned cases (`kind: "case"`). Plans and ladders reference them by id, so
+  editing a group reshapes everything that points at it. A plan that references a
+  deleted group ignores the dangling id at coverage time; there is no cascade.
+- `GET|POST /coverage-plans`, `PUT|DELETE /coverage-plans/{id}` — the plans
+  themselves. Reads return `CoveragePlanOut` (declaration + schedule flattened).
+  `runsPerCell` is clamped server-side, because a mistyped target is a mistyped
+  number of queued runs.
+- `GET /coverage-plans/summary` — the roll-up the plans list and the Home widget
+  render: cell counts, runs missing, runs unreviewed by you, plus `paused` and
+  `autoTopUp` so the list can say *why* a plan with missing runs is not filling
+  itself.
+- `GET /coverage-plans/{id}/coverage` — the full matrix: one cell per
+  `case × combination` **in the plan's own emission order**, with the `outerAxis`
+  echoed so a reader knows what that order means, and the `runsPending` /
+  `runsUnreviewed` / `runsOutstanding` / `bufferTarget` roll-ups. Schemas:
+  [`coverage/coverage-plan.schema.json`](https://docs.testcabinet.ai/schema/coverage/coverage-plan.schema.json),
+  [`coverage/coverage-matrix.schema.json`](https://docs.testcabinet.ai/schema/coverage/coverage-matrix.schema.json),
+  [`coverage/coverage-group.schema.json`](https://docs.testcabinet.ai/schema/coverage/coverage-group.schema.json).
+
+Each cell reports `inFlight` and, separately, the `pending` subset of it — jobs the
+queue is deliberately holding back behind a harness parallelism cap or a same-model
+game jam. That distinction is the answer to "my buffer is full but nothing is
+running", which is otherwise indistinguishable from a wedged queue.
+
+### The review buffer
+
+- `GET|PUT /coverage-settings` — the account-wide `bufferTarget`: how many runs a
+  top-up may leave outstanding (in flight, or finished and unreviewed by you) before
+  it stops. `GET` reports `isDefault` when the account has never chosen one — no row
+  is materialized on read. `0` is a legitimate value meaning "never top up".
+  Schema: [`coverage/coverage-settings.schema.json`](https://docs.testcabinet.ai/schema/coverage/coverage-settings.schema.json).
+- `GET|PUT /coverage-plans/{id}/schedule` — one plan's `outerAxis`, `paused`,
+  `autoTopUp`, and its optional `bufferTarget` override. The override is nullable
+  and null is **not** zero: null inherits the account's setting, `0` means never.
+- `POST /coverage-plans/{id}/topup` — walk the plan's cells in its own order, skip
+  the ones already at target (counted **globally**), and enqueue **whole cells**
+  until the requester has `bufferTarget` runs outstanding. There is no background
+  daemon; this endpoint is what enqueues. It answers with the buffer target in
+  force, the occupancy it observed, and every cell it launched with its job ids, in
+  emission order.
+
+  It is **serialized per plan** by a claim on the plan row — two console tabs, or
+  one fast double review-submit, would otherwise both observe the same shortfall and
+  both enqueue for it — and reports `skipped: "busy"` rather than waiting when the
+  claim is held, or `skipped: "paused"` when the plan is paused. A top-up that ran
+  and found nothing to do reports neither, with `enqueued: 0`. Otherwise idempotent:
+  it recomputes the shortfall on every call.
+- `GET /coverage-plans/{id}/queue` — the plan's completed runs the requesting
+  account has not reviewed, **in the plan's own order** rather than newest-first
+  like the global unreviewed listing, so reviewing walks the buffer in the order it
+  was deliberately filled. Capped rather than paginated, with `truncated` set when
+  there is more behind it.
+
+### Halting
+
+Three controls per plan, and the same three per ladder, distinguished by what they
+cost rather than by how hard they sound:
+
+| endpoint | pauses | cancels |
+| --- | --- | --- |
+| `POST /coverage-plans/{id}/pause` | yes (body: `{ "paused": true }`) | nothing |
+| `POST /coverage-plans/{id}/halt` | yes | its `queued` + `pending` jobs |
+| `POST /coverage-plans/{id}/halt-all` | yes | the above **plus** `dispatched`, `starting`, `running` |
+
+`pause` takes the state as a body rather than being two verbs, so a console can
+drive a toggle without tracking which direction it is going.
+
+Both halts reuse the same atomic cancel transition
+[`POST /jobs/{id}/cancel`](#stopping-runs-in-bulk) uses, and reach only jobs whose
+`origin` is this plan — a run launched by hand is never swept up. Both answer with
+`{ "canceled": n, "includedActive": bool }`. **The count is the contract**: a halt
+that reported only success could not be told apart from a halt whose scope was
+wrong, and those call for opposite next moves.
+
+`halt-all` discards work that is partly or wholly paid for. A client must confirm
+before calling it and must never make it the default.
+
+### Ladders
+
+A [ladder](/components/backend/ladders/) is a sibling of the coverage plan, not a
+mode of it: an ordered list of **rungs** (one version-pinned case each, addressed by
+a stable opaque id) that harness+model **climbers** ascend until a **gate** stops
+them. It reuses the plan's `kind: "combo"` groups, buffer, top-up, queue, and
+halting verbatim, so only its own endpoints are listed here.
+
+- `GET|POST /ladders`, `GET|PUT|DELETE /ladders/{id}` — the declaration: rungs,
+  climbers, `runsPerCell`, and the single parameterised `gate` (`floor`,
+  `threshold`, `unloadedCountsAsBroken`, `earlyStop`). Rungs are matched on their
+  stable ids and **reconciled, never replaced**, so a reorder or a version bump keeps
+  every climber's recorded verdicts. A rung holding a
+  [performance](/testing/performance/overview/) or
+  [game jam](/testing/game-jam/overview/) case is refused with `400`: neither can
+  ever produce a rating for the gate to read, so it would stall the climb silently.
+  Schema: [`coverage/ladder.schema.json`](https://docs.testcabinet.ai/schema/coverage/ladder.schema.json).
+- `GET /ladders/{id}/progress` — the board: every climber's status
+  (`climbing` / `awaitingReview` / `walled` / `held` / `toppedOut`), the rung it
+  stands on with the gate tally behind that answer, and its verdicts. A **read**:
+  verdicts the gate has resolved but nobody has recorded are computed live and
+  flagged `recorded: false`, then persisted by the next top-up — a `GET` never
+  advances a climber. Schema:
+  [`coverage/ladder-progress.schema.json`](https://docs.testcabinet.ai/schema/coverage/ladder-progress.schema.json).
+- `POST /ladders/{id}/rungs/order` — reorder the climb by rung id. The body must be
+  a permutation of the ladder's current rungs; adding or dropping one is an edit and
+  goes through `PUT /ladders/{id}`.
+- `POST /ladders/{id}/climbers` — one combination's steering, written whole:
+  `priority`, `focused`, and `held`. A hold stops a climber without pretending a
+  rung was decided, so clearing it resumes exactly where the climb left off.
+- `POST /ladders/{id}/outcomes` — apply or clear a manual override of one recorded
+  verdict: promote a climber past a rung its runs failed, or wall one they passed.
+  The override is stored **beside** the automatic verdict, so a recompute can never
+  silently undo it and `outcome: null` restores exactly what the gate says. `409`
+  when the rung has no verdict yet — an undecided rung has nothing to promote past,
+  and the control for "stop here regardless" is a hold.
+- `GET|PUT /ladders/{id}/schedule`, `POST /ladders/{id}/topup`,
+  `GET /ladders/{id}/queue`, `POST /ladders/{id}/pause`, `.../halt`,
+  `.../halt-all` — the plan endpoints above, with one restriction: a top-up only
+  ever launches a climber's **current** rung.
+
+## Stopping runs in bulk
+
+Three global sweeps back the console's Runs-page controls. All require a bearer
+token, and all answer
+`{ "canceled": n, "includedWaiting": bool, "includedActive": bool }` — the scope
+flags let a client phrase what it just did ("stopped 12 runs, including 3 already
+executing") from the response rather than from which button it pressed.
+
+| endpoint | sweeps | console label |
+| --- | --- | --- |
+| `POST /jobs/cancel-waiting` | `queued`, `pending` | Clear pending |
+| `POST /jobs/cancel-active` | `dispatched`, `starting`, `running` | Kill active |
+| `POST /jobs/cancel-all` | both, in one transition | Stop all |
+
+They are named after the job states they reach rather than after those labels,
+because `pending` is a distinct state that is surfaced on its own — a
+"cancel-pending" endpoint that also swept `queued` would be actively misleading.
+
+These are **global and scoped to nothing**: they cancel matching jobs whatever
+launched them, including runs launched by hand and runs launched by another account.
+That is deliberate — they are the "stop the cabinet" controls, and narrowing them by
+account would silently skip every job recorded before jobs carried an account at
+all. The scoped equivalent is a plan's or ladder's
+[`halt`](#halting). Cancelling a single job by id remains
+`POST /jobs/{id}/cancel`, which these reuse rather than reimplement.
+
+`cancel-active` and `cancel-all` discard work in progress, so a client confirms
+first; `cancel-waiting` throws nothing away and does not need to.
 
 ## Reference rendering
 

@@ -75,10 +75,12 @@ lib-cov
 coverage
 *.lcov
 
-# ...but the generated JSON Schemas for the reviewer *coverage* surface live under
-# a `coverage/` directory that the unanchored rule above would otherwise swallow.
-# They are committed like every other generated schema doc.
+# ...but two `coverage/` directories in this repo are source, not tool output, and
+# the unanchored rule above would otherwise swallow both: the generated JSON
+# Schemas for the reviewer *coverage* surface, and the backend module that decides
+# what that surface launches (the top-up algorithm and the ladder gate).
 !apps/docs/public/schema/coverage/
+!crates/backend/src/coverage/
 
 # nyc test coverage
 .nyc_output

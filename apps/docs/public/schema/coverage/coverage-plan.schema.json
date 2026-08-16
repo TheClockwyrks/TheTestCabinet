@@ -41,7 +41,7 @@
   },
   "$id": "https://docs.testcabinet.ai/schema/coverage/coverage-plan.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "A reviewer's named coverage plan: the groups it references, any one-off members,\nand the target runs-per-cell. Persisted whole; one account may hold many.",
+  "description": "A reviewer's named coverage plan **as declared**: the groups it references, any\none-off members, and the target runs-per-cell. Persisted whole; one account may\nhold many.\n\nHow the plan is *fed* is [`CoverageSchedule`], stored beside this and never\nwritten by a declaration save. Handlers return the two flattened together as\n[`CoveragePlanOut`].",
   "properties": {
     "caseGroupIds": {
       "description": "The referenced case groups' ids.",

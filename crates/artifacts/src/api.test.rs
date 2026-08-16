@@ -702,3 +702,84 @@ async fn archive_for_an_unknown_run_is_not_found() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn a_text_build_file_is_gzipped_for_a_client_that_accepts_it() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app(&stub).await;
+
+    let upload = Request::builder()
+        .method("POST")
+        .uri("/runs/run-gz/artifacts")
+        .header("authorization", format!("Bearer {GOOD_JOB_TOKEN}"))
+        .header("x-tcab-job-id", GOOD_JOB_ID)
+        .body(Body::from(build_tarball()))
+        .unwrap();
+    assert_eq!(
+        app.clone().oneshot(upload).await.unwrap().status(),
+        StatusCode::CREATED
+    );
+
+    // The build's HTML/JS/CSS is the bulk of what a reviewer pulls over whatever
+    // link they have, and is what the compression layer exists for.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/runs/run-gz/build")
+                .header("accept-encoding", "gzip")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get("content-encoding").unwrap(),
+        "gzip",
+        "a text build file should be gzipped for a client that accepts it"
+    );
+}
+
+#[tokio::test]
+async fn the_pre_compressed_archive_is_not_re_encoded() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app(&stub).await;
+
+    let upload = Request::builder()
+        .method("POST")
+        .uri("/runs/run-gz2/artifacts")
+        .header("authorization", format!("Bearer {GOOD_JOB_TOKEN}"))
+        .header("x-tcab-job-id", GOOD_JOB_ID)
+        .body(Body::from(source_tree_tarball()))
+        .unwrap();
+    assert_eq!(
+        app.clone().oneshot(upload).await.unwrap().status(),
+        StatusCode::CREATED
+    );
+
+    // `archive.tar.gz` is served already gzipped (`application/gzip`). Re-encoding
+    // it would spend CPU to hand back slightly larger bytes, so the compression
+    // layer's predicate excludes that content type — this is the regression guard
+    // for that exclusion.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/runs/run-gz2/archive.tar.gz")
+                .header("accept-encoding", "gzip")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get("content-type").unwrap(),
+        "application/gzip"
+    );
+    assert!(
+        response.headers().get("content-encoding").is_none(),
+        "an already-gzipped archive must not be gzipped a second time"
+    );
+}

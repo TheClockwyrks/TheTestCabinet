@@ -4,6 +4,7 @@ import type { StoredReview } from "../../../../client/types";
 import { Panel } from "@test-cabinet/ui";
 import { useAuth } from "../../../../client/auth";
 import { useGalleryData } from "../../../data/galleryContext";
+import { useReviewModel } from "../../../data/useTestCase";
 import {
   overallGradeOf,
   scoreChecklist,
@@ -61,7 +62,7 @@ function SingleReview({
   const gallery = useGalleryData();
   const { account } = useAuth();
   const review = reviews.find((r) => r.reviewerId === reviewerId);
-  const model = gallery.reviewModelFor(run.subject);
+  const model = useReviewModel(run.subject);
 
   // The overall rating (worst across domains) or, for a game jam, the whole-game
   // overall grade — plus the score — for the top section's header, mirroring how

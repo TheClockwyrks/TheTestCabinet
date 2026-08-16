@@ -39,6 +39,8 @@ use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use tower_http::compression::CompressionLayer;
+use tower_http::compression::predicate::{DefaultPredicate, NotForContentType, Predicate};
 use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::TraceLayer;
 
@@ -125,6 +127,22 @@ pub fn router(state: AppState) -> Router {
         // for a request carrying our bearer token. Mirror the request's headers
         // instead, which echoes `Authorization` back explicitly.
         .layer(CorsLayer::permissive().allow_headers(AllowHeaders::mirror_request()))
+        // Compress responses for callers that advertise `Accept-Encoding: gzip`.
+        // This service hands a reviewer the run's produced tree — the playable
+        // build's HTML/JS/CSS, the `.jsonl` event and raw logs, the uncompressed
+        // `archive.tar` — all of which are text that compresses heavily and all of
+        // which a console pulls over whatever link the reviewer happens to have.
+        //
+        // The default predicate already skips tiny bodies, images (the build's
+        // sprite/texture output, which is PNG and would only grow), gRPC, and SSE.
+        // It does *not* know about `application/gzip`, so exclude that explicitly:
+        // `archive.tar.gz` is served pre-compressed, and re-encoding it would burn
+        // CPU to hand back slightly larger bytes.
+        .layer(
+            CompressionLayer::new().gzip(true).compress_when(
+                DefaultPredicate::new().and(NotForContentType::const_new("application/gzip")),
+            ),
+        )
         .with_state(state)
 }
 

@@ -142,6 +142,16 @@ connected to the GitHub mirror:
   publish, not a repo commit and rebuild.
 - Add `testcabinet.ai` as a **custom domain** on the project (apex), so the
   gallery is served from the apex.
+- Nothing to configure for **client-side routing**, and nothing to add: because
+  the build ships **no `404.html`**, Pages answers an unmatched path with
+  `/index.html` at the requested URL with a `200`, which is exactly the SPA
+  fallback the gallery needs. This is what makes a run page shareable and
+  indexable — a deep link that 404s is invisible to every crawler. Do **not** add
+  a `/* /index.html 200` rule to `_redirects`: Pages rejects it as an infinite
+  loop and ignores it. `apps/site/public/_redirects` is kept, with no rules, to
+  say so. An existing static asset is always served as itself — only an unmatched
+  path falls back to the shell — so the build's per-run `/runs/<id>.json` and
+  `/run-events/<id>.json` assets are unaffected.
 - Create the project's **deploy hook** and give its URL to the backend as
   `TCAB_SITE_DEPLOY_HOOK_URL` (see [Deployment](/deployment/overview/)). The
   backend fires it after each snapshot upload, so a published run rebuilds the

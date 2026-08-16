@@ -1,0 +1,20 @@
+{
+  "$id": "https://docs.testcabinet.ai/schema/coverage/coverage-settings.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The account-wide coverage settings `GET`/`PUT /coverage-settings` read and write.\nOne setting today; the resource exists because the review buffer is a property of\nthe *reviewer* (how much work they want waiting on them) rather than of any one\nplan, with a per-plan override for the exceptions.",
+  "properties": {
+    "bufferTarget": {
+      "description": "The account's default review-buffer target: how many runs a top-up may leave\noutstanding (in flight, or finished and unreviewed) before it stops.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "isDefault": {
+      "description": "Whether [`Self::buffer_target`] is the account's own choice or the backend's\ncompiled-in default because they have never chosen one. A `PUT` always makes\nit a choice.",
+      "type": "boolean"
+    }
+  },
+  "required": ["bufferTarget", "isDefault"],
+  "title": "CoverageSettings",
+  "type": "object"
+}

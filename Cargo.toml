@@ -223,12 +223,19 @@ tauri = { version = "2", features = [] }
 tauri-build = { version = "2", features = [] }
 
 # Backend HTTP server. Axum is the settled web framework; `tower-http` supplies
-# the request-tracing/limit middleware and the CORS layer the browser UIs need to
-# reach the backend on a different localhost port. The backend, auth, and artifact
-# services are the socket-binding crates, so these stay out of the leaner crates.
+# the request-tracing/limit middleware, the CORS layer the browser UIs need to
+# reach the backend on a different localhost port, and the response compression
+# the run listings need (their JSON runs to megabytes, which is punishing over a
+# slow link). The backend, auth, and artifact services are the socket-binding
+# crates, so these stay out of the leaner crates.
 axum = "0.8"
 tower = "0.5"
-tower-http = { version = "0.6", features = ["trace", "limit", "cors"] }
+tower-http = { version = "0.6", features = [
+    "trace",
+    "limit",
+    "cors",
+    "compression-gzip",
+] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # The backend's system of record, accessed through SeaORM so one connection URL

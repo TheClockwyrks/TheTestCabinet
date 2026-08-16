@@ -279,6 +279,33 @@ export type LaunchBatchAck = {
 };
 
 /**
+ * The response to one of the three global cancel controls: how many runs the sweep
+ * stopped, and how far into the queue it reached.
+ *
+ * The **count is the point**. A sweep that reported only success would leave the
+ * operator unable to tell "the queue was already empty" from "nothing matched", and
+ * those call for opposite next moves. The two scope flags let the console phrase what
+ * it just did ("stopped 12 runs, including 3 already executing") from the response
+ * alone, rather than from which button it happens to have called.
+ */
+export type BulkCancelOut = {
+  /**
+   * How many jobs moved to the terminal `canceled` state.
+   */
+  canceled: number;
+  /**
+   * Whether the sweep reached runs that had not started yet (`queued`, `pending`)
+   * — the ones that had cost nothing.
+   */
+  includedWaiting: boolean;
+  /**
+   * Whether the sweep reached runs that were already executing (`dispatched`,
+   * `starting`, `running`) — the ones whose work was discarded.
+   */
+  includedActive: boolean;
+};
+
+/**
  * Whether a finished run produced a record. `completed` carries a record id to
  * open; `failed` carries a reason.
  */

@@ -5,9 +5,19 @@
   margin: 0;
 }
 
+// The back chevron sat against the subject line, which is this page's title.
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-lg;
+}
+
 .caption {
   color: t.$color-text-muted;
-  margin: 0 0 t.$space-lg;
+  font-size: t.$font-md;
+  font-weight: inherit;
+  margin: 0;
 }
 
 .section {

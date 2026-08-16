@@ -31,6 +31,10 @@
       "types": "./dist/coverage.d.ts",
       "default": "./dist/coverage.js"
     },
+    "./ladders": {
+      "types": "./dist/ladders.d.ts",
+      "default": "./dist/ladders.js"
+    },
     "./backend-api": {
       "types": "./dist/backend-api.d.ts",
       "default": "./dist/backend-api.js"

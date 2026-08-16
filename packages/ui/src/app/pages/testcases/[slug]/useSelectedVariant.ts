@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { useSearchParams } from "react-router";
-import type { TestCaseSummary, VariantSummary } from "../../../data/testCases";
+import type { TestCaseDetail, VariantSummary } from "../../../data/testCases";
 
 // The query-string key the selected variant is carried in. Keeping the variant
 // in the URL (rather than component state) is what lets the single page-level
@@ -19,7 +19,7 @@ const VARIANT_PARAM = "variant";
  * back-button stops.
  */
 export function useSelectedVariant(
-  testCase: TestCaseSummary | undefined,
+  testCase: TestCaseDetail | undefined,
 ): [VariantSummary | undefined, (slug: string) => void] {
   const [params, setParams] = useSearchParams();
   const variants = testCase?.variants ?? [];

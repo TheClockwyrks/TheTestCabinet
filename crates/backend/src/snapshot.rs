@@ -7,6 +7,17 @@
 //! by writing the small top-level `index.json` pointer last. Regenerating the
 //! whole set (not deltas) keeps the operation idempotent.
 //!
+//! Regenerating is not the same as re-*uploading*, though, and the difference is
+//! what keeps a refresh from costing one PUT per published run forever. Everything
+//! whose content did not change is **content-addressed under a snapshot-independent
+//! prefix** and referenced by the key it already occupies: a run's proof/asset media
+//! (`MEDIA_PREFIX`), a case version's baselines (`CASE_MEDIA_PREFIX`), and — the
+//! bulk of the set — each published run's own JSON document
+//! ([`RUN_DOCUMENT_PREFIX`]). A refresh therefore rebuilds every document in memory
+//! (cheap) but uploads only the ones whose bytes actually differ from what is in the
+//! bucket, so the steady-state cost of a publish tracks the runs that *changed*
+//! rather than the runs that exist.
+//!
 //! This module is split in two: [`SnapshotBuilder`] turns the published runs +
 //! case metadata into the set of `(key, bytes, content_type)` objects, and
 //! [`upload_snapshot`] PUTs them to R2 in dependency order and fires the deploy
@@ -37,7 +48,20 @@ use crate::store::{DefinitionStore, StoredManifest};
 use test_cabinet_core::r2::R2Client;
 
 /// The schema version stamped into every snapshot document.
-const SCHEMA_VERSION: u32 = 1;
+///
+/// `2` moved the per-run documents out of the per-snapshot prefix and onto the
+/// content-addressed [`RUN_DOCUMENT_PREFIX`], which is why `index.json` no longer
+/// carries a `runsPrefix` and each run summary now names its own `documentKey`.
+const SCHEMA_VERSION: u32 = 2;
+
+/// How many snapshot objects are PUT to R2 at once.
+///
+/// The uploads are independent — the only ordering the snapshot requires is that
+/// every object land before the `index.json` cut-over — so serializing them just
+/// paid one bucket round trip per object, and the refresh's wall clock grew with the
+/// corpus. Bounded rather than unbounded so a large first-time refresh cannot open a
+/// connection per object against R2.
+const UPLOAD_CONCURRENCY: usize = 16;
 
 /// The bucket prefix a run's proof/asset media is stored under, **outside** any
 /// single snapshot's `snapshots/<id>/` prefix. A published run's media is immutable,
@@ -74,6 +98,45 @@ const MEDIA_PREFIX: &str = "media/runs";
 /// [frozen]: https://docs.testcabinet.ai/development/frozen-versions/
 const CASE_MEDIA_PREFIX: &str = "media/cases";
 
+/// The bucket prefix a published run's **JSON document** is stored under — likewise
+/// **outside** any single snapshot's prefix, and the reason a refresh's upload cost
+/// tracks changed runs rather than all of them.
+///
+/// These documents used to live at `snapshots/<id>/runs/<run-id>.json`, so every
+/// refresh rewrote and re-PUT one object per published run no matter how little had
+/// changed: publishing a single new run re-uploaded the entire corpus, and the cost
+/// of a publish grew without bound as runs accumulated. That is the same waste
+/// `MEDIA_PREFIX` and `CASE_MEDIA_PREFIX` already fixed for bytes, applied to the
+/// documents.
+///
+/// Unlike a run's media a document is *not* immutable — a new review, a newly
+/// uploaded proof, an edited record all legitimately change it — so it cannot simply
+/// be keyed by run id and written once. It is instead **content-addressed** exactly
+/// as case media is: the key carries a short digest of the document's own bytes
+/// (`content_digest`), so an unchanged run reuses the key it already occupies and
+/// is skipped, while any change at all mints a new key and uploads. The decision
+/// needs no bucket read beyond the one prefix listing, and it is self-correcting:
+/// there is no separate "has this run changed?" signal that can go stale, because the
+/// bytes *are* the signal.
+///
+/// A run's document key is not derivable from its id, so each run summary in
+/// `runs.json` names its own (`RunSummary::document_key`) and the site follows that
+/// rather than composing a path.
+///
+/// **Superseded revisions are deliberately not pruned.** A revision is orphaned the
+/// moment a run's content changes, but the grace period it needs runs from
+/// *supersession*, and the only clock a bucket listing offers is the object's
+/// creation time — which for a document written months ago says nothing about when it
+/// fell out of use. Pruning on that clock would delete a just-orphaned document
+/// immediately and 404 any site build still fetching the previous generation, so
+/// [`stale_generation_keys`]' rule cannot be reused here. The leak this leaves is a
+/// different order from the one that prune exists for: it accrues per *content
+/// change* (a new review, a proof arriving) rather than per refresh, so it is a small
+/// multiple of the live set rather than a fresh full copy every publish. Reclaiming
+/// it needs a supersession timestamp the snapshot does not currently record — the
+/// same future cleanup orphaned run media is already waiting on.
+pub const RUN_DOCUMENT_PREFIX: &str = "documents/runs";
+
 /// The bucket prefix a reviewer's profile picture is stored under, keyed by the
 /// reviewer's account id (`pfp/<reviewer-id>`) and — like [`MEDIA_PREFIX`] — kept
 /// **outside** any single snapshot's prefix so it is shared across snapshots and
@@ -105,6 +168,11 @@ pub struct Snapshot {
     pub index: SnapshotObject,
     /// Number of published runs in this snapshot.
     pub run_count: usize,
+    /// Every [`RUN_DOCUMENT_PREFIX`] key this snapshot references — the ones it just
+    /// uploaded *and* the ones it reused untouched. Together with `objects` this says
+    /// which run documents the refresh actually paid for, and it is the live set any
+    /// future reclamation of superseded revisions has to measure against.
+    pub run_document_keys: std::collections::HashSet<String>,
 }
 
 /// Builds a [`Snapshot`] from the published set and the case metadata.
@@ -144,6 +212,13 @@ pub struct SnapshotBuilder {
     /// builder upload every run's media as it did before this optimization — the
     /// correct behavior for the dev/single-box path (no R2) and the unit tests.
     existing_media: std::collections::HashSet<String>,
+    /// The set of run-document keys (`documents/runs/<id>/<digest>.json`) already
+    /// present in the bucket, so a run whose document is byte-identical to the one
+    /// already uploaded is referenced rather than re-uploaded. Populated from the
+    /// bucket before a real refresh (see [`Self::with_existing_documents`]); empty by
+    /// default, which uploads every run's document — correct for the dev/single-box
+    /// path (no R2) and the unit tests, and the one-time cost of a first refresh.
+    existing_documents: std::collections::HashSet<String>,
     /// The reviewers' profile pictures to export, keyed by reviewer account id.
     /// Fetched from the auth service before a refresh (see [`Self::with_reviewer_pictures`]),
     /// each becomes a `pfp/<id>` object and lets the matching reviews carry a
@@ -172,6 +247,7 @@ impl SnapshotBuilder {
             reference_builds: std::collections::HashMap::new(),
             reference_sheets: std::collections::HashMap::new(),
             existing_media: std::collections::HashSet::new(),
+            existing_documents: std::collections::HashSet::new(),
             reviewer_pictures: std::collections::HashMap::new(),
         }
     }
@@ -203,6 +279,23 @@ impl SnapshotBuilder {
         existing_media: std::collections::HashSet<String>,
     ) -> Self {
         self.existing_media = existing_media;
+        self
+    }
+
+    /// Supply the set of run-document keys already present in the bucket (from
+    /// [`R2Client::list_keys`](test_cabinet_core::r2::R2Client::list_keys) over
+    /// [`RUN_DOCUMENT_PREFIX`]). A run whose freshly built document hashes to a key in
+    /// this set is referenced from `runs.json` without being uploaded again, which is
+    /// what makes the steady-state cost of a refresh proportional to the runs that
+    /// changed rather than to every run ever published.
+    ///
+    /// Leaving it empty is always *correct*, only slower: every document is uploaded,
+    /// landing on exactly the keys the next refresh will then skip.
+    pub fn with_existing_documents(
+        mut self,
+        existing_documents: std::collections::HashSet<String>,
+    ) -> Self {
+        self.existing_documents = existing_documents;
         self
     }
 
@@ -283,24 +376,21 @@ impl SnapshotBuilder {
         // key value, so this redacts by `sk-…` shape (see [`SecretScrubber`]).
         let scrubber = SecretScrubber::new();
 
-        // runs.json — the flat index of summaries (newest first).
-        let summaries: Vec<RunSummary> = self.runs.iter().map(|run| self.summary(run)).collect();
-        objects.push(json_object(
-            format!("{prefix}/runs.json"),
-            &RunsIndex {
-                schema_version: SCHEMA_VERSION,
-                runs: summaries,
-            },
-        )?);
-
-        // runs/<id>.json — per-run record + review + links, plus the recorded
-        // normalized event stream (when captured) so the site can serve the run's
-        // Events tab. Raw harness output is never published. The run's uploaded proof
-        // media is named by snapshot-relative key in `proofMedia`, and an
-        // asset-generation run's media (regenerated/preview image + action log) in
+        // `documents/runs/<id>/<digest>.json` — per-run record + reviews + links, plus
+        // the recorded normalized event stream (when captured) so the site can serve
+        // the run's Events tab. Raw harness output is never published. The run's
+        // uploaded proof media is named by snapshot-relative key in `proofMedia`, and
+        // an asset-generation run's media (regenerated/preview image + action log) in
         // `assetMedia`. That media lives under the content-stable `media/runs/<id>/…`
         // prefix (NOT this snapshot's prefix), uploaded once and shared across
         // snapshots — see [`MEDIA_PREFIX`] and [`SnapshotBuilder::with_existing_media`].
+        //
+        // The document itself is likewise content-addressed outside this snapshot's
+        // prefix ([`RUN_DOCUMENT_PREFIX`]), so a run whose public content has not moved
+        // since the last refresh contributes its existing key and **no upload**. Built
+        // before `runs.json` because each summary carries its run's document key.
+        let mut document_keys: Vec<String> = Vec::with_capacity(self.runs.len());
+        let mut reused_documents = 0usize;
         for run in &self.runs {
             let events = run
                 .events_json
@@ -346,14 +436,63 @@ impl SnapshotBuilder {
                     "redacted leaked API key(s) from a published run document"
                 );
             }
-            objects.push(json_object(
-                format!("{prefix}/runs/{}.json", run.record.id),
-                &document,
-            )?);
+            // The document's own bytes are its address. Anything that changes what the
+            // public site would show for this run — a new review, a proof that has now
+            // uploaded, an edited record, a re-scrub — moves the digest and so mints a
+            // key that is necessarily absent from the bucket; anything that does not,
+            // lands on the key already there and costs nothing.
+            let bytes = serde_json::to_vec_pretty(&document)?;
+            let key = format!(
+                "{RUN_DOCUMENT_PREFIX}/{}/{}.json",
+                run.record.id,
+                content_digest(&bytes)
+            );
+            if self.existing_documents.contains(&key) {
+                reused_documents += 1;
+            } else {
+                objects.push(SnapshotObject {
+                    key: key.clone(),
+                    bytes,
+                    content_type: "application/json".to_string(),
+                });
+            }
+            document_keys.push(key);
             objects.extend(proof_objects);
             objects.extend(validation_objects);
             objects.extend(asset_objects);
         }
+        tracing::debug!(
+            runs = self.runs.len(),
+            reused = reused_documents,
+            uploaded = self.runs.len() - reused_documents,
+            "built the snapshot's per-run documents"
+        );
+
+        // runs.json — the flat index of summaries (newest first), each naming the
+        // document key resolved above. This file *is* rewritten every refresh: it
+        // summarizes every published run by contract, so there is no smaller thing to
+        // write. It is one object, and small.
+        // Index the catalog by `(slug, version)` once. Scanning `self.cases` per run
+        // instead made the summary pass runs × cases, which is quadratic in exactly the
+        // two dimensions that grow.
+        let case_index: std::collections::HashMap<(&str, &str), &StoredManifest> = self
+            .cases
+            .iter()
+            .map(|case| ((case.slug.as_str(), case.version.as_str()), case))
+            .collect();
+        let summaries: Vec<RunSummary> = self
+            .runs
+            .iter()
+            .zip(&document_keys)
+            .map(|(run, document_key)| self.summary(run, document_key, &case_index))
+            .collect();
+        objects.push(json_object(
+            format!("{prefix}/runs.json"),
+            &RunsIndex {
+                schema_version: SCHEMA_VERSION,
+                runs: summaries,
+            },
+        )?);
 
         // pfp/<reviewer-id> — each reviewer's profile picture, exported once under
         // the content-stable top-level prefix (NOT this snapshot's prefix) so the
@@ -438,7 +577,7 @@ impl SnapshotBuilder {
                     .map_err(|e| BackendError::Snapshot(format!("formatting generatedAt: {e}")))?,
                 run_count: self.runs.len(),
                 runs_key: format!("{prefix}/runs.json"),
-                runs_prefix: format!("{prefix}/runs/"),
+                run_documents_prefix: format!("{RUN_DOCUMENT_PREFIX}/"),
                 cases_prefix: format!("{prefix}/cases/"),
                 models_key: format!("{prefix}/models.json"),
             },
@@ -449,6 +588,7 @@ impl SnapshotBuilder {
             objects,
             index,
             run_count: self.runs.len(),
+            run_document_keys: document_keys.into_iter().collect(),
         })
     }
 
@@ -458,13 +598,25 @@ impl SnapshotBuilder {
     /// snapshot resolves differently from the bare stored run: `case_name` comes
     /// from the ingested case catalog (falling back to the slug), `score` is the
     /// aggregate reviewer score computed against that catalog entry's checklist
-    /// weights, and the snapshot only ever holds reviewed runs so `rating` is
-    /// always `Some`.
-    fn summary(&self, run: &StoredRun) -> RunSummary {
+    /// weights, `document_key` points at the run's content-addressed document (the
+    /// site follows it from here, since it is not derivable from the run id), and the
+    /// snapshot only ever holds reviewed runs so `rating` is always `Some`.
+    ///
+    /// `case_index` is the catalog keyed by `(slug, version)`, built once per build so
+    /// resolving a run's case is a lookup rather than a scan.
+    fn summary(
+        &self,
+        run: &StoredRun,
+        document_key: &str,
+        case_index: &std::collections::HashMap<(&str, &str), &StoredManifest>,
+    ) -> RunSummary {
         let record = &run.record;
-        let manifest = self.cases.iter().find(|c| {
-            c.slug == record.subject.test_case_slug && c.version == record.subject.test_case_version
-        });
+        let manifest = case_index
+            .get(&(
+                record.subject.test_case_slug.as_str(),
+                record.subject.test_case_version.as_str(),
+            ))
+            .copied();
         let case_name = manifest
             .map(|c| c.name.clone())
             .unwrap_or_else(|| record.subject.test_case_slug.clone());
@@ -480,6 +632,7 @@ impl SnapshotBuilder {
             // published run always has one.
             rating: aggregate_rating_inner(&run.reviews),
             score,
+            document_key: Some(document_key.to_string()),
             ..RunSummary::from_stored(run)
         }
     }
@@ -1190,12 +1343,14 @@ fn generation_timestamp(id: &str) -> Option<OffsetDateTime> {
         .map(|dt| dt.assume_utc())
 }
 
-/// The short content digest a [`CASE_MEDIA_PREFIX`] key carries: the first 16 hex
-/// characters (64 bits) of the SHA-256 of the object's source bytes.
+/// The short content digest a [`CASE_MEDIA_PREFIX`] or [`RUN_DOCUMENT_PREFIX`] key
+/// carries: the first 16 hex characters (64 bits) of the SHA-256 of the object's
+/// bytes.
 ///
-/// Long enough that a collision across a corpus of a few thousand baselines is not a
-/// practical concern, short enough to keep keys readable. Identical bytes always
-/// produce the identical key, which is what lets a refresh skip re-uploading them.
+/// Long enough that a collision across a corpus of a few thousand baselines and
+/// documents is not a practical concern, short enough to keep keys readable.
+/// Identical bytes always produce the identical key, which is what lets a refresh
+/// skip re-uploading them.
 fn content_digest(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))[..16].to_string()
 }
@@ -1228,20 +1383,32 @@ fn json_object<T: Serialize>(key: String, value: &T) -> Result<SnapshotObject> {
 
 /// Upload a generated snapshot to R2 and fire the site deploy hook.
 ///
-/// Objects are uploaded under the versioned prefix first; the top-level
+/// Objects are uploaded first, `UPLOAD_CONCURRENCY` at a time; the top-level
 /// `index.json` pointer is written **last** so the cut-over is atomic — a site
 /// build reading `index.json` always follows it to a complete prefix. The deploy
 /// hook fires only after a successful upload. Returns whether the hook fired.
+///
+/// The objects have no ordering constraint among themselves (nothing reaches any of
+/// them until `index.json` names their generation), only the barrier before the
+/// pointer — so they go up concurrently. Uploading them one at a time spent the
+/// refresh's wall clock on bucket round trips, which is what made a large snapshot
+/// slow even once it had little new to say. As soon as any upload fails the error
+/// propagates and `index.json` is never written, leaving the previous generation live.
 pub async fn upload_snapshot(
     snapshot: &Snapshot,
     r2: &R2Client,
     deploy_hook_url: Option<&str>,
     http: &reqwest::Client,
 ) -> Result<bool> {
-    for object in &snapshot.objects {
-        r2.put_object(&object.key, object.bytes.clone(), &object.content_type)
-            .await?;
-    }
+    use futures_util::TryStreamExt;
+
+    futures_util::stream::iter(snapshot.objects.iter().map(Ok::<_, BackendError>))
+        .try_for_each_concurrent(UPLOAD_CONCURRENCY, |object| async move {
+            r2.put_object(&object.key, object.bytes.clone(), &object.content_type)
+                .await
+                .map_err(BackendError::from)
+        })
+        .await?;
     // index.json last: this single small overwrite is the atomic cut-over.
     r2.put_object(
         &snapshot.index.key,
@@ -1281,7 +1448,13 @@ pub struct SnapshotIndex {
     pub generated_at: String,
     pub run_count: usize,
     pub runs_key: String,
-    pub runs_prefix: String,
+    /// The shared prefix the per-run documents live under
+    /// (`documents/runs/`) — snapshot-independent, so it is the same string in every
+    /// generation. Informational: a reader resolves a run's document through the
+    /// `documentKey` on its summary, because the key carries a content digest and so
+    /// cannot be composed from the run id. Operators and
+    /// `scripts/recover-run-media-from-snapshot.sh` use it to scope a listing.
+    pub run_documents_prefix: String,
     pub cases_prefix: String,
     /// Where this snapshot's model catalog lives (`<prefix>/models.json`).
     pub models_key: String,
@@ -1342,6 +1515,17 @@ pub struct RunSummary {
     /// fuel needs no checklist weights — so [`RunSummary::from_stored`] fills it.
     #[cfg_attr(feature = "contract", ts(optional = nullable))]
     pub performance: Option<PerformanceSummaryOut>,
+    /// Where this run's full document lives: its content-addressed
+    /// `documents/runs/<id>/<digest>.json` key. The digest is over the document's own
+    /// bytes, so the key cannot be composed from the run id — the summary index is how
+    /// a reader learns it, and following it is the only supported way to reach a run's
+    /// record from the snapshot.
+    ///
+    /// `None` on a console card, which has no published document at all;
+    /// [`RunSummary::from_stored`] leaves it unset and the snapshot builder fills it.
+    /// Always `Some` in `runs.json`.
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub document_key: Option<String>,
     pub links: LinksOut,
 }
 
@@ -1428,6 +1612,9 @@ impl RunSummary {
                     correct: p.correct,
                     total_fuel: p.total_fuel,
                 }),
+            // Only a published run has a document in the bucket, and only the snapshot
+            // builder knows its digest; a console card carries none.
+            document_key: None,
             links: links_out(&run.links),
         }
     }

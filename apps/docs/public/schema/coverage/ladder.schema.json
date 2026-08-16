@@ -1,0 +1,211 @@
+{
+  "$defs": {
+    "Gate": {
+      "description": "The rule one ladder applies at every rung.\n\nStored per ladder (not per rung): a ladder is a single question asked of an\nordered series of cases, so the bar it sets is the ladder's, and a rung only\nvaries how many runs it takes to answer.",
+      "properties": {
+        "earlyStop": {
+          "default": false,
+          "description": "Whether the gate may decide on partial results and let the caller cancel the\nrung's still-queued runs. **Off** by default — the runs are evidence in\ntheir own right, so a rung finishes what it started even when the verdict is\nalready certain.",
+          "type": "boolean"
+        },
+        "floor": {
+          "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json#/$defs/Rating",
+          "description": "The worst rating that still counts as clearing the rung. A run rated this\nor better passes; anything worse does not."
+        },
+        "threshold": {
+          "$ref": "#/$defs/GateThreshold",
+          "description": "How many runs must clear [`Self::floor`]."
+        },
+        "unloadedCountsAsBroken": {
+          "default": true,
+          "description": "Whether a run whose build never loaded counts as [`Rating::Broken`] without\nwaiting for a review. On by default: there is nothing for a reviewer to\njudge, so counting it immediately keeps it from blocking the climb *and*\nfrom occupying a review-buffer slot.",
+          "type": "boolean"
+        }
+      },
+      "required": ["floor", "threshold"],
+      "type": "object"
+    },
+    "GateThreshold": {
+      "description": "How many of a rung's runs must clear the [floor](Gate::floor) for the climber to\nadvance.",
+      "oneOf": [
+        {
+          "description": "An absolute number of runs, independent of how many the rung ran. `1` is\n\"any run clearing the floor is enough\", which is how \"stop only when\neverything is broken\" is expressed.",
+          "properties": {
+            "kind": {
+              "const": "count",
+              "type": "string"
+            },
+            "runs": {
+              "description": "The number of runs that must clear the floor.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": ["kind", "runs"],
+          "type": "object"
+        },
+        {
+          "description": "A share of the rung's completed runs, compared as\n`count >= fraction * completed`. Values outside `0.0..=1.0` are clamped into\nit, and a non-finite value (which cannot come from valid JSON but can from a\ncorrupt row) reads as `0.0`.\n\nClamping is not the same as neutralising: below the range it degrades to\n\"always advance\", but above it degrades to `1.0`, the strictest bar the rule\ncan express — every completed run must clear the floor. That is deliberate.\nA fraction over one is a typo, not an instruction, and the nearest expressible\nreading of \"more than all of them\" is \"all of them\"; inventing a permissive\nanswer instead would let a mistyped gate wave every climber through.",
+          "properties": {
+            "fraction": {
+              "description": "The share of completed runs that must clear the floor.",
+              "format": "double",
+              "type": "number"
+            },
+            "kind": {
+              "const": "fraction",
+              "type": "string"
+            }
+          },
+          "required": ["kind", "fraction"],
+          "type": "object"
+        }
+      ]
+    },
+    "LadderAxis": {
+      "description": "Which axis a ladder's emission loop nests on — and therefore the order its runs\nexecute in, by the same mechanism a plan's axis works: emission order is queue\norder is execution order.",
+      "oneOf": [
+        {
+          "const": "rung",
+          "description": "Bring every climber up one rung before anyone moves on — the board advances\nas a row. The default: it is what makes a ladder comparable across models.",
+          "type": "string"
+        },
+        {
+          "const": "combination",
+          "description": "Take one climber as far up as it gets before starting the next — the board\nadvances as a column. Answers \"how far does *this* model get?\" soonest.",
+          "type": "string"
+        }
+      ]
+    },
+    "LadderRung": {
+      "description": "One rung: exactly one test case, pinned to an exact version and variant.",
+      "properties": {
+        "id": {
+          "description": "The rung's **stable opaque id**, minted when the rung is added and never\nreused.\n\nEmphatically not its position. Rungs get reordered and re-pinned, and every\nrecorded verdict references this id — a positional identifier would silently\nreattribute a climber's verdicts to a different case the moment the ladder was\nrearranged.",
+          "type": "string"
+        },
+        "runs": {
+          "description": "This rung's override of the ladder's runs-per-cell target, or null to inherit\nit — so one pivotal step can demand more evidence without making the whole\nclimb more expensive.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "slug": {
+          "description": "The test-case slug.",
+          "type": "string"
+        },
+        "variant": {
+          "description": "The variant to climb.",
+          "type": "string"
+        },
+        "version": {
+          "description": "The pinned, exact version.",
+          "type": "string"
+        }
+      },
+      "required": ["id", "slug", "version", "variant"],
+      "type": "object"
+    },
+    "ReviewPlanCombo": {
+      "description": "One harness+model combination in a plan or a combo group. The optional provider\nmirrors the new-run form's per-combination provider for provider-routed\nharnesses.",
+      "properties": {
+        "harness": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/HarnessSlug",
+          "description": "The agent harness to drive."
+        },
+        "model": {
+          "description": "The opaque model id passed to the harness.",
+          "type": "string"
+        },
+        "provider": {
+          "description": "The provider for a provider-routed harness, or null.",
+          "type": ["string", "null"]
+        }
+      },
+      "required": ["harness", "model"],
+      "type": "object"
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/coverage/ladder.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One ladder as a reader sees it: declaration and schedule flattened into a single\nobject, exactly as [`super::coverage::CoveragePlanOut`] does for a plan.",
+  "properties": {
+    "autoTopUp": {
+      "default": false,
+      "description": "Whether submitting a review re-runs this ladder's top-up automatically. Off by\ndefault, so an existing ladder never silently starts enqueueing.",
+      "type": "boolean"
+    },
+    "bufferTarget": {
+      "description": "This ladder's override of the account's review-buffer target, or null to\ninherit it. Null and `0` are different instructions — \"no opinion\" versus\n\"never top up\".",
+      "format": "uint32",
+      "minimum": 0,
+      "type": ["integer", "null"]
+    },
+    "comboGroupIds": {
+      "description": "The referenced combination groups' ids — the same `kind = \"combo\"` coverage\ngroups a plan uses, so one saved set of models drives both and editing it\nreshapes both.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "combos": {
+      "description": "One-off combinations pinned directly on the ladder, unioned with the groups.",
+      "items": {
+        "$ref": "#/$defs/ReviewPlanCombo"
+      },
+      "type": "array"
+    },
+    "gate": {
+      "$ref": "#/$defs/Gate",
+      "description": "The single parameterised rule every rung is judged by. Per ladder, not per\nrung: a ladder asks *one* question of an ordered series of cases, and only how\nmany runs it takes to answer varies by rung."
+    },
+    "id": {
+      "description": "The ladder's opaque id (minted on create).",
+      "type": "string"
+    },
+    "name": {
+      "description": "The reviewer-chosen display name.",
+      "type": "string"
+    },
+    "outerAxis": {
+      "$ref": "#/$defs/LadderAxis",
+      "default": "rung",
+      "description": "Which axis the emission loop nests on."
+    },
+    "paused": {
+      "default": false,
+      "description": "Whether topping up is suspended.",
+      "type": "boolean"
+    },
+    "rungs": {
+      "description": "The rungs, low to high. The order **is** the climb.",
+      "items": {
+        "$ref": "#/$defs/LadderRung"
+      },
+      "type": "array"
+    },
+    "runsPerCell": {
+      "description": "The default target number of runs for each `rung × combination` cell; a rung\nmay raise it for itself via [`LadderRung::runs`].",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "updatedAt": {
+      "description": "RFC 3339 of when the ladder was last saved.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "runsPerCell",
+    "gate",
+    "comboGroupIds",
+    "combos",
+    "rungs",
+    "updatedAt"
+  ],
+  "title": "LadderOut",
+  "type": "object"
+}
