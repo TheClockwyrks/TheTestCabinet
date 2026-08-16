@@ -18,6 +18,12 @@ fn rust() -> &'static dyn ProgramLanguage {
     crate::sandbox::language(GgProgramLanguage::Rust)
 }
 
+/// The one arm that reaches `lib` through the language's own module system, for the note that has
+/// to state the line.
+fn python() -> &'static dyn ProgramLanguage {
+    crate::sandbox::language(GgProgramLanguage::Python)
+}
+
 /// A registry with `csv-tools` loaded, as most of these start.
 fn with_csv_tools() -> (KnowledgeModules, Loaded) {
     let mut modules = KnowledgeModules::new();
@@ -69,6 +75,33 @@ fn the_note_writes_the_binding_path_in_the_readers_own_syntax() {
         .note(KnowledgeOrigin::Skill, rust())
         .expect("a loaded module produces a note");
     assert!(note.contains("lib::csvTools::<name>"), "{note}");
+}
+
+/// **The note states the line that brings `lib` into scope, on an arm that needs one.**
+///
+/// The binding path is only half an answer where a code module is a module of the language's own
+/// module system: `lib.csvTools.parse` resolves in a Python program that wrote `import lib` and
+/// raises a `NameError` in one that did not. The read that bound the module is the only place a
+/// model is told either half, so both are asserted, and the arms that need no line are asserted to
+/// carry none — a note that told a TypeScript agent to write an import would be teaching it a
+/// statement its guest refuses.
+#[test]
+fn the_note_states_the_line_that_brings_lib_into_scope() {
+    let (_, loaded) = with_csv_tools();
+    let note = loaded
+        .note(KnowledgeOrigin::Skill, python())
+        .expect("a loaded module produces a note");
+    let line = python()
+        .lib_import()
+        .expect("this arm reaches `lib` through a line a program writes");
+    assert!(note.contains(line), "{note}");
+    assert!(note.contains("lib.csvTools.<name>"), "{note}");
+
+    assert_eq!(ts().lib_import(), None);
+    let note = loaded
+        .note(KnowledgeOrigin::Skill, ts())
+        .expect("a loaded module produces a note");
+    assert!(!note.contains("import"), "{note}");
 }
 
 #[test]
