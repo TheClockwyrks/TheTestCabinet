@@ -1993,8 +1993,8 @@ exit(
 )
 puts "after the exit"
 "#,
-                names: &["exit(3)"],
-                located: Located::Nowhere,
+                names: &["SystemExit", "3"],
+                located: Located::At("line 4"),
                 answered: Answered::AtRuntime,
             },
         ],

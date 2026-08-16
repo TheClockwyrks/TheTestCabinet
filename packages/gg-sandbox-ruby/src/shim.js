@@ -260,8 +260,28 @@ function replaceGlobal(name, value) {
   }
 }
 
+/**
+ * End the program the way `Kernel#exit` ends a Ruby one.
+ *
+ * `Kernel#exit` runs the `at_exit` blocks, coerces its argument to an Integer and hands it to
+ * `Opal.exit`, which Opal leaves for its host to supply — and on a host that supplies nothing it is
+ * a no-op that logs under `$DEBUG`, so `exit 1` returned `nil` and the next statement ran. A model
+ * that wrote `exit 1` had its program read as the opposite of what it said and the turn recorded as
+ * a success.
+ *
+ * A `SystemExit` carrying the status is what CRuby raises there, so it is what this supplies. It is
+ * not caught: it unwinds the program the way any other exception does and is reported by `report`,
+ * which is the whole of D8a's "let the program die the way its runtime kills it".
+ */
+function installExit() {
+  Opal.exit = (status) => {
+    throw Opal.send(Opal.const_get_relative([], "SystemExit"), "new", [status]);
+  };
+}
+
 /** Shadow every denied global with a thrower, and route `console` to gg's feedback channel. */
 function installEnvironment() {
+  installExit();
   for (const [name, why] of DENIED_GLOBALS) {
     replaceGlobal(name, () => {
       throw new Error(`${name} is not available in the sandbox: ${why}`);

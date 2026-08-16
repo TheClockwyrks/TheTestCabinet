@@ -162,8 +162,11 @@ that called into it. A frame's line is the compiled unit's line, because each
 unit is evaluated by an indirect `eval` rather than through the `Function`
 constructor, and the source map is the only thing that moves a location.
 
-Opal's `sleep` is a busy wait rather than a park in a host call, so the
-execution deadline reaches it as it reaches any other runaway.
+`exit` ends the program by raising `SystemExit` carrying the status the program
+chose, which is what Ruby raises there. Opal delegates process termination to
+its host, and this guest is that host. Opal's `sleep` is a busy wait rather than
+a park in a host call, so the execution deadline reaches it as it reaches any
+other runaway.
 
 ## Prompt segment
 

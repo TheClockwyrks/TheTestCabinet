@@ -236,15 +236,11 @@ const KNOWN_HOLES: &[Hole] = &[
     Hole {
         arm: GgProgramLanguage::Ruby,
         shape: Shape::FailureValue,
-        // Nothing. A Ruby program's answer is its last expression, and gg never reads it: a
-        // program whose final value IS the failure is recorded as a clean turn.
-        instead: Instead::Nothing,
-    },
-    Hole {
-        arm: GgProgramLanguage::Ruby,
-        shape: Shape::Abort,
-        // Nothing, and worse than nothing: `exit` is a no-op in this runtime, so the statements
-        // after it run too. The model is told the opposite of what it asked for.
+        // Nothing, and Ruby is where the shape runs out rather than this arm. A top-level Ruby
+        // script has no entry point to return from and no async to leave unobserved: its last
+        // expression's value is discarded by the language, so a program whose final value IS the
+        // failure is a clean script under CRuby too. The one termination-by-status Ruby does have
+        // is `exit`, which is shape (e), and that one this arm answers.
         instead: Instead::Nothing,
     },
     // ---- javascript -------------------------------------------------------------------------
