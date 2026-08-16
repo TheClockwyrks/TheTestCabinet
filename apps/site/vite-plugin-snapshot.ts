@@ -1094,6 +1094,19 @@ export function snapshot(): Plugin {
         module = serialize(EMPTY);
         return;
       }
+      // The origin the share index's links resolve against. Only ever this
+      // gallery's own public address — a share link never points at a run's own
+      // playable-build deployment, so a visitor always lands somewhere that can
+      // take them into the rest of the cabinet.
+      //
+      // Declared before `emitEmptyShareIndex` closes over it, and before the early
+      // returns that call it: a `const` read from a closure invoked above its own
+      // declaration throws `ReferenceError` at run time, and `tsc` does not catch
+      // it because the read is not lexically before the declaration.
+      const siteOrigin = (
+        process.env.TCAB_SITE_ORIGIN?.trim() || "https://testcabinet.ai"
+      ).replace(/\/+$/, "");
+
       // The share index is emitted on every build, including the empty ones below.
       // A resolver fetching it must always get a document: an absent file is
       // indistinguishable from a broken deployment, whereas an empty index says
@@ -1121,13 +1134,6 @@ export function snapshot(): Plugin {
         emitEmptyShareIndex();
         return;
       }
-      // The origin the share index's links resolve against. Only ever this
-      // gallery's own public address — a share link never points at a run's own
-      // playable-build deployment, so a visitor always lands somewhere that can
-      // take them into the rest of the cabinet.
-      const siteOrigin = (
-        process.env.TCAB_SITE_ORIGIN?.trim() || "https://testcabinet.ai"
-      ).replace(/\/+$/, "");
       try {
         let eventAssets = 0;
         let recordAssets = 0;
