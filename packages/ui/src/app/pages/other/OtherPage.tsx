@@ -3,6 +3,7 @@ import { Link, NavLink } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
 import { PromptHeader } from "../../components/PromptHeader";
+import { useRecordSectionIndex } from "../../components/backReturn";
 import { useTestCases } from "../../data/useTestCases";
 import { routes } from "../../routes";
 import { TournamentsList } from "../tournaments/TournamentsPage";
@@ -30,6 +31,9 @@ interface OtherPageProps {
 // their own pages) and Tournaments (the arena standings list). The tab bar mirrors
 // the Test Cases page; the bare `/other` redirects to the first tab.
 export function OtherPage({ tab }: OtherPageProps) {
+  // Record the viewed tab so a jam or tournament detail page's back chevron
+  // returns here rather than to the section default.
+  useRecordSectionIndex("other");
   return (
     <PageLayout>
       <PromptHeader
