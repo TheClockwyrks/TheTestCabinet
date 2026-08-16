@@ -8,10 +8,11 @@ import { useLocation } from "react-router";
 // of the section-default fallback, degrading to that fallback on a fresh load or
 // deep link (when nothing has been recorded this session).
 //
-// This is what makes "back" honour the tab you came from: the runs index and the
-// test-case catalog both split their contents across sibling routes (one per
-// tab), so a fixed back target always dumped you on the default tab regardless of
-// where you started. Recording the origin fixes every such section uniformly.
+// This is what makes "back" honour the tab you came from: the runs index, the
+// test-case catalog, and the Other page (Game Jams / Tournaments) all split their
+// contents across sibling routes (one per tab), so a fixed back target always
+// dumped you on the default tab regardless of where you started. Recording the
+// origin fixes every such section uniformly.
 //
 // A module-level map suffices for the single-page app: it need not survive a
 // reload because returning from a detail page always follows an in-app visit to
@@ -19,7 +20,7 @@ import { useLocation } from "react-router";
 // default when the map is empty. It is read at render time (not click time),
 // which is safe because the index page always renders — and records — before the
 // detail page it links to.
-export type BackSection = "testCases" | "runs";
+export type BackSection = "testCases" | "runs" | "other";
 
 const lastIndexUrl = new Map<BackSection, string>();
 

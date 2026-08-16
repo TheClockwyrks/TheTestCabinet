@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Link, NavLink, useLocation, useParams } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
+import { BackChevron } from "../../components/BackChevron";
 import { useGalleryData } from "../../data/galleryContext";
 import { useTestCase } from "../../data/useTestCase";
 import type { TestCaseDetail, VariantSummary } from "../../data/testCases";
@@ -101,6 +102,14 @@ export function JamDetailLayout({ tab, children }: JamDetailLayoutProps) {
       <header className={styles.header}>
         <div className={styles.titleRow}>
           <div className={styles.titleGroup}>
+            {/* Back returns to the Other tab the user came from; on a fresh deep
+                link (nothing recorded) it falls back to the Game Jams tab, which
+                is where a jam is listed. */}
+            <BackChevron
+              to={routes.otherGameJams()}
+              section="other"
+              label="All game jams"
+            />
             <h1 className={styles.title}>{testCase.name}</h1>
             <span className={styles.version}>{testCase.latestVersion}</span>
           </div>
