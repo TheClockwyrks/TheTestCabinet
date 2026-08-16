@@ -24,17 +24,20 @@ use crate::healing::{Dialect, Healed, HealingConfig, heal};
 /// arm's four readings turns on; a wrapper, an import and a doubled program are read by nothing at
 /// all now, which is exactly what makes them worth keeping in a corpus whose claim is that nothing
 /// is ever added or moved.
+///
+/// Each reply is a **whole Kotlin file** with its own `fun main()` and its own `import` lines, spelled
+/// the way this arm's catalogue spells them, because that is what a program on this arm is.
 pub(super) const FIXTURES: &[&str] = &[
-    "Here is the program.\n\n```kotlin\nval rows = gg.files.listDir(\"src\")\ngg.views.openText(\"rows\", rows.toString())\n```\n\nThat lists the directory.",
-    "import kotlinx.coroutines.runBlocking\n\nrunBlocking {\n    val rows = gg.files.listDir(\"src\")\n    gg.views.openText(\"rows\", rows.toString())\n}",
-    "import kotlin.concurrent.thread\n\nthread {\n    gg.views.openText(\"note\", \"done\")\n}.join()",
-    "val worker = Thread {\n    gg.views.openText(\"note\", \"done\")\n}\nworker.start()\nworker.join()",
-    "runBlocking {\n    suspend fun gather(): String = gg.files.readTextFile(\"notes.md\")\n    gg.views.openText(\"notes\", gather())\n}",
-    "import kotlin.math.abs\n\nval drift = abs(gg.files.listDir(\"src\").size - 3)\ngg.views.openText(\"drift\", drift.toString())",
-    "val usage = \"\"\"\n    Example:\n\n    runBlocking {\n        val total = 1\n    }\n    \"\"\"\nval total = 2\n",
-    "val rows = mapOf(\"n\" to 1)\ngg.views.openText(\"n\", \"total: ${rows[\"n\"]}\")\n",
-    "fun helper(): Int = 1\ngg.views.openText(\"n\", helper().toString())\n\nfun helper(): Int = 1\ngg.views.openText(\"n\", helper().toString())",
-    "# Plan\n\nval total = 1\ngg.views.openText(\"total\", total.toString())",
+    "Here is the program.\n\n```kotlin\nimport gg.files.*\nimport gg.views.*\n\nfun main() {\n    openText(\"rows\", listDir(\"src\").toString())\n}\n```\n\nThat lists the directory.",
+    "import gg.files.*\nimport gg.views.*\nimport kotlinx.coroutines.runBlocking\n\nfun main() {\n    runBlocking {\n        openText(\"rows\", listDir(\"src\").toString())\n    }\n}",
+    "import gg.views.*\nimport kotlin.concurrent.thread\n\nfun main() {\n    thread {\n        openText(\"note\", \"done\")\n    }.join()\n}",
+    "import gg.views.*\n\nfun main() {\n    val worker = Thread {\n        openText(\"note\", \"done\")\n    }\n    worker.start()\n    worker.join()\n}",
+    "import gg.files.*\nimport gg.views.*\n\nsuspend fun gather(): String = readTextFile(\"notes.md\")\n\nfun main() {\n    runBlocking {\n        openText(\"notes\", gather())\n    }\n}",
+    "import gg.files.*\nimport gg.views.*\nimport kotlin.math.abs\n\nfun main() {\n    val drift = abs(listDir(\"src\").size - 3)\n    openText(\"drift\", drift.toString())\n}",
+    "fun main() {\n    val usage = \"\"\"\n        Example:\n\n        runBlocking {\n            val total = 1\n        }\n        \"\"\"\n    val total = 2\n}\n",
+    "import gg.views.*\n\nfun main() {\n    val rows = mapOf(\"n\" to 1)\n    openText(\"n\", \"total: ${rows[\"n\"]}\")\n}\n",
+    "import gg.views.*\n\nfun helper(): Int = 1\n\nfun main() {\n    openText(\"n\", helper().toString())\n}\n\nimport gg.views.*\n\nfun helper(): Int = 1\n\nfun main() {\n    openText(\"n\", helper().toString())\n}",
+    "# Plan\n\nimport gg.views.*\n\nfun main() {\n    val total = 1\n    openText(\"total\", total.toString())\n}",
     "I have finished the task. Everything works.",
 ];
 
