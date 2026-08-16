@@ -11,6 +11,7 @@ use std::sync::Arc;
 use axum::Router;
 use axum::extract::{DefaultBodyLimit, Request};
 use axum::routing::{get, post, put};
+use tower_http::compression::CompressionLayer;
 use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::TraceLayer;
 
@@ -354,6 +355,25 @@ pub fn router(state: AppState) -> Router {
         // for a request carrying our bearer token. Mirror the request's headers
         // instead, which echoes `Authorization` back explicitly.
         .layer(CorsLayer::permissive().allow_headers(AllowHeaders::mirror_request()))
+        // Compress responses for callers that advertise `Accept-Encoding: gzip`.
+        // Outermost, so it sees the final response of every route. The listings
+        // are the reason: `GET /runs` hands back whole run records, which reaches
+        // megabytes of JSON on a populated deployment — fast to produce, but slow
+        // to *deliver* to a console sitting behind a VPN or any other thin link,
+        // where it dominates the page load. JSON compresses roughly an order of
+        // magnitude, so this is the difference between a snappy console and one
+        // that appears hung.
+        //
+        // `CompressionLayer`'s default predicate is what makes this safe to apply
+        // service-wide rather than per-route: it skips responses under 32 bytes
+        // (where a gzip header costs more than it saves), already-compressed image
+        // payloads, gRPC, and — critically — `text/event-stream`. This service
+        // streams SSE (`/jobs/{id}/live`, `/publish-jobs/{id}/live`,
+        // `/notifications`, `/runs/{id}/events`); compressing those would buffer
+        // events behind the encoder and stall the live views that depend on them.
+        // Keep that predicate intact: narrowing it to "compress everything" would
+        // break streaming in a way that only shows up under a real client.
+        .layer(CompressionLayer::new().gzip(true))
         .with_state(state)
 }
 
