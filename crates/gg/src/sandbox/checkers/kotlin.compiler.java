@@ -213,6 +213,28 @@ public final class GgCompiler {
                             + Json.millis("javac", 0) + Json.millis("teavm", 0));
         }
 
+        // THE ONE NAME A PROGRAM MUST NOT TAKE, told here rather than discovered later. gg's entry
+        // class is compiled by javac into the same directory the model's Kotlin went into, and
+        // after it — so a program that declared the same name would have its own class overwritten
+        // and then read `Method GgEntry.… was not found` about a method it plainly declared. This
+        // is a diagnostic against the file the model wrote instead.
+        String entryClass = entryFile.endsWith(".java")
+                ? entryFile.substring(0, entryFile.length() - ".java".length())
+                : entryFile;
+        if (Files.exists(classes.resolve(entryClass + ".class"))) {
+            Diagnostics.Entry taken = new Diagnostics.Entry();
+            taken.stage = "kotlinc";
+            taken.error = true;
+            taken.file = sources.isEmpty() ? null : sources.get(0).getName();
+            taken.message = "`" + entryClass
+                    + "` is the name gg gives the class it reaches your program through. Declare "
+                    + "yours under another name.";
+            entries.add(taken);
+            return Json.response(false, "kotlinc", entries,
+                    Json.millis("kotlinc", afterKotlinc - started)
+                            + Json.millis("javac", 0) + Json.millis("teavm", 0));
+        }
+
         // gg's own entry class, compiled AFTER the model's Kotlin and against it: it calls into
         // what the model wrote, so the classes directory is on its classpath. Nothing goes the
         // other way, which is why one javac pass is enough and why a model's Kotlin never sees a

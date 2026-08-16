@@ -90,9 +90,10 @@ pub(super) fn whole(classes: &[&str], body: &str) -> String {
 
 /// The `import` line a program writes to reach one of this arm's classes, **out of the catalogue**.
 ///
-/// `gg.Gg` and `gg.ToolError` are the two the catalogue has no module row for — they are the `core`
-/// module's own package, which is documented on the package rather than on a class — so they are
-/// composed from the package the catalogue does publish for `core`.
+/// `gg.Gg` and `gg.ToolError` live in the `core` module, whose path is a *package* rather than a
+/// class: the line it publishes is an on-demand import of the whole package, so a test naming one
+/// class of it writes the single-type import instead. Every other class is looked up rather than
+/// composed, so a test that compiles is a test the published line resolves.
 fn import_line(class: &str) -> String {
     let catalogue = java_language().catalogue();
     catalogue
@@ -406,27 +407,107 @@ fn an_uncaught_failure_reaches_the_model_in_its_runtimes_own_words() {
     );
 }
 
+/// **A failure names the class it was, whatever class that is** — including one the model declared
+/// itself and one carrying no message at all.
+///
+/// The half of [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) that says
+/// a failure names *what* went wrong, on the arm where it was hardest to get: TeaVM emits a class's
+/// name string only for the classes its dependency analysis sees reaching `Class.getName()`, and it
+/// lowers `athrow` into a call long after that analysis has run. What answers it is
+/// `gg.internal.ThrowableNames`, a TeaVM plugin in this arm's SDK jar that propagates **every
+/// reached `Throwable`** into that analysis — so this is the test that a program's own exception
+/// class is named as well as the classlib's.
+///
+/// Each case is one a list gg carried would have got wrong: `EmptyStackException` is a JDK class
+/// nobody would have thought to enumerate, `OutOfCoffee` is the model's own and could not have been
+/// enumerated at all, and `java.lang.Exception` is the one an author reaches for when writing
+/// `throws`.
+#[test]
+fn a_failure_names_its_own_class_even_when_gg_never_heard_of_it() {
+    let failed = |source: &str| -> String {
+        let outcome = evaluate(&prepare(source), &[], &[], canned_outcome).0;
+        trap(&outcome).to_string()
+    };
+
+    // A JDK exception with no message: the type IS what went wrong, so it is the whole of the
+    // *what*, and before the plugin this arm printed `an exception carrying no message`.
+    let reported = failed(&whole(
+        &[],
+        "        throw new java.util.EmptyStackException();\n",
+    ));
+    assert!(
+        reported.contains("java.util.EmptyStackException"),
+        "an off-list JDK exception did not name itself: {reported}"
+    );
+
+    // The model's own exception class, which no list gg carried could ever have held.
+    let reported = failed(
+        "public final class Program {\n\
+         \x20   public static void main(String[] args) {\n\
+         \x20       throw new OutOfCoffee();\n\
+         \x20   }\n\
+         }\n\
+         \n\
+         final class OutOfCoffee extends RuntimeException {\n\
+         }\n",
+    );
+    assert!(
+        reported.contains("OutOfCoffee") && reported.contains("Program.java:3"),
+        "the model's own exception class did not name itself: {reported}"
+    );
+
+    // A checked exception with a message: both halves, in the order a Java programmer reads them.
+    let reported = failed(
+        "public final class Program {\n\
+         \x20   public static void main(String[] args) throws Exception {\n\
+         \x20       throw new Exception(\"the model's own words\");\n\
+         \x20   }\n\
+         }\n",
+    );
+    assert!(
+        reported.contains("java.lang.Exception: the model's own words"),
+        "a checked exception did not name itself and its message: {reported}"
+    );
+}
+
 /// **A code module is compiled into the program and reached at `Lib.<key>`**, checked by javac at
 /// the call site.
+///
+/// The body carries every shape [the export scan](super::source) has to tell apart, so that the scan
+/// and javac are held to one answer by a real compile and a real run rather than by two readings of
+/// the same text: a `public static final` field whose initialiser opens with a bracket and looks
+/// like a method until the `=`, a generic method whose return type carries its own brackets, an
+/// annotated one, a package-private helper and a private one.
 #[test]
 fn a_code_module_is_compiled_into_the_program_and_reached_at_lib() {
     let prepared = compile_module(
-        "/** Two exports and one helper. */\n\
+        "/** Two exports, one field and two helpers. */\n\
+         public static final String LABEL = \"first(\";\n\
+         \n\
          public static String shout(String who) {\n\
-         \x20   return who.toUpperCase() + mark();\n\
+         \x20   return who.toUpperCase() + mark() + hidden();\n\
          }\n\
          \n\
          static String mark() {\n\
          \x20   return \"!\";\n\
          }\n\
          \n\
-         public static int twice(int value) {\n\
-         \x20   return value * 2;\n\
+         private static String hidden() {\n\
+         \x20   return \"\";\n\
+         }\n\
+         \n\
+         @SafeVarargs\n\
+         public static <T> java.util.List<T> listOf(T... values) {\n\
+         \x20   return java.util.List.of(values);\n\
          }\n",
         &PrepareContext::new(),
     )
     .expect("the module compiles");
-    assert_eq!(prepared.exports, ["shout", "twice"]);
+    assert_eq!(
+        prepared.exports,
+        ["shout", "listOf"],
+        "the scan offers the `public static` METHODS and nothing else",
+    );
 
     let modules = vec![CodeModule {
         name: "helpers".to_string(),
@@ -437,7 +518,8 @@ fn a_code_module_is_compiled_into_the_program_and_reached_at_lib() {
             &whole(
                 &["Gg"],
                 "        Gg.log(Lib.helpers.shout(\"gg\"));\n\
-                 \x20       Gg.log(String.valueOf(Lib.helpers.twice(21)));\n",
+                 \x20       Gg.log(Lib.helpers.listOf(\"a\", \"b\").toString());\n\
+                 \x20       Gg.log(Lib.helpers.LABEL);\n",
             ),
             &modules,
         ),
@@ -446,7 +528,9 @@ fn a_code_module_is_compiled_into_the_program_and_reached_at_lib() {
         canned_outcome,
     )
     .0;
-    assert_eq!(logs(&outcome), ["GG!", "42"]);
+    // The field the scan left out is still there — it is a member of the class, and a namespace is
+    // what the scan describes rather than what javac can reach.
+    assert_eq!(logs(&outcome), ["GG!", "[a, b]", "first("]);
 
     // The access the reply that binds a module quotes back is the one that compiles.
     assert_eq!(java_language().lib_access("helpers"), "Lib.helpers.<name>");

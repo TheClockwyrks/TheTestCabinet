@@ -91,14 +91,18 @@ public final class ExceptionHandling {
      * What was thrown, as {@code java.lang.NullPointerException} or
      * {@code java.lang.IllegalStateException: the message}.
      *
-     * <p>WHICH HALF ARRIVES, MEASURED. TeaVM emits a class's name into the binary only for the class
-     * values its dependency analysis sees reaching {@code Class.getName()}, and the only assignments
-     * to {@code thrownException} that analysis can see are the three faults the runtime raises
-     * itself. So a {@code NullPointerException}, an {@code ArrayIndexOutOfBoundsException} and a
-     * {@code ClassCastException} — which carry no message, and for which the type IS what went wrong
-     * — arrive named; a type a program threw itself arrives as the message the program wrote, which
-     * is the half that says something in that case. Between them every failure names what happened,
-     * and the frames beside it say where.
+     * <p>BOTH HALVES ARRIVE, AND THE FIRST ONE TOOK WORK. TeaVM emits a class's name into the binary
+     * only for the class values its dependency analysis sees reaching {@code Class.getName()}, and
+     * the only assignments to {@code thrownException} that analysis can see are the three faults the
+     * runtime raises itself — it lowers {@code athrow} into a call to {@link #throwException} long
+     * after the analysis has run. So this method used to answer {@code null} for the type of
+     * anything else, and a program that threw {@code new java.util.EmptyStackException()} reached
+     * the model as {@code an exception carrying no message} with a correct stack.
+     *
+     * <p>What answers it is {@code gg.internal.ThrowableNames}, a TeaVM plugin in each arm's SDK jar
+     * that propagates <b>every reached {@code Throwable}</b> into that analysis — including the
+     * exception classes a model declares itself. The {@code name == null} branch below is therefore
+     * unreached in gg's own builds and kept because this method is not the place to assume it.
      */
     private static String headerOf(Throwable exception) {
         String name = exception.getClass().getName();

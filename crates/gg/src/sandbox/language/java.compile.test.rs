@@ -183,8 +183,10 @@ fn a_refusal_about_gg_s_own_entry_class_quotes_the_convention_back() {
     };
     assert!(rendered.contains("`Lib`"), "{rendered}");
 
-    // A file that is neither the model's nor one of gg's two is drift rather than a shape the model
-    // can fix, and stays the operator's.
+    // A code module's own file names the code this session loaded, which is compiled into the
+    // program. It is not the model's text and it is not gg's drift: the model is told which key to
+    // fix or to stop loading, because reporting it to the operator alone would take every turn from
+    // then on with nothing said.
     let report = Report {
         ok: false,
         internal: None,
@@ -199,9 +201,29 @@ fn a_refusal_about_gg_s_own_entry_class_quotes_the_convention_back() {
         }],
     };
     let failure = verdict(&report, PROGRAM_FILE).expect_err("refused");
+    let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
+        panic!("a code module that does not compile is the model's to act on: {failure:?}");
+    };
+    assert!(rendered.contains("`helpers`"), "{rendered}");
+
+    // A file nobody named is drift rather than a shape the model can fix, and stays the operator's.
+    let report = Report {
+        ok: false,
+        internal: None,
+        diagnostics: vec![Diagnostic {
+            stage: "javac".to_string(),
+            error: true,
+            code: Some("compiler.err.cant.resolve.location".to_string()),
+            file: Some("Whatever.java".to_string()),
+            line: 1,
+            column: 1,
+            message: "cannot find symbol".to_string(),
+        }],
+    };
+    let failure = verdict(&report, PROGRAM_FILE).expect_err("refused");
     assert!(
         matches!(failure, PrepareFailure::Toolchain(_)),
-        "a code module that stopped compiling is not the program's fault: {failure:?}"
+        "a file gg does not write is drift: {failure:?}"
     );
 
     // A warning is not a refusal, whatever file it names.
@@ -406,8 +428,8 @@ fn the_bound_does_not_decide_whose_failure_it_is() {
     );
     assert!(rendered.contains("… and 43 more like these."), "{rendered}");
 
-    // And a build whose diagnostics are all about a file that is neither the model's nor one of
-    // gg's two is the operator's however many of them there are.
+    // And a code module's own diagnostics are bounded the same way, because a module that stopped
+    // compiling names one problem per call site exactly as the program does.
     let failure = verdict(
         &Report {
             ok: false,
@@ -420,16 +442,16 @@ fn the_bound_does_not_decide_whose_failure_it_is() {
                     file: Some("GgModule_helpers.java".to_string()),
                     line: 7 + index,
                     column: 1,
-                    message: "cannot find symbol".to_string(),
+                    message: format!("cannot find symbol {index}"),
                 })
                 .collect(),
         },
         PROGRAM_FILE,
     )
     .expect_err("refused");
-    assert!(
-        matches!(failure, PrepareFailure::Toolchain(_)),
-        "a code module that stopped compiling is not the program's fault however loudly it fails: \
-         {failure:?}"
-    );
+    let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
+        panic!("a code module that does not compile is the model's to act on: {failure:?}");
+    };
+    assert!(rendered.contains("`helpers`"), "{rendered}");
+    assert!(rendered.contains("… and 42 more like these."), "{rendered}");
 }

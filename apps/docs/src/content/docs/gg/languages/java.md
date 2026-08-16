@@ -149,8 +149,10 @@ is javac's reading of the declaration and every word of prose comes off the
 declaration it describes. An `@ggop` block tag carries operation identity,
 `tools/GgCatalogue.java` holds the thirteen module identities and the order they
 are presented in, and the doclet refuses to emit a catalogue with a blank in it.
-Each module states the line a program writes to reach it,
-`import gg.files.Files;`, composed from the module's own path. `build.sh`
+Each module states the line a program writes to reach it, composed from the
+module's own path: `import gg.files.Files;` for a module that is a class, and
+`import gg.*;` for `core`, whose path is the package the exception and the shared
+types live in. `build.sh`
 compiles the model-facing packages a second time under
 `-Xdoclint:all/protected -Werror`, so a missing `@param` is an error on the
 author.
@@ -185,13 +187,13 @@ own standard error: the exception's header, then the model's own file and lines,
 offset anywhere in the arm.
 
 The vendored `org.teavm.runtime.ExceptionHandling` is what prints the header;
-upstream's uncaught path prints the frames alone. Which half of the header
-arrives is decided by TeaVM's dependency analysis, which emits a class's name
-only where it sees that name being asked for. `GgEntry` therefore carries a list
-of the classes a Java program fails with, reachable from the world's `run` and
-never executed, so that `NullPointerException`, `IndexOutOfBoundsException` and
-their neighbours arrive named rather than as a blank header. A class outside the
-list still prints its own message.
+upstream's uncaught path prints the frames alone. The header names the class that
+was thrown and its message, whichever class it is: `java.util.EmptyStackException`
+and a program's own `class OutOfCoffee extends RuntimeException` are named exactly
+as `java.lang.NullPointerException` is. TeaVM emits a class's name string only
+where its dependency analysis sees that name being asked for, so gg's SDK jar
+carries a TeaVM plugin, `gg.internal.ThrowableNames`, that propagates every
+reachable `Throwable` into that analysis.
 
 wasmtime symbolicates this artifact's DWARF into gg's own SDK internals for
 frames that are really the model's, so the arm answers `wasm_frames_are_located`
@@ -261,5 +263,13 @@ nested class per module in scope, each extending that module's own class, which
 is what Java has instead of a type alias — a `static` method and a nested type
 are both inherited members. A key or an export the session does not have is a
 diagnostic on the turn that wrote it. Binding names are camelCase and ASCII-only,
-and hold to being valid Java identifiers. The arm reads `.java` files and nothing
-else.
+and hold to being valid Java identifiers: the key is a nested class name and a
+path segment javac resolves, so a leading digit and a reserved word are each
+prefixed with an underscore. The arm reads `.java` files and nothing else.
+
+A module body may not write the name of the class gg wraps it in, and the read
+refuses one that does at the author's own line. The name differs between the read
+and a program's own compile, and a constructor is the one declaration Java has
+whose meaning turns on it. A diagnostic that still arrives against a module's file
+during a program's compile names the key the module is bound at, so the agent is
+told which module to fix rather than the operator being told about drift.

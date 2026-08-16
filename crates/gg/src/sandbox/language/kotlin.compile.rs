@@ -221,6 +221,7 @@ fn compile(
     modules: &[CodeModule],
     context: &PrepareContext,
 ) -> Result<Vec<u8>, PrepareFailure> {
+    source::refuse_moved_facade(program)?;
     let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
     // THE MODEL'S OWN BYTES. No wrapper, no header, no entry point, no import.
     workspace
@@ -431,8 +432,10 @@ const SHOWN: usize = 8;
 ///   shown to the model**, in the words of the convention it broke, rather than a toolchain failure
 ///   the model is not told about
 ///   ([ruling D4](https://docs.testcabinet.ai/gg/responses-as-code/invariants/));
-/// * anything else — a code module's own file, or a file nobody named — which is drift rather than
-///   anything this program did, and is reported to the operator.
+/// * a **code module's** own file — the code this session loaded, compiled into this program, named
+///   by the key it is bound at so the agent knows which module to fix or to stop loading;
+/// * anything else — a file nobody named — which is drift rather than anything this program did, and
+///   is reported to the operator.
 pub(crate) fn verdict(report: &Report, file: &str) -> Result<(), PrepareFailure> {
     let errors: Vec<&Diagnostic> = report
         .diagnostics
@@ -472,6 +475,20 @@ pub(crate) fn verdict(report: &Report, file: &str) -> Result<(), PrepareFailure>
                 program = source::PROGRAM_CLASS,
             ))));
         }
+        if let Some(keys) = module_keys(&errors) {
+            return Err(PrepareFailure::Program(PrepareError::Compile(format!(
+                "the code this session loaded at `{}` does not compile: {}",
+                keys.join("`, `"),
+                crate::sandbox::language::diagnostics::capped(
+                    errors
+                        .iter()
+                        .map(|diagnostic| diagnostic.render(file))
+                        .collect(),
+                    SHOWN,
+                    "\n\n",
+                ),
+            ))));
+        }
         return Err(PrepareFailure::Toolchain(format!(
             "the Kotlin toolchain refused a file gg generated rather than the program: {rendered}"
         )));
@@ -498,6 +515,25 @@ pub(crate) fn verdict(report: &Report, file: &str) -> Result<(), PrepareFailure>
             false => PrepareError::Compile(rendered),
         },
     ))
+}
+
+/// The binding keys of the code modules `errors` are about, when every one of them is.
+///
+/// A module is compiled *into* the program that uses it, so a diagnostic about a module's own file
+/// arrives against the turn's program — in a file the model never wrote, about code somebody else
+/// authored. Reporting that as a [toolchain failure](PrepareFailure::Toolchain) told the operator
+/// about drift and told the model nothing, on every turn, for as long as the module stayed loaded.
+/// Naming the key is what makes it something the agent can act on: the module is the thing to fix
+/// or to stop loading.
+fn module_keys(errors: &[&Diagnostic]) -> Option<Vec<String>> {
+    let mut keys: Vec<String> = Vec::new();
+    for diagnostic in errors {
+        let key = source::module_key_of(diagnostic.file.as_deref()?)?;
+        if !keys.iter().any(|seen| seen == key) {
+            keys.push(key.to_string());
+        }
+    }
+    Some(keys).filter(|keys| !keys.is_empty())
 }
 
 impl Diagnostic {
@@ -535,25 +571,14 @@ impl Diagnostic {
 // The generated entry class
 // ---------------------------------------------------------------------------------------------
 
-/// This arm's own additions to [the shared list](jvm::SPELLABLE): the class a program catches, and
-/// the two failures no Java program can throw.
-///
-/// `!!` on a null and a `lateinit` read too early are two of the three ways a Kotlin program most
-/// often stops, and each raises a class `kotlin-stdlib` declares rather than one `java.base` does —
-/// so a list that was only Java's would print a blank header for both.
-const SPELLABLE: [&str; 3] = [
-    "gg.core.ToolError",
-    "kotlin.KotlinNullPointerException",
-    "kotlin.UninitializedPropertyAccessException",
-];
-
 /// [The shared entry class](jvm::entry_class), with this arm's own one line in it.
 ///
-/// `ProgramKt.main()` against Java's `Program.main(new String[0])`, and that is the whole of the
-/// difference between the two arms' generated entry classes.
-fn entry_class() -> String {
-    let spellable: Vec<&str> = jvm::SPELLABLE.iter().chain(&SPELLABLE).copied().collect();
-    jvm::entry_class(&spellable, &format!("{}.main();", source::PROGRAM_CLASS))
+/// `ProgramKt.main();` against [Java's](super::super::java::compile::entry_class)
+/// `Program.main(new String[0]);`, and that is the whole of the difference between the two arms'
+/// generated entry classes — which [`jvm`]'s own tests assert by comparing what
+/// these two functions actually write.
+pub(in crate::sandbox::language) fn entry_class() -> String {
+    jvm::entry_class(&format!("{}.main();", source::PROGRAM_CLASS))
 }
 
 // ---------------------------------------------------------------------------------------------

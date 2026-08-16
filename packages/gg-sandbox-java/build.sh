@@ -91,6 +91,12 @@ mapfile -t VENDORED < <(find "$SHARED/vendor" -name '*.java' | sort)
 "$JAVAC" -Xlint:all -Werror -g --release 21 -cp "$CLASSPATH" -d "$WORK/classes" "${OWN[@]}"
 "$JAVAC" -nowarn -g --release 21 -cp "$CLASSPATH" -d "$WORK/classes" "${VENDORED[@]}"
 
+# The one non-class file in this jar: the descriptor TeaVM finds `gg.internal.ThrowableNames`
+# through, which is what makes an uncaught exception name its own class. See the script's header.
+# shellcheck source=packages/gg-sandbox-jvm/plugin-descriptor.sh
+source "$SHARED/plugin-descriptor.sh"
+gg_jvm_plugin_descriptor "$WORK/classes"
+
 # A second pass over the MODEL-FACING package alone, with the JDK's own documentation checker on:
 # an undocumented parameter, a `@param` naming an argument the method does not take, a missing
 # `@return`, a broken `{@link}`. Those comments are what `signatures.sh` reflects the catalogue
@@ -107,7 +113,7 @@ mapfile -t DOCUMENTED < <(find "$HERE/src/gg" -name '*.java' -not -path "$HERE/s
 	-cp "$CLASSPATH:$WORK/classes" -d "$WORK/lint" "${DOCUMENTED[@]}"
 
 # A fixed timestamp and a sorted entry list: two builds of the same sources are the same bytes.
-mapfile -t ENTRIES < <(cd "$WORK/classes" && find . -name '*.class' | sed 's|^\./||' | sort)
+mapfile -t ENTRIES < <(cd "$WORK/classes" && find . -type f | sed 's|^\./||' | sort)
 "$JAR" --create --file "$WORK/gg-sdk.jar" --date "2026-01-01T00:00:00Z" \
 	-C "$WORK/classes" "${ENTRIES[0]}" >/dev/null
 for ENTRY in "${ENTRIES[@]:1}"; do
@@ -116,7 +122,7 @@ for ENTRY in "${ENTRIES[@]:1}"; do
 done
 
 mv "$WORK/gg-sdk.jar" "$OUT"
-echo "wrote $OUT ($(wc -c <"$OUT") bytes, ${#ENTRIES[@]} classes)"
+echo "wrote $OUT ($(wc -c <"$OUT") bytes, ${#ENTRIES[@]} entries)"
 
 # java.adapter.wasm — COPIED FROM A CACHE, NOT DOWNLOADED on a machine an installer has touched.
 # TeaVM's `WEBASSEMBLY_WASI` backend emits a core module importing the preview1 snapshot (four

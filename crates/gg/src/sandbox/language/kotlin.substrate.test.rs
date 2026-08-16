@@ -474,8 +474,9 @@ fn an_uncaught_failure_reaches_the_model_in_its_runtimes_own_words() {
 
     // `!!` on a null and a `lateinit` read too early are the two failures no Java program can throw,
     // and each raises a class `kotlin-stdlib` declares rather than one `java.base` does. TeaVM emits
-    // a class's NAME STRING only where its analysis sees the name asked for, so both are on this
-    // arm's own spellable list — without it each printed five correct frames and no sentence.
+    // a class's NAME STRING only where its analysis sees the name asked for, and it lowers a throw
+    // into a call long after that analysis has run — so without `gg.internal.ThrowableNames` each
+    // printed five correct frames and no sentence.
     let outcome = evaluate(
         &prepare("fun main() {\n    val missing: String? = null\n    gg.log(missing!!.length.toString())\n}\n"),
         &[],
@@ -503,6 +504,28 @@ fn an_uncaught_failure_reaches_the_model_in_its_runtimes_own_words() {
     assert!(
         reported.contains("kotlin.UninitializedPropertyAccessException"),
         "Kotlin's own failures are named in Kotlin: {reported}"
+    );
+
+    // AND A CLASS THE MODEL DECLARED ITSELF, thrown with no message at all — the case no list gg
+    // carried could ever have covered, and the one that decides whether ruling D8a's *what* is
+    // answered for a program's own exception type or only for the ones somebody enumerated.
+    let outcome = evaluate(
+        &prepare(
+            "class OutOfCoffee : RuntimeException()\n\
+             \n\
+             fun main() {\n\
+             \x20   throw OutOfCoffee()\n\
+             }\n",
+        ),
+        &[],
+        &[],
+        canned_outcome,
+    )
+    .0;
+    let reported = trap(&outcome);
+    assert!(
+        reported.contains("OutOfCoffee") && reported.contains("Program.kt:4"),
+        "the model's own exception class did not name itself: {reported}"
     );
 
     // A failure the program CAUGHT never reaches gg at all, which is the other half of the promise:
@@ -732,6 +755,40 @@ fn a_program_that_declares_no_main_is_told_so() {
         refused("fun main(args: Array<String>) {\n    gg.log(args.size.toString())\n}\n");
     assert!(rendered.contains("Array<String>"), "{rendered}");
     assert!(rendered.contains("ProgramKt.main()"), "{rendered}");
+
+    // AND THE TWO THAT MOVE THE FACADE RATHER THAN THE `main`, each named. Both are legal Kotlin
+    // and both leave javac with nothing to say but "cannot resolve ProgramKt", which reads as
+    // "declare a `fun main()`" to a model that declared one.
+    let rendered = refused("package mine\n\nfun main() {\n    gg.log(\"hi\")\n}\n");
+    assert!(
+        rendered.contains("line 1") && rendered.contains("`package mine`"),
+        "{rendered}"
+    );
+    let rendered = refused("@file:JvmName(\"Other\")\n\nfun main() {\n    gg.log(\"hi\")\n}\n");
+    assert!(
+        rendered.contains("line 1") && rendered.contains("@file:JvmName"),
+        "{rendered}"
+    );
+
+    // A model's own class taking the name gg's generated entry class has is told at the read too,
+    // rather than arriving as `Method GgEntry.… was not found` about a method it plainly declared.
+    let failure = compile_program(
+        "class GgEntry {\n\
+         \x20   fun hello(): String = \"mine\"\n\
+         }\n\
+         \n\
+         fun main() {\n\
+         \x20   gg.log(GgEntry().hello())\n\
+         }\n",
+        &[],
+        &PrepareContext::new(),
+    )
+    .expect_err("the name gg's entry class has is refused");
+    let rendered = failure.to_string();
+    assert!(
+        rendered.contains("GgEntry") && rendered.contains("another name"),
+        "{rendered}"
+    );
 }
 
 /// **What this toolchain is not**, recorded rather than assumed.

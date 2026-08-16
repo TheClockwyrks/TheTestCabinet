@@ -83,9 +83,13 @@ produces it (`gg.files.FileRead`, `gg.tasks.TaskStatus`).
 the model. It is outside the catalogue, because the catalogue describes the
 capability modules. Standard output reaches nobody at all.
 
-Bridge declarations are `internal`, which is module visibility, and a program is
-its own module, so a program cannot name the crossing. Every function is bound
-on every turn: a call the agent was not granted compiles and fails when it runs,
+The Kotlin half of the bridge is `internal`, which is module visibility, and a
+program is its own module. The crossing under it is the Java `gg.internal`
+package both JVM arms compile, whose classes are public because Java has no
+module visibility to give them. What keeps them out of a program's way is that
+nothing describes them: no catalogue entry covers `gg.internal` and no prompt
+names it, which is the position every arm's SDK is in. Every function is bound on
+every turn: a call the agent was not granted compiles and fails when it runs,
 which is the rule the [agent surface](/gg/languages/agent-surface/) states for
 every arm.
 
@@ -137,6 +141,8 @@ arm's compile time recorded on every turn, the failing path included.
 | the Kotlin compiler's `SYNTAX` diagnostic | a syntax failure |
 | any other Kotlin error in the model's own file | a compile failure |
 | TeaVM naming a class or method its classlib lacks | a compile failure |
+| a `package` declaration or a `@file:JvmName` | a shape refusal naming the line that moved the facade |
+| a program declaring `GgEntry` itself | a diagnostic against the model's own file naming the reserved class |
 | javac refusing gg's generated entry class | a shape refusal quoting the `fun main()` convention |
 | a compiler that could not run, a timeout, or a failed handshake | a toolchain failure |
 
@@ -172,7 +178,11 @@ written on the author's own first line so no diagnostic moves, and the module is
 compiled into every program that uses it. A program reaches an export at
 `lib.<key>.<name>` or imports it by name, and a name the module does not export
 is a compile error rather than a run-time failure. A module key is camelCase and
-ASCII-only.
+ASCII-only, and is a package segment the compiler resolves, so a leading digit and
+a hard keyword are each prefixed with an underscore. A diagnostic that arrives
+against a module's file during a program's compile names the key the module is
+bound at, so the agent is told which module to fix rather than the operator being
+told about drift.
 
 ## Prompt segment
 

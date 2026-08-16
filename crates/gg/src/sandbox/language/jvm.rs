@@ -221,49 +221,6 @@ pub(super) fn placed_dir(arm: &str, version: &str, contents: &[&[u8]]) -> Result
 /// The class gg generates to hold the component's two exports, on either arm.
 pub(super) const ENTRY_CLASS: &str = "GgEntry";
 
-/// **The classes a program's runtime must be able to spell when a program dies of one**, on both
-/// arms.
-///
-/// Not a catch chain and not an interception: nothing here changes what is thrown, what is caught or
-/// where a program stops. What it changes is whether the **name string** of the class exists in the
-/// binary at all, and that is a fact about TeaVM's dependency analysis rather than about failure
-/// handling.
-///
-/// TeaVM emits a class's name only where its analysis sees that name being asked for. The vendored
-/// `org.teavm.runtime.ExceptionHandling` asks — `exception.getClass().getName()`, on the uncaught
-/// path — but the only classes the analysis can see reaching it are the three faults the runtime
-/// raises itself, so **every other failure printed a blank header**. Measured, before this list:
-/// `values.get(7)` past the end of an `ArrayList` died with `an exception carrying no message` and
-/// five correct frames, which is
-/// [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/)'s *where* with none of
-/// its *what*. With `java.lang.IndexOutOfBoundsException` on this list the same program dies with
-/// `java.lang.IndexOutOfBoundsException` and the same five frames.
-///
-/// Enumerated rather than derived because there is nothing to derive it from: the set is "the
-/// classes a program on this runtime actually fails with", which is a judgement about programs and
-/// not something a compiler can be asked. A class not on it still fails correctly — it simply prints
-/// its message, or the blank header where it has none.
-///
-/// Each arm adds its own on top: its `ToolError`, and for [Kotlin](super::kotlin) the two failures
-/// no Java program can throw.
-pub(super) const SPELLABLE: [&str; 15] = [
-    "java.lang.NullPointerException",
-    "java.lang.ArrayIndexOutOfBoundsException",
-    "java.lang.StringIndexOutOfBoundsException",
-    "java.lang.IndexOutOfBoundsException",
-    "java.lang.ClassCastException",
-    "java.lang.ArithmeticException",
-    "java.lang.NegativeArraySizeException",
-    "java.lang.NumberFormatException",
-    "java.lang.IllegalArgumentException",
-    "java.lang.IllegalStateException",
-    "java.lang.UnsupportedOperationException",
-    "java.util.NoSuchElementException",
-    "java.util.ConcurrentModificationException",
-    "java.lang.StackOverflowError",
-    "java.lang.OutOfMemoryError",
-];
-
 /// **The two lines the host reaches a compiled program through**, and nothing else.
 ///
 /// It is the world's `run` — eight canonically-lowered parameters a compiled arm reads none of — and
@@ -284,21 +241,18 @@ pub(super) const SPELLABLE: [&str; 15] = [
 /// `run` declares `throws Throwable` because an author writes `throws Exception` on a `main` every
 /// day, and an export that did not would refuse a shape the language has.
 ///
-/// The `spellable` loop is the one thing here that is not two lines, and it is a **no-op at run
-/// time**: `System.getProperty` answers `null` in this sandbox, so the array is empty and the loop
-/// runs zero times. It is reachable, which is the whole of its purpose — a preserved method nothing
-/// calls is not analysed at all, measured — and it is written past a property lookup because
-/// anything a constant folder can see through would be folded away with the names.
-///
 /// Written in **Java** on both arms, which is worth saying on the one whose program is Kotlin: a
 /// Kotlin entry class would have to be compiled by the compiler it exists to wrap, in a second pass,
 /// for a class that appears in no diagnostic a model reads. javac compiles this against the classes
 /// the model's own compiler produced, which is one pass either way.
-pub(super) fn entry_class(spellable: &[&str], call: &str) -> String {
-    let listed: String = spellable
-        .iter()
-        .map(|name| format!("            {name}.class,\n"))
-        .collect();
+///
+/// It carries **nothing else at all**. An earlier version held a list of sixteen exception classes
+/// and a loop over them, so that TeaVM's dependency analysis would emit their name strings and an
+/// uncaught failure could say what it was. That list could not hold a class a *model* declared, and
+/// a class that fell off it printed a blank header with no test able to see it; what answers the
+/// same question now is `gg.internal.ThrowableNames`, a TeaVM plugin in each arm's SDK jar that
+/// derives the set from the program actually being compiled.
+pub(super) fn entry_class(call: &str) -> String {
     format!(
         "import gg.internal.Abi;\n\
          import org.teavm.interop.Export;\n\
@@ -307,30 +261,16 @@ pub(super) fn entry_class(spellable: &[&str], call: &str) -> String {
          \x20   private {ENTRY_CLASS}() {{\n\
          \x20   }}\n\
          \n\
-         \x20   private static final Class<?>[] SPELLABLE = spellable();\n\
-         \n\
          \x20   @Export(name = \"run\")\n\
          \x20   public static void run(int program, int programLength, int modules, \
          int modulesLength,\n\
          \x20           int tools, int toolsLength, int ending, int library) throws Throwable {{\n\
-         \x20       for (Class<?> type : SPELLABLE) {{\n\
-         \x20           System.err.println(type.getName());\n\
-         \x20       }}\n\
          \x20       {call}\n\
          \x20   }}\n\
          \n\
          \x20   @Export(name = \"bound-tools\")\n\
          \x20   public static int boundTools() {{\n\
          \x20       return Abi.emptyList();\n\
-         \x20   }}\n\
-         \n\
-         \x20   private static Class<?>[] spellable() {{\n\
-         \x20       if (System.getProperty(\"gg.spell.every.failure\") == null) {{\n\
-         \x20           return new Class<?>[0];\n\
-         \x20       }}\n\
-         \x20       return new Class<?>[] {{\n\
-         {listed}\
-         \x20       }};\n\
          \x20   }}\n\
          }}\n",
     )

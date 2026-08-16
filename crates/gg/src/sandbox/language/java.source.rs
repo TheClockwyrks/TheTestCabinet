@@ -65,12 +65,26 @@ pub(super) const MODULE_CHECK_CLASS: &str = "Module";
 /// could collide with. What a program writes is `Lib.<key>`, which is [`LIB_CLASS`]'s nested class
 /// of that name — see [`lib_class`].
 pub(super) fn module_class(key: &str) -> String {
-    format!("GgModule_{key}")
+    format!("{MODULE_PREFIX}{key}")
 }
+
+/// What every code module's generated class name begins with, and what
+/// [`module_key_of`] reads one back off.
+const MODULE_PREFIX: &str = "GgModule_";
 
 /// The file one code module's wrapped body is compiled from.
 pub(super) fn module_file(key: &str) -> String {
     format!("{}.java", module_class(key))
+}
+
+/// The binding key whose module a diagnostic's file names, when it names one.
+///
+/// The inverse of [`module_file`], and it is what lets [`verdict`](super::compile::verdict) tell a
+/// diagnostic about a *module* from one about a file nobody named. Without it a module that failed
+/// only in a program's compile was reported to the operator as toolchain drift, and the model whose
+/// turn it took was told nothing at all.
+pub(super) fn module_key_of(file: &str) -> Option<&str> {
+    file.strip_prefix(MODULE_PREFIX)?.strip_suffix(".java")
 }
 
 /// The class gg generates so that every module in scope is reached at `Lib.<key>`.
@@ -124,6 +138,7 @@ pub(super) struct Wrapped {
 /// which is how a program reaches it at `Lib.<key>`.
 pub(super) fn wrap_module(source: &str, class: &str) -> Result<Wrapped, PrepareFailure> {
     let (body, imports) = hoist(source)?;
+    refuse_wrapper_name(&body, class)?;
     let exports = exports(&body);
     if exports.is_empty() {
         return Err(PrepareFailure::Program(PrepareError::Unsupported(
@@ -143,6 +158,51 @@ pub(super) fn wrap_module(source: &str, class: &str) -> Result<Wrapped, PrepareF
         source: format!("{header}{}}}\n", terminated(&body)),
         exports,
     })
+}
+
+/// Refuse a module body that writes the name of the class gg wraps it in, at the author's own line.
+///
+/// # Why this is a refusal and not a curiosity
+///
+/// A module body is compiled **twice under two different class names**: under
+/// [`MODULE_CHECK_CLASS`] at the read that binds it, before any key exists, and under
+/// [`module_class`] in every program that uses it. Every declaration Java has means the same thing
+/// under both names except one — a *constructor*, which is a method with no return type whose name
+/// is the class's. So `Module() { }` is a constructor at the read and
+/// `invalid method declaration; return type required` in a program, and it was the read that said
+/// yes. Measured: the module then took down every program the agent wrote from then on, which is
+/// exactly the state [`compile_module`](super::compile::compile_module) exists to prevent.
+///
+/// The check is the class's simple name **anywhere in code**, not the constructor shape alone,
+/// because an expression naming the class (`Module.helper()`) diverges the same way and for the
+/// same reason. A module's author cannot know the name gg gives the class, so a body that writes it
+/// is a body that meant something else.
+fn refuse_wrapper_name(body: &str, class: &str) -> Result<(), PrepareFailure> {
+    let code = Lexer::new(body).code_mask();
+    let bytes = body.as_bytes();
+    let mut start = 0usize;
+    for (number, line) in body.split_inclusive('\n').enumerate() {
+        for (offset, _) in line.match_indices(class) {
+            let at = start + offset;
+            let before = at.checked_sub(1).map(|byte| bytes[byte]);
+            let after = bytes.get(at + class.len()).copied();
+            // A whole identifier, and not the last segment of a qualified name: `a.b.Module` names
+            // somebody else's type under either wrapper and diverges from nothing.
+            let bounded = !before.is_some_and(|byte| is_identifier_byte(byte) || byte == b'.')
+                && !after.is_some_and(is_identifier_byte);
+            if bounded && code.get(at).copied().unwrap_or(false) {
+                return Err(PrepareFailure::Program(PrepareError::Unsupported(format!(
+                    "line {}: gg names the class a code module's body is compiled into, and it is \
+                     named `{class}` only while this read checks it. Take `{class}` out — a \
+                     module's own declarations reach each other by name, and a constructor is \
+                     never called.",
+                    number + 1,
+                ))));
+            }
+        }
+        start += line.len();
+    }
+    Ok(())
 }
 
 /// A body that ends in exactly one newline, so the brace that closes it is on its own line and the

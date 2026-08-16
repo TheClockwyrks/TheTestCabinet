@@ -101,6 +101,12 @@ mapfile -t VENDORED < <(find "$SHARED/vendor" -name '*.java' | sort)
 "$JAVAC" -Xlint:all -Werror -g --release 21 -cp "$TEAVM" -d "$WORK/classes" "${SHARED_SOURCES[@]}"
 "$JAVAC" -nowarn -g --release 21 -cp "$TEAVM" -d "$WORK/classes" "${VENDORED[@]}"
 
+# The descriptor TeaVM finds `gg.internal.ThrowableNames` through, which is what makes an uncaught
+# exception name its own class. See the script's header.
+# shellcheck source=packages/gg-sandbox-jvm/plugin-descriptor.sh
+source "$SHARED/plugin-descriptor.sh"
+gg_jvm_plugin_descriptor "$WORK/classes"
+
 mapfile -t SOURCES < <(find "$HERE/src" -name '*.kt' | sort)
 "$JAVA" -cp "$COMPILER" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler \
 	-classpath "$STDLIB:$TEAVM:$WORK/classes" \

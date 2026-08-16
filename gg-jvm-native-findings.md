@@ -369,3 +369,19 @@ end of an `ArrayList` printed `an exception carrying no message` before, and
 merely PRESERVED by `setClassesToPreserve` and called by nobody is not analysed at all —
 measured, the same probe as an unreferenced `spellable()` changed nothing. See
 `crates/gg/src/sandbox/language/java.compile.rs`.
+
+ANSWERED PROPERLY, AND THE LIST IS GONE. A list cannot hold a class a MODEL declares, and a
+model declaring its own exception type is ordinary Java: measured, `throw new
+java.util.EmptyStackException()` and a model's own `class Mine extends RuntimeException {}`
+both reached the model as `an exception carrying no message` with the list in place. What
+answers it instead is `gg.internal.ThrowableNames` in `packages/gg-sandbox-jvm` - a
+`TeaVMPlugin`, found through `META-INF/services/org.teavm.vm.spi.TeaVMPlugin` in each arm's
+SDK jar (`TeaVMPluginReader` reads it off the build's own class loader, which
+`InProcessBuildStrategy` builds over the classpath entries it was given). Its
+`DependencyListener.classReached` propagates EVERY reached `Throwable` into the class-value
+node of `java.lang.Class.getName()`'s receiver, which is the one input
+`org.teavm.model.analysis.ClassMetadataRequirements` reads when deciding whose name string to
+emit. Measured through the production route on both arms: `java.util.EmptyStackException`,
+a model's own `OutOfCoffee`, `java.lang.Exception: the model's own words`,
+`kotlin.UninitializedPropertyAccessException` - each names itself, with the model's own
+frames beside it. `SPELLABLE`, the `spellable()` guard and the loop in `GgEntry` are deleted.

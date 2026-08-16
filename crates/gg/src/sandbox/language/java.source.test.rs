@@ -136,16 +136,38 @@ fn a_module_that_offers_nothing_is_refused_rather_than_bound_empty() {
     assert!(failure.to_string().contains("public static"), "{failure}");
 }
 
+/// **A body that writes the wrapper's own class name is refused at the read**, at the author's own
+/// line.
+///
+/// The one thing that means something different under the two class names a module body is compiled
+/// under: `Module()` is a constructor while this read checks it and
+/// `invalid method declaration; return type required` in every program that uses it. Refusing it
+/// here is what keeps the read's promise — a module that passes it compiles in a program.
 #[test]
-fn a_constructor_is_not_something_a_namespace_can_offer() {
-    // gg names the class, so no constructor an author writes can carry its name — and one that is
-    // not `static` is not an export whatever it is called.
+fn a_body_that_names_the_class_gg_wraps_it_in_is_refused_at_the_read() {
+    for body in [
+        "public static String only() { return \"\"; }\npublic Module() { }\n",
+        "static String helper() { return \"\"; }\npublic static String only() { return Module.helper(); }\n",
+    ] {
+        let failure = wrap_module(body, MODULE_CHECK_CLASS)
+            .expect_err("a body naming the wrapper's class is refused");
+        assert!(failure.to_string().contains("line 2"), "{failure}");
+        assert!(
+            failure.to_string().contains(MODULE_CHECK_CLASS),
+            "{failure}"
+        );
+    }
+
+    // Not a name that merely contains it, not a qualified name whose last segment is it, and not one
+    // inside a string or a comment: each of those means the same thing under either class name.
     let wrapped = wrap_module(
-        "public Module() { }\npublic static String only() { return \"\"; }\n",
+        "// Module\npublic static String only() { return \"Module\"; }\n\
+         public static Class<?> other() { return java.lang.Module.class; }\n\
+         static int ModuleCount = 0;\n",
         MODULE_CHECK_CLASS,
     )
     .expect("wraps");
-    assert_eq!(wrapped.exports, ["only"]);
+    assert_eq!(wrapped.exports, ["only", "other"]);
 }
 
 /// **`Lib` reaches each module by inheritance**, which is what Java has instead of a type alias.

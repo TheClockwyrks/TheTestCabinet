@@ -481,8 +481,10 @@ const SHOWN: usize = 8;
 ///   model's, and it says what is missing: `java.nio.file.Files.readString` is
 ///   `Method java.io.BufferedReader.transferTo … was not found`, which is a call to write another
 ///   way rather than a broken toolchain;
-/// * anything else — a code module's own file, or a file nobody named — which is drift rather than
-///   anything this program did, and is reported to the operator.
+/// * a **code module's** own file — the code this session loaded, compiled into this program, named
+///   by the key it is bound at so the agent knows which module to fix or to stop loading;
+/// * anything else — a file nobody named — which is drift rather than anything this program did, and
+///   is reported to the operator.
 pub(crate) fn verdict(report: &Report, file: &str) -> Result<(), PrepareFailure> {
     let errors: Vec<&Diagnostic> = report
         .diagnostics
@@ -539,6 +541,20 @@ pub(crate) fn verdict(report: &Report, file: &str) -> Result<(), PrepareFailure>
                 lib = source::LIB_CLASS,
             ))));
         }
+        if let Some(keys) = module_keys(&errors) {
+            return Err(PrepareFailure::Program(PrepareError::Compile(format!(
+                "the code this session loaded at `{}` does not compile: {}",
+                keys.join("`, `"),
+                crate::sandbox::language::diagnostics::capped(
+                    errors
+                        .iter()
+                        .map(|diagnostic| diagnostic.render(file))
+                        .collect(),
+                    SHOWN,
+                    "\n\n",
+                ),
+            ))));
+        }
         return Err(PrepareFailure::Toolchain(format!(
             "the Java toolchain refused a file gg generated rather than the program: {rendered}"
         )));
@@ -566,6 +582,25 @@ pub(crate) fn verdict(report: &Report, file: &str) -> Result<(), PrepareFailure>
             false => PrepareError::Compile(rendered),
         },
     ))
+}
+
+/// The binding keys of the code modules `errors` are about, when every one of them is.
+///
+/// A module is compiled *into* the program that uses it, so a diagnostic about a module's own file
+/// arrives against the turn's program — in a file the model never wrote, about code somebody else
+/// authored. Reporting that as a [toolchain failure](PrepareFailure::Toolchain) told the operator
+/// about drift and told the model nothing, on every turn, for as long as the module stayed loaded.
+/// Naming the key is what makes it something the agent can act on: the module is the thing to fix
+/// or to stop loading.
+fn module_keys(errors: &[&Diagnostic]) -> Option<Vec<String>> {
+    let mut keys: Vec<String> = Vec::new();
+    for diagnostic in errors {
+        let key = source::module_key_of(diagnostic.file.as_deref()?)?;
+        if !keys.iter().any(|seen| seen == key) {
+            keys.push(key.to_string());
+        }
+    }
+    Some(keys).filter(|keys| !keys.is_empty())
 }
 
 impl Diagnostic {
@@ -610,16 +645,17 @@ impl Diagnostic {
 // The generated entry class
 // ---------------------------------------------------------------------------------------------
 
-/// This arm's own addition to [the shared list](jvm::SPELLABLE): the class a program catches.
-const SPELLABLE: [&str; 1] = ["gg.ToolError"];
-
 /// [The shared entry class](jvm::entry_class), with this arm's own one line in it.
-fn entry_class() -> String {
-    let spellable: Vec<&str> = jvm::SPELLABLE.iter().chain(&SPELLABLE).copied().collect();
-    jvm::entry_class(
-        &spellable,
-        &format!("{}.main(new String[0]);", source::PROGRAM_CLASS),
-    )
+///
+/// `Program.main(new String[0]);` against [Kotlin's](super::super::kotlin::compile::entry_class)
+/// `ProgramKt.main();`, and that is the whole of the difference between the two arms' generated
+/// entry classes — which [`jvm`]'s own tests assert by comparing what these two
+/// functions actually write.
+///
+/// `new String[0]` and not `null`: a model's `main` may read `args.length`, and Java's own launcher
+/// hands it an empty array rather than nothing.
+pub(in crate::sandbox::language) fn entry_class() -> String {
+    jvm::entry_class(&format!("{}.main(new String[0]);", source::PROGRAM_CLASS))
 }
 
 // ---------------------------------------------------------------------------------------------

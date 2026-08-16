@@ -94,7 +94,7 @@ fn the_shared_half_declares_no_class_of_its_own() {
 
 #[test]
 fn the_entry_class_catches_nothing_and_calls_what_it_was_told_to() {
-    let entry = entry_class(&["java.lang.IllegalStateException"], "ProgramKt.main();");
+    let entry = entry_class("ProgramKt.main();");
     // `contains("try {")` would be a bug rather than a check: `class GgEntry {` ends in one.
     assert!(
         !entry.contains("catch (") && !entry.lines().any(|line| line.trim() == "try {"),
@@ -109,29 +109,26 @@ fn the_entry_class_catches_nothing_and_calls_what_it_was_told_to() {
             && entry.contains("@Export(name = \"bound-tools\")"),
         "the two exports the world declares are both here:\n{entry}",
     );
-    // The classes whose NAME STRING has to survive TeaVM's dependency analysis, walked from `run` so
-    // that the analysis sees them. A `@Export` method nobody calls is preserved and never analysed,
-    // measured — so a list nothing walked would put no name in the binary.
-    assert!(
-        entry.contains("java.lang.IllegalStateException.class,"),
-        "the spellable list is written out:\n{entry}",
-    );
-    assert!(
-        entry.contains("for (Class<?> type : SPELLABLE)"),
-        "and it is reached from `run` rather than merely declared:\n{entry}",
-    );
-    // Past a property lookup, because anything a constant folder can see through is folded away
-    // with the names it was holding.
-    assert!(
-        entry.contains("System.getProperty(\"gg.spell.every.failure\")"),
-        "the list is guarded by something no constant folder can see through:\n{entry}",
-    );
+    // AND NOTHING ELSE. The list of exception classes this used to carry — so that TeaVM's
+    // dependency analysis would emit their name strings — is gone with the loop that walked it and
+    // the property lookup that hid it from the constant folder. What names a failure now is
+    // `gg.internal.ThrowableNames`, which derives the set from the program being compiled and
+    // therefore covers the exception classes a model declares itself.
+    for gone in ["SPELLABLE", "System.getProperty", "System.err"] {
+        assert!(
+            !entry.contains(gone),
+            "the entry class carries nothing but the two exports; it still names {gone}:\n{entry}",
+        );
+    }
 }
 
 #[test]
 fn the_two_arms_entry_classes_differ_by_one_line() {
-    let java = entry_class(&SPELLABLE, "Program.main(new String[0]);");
-    let kotlin = entry_class(&SPELLABLE, "ProgramKt.main();");
+    // EACH ARM'S OWN, rather than this test's idea of what each arm passes: the claim is about the
+    // two files gg writes beside a model's program, and a test that called `entry_class` twice with
+    // arguments of its own would be asserting a property of the formatting function instead.
+    let java = super::super::java::compile::entry_class();
+    let kotlin = super::super::kotlin::compile::entry_class();
     let differing: Vec<(&str, &str)> = java
         .lines()
         .zip(kotlin.lines())
@@ -143,4 +140,12 @@ fn the_two_arms_entry_classes_differ_by_one_line() {
         "the two arms' entry classes differ by exactly one line: {differing:?}",
     );
     assert_eq!(java.lines().count(), kotlin.lines().count());
+    assert_eq!(
+        differing[0],
+        (
+            "        Program.main(new String[0]);",
+            "        ProgramKt.main();"
+        ),
+        "and the one line is the call to the model's own entry point",
+    );
 }

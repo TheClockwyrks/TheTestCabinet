@@ -102,7 +102,20 @@ pub(super) fn module_package(key: &str) -> String {
 /// Named for the key rather than for the package, because two modules would otherwise be two files
 /// of one name in one compile.
 pub(super) fn module_file(key: &str) -> String {
-    format!("GgModule_{key}.kt")
+    format!("{MODULE_PREFIX}{key}.kt")
+}
+
+/// What every code module's file name begins with, and what [`module_key_of`] reads one back off.
+const MODULE_PREFIX: &str = "GgModule_";
+
+/// The binding key whose module a diagnostic's file names, when it names one.
+///
+/// The inverse of [`module_file`], and it is what lets [`verdict`](super::compile::verdict) tell a
+/// diagnostic about a *module* from one about a file nobody named. Without it a module that failed
+/// only in a program's compile was reported to the operator as toolchain drift, and the model whose
+/// turn it took was told nothing at all.
+pub(super) fn module_key_of(file: &str) -> Option<&str> {
+    file.strip_prefix(MODULE_PREFIX)?.strip_suffix(".kt")
 }
 
 /// A code module's file, put in a package of its own, and the names its namespace offers.
@@ -171,6 +184,44 @@ fn refuse_package(source: &str) -> Result<(), PrepareFailure> {
                 rest.trim().trim_end_matches(';').trim(),
             ))));
         }
+    }
+    Ok(())
+}
+
+/// Refuse a **program** that moves its own file facade, naming what moved it.
+///
+/// gg reaches a program by calling [`PROGRAM_CLASS`]`.main()`, which is the facade the Kotlin
+/// compiler emits `Program.kt`'s top-level declarations into. Two legal Kotlin lines move that
+/// facade somewhere the call cannot resolve: a `package` declaration puts it in that package, and a
+/// `@file:JvmName` renames it. Both then fail inside gg's own generated entry class, where javac's
+/// only complaint is that it cannot resolve `ProgramKt` — which reads as "you did not declare
+/// `fun main()`" to a model that plainly did.
+///
+/// Nothing is rewritten and nothing is moved: the refusal names the line and the model writes the
+/// file again. What is left to javac is the shape it can actually diagnose, a missing `main` or one
+/// that takes parameters.
+pub(super) fn refuse_moved_facade(source: &str) -> Result<(), PrepareFailure> {
+    let code = Lexer::new(source).code_mask();
+    let mut at = 0usize;
+    for (number, line) in source.split_inclusive('\n').enumerate() {
+        let start = at;
+        at += line.len();
+        let trimmed = line.trim();
+        let offset = line.len() - line.trim_start().len();
+        if !code.get(start + offset).copied().unwrap_or(false) {
+            continue;
+        }
+        let moved = match keyword(trimmed, "package") {
+            Some(rest) => format!("`package {}`", rest.trim().trim_end_matches(';').trim()),
+            None if trimmed.starts_with("@file:JvmName") => "`@file:JvmName`".to_string(),
+            None => continue,
+        };
+        return Err(PrepareFailure::Program(PrepareError::Unsupported(format!(
+            "line {}: gg reaches your program by calling `{PROGRAM_CLASS}.main()`, and {moved} \
+             puts that class somewhere else. Write your reply as one Kotlin file in the root \
+             package.",
+            number + 1,
+        ))));
     }
     Ok(())
 }

@@ -7,7 +7,7 @@
 //! now that it is registered, that gate drives both halves of this arm along with every other
 //! language's, and a second copy would be 32 real builds asserting a property already asserted. And
 //! the generated entry class is [shared with the Java arm](crate::sandbox::language::jvm) and
-//! asserted there — what is left here is the one line and the three names this arm adds to it.
+//! asserted there — what is left here is the one line this arm adds to it.
 
 use super::*;
 
@@ -282,7 +282,10 @@ fn a_refusal_about_gg_s_own_entry_class_quotes_the_convention_back() {
 }
 
 #[test]
-fn a_refusal_about_a_file_nobody_named_is_reported_to_the_operator() {
+fn a_refusal_about_a_code_module_names_the_key_and_one_about_nobody_s_file_does_not() {
+    // A code module's own file names the code this session loaded, which is compiled into the
+    // program. The model is told which key to fix or to stop loading, because reporting it to the
+    // operator alone would take every turn from then on with nothing said.
     let failure = verdict(
         &Report {
             internal: None,
@@ -291,9 +294,22 @@ fn a_refusal_about_a_file_nobody_named_is_reported_to_the_operator() {
         PROGRAM_FILE,
     )
     .expect_err("refused");
+    let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
+        panic!("a code module that does not compile is the model's to act on: {failure:?}");
+    };
+    assert!(rendered.contains("`helpers`"), "{rendered}");
+
+    let failure = verdict(
+        &Report {
+            internal: None,
+            diagnostics: vec![diagnostic("kotlinc", None, Some("Whatever.kt"), 3)],
+        },
+        PROGRAM_FILE,
+    )
+    .expect_err("refused");
     assert!(
         matches!(failure, PrepareFailure::Toolchain(_)),
-        "a code module refused inside somebody else's compile is drift: {failure:?}",
+        "a file gg does not write is drift: {failure:?}",
     );
 }
 
@@ -350,7 +366,7 @@ fn a_refusal_inside_the_standard_library_is_the_model_s_and_says_what_it_reached
 }
 
 #[test]
-fn the_entry_class_calls_the_model_s_own_main_and_can_spell_kotlin_s_own_failures() {
+fn the_entry_class_calls_the_model_s_own_main_and_carries_nothing_else() {
     let entry = entry_class();
     // THE ONE LINE the two JVM arms differ by. `ProgramKt` is the facade the Kotlin compiler emits
     // `Program.kt`'s top-level declarations into, and `main()` with no arguments is the form
@@ -361,15 +377,16 @@ fn the_entry_class_calls_the_model_s_own_main_and_can_spell_kotlin_s_own_failure
     );
     // gg catches nothing: what a model reads is what TeaVM's own runtime printed.
     assert!(!entry.contains("catch"), "{entry}");
-    // Kotlin's own failures are spellable, which is the half of this list that is not Java's: `!!`
-    // on a null and a `lateinit` read too early each raise a class `kotlin-stdlib` declares, and a
-    // list that was only Java's would print a blank header for both. Measured on the Java arm: a
-    // class whose name string is not in the binary dies with five correct frames and no sentence.
-    for name in SPELLABLE {
-        assert!(entry.contains(&format!("{name}.class,")), "{name}");
-    }
-    // And the shared half is still there, so this arm adds rather than replaces.
-    for name in jvm::SPELLABLE {
-        assert!(entry.contains(&format!("{name}.class,")), "{name}");
+    // And it names no exception class of its own. This arm used to add three to a shared list of
+    // fifteen, so that TeaVM's dependency analysis would emit their name strings — including the two
+    // `kotlin-stdlib` declares, which a list that was only Java's printed a blank header for. What
+    // answers that now is `gg.internal.ThrowableNames`, which derives the set from the program being
+    // compiled; `kotlin.substrate.test.rs` drives both of those failures through the real toolchain
+    // and reads the names off the model-facing body.
+    for name in ["SPELLABLE", "KotlinNullPointerException", ".class,"] {
+        assert!(
+            !entry.contains(name),
+            "{name} is still in the entry class:\n{entry}"
+        );
     }
 }
