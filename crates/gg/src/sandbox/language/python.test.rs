@@ -25,8 +25,8 @@ fn python() -> &'static dyn ProgramLanguage {
 #[test]
 fn a_program_crosses_as_the_model_wrote_it() {
     for source in [
-        "total: int = 1\nviews.open_text(\"total\", str(total))\n",
-        "import json\nfiles.write_file(\"a.json\", json.dumps({\"ok\": True}))\n",
+        "import gg\n\ntotal: int = 1\ngg.views.open_text(\"total\", str(total))\n",
+        "import json\n\nimport gg\n\ngg.files.write_file(\"a.json\", json.dumps({\"ok\": True}))\n",
         "def (\n",
         "",
     ] {
