@@ -202,6 +202,17 @@ impl ProgramLanguage for Java {
     fn binding_name(&self, name: &str) -> String {
         binding_name(name)
     }
+    /// **No.** TeaVM's DWARF is misattributed, and gg must not report it as this program's location.
+    ///
+    /// Measured on the wasm route, on the artifact this arm's own driver writes: a program whose
+    /// frames really are `Program.java:16`, `:14` and `:9` symbolicates as `gg/internal/Abi.java:87`,
+    /// `:83` and `:82` — gg's own SDK internals, named as the site of the model's bug. The *function*
+    /// names in the same backtrace are right, and they are kept; the file and line are what go. A
+    /// failure's real location on this arm arrives on the guest's own standard error, in the model's
+    /// own coordinates, which is where ruling D8a says to read it.
+    fn wasm_frames_are_located(&self) -> bool {
+        false
+    }
 
     /// The ECMAScript guest, which is [TypeScript](super::typescript)'s.
     ///

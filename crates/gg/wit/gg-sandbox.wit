@@ -11,14 +11,16 @@
 // exactly one name in `ALL_TOOL_NAMES` (crates/gg/src/tools/mod.rs); a test asserts the two sets are
 // equal, so a tool cannot be added, renamed, or removed without a typed signature following it.
 //
-// Six interfaces stand outside that correspondence, and each is separate for exactly that reason:
+// Seven interfaces stand outside that correspondence, and each is separate for exactly that reason:
 // `feedback` is the shim's private channel back to gg and is never model-facing at all; `session`
 // carries the model-facing calls that end the run; `docs` is the always-bound documentation lookup;
 // `views` is how a program puts material into its own context window; `programs` is the library
-// of programs this agent has already run; and `helpers` holds the convenience wrappers built on a
-// tool without being one. None of the five model-facing ones has a name in `ALL_TOOL_NAMES` — no
-// capability offers them and nothing dispatches them by name — so keeping them out of the tool
-// interfaces is what lets the bijection above be checked mechanically rather than by reading.
+// of programs this agent has already run; `helpers` holds the convenience wrappers built on a
+// tool without being one; and `wire` is not model-facing either — it is the one door the JVM arms
+// come through, naming a call by string BELOW their typed surface, for the reason it states. None of
+// the five model-facing ones has a name in `ALL_TOOL_NAMES` — no capability offers them and nothing
+// dispatches them by name — so keeping them out of the tool interfaces is what lets the bijection
+// above be checked mechanically rather than by reading.
 package test-cabinet:gg;
 
 /// The types shared across the tool interfaces. It declares no functions: it exists so that one
@@ -1145,7 +1147,7 @@ interface feedback {
 /// the Java and Kotlin arms, which compile to wasm through TeaVM, would otherwise have to carry a
 /// hand-written canonical-ABI lowering for every record, variant, enum, option and list in this
 /// 1200-line file. That is the cost this interface removes: the JVM side implements the canonical
-/// ABI for **one string and two byte lists**, and gg owns what travels inside them.
+/// ABI for **one string, two byte lists and a scalar**, and gg owns what travels inside them.
 ///
 /// # This is not a generic door onto the capability model
 ///
@@ -1171,15 +1173,47 @@ interface feedback {
 /// is about the model-facing surface, and this is the wire beneath it, where gg holds both ends and
 /// pays for what it chose. A tagged binary form costs the guest no parser and cannot be confused with
 /// a document a model was expected to read.
+///
+/// # Why the answer arrives in two steps
+///
+/// Because a JVM guest cannot be told how big an answer is until the answer exists, and the one
+/// moment it may allocate is before the host is holding an address into its memory.
+///
+/// The canonical ABI hands a returned `list<u8>` to the guest by asking the guest's own
+/// `cabi_realloc` for room. TeaVM's collector **compacts** — it moves objects — so `cabi_realloc`
+/// cannot allocate a Java object: the host is holding the address of the return area across that
+/// call, and a collection would move it. It is therefore a bump pointer over a pre-sized arena, and
+/// an answer larger than the arena leaves it nothing to hand back. Measured, that ends the program
+/// with `wasm trap: cannot leave component instance` — a trap naming nothing the model could act on,
+/// for an answer gg itself chose to send.
+///
+/// So `call` runs the operation and answers **how many bytes** its encoded result is, holding those
+/// bytes; the guest sizes its arena — ordinary Java allocation, with nothing outstanding — and `take`
+/// hands them over. Any answer gg can produce, a program can receive; the ceiling is the guest's own
+/// heap, and reaching *that* is a resource fault its runtime reports in the model's own coordinates.
+///
+/// It is also what lets the guest keep gg's allocations apart from the ones the preview1 adapter
+/// makes through the same `cabi_realloc`: `take` is the one imported call the SDK receives bytes
+/// through, so it is the one moment gg is the caller. See
+/// `packages/gg-sandbox-java/src/gg/internal/Abi.java` for what the alternative did.
 interface wire {
-    /// Make one gg call: `op` is a rendered operation id, `request` is the encoded arguments, and
-    /// what comes back is the encoded result — the value the call returned, or the three fields of
-    /// the `tool-error` it failed with.
+    /// Run one gg call and hold its encoded result: `op` is a rendered operation id and `request` is
+    /// the encoded arguments. What comes back is the **byte length** of the result — the value the
+    /// call returned, or the three fields of the `tool-error` it failed with — which [`take`] then
+    /// hands over.
     ///
     /// It cannot trap and it cannot fail: a request the host cannot decode, or an `op` it does not
-    /// know, comes back as an encoded failure, because a guest that trapped on a malformed request
-    /// would report a defect in gg as a defect in the model's program.
-    call: func(op: string, request: list<u8>) -> list<u8>;
+    /// know, is held as an encoded failure exactly as a refusal is, because a guest that trapped on a
+    /// malformed request would report a defect in gg as a defect in the model's program.
+    call: func(op: string, request: list<u8>) -> u32;
+
+    /// Hand over the result [`call`] is holding, and stop holding it.
+    ///
+    /// Called immediately after `call`, with the guest's arena sized for exactly the length `call`
+    /// answered. Taking twice, or taking with nothing held, answers an encoded failure saying gg's
+    /// own two halves have parted — the same shape a request that did not decode answers with, and
+    /// for the same reason.
+    take: func() -> list<u8>;
 }
 
 /// **The world the JVM arms' compiled programs declare**: gg through one door, and the same two

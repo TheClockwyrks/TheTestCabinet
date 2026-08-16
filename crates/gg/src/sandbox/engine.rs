@@ -364,7 +364,39 @@ pub(crate) fn classify<A: ToolApi>(
     if let Some(exit) = err.downcast_ref::<I32Exit>() {
         return SandboxError::Trap(with_guest_stderr(exit_message(exit.0), &said));
     }
-    fallback(with_guest_stderr(failure_reason(err), &said))
+    let reason = failure_reason(err);
+    let reason = match store.data().language().wasm_frames_are_located() {
+        true => reason,
+        false => without_frame_locations(&reason),
+    };
+    fallback(with_guest_stderr(reason, &said))
+}
+
+/// The same failure with every frame's **file and line struck out**, for an arm whose DWARF is
+/// misattributed — see [`ProgramLanguage::wasm_frames_are_located`].
+///
+/// wasmtime renders a located frame over two lines: the address and the function name, then an
+/// indented `at <file>:<line>:<column>`. The function names come from the module's name section and
+/// are right; only the second line is the lie, so only the second line goes. What is left is the
+/// reason, the frames a model can recognise, and no claim about where in its own source they are —
+/// which for the JVM arms is what the guest's own standard error already says, correctly.
+fn without_frame_locations(reason: &str) -> String {
+    let kept: Vec<&str> = reason
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim_start();
+            // An `at …:<line>:<column>` line, and nothing else: the guest's own stderr is not in
+            // this string at all (it rides beside it), and a reason of gg's own never has this
+            // shape.
+            !(line.starts_with(' ')
+                && trimmed.starts_with("at ")
+                && trimmed
+                    .rsplit(':')
+                    .take(2)
+                    .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit())))
+        })
+        .collect();
+    kept.join("\n")
 }
 
 /// What a program that called its language's `exit` is told, in place of the backtrace that carried

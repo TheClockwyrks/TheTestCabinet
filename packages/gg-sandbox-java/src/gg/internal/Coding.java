@@ -7,7 +7,10 @@ import gg.ToolErrorCode;
  * <b>The frames</b> — how a {@link Value} becomes the bytes {@link Abi} carries, and how the host's
  * answer becomes a {@link Value} again or a raised {@link ToolError}.
  *
- * <p>Nothing here is model-facing. The encoding is gg's own and gg owns both ends of it; the Rust
+ * <p>Nothing here is model-facing, and nothing describes it to a model — {@link #call} takes an
+ * operation id as data, which is exactly the shape the seam forbids a <i>capability</i> to reach a
+ * program as, and it is under the typed surface rather than in it. See {@link Abi}'s class note for
+ * what keeps it there. The encoding is gg's own and gg owns both ends of it; the Rust
  * half is {@code crates/gg/src/sandbox/membrane/wire.coding.rs}, whose header carries the table this
  * file implements and the argument for why it is a tagged binary form rather than JSON. In short: a
  * JSON reader is a string scanner, an escape decoder and a number parser compiled into every program

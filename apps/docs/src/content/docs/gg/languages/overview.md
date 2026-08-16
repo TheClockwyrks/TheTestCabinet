@@ -71,12 +71,17 @@ Java and Kotlin are moving onto TeaVM's WebAssembly target, where each program
 is its own component and no JavaScript is on the road. Both arm pages state what
 their arm does today.
 
-The two JVM arms reach gg through a single imported function,
-`test-cabinet:gg/wire`'s `call`, taking an operation id and the encoded
-arguments and answering the encoded result. Every other guest binds the typed
-interfaces directly, which requires a binding generator for its language; Java
-has none, so the ABI its SDK implements is one string and two byte lists. The
-host answers each id by calling the same typed host function the typed
+On that route the two arms reach gg through one imported interface,
+`test-cabinet:gg/wire`. Every other guest binds the typed interfaces directly,
+which requires a binding generator for its language; Java has none, so the ABI
+its SDK implements is one string, two byte lists and a scalar. `call` takes an
+operation id and the encoded arguments, runs the operation, and answers the byte
+length of its encoded result; `take` hands those bytes over. Two steps rather
+than one because a JVM guest may allocate only while the host holds no address
+into its memory, so it sizes its buffer between them and carries an answer of
+any length.
+
+The host answers each id by calling the same typed host function the typed
 interfaces are implemented by, so the capability gate, the recorded call and the
 `tool-error` are one implementation for every arm. What travels inside the byte
 lists is gg's own tagged encoding, and the model-facing surface stays typed and
@@ -85,7 +90,13 @@ namespaced.
 TeaVM emits a core module with no component metadata in it, so gg stamps the
 `component-type` section for the `jvm-sandbox` world from its own WIT and
 encodes the component in process with a pinned `wasi_snapshot_preview1` reactor
-adapter.
+adapter. A compiled program's Java heap is fixed at one size, because TeaVM
+gives a program its minimum heap rather than its maximum.
+
+A failure on that route reaches the model as the runtime's own words on standard
+error: the exception's header, then frames naming the model's own file and lines.
+wasmtime's DWARF symbolication of a TeaVM artifact names other files, so the
+JVM arms report their trap frames without locations.
 
 Guest components and signature catalogues are build outputs. Each arm's
 artifacts are produced by the build from the sources in the checkout, so a

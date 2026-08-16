@@ -560,6 +560,24 @@ pub trait ProgramLanguage: Send + Sync + 'static {
         self.guest_component().is_none()
     }
 
+    /// Whether the **file and line** wasmtime symbolicates a trap's frames with, out of this
+    /// artifact's own DWARF, name places the model's program actually has.
+    ///
+    /// Almost everywhere the answer is yes, and it is why gg turns
+    /// [`WasmBacktraceDetails`](wasmtime::WasmBacktraceDetails) on at all: on the Swift arm the
+    /// runtime's message lives in an inlined frame's name and nowhere else, and on the C++ and Rust
+    /// arms a trap's line is the only line a failure has.
+    ///
+    /// An arm answers `false` when its toolchain writes DWARF that is **wrong** rather than absent —
+    /// at which point the frames are not a nicety gg can leave in, they are gg reporting a program
+    /// other than the one the model wrote. [`classify`](super::engine::classify) keeps the function
+    /// names, which are correct, and drops the locations. Ruling D11 is the rule this serves: a
+    /// location comes from a compiler reporting against the model's own file or from a source map,
+    /// and by no other means.
+    fn wasm_frames_are_located(&self) -> bool {
+        true
+    }
+
     /// This language's signature catalogue, parsed once per process.
     ///
     /// Every implementation answers with a `&'static str` embedded from the build's own `OUT_DIR`:

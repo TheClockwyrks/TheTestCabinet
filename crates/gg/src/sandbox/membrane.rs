@@ -295,6 +295,12 @@ pub(crate) struct MembraneState<A: ToolApi> {
     wasi_table: ResourceTable,
     /// Everything the guest wrote to **stderr**, bounded — see [`GuestStderr`].
     stderr: GuestStderr,
+    /// The encoded answer [the JVM wire](wire)'s `call` produced and its `take` has not yet handed
+    /// over. Empty for every other guest on this membrane, which never imports that interface.
+    ///
+    /// It is held here for one call's width and no longer: see the `wire` interface's own note for
+    /// why a JVM guest cannot be handed an answer in the same call that produced it.
+    wire_held: Vec<u8>,
 }
 
 /// A bounded, in-memory copy of everything the guest wrote to **standard error**.
@@ -612,7 +618,16 @@ impl<A: ToolApi> MembraneState<A> {
             wasi: wasi_context(stderr.clone()),
             wasi_table: ResourceTable::new(),
             stderr,
+            wire_held: Vec::new(),
         }
+    }
+
+    /// The language this program is written in, for the one question
+    /// [`classify`](super::engine::classify) has to ask an arm before it renders a failure: whether
+    /// this artifact's DWARF names places the model's program has. See
+    /// [`ProgramLanguage::wasm_frames_are_located`].
+    pub(crate) fn language(&self) -> &'static dyn ProgramLanguage {
+        self.language
     }
 
     /// What the guest wrote to **stderr**, or the empty string when it wrote nothing.

@@ -1,6 +1,6 @@
 //! **The one door the JVM arms come through**: the host side of `test-cabinet:gg/wire`.
 //!
-//! # Why one function exists at all, when fifteen typed interfaces already do
+//! # Why this door exists at all, when fifteen typed interfaces already do
 //!
 //! Every other guest on this membrane reaches the typed interfaces directly, because every other
 //! guest has a binding generator that writes the canonical ABI for them. **There is no
@@ -9,10 +9,15 @@
 //! enum, `option` and `list` in a 1200-line WIT file — written once by hand and then kept in step
 //! with it by hand, forever, on the arm gg has the least tooling for.
 //!
-//! So the two JVM arms implement the canonical ABI for **one string and two byte lists** and gg owns
-//! what travels inside them. That is the whole of the trade, and it is the same trade the arms
-//! already made when their far side was a JavaScript object rather than gg's Rust: one bridge,
-//! written once, under a typed surface.
+//! So the two JVM arms implement the canonical ABI for **one string, two byte lists and a scalar**,
+//! and gg owns what travels inside them. That is the whole of the trade, and it is the same trade
+//! the arms already made when their far side was a JavaScript object rather than gg's Rust: one
+//! bridge, written once, under a typed surface.
+//!
+//! One door, **two functions**: `call` runs the operation and answers how long its encoded result
+//! is, holding the bytes, and `take` hands them over. That is not two doors — it is one crossing
+//! split at the only moment a JVM guest may allocate. The interface's own note in
+//! `crates/gg/wit/gg-sandbox.wit` carries the measurement it comes from.
 //!
 //! # This is not a second capability model, and it is not a generic door
 //!
@@ -90,18 +95,53 @@ impl From<WireFault> for Failure {
 }
 
 impl<A: ToolApi> WireHost for MembraneState<A> {
-    /// Decode one call, run it through the typed host function it names, and encode what came back.
-    fn call(&mut self, op: String, request: Vec<u8>) -> Vec<u8> {
-        let arguments = match decode_request(&request) {
-            Ok(arguments) => arguments,
-            Err(fault) => return fault_response(&op, &fault),
+    /// Decode one call, run it through the typed host function it names, and **hold** what came back
+    /// for [`take`](WireHost::take) — answering its length.
+    ///
+    /// Two steps rather than one because of what the guest can allocate and when: see the interface's
+    /// own note in `crates/gg/wit/gg-sandbox.wit`. Nothing about the dispatch changes; only where the
+    /// bytes wait.
+    fn call(&mut self, op: String, request: Vec<u8>) -> u32 {
+        let held = match decode_request(&request) {
+            Err(fault) => fault_response(&op, &fault),
+            Ok(arguments) => match dispatch(self, &op, &arguments) {
+                Ok(value) => encode_ok(&value),
+                Err(Failure::Tool(error)) => {
+                    encode_error(&error.tool, code_name(error.code), &error.message)
+                }
+                Err(Failure::Fault(fault)) => fault_response(&op, &fault),
+            },
         };
-        match dispatch(self, &op, &arguments) {
-            Ok(value) => encode_ok(&value),
-            Err(Failure::Tool(error)) => {
-                encode_error(&error.tool, code_name(error.code), &error.message)
-            }
-            Err(Failure::Fault(fault)) => fault_response(&op, &fault),
+        // A response longer than `u32` cannot be described to a guest whose arrays are indexed by a
+        // signed 32-bit int, so it becomes a failure saying so rather than a length that wrapped
+        // into a frame the guest would read as something else. gg has no answer remotely near this;
+        // what makes it worth a line is that the wrong answer would be silent.
+        self.wire_held = match u32::try_from(held.len()) {
+            Ok(_) => held,
+            Err(_) => encode_error(
+                key(&op),
+                code_name(ErrorCode::Other),
+                &format!(
+                    "gg's answer to this call is {} bytes, which is past what this wire can \
+                     describe. Nothing about the call failed; gg cannot hand the answer over.",
+                    held.len()
+                ),
+            ),
+        };
+        u32::try_from(self.wire_held.len()).unwrap_or(u32::MAX)
+    }
+
+    /// Hand over the result [`call`](WireHost::call) is holding.
+    ///
+    /// Nothing held is gg's own drift rather than anything the program did — the SDK calls these two
+    /// in one breath — so it answers in the words a request that did not decode answers in.
+    fn take(&mut self) -> Vec<u8> {
+        match std::mem::take(&mut self.wire_held) {
+            held if held.is_empty() => fault_response(
+                "wire.take",
+                &WireFault::new("gg is holding no answer to hand over".to_string()),
+            ),
+            held => held,
         }
     }
 }
@@ -126,9 +166,8 @@ pub(crate) fn add_to_linker<A: ToolApi>(
 /// `failure.tool()` sees the call it wrote even when what went wrong was underneath it. An `op` with
 /// no dot at all has no key, and is reported whole.
 fn fault_response(op: &str, fault: &WireFault) -> Vec<u8> {
-    let tool = op.split_once('.').map_or(op, |(_, key)| key);
     encode_error(
-        tool,
+        key(op),
         code_name(ErrorCode::Other),
         &format!(
             "gg could not read this call ({fault}). That is a defect in gg rather than anything \
@@ -136,6 +175,13 @@ fn fault_response(op: &str, fault: &WireFault) -> Vec<u8> {
              one checkout and have parted. Nothing was done, and calling it again will not help."
         ),
     )
+}
+
+/// An operation id's **key**, which is what a `tool-error` is reported under: `read_file` out of
+/// `files.read_file`, so a catch site branching on `failure.tool()` sees the call the program wrote.
+/// An id with no dot at all has no key and is reported whole.
+fn key(op: &str) -> &str {
+    op.split_once('.').map_or(op, |(_, key)| key)
 }
 
 /// The wire spelling of an error code — the WIT case name, verbatim.
@@ -255,3 +301,9 @@ pub(super) const NON_OPERATIONS: &[&str] = &[
 #[cfg(test)]
 #[path = "wire.test.rs"]
 mod tests;
+
+/// The gate that drives **every** arm with the arguments its own WIT function declares, which is the
+/// one the reachability walk above cannot be.
+#[cfg(test)]
+#[path = "wire.arguments.test.rs"]
+mod argument_tests;

@@ -414,6 +414,10 @@ fn rerun_paths(root: &Path, id: &str) -> Vec<PathBuf> {
         // gg's own hand-written source under `crates/gg/src/sandbox/checkers/`.
         "java" => vec![
             "packages/gg-sandbox-java/src",
+            // The one vendored TeaVM runtime class, which is compiled into the same jar. It is not
+            // gg's text but it is gg's artifact: a change to it changes what an uncaught exception
+            // says, and that must re-cut the jar like any other source.
+            "packages/gg-sandbox-java/vendor",
             "packages/gg-sandbox-java/build.sh",
             "packages/gg-sandbox-java/java-version.sh",
         ],

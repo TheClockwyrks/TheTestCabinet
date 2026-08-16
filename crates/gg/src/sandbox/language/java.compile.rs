@@ -664,7 +664,14 @@ impl JavaCompiler {
         // The SDK goes on the same classpath TeaVM's own jars are on, which is the classpath the
         // driver hands to javac *and* to TeaVM. A model's `fs.readFile("x")` therefore type-checks
         // against the same bytes TeaVM translates, and there is no second path to keep in step.
-        let classpath = format!("{}:{}", toolchain.classpath, placed.sdk.display());
+        //
+        // IT GOES FIRST, AND THE ORDER IS LOAD-BEARING. The jar carries one vendored TeaVM runtime
+        // class — `org.teavm.runtime.ExceptionHandling`, changed in one place so that an uncaught
+        // exception prints WHAT was thrown and not only where — and TeaVM resolves the classes it
+        // translates from the classpath it is given, first match winning. Behind `teavm-core.jar`
+        // the copy would never be read and the change would vanish with no diagnostic. See
+        // `packages/gg-sandbox-java/vendor/org/teavm/runtime/ExceptionHandling.java`.
+        let classpath = format!("{}:{}", placed.sdk.display(), toolchain.classpath);
         let started = daemon(&toolchain.java).and_then(|mut command| {
             command
                 // A JVM that lives for sixty-four builds and is then replaced has no use for a

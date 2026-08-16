@@ -66,6 +66,51 @@
     static final String[] PRESERVED = { "GgEntry", "gg.internal.Abi" };
 
     /**
+     * The Java heap a compiled program gets, which is its <b>minimum and its maximum at once</b>.
+     *
+     * <h3>Why they are equal: the minimum is what a program actually gets</h3>
+     *
+     * <p>TeaVM's heap is in the module's own linear memory and TeaVM sizes it itself. A maximum
+     * larger than the minimum does <b>not</b> buy a program the difference — measured, on the
+     * production route, with a program that allocates one block per round and grows it a megabyte
+     * at a time:
+     *
+     * <ul>
+     *   <li>no heap settings at all, and min 4 MiB with max 128 MiB: identical, both out of memory
+     *       after the 8 MiB round;
+     *   <li>min and max both 128 MiB: past the 65 MiB round.
+     * </ul>
+     *
+     * <p>So writing a generous maximum beside a small minimum reads as an allowance and is not one.
+     * The two are set to one number, and that number is what a program may use.
+     *
+     * <h3>What this is NOT the fix for</h3>
+     *
+     * <p>An earlier version of this file set 4 MiB and 128 MiB and blamed the pair for a program
+     * that died on its next write to standard error with {@code assertion failed at adapter line
+     * 2804}. Equal sizes did make that go away, and they were the wrong explanation: the fault was
+     * that the SDK's {@code cabi_realloc} handed the preview1 adapter its state out of a buffer the
+     * SDK then abandoned, so the adapter's magic-number check failed as soon as a collection reused
+     * it — and a bigger heap only postponed the collection. That is fixed where it lives, in
+     * {@code gg/internal/Abi.java}'s permanently-held region, and {@code jvm.wire.test.rs} drives
+     * forty-four megabytes of collection with a write to standard error after every one.
+     *
+     * <h3>What it does answer for</h3>
+     *
+     * <p>An allocation past the heap reports itself: {@code at Program.main(Program.java:4)} and
+     * {@code Out of memory}, on the guest's own standard error, in the model's own coordinates,
+     * which is the shape ruling D8a wants a resource fault in.
+     *
+     * <h3>The number</h3>
+     *
+     * <p>128 MiB, which is half the sandbox's own 256 MiB linear-memory cap — leaving the module,
+     * its static data and the ABI regions room inside the cap that actually denies a runaway. It
+     * costs nothing at rest: the memory is reserved rather than touched, and instantiate-plus-run
+     * measured 14–16 ms at every size from 8 MiB to 128 MiB.
+     */
+    static final int HEAP = 128 * 1024 * 1024;
+
+    /**
      * Turn the bytecode into what the guest runs, collecting whatever TeaVM could not translate.
      *
      * <p>WHICH TARGET IS TAKEN FROM {@code targetFile}'s own extension, because that is the one
@@ -102,17 +147,9 @@
         if (targetFile.endsWith(".wasm")) {
             build.setTargetType(TeaVMTargetType.WEBASSEMBLY_WASI);
             build.setClassesToPreserve(PRESERVED);
-            // MEASURED, AND THE FAILURE IS A HANG RATHER THAN AN ERROR. TeaVM's own heap sizes are
-            // a property of the emitted binary, not of the engine running it, and its default
-            // maximum is far below what gg's own ceilings imply a program may need: a single
-            // `byte[]` allocation past it does not throw an `OutOfMemoryError`, it spins — a 4 MiB
-            // array in a program that did nothing else ran until gg's execution timeout stopped it,
-            // with nothing on stderr and no call made. So the two are set from what gg allows:
-            // 128 MiB is half the sandbox's own 256 MiB linear-memory cap, which leaves the
-            // guest's other memory (the module, its static data, the ABI arena) room inside the
-            // cap that actually denies a runaway.
-            build.setMinHeapSize(4 * 1024 * 1024);
-            build.setMaxHeapSize(128 * 1024 * 1024);
+            // ONE NUMBER FOR BOTH, AND THAT IS THE POINT — see `HEAP`.
+            build.setMinHeapSize(HEAP);
+            build.setMaxHeapSize(HEAP);
         } else {
             build.setTargetType(TeaVMTargetType.JAVASCRIPT);
             // NONE, so the emitted code declares its entry point as a bare name in the enclosing

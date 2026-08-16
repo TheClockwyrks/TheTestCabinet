@@ -68,10 +68,19 @@ CLASSPATH="$(find "$LIBS" -name '*.jar' | sort | tr '\n' ':')"
 # version fails with a message no model could act on. `-g` so a stack frame inside the SDK still
 # carries a line number.
 #
-# The source list is sorted so the compile — and therefore the class files — do not depend on the
+# Each source list is sorted so the compile — and therefore the class files — do not depend on the
 # order the filesystem happened to hand them back.
-mapfile -t SOURCES < <(find "$HERE/src" -name '*.java' | sort)
-"$JAVAC" -Xlint:all -Werror -g --release 21 -cp "$CLASSPATH" -d "$WORK/classes" "${SOURCES[@]}"
+#
+# TWO PASSES, because `vendor/` is not gg's text. It holds one third-party runtime class, kept under
+# its own licence and changed in exactly one place so that an uncaught exception says WHAT was thrown
+# as well as where; it is compiled into this jar because the jar is what goes on TeaVM's program
+# classpath, AHEAD of TeaVM's own jars (see `java.compile.rs`). `-Xlint:all -Werror` is gg's gate on
+# gg's own sources and is not applied to it: upstream text is kept as upstream wrote it rather than
+# edited to satisfy a lint. The file's own header carries the whole argument.
+mapfile -t OWN < <(find "$HERE/src" -name '*.java' | sort)
+mapfile -t VENDORED < <(find "$HERE/vendor" -name '*.java' | sort)
+"$JAVAC" -Xlint:all -Werror -g --release 21 -cp "$CLASSPATH" -d "$WORK/classes" "${OWN[@]}"
+"$JAVAC" -nowarn -g --release 21 -cp "$CLASSPATH" -d "$WORK/classes" "${VENDORED[@]}"
 
 # A second pass over the MODEL-FACING package alone, with the JDK's own documentation checker on:
 # an undocumented parameter, a `@param` naming an argument the method does not take, a missing

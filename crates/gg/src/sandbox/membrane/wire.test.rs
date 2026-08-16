@@ -16,6 +16,29 @@ fn request(arguments: Vec<Value>) -> Vec<u8> {
     super::wire_coding::encode_ok(&Value::List(arguments))[1..].to_vec()
 }
 
+/// **One whole crossing**, the way a guest makes it: `call` runs the operation and answers how many
+/// bytes it is holding, and `take` hands them over.
+///
+/// The two are never apart in a program — the SDK's `Abi.call` makes both in one method — so they
+/// are never apart here either, and the length `call` promised is checked against the bytes `take`
+/// produced. A guest sizes its arena from that number, so a host that answered one and handed over
+/// the other would hand a program a truncated frame or an over-large one.
+fn crossing<A: crate::sandbox::membrane::ToolApi>(
+    state: &mut MembraneState<A>,
+    op: &str,
+    request: Vec<u8>,
+) -> Vec<u8> {
+    let promised = WireHost::call(state, op.to_string(), request);
+    let handed = WireHost::take(state);
+    assert_eq!(
+        handed.len(),
+        promised as usize,
+        "`{op}` promised {promised} bytes and handed over {}",
+        handed.len()
+    );
+    handed
+}
+
 /// The three fields of a failed response, or `None` when the call succeeded.
 fn failure(response: &[u8]) -> Option<(String, String, String)> {
     decode_response(response).expect("a response decodes").err()
@@ -30,11 +53,14 @@ fn answer(response: &[u8]) -> Value {
 
 /// **Every operation gg has is reachable through this wire.**
 ///
-/// The gate the whole file exists for. It calls each rendered id with **no arguments**, which every
-/// operation that takes any will refuse — what it asserts is only that the refusal is not
-/// `is not a call gg has`, because that one means gg grew an operation and this file did not grow an
-/// arm. An arm that decoded nothing and did nothing would still pass this and fail its own family's
-/// test, which is where the argument shapes are asserted.
+/// It calls each rendered id with **no arguments**, which every operation that takes any will
+/// refuse — what it asserts is only that the refusal is not `is not a call gg has`, because that one
+/// means gg grew an operation and this file did not grow an arm.
+///
+/// That is the whole of what it proves, and it is deliberately the cheap half. What an arm *does*
+/// with an argument list is asserted next door, in
+/// [the argument gate](super::argument_tests), which builds each call's arguments from gg's own WIT
+/// and drives every id with them.
 #[test]
 fn every_operation_is_reachable_through_the_wire() {
     let log = CallLog::default();
@@ -42,7 +68,7 @@ fn every_operation_is_reachable_through_the_wire() {
     let mut unreachable = Vec::new();
     for operation in OPERATIONS {
         let id = operation.id.to_string();
-        let response = WireHost::call(&mut state, id.clone(), request(Vec::new()));
+        let response = crossing(&mut state, &id, request(Vec::new()));
         if let Some((_, _, message)) = failure(&response)
             && message.contains("is not a call gg has")
         {
@@ -65,7 +91,7 @@ fn the_feedback_channel_is_reachable_and_is_not_an_operation() {
             crate::sandbox::operations::operation_by_id(id).is_none(),
             "`{id}` is in the operations table, so it is gated and this file's claim is wrong"
         );
-        let response = WireHost::call(&mut state, (*id).to_string(), request(Vec::new()));
+        let response = crossing(&mut state, id, request(Vec::new()));
         if let Some((_, _, message)) = failure(&response) {
             assert!(
                 !message.contains("is not a call gg has"),
@@ -81,11 +107,7 @@ fn the_feedback_channel_is_reachable_and_is_not_an_operation() {
 fn a_call_gg_does_not_have_is_reported_as_ggs_defect() {
     let log = CallLog::default();
     let mut state = membrane(&log);
-    let response = WireHost::call(
-        &mut state,
-        "files.teleport".to_string(),
-        request(Vec::new()),
-    );
+    let response = crossing(&mut state, "files.teleport", request(Vec::new()));
     let (tool, code, message) = failure(&response).expect("an unknown call fails");
     assert_eq!(
         tool, "teleport",
@@ -103,7 +125,7 @@ fn a_call_gg_does_not_have_is_reported_as_ggs_defect() {
 fn a_request_that_does_not_decode_is_reported_as_ggs_defect() {
     let log = CallLog::default();
     let mut state = membrane(&log);
-    let response = WireHost::call(&mut state, "files.read_file".to_string(), vec![99]);
+    let response = crossing(&mut state, "files.read_file", vec![99]);
     let (tool, code, message) = failure(&response).expect("a malformed request fails");
     assert_eq!(tool, "read_file");
     assert_eq!(code, "other");
@@ -126,11 +148,7 @@ fn a_request_that_does_not_decode_is_reported_as_ggs_defect() {
 fn a_call_outside_the_allowlist_is_refused_with_the_membranes_own_words() {
     let log = CallLog::default();
     let mut state = membrane_with(&log, &[SHELL_SHELL], None, canned_outcome);
-    let response = WireHost::call(
-        &mut state,
-        "files.list_dir".to_string(),
-        request(vec![Value::None]),
-    );
+    let response = crossing(&mut state, "files.list_dir", request(vec![Value::None]));
     let (tool, code, _) = failure(&response).expect("a withheld call is refused");
     assert_eq!(tool, "list_dir");
     assert_eq!(code, "unavailable");
@@ -145,9 +163,9 @@ fn a_call_outside_the_allowlist_is_refused_with_the_membranes_own_words() {
 fn a_granted_call_reaches_the_loop_and_answers_with_a_record() {
     let log = CallLog::default();
     let mut state = membrane(&log);
-    let response = WireHost::call(
+    let response = crossing(
         &mut state,
-        "shell.shell".to_string(),
+        "shell.shell",
         request(vec![Value::Text("echo hi".to_string()), Value::None]),
     );
     let value = answer(&response);
@@ -176,9 +194,9 @@ fn a_granted_call_reaches_the_loop_and_answers_with_a_record() {
 fn a_failed_tool_comes_back_as_the_tool_error_it_already_was() {
     let log = CallLog::default();
     let mut state = membrane(&log);
-    let response = WireHost::call(
+    let response = crossing(
         &mut state,
-        "files.read_text_file".to_string(),
+        "files.read_text_file",
         request(vec![
             Value::Text("logo.png".to_string()),
             Value::None,

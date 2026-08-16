@@ -77,7 +77,11 @@ The arm has no guest component of its own and declares TypeScript's. The build
 produces three things for it, and commits none:
 
 - `java.sdk.jar`, the SDK compiled, cut by `crates/gg-sandbox-artifacts/java`
-  running `packages/gg-sandbox-java/build.sh` and embedded in the gg binary.
+  running `packages/gg-sandbox-java/build.sh` and embedded in the gg binary. It
+  also carries `packages/gg-sandbox-java/vendor/`, one TeaVM runtime class kept
+  under its own licence and changed so that an uncaught exception prints what was
+  thrown as well as where. The jar goes first on TeaVM's program classpath, which
+  is what makes that copy the one the compiler translates.
 - `java.adapter.wasm`, the pinned `wasi_snapshot_preview1` reactor adapter both
   JVM arms encode their WebAssembly components with.
 - `java.signatures.json`, the signature catalogue, reflected by

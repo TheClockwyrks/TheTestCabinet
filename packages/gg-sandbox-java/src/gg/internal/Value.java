@@ -4,9 +4,10 @@ package gg.internal;
  * <b>One value on the wire</b> — the small alphabet gg's records, variants, enums, options and lists
  * are all written down in on the way across {@link Abi}.
  *
- * <p>Nothing here is model-facing. A program never imports this package; what a model reads is the
- * typed, namespaced surface the {@code gg} classes build on top of it, and this is what those
- * classes lower their arguments into and lift their answers out of.
+ * <p>Nothing here is model-facing, and nothing describes it to a model — see {@link Abi}'s class
+ * note for what that does and does not mean. What a model reads is the typed, namespaced surface the
+ * {@code gg} classes build on top of it, and this is what those classes lower their arguments into
+ * and lift their answers out of.
  *
  * <p>One class with a tag rather than a sealed hierarchy of eight, because every value on this wire
  * is built and read within a dozen lines of itself by code nobody browses, and eight files of

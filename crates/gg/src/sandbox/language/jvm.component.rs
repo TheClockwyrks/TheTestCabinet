@@ -83,10 +83,12 @@ fn world() -> Result<&'static (wit_parser::Resolve, wit_parser::WorldId), String
 /// which is exactly what `wasm-tools component embed` does, done in process because gg cannot
 /// shell out to a tool that is not in the image.
 ///
-/// The measured shape of what comes out of TeaVM, and therefore what this has to describe: five
-/// core imports (the four preview1 functions the adapter answers, and
-/// `test-cabinet:gg/wire`'s `call`) and three core exports (`cabi_realloc`, `run` and `memory`),
-/// with `bound-tools` beside `run`.
+/// The measured shape of what comes out of TeaVM, and therefore what this has to describe: six core
+/// imports — the four preview1 functions the adapter answers, and `test-cabinet:gg/wire`'s `call`
+/// and `take` — and the exports `run`, `bound-tools`, `cabi_realloc` and `memory`. The first three
+/// are read back by name out of the module's export section in `jvm.wire.test.rs`, because
+/// `setClassesToPreserve` silently deciding otherwise is what produces a component with no exports
+/// at all.
 pub(crate) fn componentize(module: &[u8]) -> Result<Vec<u8>, String> {
     let (resolve, world) = world()?;
     let mut embedded = module.to_vec();

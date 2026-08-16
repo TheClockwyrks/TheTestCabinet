@@ -14,21 +14,31 @@
 //! # Two targets, one of which both arms are moving to
 //!
 //! TeaVM's `WEBASSEMBLY_WASI` backend compiles a program into a **component of its own**, which
-//! [`component`] encodes and which reaches gg through the single imported function
-//! `test-cabinet:gg/wire` declares. That is where both arms are going, and everything it needs is
-//! here. Its JavaScript backend is what both arms compile through **today**, and their bundles are
-//! evaluated by the [ECMAScript guest](super::typescript); [`assembled`] is that road's own half.
+//! [`component`] encodes and which reaches gg through the one door `test-cabinet:gg/wire` declares.
+//! That is where both arms are going, and everything it needs is here. Its JavaScript backend is
+//! what both arms compile through **today**, and their bundles are evaluated by the
+//! [ECMAScript guest](super::typescript); [`assembled`] is that road's own half.
+//!
+//! The **guest** half of that crossing — `gg/internal/{Abi,Coding,Value}.java`, and the one vendored
+//! TeaVM runtime class that makes an uncaught exception print what was thrown — is in
+//! [the Java arm's SDK jar](super::java::compile) and is language-neutral. Kotlin reaches it by
+//! putting that jar on its own TeaVM classpath rather than by carrying a translation of it: a second
+//! copy would be a second canonical-ABI implementation to keep in step with one WIT, which is the
+//! thing this whole arrangement exists to avoid.
 //!
 //! # Why the sharing is real rather than a pair of copies
 //!
-//! Three of TeaVM's settings are not optional, and each fails **silently** when it is missing.
+//! Four of TeaVM's settings are not optional, and each fails **silently** when it is missing.
 //! Without `setStrict(true)` TeaVM omits the null checks that make a `NullPointerException` an
 //! exception at all, so `catch (NullPointerException)` never fires and a program that failed is
 //! recorded as one that succeeded. Without `setClassesToPreserve` on the wasm route the entry class
-//! is dead-stripped and the encode produces a component with no exports. Without
-//! `setJsModuleType(NONE)` on the JavaScript route the entry point is not a bare name the guest's
-//! scope can reach. A second copy of the code that sets them would be a standing chance for one arm
-//! to lose any one and for nobody to notice — which is the argument that has
+//! is dead-stripped and the encode produces a component with no exports. Without an equal minimum
+//! and maximum heap on the wasm route a program gets the *minimum* and not the difference, so a
+//! generous maximum reads as an allowance a program never has. Without `setJsModuleType(NONE)` on
+//! the JavaScript route
+//! the entry point is not a bare name the guest's scope can reach. A second copy of the code that
+//! sets them would be a standing chance for one arm to lose any one and for nobody to notice —
+//! which is the argument that has
 //! [JavaScript](super::javascript) serve TypeScript's prebuilt component rather than a
 //! byte-identical copy of it, one level down.
 //!
