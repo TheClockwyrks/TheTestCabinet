@@ -76,13 +76,32 @@ RFC 3339 string with a variable-length subsecond part, does not always compare
 chronologically either.
 
 The practical consequence is that **a batch runs in the order the console listed
-it**. Both consoles emit a case's repeats together — the new-run form fans each
-harness/model combination out over its "runs each" count before moving to the next
-combination, and the coverage plan emits each cell's missing runs together — so three
-runs each of three cases start as three of the first case, then three of the second,
-then three of the third, and finish in roughly that order. That is what makes a
-repeated set reviewable a case at a time instead of arriving interleaved. A caller
-that wants a different execution order submits the runs in that order.
+it**, and it is the whole mechanism by which anything upstream controls execution
+order: nothing in the dispatcher, the driver, or the queue needs to know why a run
+was enqueued, because emitting is choosing.
+
+Both consoles exploit that by emitting a case's repeats together — the new-run form
+fans each harness/model combination out over its "runs each" count before moving to
+the next combination, and a [coverage plan](/components/backend/coverage/) emits each
+cell's missing runs together — so three runs each of three cases start as three of
+the first case, then three of the second, then three of the third, and finish in
+roughly that order. That is what makes a repeated set reviewable a case at a time
+instead of arriving interleaved. A caller that wants a different execution order
+submits the runs in that order.
+
+Which axis a coverage plan puts **outside** that per-cell grouping is **configurable
+per plan**, not fixed: `outerAxis: "case"` (the default, and the historical
+behaviour) finishes one case across every combination before starting the next,
+while `outerAxis: "combination"` takes one model through every case first. A
+[ladder](/components/backend/ladders/) makes the same choice between advancing every
+climber one rung and taking one climber as far as it gets. Both settings are purely
+a decision about the order cells are handed to `POST /jobs/batch`; the dispatcher's
+behaviour is identical either way.
+
+A plan or ladder also does not enqueue its whole matrix at once. It keeps a bounded
+[review buffer](/components/backend/coverage/#the-review-buffer) of outstanding runs
+and refills it as they are reviewed, so the queue this dispatcher drains is normally
+a short, deliberately ordered slice rather than an entire sweep.
 
 Ordering governs when a run *starts*, not when it finishes: runs still execute
 concurrently up to the caps below, so a slow early run can finish after a fast later

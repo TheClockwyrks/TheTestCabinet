@@ -1,13 +1,20 @@
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useEffect } from "react";
 import { MemoryRouter } from "react-router";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AuthProvider } from "../../../client/auth";
+import type { WorkerClient } from "../../../client/clients";
+import { WorkersProvider } from "../../../client/context";
+import type { WorkersContextValue } from "../../../client/context";
+import type { InProgressRun } from "../../../client/types";
 import {
   GalleryDataProvider,
   type GalleryDataInput,
 } from "../../data/galleryContext";
 import type { RunQuery, RunQueryResult } from "../../data/runQuery";
 import { runSummaryPage } from "../../data/runQuery";
+import { RunsRuntimeProvider, useRunsRuntime } from "../../runtime/runsRuntime";
 import type { TestCaseSummary } from "../../data/testCases";
 import { RunsPage } from "./RunsPage";
 
@@ -268,5 +275,151 @@ describe("RunsPage", () => {
       }),
     );
     await waitFor(() => expect(rowNames()).toEqual(["Gamma", "Alpha", "Beta"]));
+  });
+});
+
+// --- The runs tab bar's global stop controls ---
+
+// One in-flight run in the given phase, as the reconciled active list holds it.
+function active(runId: string, state: InProgressRun["state"]): InProgressRun {
+  return {
+    runId,
+    testCaseSlug: "delta",
+    testCaseVersion: "v1.0.0",
+    variant: "base",
+    harnessSlug: "claude",
+    modelId: "anthropic/claude",
+    state,
+  };
+}
+
+// Module-level so the seeding effect below has a stable dependency and runs once
+// rather than re-tracking on every render the tracking itself provokes.
+const TWO_WAITING = [
+  active("j-queued", "queued"),
+  active("j-pending", "pending"),
+];
+const ONE_RUNNING = [active("j-running", "running")];
+
+// Seeds the runs runtime with an in-flight set, standing in for the reconcile poll
+// that normally fills it from every worker's `GET /jobs/active`. The controls read
+// that list to decide which sweeps have anything to do.
+function SeedActive({ runs }: { runs: InProgressRun[] }) {
+  const { track } = useRunsRuntime();
+  useEffect(() => {
+    for (const run of runs) track(run);
+  }, [runs, track]);
+  return null;
+}
+
+// The three sweeps as spies, plus the workers context wrapping them. Each answers
+// the way the backend does — a count, and which slices it reached — so the test can
+// assert the console reports the count rather than just succeeding quietly.
+function stopWorkers() {
+  const cancelWaitingRuns = vi.fn(async () => ({
+    canceled: 2,
+    includedWaiting: true,
+    includedActive: false,
+  }));
+  const cancelActiveRuns = vi.fn(async () => ({
+    canceled: 1,
+    includedWaiting: false,
+    includedActive: true,
+  }));
+  const cancelAllRuns = vi.fn(async () => ({
+    canceled: 3,
+    includedWaiting: true,
+    includedActive: true,
+  }));
+  const client = {
+    cancelWaitingRuns,
+    cancelActiveRuns,
+    cancelAllRuns,
+  } as unknown as WorkerClient;
+  const value = {
+    workers: [],
+    activeId: "w1",
+    active: { id: "w1", label: "Worker", url: null, local: true, client },
+    setActive: () => {},
+    addWorker: () => {},
+    removeWorker: () => {},
+  } as unknown as WorkersContextValue;
+  return { value, cancelWaitingRuns, cancelActiveRuns, cancelAllRuns };
+}
+
+// The console as the controls require it: a cancel-capable worker, a signed-in
+// account (seeded the way a reload restores one), and a seeded in-flight list.
+function renderConsole(runs: InProgressRun[]) {
+  localStorage.setItem(
+    "tcab.auth",
+    JSON.stringify({ token: "tok", account: { username: "zach" } }),
+  );
+  const workers = stopWorkers();
+  render(
+    <MemoryRouter>
+      <WorkersProvider value={workers.value}>
+        <AuthProvider>
+          <RunsRuntimeProvider>
+            <SeedActive runs={runs} />
+            <GalleryDataProvider value={galleryValue([])}>
+              <RunsPage />
+            </GalleryDataProvider>
+          </RunsRuntimeProvider>
+        </AuthProvider>
+      </WorkersProvider>
+    </MemoryRouter>,
+  );
+  return workers;
+}
+
+describe("RunsPage global stop controls", () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(() => vi.restoreAllMocks());
+
+  it("hides them where the transport cannot cancel", async () => {
+    // The bare host has no worker and no token: the cluster is absent rather than
+    // rendered as three buttons that fail when pressed.
+    renderPage([]);
+    await waitFor(() => expect(rowNames()).toHaveLength(3));
+
+    expect(screen.queryByRole("group", { name: "Stop runs" })).toBeNull();
+  });
+
+  it("clears the waiting queue and reports how many it cancelled", async () => {
+    const { cancelWaitingRuns } = renderConsole(TWO_WAITING);
+
+    const clear = await screen.findByRole("button", { name: "Clear pending" });
+    // Nothing is executing, so only the sweeps that would do something are live.
+    expect(screen.getByRole("button", { name: "Kill active" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Stop all" })).toBeEnabled();
+
+    fireEvent.click(clear);
+
+    // Cheap enough to need no confirmation — it discards no work — and the count
+    // comes back in the bar rather than the press simply succeeding quietly.
+    await waitFor(() => expect(cancelWaitingRuns).toHaveBeenCalledWith("tok"));
+    await screen.findByText("Canceled 2 waiting runs.");
+  });
+
+  it("confirms before killing runs that are already executing", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const { cancelActiveRuns } = renderConsole(ONE_RUNNING);
+
+    const kill = await screen.findByRole("button", { name: "Kill active" });
+    // Nothing is waiting, so the queue sweep has nothing to clear.
+    expect(
+      screen.getByRole("button", { name: "Clear pending" }),
+    ).toBeDisabled();
+
+    fireEvent.click(kill);
+    // Declined: the work keeps running and nothing reaches the transport.
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(cancelActiveRuns).not.toHaveBeenCalled();
+
+    confirm.mockReturnValue(true);
+    fireEvent.click(kill);
+
+    await waitFor(() => expect(cancelActiveRuns).toHaveBeenCalledWith("tok"));
+    await screen.findByText("Canceled 1 executing run.");
   });
 });

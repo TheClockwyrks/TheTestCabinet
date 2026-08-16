@@ -9,13 +9,22 @@
 //! `RunRecord` JSON plus lifted columns for ordering/pagination, with the review
 //! and links in sibling tables keyed by the run id, and a single-row
 //! `snapshot_state` holding the snapshot coalescing flags.
+//!
+//! The reviewer-tooling models (`coverage_group`, `coverage_plan`,
+//! `coverage_settings`, and the four `ladder*` tables) are console-only and never
+//! feed the public snapshot.
 
 pub mod case_reference_build;
 pub mod case_reference_sheet;
 pub mod coverage_group;
 pub mod coverage_plan;
+pub mod coverage_settings;
 pub mod harness_config;
 pub mod job;
+pub mod ladder;
+pub mod ladder_climber;
+pub mod ladder_outcome;
+pub mod ladder_rung;
 pub mod model;
 pub mod model_alias;
 pub mod model_price;

@@ -20,7 +20,7 @@ use anyhow::{Context, Result};
 
 use emit::{SchemaDoc, TsModule, finalize_schemas, finalize_ts, root_schema, ts_config, ts_decl};
 
-use test_cabinet_backend::{api as bapi, error as berr, relay, snapshot as snap};
+use test_cabinet_backend::{api as bapi, coverage::gate, error as berr, relay, snapshot as snap};
 use test_cabinet_core::{
     accounts as acct, event as ev, match_play as mp, metrics as m, review as rv, run_record as rr,
     test_case as tc, validation as val,
@@ -228,6 +228,7 @@ fn main() -> Result<()> {
                 bapi::DriverState, bapi::LaunchBody, bapi::ClaimedJob, bapi::StatusUpdate,
                 bapi::JobState, relay::JobSummary, bapi::ActiveJobOut, bapi::JobStatusOut,
                 bapi::LaunchAck, bapi::LaunchBatchBody, bapi::LaunchBatchItem, bapi::LaunchBatchAck,
+                bapi::BulkCancelOut,
                 relay::NotificationOutcome, relay::NotificationKind, relay::Notification,
                 bapi::ClientConfig,
             ],
@@ -237,13 +238,51 @@ fn main() -> Result<()> {
         // matrix a plan expands into (`GET /coverage-plans/{id}/coverage`). The
         // combination and cell types reference `HarnessSlug`, owned by the run-record
         // document.
+        //
+        // A plan's *declaration* (`CoveragePlan`) and the *schedule* it is fed under
+        // (`CoverageSchedule` — emission order, pause, auto-top-up, buffer override)
+        // are separate types because they are edited independently; `CoveragePlanOut`
+        // is the flattened shape the console actually reads. The rest are the
+        // controls around the buffer: the account-wide target, one top-up's decision,
+        // the plan-scoped review queue, and what a halt cancelled.
         TsModule {
             file: "coverage.ts",
             decls: ts_decls![&cfg;
                 bapi::ReviewPlanCase, bapi::ReviewPlanCombo,
                 bapi::CoverageGroupKind, bapi::CoverageGroup, bapi::CoverageGroupInput,
-                bapi::CoveragePlan, bapi::CoveragePlanInput, bapi::CoveragePlanSummary,
+                bapi::CoverageAxis, bapi::CoverageSchedule,
+                bapi::CoveragePlan, bapi::CoveragePlanOut, bapi::CoveragePlanInput,
+                bapi::CoveragePlanSummary,
                 bapi::CoverageCell, bapi::CoverageMatrix,
+                bapi::CoverageSettings, bapi::CoverageSettingsInput,
+                bapi::TopUpSkipped, bapi::TopUpLaunch, bapi::TopUpResult,
+                bapi::CoverageQueueEntry, bapi::CoverageQueue,
+                bapi::PauseInput, bapi::HaltResult,
+            ],
+        },
+        // Ladders (`/ladders`): an ordered series of rungs that harness+model
+        // combinations climb one at a time, gated at each rung by the requesting
+        // account's own reviews. A sibling of the coverage plan rather than a mode of
+        // it, so it gets its own module — but it reuses the plan's combination
+        // pointers (`ReviewPlanCombo`, imported from `coverage.ts`) and the review
+        // document's `Rating`, which is the gate's floor.
+        //
+        // `Gate`/`GateThreshold`/`GateOutcome` come from `backend::coverage::gate`,
+        // where the one parameterised advance rule lives; every other type here is
+        // either the ladder's declaration, its per-combination progress board, or one
+        // of the manual controls (hold, promote, reorder) over it.
+        TsModule {
+            file: "ladders.ts",
+            decls: ts_decls![&cfg;
+                gate::GateThreshold, gate::Gate, gate::GateOutcome,
+                bapi::LadderAxis, bapi::LadderSchedule,
+                bapi::LadderRung, bapi::LadderRungInput,
+                bapi::Ladder, bapi::LadderOut, bapi::LadderInput,
+                bapi::LadderOutcome, bapi::ClimberStatus,
+                bapi::RungTally, bapi::LadderCell, bapi::LadderRungOutcome,
+                bapi::LadderClimber, bapi::LadderProgressRung, bapi::LadderProgress,
+                bapi::StoredClimberOut,
+                bapi::LadderClimberInput, bapi::LadderOverrideInput, bapi::LadderRungOrderInput,
             ],
         },
     ];
@@ -325,6 +364,24 @@ fn main() -> Result<()> {
         anon(
             "coverage/coverage-matrix.schema.json",
             root_schema::<bapi::CoverageMatrix>(),
+        ),
+        // The account-wide review-buffer target (`GET /coverage-settings`), which
+        // every plan and ladder inherits unless it overrides it.
+        anon(
+            "coverage/coverage-settings.schema.json",
+            root_schema::<bapi::CoverageSettings>(),
+        ),
+        // The ladder counterparts: the declaration (`GET /ladders/{id}`, the analogue
+        // of the coverage plan) and the per-combination progress board
+        // (`GET /ladders/{id}/progress`, the analogue of the coverage matrix). The
+        // board is where the gate's outcome and tally surface, so it inlines them.
+        anon(
+            "coverage/ladder.schema.json",
+            root_schema::<bapi::LadderOut>(),
+        ),
+        anon(
+            "coverage/ladder-progress.schema.json",
+            root_schema::<bapi::LadderProgress>(),
         ),
         // Backend API: the auth surface (the token response is the canonical home
         // of Account) and the canonical review document (the home of the review

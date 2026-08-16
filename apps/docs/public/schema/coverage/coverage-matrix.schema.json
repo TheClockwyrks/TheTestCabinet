@@ -1,10 +1,25 @@
 {
   "$defs": {
+    "CoverageAxis": {
+      "description": "Which axis a coverage plan's cell loop nests on — and therefore the order its\nruns execute in, since a top-up emits cells in this order, `job.queue_seq` is\nmonotonic, and the dispatcher claims in ascending order.\n\nThe console labels these \"One case at a time\" and \"One model at a time\". They are\ndeliberately *not* described to reviewers as depth- or breadth-first: the choice\nis about what you want to be able to review together, not about tree traversal.",
+      "oneOf": [
+        {
+          "const": "case",
+          "description": "Finish one case across every combination before starting the next case. The\ndefault, and what every plan did before the axis was selectable.",
+          "type": "string"
+        },
+        {
+          "const": "combination",
+          "description": "Finish one combination across every case before starting the next\ncombination — \"take this model all the way through the plan\".",
+          "type": "string"
+        }
+      ]
+    },
     "CoverageCell": {
-      "description": "One cell of the coverage matrix: a plan case (at its pinned version) crossed\nwith a resolved combination, with the run/job counts that say how close it is to\nthe target.",
+      "description": "One cell of the coverage matrix: a plan case (at its pinned version) crossed\nwith a resolved combination, with the run/job counts that say how close it is to\nthe target and how much of it is waiting on the requester.",
       "properties": {
         "completed": {
-          "description": "Completed runs for this cell.",
+          "description": "Completed runs for this cell, counted globally.",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
@@ -20,7 +35,7 @@
           "description": "The harness."
         },
         "inFlight": {
-          "description": "In-flight jobs (queued / dispatched / running) for this cell.",
+          "description": "In-flight jobs (queued / pending / dispatched / starting / running) for this\ncell, counted globally.",
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
@@ -32,6 +47,12 @@
         "model": {
           "description": "The model id.",
           "type": "string"
+        },
+        "pending": {
+          "description": "How many of [`Self::in_flight`] are `pending` — deliberately held back rather\nthan merely waiting to be claimed, because their harness is at its parallelism\ncap or (for a game jam) another run of the same jam is already going on that\nmodel.\n\nSurfaced separately because it is the answer to \"why is my buffer full but\nnothing running?\", which is otherwise indistinguishable from a stuck queue. It\nis a **subset** of `inFlight`, not an addition to it.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
         },
         "provider": {
           "description": "The provider for a provider-routed harness, or null.",
@@ -51,6 +72,12 @@
           "description": "Whether the pinned `version` is not the newest ingested one — a hint to the\nreviewer that they may want to bump the pin.",
           "type": "boolean"
         },
+        "unreviewed": {
+          "description": "How many of [`Self::completed`] the **requesting account** has not reviewed.\nThe only per-account number on the cell: it changes nothing about what the\ncell needs, but it occupies the review buffer, which is what makes an\notherwise mysteriously idle plan explicable.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
         "variant": {
           "description": "The variant.",
           "type": "string"
@@ -69,6 +96,8 @@
         "desired",
         "completed",
         "inFlight",
+        "pending",
+        "unreviewed",
         "remaining",
         "latestVersion",
         "stale"
@@ -80,8 +109,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "The coverage matrix `GET /coverage-plans/{id}/coverage` returns: every cell plus\nthe rollups the plan dashboard header shows.",
   "properties": {
+    "bufferTarget": {
+      "description": "The buffer target in force for this plan (its own override, else the\naccount's setting, else the backend default).",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
     "cells": {
-      "description": "Every `case × combination` cell, in plan order (cases outer, combinations\ninner).",
+      "description": "Every `case × combination` cell, in the plan's own emission order — which\naxis is outer is the plan's [`CoverageSchedule::outer_axis`], echoed below so\na reader knows what the order means without fetching the plan again.",
       "items": {
         "$ref": "#/$defs/CoverageCell"
       },
@@ -99,14 +134,46 @@
       "minimum": 0,
       "type": "integer"
     },
+    "outerAxis": {
+      "$ref": "#/$defs/CoverageAxis",
+      "description": "The axis the cells above are ordered on."
+    },
     "runsMissing": {
       "description": "The sum of every cell's `remaining` — the total runs still to trigger.",
       "format": "uint32",
       "minimum": 0,
       "type": "integer"
+    },
+    "runsOutstanding": {
+      "description": "The plan's review-buffer occupancy: in-flight jobs plus unreviewed runs. When\nthis has reached `bufferTarget`, a top-up will deliberately enqueue nothing,\nwhich is the difference between a finished plan and a full one.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "runsPending": {
+      "description": "The sum of every cell's `pending` — runs deliberately held back by the queue.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "runsUnreviewed": {
+      "description": "The sum of every cell's `unreviewed` — completed runs waiting on *you*.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
     }
   },
-  "required": ["cells", "cellsSatisfied", "cellsTotal", "runsMissing"],
+  "required": [
+    "cells",
+    "outerAxis",
+    "cellsSatisfied",
+    "cellsTotal",
+    "runsMissing",
+    "runsPending",
+    "runsUnreviewed",
+    "runsOutstanding",
+    "bufferTarget"
+  ],
   "title": "CoverageMatrix",
   "type": "object"
 }

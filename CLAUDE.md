@@ -15,7 +15,7 @@ file should be corrected.
 - **System overview & how the pieces fit:**
   [`components/architecture.md`](apps/docs/src/content/docs/components/architecture.md).
 - **Glossary:** [`terminology.md`](apps/docs/src/content/docs/terminology.md)
-  (note the two meanings of "harness").
+  (note the two meanings of "harness", and the two of "coverage").
 
 ## Component docs ↔ code
 
@@ -51,6 +51,20 @@ TypeScript types + JSON Schema for the run record contract; see
 and `packages/browser-driver/` (the Playwright driver the
 [validator](apps/docs/src/content/docs/components/core/validation.md) shells out
 to).
+
+**Reviewer scheduling (coverage plans & ladders):** the per-account planning
+surface — what runs a reviewer wants to exist and how fast they arrive — is
+documented at
+[`components/backend/coverage.md`](apps/docs/src/content/docs/components/backend/coverage.md)
+(plans, the outer axis, the review buffer, top-up, pause/halt) and
+[`components/backend/ladders.md`](apps/docs/src/content/docs/components/backend/ladders.md)
+(rungs, climbers, the gate rule). The code is `crates/backend/src/api/coverage.rs`
+and `.../ladders.rs` over two pure cores in `crates/backend/src/coverage/`
+(`schedule.rs` is the top-up algorithm, `gate.rs` the rung rule); the console pages
+are under `packages/ui/src/app/pages/account/`. Beware that **"coverage" now names
+two things** — the measurement (a plan's matrix) and the whole surface (which
+includes ladders, which have no matrix); the
+[glossary](apps/docs/src/content/docs/terminology.md) disambiguates them.
 
 **Adversarial (Foray) crates:** the [adversarial](apps/docs/src/content/docs/testing/adversarial/)
 test type's engine and host live in their own crates under `crates/`, documented

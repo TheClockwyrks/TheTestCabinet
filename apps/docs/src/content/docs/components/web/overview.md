@@ -99,6 +99,36 @@ case-scoped summary set. Only a run's **detail** page loads that run's full
 [`RunSummary`](/components/backend/snapshot/#runsjson--the-run-index) cards back
 every list, card, leaderboard, and metric.
 
+## Planning and steering runs
+
+The console's Account section is where a reviewer declares what they want run and
+how fast: [coverage plans](/components/backend/coverage/) (cases × combinations,
+with a target per cell) and [ladders](/components/backend/ladders/) (an ordered
+climb each combination ascends until it fails a rung). Both dashboards read the
+backend's derived board and drive the same controls — top up now, pause, halt, halt
+all — and both show the plan's or ladder's own unreviewed queue **in its own order**
+rather than newest-first, which is the point of having chosen an emission order at
+all.
+
+Nothing here polls in the background. Topping up happens when the console asks:
+opening a dashboard, pressing the button, or — where the plan or ladder has
+`autoTopUp` on — submitting a review, which is exactly when a buffer slot frees. The
+run order picker is labelled **"One case at a time" / "One model at a time"** (and,
+on a ladder, "Rung by rung" / "Model by model"); the words depth- and breadth-first
+appear nowhere in the console, because the choice is about what you want to review
+side by side rather than about tree traversal.
+
+Because reviewing is the loop these dashboards exist to close, opening a run from
+one and pressing back returns to **that dashboard** rather than to the global run
+list — the shared back-return machinery records the coverage section as the place to
+come back to.
+
+The Runs page carries the global counterparts to a plan's halt, on the trailing edge
+of its tab bar: **Clear pending**, **Kill active**, and **Stop all**. These are
+scoped to nothing — they stop the cabinet, not one plan — so the two that discard
+work in progress confirm first, and all three report how many runs they actually
+cancelled.
+
 ## Deployment
 
 Like the [public site](/components/site/overview/), the web console is a fully
