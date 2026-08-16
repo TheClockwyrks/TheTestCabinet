@@ -164,11 +164,10 @@ jobs:
       - script: ./scripts/ci/web-build.sh
         displayName: Build website
 
-  # The front-end unit suites, and the two type-checks no build covers (the
-  # short-link Worker and the gallery's Pages Functions). Its own job rather than
-  # steps on `web`, so a failing assertion reports as a failing test rather than as
-  # a failing build, and so it runs in parallel with it: the tests need only the
-  # small workspace runtime packages, not the app bundles.
+  # The front-end unit suites. Its own job rather than steps on `web`, so a failing
+  # assertion reports as a failing test rather than as a failing build, and so it
+  # runs in parallel with it: the tests need only the small workspace runtime
+  # packages, not the app bundles.
   - job: webtest
     displayName: "Front ends: unit tests (vitest)"
     steps:

@@ -149,13 +149,9 @@ connected to the GitHub mirror:
   indexable — a deep link that 404s is invisible to every crawler. Do **not** add
   a `/* /index.html 200` rule to `_redirects`: Pages rejects it as an infinite
   loop and ignores it. `apps/site/public/_redirects` is kept, with no rules, to
-  say so.
-- Nothing to configure for **client-side routing**: `apps/site/public/_redirects`
-  ships a `/* /index.html 200` rule, so a deep link such as `/runs/<id>` is
-  rewritten to the app shell and answered `200` at its own URL. This is what makes
-  a run page shareable and indexable — without it every deep link is an HTTP 404
-  to a crawler. Existing static assets are matched first, so the build's per-run
-  `/runs/<id>.json` and `/run-events/<id>.json` assets are unaffected.
+  say so. An existing static asset is always served as itself — only an unmatched
+  path falls back to the shell — so the build's per-run `/runs/<id>.json` and
+  `/run-events/<id>.json` assets are unaffected.
 - Create the project's **deploy hook** and give its URL to the backend as
   `TCAB_SITE_DEPLOY_HOOK_URL` (see [Deployment](/deployment/overview/)). The
   backend fires it after each snapshot upload, so a published run rebuilds the

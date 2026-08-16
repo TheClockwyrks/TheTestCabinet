@@ -35,7 +35,7 @@ and can be run from anywhere, including locally:
 | `binary-smoke.sh`    | release-build, `cargo nextest run --release` + doctests, run binary | yes |
 | `smoke-binary.sh`  | run a built binary (`--version`/`--help`/commands) | yes      |
 | `web-build.sh`     | `npm ci`, type-check + `vite build` of the front ends | yes   |
-| `web-test.sh`      | `npm ci`, `vitest run` across every workspace, plus the Worker + Pages Functions type-checks | yes |
+| `web-test.sh`      | `npm ci`, build the workspace runtime packages, `vitest run` across every workspace | yes |
 | `specs-lint.sh`    | markdownlint + cspell over `test-cases/**`         | no       |
 | `contract-drift.sh`| regenerate TS bindings + JSON Schemas, fail on diff | yes     |
 | `frozen-check.sh`  | `.frozen` test-case versions match their recorded digests | yes |
