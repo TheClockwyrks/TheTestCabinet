@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import type { CoverageGroup } from "@test-cabinet/run-record/coverage";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
+import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { routes } from "../../routes";
@@ -141,7 +142,7 @@ export function GroupsPage() {
       {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
 
       {loading ? (
-        <p className={styles.empty}>Loading groups…</p>
+        <LoadingState size="section" label="Loading groups…" />
       ) : (groups?.length ?? 0) === 0 ? (
         <div className={styles.emptyState}>
           <p className={styles.empty}>

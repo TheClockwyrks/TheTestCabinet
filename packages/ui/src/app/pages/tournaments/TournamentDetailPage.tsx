@@ -6,6 +6,7 @@ import type {
   Standing,
   TournamentRecord,
 } from "@test-cabinet/run-record";
+import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { useControllerName } from "../../data/useControllerName";
@@ -64,7 +65,7 @@ export function TournamentDetailPage() {
         </Panel>
       ) : loading || !record ? (
         <Panel>
-          <p className={styles.empty}>Loading tournament…</p>
+          <LoadingState size="section" label="Loading tournament…" />
         </Panel>
       ) : (
         <TournamentBody arena={arena} record={record} />

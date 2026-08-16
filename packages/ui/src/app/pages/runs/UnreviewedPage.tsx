@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { Pagination } from "@test-cabinet/ui";
 import { PromptHeader } from "../../components/PromptHeader";
@@ -74,7 +75,7 @@ export function UnreviewedPage() {
 
       {result.summaries.length === 0 ? (
         loading ? (
-          <p className={styles.empty}>Loading runs…</p>
+          <LoadingState size="section" label="Loading runs…" />
         ) : (
           <p className={styles.empty}>
             Nothing to review — every completed run has at least one review.
