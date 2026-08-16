@@ -21,7 +21,7 @@
     "lint:specs": "npm run lint:md && npm run spell",
     "spell": "cspell lint --no-progress --cache",
     "test": "npm run test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p functions"
   },
   "devDependencies": {
     "cspell": "^10.0.1",

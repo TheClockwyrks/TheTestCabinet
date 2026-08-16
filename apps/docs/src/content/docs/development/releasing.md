@@ -83,9 +83,9 @@ prerelease.
 
 ## Static-site topology
 
-The project deploys three independent static sites, all on **Cloudflare Pages**.
-Each is its own Pages project under its own domain; they differ only in how they
-are built.
+The project deploys three independent static sites, all on **Cloudflare Pages**,
+plus one **Worker** for the short domain. Each site is its own Pages project under
+its own domain; they differ only in how they are built.
 
 | Site | Project | Address | Built by |
 | ---- | ------- | ------- | -------- |
@@ -93,6 +93,7 @@ are built.
 | [Docs](/components/docs/overview/) (`apps/docs`) | `test-cabinet-docs` | `docs.testcabinet.ai` | GitHub Actions → `wrangler` (`deploy-docs.yml`) |
 | Per-run playable builds | `test-cabinet-runs` | a per-run `*.pages.dev` URL | `tcab publish` → `wrangler` |
 | [Reference implementations](/components/core/results/#reference-implementations) | `test-cabinet-references` | a per-variant `*.pages.dev` URL | `tcab publish-reference` → `wrangler` |
+| Short links (`apps/edge`) | `tcab-short-links` (Worker) | `tcab.ai` | `wrangler` |
 
 The docs and per-run builds are **Direct Upload** projects — built elsewhere and
 pushed with `wrangler` — while the gallery is **git-connected**: Cloudflare clones
@@ -127,9 +128,10 @@ connected to the GitHub mirror:
 - Set the **production branch** to `master`.
 - **Build command:** `npm ci && npm run build:site`. The `build:site` root
   script builds the site's transitive workspace runtime packages in dependency
-  order before the site itself — `run-record`, then `voxel-runtime` and
-  `particle-runtime` (whose types the `ui` package imports and which publish
-  types only from their built `dist/`), then `apps/site`. Building the site alone
+  order before the site itself — `run-record`, then `run-stats`, `share-links`,
+  `voxel-runtime`, and `particle-runtime` (which the `ui` package and the site's
+  build plugins import, and which publish types only from their built `dist/`),
+  then `apps/site`. Building the site alone
   fails to resolve those runtime modules on a clean checkout, so keep this list in
   the root script (not inlined here) as the single source of truth when `ui` gains
   another workspace runtime dependency.
@@ -150,12 +152,17 @@ connected to the GitHub mirror:
   a `/* /index.html 200` rule to `_redirects`: Pages rejects it as an infinite
   loop and ignores it. `apps/site/public/_redirects` is kept, with no rules, to
   say so.
-- Nothing to configure for **client-side routing**: `apps/site/public/_redirects`
-  ships a `/* /index.html 200` rule, so a deep link such as `/runs/<id>` is
-  rewritten to the app shell and answered `200` at its own URL. This is what makes
-  a run page shareable and indexable — without it every deep link is an HTTP 404
-  to a crawler. Existing static assets are matched first, so the build's per-run
-  `/runs/<id>.json` and `/run-events/<id>.json` assets are unaffected.
+- The gallery's **preview tags** are injected at request time by
+  `functions/_middleware.ts`, a Pages Function. It reads `share-index.json` (an
+  asset the build emits) and gives `/runs/<id>` and `/runs/<id>/play` their
+  OpenGraph and Twitter tags, so a shared or indexed run link unfurls as that run
+  rather than as a bare URL. The tags go into the same document every visitor
+  gets — serving crawlers something different is cloaking.
+- **Where the Functions live:** Pages resolves `functions/` from the *project*
+  root, which for this repo is the repository root (the build command runs there
+  because the gallery is one workspace of an npm workspace repo). So the
+  middleware is at `/functions/_middleware.ts`, not under `apps/site/`. Leave the
+  project's **Root directory** setting empty.
 - Create the project's **deploy hook** and give its URL to the backend as
   `TCAB_SITE_DEPLOY_HOOK_URL` (see [Deployment](/deployment/overview/)). The
   backend fires it after each snapshot upload, so a published run rebuilds the
@@ -169,6 +176,37 @@ Each per-run build is deployed under its own Cloudflare Pages **branch alias**
 (`--branch=<run-id>`), and the served URL is read back from `wrangler`'s output
 rather than constructed — Cloudflare sanitizes and truncates long branch-alias
 subdomains, so the literal `<run-id>.<project>.pages.dev` is not a reliable host.
+
+## Short links (Cloudflare Worker, one-time)
+
+`tcab.ai` is the short domain for sharing a run. `apps/edge` is the Worker behind
+it: `/r/<code>` opens a run's verdict page on the gallery and `/p/<code>` opens its
+play page, with a crawler answered by the run's preview card instead of a redirect.
+
+Two properties are worth knowing before deploying it, because they are why it needs
+so little setup:
+
+- **It has no write surface.** A code is *derived* from a run id — the leading
+  characters of it, see `@test-cabinet/share-links` — rather than minted and stored.
+  So the set of valid links is exactly the set of published runs, only the backend
+  can extend that set, and there is no endpoint to rate-limit or exhaust. This is
+  what makes the short domain safe to expose publicly.
+- **It has no state.** It resolves against `share-index.json`, an asset of the
+  *gallery* deployment, fetched over HTTP and edge-cached. No KV, no database, and
+  no deploy when a run is published: the gallery rebuild that publishes the run is
+  what makes its link resolvable.
+
+Setup:
+
+- Add `tcab.ai` as a zone in the same Cloudflare account.
+- Deploy with `npm run deploy -w @test-cabinet/edge`, which reads
+  `apps/edge/wrangler.toml` (the routes for the apex and `www`, and the
+  `GALLERY_ORIGIN` var naming the gallery it resolves to). It reuses the same
+  `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as the other `wrangler`
+  deploys, but the token needs the *Workers Scripts: Edit* permission rather than
+  *Cloudflare Pages: Edit*.
+- There is no deploy hook and nothing to rebuild per publish; redeploy only when
+  the Worker's own code changes.
 
 ## Docs (Cloudflare Pages, one-time)
 
