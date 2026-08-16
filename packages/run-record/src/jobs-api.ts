@@ -399,4 +399,14 @@ export type ClientConfig = {
    * server-side.
    */
   snapshotUrl?: string;
+  /**
+   * The short-link domain's base URL (e.g. `https://tcab.ai`), or `null` when the
+   * deployment fronts no short-link resolver. The console builds a run's share
+   * links against it; absent, it offers no share control at all.
+   *
+   * Advertised per-environment rather than compiled into the console: a staging
+   * console must not hand out production short links, since a code minted against
+   * one corpus of published runs means nothing against another.
+   */
+  shareBaseUrl?: string;
 };
