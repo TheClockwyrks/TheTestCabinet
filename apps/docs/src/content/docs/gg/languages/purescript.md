@@ -10,10 +10,10 @@ JavaScript on the host, `esbuild` flattens the module graph into one script, and
 the ECMAScript guest evaluates the script. What crosses the sandbox membrane is
 JavaScript.
 
-This is the one arm keeping the [invariants](/gg/responses-as-code/invariants/)
-import rule: a program writes `import Gg.Files as Gg.Files` for every module it
-calls, and nothing gg offers is in scope before it does. It does not keep the
-rest yet, and this page states what it does today. The compile renames the
+This arm keeps the [invariants](/gg/responses-as-code/invariants/) import rule: a
+program writes `import Gg.Files as Gg.Files` for every module it calls, and
+nothing gg offers is in scope before it does. It does not keep the rest yet, and
+this page states what it does today. The compile renames the
 module header a reply wrote to `Main`, supplies one where a reply wrote none and
 moves each diagnostic back by that line, and a guest backtrace is located in the
 bundle rather than in the model's PureScript.

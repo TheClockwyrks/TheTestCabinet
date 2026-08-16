@@ -2,11 +2,16 @@
 title: "C#"
 ---
 
-This arm keeps the [invariants](/gg/responses-as-code/invariants/) for a
+This arm keeps three of the [invariants](/gg/responses-as-code/invariants/) for a
 program: it compiles the model's own bytes, writes no import around them, and
 locates every diagnostic and every runtime frame in the model's coordinates. A
 code module is put in a class gg declares around it, which the invariants place
 outside the authorship rule.
+
+The one it does not keep is shared rather than this arm's. A guest's standard
+error is trimmed to a byte budget without counting what it dropped, so a stack
+overflow reaches the model as a report that begins part way through a frame and
+says nothing about the frames above it.
 
 ## Preparation
 

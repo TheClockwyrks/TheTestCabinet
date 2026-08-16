@@ -24,6 +24,19 @@ executes top-level statements, the model writes statements and declares nothing.
 The [prompt](/gg/prompts/) states the requirement and the language's own compiler
 holds the model to it.
 
+### Code modules are gg's to wrap
+
+A code skill's or memory's module is a skill author's file rather than a model's
+reply, so the rule above does not reach it. gg may open a namespace, a class or a
+module declaration around it and may write the line that brings gg's surface into
+it, which is what a compiled arm needs to link one at all.
+
+What still binds is the location: a module diagnostic is anchored by a
+line-control directive the language honours, by a source map, or by a wrapper
+that adds no line, and never by arithmetic. And what a module reaches is the
+module's own business: a program that binds one reaches the module's namespace,
+and reaches gg's surface only through a line the program wrote.
+
 ## Response healing
 
 [Response healing](/gg/response-healing/) is the one pass between the reply and

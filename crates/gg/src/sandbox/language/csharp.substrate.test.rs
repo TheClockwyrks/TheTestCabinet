@@ -872,6 +872,21 @@ fn a_status_a_csharp_program_ends_with_reaches_the_model_however_it_was_set() {
     );
     assert_eq!(
         said(
+            "using System;\nusing System.Threading.Tasks;\n\nvar failed = \
+             Task.FromException(new InvalidOperationException(\"unobserved\"));\nConsole.WriteLine(\
+             \"after\");\n"
+        ),
+        None,
+        "MEASURED, and the third spelling `Shape::FailureValue` is defined by: a faulted `Task` \
+         nobody awaited. .NET has not made one a process failure since 4.5 — an unobserved task \
+         exception is raised on the finalizer thread and swallowed — so `the runtime does not kill \
+         it` is this language's own answer rather than a hole in the capture. The awaited form \
+         does reach the model, which is what the ToolError and NativeFault cases above drive. \
+         Closing this one means a `TaskScheduler.UnobservedTaskException` handler and a collection \
+         at end of run, which is interception rather than capture"
+    );
+    assert_eq!(
+        said(
             "using System;\npublic static class Program { public static int Main() { return 0; } }\n"
         ),
         None,

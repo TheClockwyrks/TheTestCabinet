@@ -213,17 +213,14 @@ fn every_csharp_example_a_model_is_shown_compiles() {
     // top of its own program. Reconstructing that context is what makes this gate compile what a
     // model would really have compiled.
     //
-    // `using Gg;` is this arm's own import line, held to the catalogue's by `csharp.test.rs`. The
-    // rest are the .NET namespaces the SDK's examples write into, and each is here because an
-    // example needs it rather than to be generous — a namespace no example names is one this gate
-    // has no reason to open.
+    // `using Gg;` alone, which is this arm's own import line, held to the catalogue's by
+    // `csharp.test.rs` and the one line a documentation view quotes. Nothing else is opened: an
+    // example that needed a .NET namespace would fail here, and that failure is the signal, because
+    // either the example has to write the name in full or the view has to state the second line.
     //
-    // The one entry point comes after them and before every type declaration, because C# requires
+    // The one entry point comes after it and before every type declaration, because C# requires
     // top-level statements to precede both.
-    let mut program = format!(
-        "{}\nusing System;\nusing System.Collections.Generic;\nusing System.Linq;\n\nreturn;\n\n",
-        super::SURFACE_IMPORT,
-    );
+    let mut program = format!("{}\n\nreturn;\n\n", super::SURFACE_IMPORT);
     for (index, (label, snippet)) in snippets.iter().enumerate() {
         let body = snippet.trim_end();
         program.push_str(&format!(

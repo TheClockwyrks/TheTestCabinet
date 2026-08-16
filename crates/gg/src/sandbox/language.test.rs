@@ -292,10 +292,10 @@ fn every_language_writes_the_program_that_opens_the_session() {
 ///
 /// A documentation view of every symbol tells a model how its program reaches that symbol, out of
 /// [`ModuleView::import`](crate::sandbox::ModuleView): a line to write, or nothing to write because
-/// this arm's SDK is in a program's scope before the model's code is compiled. Nine of the eleven
-/// arms are in the second state, and the second state is a claim about **how that arm delivers its
-/// SDK** — a prelude, a precompiled header, a re-exported import, a scope injection. Nothing
-/// about the catalogue notices when that stops being true. The day an arm's SDK
+/// this arm's SDK is in a program's scope before the model's code is compiled. The arms that have
+/// not converted are in the second state, and the second state is a claim about **how that arm
+/// delivers its SDK** — a prelude, a precompiled header, a re-exported import, a scope injection.
+/// Nothing about the catalogue notices when that stops being true. The day an arm's SDK
 /// has to be imported, every view on that arm quietly tells every model the opposite, and the model
 /// pays with a compile error naming a symbol it was told it already had.
 ///
@@ -304,11 +304,9 @@ fn every_language_writes_the_program_that_opens_the_session() {
 /// request. So it is the arm's own demonstration of what a program has to do to call `docs.search`
 /// and `views.openDocsView`, and the catalogue has to agree with it:
 ///
-/// * a module that states a line is reached in the program by one of the two routes the catalogue
-///   advertises — that exact line, character for character, or the module's own
-///   [path](crate::sandbox::ModuleDoc::path) written at the call site. PureScript's compiler
-///   resolves a qualified name only under a qualified import, so its program carries the line; C#'s
-///   modules are types the program may name in full, so its program carries the path;
+/// * a module that states a line is reached in the program by the route [`PATH_ROUTE`] records for
+///   that arm: the line character for character, or the module's own
+///   [path](crate::sandbox::ModuleDoc::path) written at the call site with no line at all;
 /// * a module that states none has **no line in the program bringing it into scope**, which is what
 ///   "already there" means when a compiler is the one being told.
 ///
@@ -326,6 +324,18 @@ fn an_arms_import_line_is_the_one_its_own_opening_program_writes() {
     /// statement when it opens with one of these *and* names the module, which is the pair that
     /// makes this precise enough to keep.
     const BRINGS_INTO_SCOPE: [&str; 5] = ["import ", "use ", "using ", "#include", "require "];
+    /// **The arms whose opening program reaches a module by writing its path rather than its line.**
+    ///
+    /// A fact about the language, recorded per arm because a rule that accepted either route
+    /// everywhere would assert nothing: every arm's call sites write the module's path, so
+    /// "the line or the path" is satisfied by every program that calls anything at all, including
+    /// one that had dropped its imports entirely.
+    ///
+    /// C#'s modules are `static class`es inside a namespace an assembly reference makes reachable
+    /// in full, so its opening program names them in full and writes no `using`. Every other arm
+    /// that states a line writes that line, and the table fails in both directions: an arm listed
+    /// here that starts writing its line fails, and an arm not listed that stops writing one fails.
+    const PATH_ROUTE: [GgProgramLanguage; 1] = [GgProgramLanguage::CSharp];
 
     let mut lines_asserted = 0usize;
     for language in all_languages() {
@@ -356,14 +366,30 @@ fn an_arms_import_line_is_the_one_its_own_opening_program_writes() {
                 });
             match module.import {
                 Some(line) => {
-                    assert!(
-                        program.contains(line) || program.contains(module.path),
-                        "{name}: its catalogue says `{}` is reached with `{line}` or by that path, \
-                         and the opening program gg writes for this arm calls into it with \
-                         neither. One of the two is wrong, and the model is told the catalogue's \
-                         answer:\n{program}",
-                        module.path
-                    );
+                    match PATH_ROUTE.contains(&language.id()) {
+                        true => {
+                            assert!(
+                                program.contains(module.path),
+                                "{name}: `PATH_ROUTE` records that its opening program reaches a \
+                                 module by writing its path, and this one does not name `{}` at \
+                                 all:\n{program}",
+                                module.path
+                            );
+                            assert!(
+                                !program.contains(line),
+                                "{name}: `PATH_ROUTE` records that its opening program writes no \
+                                 line, and this one writes `{line}`; delete its row:\n{program}"
+                            );
+                        }
+                        false => assert!(
+                            program.contains(line),
+                            "{name}: its catalogue says `{}` is reached with `{line}`, and the \
+                             opening program gg writes for this arm calls into it without that \
+                             line. One of the two is wrong, and the model is told the catalogue's \
+                             answer:\n{program}",
+                            module.path
+                        ),
+                    }
                     lines_asserted += 1;
                 }
                 None => {

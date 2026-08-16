@@ -62,11 +62,11 @@ failure type every failed call raises, documented under `core` and reached the
 way every other name is. `lib` holds the code the agent has loaded, and the
 reply to the read that loaded something quotes the form that reaches it.
 
-Which line reaches a name is the arm's, and PureScript is the one arm where the
-program writes one today. Every other puts gg's surface in a program's scope
-before it compiles, so a model reads its own arm's answer in its prompt and in
-every [documentation view](/gg/responses-as-code/views/) it opens. See
-[static SDKs](/gg/languages/static-sdks/).
+Which line reaches a name is the arm's, and a model reads its own arm's answer in
+its prompt and in every [documentation view](/gg/responses-as-code/views/) it
+opens. [Static SDKs](/gg/languages/static-sdks/) records which arms a program
+writes a line on and which put gg's surface in scope before the program
+compiles.
 
 ## Static binding
 
