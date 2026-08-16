@@ -93,7 +93,10 @@ unpublished, and so unreviewed — run sorts and pages among the published ones
 rather than being pinned ahead of them; only **in-progress** runs, which have no
 record to list yet, still lead the first page. The home page fetches a recent
 window, and the case-scoped leaderboard and metrics views fetch one bounded,
-case-scoped summary set. Only a run's **detail** page loads that run's full
+case-scoped summary set. A model's **Overview** tab fetches two such sets: a
+model-scoped one, which is what its case/variant picker is built from, and the
+selected case's case-scoped one, which is the field it places the model against.
+Only a run's **detail** page loads that run's full
 [record](/components/core/run-records/) (and its reviews),
 [lazily](/components/backend/api/#get-runsid), one run at a time. Lightweight
 [`RunSummary`](/components/backend/snapshot/#runsjson--the-run-index) cards back

@@ -1,9 +1,0 @@
-@use "../../../styles/tokens" as t;
-
-// Shared styles for the thin model detail tab pages (the About tab) whose body
-// is little more than a Panel with a line of copy.
-
-.empty {
-  margin: 0;
-  color: t.$color-text-muted;
-}
