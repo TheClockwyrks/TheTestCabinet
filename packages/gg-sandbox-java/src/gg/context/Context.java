@@ -2,11 +2,10 @@ package gg.context;
 
 import gg.ToolError;
 import gg.ToolErrorCode;
+import gg.internal.Coding;
 import gg.internal.Read;
-import gg.internal.Wire;
+import gg.internal.Value;
 import java.util.List;
-import org.teavm.jso.JSObject;
-import org.teavm.jso.core.JSArray;
 
 /**
  * Reclaim room in the agent's own context window.
@@ -35,8 +34,7 @@ public final class Context {
      * @ggop context.evict_file_view
      */
     public static ReclaimReport evictFileView() {
-        return Read.reclaimReport(Wire.call("evict_file_view", Wire.context(), "context",
-                "evictFileView", Wire.args()));
+        return Read.reclaimReport(Coding.call("context.evict_file_view", Value.none()));
     }
 
     /**
@@ -49,8 +47,7 @@ public final class Context {
      * @ggop context.evict_file_view
      */
     public static ReclaimReport evictFileView(String path) {
-        return Read.reclaimReport(Wire.call("evict_file_view", Wire.context(), "context",
-                "evictFileView", Wire.args(Wire.text(path))));
+        return Read.reclaimReport(Coding.call("context.evict_file_view", Value.of(path)));
     }
 
     /**
@@ -68,15 +65,13 @@ public final class Context {
      * @ggop context.archive_thread
      */
     public static ReclaimReport archiveThread(TurnRange... ranges) {
-        JSArray<JSObject> lowered = new JSArray<>();
-        for (TurnRange range : ranges) {
-            JSObject span = Wire.object();
-            Wire.set(span, "from", Wire.number(range.from()));
-            Wire.set(span, "to", Wire.number(range.to()));
-            lowered.push(span);
+        Value[] spans = new Value[ranges.length];
+        for (int index = 0; index < ranges.length; index++) {
+            spans[index] = Value.record()
+                    .put("start", Value.of(ranges[index].from()))
+                    .put("end", Value.of(ranges[index].to()));
         }
-        return Read.reclaimReport(Wire.call("archive_thread", Wire.context(), "context",
-                "archiveThread", Wire.args(lowered)));
+        return Read.reclaimReport(Coding.call("context.archive_thread", Value.list(spans)));
     }
 
     /**
@@ -92,8 +87,7 @@ public final class Context {
      * @ggop context.search_archive
      */
     public static ArchiveSearch searchArchive(String query) {
-        return Read.archiveSearch(Wire.call("search_archive", Wire.context(), "context",
-                "searchArchive", Wire.args(Wire.text(query))));
+        return Read.archiveSearch(Coding.call("context.search_archive", Value.of(query)));
     }
 
     /**
@@ -117,8 +111,7 @@ public final class Context {
      * @ggop context.compact
      */
     public static void compact(String summary, String... files) {
-        Wire.run("compact", Wire.context(), "context", "compact",
-                Wire.args(Wire.text(summary), Wire.texts(files)));
+        Coding.call("context.compact", Value.of(summary), Value.texts(files));
     }
 
     // -------------------------------------------------------------------------------------------

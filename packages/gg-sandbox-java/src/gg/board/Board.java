@@ -2,10 +2,10 @@ package gg.board;
 
 import gg.ToolError;
 import gg.ToolErrorCode;
+import gg.internal.Coding;
 import gg.internal.Read;
-import gg.internal.Wire;
+import gg.internal.Value;
 import java.util.List;
-import org.teavm.jso.JSObject;
 
 /**
  * The epic and issue board, on which work is decomposed into dispatchable units.
@@ -35,12 +35,11 @@ public final class Board {
      * @ggop board.create_epic
      */
     public static EpicCreated createEpic(String prefix, String title, String description) {
-        JSObject epic = Wire.object();
-        Wire.set(epic, "prefix", Wire.text(prefix));
-        Wire.set(epic, "title", Wire.text(title));
-        Wire.set(epic, "description", Wire.text(description));
-        return Read.epicCreated(Wire.call("create_epic", Wire.project(), "project", "createEpic",
-                Wire.args(epic)));
+        Value epic = Value.record()
+                .put("prefix", Value.of(prefix))
+                .put("title", Value.of(title))
+                .put("description", Value.of(description));
+        return Read.epicCreated(Coding.call("board.create_epic", epic));
     }
 
     /**
@@ -86,14 +85,17 @@ public final class Board {
      */
     public static IssueCreated createIssue(String title, String inScope, String outOfScope,
             String completionCriteria, String agent, IssueOptions options) {
-        JSObject issue = options.lowered();
-        Wire.set(issue, "title", Wire.text(title));
-        Wire.set(issue, "inScope", Wire.text(inScope));
-        Wire.set(issue, "outOfScope", Wire.text(outOfScope));
-        Wire.set(issue, "completionCriteria", Wire.text(completionCriteria));
-        Wire.set(issue, "agent", Wire.text(agent));
-        return Read.issueCreated(Wire.call("create_issue", Wire.project(), "project",
-                "createIssue", Wire.args(issue)));
+        Value issue = Value.record()
+                .put("title", Value.of(title))
+                .put("description", options.description)
+                .put("in-scope", Value.of(inScope))
+                .put("out-of-scope", Value.of(outOfScope))
+                .put("completion-criteria", Value.of(completionCriteria))
+                .put("blocked-by", options.blockedBy)
+                .put("epic-id", options.epicId)
+                .put("agent", Value.of(agent))
+                .put("reviewers", options.reviewers);
+        return Read.issueCreated(Coding.call("board.create_issue", issue));
     }
 
     /**
@@ -107,8 +109,7 @@ public final class Board {
      * @ggop board.update_issue
      */
     public static void updateIssue(String id, IssuePatch patch) {
-        Wire.run("update_issue", Wire.project(), "project", "updateIssue",
-                Wire.args(Wire.text(id), patch.lowered()));
+        Coding.call("board.update_issue", Value.of(id), patch.lowered());
     }
 
     /**
@@ -122,8 +123,7 @@ public final class Board {
      * @ggop board.set_issue_blocked_by
      */
     public static void setIssueBlockedBy(String id, String... blockedBy) {
-        Wire.run("set_issue_blocked_by", Wire.project(), "project", "setIssueBlockedBy",
-                Wire.args(Wire.text(id), Wire.texts(blockedBy)));
+        Coding.call("board.set_issue_blocked_by", Value.of(id), Value.texts(blockedBy));
     }
 
     /**
@@ -135,8 +135,7 @@ public final class Board {
      * @ggop board.remove_epic
      */
     public static BoardUsage removeEpic(String id) {
-        return Read.boardUsage(Wire.call("remove_epic", Wire.project(), "project", "removeEpic",
-                Wire.args(Wire.text(id))));
+        return Read.boardUsage(Coding.call("board.remove_epic", Value.of(id)));
     }
 
     /**
@@ -148,8 +147,7 @@ public final class Board {
      * @ggop board.remove_issue
      */
     public static BoardUsage removeIssue(String id) {
-        return Read.boardUsage(Wire.call("remove_issue", Wire.project(), "project", "removeIssue",
-                Wire.args(Wire.text(id))));
+        return Read.boardUsage(Coding.call("board.remove_issue", Value.of(id)));
     }
 
     /**
@@ -166,8 +164,7 @@ public final class Board {
      * @ggop board.wait_for_issue
      */
     public static String waitForIssue(String id) {
-        return Wire.asString(Wire.call("wait_for_issue", Wire.project(), "project",
-                "waitForIssue", Wire.args(Wire.text(id))));
+        return Coding.call("board.wait_for_issue", Value.of(id)).text();
     }
 
     // -------------------------------------------------------------------------------------------
@@ -223,7 +220,7 @@ public final class Board {
         /** Not started, and dispatchable once its blockers are done. */
         OPEN("open"),
         /** Dispatched, with its assigned agent working on it. */
-        IN_PROGRESS("in_progress"),
+        IN_PROGRESS("in-progress"),
         /** Finished and, where this run requires reviewers, approved. */
         DONE("done");
 
@@ -256,7 +253,17 @@ public final class Board {
      * }</pre>
      */
     public static final class IssueOptions {
-        private final JSObject options = Wire.object();
+        /** The description, absent until one is named. */
+        Value description = Value.none();
+
+        /** The issues this one waits on; empty until some are named. */
+        Value blockedBy = Value.list();
+
+        /** The epic this issue is grouped under, absent until one is named. */
+        Value epicId = Value.none();
+
+        /** Who reviews the work; empty until some are named. */
+        Value reviewers = Value.list();
 
         /** An issue with none of the optional parts filled in. */
         public IssueOptions() {
@@ -269,7 +276,7 @@ public final class Board {
          * @return these options, so calls chain
          */
         public IssueOptions description(String description) {
-            Wire.set(options, "description", Wire.text(description));
+            this.description = Value.of(description);
             return this;
         }
 
@@ -280,7 +287,7 @@ public final class Board {
          * @return these options, so calls chain
          */
         public IssueOptions blockedBy(String... blockedBy) {
-            Wire.set(options, "blockedBy", Wire.texts(blockedBy));
+            this.blockedBy = Value.texts(blockedBy);
             return this;
         }
 
@@ -291,7 +298,7 @@ public final class Board {
          * @return these options, so calls chain
          */
         public IssueOptions epic(String epicId) {
-            Wire.set(options, "epicId", Wire.text(epicId));
+            this.epicId = Value.of(epicId);
             return this;
         }
 
@@ -303,13 +310,8 @@ public final class Board {
          * @return these options, so calls chain
          */
         public IssueOptions reviewers(String... reviewers) {
-            Wire.set(options, "reviewers", Wire.texts(reviewers));
+            this.reviewers = Value.texts(reviewers);
             return this;
-        }
-
-        /** What was set, on its way out. */
-        JSObject lowered() {
-            return options;
         }
     }
 
@@ -322,7 +324,26 @@ public final class Board {
      * leaves the grouping alone while {@code clearEpic} detaches the issue from the epic it has.
      */
     public static final class IssuePatch {
-        private final JSObject patch = Wire.object();
+        /** The new title, absent until one is named. */
+        private Value title = Value.none();
+
+        /** What to do to the description: keep it, clear it, or set it. */
+        private Value description = Value.variant("keep", null);
+
+        /** What is in scope, absent until it is named. */
+        private Value inScope = Value.none();
+
+        /** What is out of scope, absent until it is named. */
+        private Value outOfScope = Value.none();
+
+        /** The completion criteria, absent until they are named. */
+        private Value completionCriteria = Value.none();
+
+        /** The new status, absent until one is named. */
+        private Value status = Value.none();
+
+        /** What to do to the epic: keep it, ungroup the issue, or set it. */
+        private Value epic = Value.variant("keep", null);
 
         /** A revision that changes nothing yet. */
         public IssuePatch() {
@@ -335,7 +356,7 @@ public final class Board {
          * @return this revision, so calls chain
          */
         public IssuePatch title(String title) {
-            Wire.set(patch, "title", Wire.text(title));
+            this.title = Value.of(title);
             return this;
         }
 
@@ -346,7 +367,7 @@ public final class Board {
          * @return this revision, so calls chain
          */
         public IssuePatch description(String description) {
-            Wire.set(patch, "description", Wire.text(description));
+            this.description = Value.variant("set", Value.of(description));
             return this;
         }
 
@@ -356,7 +377,7 @@ public final class Board {
          * @return this revision, so calls chain
          */
         public IssuePatch clearDescription() {
-            Wire.clear(patch, "description");
+            this.description = Value.variant("clear", null);
             return this;
         }
 
@@ -367,7 +388,7 @@ public final class Board {
          * @return this revision, so calls chain
          */
         public IssuePatch inScope(String inScope) {
-            Wire.set(patch, "inScope", Wire.text(inScope));
+            this.inScope = Value.of(inScope);
             return this;
         }
 
@@ -378,7 +399,7 @@ public final class Board {
          * @return this revision, so calls chain
          */
         public IssuePatch outOfScope(String outOfScope) {
-            Wire.set(patch, "outOfScope", Wire.text(outOfScope));
+            this.outOfScope = Value.of(outOfScope);
             return this;
         }
 
@@ -389,7 +410,7 @@ public final class Board {
          * @return this revision, so calls chain
          */
         public IssuePatch completionCriteria(String completionCriteria) {
-            Wire.set(patch, "completionCriteria", Wire.text(completionCriteria));
+            this.completionCriteria = Value.of(completionCriteria);
             return this;
         }
 
@@ -400,7 +421,7 @@ public final class Board {
          * @return this revision, so calls chain
          */
         public IssuePatch status(IssueStatus status) {
-            Wire.set(patch, "status", Wire.text(status.wireName()));
+            this.status = Value.of(status.wireName());
             return this;
         }
 
@@ -411,7 +432,7 @@ public final class Board {
          * @return this revision, so calls chain
          */
         public IssuePatch epic(String epicId) {
-            Wire.set(patch, "epicId", Wire.text(epicId));
+            this.epic = Value.variant("set", Value.of(epicId));
             return this;
         }
 
@@ -421,13 +442,20 @@ public final class Board {
          * @return this revision, so calls chain
          */
         public IssuePatch clearEpic() {
-            Wire.clear(patch, "epicId");
+            this.epic = Value.variant("ungroup", null);
             return this;
         }
 
         /** What was set, on its way out. */
-        JSObject lowered() {
-            return patch;
+        Value lowered() {
+            return Value.record()
+                    .put("title", title)
+                    .put("description", description)
+                    .put("in-scope", inScope)
+                    .put("out-of-scope", outOfScope)
+                    .put("completion-criteria", completionCriteria)
+                    .put("status", status)
+                    .put("epic", epic);
         }
     }
 }

@@ -11,17 +11,18 @@
 //! [the lookup](super::language()) never answers with it. It is the road two registered arms drive
 //! down.
 //!
-//! # Two targets, one of which both arms are moving to
+//! # Two targets, and the arms are one each
 //!
 //! TeaVM's `WEBASSEMBLY_WASI` backend compiles a program into a **component of its own**, which
 //! [`component`] encodes and which reaches gg through the one door `test-cabinet:gg/wire` declares.
-//! That is where both arms are going, and everything it needs is here. Its JavaScript backend is
-//! what both arms compile through **today**, and their bundles are evaluated by the
-//! [ECMAScript guest](super::typescript); [`assembled`] is that road's own half.
+//! That is [Java](super::java)'s road. Its JavaScript backend is what [Kotlin](super::kotlin)
+//! compiles through, and that arm's bundles are evaluated by the
+//! [ECMAScript guest](super::typescript); [`assembled`] and everything below it is that road's own
+//! half, and it goes when that arm converts.
 //!
 //! The **guest** half of that crossing — `gg/internal/{Abi,Coding,Value}.java`, and the one vendored
 //! TeaVM runtime class that makes an uncaught exception print what was thrown — is in
-//! [the Java arm's SDK jar](super::java::compile) and is language-neutral. Kotlin reaches it by
+//! [the Java arm's SDK jar](super::java::compile) and is language-neutral. Kotlin will reach it by
 //! putting that jar on its own TeaVM classpath rather than by carrying a translation of it: a second
 //! copy would be a second canonical-ABI implementation to keep in step with one WIT, which is the
 //! thing this whole arrangement exists to avoid.
@@ -217,7 +218,13 @@ pub(super) fn placed_dir(arm: &str, version: &str, contents: &[&[u8]]) -> Result
 }
 
 // ---------------------------------------------------------------------------------------------
-// The bundle TeaVM wrote, and the model's own lines
+// The bundle TeaVM wrote, and the model's own lines — THE JAVASCRIPT ROAD, WHICH IS KOTLIN'S ALONE
+//
+// Everything below this line exists because a failure on that road surfaces inside a generated
+// JavaScript bundle rather than in the model's own file: the prelude, the run-time-calibrated
+// `$ggBase`, the hand-written base-64 VLQ decoder and the generated-line to model-line table. The
+// Java arm no longer reaches any of it — a Java failure arrives on the guest's own standard error,
+// in the model's own coordinates, with nothing to remap — and it goes when Kotlin converts too.
 // ---------------------------------------------------------------------------------------------
 
 /// The JavaScript gg puts in front of every compiled program, whichever arm compiled it.

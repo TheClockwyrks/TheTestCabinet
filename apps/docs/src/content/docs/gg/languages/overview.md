@@ -32,7 +32,7 @@ SDK, its own segment of the shared prompt templates and its own healing dialect.
 | [Python](/gg/languages/python/) | `python` | Evaluated as written by a guest carrying CPython 3.14, with no compiler on the turn path. |
 | [Ruby](/gg/languages/ruby/) | `ruby` | Compiled to JavaScript on the host by an embedded Opal, evaluated by a guest carrying Opal's runtime. |
 | [PureScript](/gg/languages/purescript/) | `purescript` | Type-checked and compiled to JavaScript by the run image's `purs`, bundled, evaluated by the ECMAScript guest. |
-| [Java](/gg/languages/java/) | `java` | Compiled by `javac` and then TeaVM inside a warm JVM, to JavaScript the ECMAScript guest evaluates. |
+| [Java](/gg/languages/java/) | `java` | Compiled by `javac` and then TeaVM inside a warm JVM, into the wasm component that turn is evaluated by. |
 | [Kotlin](/gg/languages/kotlin/) | `kotlin` | Compiled by the Kotlin compiler and then TeaVM inside the same warm JVM, along the same road. |
 | [Rust](/gg/languages/rust/) | `rust` | `rustc` compiles the program into the wasm component that turn is evaluated by. |
 | [Swift](/gg/languages/swift/) | `swift` | `swiftc` compiles the reply verbatim into that turn's wasm component. |
@@ -61,17 +61,17 @@ sees only the SDK. The rules the surface keeps in every language are on
 
 An arm owns its catalogue, its prompt segment and its healing dialect. A
 guest component is shared only between arms a declared table names, and a
-declared pair must hand back identical bytes. TypeScript, JavaScript, PureScript,
-Java and Kotlin all declare the ECMAScript guest; Ruby compiles to JavaScript on
+declared pair must hand back identical bytes. TypeScript, JavaScript, PureScript
+and Kotlin all declare the ECMAScript guest; Ruby compiles to JavaScript on
 the host as well and still has its own, because that component carries Opal's
-runtime. Rust, Swift and C++ have no guest to share, each program being its own
-component.
+runtime. Rust, Swift, C++ and Java have no guest to share, each program being its
+own component.
 
-Java and Kotlin are moving onto TeaVM's WebAssembly target, where each program
-is its own component and no JavaScript is on the road. Both arm pages state what
-their arm does today.
+Java compiles to TeaVM's WebAssembly target, where each program is its own
+component and no JavaScript is on the road. Kotlin is moving onto the same
+target and its page states what that arm does today.
 
-On that route the two arms reach gg through one imported interface,
+On that route an arm reaches gg through one imported interface,
 `test-cabinet:gg/wire`. Every other guest binds the typed interfaces directly,
 which requires a binding generator for its language; Java has none, so the ABI
 its SDK implements is one string, two byte lists and a scalar. `call` takes an
@@ -91,12 +91,17 @@ TeaVM emits a core module with no component metadata in it, so gg stamps the
 `component-type` section for the `jvm-sandbox` world from its own WIT and
 encodes the component in process with a pinned `wasi_snapshot_preview1` reactor
 adapter. A compiled program's Java heap is fixed at one size, because TeaVM
-gives a program its minimum heap rather than its maximum.
+gives a program its minimum heap rather than its maximum. TeaVM emits per program
+only the classlib a program reached, so there is no shared runtime a baked guest
+could hold and the encode is paid per turn.
 
 A failure on that route reaches the model as the runtime's own words on standard
 error: the exception's header, then frames naming the model's own file and lines.
 wasmtime's DWARF symbolication of a TeaVM artifact names other files, so the
-JVM arms report their trap frames without locations.
+JVM arms report their trap frames without locations. TeaVM emits a class's name
+only where it sees that name being asked for, so gg's generated entry class names
+the classes a Java program fails with, reachable and never executed, to keep the
+header from arriving blank.
 
 Guest components and signature catalogues are build outputs. Each arm's
 artifacts are produced by the build from the sources in the checkout, so a

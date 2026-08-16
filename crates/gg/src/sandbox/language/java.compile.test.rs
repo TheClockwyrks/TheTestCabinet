@@ -1,9 +1,6 @@
 //! The parts of the Java compile that are decisions rather than compilers: the toolchain pin, the
 //! diagnostic bands and the generated entry class.
 //!
-//! What TeaVM's own output is read with — the prelude, the source-map fold and its VLQ — is
-//! [shared with the Kotlin arm](crate::sandbox::language::jvm) and asserted there.
-//!
 //! None of these starts a JVM. [The substrate's tests](super::super::substrate) do, and prove that
 //! what is decided here matches what the real toolchain does.
 
@@ -55,7 +52,8 @@ fn the_driver_gg_carries_speaks_the_protocol_gg_expects() {
     let assembled = jvm::driver(FRONT);
     assert!(
         assembled.contains("setStrict(true)")
-            && assembled.contains("setJsModuleType(JSModuleType.NONE)"),
+            && assembled.contains("setClassesToPreserve(PRESERVED)")
+            && assembled.contains("TeaVMTargetType.WEBASSEMBLY_WASI"),
         "the Java arm's assembled driver carries the shared TeaVM build",
     );
 }
@@ -71,6 +69,8 @@ fn a_handshake_from_another_protocol_is_refused_by_number() {
     );
 }
 
+/// **A diagnostic is the compiler's own coordinate, uncorrected**, because the file javac read is
+/// the file the model wrote and there is nothing in front of it.
 #[test]
 fn a_diagnostic_is_located_in_the_model_s_own_coordinates() {
     let diagnostic = Diagnostic {
@@ -82,17 +82,9 @@ fn a_diagnostic_is_located_in_the_model_s_own_coordinates() {
         column: 9,
         message: "cannot find symbol".to_string(),
     };
-    // Line 14 of a file whose first 11 lines are gg's wrapper is line 3 of the reply.
     assert_eq!(
-        diagnostic.render(PROGRAM_FILE, 11),
-        "program.java:3:9: cannot find symbol"
-    );
-    // A shift that would take a line to zero or below clamps at 1 rather than underflowing: a
-    // coordinate inside gg's own header is a diagnostic gg's wrapper caused, and pointing at the
-    // model's first line is the least misleading thing to say about it.
-    assert_eq!(
-        diagnostic.render(PROGRAM_FILE, 40),
-        "program.java:1:9: cannot find symbol"
+        diagnostic.render(PROGRAM_FILE),
+        "Program.java:14:9: cannot find symbol"
     );
 
     // TeaVM locates per statement rather than per token, so it prints one coordinate.
@@ -106,8 +98,8 @@ fn a_diagnostic_is_located_in_the_model_s_own_coordinates() {
         message: "Class java.nio.file.Paths was not found".to_string(),
     };
     assert_eq!(
-        teavm.render(PROGRAM_FILE, 11),
-        "program.java:1: Class java.nio.file.Paths was not found"
+        teavm.render(PROGRAM_FILE),
+        "Program.java:12: Class java.nio.file.Paths was not found"
     );
 }
 
@@ -142,8 +134,11 @@ fn javac_s_own_codes_decide_which_band_a_refusal_is() {
     assert!(!teavm.is_parse_error());
 }
 
+/// **A refusal about gg's own entry class is the model's shape refusal**, in the words of the
+/// convention it broke — because that file names the model's own class and can fail for no other
+/// reason. A refusal about anything else gg generated is gg's own and the model never sees it.
 #[test]
-fn a_refusal_about_gg_s_own_generated_file_is_not_the_model_s_to_fix() {
+fn a_refusal_about_gg_s_own_entry_class_quotes_the_convention_back() {
     let report = Report {
         ok: false,
         internal: None,
@@ -157,10 +152,56 @@ fn a_refusal_about_gg_s_own_generated_file_is_not_the_model_s_to_fix() {
             message: "cannot find symbol: class Program".to_string(),
         }],
     };
-    let failure = verdict(&report, PROGRAM_FILE, 11).expect_err("refused");
+    let failure = verdict(&report, PROGRAM_FILE).expect_err("refused");
+    let PrepareFailure::Program(PrepareError::Unsupported(rendered)) = &failure else {
+        panic!("a program that did not declare what gg calls is a shape refusal: {failure:?}");
+    };
+    assert!(
+        rendered.contains("public final class Program")
+            && rendered.contains("public static void main(String[] args)"),
+        "{rendered}"
+    );
+
+    // The other of gg's two, which can only fail because the program declared a class of the same
+    // name — so the model is told which name to change rather than being handed gg's file.
+    let report = Report {
+        ok: false,
+        internal: None,
+        diagnostics: vec![Diagnostic {
+            stage: "javac".to_string(),
+            error: true,
+            code: Some("compiler.err.duplicate.class".to_string()),
+            file: Some("Lib.java".to_string()),
+            line: 1,
+            column: 1,
+            message: "duplicate class: Lib".to_string(),
+        }],
+    };
+    let failure = verdict(&report, PROGRAM_FILE).expect_err("refused");
+    let PrepareFailure::Program(PrepareError::Unsupported(rendered)) = &failure else {
+        panic!("a name gg needs and the program took is a shape refusal: {failure:?}");
+    };
+    assert!(rendered.contains("`Lib`"), "{rendered}");
+
+    // A file that is neither the model's nor one of gg's two is drift rather than a shape the model
+    // can fix, and stays the operator's.
+    let report = Report {
+        ok: false,
+        internal: None,
+        diagnostics: vec![Diagnostic {
+            stage: "javac".to_string(),
+            error: true,
+            code: Some("compiler.err.cant.resolve.location".to_string()),
+            file: Some("GgModule_helpers.java".to_string()),
+            line: 1,
+            column: 1,
+            message: "cannot find symbol".to_string(),
+        }],
+    };
+    let failure = verdict(&report, PROGRAM_FILE).expect_err("refused");
     assert!(
         matches!(failure, PrepareFailure::Toolchain(_)),
-        "gg's own generated code failing is gg's bug, not the model's: {failure:?}"
+        "a code module that stopped compiling is not the program's fault: {failure:?}"
     );
 
     // A warning is not a refusal, whatever file it names.
@@ -177,51 +218,35 @@ fn a_refusal_about_gg_s_own_generated_file_is_not_the_model_s_to_fix() {
             message: "something worth mentioning".to_string(),
         }],
     };
-    verdict(&report, PROGRAM_FILE, 11).expect("a warning is not a verdict");
+    verdict(&report, PROGRAM_FILE).expect("a warning is not a verdict");
 }
 
+/// **The generated entry class catches nothing**, which is what ruling D8a asks of every arm: a
+/// failure reaches the model as its own runtime's dying words rather than as gg's description of
+/// them. It is the world's two exports and a call, and nothing else.
 #[test]
-fn the_entry_class_names_every_exception_it_catches() {
-    let entry = entry_for_program();
-    for name in CAUGHT {
-        assert!(entry.contains(&format!("catch ({name} failure)")), "{name}");
-    }
-    // The order is what makes the specific name reach the model: a supertype clause first would
-    // swallow it, and Java takes the first clause that matches.
-    let at = |name: &str| entry.find(name).expect("present");
-    assert!(at("ArrayIndexOutOfBoundsException") < at("java.lang.IndexOutOfBoundsException"));
-    assert!(at("NumberFormatException") < at("IllegalArgumentException"));
-    // A class the list does not name still gets a name, and a runtime that cannot answer gets a
-    // sentence rather than the word `null`.
-    assert!(entry.contains("catch (Throwable failure)"));
-    assert!(entry.contains("a failure whose class this runtime cannot name"));
-    // A failure raised by a BINDING is rethrown untouched: the guest classifies a tool failure from
-    // what the host said, and re-describing one would hide it behind a Java class nobody wrote.
-    assert!(entry.contains(&format!("{FOREIGN_MARKER:?}")));
-    // And the entry rethrows rather than swallowing — a program that failed must not be recorded as
-    // one that finished, which is what the study measured an earlier draft of this doing.
-    assert!(entry.contains("throw seen("));
-}
-
-#[test]
-fn a_module_bundle_hands_its_namespace_back_and_a_program_does_not() {
-    // A plain object, copied off the class TeaVM exported onto: the guest takes what a module
-    // evaluates to only if it is an `object`, and a class is a `function` — so handing the export
-    // back directly binds an empty namespace and raises nothing.
-    let module = Entry::Module.tail();
+fn the_entry_class_catches_nothing_and_names_the_model_s_own_class() {
+    let entry = entry_class();
     assert!(
-        module.contains(&format!("Object.keys({})", source::MODULE_GLOBAL)),
-        "{module}"
+        !entry.contains("catch (") && !entry.contains(" try {"),
+        "the entry class intercepts a failure: {entry}"
     );
-    assert!(module.contains("return $ggNamespace;"), "{module}");
-    assert!(!Entry::Program.tail().contains("return $gg"));
-    // TeaVM's callback delivers the failure DIRECTLY as its argument. A tail that read
-    // `result.exception` instead would report a failed program as a complete success, which the
-    // study measured on the Kotlin spike.
-    for tail in [Entry::Program.tail(), Entry::Module.tail()] {
-        assert!(tail.contains("if (!$ggThrown) return;"), "{tail}");
-        assert!(tail.contains("throw $ggThrown;"), "{tail}");
-    }
+    assert!(
+        entry.contains(&format!("{}.main(new String[0]);", source::PROGRAM_CLASS)),
+        "{entry}"
+    );
+    assert!(entry.contains("@Export(name = \"run\")"), "{entry}");
+    assert!(entry.contains("@Export(name = \"bound-tools\")"), "{entry}");
+    // `main` may declare a checked exception — a Java author writes `throws Exception` on one every
+    // day — so the export that calls it declares one too.
+    assert!(entry.contains("throws Throwable"), "{entry}");
+    // It declares no `main` of its own: TeaVM is rooted at the MODEL's class, which is what makes
+    // `setClassesToPreserve` load-bearing rather than incidental.
+    assert!(
+        !entry.contains("static void main("),
+        "gg's entry class declares a `main` and would be reachable without the preserve list: \
+         {entry}"
+    );
 }
 
 /// One TeaVM refusal naming a class it does not carry, at line `12 + index` of the entry file.
@@ -251,7 +276,7 @@ fn unsupported_report(count: usize) -> Report {
 
 /// What `verdict` shows a model for such a build.
 fn compile_text(count: usize) -> String {
-    let failure = verdict(&unsupported_report(count), PROGRAM_FILE, 11).expect_err("refused");
+    let failure = verdict(&unsupported_report(count), PROGRAM_FILE).expect_err("refused");
     let PrepareFailure::Program(PrepareError::Compile(rendered)) = failure else {
         panic!("an unsupported class is a compile error");
     };
@@ -270,8 +295,8 @@ fn a_refusal_under_the_bound_is_rendered_exactly_as_it_always_was() {
     let expected: Vec<String> = (0..SHOWN)
         .map(|index| {
             format!(
-                "program.java:{}: Class java.nio.file.Paths was not found",
-                index + 1
+                "Program.java:{}: Class java.nio.file.Paths was not found",
+                index + 12
             )
         })
         .collect();
@@ -292,13 +317,13 @@ fn a_refusal_under_the_bound_is_rendered_exactly_as_it_always_was() {
 fn a_refusal_past_the_bound_keeps_the_first_few_and_counts_the_rest() {
     let rendered = compile_text(50);
 
-    assert!(rendered.starts_with("program.java:1: Class"), "{rendered}");
+    assert!(rendered.starts_with("Program.java:12: Class"), "{rendered}");
     assert!(
-        rendered.contains(&format!("program.java:{}: Class", SHOWN)),
+        rendered.contains(&format!("Program.java:{}: Class", SHOWN + 11)),
         "the first {SHOWN} are what the model reads: {rendered}"
     );
     assert!(
-        !rendered.contains(&format!("program.java:{}: Class", SHOWN + 1)),
+        !rendered.contains(&format!("Program.java:{}: Class", SHOWN + 12)),
         "a diagnostic past the bound was shown: {rendered}"
     );
     assert!(
@@ -325,12 +350,12 @@ fn identical_renderings_are_folded_before_the_count_is_taken() {
         internal: None,
         diagnostics: (0..50).map(|_| unsupported(0)).collect(),
     };
-    let failure = verdict(&report, PROGRAM_FILE, 11).expect_err("refused");
+    let failure = verdict(&report, PROGRAM_FILE).expect_err("refused");
     let PrepareFailure::Program(PrepareError::Compile(rendered)) = failure else {
         panic!("an unsupported class is a compile error");
     };
     assert_eq!(
-        rendered, "program.java:1: Class java.nio.file.Paths was not found",
+        rendered, "Program.java:12: Class java.nio.file.Paths was not found",
         "fifty copies of one sentence are one sentence, with nothing left to count: {rendered}"
     );
 }
@@ -369,7 +394,6 @@ fn the_bound_does_not_decide_whose_failure_it_is() {
             diagnostics,
         },
         PROGRAM_FILE,
-        11,
     )
     .expect_err("refused");
     let PrepareFailure::Program(PrepareError::Syntax(rendered)) = failure else {
@@ -382,8 +406,8 @@ fn the_bound_does_not_decide_whose_failure_it_is() {
     );
     assert!(rendered.contains("… and 43 more like these."), "{rendered}");
 
-    // And a build whose diagnostics are all about gg's own generated class is gg's failure however
-    // many of them there are.
+    // And a build whose diagnostics are all about a file that is neither the model's nor one of
+    // gg's two is the operator's however many of them there are.
     let failure = verdict(
         &Report {
             ok: false,
@@ -393,19 +417,19 @@ fn the_bound_does_not_decide_whose_failure_it_is() {
                     stage: "javac".to_string(),
                     error: true,
                     code: Some("compiler.err.cant.resolve.location".to_string()),
-                    file: Some("GgEntry.java".to_string()),
+                    file: Some("GgModule_helpers.java".to_string()),
                     line: 7 + index,
                     column: 1,
-                    message: "cannot find symbol: class Program".to_string(),
+                    message: "cannot find symbol".to_string(),
                 })
                 .collect(),
         },
         PROGRAM_FILE,
-        11,
     )
     .expect_err("refused");
     assert!(
         matches!(failure, PrepareFailure::Toolchain(_)),
-        "gg's own generated code failing is gg's bug however loudly it fails: {failure:?}"
+        "a code module that stopped compiling is not the program's fault however loudly it fails: \
+         {failure:?}"
     );
 }

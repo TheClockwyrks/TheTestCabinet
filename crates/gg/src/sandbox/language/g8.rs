@@ -418,25 +418,6 @@ const KNOWN_HOLES: &[Hole] = &[
         // reported as `exit(1)`.
         instead: Instead::Says("the program called exit(1) instead of returning"),
     },
-    // ---- java -------------------------------------------------------------------------------
-    Hole {
-        arm: GgProgramLanguage::Java,
-        shape: Shape::NativeFault,
-        // A correct location and then a wrong one. The message carries `at program.java:5`,
-        // which is the model's own line; the loop then appends the `location` field, which is a
-        // line in the TeaVM bundle. The model reads the bogus one last. The bundle's own number is
-        // deliberately not pinned — it moves with the SDK, and what is wrong here is that there is
-        // a second location at all.
-        instead: Instead::Says("at program.java:5\n    at line "),
-    },
-    Hole {
-        arm: GgProgramLanguage::Java,
-        shape: Shape::ResourceFault,
-        // The JavaScript engine's own words for a Java program's stack overflow: no
-        // `StackOverflowError`, no class, and a bundle line where the model's would go. The
-        // `catch (StackOverflowError)` clause this arm writes for it is unreachable.
-        instead: Instead::Says("InternalError: too much recursion"),
-    },
     // ---- kotlin -----------------------------------------------------------------------------
     Hole {
         arm: GgProgramLanguage::Kotlin,

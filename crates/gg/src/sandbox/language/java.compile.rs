@@ -1,12 +1,13 @@
-//! **The Java compile** — how a model's Java becomes something the [guest](super) can evaluate, and
-//! what it costs.
+//! **The Java compile** — how a model's Java becomes the component that runs it, and what it costs.
 //!
 //! # The strategy, in one sentence
 //!
-//! A Java program is compiled to **bytecode by `javac` and then to JavaScript by TeaVM**, both
-//! inside a warm JVM gg keeps between preparations, and evaluated by the same ECMAScript guest the
-//! [TypeScript](super::super::typescript), [JavaScript](super::super::javascript) and
-//! [PureScript](super::super::purescript) arms use.
+//! A Java program is compiled to **bytecode by `javac` and then to a `wasm32` core module by
+//! TeaVM's `WEBASSEMBLY_WASI` backend**, both inside a warm JVM gg keeps between preparations, and
+//! gg encodes that module as a **component of its own** ([`jvm::component`]) — the same shape the
+//! [Rust](super::super::rust), [C++](super::super::cpp) and [Swift](super::super::swift) arms have.
+//! There is no baked guest and there cannot be one: TeaVM does not produce a Java interpreter that
+//! later runs a program, it produces the program.
 //!
 //! # Why a daemon, and why that is not a hole in the isolation contract
 //!
@@ -43,35 +44,25 @@
 //! and the only thing that makes a build independent of the last one through the same JVM) rather
 //! than for a failure this gate has been shown to catch.
 //!
-//! # The two TeaVM settings that are not optional
+//! # The three files a build reads, and which of them is the model's
 //!
-//! * `setJsModuleType(NONE)` — so the emitted code names its entry point as a **bare identifier** in
-//!   the enclosing scope. The guest evaluates a program as the body of a function whose parameters
-//!   are the API objects, and a module wrapper would put those names out of reach.
-//! * `setStrict(true)` — without it TeaVM omits the null and bounds checks that make a
-//!   `NullPointerException` an exception at all, and `catch (NullPointerException)` **silently fails
-//!   to catch**. A program that failed would be recorded as one that succeeded, which is the one
-//!   class of error a measurement harness must never make.
+//! [`PROGRAM_FILE`] is the model's reply, byte for byte. Beside it gg writes [`ENTRY_FILE`] — the
+//! component's two exports and a call to `Program.main`, with no `try` and no `catch` — and, for an
+//! agent that has loaded code, one file per [code module](super::source::module_file) and the
+//! [`Lib`](super::source::lib_class) that binds them at `lib.<key>`. TeaVM is given the **model's**
+//! class as its main class, so the whole dependency graph is rooted at the program the model wrote.
 //!
-//! # What a model is told when its program fails
+//! # What a model is told when its program fails: whatever its runtime said
 //!
-//! Java's error surface was the study's stated worry about this arm — an uncaught
-//! `NullPointerException` was measured arriving as `Error: Error: null` at a line inside TeaVM's own
-//! runtime. Both halves of that are fixed here, and what is left is stated rather than hidden.
+//! Nothing. gg catches nothing, describes nothing and re-reports nothing. A program that throws dies
+//! the way TeaVM kills it — `printHeader(); printStack(); abort();` — and what the model reads is the
+//! exception's own message and the model's own file and lines, off the guest's standard error, which
+//! is where [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) says to read
+//! it. The one thing gg changed is that upstream TeaVM printed the frames and not the header; see
+//! `packages/gg-sandbox-java/vendor/org/teavm/runtime/ExceptionHandling.java`.
 //!
-//! * **The name and the message** come from an [enumerated catch chain](entry_for_program) in the
-//!   generated entry class rather than from `getClass().getName()`, which TeaVM answers `null` for a
-//!   `NullPointerException`. The chain hands the description to JavaScript and **rethrows the
-//!   original**, so a failure a *binding* threw — a `ToolError` the host raised — reaches the guest
-//!   as itself rather than wrapped in gg's opinion of it.
-//! * **The location** comes from TeaVM's own source map, folded on the host into a
-//!   generated-line → model-line table and shipped in the bundle's [prelude](super::super::jvm::PRELUDE). A `NullPointerException`
-//!   the model caused on its line 14 is reported as `java.lang.NullPointerException` followed by
-//!   `at program.java:14`. Measured end to end.
-//! * **What is still wrong** is the `location` field itself: `feedback.program-error` carries one,
-//!   the guest fills it from the innermost frame of what was thrown, and for this arm that frame is
-//!   inside TeaVM's runtime. So the model reads the right line in the *message* and a meaningless one
-//!   in the *location*. The fix is a frame list on the wire, shared with the PureScript arm.
+//! There is no source map on this road and no offset anywhere in this file. A location arrives in the
+//! model's own coordinates because the file javac read *is* the model's file.
 //!
 //! # What the toolchain is, and where it lives
 //!
@@ -94,11 +85,16 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::sandbox::language::compile::{CompilerDaemon, CompilerPool, daemon, place, place_bytes};
+use crate::sandbox::CodeModule;
+use crate::sandbox::language::compile::{
+    CompilerDaemon, CompilerPool, Workspace, daemon, place, place_bytes,
+};
 use crate::sandbox::language::jvm::{self, HOME_ROOT, IMAGE_ROOT, JAVA_ENV, TEAVM_ENV};
-use crate::sandbox::language::{PrepareContext, PrepareError, PrepareFailure, PreparedProgram};
+use crate::sandbox::language::{
+    PrepareContext, PrepareError, PrepareFailure, PreparedModule, PreparedProgram,
+};
 
-use super::source::{self, Wrapped};
+use super::source;
 
 /// This arm's half of gg's compiler driver: the front end that reads a model's **Java**.
 ///
@@ -161,30 +157,28 @@ const START_TIMEOUT: Duration = Duration::from_secs(120);
 const SDK_FILE: &str = "gg-sdk.jar";
 
 /// The file a program's source is written into, and the one its diagnostics are located in.
+///
+/// Named for the class a program declares, because javac requires a public class and its file to
+/// agree — which is what makes half of [the convention](super::source) javac's own diagnostic rather
+/// than gg's.
 pub(super) const PROGRAM_FILE: &str = "Program.java";
 
-/// The file a code module's source is written into.
+/// The file a code module is **checked** in at the read that binds it.
 pub(super) const MODULE_FILE: &str = "Module.java";
 
 /// The file gg's generated entry class is written into.
 const ENTRY_FILE: &str = "GgEntry.java";
 
-/// What TeaVM is asked to write.
-const BUNDLE_FILE: &str = "program.js";
+/// The file the `Lib` that binds an agent's code modules is written into.
+const LIB_FILE: &str = "Lib.java";
+
+/// What TeaVM is asked to write: a `wasm32` core module, which is what the `.wasm` extension selects
+/// in [the shared driver](super::super::jvm).
+const CORE_MODULE_FILE: &str = "program.wasm";
 
 /// The name the driver is placed under. The JDK's single-file launcher requires the file name to
 /// match the public class it holds.
 const DRIVER_FILE: &str = "GgCompiler.java";
-
-/// The name a model's own file is reported under in a located failure: `Program.java` becomes
-/// `program.java` and `Module.java` becomes `module.java`.
-///
-/// Lower case because it is prose the model reads rather than a path it can open — and derived from
-/// the file rather than fixed, so a diagnostic about a code skill's module does not tell its author
-/// the line is in a program.
-fn label(file: &str) -> String {
-    file.to_ascii_lowercase()
-}
 
 /// What this arm's toolchain is pinned to.
 #[derive(Debug, Deserialize)]
@@ -226,99 +220,136 @@ pub(super) fn warm() {
     }
 }
 
-/// Compile a **program** — a model's reply — into the JavaScript the guest evaluates.
+/// Compile a **program** — a model's reply — into the component that runs it.
+///
+/// [`source`](PreparedProgram::source) is empty: there is nothing left for a guest to evaluate,
+/// because the guest *is* what this returned.
 pub(super) fn compile_program(
     source: &str,
+    modules: &[CodeModule],
     context: &PrepareContext,
 ) -> Result<PreparedProgram, PrepareFailure> {
-    let wrapped = source::wrap_program(source)?;
     Ok(PreparedProgram {
-        source: build(PROGRAM_FILE, &wrapped, Entry::Program, context)?,
-        component: None,
+        source: String::new(),
+        component: Some(compile(source, modules, context)?),
     })
 }
 
-/// Compile a **code module** — the code half of a [skill](crate::skills) or a
-/// [memory](crate::memories) — into JavaScript whose evaluation leaves a namespace behind.
+/// Compile one model program into a component, or say why it could not be.
+///
+/// `modules` are this agent's loaded code [skills](crate::skills) and [memories](crate::memories),
+/// each already through [`compile_module`]. They are **inputs to this compile**, which is what makes
+/// this arm's preparation take them at all: a compiled module is only reachable from the artifact it
+/// was built into. Each is written beside the program as its own class and reached at `Lib.<key>`.
+fn compile(
+    program: &str,
+    modules: &[CodeModule],
+    context: &PrepareContext,
+) -> Result<Vec<u8>, PrepareFailure> {
+    let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
+    // THE MODEL'S OWN BYTES. No wrapper, no header, no entry point, no import.
+    workspace
+        .write(PROGRAM_FILE, program)
+        .map_err(PrepareFailure::Toolchain)?;
+    workspace
+        .write(ENTRY_FILE, &entry_class())
+        .map_err(PrepareFailure::Toolchain)?;
+
+    let mut files = vec![PROGRAM_FILE.to_string(), ENTRY_FILE.to_string()];
+    if !modules.is_empty() {
+        let keys: Vec<&str> = modules.iter().map(|module| module.name.as_str()).collect();
+        workspace
+            .write(LIB_FILE, &source::lib_class(&keys))
+            .map_err(PrepareFailure::Toolchain)?;
+        files.push(LIB_FILE.to_string());
+        for module in modules {
+            let file = source::module_file(&module.name);
+            let wrapped = source::wrap_module(&module.source, &source::module_class(&module.name))?;
+            workspace
+                .write(&file, &wrapped.source)
+                .map_err(PrepareFailure::Toolchain)?;
+            files.push(file);
+        }
+    }
+
+    let report = request(workspace, source::PROGRAM_CLASS, CORE_MODULE_FILE, &files)?;
+    verdict(&report, PROGRAM_FILE)?;
+
+    let artifact = workspace.output().join(CORE_MODULE_FILE);
+    let module = std::fs::read(&artifact).map_err(|error| {
+        PrepareFailure::Toolchain(format!(
+            "TeaVM {} reported success and wrote no module to {}: {error}",
+            compiler_version(),
+            artifact.display(),
+        ))
+    })?;
+    jvm::component::componentize(&module).map_err(PrepareFailure::Toolchain)
+}
+
+/// Check a code [skill](crate::skills)'s or [memory](crate::memories)'s Java, and report the names
+/// its namespace offers.
+///
+/// What comes back is **the author's own source**, not an artifact, and that is the honest shape for
+/// a compiled language: there is nothing a module can be compiled into that a later program could
+/// load, so what this hands on is the body the next [program compile](compile) will build against,
+/// under the key that program's agent bound it at.
+///
+/// The compiler still runs, and what it buys is the *location*. Without it a module that does not
+/// compile would take down every program the agent writes from then on — the diagnostic would arrive
+/// against the turn's own program, in a file the author never wrote, on every turn until the module
+/// was somehow unloaded. Running `javac` here instead tells the author at the read, at the module's
+/// own line and column.
+///
+/// **javac and not TeaVM**: this output is thrown away, so asking for a wasm module would be paying
+/// TeaVM for an artifact nothing reads — and everything an author can get wrong that TeaVM would
+/// catch (a classlib method that is not there) is caught again, at the same line, on the first
+/// program compiled against it.
 pub(super) fn compile_module(
     source: &str,
     context: &PrepareContext,
-) -> Result<(String, Vec<String>), PrepareFailure> {
-    let wrapped = source::wrap_module(source)?;
-    let built = build(MODULE_FILE, &wrapped, Entry::Module, context)?;
-    Ok((built, wrapped.exports))
-}
-
-/// Which of the two things is being built.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Entry {
-    /// A model's program: run its statements, and report what they threw.
-    Program,
-    /// A code module: export its methods, and hand the namespace back.
-    Module,
-}
-
-impl Entry {
-    /// The entry class gg generates beside the model's own file.
-    fn source(self) -> String {
-        match self {
-            Self::Program => entry_for_program(),
-            Self::Module => entry_for_module(),
-        }
-    }
-
-    /// What the assembled bundle ends with.
-    fn tail(self) -> String {
-        // `main` is TeaVM's default export name, and the callback is how its runtime reports a
-        // failure — DIRECTLY, as the callback's argument. A program that read `result.exception`
-        // instead would report a failed program as a complete success, which was measured.
-        // A gg failure the program did not catch goes back as the record the membrane itself
-        // raises, BEFORE the Java description is considered: the guest classifies a tool failure
-        // from the host's own code, and a re-description would turn a refusal the model can act on
-        // into prose about a Java class.
-        let start = "main([], function ($ggThrown) {\n  if (!$ggThrown) return;\n  \
-                     if ($ggFailure) throw $ggFailure;\n  \
-                     if (!$ggMessage) throw $ggThrown;\n  \
-                     throw new Error($ggMessage + $ggLocate($ggThrown.stack));\n});\n";
-        match self {
-            Self::Program => start.to_string(),
-            // A plain object rather than the class TeaVM exported onto. The guest binds `lib.<key>`
-            // to the value evaluating a module produces and takes it only if it is an `object`, and
-            // a class is a `function` — so returning the export directly binds an empty namespace
-            // and no error, which is the quiet kind of wrong.
-            Self::Module => format!(
-                "{start}var $ggNamespace = {{}};\n\
-                 for (var $ggKey of Object.keys({global})) $ggNamespace[$ggKey] = {global}[$ggKey];\n\
-                 return $ggNamespace;\n",
-                global = source::MODULE_GLOBAL,
-            ),
-        }
-    }
-}
-
-/// Compile one wrapped source and hand back the JavaScript the guest evaluates.
-fn build(
-    file: &str,
-    wrapped: &Wrapped,
-    entry: Entry,
-    context: &PrepareContext,
-) -> Result<String, PrepareFailure> {
+) -> Result<PreparedModule, PrepareFailure> {
     let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
+    let wrapped = source::wrap_module(source, source::MODULE_CHECK_CLASS)?;
     workspace
-        .write(file, &wrapped.source)
-        .map_err(PrepareFailure::Toolchain)?;
-    workspace
-        .write(ENTRY_FILE, &entry.source())
+        .write(MODULE_FILE, &wrapped.source)
         .map_err(PrepareFailure::Toolchain)?;
 
+    let report = request(
+        workspace,
+        CHECK_ONLY,
+        CHECK_ONLY,
+        &[MODULE_FILE.to_string()],
+    )?;
+    verdict(&report, MODULE_FILE)?;
+    Ok(PreparedModule {
+        source: source.to_string(),
+        exports: wrapped.exports,
+    })
+}
+
+/// The main class and target file that ask [the driver](super::super::jvm) for `javac` alone.
+///
+/// Empty, which is the one value neither field can otherwise take: a class has a name and a target
+/// file has one. It exists because a module is *checked* rather than built — see
+/// [`compile_module`] — and asking TeaVM for a module with no entry point would be asking it for
+/// nothing.
+const CHECK_ONLY: &str = "";
+
+/// Send one build to a warm JVM and read what it answered.
+fn request(
+    workspace: &Workspace,
+    main_class: &str,
+    target: &str,
+    files: &[String],
+) -> Result<Report, PrepareFailure> {
     let mut compiler = POOL
         .checkout(JavaCompiler::start)
         .map_err(PrepareFailure::Toolchain)?;
     let request = format!(
-        "{}\t{}\t{}\t{BUNDLE_FILE}\t{file}\t{ENTRY_FILE}",
+        "{}\t{}\t{main_class}\t{target}\t{}",
         workspace.work().display(),
         workspace.output().display(),
-        source::ENTRY_CLASS,
+        files.join("\t"),
     );
     let answered = match compiler.request(&request, BUILD_TIMEOUT) {
         Ok(answered) => answered,
@@ -341,24 +372,13 @@ fn build(
     if compiler.spent() {
         compiler.retire();
     }
-
     if let Some(internal) = &report.internal {
         return Err(PrepareFailure::Toolchain(format!(
             "TeaVM {} could not build the program: {internal}",
             compiler_version(),
         )));
     }
-    verdict(&report, file, wrapped.shift)?;
-
-    jvm::assembled(
-        workspace.output(),
-        BUNDLE_FILE,
-        file,
-        wrapped.shift,
-        &label(file),
-        &entry.tail(),
-    )
-    .map_err(|error| PrepareFailure::Toolchain(format!("TeaVM {}: {error}", compiler_version())))
+    Ok(report)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -369,7 +389,7 @@ fn build(
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Report {
-    /// Whether the build produced JavaScript.
+    /// Whether the build produced its artifact.
     ///
     /// Part of the driver's protocol and deliberately kept, though nothing reads it: the [verdict]
     /// is decided by the diagnostics, because a build that "succeeded" with an error among them is
@@ -446,7 +466,24 @@ const PARSE_ERROR_PREFIXES: [&str; 6] = [
 const SHOWN: usize = 8;
 
 /// Turn a finished build into a verdict.
-pub(crate) fn verdict(report: &Report, file: &str, shift: usize) -> Result<(), PrepareFailure> {
+///
+/// Four bands, decided by **which file** — and by which compiler — was talking:
+///
+/// * the model's own file — the model's diagnostic, rendered in the model's own coordinates,
+///   because the file javac read is the file the model wrote and there is nothing to correct;
+/// * [`ENTRY_FILE`] or [`LIB_FILE`] — gg's own two generated files, each of which names something
+///   the model declared and can fail for exactly one reason: the program did not declare what gg's
+///   file names, or declared a class of the same name. That is a **shape refusal shown to the
+///   model**, in the words of the convention it broke, rather than a toolchain failure the model is
+///   not told about ([ruling D4](https://docs.testcabinet.ai/gg/responses-as-code/invariants/));
+/// * a **TeaVM** diagnostic about any other file — which is the classlib refusing to translate
+///   something the program's own call graph reached, named in the classlib's own file. It is the
+///   model's, and it says what is missing: `java.nio.file.Files.readString` is
+///   `Method java.io.BufferedReader.transferTo … was not found`, which is a call to write another
+///   way rather than a broken toolchain;
+/// * anything else — a code module's own file, or a file nobody named — which is drift rather than
+///   anything this program did, and is reported to the operator.
+pub(crate) fn verdict(report: &Report, file: &str) -> Result<(), PrepareFailure> {
     let errors: Vec<&Diagnostic> = report
         .diagnostics
         .iter()
@@ -456,9 +493,6 @@ pub(crate) fn verdict(report: &Report, file: &str, shift: usize) -> Result<(), P
         return Ok(());
     }
 
-    // A diagnostic about a file that is not the model's is about gg's own generated entry class,
-    // which is gg's artifact rather than the model's program. Blaming a model for it would send it
-    // rewriting something that was never wrong.
     let mine: Vec<&&Diagnostic> = errors
         .iter()
         .filter(|diagnostic| diagnostic.file.as_deref() == Some(file))
@@ -466,9 +500,45 @@ pub(crate) fn verdict(report: &Report, file: &str, shift: usize) -> Result<(), P
     if mine.is_empty() {
         let rendered = errors
             .iter()
-            .map(|diagnostic| diagnostic.render(file, shift))
+            .map(|diagnostic| diagnostic.render(file))
             .collect::<Vec<_>>()
             .join(" | ");
+        if errors.iter().all(|diagnostic| diagnostic.stage == "teavm") {
+            return Err(PrepareFailure::Program(PrepareError::Compile(
+                crate::sandbox::language::diagnostics::capped(
+                    errors
+                        .iter()
+                        .map(|diagnostic| diagnostic.render(file))
+                        .collect(),
+                    SHOWN,
+                    "\n\n",
+                ),
+            )));
+        }
+        if errors
+            .iter()
+            .all(|diagnostic| diagnostic.file.as_deref() == Some(ENTRY_FILE))
+        {
+            return Err(PrepareFailure::Program(PrepareError::Unsupported(format!(
+                "gg reaches your program by calling `{program}.main(new String[0])`, and that does \
+                 not compile against what you wrote: {rendered}\n\nWrite your reply as one \
+                 compilation unit declaring `public final class {program}` with a \
+                 `public static void main(String[] args)` in it. Anything else you declare — a \
+                 second class, a record, an enum — goes beside it in the same file.",
+                program = source::PROGRAM_CLASS,
+            ))));
+        }
+        if errors
+            .iter()
+            .all(|diagnostic| diagnostic.file.as_deref() == Some(LIB_FILE))
+        {
+            return Err(PrepareFailure::Program(PrepareError::Unsupported(format!(
+                "gg declares `{lib}` beside your program to bind the code this session has loaded, \
+                 and that does not compile against what you wrote: {rendered}\n\nPick another \
+                 name for anything of your own called `{lib}`.",
+                lib = source::LIB_CLASS,
+            ))));
+        }
         return Err(PrepareFailure::Toolchain(format!(
             "the Java toolchain refused a file gg generated rather than the program: {rendered}"
         )));
@@ -478,7 +548,7 @@ pub(crate) fn verdict(report: &Report, file: &str, shift: usize) -> Result<(), P
     // so a single unsupported call is one thing to fix however many times it is named.
     let rendered = crate::sandbox::language::diagnostics::capped(
         mine.iter()
-            .map(|diagnostic| diagnostic.render(file, shift))
+            .map(|diagnostic| diagnostic.render(file))
             .collect(),
         SHOWN,
         "\n\n",
@@ -509,29 +579,29 @@ impl Diagnostic {
             })
     }
 
-    /// This diagnostic as the model reads it: `program.java:7:19: cannot find symbol …`.
+    /// This diagnostic as the model reads it: `Program.java:7:19: cannot find symbol …`.
     ///
-    /// The line is moved back over the wrapper gg put in front of the program, so the coordinate
-    /// names the line of the reply the model actually wrote. A TeaVM diagnostic has no column — its
-    /// locations are per statement — so it prints one coordinate rather than two.
-    fn render(&self, file: &str, shift: usize) -> String {
+    /// The coordinate is the compiler's own, uncorrected, because the file it read is the file the
+    /// model wrote. A TeaVM diagnostic has no column — its locations are per statement — so it
+    /// prints one coordinate rather than two.
+    fn render(&self, file: &str) -> String {
         let located = match (self.file.as_deref() == Some(file), self.line) {
-            (true, 0) => label(file),
-            (true, line) => {
-                let line = line.saturating_sub(shift).max(1);
-                match self.column {
-                    0 => format!("{}:{line}", label(file)),
-                    column => format!("{}:{line}:{column}", label(file)),
-                }
-            }
-            (false, _) => format!(
-                "gg's own {}",
-                self.file.as_deref().unwrap_or("generated code")
-            ),
+            (true, 0) => file.to_string(),
+            (true, line) => match self.column {
+                0 => format!("{file}:{line}"),
+                column => format!("{file}:{line}:{column}"),
+            },
+            // Somebody else's file: TeaVM's classlib names its own, and there is nothing else a
+            // build reads that has one.
+            (false, _) => self
+                .file
+                .as_deref()
+                .unwrap_or("gg's own generated code")
+                .to_string(),
         };
         // TeaVM's refusals are the interesting half of this arm's compile band: a class its
         // 1,213-class classlib does not carry is named here, at the model's own line, rather than
-        // discovered as a `ReferenceError` at run time.
+        // discovered at run time.
         format!("{located}: {}", self.message.trim_end())
     }
 }
@@ -540,104 +610,110 @@ impl Diagnostic {
 // The generated entry class
 // ---------------------------------------------------------------------------------------------
 
-/// The exceptions the entry class names one by one, innermost subtype first.
+/// **The classes a program's runtime must be able to spell when a program dies of one.**
 ///
-/// **Enumerated rather than derived**, and that is the whole point of it. `failure.getClass()
-/// .getName()` is what a Java author would write and it answers `null` for a
-/// `NullPointerException` under TeaVM — which is exactly how the study measured this arm reporting
-/// `Error: Error: null`. Naming the classes gg cares about in `catch` clauses makes the answer
-/// javac's rather than the runtime's, and a class not on this list still gets `getName()` with a
-/// stated fallback.
+/// Not a catch chain and not an interception: nothing here changes what is thrown, what is caught or
+/// where a program stops. What it changes is whether the **name string** of the class exists in the
+/// binary at all, and that is a fact about TeaVM's dependency analysis rather than about failure
+/// handling.
 ///
-/// Order matters: `ArrayIndexOutOfBoundsException` before `IndexOutOfBoundsException`, and
-/// `NumberFormatException` before `IllegalArgumentException`, because Java takes the first clause
-/// that matches and a supertype first would swallow the name a model needs.
-const CAUGHT: [&str; 12] = [
+/// TeaVM emits a class's name only where its analysis sees that name being asked for. The vendored
+/// `org.teavm.runtime.ExceptionHandling` asks — `exception.getClass().getName()`, on the uncaught
+/// path — but the only classes the analysis can see reaching it are the three faults the runtime
+/// raises itself, so **every other failure printed a blank header**. Measured, before this list:
+/// `values.get(7)` past the end of an `ArrayList` died with `an exception carrying no message` and
+/// five correct frames, which is [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/)'s
+/// *where* with none of its *what*. With `java.lang.IndexOutOfBoundsException` on this list the same
+/// program dies with `java.lang.IndexOutOfBoundsException` and the same five frames.
+///
+/// Enumerated rather than derived because there is nothing to derive it from: the set is "the
+/// classes a Java program actually fails with", which is a judgement about programs and not
+/// something a compiler can be asked. A class not on it still fails correctly — it simply prints its
+/// message, or the blank header where it has none.
+const SPELLABLE: [&str; 16] = [
     "java.lang.NullPointerException",
     "java.lang.ArrayIndexOutOfBoundsException",
     "java.lang.StringIndexOutOfBoundsException",
     "java.lang.IndexOutOfBoundsException",
     "java.lang.ClassCastException",
     "java.lang.ArithmeticException",
+    "java.lang.NegativeArraySizeException",
     "java.lang.NumberFormatException",
     "java.lang.IllegalArgumentException",
     "java.lang.IllegalStateException",
     "java.lang.UnsupportedOperationException",
     "java.util.NoSuchElementException",
     "java.util.ConcurrentModificationException",
+    "java.lang.StackOverflowError",
+    "java.lang.OutOfMemoryError",
+    "gg.ToolError",
 ];
 
-/// TeaVM's own marker on a Java wrapper around a **JavaScript** exception.
+/// **The two lines the host reaches a compiled program through**, and nothing else.
 ///
-/// A failure a binding raised — a `ToolError` the host refused a call with — arrives in Java as a
-/// `RuntimeException` whose message TeaVM prefixes with this. gg must not describe one: the guest
-/// classifies a tool failure from what the host said, and a re-description would turn a refusal the
-/// model can act on into prose about a Java class it never wrote.
-const FOREIGN_MARKER: &str = "(JavaScript) ";
-
-/// The entry class for a **program**: run the model's statements, describe what they threw, and
-/// rethrow it.
-fn entry_for_program() -> String {
-    let chain: String = CAUGHT
+/// It is the world's `run` — eight canonically-lowered parameters a compiled arm reads none of — and
+/// a call to the model's own `main`, with **no `try` and no `catch`**. What replaced the twelve-clause
+/// chain this used to hold is the runtime itself: a program that throws dies the way TeaVM kills it
+/// and its own dying words reach the model on standard error, which is what
+/// [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) asks for and what a
+/// catch chain made impossible.
+///
+/// It declares **no `main` of its own**, on purpose: TeaVM is given the *model's* class as its main
+/// class, so nothing in the dependency graph reaches this one and `setClassesToPreserve` in
+/// [the shared driver](super::super::jvm) is the only thing keeping it. Without that list the class
+/// is dead-stripped silently, at exit code 0, and the component gg encodes has no exports at all.
+///
+/// `run` declares `throws Throwable` because a Java author writes `throws Exception` on a `main`
+/// every day, and an export that did not would refuse a shape the language has.
+///
+/// The [`SPELLABLE`] loop is the one thing here that is not two lines, and it is a **no-op at run
+/// time**: `System.getProperty` answers `null` in this sandbox, so the array is empty and the loop
+/// runs zero times. It is reachable, which is the whole of its purpose — a preserved method nothing
+/// calls is not analysed at all, measured — and it is written past a property lookup because
+/// anything a constant folder can see through would be folded away with the names.
+///
+/// The one line that differs between the two JVM arms is the call to the model's own entry point.
+fn entry_class() -> String {
+    let spellable: String = SPELLABLE
         .iter()
-        .map(|name| {
-            format!("        catch ({name} failure) {{ throw seen(\"{name}\", failure); }}\n")
-        })
+        .map(|name| format!("            {name}.class,\n"))
         .collect();
     format!(
-        "import org.teavm.jso.JSBody;\n\
+        "import gg.internal.Abi;\n\
+         import org.teavm.interop.Export;\n\
          \n\
          public final class {entry} {{\n\
-         \x20   @JSBody(params = {{\"text\"}}, script = \"$ggMessage = text;\")\n\
-         \x20   static native void describe(String text);\n\
+         \x20   private {entry}() {{\n\
+         \x20   }}\n\
          \n\
-         \x20   @JSBody(params = {{\"tool\", \"code\", \"message\"}}, \
-         script = \"$ggFailure = {{ tool: tool, code: code, message: message }};\")\n\
-         \x20   static native void refused(String tool, String code, String message);\n\
+         \x20   private static final Class<?>[] SPELLABLE = spellable();\n\
          \n\
-         \x20   public static void main(String[] args) throws Throwable {{\n\
-         \x20       try {{ {program}.{method}(); }}\n\
-         \x20       catch (gg.ToolError failure) {{\n\
-         \x20           refused(failure.tool(), failure.code().wireName(), failure.getMessage());\n\
-         \x20           throw failure;\n\
+         \x20   @Export(name = \"run\")\n\
+         \x20   public static void run(int program, int programLength, int modules, \
+         int modulesLength,\n\
+         \x20           int tools, int toolsLength, int ending, int library) throws Throwable {{\n\
+         \x20       for (Class<?> type : SPELLABLE) {{\n\
+         \x20           System.err.println(type.getName());\n\
          \x20       }}\n\
-         {chain}\
-         \x20       catch (StackOverflowError failure) {{ throw seen(\"java.lang.StackOverflowError\", failure); }}\n\
-         \x20       catch (Throwable failure) {{ throw seen(named(failure), failure); }}\n\
+         \x20       {program}.main(new String[0]);\n\
          \x20   }}\n\
          \n\
-         \x20   static String named(Throwable failure) {{\n\
-         \x20       Class<?> type = failure.getClass();\n\
-         \x20       String name = type == null ? null : type.getName();\n\
-         \x20       return name == null ? \"a failure whose class this runtime cannot name\" : name;\n\
+         \x20   @Export(name = \"bound-tools\")\n\
+         \x20   public static int boundTools() {{\n\
+         \x20       return Abi.emptyList();\n\
          \x20   }}\n\
          \n\
-         \x20   static Throwable seen(String name, Throwable failure) {{\n\
-         \x20       String message = failure.getMessage();\n\
-         \x20       if (message != null && message.startsWith({marker:?})) {{ return failure; }}\n\
-         \x20       describe(message == null ? name : name + \": \" + message);\n\
-         \x20       return failure;\n\
+         \x20   private static Class<?>[] spellable() {{\n\
+         \x20       if (System.getProperty(\"gg.spell.every.failure\") == null) {{\n\
+         \x20           return new Class<?>[0];\n\
+         \x20       }}\n\
+         \x20       return new Class<?>[] {{\n\
+         {spellable}\
+         \x20       }};\n\
          \x20   }}\n\
          }}\n",
         entry = source::ENTRY_CLASS,
         program = source::PROGRAM_CLASS,
-        method = source::PROGRAM_METHOD,
-        marker = FOREIGN_MARKER,
-    )
-}
-
-/// The entry class for a **code module**: export the class, and leave the namespace where the
-/// bundle's tail can hand it back.
-fn entry_for_module() -> String {
-    format!(
-        "import org.teavm.jso.JSExportClasses;\n\
-         \n\
-         @JSExportClasses({{ {module}.class }})\n\
-         public final class {entry} {{\n\
-         \x20   public static void main(String[] args) {{ }}\n\
-         }}\n",
-        module = source::MODULE_CLASS,
-        entry = source::ENTRY_CLASS,
     )
 }
 

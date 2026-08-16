@@ -2,67 +2,85 @@
 //!
 //! Everything here is a pure function over a string, so these are microseconds where
 //! [the substrate's](super::super::substrate) are seconds. The two halves are complementary: this
-//! file says the transform is the transform it claims, and that one says javac and TeaVM agree.
+//! file says the wrapper is the wrapper it claims — and, for a **program**, that there is none — and
+//! that one says javac and TeaVM agree.
 
 use super::*;
 
-/// The body of a wrapped unit — everything after the header gg put in front of it.
+/// The module's own body: everything the wrapper's header on line 1 is not, plus every line after.
 fn body(wrapped: &Wrapped) -> String {
-    wrapped
+    let header = wrapped
         .source
-        .lines()
-        .skip(wrapped.shift)
-        .collect::<Vec<_>>()
-        .join("\n")
+        .find(&format!("class {} {{ ", MODULE_CHECK_CLASS))
+        .map(|at| at + format!("class {} {{ ", MODULE_CHECK_CLASS).len())
+        .expect("the wrapper's header is on line 1");
+    wrapped.source[header..].to_string()
 }
 
+/// **A code module's wrapper costs no line at all**, which is what makes its diagnostics the
+/// author's own coordinates with nothing subtracted from them.
 #[test]
-fn a_program_becomes_the_body_of_a_method_and_its_lines_do_not_move() {
-    let wrapped = wrap_program("int total = 1;\nSystem.out.println(total);\n").expect("wraps");
-    // The model's first line is at `shift + 1`, which is what makes subtracting `shift` from a
-    // diagnostic's line give the model's own coordinate.
+fn a_modules_wrapper_shares_the_authors_first_line_so_no_line_moves() {
+    let author = "public static String greet(String who) { return who; }\n\
+                  public static int add(int left, int right) { return left + right; }\n";
+    let wrapped = wrap_module(author, MODULE_CHECK_CLASS).expect("wraps");
     let lines: Vec<&str> = wrapped.source.lines().collect();
-    assert_eq!(lines[wrapped.shift], "int total = 1;");
-    assert_eq!(lines[wrapped.shift + 1], "System.out.println(total);");
-    assert!(wrapped.source.contains(&format!("class {PROGRAM_CLASS} ")));
     assert!(
-        wrapped
-            .source
-            .contains(&format!("{PROGRAM_METHOD}() throws Throwable"))
+        lines[0].ends_with("public static String greet(String who) { return who; }"),
+        "the author's first line is not on line 1: {:?}",
+        lines[0]
     );
-    assert!(wrapped.exports.is_empty());
+    assert_eq!(lines[1], author.lines().nth(1).expect("a second line"));
+    assert_eq!(
+        wrapped.source.lines().count(),
+        author.lines().count() + 1,
+        "one line for the closing brace and not one more: {}",
+        wrapped.source
+    );
 }
 
+/// **A module's own `import` is lifted onto line 1 and blanked where it stood**, so the lines below
+/// it do not move either.
 #[test]
-fn an_import_is_hoisted_into_the_header_and_blanked_where_it_stood() {
-    let wrapped = wrap_program(
+fn an_import_is_hoisted_onto_the_first_line_and_blanked_where_it_stood() {
+    let wrapped = wrap_module(
         "import java.nio.charset.StandardCharsets;\n\
          import java.util.concurrent.atomic.AtomicInteger;\n\
          \n\
-         AtomicInteger counter = new AtomicInteger();\n",
+         public static int count() { return new AtomicInteger().get(); }\n",
+        MODULE_CHECK_CLASS,
     )
     .expect("wraps");
-    let header: Vec<&str> = wrapped.source.lines().take(wrapped.shift).collect();
-    assert!(header.contains(&"import java.nio.charset.StandardCharsets;"));
-    assert!(header.contains(&"import java.util.concurrent.atomic.AtomicInteger;"));
-    // gg's own generous set is there too, so `Map` and `Collectors` need no import.
-    assert!(header.contains(&"import java.util.*;"));
-    assert!(header.contains(&"import java.util.stream.*;"));
-
-    // The body keeps every line it had, with the two imports blanked — so line 4 of the reply is
-    // still line 4 of the body.
-    let body = body(&wrapped);
-    let lines: Vec<&str> = body.lines().collect();
-    assert_eq!(lines[0], "");
+    let lines: Vec<&str> = wrapped.source.lines().collect();
+    assert!(lines[0].starts_with("import java.nio.charset.StandardCharsets; "));
+    assert!(lines[0].contains("import java.util.concurrent.atomic.AtomicInteger; "));
+    // The two import lines are blanked where they stood and line 4 is still line 4.
     assert_eq!(lines[1], "");
     assert_eq!(lines[2], "");
-    assert_eq!(lines[3], "AtomicInteger counter = new AtomicInteger();");
+    assert_eq!(
+        lines[3],
+        "public static int count() { return new AtomicInteger().get(); }"
+    );
+}
+
+/// **gg writes nothing at all into a program**, which is the whole of this arm's authorship claim
+/// and the one thing this file exists to state as text.
+#[test]
+fn there_is_nothing_here_that_touches_a_program() {
+    // The module names a class; the program names none, because nothing wraps it. What gg writes
+    // beside a program is a second compilation unit that NAMES this class, which is the shape
+    // ruling D2 blessed — and the constant is the whole of the convention.
+    assert_eq!(PROGRAM_CLASS, "Program");
+    assert_eq!(ENTRY_CLASS, "GgEntry");
 }
 
 #[test]
-fn a_package_declaration_is_refused_by_name() {
-    let failure = wrap_program("package com.example;\nint total = 1;\n")
-        .expect_err("a package has nowhere to go");
+fn a_package_declaration_in_a_module_is_refused_by_name() {
+    let failure = wrap_module(
+        "package com.example;\npublic static int one() { return 1; }\n",
+        MODULE_CHECK_CLASS,
+    )
+    .expect_err("a package has nowhere to go");
     assert!(
         failure.to_string().contains("package com.example"),
         "{failure}"
@@ -73,26 +91,27 @@ fn a_package_declaration_is_refused_by_name() {
 #[test]
 fn something_that_merely_looks_like_an_import_is_left_alone() {
     // A text block whose content opens with `import` is content, not an import — and hoisting it
-    // would silently change what the program prints while leaving a header nothing needed.
-    let wrapped = wrap_program(
-        "String snippet = \"\"\"\nimport java.util.List;\nclass A {}\"\"\";\nSystem.out.println(snippet);\n",
+    // would silently change what the module returns while leaving a header nothing needed.
+    let wrapped = wrap_module(
+        "public static String snippet() { return \"\"\"\nimport java.util.List;\nclass A {}\"\"\"; }\n",
+        MODULE_CHECK_CLASS,
     )
     .expect("wraps");
     assert!(body(&wrapped).contains("import java.util.List;"));
     assert!(
-        !wrapped
-            .source
-            .lines()
-            .take(wrapped.shift)
-            .any(|line| line == "import java.util.List;"),
-        "it did not reach the header"
+        !wrapped.source.starts_with("import java.util.List;"),
+        "it did not reach the header: {}",
+        wrapped.source
     );
 
     // The same for a commented-out one, and for an identifier that merely starts with the word.
-    let wrapped =
-        wrap_program("// import java.util.List;\nint importantThing = 1;\n").expect("wraps");
+    let wrapped = wrap_module(
+        "// import java.util.List;\npublic static int importantThing() { return 1; }\n",
+        MODULE_CHECK_CLASS,
+    )
+    .expect("wraps");
     assert!(body(&wrapped).contains("// import java.util.List;"));
-    assert!(body(&wrapped).contains("int importantThing = 1;"));
+    assert_eq!(wrapped.exports, ["importantThing"]);
 }
 
 #[test]
@@ -104,40 +123,48 @@ fn a_module_exports_its_public_static_methods_and_nothing_else() {
          private static String hidden() { return \"\"; }\n\
          public String instanceMethod() { return \"\"; }\n\
          public static int add(int left, int right) { return left + right; }\n",
+        MODULE_CHECK_CLASS,
     )
     .expect("wraps");
     assert_eq!(wrapped.exports, ["greet", "add"]);
-
-    // The annotation is inserted INLINE, so the body still has one line per line the author wrote.
-    let body = body(&wrapped);
-    assert_eq!(
-        body.lines().count(),
-        7,
-        "six declarations and the closing brace"
-    );
-    assert_eq!(
-        body.lines().last(),
-        Some("}"),
-        "and nothing between them: {body:?}"
-    );
-    assert!(body.starts_with("@JSExport public static String greet"));
-    assert!(!body.contains("@JSExport public static final String LABEL"));
-    assert!(!body.contains("@JSExport static int helper"));
 }
 
 #[test]
 fn a_module_that_offers_nothing_is_refused_rather_than_bound_empty() {
-    let failure = wrap_module("static int helper() { return 1; }\n")
+    let failure = wrap_module("static int helper() { return 1; }\n", MODULE_CHECK_CLASS)
         .expect_err("a module with no exports is refused");
     assert!(failure.to_string().contains("public static"), "{failure}");
 }
 
 #[test]
 fn a_constructor_is_not_something_a_namespace_can_offer() {
-    let wrapped =
-        wrap_module("public Module() { }\npublic static String only() { return \"\"; }\n")
-            .expect("wraps");
+    // gg names the class, so no constructor an author writes can carry its name — and one that is
+    // not `static` is not an export whatever it is called.
+    let wrapped = wrap_module(
+        "public Module() { }\npublic static String only() { return \"\"; }\n",
+        MODULE_CHECK_CLASS,
+    )
+    .expect("wraps");
     assert_eq!(wrapped.exports, ["only"]);
+}
+
+/// **`Lib` reaches each module by inheritance**, which is what Java has instead of a type alias.
+#[test]
+fn lib_binds_one_nested_class_per_module_extending_that_modules_own() {
+    let generated = lib_class(&["csvTools", "helpers"]);
+    assert!(
+        generated.contains("public static final class csvTools extends GgModule_csvTools {"),
+        "{generated}"
+    );
+    assert!(
+        generated.contains("public static final class helpers extends GgModule_helpers {"),
+        "{generated}"
+    );
+    assert!(
+        generated.contains(&format!("private {LIB_CLASS}()")),
+        "nothing constructs it: {generated}"
+    );
+    assert_eq!(module_file("csvTools"), "GgModule_csvTools.java");
 }
 
 #[test]
@@ -157,50 +184,57 @@ fn the_lexer_tells_code_from_everything_that_looks_like_it() {
     );
 }
 
-/// **A program that is not ASCII is read rather than crashed on.**
+/// **A module that is not ASCII is read rather than crashed on.**
 ///
 /// The lexer walks one **byte** at a time, so slicing the source at every step would panic on any
 /// index that is not a character boundary — and `&source[at..]` was exactly what it did. A single
-/// `é` in a string, a comment or an identifier would have taken the turn down with a slice index
-/// error rather than reaching javac, and a model writing a message in any language but English
-/// produces one on its first turn. Every delimiter this lexer looks for is ASCII, and an ASCII byte
-/// never appears inside a multi-byte UTF-8 sequence, so byte comparisons find exactly what string
-/// comparisons would.
+/// `é` in a string, a comment or an identifier would have taken the read down with a slice index
+/// error rather than reaching javac. Every delimiter this lexer looks for is ASCII, and an ASCII
+/// byte never appears inside a multi-byte UTF-8 sequence, so byte comparisons find exactly what
+/// string comparisons would.
 #[test]
-fn a_program_that_is_not_ascii_is_read_rather_than_crashed_on() {
-    let wrapped = wrap_program(
+fn a_module_that_is_not_ascii_is_read_rather_than_crashed_on() {
+    let wrapped = wrap_module(
         "String gruss = \"grüße, wörld — ✅\";\n\
          // a cömment\n\
-         char accented = \'é\';\n\
+         char accented = 'é';\n\
          import java.util.List;\n\
-         view.openText(\"grüße\", gruss);\n",
+         public static String greeting() { return \"grüße\"; }\n",
+        MODULE_CHECK_CLASS,
     )
     .expect("wraps");
-    let body = body(&wrapped);
     // The import was still hoisted out of the body, which is the reading that had to survive.
     assert!(
-        wrapped.source.contains("\nimport java.util.List;"),
+        wrapped.source.starts_with("import java.util.List; "),
         "{}",
         wrapped.source
     );
-    assert!(body.contains("grüße, wörld — ✅"), "{body}");
+    assert!(
+        wrapped.source.contains("grüße, wörld — ✅"),
+        "{}",
+        wrapped.source
+    );
     // And it was blanked where it stood, so nothing below it moved.
     assert!(
-        body.contains("char accented = 'é';\n\nview.openText("),
-        "{body}"
+        wrapped
+            .source
+            .contains("char accented = 'é';\n\npublic static String greeting()"),
+        "{}",
+        wrapped.source
     );
 
     // And the mask really did keep the non-ASCII text out of the code, rather than merely not
     // panicking: an `import` inside a text block full of it is not an import.
-    let wrapped = wrap_program(
-        "String usage = \"\"\"\n    \
+    let wrapped = wrap_module(
+        "public static String usage() { return \"\"\"\n    \
              Beispiel — über alles:\n    \
              import java.nio.file.Paths;\n    \
-             \"\"\";\n",
+             \"\"\"; }\n",
+        MODULE_CHECK_CLASS,
     )
     .expect("wraps");
     assert!(
-        !wrapped.source.contains("\nimport java.nio.file.Paths;"),
+        !wrapped.source.starts_with("import java.nio.file.Paths;"),
         "an import inside a text block was hoisted: {}",
         wrapped.source
     );
@@ -211,12 +245,10 @@ fn a_declaration_is_found_past_its_own_annotations_and_generics() {
     let wrapped = wrap_module(
         "@Deprecated\n\
          public static <T> List<T> twice(T value) { return List.of(value, value); }\n",
+        MODULE_CHECK_CLASS,
     )
     .expect("wraps");
     assert_eq!(wrapped.exports, ["twice"]);
-    // The annotation gg adds goes in front of the author's, which is where a Java author would put
-    // another one — and it is on the author's own line, not a new one.
-    assert!(body(&wrapped).starts_with("@JSExport @Deprecated\n"));
 }
 
 #[test]
@@ -229,6 +261,7 @@ fn a_nested_type_does_not_offer_its_own_methods_to_the_namespace() {
          static final class Inner {\n\
          \x20   public static String inner() { return \"in\"; }\n\
          }\n",
+        MODULE_CHECK_CLASS,
     )
     .expect("wraps");
     assert_eq!(wrapped.exports, ["outer"]);

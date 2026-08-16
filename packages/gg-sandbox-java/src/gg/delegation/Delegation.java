@@ -2,11 +2,11 @@ package gg.delegation;
 
 import gg.ToolError;
 import gg.ToolErrorCode;
+import gg.internal.Coding;
 import gg.internal.Read;
-import gg.internal.Wire;
+import gg.internal.Value;
 import java.util.List;
 import java.util.Optional;
-import org.teavm.jso.JSObject;
 
 /**
  * Delegate work to child agents, and hand this session on to another agent.
@@ -40,11 +40,10 @@ public final class Delegation {
      * @ggop delegation.spawn_subagent
      */
     public static SubagentHandle spawnSubagent(String agent, Brief brief) {
-        JSObject request = Wire.object();
-        Wire.set(request, "agent", Wire.text(agent));
-        Wire.set(request, brief.field(), Wire.text(brief.value()));
-        return Read.subagentHandle(Wire.call("spawn_subagent", Wire.agents(), "agents",
-                "spawnSubagent", Wire.args(request)));
+        Value request = Value.record()
+                .put("agent", Value.of(agent))
+                .put("task", Value.variant(brief.field(), Value.of(brief.value())));
+        return Read.subagentHandle(Coding.call("delegation.spawn_subagent", request));
     }
 
     /**
@@ -61,8 +60,8 @@ public final class Delegation {
      * @ggop delegation.wait_for_subagents
      */
     public static List<SubagentResult> waitForSubagents(String... ids) {
-        return Read.subagentResults(Wire.call("wait_for_subagents", Wire.agents(), "agents",
-                "waitForSubagents", Wire.args(Wire.texts(ids))));
+        return Read.subagentResults(
+                Coding.call("delegation.wait_for_subagents", Value.texts(ids)));
     }
 
     /**
@@ -75,8 +74,7 @@ public final class Delegation {
      * @ggop delegation.send_message
      */
     public static void sendMessage(String agentId, String message) {
-        Wire.run("send_message", Wire.agents(), "agents", "sendMessage",
-                Wire.args(Wire.text(agentId), Wire.text(message)));
+        Coding.call("delegation.send_message", Value.of(agentId), Value.of(message));
     }
 
     /**
@@ -94,8 +92,7 @@ public final class Delegation {
      * @ggop delegation.transition_state
      */
     public static void transitionState(String state) {
-        Wire.run("transition_state", Wire.agents(), "agents", "transitionState",
-                Wire.args(Wire.text(state)));
+        Coding.call("delegation.transition_state", Value.of(state), Value.none());
     }
 
     /**
@@ -108,8 +105,7 @@ public final class Delegation {
      * @ggop delegation.transition_state
      */
     public static void transitionState(String state, String note) {
-        Wire.run("transition_state", Wire.agents(), "agents", "transitionState",
-                Wire.args(Wire.text(state), Wire.text(note)));
+        Coding.call("delegation.transition_state", Value.of(state), Value.of(note));
     }
 
     /**
@@ -127,7 +123,7 @@ public final class Delegation {
      * @ggop delegation.exec
      */
     public static void exec(String agent) {
-        Wire.run("exec", Wire.agents(), "agents", "exec", Wire.args(Wire.text(agent)));
+        Coding.call("delegation.exec", Value.of(agent), Value.none());
     }
 
     /**
@@ -141,8 +137,7 @@ public final class Delegation {
      * @ggop delegation.exec
      */
     public static void exec(String agent, String prompt) {
-        Wire.run("exec", Wire.agents(), "agents", "exec",
-                Wire.args(Wire.text(agent), Wire.text(prompt)));
+        Coding.call("delegation.exec", Value.of(agent), Value.of(prompt));
     }
 
     /**
@@ -160,8 +155,7 @@ public final class Delegation {
      * @ggop delegation.fork
      */
     public static SubagentHandle fork(String prompt) {
-        return Read.subagentHandle(Wire.call("fork", Wire.agents(), "agents", "fork",
-                Wire.args(Wire.text(prompt))));
+        return Read.subagentHandle(Coding.call("delegation.fork", Value.of(prompt)));
     }
 
     // -------------------------------------------------------------------------------------------
@@ -254,7 +248,7 @@ public final class Delegation {
          * @return the brief to hand to a spawn
          */
         public static Brief issue(String issueId) {
-            return new Brief("issueId", issueId);
+            return new Brief("issue", issueId);
         }
 
         /** Which field of the request this brief fills. */

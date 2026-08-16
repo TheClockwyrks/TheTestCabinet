@@ -2,9 +2,8 @@ package gg.session;
 
 import gg.ToolError;
 import gg.ToolErrorCode;
-import gg.internal.Read;
-import gg.internal.Wire;
-import java.util.List;
+import gg.internal.Coding;
+import gg.internal.Value;
 
 /**
  * End the session, with the ending the agent's role has.
@@ -35,7 +34,7 @@ public final class Session {
      * @ggop session.finish
      */
     public static void finish(String summary) {
-        Wire.run("finish", Wire.harness(), "harness", "finish", Wire.args(Wire.text(summary)));
+        Coding.call("session.finish", Value.of(summary));
     }
 
     /**
@@ -47,7 +46,7 @@ public final class Session {
      * @ggop session.approve
      */
     public static void approve() {
-        Wire.run("approve", Wire.review(), "review", "approve", Wire.args());
+        Coding.call("session.approve");
     }
 
     /**
@@ -61,7 +60,6 @@ public final class Session {
      * @ggop session.request_changes
      */
     public static void requestChanges(String... items) {
-        Wire.run("request_changes", Wire.review(), "review", "requestChanges",
-                Wire.args(Wire.texts(items)));
+        Coding.call("session.request_changes", Value.texts(items));
     }
 }

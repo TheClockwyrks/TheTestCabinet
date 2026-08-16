@@ -2,10 +2,10 @@ package gg.tasks;
 
 import gg.ToolError;
 import gg.ToolErrorCode;
+import gg.internal.Coding;
 import gg.internal.Read;
-import gg.internal.Wire;
+import gg.internal.Value;
 import java.util.List;
-import org.teavm.jso.JSObject;
 
 /**
  * A private task list, held as a graph with blocker edges.
@@ -31,8 +31,7 @@ public final class Tasks {
      * @ggop tasks.add_task
      */
     public static TaskUsage addTask(String id, String title) {
-        return Read.taskUsage(Wire.call("add_task", Wire.tasks(), "tasks", "addTask",
-                Wire.args(task(id, title, null, null))));
+        return Read.taskUsage(Coding.call("tasks.add_task", task(id, title, null, null)));
     }
 
     /**
@@ -46,8 +45,7 @@ public final class Tasks {
      * @ggop tasks.add_task
      */
     public static TaskUsage addTask(String id, String title, String description) {
-        return Read.taskUsage(Wire.call("add_task", Wire.tasks(), "tasks", "addTask",
-                Wire.args(task(id, title, description, null))));
+        return Read.taskUsage(Coding.call("tasks.add_task", task(id, title, description, null)));
     }
 
     /**
@@ -64,8 +62,8 @@ public final class Tasks {
      */
     public static TaskUsage addTask(String id, String title, String description,
             List<String> blockedBy) {
-        return Read.taskUsage(Wire.call("add_task", Wire.tasks(), "tasks", "addTask",
-                Wire.args(task(id, title, description, blockedBy))));
+        return Read.taskUsage(
+                Coding.call("tasks.add_task", task(id, title, description, blockedBy)));
     }
 
     /**
@@ -80,8 +78,7 @@ public final class Tasks {
      * @ggop tasks.update_task
      */
     public static void updateTask(String id, TaskPatch patch) {
-        Wire.run("update_task", Wire.tasks(), "tasks", "updateTask",
-                Wire.args(Wire.text(id), patch.lowered()));
+        Coding.call("tasks.update_task", Value.of(id), patch.lowered());
     }
 
     /**
@@ -95,8 +92,7 @@ public final class Tasks {
      * @ggop tasks.set_blocked_by
      */
     public static void setBlockedBy(String id, String... blockedBy) {
-        Wire.run("set_blocked_by", Wire.tasks(), "tasks", "setBlockedBy",
-                Wire.args(Wire.text(id), Wire.texts(blockedBy)));
+        Coding.call("tasks.set_blocked_by", Value.of(id), Value.texts(blockedBy));
     }
 
     /**
@@ -109,8 +105,7 @@ public final class Tasks {
      * @ggop tasks.complete_task
      */
     public static void completeTask(String id) {
-        Wire.run("complete_task", Wire.tasks(), "tasks", "completeTask",
-                Wire.args(Wire.text(id)));
+        Coding.call("tasks.complete_task", Value.of(id));
     }
 
     /**
@@ -122,23 +117,17 @@ public final class Tasks {
      * @ggop tasks.remove_task
      */
     public static TaskUsage removeTask(String id) {
-        return Read.taskUsage(Wire.call("remove_task", Wire.tasks(), "tasks", "removeTask",
-                Wire.args(Wire.text(id))));
+        return Read.taskUsage(Coding.call("tasks.remove_task", Value.of(id)));
     }
 
-    /** The task record the guest's own function takes. */
-    private static JSObject task(String id, String title, String description,
+    /** The `task-input` record, as gg's own WIT declares it. */
+    private static Value task(String id, String title, String description,
             List<String> blockedBy) {
-        JSObject task = Wire.object();
-        Wire.set(task, "id", Wire.text(id));
-        Wire.set(task, "title", Wire.text(title));
-        if (description != null) {
-            Wire.set(task, "description", Wire.text(description));
-        }
-        if (blockedBy != null) {
-            Wire.set(task, "blockedBy", Wire.texts(blockedBy));
-        }
-        return task;
+        return Value.record()
+                .put("id", Value.of(id))
+                .put("title", Value.of(title))
+                .put("description", Value.of(description))
+                .put("blocked-by", blockedBy == null ? Value.list() : Value.texts(blockedBy));
     }
 
     // -------------------------------------------------------------------------------------------
@@ -159,7 +148,7 @@ public final class Tasks {
         /** Not started, which is where every task begins. */
         PENDING("pending"),
         /** Being worked on now. */
-        IN_PROGRESS("in_progress"),
+        IN_PROGRESS("in-progress"),
         /** Finished, which makes the tasks blocked on it actionable. */
         DONE("done");
 
@@ -192,7 +181,14 @@ public final class Tasks {
      * }</pre>
      */
     public static final class TaskPatch {
-        private final JSObject patch = Wire.object();
+        /** The new title, absent until one is named. */
+        private Value title = Value.none();
+
+        /** What to do to the description: keep it, clear it, or set it. */
+        private Value description = Value.variant("keep", null);
+
+        /** The new status, absent until one is named. */
+        private Value status = Value.none();
 
         /** A revision that changes nothing yet. */
         public TaskPatch() {
@@ -205,7 +201,7 @@ public final class Tasks {
          * @return this revision, so calls chain
          */
         public TaskPatch title(String title) {
-            Wire.set(patch, "title", Wire.text(title));
+            this.title = Value.of(title);
             return this;
         }
 
@@ -216,7 +212,7 @@ public final class Tasks {
          * @return this revision, so calls chain
          */
         public TaskPatch description(String description) {
-            Wire.set(patch, "description", Wire.text(description));
+            this.description = Value.variant("set", Value.of(description));
             return this;
         }
 
@@ -226,7 +222,7 @@ public final class Tasks {
          * @return this revision, so calls chain
          */
         public TaskPatch clearDescription() {
-            Wire.clear(patch, "description");
+            this.description = Value.variant("clear", null);
             return this;
         }
 
@@ -237,13 +233,16 @@ public final class Tasks {
          * @return this revision, so calls chain
          */
         public TaskPatch status(TaskStatus status) {
-            Wire.set(patch, "status", Wire.text(status.wireName()));
+            this.status = Value.of(status.wireName());
             return this;
         }
 
         /** What was set, on its way out. */
-        JSObject lowered() {
-            return patch;
+        Value lowered() {
+            return Value.record()
+                    .put("title", title)
+                    .put("description", description)
+                    .put("status", status);
         }
     }
 }

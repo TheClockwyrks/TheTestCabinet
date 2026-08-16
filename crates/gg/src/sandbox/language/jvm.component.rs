@@ -9,25 +9,14 @@
 //! process because gg is copied as a single file into a run container and cannot shell out to a tool
 //! that is not in the image.
 //!
-//! # Why nothing calls this yet
+//! # Who calls it
 //!
-//! Because neither JVM arm is on this route. `java.rs` and `kotlin.rs` still answer
-//! [TypeScript's component](super::typescript) and their compilers still emit JavaScript: the
-//! model-facing half of both SDKs is written against a **JavaScript object**, and moving it — with
-//! its code modules, its healing and its diagnostics — is each arm's own step rather than a
-//! substrate's. What is here is complete, and is driven end to end by `jvm.wire.test.rs`: a
-//! hand-written Java program, really compiled to wasm, really encoded here, really instantiated
-//! against the production membrane, really answered, and really killed by its own runtime.
+//! [Java](super::java::compile), on every program and on every turn. [Kotlin](super::kotlin) is
+//! still on the JavaScript road and converts in its own step: the model-facing half of that SDK is
+//! written against a **JavaScript object**, and moving it — with its code modules, its healing and
+//! its diagnostics — is that arm's own work.
 //!
-//! The `allow` below is that state written down. It goes when the first arm converts.
-
-#![allow(
-    dead_code,
-    reason = "the wasm route is complete and proven by `jvm.wire.test.rs`; the two arms that will \
-              call it convert in their own steps, and until then nothing on a turn's path reaches it"
-)]
-
-// ---------------------------------------------------------------------------------------------
+//! ---------------------------------------------------------------------------------------------
 
 /// The pinned `wasi_snapshot_preview1` **reactor** adapter.
 ///

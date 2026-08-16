@@ -3,11 +3,11 @@ package gg.views;
 import gg.ToolError;
 import gg.ToolErrorCode;
 import gg.files.Files;
+import gg.internal.Coding;
 import gg.internal.Read;
-import gg.internal.Wire;
+import gg.internal.Value;
 import java.util.List;
 import java.util.Optional;
-import org.teavm.jso.JSObject;
 
 /**
  * Put a file, a computed value or an entry's documentation into the context window.
@@ -44,8 +44,8 @@ public final class Views {
      * @ggop views.open_file
      */
     public static Files.FileRead openFile(String path) {
-        return Read.fileRead(Wire.call("open_file", Wire.view(), "view", "openFile",
-                Wire.args(Wire.text(path))));
+        return Read.fileRead(Coding.call("views.open_file", Value.of(path), Value.none(),
+                Value.none()));
     }
 
     /**
@@ -63,11 +63,8 @@ public final class Views {
      * @ggop views.open_file
      */
     public static Files.FileRead openFile(String path, int offset, int limit) {
-        JSObject options = Wire.object();
-        Wire.set(options, "offset", Wire.number(offset));
-        Wire.set(options, "limit", Wire.number(limit));
-        return Read.fileRead(Wire.call("open_file", Wire.view(), "view", "openFile",
-                Wire.args(Wire.text(path), options)));
+        return Read.fileRead(Coding.call("views.open_file", Value.of(path), Value.of(offset),
+                Value.of(limit)));
     }
 
     /**
@@ -87,8 +84,7 @@ public final class Views {
      * @ggop views.open_text
      */
     public static void openText(String label, String body) {
-        Wire.run("open_text", Wire.view(), "view", "openText",
-                Wire.args(Wire.text(label), Wire.text(body)));
+        Coding.call("views.open_text", Value.of(label), Value.of(body));
     }
 
     /**
@@ -111,8 +107,7 @@ public final class Views {
      * @ggop views.open_docs_view
      */
     public static void openDocsView(String name) {
-        Wire.run("open_docs_view", Wire.view(), "view", "openDocsView",
-                Wire.args(Wire.text(name)));
+        Coding.call("views.open_docs_view", Value.of(name));
     }
 
     /**
@@ -137,8 +132,7 @@ public final class Views {
      * @ggop views.close
      */
     public static int close(String selector) {
-        return Wire.asInteger(Wire.call("close", Wire.view(), "view", "close",
-                Wire.args(Wire.text(selector))));
+        return Coding.call("views.close", Value.of(selector)).integer();
     }
 
     /**
@@ -152,8 +146,7 @@ public final class Views {
      * @ggop views.current
      */
     public static List<OpenView> current() {
-        return Read.openViews(
-                Wire.call("current", Wire.view(), "view", "current", Wire.args()));
+        return Read.openViews(Coding.call("views.current"));
     }
 
     // -------------------------------------------------------------------------------------------

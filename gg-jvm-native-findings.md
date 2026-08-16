@@ -357,3 +357,15 @@ The earlier managed attempt (Console.printString(e.getClass().getName())) built 
 trapped at run time with "wasm trap: indirect call type mismatch".
 => Recovering the type name needs more TeaVM surgery than one vendored file. The MESSAGE
    plus the FULL located stack trace is what this route delivers.
+
+ANSWERED LATER, IN gg's OWN GENERATED ENTRY CLASS, not in the vendored file. TeaVM's
+ClassDependencyListener emits a class's name string only where dependency analysis sees
+`getName()` reached with that class value, and a `.class` constant on a REACHABLE path is
+enough to record it. `GgEntry` therefore carries `Class<?>[] SPELLABLE`, built past a
+`System.getProperty` guard (so nothing folds it away) and walked from the world's `run` in a
+loop that runs zero times. Measured through the production route: `values.get(7)` past the
+end of an `ArrayList` printed `an exception carrying no message` before, and
+`java.lang.IndexOutOfBoundsException` after, with the same five correct frames. A method
+merely PRESERVED by `setClassesToPreserve` and called by nobody is not analysed at all —
+measured, the same probe as an unreferenced `spellable()` changed nothing. See
+`crates/gg/src/sandbox/language/java.compile.rs`.

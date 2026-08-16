@@ -236,8 +236,17 @@ public final class Abi {
         if (size == 0) {
             return base;
         }
+        // ALIGNED ON THE ADDRESS, NOT ON THE OFFSET, and the difference is a trap. A Java array's
+        // data does not start on an eight-byte boundary just because it is an array: measured, a
+        // region whose offsets were eight-aligned handed the preview1 adapter a block one word out,
+        // and the first `clock_time_get` — which writes a `u64` through it — died with
+        // `wasm trap: pointer not aligned` before a single line of the program's own output.
         int aligned = alignment < 1 ? 1 : alignment;
-        int at = (used(region) + aligned - 1) / aligned * aligned;
+        int at = used(region);
+        int drift = (base + at) % aligned;
+        if (drift != 0) {
+            at += aligned - drift;
+        }
         if (at + size > region.length) {
             return 0;
         }

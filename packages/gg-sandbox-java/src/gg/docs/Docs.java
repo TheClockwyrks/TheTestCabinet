@@ -2,10 +2,10 @@ package gg.docs;
 
 import gg.ToolError;
 import gg.ToolErrorCode;
+import gg.internal.Coding;
 import gg.internal.Read;
-import gg.internal.Wire;
+import gg.internal.Value;
 import java.util.List;
-import org.teavm.jso.JSObject;
 
 /**
  * Search this surface, and take a documentation view back out of the window.
@@ -45,8 +45,7 @@ public final class Docs {
      * @ggop docs.search
      */
     public static DocSearch search(String query) {
-        return Read.docSearch(Wire.call("search", Wire.docs(), "docs", "search",
-                Wire.args(Wire.text(query))));
+        return search(query, new SearchFilters());
     }
 
     /**
@@ -70,8 +69,8 @@ public final class Docs {
      * @ggop docs.search
      */
     public static DocSearch search(String query, SearchFilters filters) {
-        return Read.docSearch(Wire.call("search", Wire.docs(), "docs", "search",
-                Wire.args(Wire.text(query), filters.lowered())));
+        return Read.docSearch(Coding.call("docs.search", Value.of(query), filters.module,
+                filters.type, filters.kind, filters.offset, filters.limit));
     }
 
     /**
@@ -92,8 +91,7 @@ public final class Docs {
      * @ggop docs.close
      */
     public static int close(String key) {
-        return Wire.asInteger(Wire.call("close", Wire.docs(), "docs", "close",
-                Wire.args(Wire.text(key))));
+        return Coding.call("docs.close", Value.of(key)).integer();
     }
 
     /**
@@ -110,8 +108,7 @@ public final class Docs {
      * @ggop docs.close_all
      */
     public static int closeAll() {
-        return Wire.asInteger(Wire.call("close_all", Wire.docs(), "docs", "closeAll",
-                Wire.args()));
+        return Coding.call("docs.close_all").integer();
     }
 
     // -------------------------------------------------------------------------------------------
@@ -130,7 +127,20 @@ public final class Docs {
      * }</pre>
      */
     public static final class SearchFilters {
-        private final JSObject filters = Wire.object();
+        /** The module to narrow to, absent until one is named. */
+        Value module = Value.none();
+
+        /** The type to narrow to, absent until one is named. */
+        Value type = Value.none();
+
+        /** The kind to narrow to, absent until one is named. */
+        Value kind = Value.none();
+
+        /** How many hits to skip, absent until one is named. */
+        Value offset = Value.none();
+
+        /** How many hits to return, absent until one is named. */
+        Value limit = Value.none();
 
         /** A search narrowed to nothing yet. */
         public SearchFilters() {
@@ -147,7 +157,7 @@ public final class Docs {
          * @return these filters, so calls chain
          */
         public SearchFilters module(String module) {
-            Wire.set(filters, "module", Wire.text(module));
+            this.module = Value.of(module);
             return this;
         }
 
@@ -158,7 +168,7 @@ public final class Docs {
          * @return these filters, so calls chain
          */
         public SearchFilters type(String type) {
-            Wire.set(filters, "type", Wire.text(type));
+            this.type = Value.of(type);
             return this;
         }
 
@@ -169,7 +179,7 @@ public final class Docs {
          * @return these filters, so calls chain
          */
         public SearchFilters kind(DocKind kind) {
-            Wire.set(filters, "kind", Wire.text(kind.wireName()));
+            this.kind = Value.of(kind.wireName());
             return this;
         }
 
@@ -180,7 +190,7 @@ public final class Docs {
          * @return these filters, so calls chain
          */
         public SearchFilters offset(int offset) {
-            Wire.set(filters, "offset", Wire.number(offset));
+            this.offset = Value.of(offset);
             return this;
         }
 
@@ -192,13 +202,8 @@ public final class Docs {
          * @return these filters, so calls chain
          */
         public SearchFilters limit(int limit) {
-            Wire.set(filters, "limit", Wire.number(limit));
+            this.limit = Value.of(limit);
             return this;
-        }
-
-        /** What was set, on its way out. */
-        JSObject lowered() {
-            return filters;
         }
     }
 

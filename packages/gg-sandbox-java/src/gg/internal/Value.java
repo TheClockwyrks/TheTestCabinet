@@ -127,6 +127,20 @@ public final class Value {
         return list(lowered);
     }
 
+    /**
+     * A list of text, as the varargs this SDK spells a {@code list<string>} argument with.
+     *
+     * <p>An overload rather than one function over {@code Iterable}, because a model-facing
+     * signature that takes a list takes a varargs and every call site here hands one straight on.
+     */
+    public static Value texts(String... members) {
+        Value[] lowered = new Value[members.length];
+        for (int index = 0; index < lowered.length; index++) {
+            lowered[index] = of(members[index]);
+        }
+        return list(lowered);
+    }
+
     /** An empty record, to hang fields off with {@link #put}. */
     public static Value record() {
         Value value = new Value(RECORD);

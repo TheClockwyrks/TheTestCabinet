@@ -237,17 +237,11 @@ const UNCONVERTED: &[Unconverted] = &[
     // ---- java -----------------------------------------------------------------------------------
     Unconverted {
         arm: GgProgramLanguage::Java,
-        half: Half::Program,
-        did: Did::Wrapped,
-        adds: "static void ggBody() throws Throwable {",
-        instead: "puts the statements in a method of a class it declares, under twenty-one imports",
-    },
-    Unconverted {
-        arm: GgProgramLanguage::Java,
         half: Half::Module,
         did: Did::Wrapped,
-        adds: "public final class Module {",
-        instead: "puts the class body in a class it declares, under twenty-three imports",
+        adds: "public class Module { ",
+        instead: "puts the class body in a class it declares, on the author's own first line so \
+                  that no diagnostic moves",
     },
     // ---- kotlin ---------------------------------------------------------------------------------
     //

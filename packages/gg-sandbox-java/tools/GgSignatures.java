@@ -379,9 +379,19 @@ public final class GgSignatures implements Doclet {
             entry.put("path", Json.of(module.path()));
             entry.put("brief", Json.of(prose.brief()));
             entry.put("detail", prose.detail() == null ? Json.NULL : Json.of(prose.detail()));
-            // Nothing is imported. gg writes this arm's import header itself — one star import per
-            // module — so a documented import line would be a line a program would be wrong to write.
-            entry.put("import", Json.NULL);
+            // THE LINE A PROGRAM WRITES, which on this arm is a single-type import of the class
+            // the module IS. gg writes no import into a program, so this is the only place a model
+            // is told how to reach `Files.readFile` rather than `gg.files.Files.readFile` — and it
+            // is composed from the module's own path rather than restated, which is the one thing
+            // this reflector is allowed to compose (javadoc reports no import line for anything).
+            //
+            // The `core` module has no class of its own: what lives in package `gg` is the
+            // exception and the types every other module's signatures name, and a program reaches
+            // one of those by importing IT rather than the package. So it states no line, which is
+            // the other of the two answers the field has.
+            entry.put("import", module.type().isEmpty()
+                    ? Json.NULL
+                    : Json.of("import " + module.path() + ";"));
             out.add(entry);
         }
         return Json.array(out);

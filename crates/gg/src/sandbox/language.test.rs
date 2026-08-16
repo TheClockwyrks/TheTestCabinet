@@ -332,11 +332,16 @@ fn an_arms_import_line_is_the_one_its_own_opening_program_writes() {
     /// one that had dropped its imports entirely.
     ///
     /// C#'s modules are `static class`es inside a namespace an assembly reference makes reachable
-    /// in full, and Rust's are modules of a crate `--extern` puts in the extern prelude, so both
+    /// in full, Rust's are modules of a crate `--extern` puts in the extern prelude, and Java's are
+    /// classes a jar on the classpath makes reachable by their fully-qualified names, so all three
     /// opening programs name them in full and write no line. Every other arm that states a line
     /// writes that line, and the table fails in both directions: an arm listed here that starts
     /// writing its line fails, and an arm not listed that stops writing one fails.
-    const PATH_ROUTE: [GgProgramLanguage; 2] = [GgProgramLanguage::CSharp, GgProgramLanguage::Rust];
+    const PATH_ROUTE: [GgProgramLanguage; 3] = [
+        GgProgramLanguage::CSharp,
+        GgProgramLanguage::Java,
+        GgProgramLanguage::Rust,
+    ];
 
     let mut lines_asserted = 0usize;
     for language in all_languages() {
@@ -430,9 +435,10 @@ fn an_arms_import_line_is_the_one_its_own_opening_program_writes() {
 /// [`Loaded::note`](crate::knowledge::Loaded::note) builds that sentence from here. A form quoted in
 /// a syntax the arm does not have is a binding the model has not been given.
 ///
-/// Asserted as containment for every arm, plus the exact text of the three that reach a module by
-/// **string** rather than by path, because those three are the ones a `member_separator` would get
-/// wrong and get wrong silently.
+/// Asserted as containment for every arm, plus the exact text of the two that reach a module by
+/// **string** rather than by path, because those two are the ones a `member_separator` would get
+/// wrong and get wrong silently — and of the two compiled arms whose path is checked by their own
+/// compiler, since a path that stopped compiling is the same silence.
 #[test]
 fn every_language_says_how_a_bound_module_is_reached() {
     for language in all_languages().chain(crate::sandbox::fixture_languages()) {
@@ -452,7 +458,7 @@ fn every_language_says_how_a_bound_module_is_reached() {
     );
     assert_eq!(
         language(GgProgramLanguage::Java).lib_access("csvTools"),
-        "Lib.<text|number|flag|run>(\"csvTools\", \"<name>\", …)"
+        "Lib.csvTools.<name>"
     );
     assert_eq!(
         language(GgProgramLanguage::Kotlin).lib_access("csvTools"),
@@ -796,43 +802,6 @@ const SHARED_ARTIFACTS: &[(GgProgramLanguage, GgProgramLanguage, &str)] = &[
         GgProgramLanguage::PureScript,
         "the transitive half of the two entries above: JavaScript serves TypeScript's component and \
          so does PureScript, so this pair shares one by consequence rather than by a third decision",
-    ),
-    (
-        GgProgramLanguage::TypeScript,
-        GgProgramLanguage::Java,
-        "a Java program is compiled to JavaScript by TeaVM before it crosses, and the alternative — \
-         a component of Java's own, with the classlib pre-initialised into it the way Ruby's holds \
-         Opal — is not available: TeaVM has no runtime to bake. It emits, per program, only the \
-         classlib methods that program's call graph reached, renamed and inlined into the same \
-         file, so there is no stable object two programs could share and a component carrying one \
-         would carry the wrong 600 KB for every program that was not the one it was built from. \
-         The cost of sharing is measured rather than hidden: ~9 ms of evaluation per turn against \
-         ~2 ms for the equivalent plain JavaScript on the same artifact",
-    ),
-    (
-        GgProgramLanguage::JavaScript,
-        GgProgramLanguage::Java,
-        "the transitive half of the entry above: JavaScript serves TypeScript's component and so \
-         does Java, so this pair shares one by consequence rather than by a third decision",
-    ),
-    (
-        GgProgramLanguage::PureScript,
-        GgProgramLanguage::Java,
-        "the other transitive half: both arms compile to JavaScript on the host and both are \
-         evaluated by TypeScript's component, so this pair shares one by consequence rather than by \
-         a third decision",
-    ),
-    (
-        GgProgramLanguage::Java,
-        GgProgramLanguage::Kotlin,
-        "the two JVM arms reach this guest by one road: a Kotlin program is compiled to bytecode \
-         and then to JavaScript by the same TeaVM, through the same driver backend, so the \
-         argument that a component of Java's own would carry nothing carries over unchanged. This \
-         is the pair the sharing is *about* — the other three Kotlin entries below are its \
-         consequences — and it is the pair where sharing an artifact is most worth saying out \
-         loud, because these two also share a compiler road, a classlib and a library claim. What \
-         they must not share is the surface a model writes against, and that is asserted \
-         separately: this arm carries no overload group at all where Java carries fourteen",
     ),
     (
         GgProgramLanguage::TypeScript,

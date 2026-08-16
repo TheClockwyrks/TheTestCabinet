@@ -2,11 +2,11 @@ package gg.memories;
 
 import gg.ToolError;
 import gg.ToolErrorCode;
+import gg.internal.Coding;
 import gg.internal.Read;
-import gg.internal.Wire;
+import gg.internal.Value;
 import java.util.List;
 import java.util.OptionalInt;
-import org.teavm.jso.JSObject;
 
 /**
  * Durable memories, which survive a context compaction.
@@ -43,7 +43,7 @@ public final class Memories {
      * @ggop memories.write_memory
      */
     public static MemoryUsage writeMemory(String name, String description, String body) {
-        return write("write_memory", "writeMemory", name, description, body, null);
+        return write("memories.write_memory", name, description, body, null);
     }
 
     /**
@@ -60,7 +60,7 @@ public final class Memories {
      */
     public static MemoryUsage writeMemory(String name, String description, String body,
             MemoryCode code) {
-        return write("write_memory", "writeMemory", name, description, body, code);
+        return write("memories.write_memory", name, description, body, code);
     }
 
     /**
@@ -76,7 +76,7 @@ public final class Memories {
      * @ggop memories.update_memory
      */
     public static MemoryUsage updateMemory(String name, String description, String body) {
-        return write("update_memory", "updateMemory", name, description, body, null);
+        return write("memories.update_memory", name, description, body, null);
     }
 
     /**
@@ -92,7 +92,7 @@ public final class Memories {
      */
     public static MemoryUsage updateMemory(String name, String description, String body,
             MemoryCode code) {
-        return write("update_memory", "updateMemory", name, description, body, code);
+        return write("memories.update_memory", name, description, body, code);
     }
 
     /**
@@ -112,7 +112,7 @@ public final class Memories {
      * @ggop memories.create_memory
      */
     public static MemoryUsage createMemory(String name, String description, String body) {
-        return write("create_memory", "createMemory", name, description, body, null);
+        return write("memories.create_memory", name, description, body, null);
     }
 
     /**
@@ -131,7 +131,7 @@ public final class Memories {
      */
     public static MemoryUsage createMemory(String name, String description, String body,
             MemoryCode code) {
-        return write("create_memory", "createMemory", name, description, body, code);
+        return write("memories.create_memory", name, description, body, code);
     }
 
     /**
@@ -146,8 +146,7 @@ public final class Memories {
      * @ggop memories.read_memory
      */
     public static String readMemory(String name) {
-        return Wire.asString(Wire.call("read_memory", Wire.memory(), "memory", "readMemory",
-                Wire.args(Wire.text(name))));
+        return Coding.call("memories.read_memory", Value.of(name)).text();
     }
 
     /**
@@ -166,12 +165,11 @@ public final class Memories {
      * @ggop memories.edit_memory
      */
     public static MemoryUsage editMemory(String name, String search, String replace) {
-        JSObject edit = Wire.object();
-        Wire.set(edit, "name", Wire.text(name));
-        Wire.set(edit, "search", Wire.text(search));
-        Wire.set(edit, "replace", Wire.text(replace));
-        return Read.memoryUsage(Wire.call("edit_memory", Wire.memory(), "memory", "editMemory",
-                Wire.args(edit)));
+        Value edit = Value.record()
+                .put("name", Value.of(name))
+                .put("search", Value.of(search))
+                .put("replace", Value.of(replace));
+        return Read.memoryUsage(Coding.call("memories.edit_memory", edit));
     }
 
     /**
@@ -189,8 +187,7 @@ public final class Memories {
      * @ggop memories.search_memories
      */
     public static List<MemoryHit> searchMemories(String... keywords) {
-        return Read.memoryHits(Wire.call("search_memories", Wire.memory(), "memory",
-                "searchMemories", Wire.args(Wire.texts(keywords))));
+        return Read.memoryHits(Coding.call("memories.search_memories", Value.texts(keywords)));
     }
 
     /**
@@ -202,25 +199,19 @@ public final class Memories {
      * @ggop memories.delete_memory
      */
     public static MemoryUsage deleteMemory(String name) {
-        return Read.memoryUsage(Wire.call("delete_memory", Wire.memory(), "memory",
-                "deleteMemory", Wire.args(Wire.text(name))));
+        return Read.memoryUsage(Coding.call("memories.delete_memory", Value.of(name)));
     }
 
-    /** The memory record every write of one takes, as the guest's own function wants it. */
-    private static MemoryUsage write(String tool, String name, String slug, String description,
-            String body, MemoryCode code) {
-        JSObject written = Wire.object();
-        Wire.set(written, "name", Wire.text(slug));
-        Wire.set(written, "description", Wire.text(description));
-        Wire.set(written, "body", Wire.text(body));
-        if (code != null && code.module() != null) {
-            Wire.set(written, "code", Wire.text(code.module()));
-        }
-        if (code != null && code.onUseScript() != null) {
-            Wire.set(written, "onUse", Wire.text(code.onUseScript()));
-        }
-        return Read.memoryUsage(
-                Wire.call(tool, Wire.memory(), "memory", name, Wire.args(written)));
+    /** The `memory-input` record every write of one takes, as gg's own WIT declares it. */
+    private static MemoryUsage write(String op, String slug, String description, String body,
+            MemoryCode code) {
+        Value written = Value.record()
+                .put("name", Value.of(slug))
+                .put("description", Value.of(description))
+                .put("body", Value.of(body))
+                .put("code", Value.of(code == null ? null : code.module()))
+                .put("on-use", Value.of(code == null ? null : code.onUseScript()));
+        return Read.memoryUsage(Coding.call(op, written));
     }
 
     // -------------------------------------------------------------------------------------------

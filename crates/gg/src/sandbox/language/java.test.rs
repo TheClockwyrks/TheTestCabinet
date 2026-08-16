@@ -48,10 +48,10 @@ fn a_code_skills_module_is_spelled_java() {
 /// **The `lib.<key>` binding is camelCase**, and is a valid Java identifier whatever the author
 /// called their skill.
 ///
-/// This arm reaches a module by *string* — `Lib.text("csvTools", "parse", …)` — because a code
-/// module is compiled separately and there is no `import` for javac to check a program against. The
-/// key is still a name the model has to type out from memory in every program that uses it, so it is
-/// held to what a Java author would have written.
+/// This arm reaches a module as `Lib.csvTools.parse(…)`, a path javac checks, so the key is a Java
+/// **identifier** rather than a string: a key Java could not parse would be a program that does not
+/// compile. It is also a name the model types out from memory in every program that uses it, so it
+/// is held to what a Java author would have written.
 #[test]
 fn the_binding_name_is_a_camel_case_java_identifier() {
     assert_eq!(java().binding_name("csv-tools"), "csvTools");
@@ -98,34 +98,51 @@ fn the_synthesized_file_view_is_java() {
     );
 }
 
-/// **The generated documentation program is a sequence of Java statements**, which is what a program
-/// is on this arm.
+/// **The generated documentation program is a whole Java program**, which is what a program is on
+/// this arm — and it writes the one `import` it needs for itself, because gg writes none.
 ///
 /// It is the on-use script of every built-in family skill, so gg generates it and hands it straight
 /// to the prepare step. That it *compiles* is asserted by the seam's own gate, which prepares every
 /// language's generated program with the real toolchain; what is asserted here is that gg wrote
-/// Java — a `List.of`, an enhanced `for`, and terminators — rather than another arm's syntax.
+/// Java — a class, a `main`, a `List.of`, an enhanced `for`, and terminators — rather than a
+/// statement list its own prepare step would refuse.
 #[test]
-fn the_generated_documentation_program_is_java_statements() {
+fn the_generated_documentation_program_is_a_whole_java_program() {
     assert_eq!(
         java().open_docs_views_statement(&["readFile", "writeFile"]),
-        "List<String> functions = List.of(\n    \
-             \"readFile\",\n    \
-             \"writeFile\"\n\
-         );\n\
-         for (String name : functions) {\n    \
-             gg.views.Views.openDocsView(name);\n\
+        "import java.util.List;\n\
+         \n\
+         public final class Program {\n\
+         \x20   public static void main(String[] args) {\n\
+         \x20       List<String> functions = List.of(\n\
+         \x20               \"readFile\",\n\
+         \x20               \"writeFile\"\n\
+         \x20       );\n\
+         \x20       for (String name : functions) {\n\
+         \x20           gg.views.Views.openDocsView(name);\n\
+         \x20       }\n\
+         \x20   }\n\
          }\n"
     );
 
     // The empty case is a program too — an agent whose object bound nothing — and `List.of()` takes
     // its element type from the declaration rather than needing a cast.
-    assert_eq!(
-        java().open_docs_views_statement(&[]),
-        "List<String> functions = List.of();\n\
-         for (String name : functions) {\n    \
-             gg.views.Views.openDocsView(name);\n\
-         }\n"
+    assert!(
+        java()
+            .open_docs_views_statement(&[])
+            .contains("List<String> functions = List.of();"),
+        "{}",
+        java().open_docs_views_statement(&[])
+    );
+
+    // Every gg call it writes is written IN FULL, because gg writes no import into a program and
+    // there is none above these lines: a bare `Views.openDocsView` would be a text gg put in the
+    // model's own transcript that does not compile.
+    assert!(
+        !java()
+            .open_docs_views_statement(&["readFile"])
+            .contains("import gg."),
+        "gg wrote itself an import rather than spelling the call in full"
     );
 }
 
@@ -139,20 +156,31 @@ fn the_generated_documentation_program_is_java_statements() {
 /// front of the search rather than written down beside it, because it is nested in the class the
 /// search is a method of.
 #[test]
-fn the_opening_program_is_java_statements() {
+fn the_opening_program_is_a_whole_java_program() {
     let limit = crate::docs::MAX_SEARCH_LIMIT;
     assert_eq!(
         java().bootstrap_program(&["files", "views"], &["readFile"]),
         format!(
-            "List<String> modules = List.of(\n    \"files\",\n    \"views\"\n);\n\
-             for (String path : modules) {{\n    \
-                 gg.docs.Docs.search(\"\", \
-                 new gg.docs.Docs.SearchFilters().module(path).limit({limit}));\n\
-             }}\n\
+            "import java.util.List;\n\
              \n\
-             List<String> functions = List.of(\n    \"readFile\"\n);\n\
-             for (String name : functions) {{\n    \
-                 gg.views.Views.openDocsView(name);\n\
+             public final class Program {{\n\
+             \x20   public static void main(String[] args) {{\n\
+             \x20       List<String> modules = List.of(\n\
+             \x20               \"files\",\n\
+             \x20               \"views\"\n\
+             \x20       );\n\
+             \x20       for (String path : modules) {{\n\
+             \x20           gg.docs.Docs.search(\"\", \
+             new gg.docs.Docs.SearchFilters().module(path).limit({limit}));\n\
+             \x20       }}\n\
+             \n\
+             \x20       List<String> functions = List.of(\n\
+             \x20               \"readFile\"\n\
+             \x20       );\n\
+             \x20       for (String name : functions) {{\n\
+             \x20           gg.views.Views.openDocsView(name);\n\
+             \x20       }}\n\
+             \x20   }}\n\
              }}\n"
         )
     );

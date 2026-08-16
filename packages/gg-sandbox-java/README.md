@@ -21,10 +21,15 @@ operation every other arm spells as one is a `static` method here — `Files.rea
 short one. `gg` itself is the thirteenth module: the exception and the types every other
 module's signatures name.
 
-Nothing is reached through a value that has to be in scope already. What gg writes into a
-program's header is one on-demand `import` per module, so every name a model reads in a
-signature is a name it can type, and every name is qualified by the module a search filed
-it under.
+Nothing is reached through a value that has to be in scope already, and gg writes nothing
+into a program. A program reaches a name in full, `gg.files.Files.readFile(…)`, or under
+the single-type `import` the catalogue states for that module, so every name a model reads
+in a signature is a name it can type and every name is qualified by the module a search
+filed it under.
+
+`gg.internal` is the crossing: `Abi` implements the canonical ABI for the one imported
+function `test-cabinet:gg/wire` declares, `Value` and `Coding` are gg's own encoding on top
+of it. Nothing there is model-facing and `signatures.sh` excludes the package.
 
 Where a value carries an operation of its own, it carries the method too:
 `handle.send(text)` beside `Delegation.sendMessage(id, text)`, `view.close()` beside
@@ -60,17 +65,20 @@ Each of them can only go one way, and where each goes is the argument:
   per JVM, inside the start this arm pays anyway. So there is no jar to build, no binary
   artifact to commit and no reproducible-build gate to keep green — and the driver a
   reviewer reads in the diff is the driver that runs.
-- The **SDK** is a jar, because a classpath entry is what Java calls a library, and it is
-  **committed** rather than installed beside TeaVM. The image is built separately from the
-  binary that runs in it, so an SDK living there could be a different vintage from the gg
-  whose catalogue describes it — and a model shown one surface in its prompt and compiled
-  against another is the failure this whole seam is built to prevent. Committed, the jar
-  travels with the gg that describes it. It is also the half of the pair that can be
-  committed stale, since the catalogue is reflected out of the same `src/gg/` on every
-  build — which is why
-  [`scripts/ci/contract-drift.sh`](../../scripts/ci/contract-drift.sh) re-cuts and diffs
-  the jar. `build.sh` fixes every jar entry's timestamp and sorts the entry list, so two
-  builds of identical sources are identical bytes.
+- The **SDK** is a jar, because a classpath entry is what Java calls a library, and it
+  rides inside gg's binary rather than being installed beside TeaVM. The image is built
+  separately from the binary that runs in it, so an SDK living there could be a different
+  vintage from the gg whose catalogue describes it — and a model shown one surface in its
+  prompt and compiled against another is the failure this whole seam is built to prevent.
+  `build.sh` cuts it into the build's own artifact directory out of the same `src/gg/` the
+  catalogue is reflected from, so being two vintages is not a state this arm can be in.
+  It fixes every jar entry's timestamp and sorts the entry list, so two builds of identical
+  sources are identical bytes.
+
+  The jar also carries [`vendor/`](vendor/), one TeaVM runtime class kept under its own
+  licence and changed in one place so an uncaught exception prints what was thrown as well
+  as where. It goes first on TeaVM's program classpath, which is what makes that copy the
+  one the compiler translates.
 
 ## What the pins mean
 
@@ -118,10 +126,10 @@ opposite ways, and each is the way its own documentation tool accepts.
 
 ## Where the rest of this arm is
 
-- `crates/gg/src/sandbox/language/java.compile.rs` — the warm-JVM pool, the two failure
-  bands, the source-map fold and the generated entry class.
-- `crates/gg/src/sandbox/language/java.source.rs` — the wrapper, the import hoist and the
-  export scan.
+- `crates/gg/src/sandbox/language/java.compile.rs` — the warm-JVM pool, the diagnostic
+  bands, the component encode and the generated entry class.
+- `crates/gg/src/sandbox/language/java.source.rs` — the one convention a program keeps, the
+  code-module wrapper, the import hoist and the export scan.
 - `crates/gg/src/sandbox/language/java.substrate.test.rs` — real Java through gg's real
   linker, membrane and store.
 - `crates/gg/src/sandbox/language/java.surface.test.rs` — every gg tool driven through that

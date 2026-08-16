@@ -58,21 +58,21 @@ are positional; optional ones have default values and are passed by name; each
 module below is a `static class`, so nothing is constructed first.
 {{/if}}
 {{#if (eq language.id "java")}}
-Your response is a sequence of statements, which gg puts into the body of a
-method it declares for you: there is no class to write, no `main` to declare and
-no `package` line. Write the `import` lines you would normally write. A helper
-type you declare is a local declaration, so write `record Point(int x, int y) {}`
-with no access modifier on it.
+Your response is compiled verbatim, as one compilation unit: the `import` lines
+you need, then `public final class Program` with a
+`public static void main(String[] args)` in it, which is where your work goes.
+`main` may declare `throws`. Anything else you declare — a second class, a
+record, an enum — goes beside it in the same file, without `public` on it.
 
-A failure is an unchecked exception: let one escape, or catch it with
+A failure is an unchecked `gg.ToolError`: let one escape, or catch it with
 `catch (ToolError failure)` and read `failure.code()`, which is an enum.
 
 Required arguments are positional, and an optional one is an overload: an entry
 that shows you several signatures is showing you the ones you may call. A call
 with many optional fields takes a builder, and one that takes a list takes a
-varargs. Each module below is a class of `static` methods, imported for you
-already, so the last segment of a module's path is what you write, and a type one
-hands back is nested in it.
+varargs. Each module below is a class of `static` methods, reached by writing
+that module's own `import` line and then the class name, and a type one hands
+back is nested in it.
 {{/if}}
 {{#if (eq language.id "javascript")}}
 Your response is evaluated as the body of a function whose parameters include

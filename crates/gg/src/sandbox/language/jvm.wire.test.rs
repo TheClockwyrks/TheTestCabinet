@@ -32,10 +32,10 @@
 //!
 //! # What this is **not** proving
 //!
-//! That either arm is on this route. Neither is: `java.rs` and `kotlin.rs` still answer
-//! [TypeScript's component](super::super::typescript) and still compile to JavaScript, and moving
-//! them is each arm's own step — the model-facing SDK is written against a JavaScript object today,
-//! and porting it, its code modules, its healing and its diagnostics is more than a substrate.
+//! Anything about either arm's own preparation. [Java](super::super::java) is on this route and
+//! [its own tests](super::super::java::substrate) drive it; [Kotlin](super::super::kotlin) still
+//! answers TypeScript's component and still compiles to JavaScript. Every program here is
+//! hand-written, so what is measured is the substrate rather than the SDK built on it.
 
 use std::time::Instant;
 
@@ -172,8 +172,10 @@ const HUNGRY: &str = r#"public final class Program {
 /// nothing in the dependency graph reaches this one and `setClassesToPreserve` is the only thing
 /// keeping it. That is the shape a converted arm has, and it is what makes the footgun testable.
 ///
-/// Written by this test rather than by either arm's preparation, because neither arm's preparation
-/// has converted yet.
+/// Written by this test rather than taken from [the Java arm's own preparation](super::compile),
+/// which now writes one of these on every turn: what this file proves is the **substrate** — the
+/// canonical ABI, the encode, the wire and the runtime's dying words — and a copy that shared the
+/// arm's generator would stop proving it the day that generator changed.
 const ENTRY: &str = r#"import gg.internal.Abi;
 import org.teavm.interop.Export;
 

@@ -35,13 +35,16 @@ fn this_arm_names_the_compiler_that_judges_a_program() {
 fn this_arm_commits_no_component_and_compiles_one_instead() {
     assert!(rust().guest_component().is_none());
     assert!(rust().compiles_component());
-    // Every arm but the three of this shape commits one. Swift and C++ are the others, and they are
-    // named here rather than derived so that a fourth arriving is a failing test with a sentence in
-    // it.
+    // Every arm but the four of this shape commits one. Swift, C++ and Java are the others, and they
+    // are named here rather than derived so that a fifth arriving is a failing test with a sentence
+    // in it.
     for language in crate::sandbox::all_languages() {
         if matches!(
             language.id(),
-            GgProgramLanguage::Rust | GgProgramLanguage::Swift | GgProgramLanguage::Cpp
+            GgProgramLanguage::Rust
+                | GgProgramLanguage::Swift
+                | GgProgramLanguage::Cpp
+                | GgProgramLanguage::Java
         ) {
             continue;
         }
