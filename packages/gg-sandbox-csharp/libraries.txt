@@ -30,8 +30,8 @@
 # into the committed component and re-verified against the interpreter on every pin move, and a
 # vendored tree added without that is worse than saying so.
 #
-# The six namespaces in `src/Gg/GlobalUsings.cs` are already in scope and need no `using` line. The
-# rest do.
+# EVERY NAMESPACE HERE NEEDS A `using` LINE THE PROGRAM WROTE. Nothing is in a program's scope
+# before its first line, gg's own surface included.
 
 # --- The everyday ---
 System
@@ -88,7 +88,6 @@ System.Net.Sockets
 # --- Threading types ---
 # Present because they compile and because a `lock` is ordinary C#, NOT because concurrency is a
 # shape to reach for: every call on gg's surface is synchronous, there is no event loop for an
-# `await` to yield to, and work a program defers is work that reports success and never runs. They
-# are deliberately out of the default scope for that reason — see `src/Gg/GlobalUsings.cs`.
+# `await` to yield to, and work a program defers is work that reports success and never runs.
 System.Threading
 System.Threading.Tasks

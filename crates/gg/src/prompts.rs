@@ -706,9 +706,9 @@ pub struct ModuleView {
     pub brief: String,
     /// The literal line a program writes to bring the module into scope, where this arm needs one.
     ///
-    /// `None` on ten of the eleven arms, whose SDKs are already in a program's scope — and a real
-    /// import line on the one whose language has no way of doing that. It is carried per module
-    /// rather than stated once in prose because the answer is the arm's, and the arms disagree.
+    /// `None` on the arms whose SDKs are already in a program's scope, and a real import line on
+    /// the arms whose programs write one. It is carried per module rather than stated once in prose
+    /// because the answer is the arm's, and the arms disagree.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub import: Option<String>,
 }

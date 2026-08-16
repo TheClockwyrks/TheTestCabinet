@@ -713,6 +713,27 @@ fn reflected(id: GgProgramLanguage) -> serde_json::Value {
     })
 }
 
+/// Whether `candidate` is `path`, or a namespace `path` sits inside — under this arm's own
+/// `separator`, so no list of separators has to be kept anywhere.
+fn covers(candidate: &str, path: &str, separator: &str) -> bool {
+    candidate == path || path.starts_with(&format!("{candidate}{separator}"))
+}
+
+/// Whether `line` names `path` or any namespace `path` sits inside, which is the set of things an
+/// import line may name and still bring `path` into scope.
+fn reaches(line: &str, path: &str, separator: &str) -> bool {
+    let mut candidate = path;
+    loop {
+        if line.contains(candidate) {
+            return true;
+        }
+        match candidate.rsplit_once(separator) {
+            Some((head, _)) => candidate = head,
+            None => return false,
+        }
+    }
+}
+
 /// **Every module of every registered arm answers the question "how does a program reach this?" —
 /// with a line, or with the explicit statement that there is none.**
 ///
@@ -733,9 +754,16 @@ fn reflected(id: GgProgramLanguage) -> serde_json::Value {
 ///   catalogues, field by field, which is where a hop that dropped `import` would actually cost a
 ///   model something. It is the field most likely to be dropped precisely because it is empty on
 ///   most arms.
-/// * **A line that is really a line.** One line, not blank, and naming the module it brings into
-///   scope — because it is copied character for character into a program, and an import of some
-///   other module leaves the call it was written for unresolved.
+/// * **A line that is really a line.** One line, not blank, naming the module it brings into scope
+///   or the namespace that module sits in, and naming no module it does not reach — because it is
+///   copied character for character into a program, and an import of some other module leaves the
+///   call it was written for unresolved.
+///
+///   Both forms are real. PureScript imports a module by its own full name, so its line names the
+///   path. C#'s modules are types in one namespace, and `using Gg;` reaches all of them at once, so
+///   its line names the namespace their paths sit in — which is why the ancestor form is accepted
+///   and the second half of the rule is what keeps it honest: a `using Gg.Views;` filed under
+///   `Gg.Files` names a module that does not contain `Gg.Files`, and fails.
 /// * **Both states are live.** If no arm stated a line, every renderer's `Some` branch would be
 ///   unexercised across the whole suite; if none stated `None`, its `None` branch would be. The
 ///   count at the bottom fails rather than letting either half rot.
@@ -809,12 +837,25 @@ fn every_arm_declares_an_import_line_or_says_why_not() {
                          it as one line",
                         module.id
                     );
+                    let separator = arm.member_separator();
                     assert!(
-                        line.contains(module.path),
-                        "{name}: `{}` is reached with `{line}`, which never names `{}` — a line a \
-                         model copies has to be the line that brings *that* module into scope",
+                        reaches(line, module.path, separator),
+                        "{name}: `{}` is reached with `{line}`, which names neither `{}` nor a \
+                         namespace it sits in — a line a model copies has to be the line that \
+                         brings *that* module into scope",
                         module.id,
                         module.path
+                    );
+                    let elsewhere = modules.iter().find(|other| {
+                        line.contains(other.path) && !covers(other.path, module.path, separator)
+                    });
+                    assert!(
+                        elsewhere.is_none(),
+                        "{name}: `{}` is reached with `{line}`, which names `{}` — another module \
+                         of this arm that does not contain it. A model copying that line is left \
+                         with the call it wrote unresolved.",
+                        module.id,
+                        elsewhere.map(|other| other.path).unwrap_or_default()
                     );
                     with_a_line += 1;
                 }

@@ -64,12 +64,13 @@ C#     using Gg;        →  Files.WriteFile(…)     unshortened  Gg.Files.Writ
 Rust   use gg::files;   →  files::read_file(…)    unshortened  gg::files::read_file(…)
 ```
 
-Both are the form their arm is converting to. PureScript is the one arm holding
-the condition today, with a program writing `import Gg.Files as Gg.Files` for
-every module it calls. Every other arm puts its SDK in a program's scope before
-the program compiles, through a prelude, a precompiled header, a re-exported
-import, a `global using` or a scope handed to an evaluator, and each arm's page
-states which of those its own is.
+Rust's is the form that arm is converting to. PureScript and C# hold the
+condition today: a PureScript program writes `import Gg.Files as Gg.Files` for
+every module it calls, and a C# program writes `using Gg;` once or names each
+module in full. Every other arm puts its SDK in a program's scope before the
+program compiles, through a prelude, a precompiled header, a re-exported import
+or a scope handed to an evaluator, and each arm's page states which of those its
+own is.
 
 What survives a converted arm without a line is package availability: a classpath
 entry, an extern prelude, an include path, a linked archive. That is how a

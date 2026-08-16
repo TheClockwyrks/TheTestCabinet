@@ -230,3 +230,27 @@ fn an_artifact_that_is_not_base64_survives_the_reading_unchanged() {
     let bytes = b"not base64 at all !!".to_vec();
     assert_eq!(csharp().isolation_readable(bytes.clone()), bytes);
 }
+
+/// **Every module of this arm's catalogue states the one line gg writes down beside it.**
+///
+/// Two copies of `using Gg;` exist and they have to be the same string: the one
+/// `packages/gg-sandbox-csharp/tools/Catalogue.cs` reflects into every module's
+/// [import](crate::sandbox::ModuleDoc::import), which is what a documentation view quotes to a
+/// model, and [`SURFACE_IMPORT`](super::SURFACE_IMPORT), which is what gg's own gates and refusals
+/// write. A model told one line and handed another is a compile error on the turn it copied.
+///
+/// Every module rather than one, because the field is per module and an arm that stated a line for
+/// half its surface would be telling models the other half is in scope already.
+#[test]
+fn every_module_states_the_one_import_line_this_arm_writes() {
+    let modules = crate::sandbox::catalogue_modules(csharp());
+    assert!(!modules.is_empty(), "this arm declares modules");
+    for module in modules {
+        assert_eq!(
+            module.import,
+            Some(super::SURFACE_IMPORT),
+            "`{}` states an import line gg does not write",
+            module.path
+        );
+    }
+}

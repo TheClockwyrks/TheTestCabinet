@@ -128,6 +128,7 @@ fn a_program_reaches_a_code_skill_at_the_class_the_binding_names() {
 
     let logs = run_with(
         concat!(
+            "using System;\n",
             "var entry = new lib.CsvTools.Entry(lib.CsvTools.Slugify(\"Release Notes\"), 13);\n",
             "Console.WriteLine(entry.Slug);\n",
             "Console.WriteLine(lib.Ledger.Line(\"Release Notes\"));\n",
@@ -143,14 +144,19 @@ fn a_program_reaches_a_code_skill_at_the_class_the_binding_names() {
 
 #[test]
 fn a_code_skill_reaches_ggs_own_surface_and_the_models_lines_do_not_move() {
-    // A module is compiled in the same invocation as the SDK, so gg's surface is in scope inside one
-    // exactly as it is inside a program — with no `using` and nothing for the author to remember.
+    // A module is compiled in the same invocation as the SDK, so gg's surface is reached inside one
+    // exactly as it is inside a program: the author writes the import line, and gg hoists it out of
+    // the class body to where it applies.
     let modules = [module(
         "report",
-        "public static void Show(string title, string body) => Views.OpenText(title, body);\n",
+        concat!(
+            "using Gg;\n",
+            "public static void Show(string title, string body) => Views.OpenText(title, body);\n",
+        ),
     )];
     let logs = run_with(
         concat!(
+            "using System;\n",
             "lib.Report.Show(\"notes\", \"two lines\");\n",
             "Console.WriteLine(\"shown\");\n",
         ),

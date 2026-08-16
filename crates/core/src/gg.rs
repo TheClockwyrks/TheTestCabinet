@@ -4747,9 +4747,10 @@ pub enum GgProgramLanguage {
     ///
     /// A program is the reply **verbatim**, as a compilation unit with an entry point — no wrapper,
     /// no prologue, no offset to subtract — and all four ways a C# program may begin work, top-level
-    /// statements first. gg's surface reaches it through a `global using` the SDK itself declares,
-    /// so there is no import line for a model to forget. Its SDK is hand-written and reads as C#
-    /// reads: `PascalCase` methods, **optional arguments with defaults, passed by name**, nullable
+    /// statements first. Its SDK is compiled beside the program, which tells `csc` the library
+    /// exists and puts no name in scope: a program writes `Gg.Views.OpenText` in full, or writes
+    /// the `using Gg;` its catalogue states and then `Views.OpenText`. The SDK is hand-written and
+    /// reads as C# reads: `PascalCase` methods, **optional arguments with defaults, passed by name**, nullable
     /// reference types, `record`s for results, real `enum`s for fixed choices, and a thrown
     /// `ToolException` whose `Code` is an enum rather than free text. Nothing returns `Task` and
     /// nothing is `async`.

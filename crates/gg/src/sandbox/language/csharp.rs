@@ -63,11 +63,13 @@
 //! four ways a C# program can begin run here, **top-level statements first**, which is what a
 //! program written to do one thing looks like in this decade.
 //!
-//! What puts gg's surface in front of it without touching a byte of it is a **`global using`**,
-//! declared by the SDK rather than by gg: the SDK is compiled in the same compilation as the
-//! program (see [`sdk`]), so `global using Gg;` in one of its own files applies to the model's file
-//! too. It is the same mechanism .NET's implicit usings use, and it is why this arm needs neither a
-//! prologue nor a `using` a model has to remember.
+//! What the program is compiled *against* is gg's SDK, in the same compilation (see [`sdk`]), and
+//! that is the whole of what gg does for it: `csc` is told the library exists, exactly as an
+//! `--extern` or a classpath entry tells another arm's compiler. Nothing is in the program's scope
+//! until the program has put it there. `Gg.Views.OpenText` is the whole path and needs no line;
+//! `Views.OpenText` needs `using Gg;`, which the model writes, and which every module's catalogue
+//! entry states so a documentation view can quote it. The BCL is reached the same way, so a program
+//! that writes to `Console` writes `using System;` first.
 //!
 //! # What this arm has that the other compiled arms do not
 //!
@@ -115,13 +117,13 @@
 //! modules may both declare a `Status` and neither has to be renamed.
 //!
 //! The one exception is the `core` module, whose declarations (`ToolException`, `ToolErrorCode`)
-//! sit directly in `namespace Gg` and are therefore written bare. A `catch (ToolException failure)`
-//! that had to name a module would be a `catch` clause nobody writes.
+//! sit directly in `namespace Gg`, so `using Gg;` is what makes `catch (ToolException failure)`
+//! resolve and `catch (Gg.ToolException failure)` is the same clause written out.
 //!
 //! There is no logging function, and that is this arm's own answer rather than an omission:
 //! `Console.WriteLine` reaches the run's operator, because the SDK redirects `Console.Out` onto gg's
-//! feedback channel from a `[ModuleInitializer]`. A model writing the first line of C# it would
-//! write anywhere else is understood.
+//! feedback channel from a `[ModuleInitializer]`. A program writing the first line of C# it would
+//! write anywhere else is understood, once it has written the `using System;` that line needs.
 //!
 //! # What a code module is, and the one decision C# forced
 //!
@@ -329,7 +331,7 @@ impl ProgramLanguage for CSharp {
         &healing::CSHARP_DIALECT
     }
 
-    /// [`Views.OpenFile("src/Program.cs");`](self::open_file_statement) — with the window as the
+    /// [`Gg.Views.OpenFile("src/Program.cs");`](self::open_file_statement) — with the window as the
     /// call's own optional arguments, passed by name.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
         open_file_statement(&spell(self, VIEWS_OPEN_FILE), path, window)
@@ -424,12 +426,31 @@ impl ProgramLanguage for CSharp {
 // The syntax this arm writes
 // ---------------------------------------------------------------------------------------------
 
-/// `Views.OpenFile("src/Program.cs");`, or the same call with `offset: 400, limit: 200` for a window
-/// — with `Views.OpenFile` already spelled by the language that asked.
+/// **The one line a C# program writes to reach gg's surface by its short name.**
+///
+/// `namespace Gg` is an ordinary namespace in the program's own compilation, so a program either
+/// writes the whole path — `Gg.Views.OpenFile` — or writes this once and then writes `Views.OpenFile`.
+/// It is the line every module of this arm's catalogue states as its
+/// [import](crate::sandbox::ModuleDoc::import), which a documentation view quotes and which
+/// `csharp.test.rs` holds this constant to; the same string is written by
+/// `packages/gg-sandbox-csharp/tools/Catalogue.cs`, which is where the catalogue gets it.
+///
+/// One line for thirteen modules rather than a line each, because that is what C# is: the modules
+/// are types in one namespace, and a `using` of a namespace brings all of them. The alternative
+/// spelling — a `using Files = Gg.Files;` per module — resolves the same calls and is not what a C#
+/// author writes.
+pub(super) const SURFACE_IMPORT: &str = "using Gg;";
+
+/// `Gg.Views.OpenFile("src/Program.cs");`, or the same call with `offset: 400, limit: 200` for a
+/// window — with `Gg.Views.OpenFile` already spelled by the language that asked.
 ///
 /// Deliberately the plainest statement that does the job: no binding, no printing. It is synthesized
 /// into the agent's own transcript and read by the model as an example of its own output, so
 /// anything clever in it is a style the run did not intend to teach.
+///
+/// The **whole path**, which is what [`spell`] hands back on this arm and what several of these
+/// joined into one program need: a `using` may not stand between two statements, so a synthesized
+/// statement writes the route that needs no line.
 ///
 /// The window is passed as **named arguments**, which is what this SDK offers instead of an options
 /// record and what a C# author writes for a pair of optional parameters that would otherwise be two
@@ -461,6 +482,9 @@ pub(super) fn open_file_statement(
 /// the same text anyway: C# top-level statements *are* a compilation unit, so nothing has to be
 /// wrapped around them and no `class` or `Main` is written.
 ///
+/// The call is written by its **whole path**, which is one of the two routes this arm's catalogue
+/// advertises and the one that needs no line above it. [`SURFACE_IMPORT`] is the other.
+///
 /// A collection expression (`["a", "b"]`) rather than `new[] { … }`, because it is what a C# author
 /// writing a new file today reaches for and this arm pins the language version high enough to have
 /// it. A `foreach` rather than a call per name because the list is as long as the family — eleven
@@ -486,7 +510,8 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
 /// documentation views, each with a `foreach` over it.
 ///
 /// Top-level statements, which on this arm are already a whole compilation unit, so nothing is
-/// wrapped around them and no `class` or `Main` is written.
+/// wrapped around them and no `class` or `Main` is written — and every call written by its whole
+/// path, so the first program a model reads of its own is one that needed no line above it.
 ///
 /// Two arrays and two loops rather than one call per entry, because a granted surface is a dozen
 /// modules and a dozen calls written out is a shape a model would copy for its own work; collection

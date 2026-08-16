@@ -340,10 +340,15 @@ fn every_tool_crosses_the_membrane_from_its_csharp_spelling() {
     // thirty-five of them would be a minute of toolchain for a table that reads the same. It is also
     // the stronger check — the calls must arrive in the order the program made them, so a call that
     // reached gg's dispatch under a NEIGHBOUR's name fails here as well.
-    let program = crossings
-        .iter()
-        .map(|crossing| format!("{}\n", crossing.statement))
-        .collect::<String>();
+    // Each row is a statement rather than a program, so the one line every one of them needs is
+    // written once here — the same line this arm's catalogue states and a documentation view quotes.
+    let program: String = std::iter::once(format!("{}\n", super::SURFACE_IMPORT))
+        .chain(
+            crossings
+                .iter()
+                .map(|crossing| format!("{}\n", crossing.statement)),
+        )
+        .collect();
     let (outcome, log) = run_with(&program, &all_operations(), canned_outcome);
     assert!(
         matches!(&outcome.result, Ok(result) if result.error.is_none()),
@@ -386,6 +391,9 @@ fn the_view_object_the_documentation_the_helper_and_the_standard_ending_are_reac
     let (outcome, log) = evaluate(
         &prepare(
             r####"
+using Gg;
+using System;
+
 var text = Files.ReadTextFile("notes.md", offset: 1, limit: 2);
 var read = Views.OpenFile("notes.md", offset: 1, limit: 2);
 Views.OpenText("summary", text);
@@ -450,6 +458,9 @@ Session.Finish("read the file and showed myself the result");
     // `DocsRuntime`'s to be right about.
     let (outcome, _log) = run_with(
         r####"
+using Gg;
+using System;
+
 var all = Docs.Search("view");
 var narrowed = Docs.Search("", module: "Gg.Views", kind: Docs.DocKind.Function, limit: 5);
 Console.WriteLine($"{all.Total} {all.Offset} {all.Hits.Count}");
@@ -499,6 +510,9 @@ catch (ToolException failure)
     let (outcome, _log) = evaluate_closing_docviews(
         &prepare(
             r####"
+using Gg;
+using System;
+
 Console.WriteLine($"{Docs.Close("Gg.Files.ReadFile")} {Docs.CloseAll()}");
 "####,
         ),
@@ -520,6 +534,9 @@ fn the_program_library_and_a_reviewers_verdict_are_reached_in_csharp_too() {
     let (outcome, _log) = evaluate(
         &prepare(
             r####"
+using Gg;
+using System;
+
 var history = Programs.History();
 Console.WriteLine(history.Count);
 try
@@ -530,7 +547,7 @@ catch (ToolException failure)
 {
     Console.WriteLine(failure.Code);
 }
-Programs.Rerun("Console.WriteLine(\"again\");");
+Programs.Rerun("using System;\nConsole.WriteLine(\"again\");");
 Session.RequestChanges("widen the test", "name the file");
 "####,
         ),
@@ -555,7 +572,7 @@ Session.RequestChanges("widen the test", "name the file");
     // The other verdict, which is the same role's other ending, and the one call in the surface that
     // takes nothing at all.
     let (outcome, _log) = evaluate(
-        &prepare("Session.Approve();\n"),
+        &prepare("Gg.Session.Approve();\n"),
         &[],
         RunEnding::Role(EndingRole::Review),
         false,
@@ -597,6 +614,9 @@ fn a_member_method_reaches_the_operation_it_is_an_alias_of() {
     let (outcome, log) = evaluate(
         &prepare(
             r####"
+using Gg;
+using System;
+
 var issue = Board.CreateIssue("Parse the manifest", "the parser", "the writer", "tests pass",
                               "Builder");
 Console.WriteLine($"{issue.Id} {issue.Wait()}");
@@ -658,6 +678,9 @@ Console.WriteLine($"{Views.Current()[0].Close()} {Views.Current().Count}");
     let (outcome, _log) = evaluate_with_program(
         &prepare(
             r####"
+using Gg;
+using System;
+
 var summary = Programs.History()[0];
 Console.WriteLine($"{summary.Turn} {summary.Source()}");
 "####,
@@ -680,6 +703,9 @@ fn a_failure_is_thrown_whether_it_is_caught_or_let_out() {
     // SDK-specific combinator.
     let (outcome, _log) = run_with(
         r####"
+using Gg;
+using System;
+
 try
 {
     Console.WriteLine(Files.ReadTextFile("gone.cs"));
@@ -704,6 +730,9 @@ Console.WriteLine("carried on");
     // `Wire.Check`'s `NoInlining` buys.
     let (outcome, _log) = run_with(
         r####"
+using Gg;
+using System;
+
 Console.WriteLine("before");
 Files.ReadTextFile("gone.cs");
 Console.WriteLine("after");
@@ -741,6 +770,9 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     // never in scope gets.
     let (outcome, log) = run_with(
         r####"
+using Gg;
+using System;
+
 try
 {
     Shell.Run("dotnet build");
@@ -793,15 +825,21 @@ fn csharp_reaches_every_library() {
     let outcome = evaluate(
         &prepare(
             r####"
+using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Linq.Expressions;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Text.Encodings.Web;
 using System.Globalization;
+using System.Linq;
+using System.IO;
 using System.Buffers;
 using System.IO.Compression;
 using System.IO.Enumeration;
@@ -1263,4 +1301,118 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
             brief(member, &format!("`{named}.{}`", text(member, "name")));
         }
     }
+}
+
+/// **No name gg offers resolves without a line the program wrote**, measured by compiling a program
+/// that writes none and watching Roslyn refuse it.
+///
+/// The claim the [invariants](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) rest on
+/// for this arm, and the one a reading of the sources cannot settle: gg's SDK is compiled in the
+/// **same compilation** as the program, and what that buys is the library existing rather than any
+/// name being in scope. The difference is invisible in the source and decided by Roslyn, so it is
+/// asked of Roslyn.
+///
+/// Three programs, one call each, differing only in what stands above the call:
+///
+/// * nothing — refused, `CS0103`, which is what "no name is in scope" looks like;
+/// * [`SURFACE_IMPORT`](super::SURFACE_IMPORT) — accepted, which is what makes the line a
+///   documentation view quotes a line worth quoting;
+/// * the module's own path written out — accepted, which is the route that needs no line and the
+///   one every statement gg synthesizes takes.
+///
+/// It compiles and never runs, so it instantiates no component: what a compiler refuses never
+/// reaches a guest.
+#[test]
+fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
+    let compile = |source: &str| {
+        super::compile::compile_program(source, &[], &crate::sandbox::PrepareContext::new())
+    };
+
+    let bare = compile("Views.OpenText(\"t\", \"b\");\n")
+        .expect_err("a bare gg name with no line above it does not compile");
+    match bare {
+        crate::sandbox::PrepareFailure::Program(crate::sandbox::PrepareError::Compile(
+            diagnostic,
+        )) => assert!(
+            diagnostic.contains("CS0103") && diagnostic.contains("'Views'"),
+            "a program naming gg's surface with no import line was refused for another reason: \
+             {diagnostic}"
+        ),
+        other => panic!(
+            "a name that is not in scope is the model's compile error, not {other:?}. gg's surface \
+             is reaching a program that never asked for it."
+        ),
+    }
+
+    compile(&format!(
+        "{}\nViews.OpenText(\"t\", \"b\");\n",
+        super::SURFACE_IMPORT
+    ))
+    .expect("the line this arm's catalogue states brings the surface into scope");
+
+    compile("Gg.Views.OpenText(\"t\", \"b\");\n")
+        .expect("a module's own path resolves with no line at all");
+
+    // The .NET class libraries arrive the same way, so the prompt's account of them is true of the
+    // whole compilation rather than of gg's half.
+    let console = compile("Console.WriteLine(\"hi\");\n")
+        .expect_err("a BCL name with no line above it does not compile");
+    assert!(
+        format!("{console:?}").contains("CS0103"),
+        "a program naming `Console` with no `using System;` was refused for another reason: \
+         {console:?}"
+    );
+}
+
+/// **The bytes Roslyn reads are the bytes the model sent**, compared byte for byte in the
+/// preparation's own workspace.
+///
+/// The [authorship gate](super::authorship) asserts this across every arm from the outside. This
+/// asks it of the one file that matters here and names it: `program.cs`, the file every diagnostic
+/// on this arm is located in. A program carrying a `using`, a comment, an odd indent and no trailing
+/// newline, so that anything that normalised, re-indented or terminated the text would show.
+#[test]
+fn the_bytes_the_compiler_reads_are_the_bytes_the_model_sent() {
+    let source = "using Gg;\n\n// a comment gg has no business touching\n   \
+                  Views.OpenText(\"t\", \"b\");";
+    let context = crate::sandbox::PrepareContext::new();
+    super::compile::compile_program(source, &[], &context).expect("the subject compiles");
+    let workspace = context
+        .opened_workspace()
+        .expect("this arm's preparation opens a workspace to run a compiler in");
+    // `work/` is the directory a preparation writes its compiler's inputs into
+    // (`language/compile.rs`'s `Workspace`), and `program.cs` is the one file in it that carries
+    // the model's own text.
+    let written =
+        std::fs::read_to_string(workspace.join("work").join(super::compile::PROGRAM_FILE))
+            .expect("the file the compiler was given is readable");
+    assert_eq!(
+        written, source,
+        "gg wrote something other than the model's own text into the file Roslyn read"
+    );
+}
+
+/// **The file-view statements gg synthesizes are a program this arm compiles.**
+///
+/// gg pushes them into an agent's transcript as an assistant turn, several of them joined into one
+/// program, and a model reads its own transcript as the example of what a well-formed reply looks
+/// like. Nothing on the turn path compiles that program, so a statement that could not stand beside
+/// its neighbours would teach the wrong shape and never fail anything — which is what this is for.
+#[test]
+fn the_file_view_statements_gg_synthesizes_join_into_a_program_that_compiles() {
+    let arm = crate::sandbox::language(GgProgramLanguage::CSharp);
+    let window = crate::sandbox::FileWindow {
+        offset: 400,
+        limit: 200,
+    };
+    let program = [
+        arm.open_file_statement("src/Program.cs", None),
+        arm.open_file_statement("docs/notes.md", Some(window)),
+        arm.open_file_statement("a\"b\\c.cs", None),
+    ]
+    .join("\n");
+    super::compile::compile_program(&program, &[], &crate::sandbox::PrepareContext::new())
+        .unwrap_or_else(|failure| {
+            panic!("the statements gg writes into a transcript are not a program: {failure:?}")
+        });
 }

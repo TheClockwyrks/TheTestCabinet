@@ -3,7 +3,7 @@
 //! # Why it is source rather than an assembly
 //!
 //! Every other arm's SDK is a *built* artifact — a jar on a classpath, a header in a precompiled
-//! prelude, a wasm object linked into the program. This one is twenty-seven `.cs` files written into
+//! prelude, a wasm object linked into the program. This one is twenty-six `.cs` files written into
 //! the preparation's own workspace and handed to `csc` beside `program.cs`, so the model's program
 //! and gg's SDK are **one compilation**. Three things follow, and each of them is why:
 //!
@@ -15,6 +15,15 @@
 //!   with no committed binary in between and no reproducible-build gate to keep green.
 //! * **It costs almost nothing.** Roslyn compiles these files and the program together in ~0.4 s
 //!   warm, against ~0.3 s for the program alone — see [`compile`](super::compile) for the numbers.
+//!
+//! # One compilation is availability, and nothing more
+//!
+//! Compiling the SDK beside the program is how `csc` is told the library exists, which is what an
+//! `--extern`, a classpath entry or an include path is on the other arms. It puts no name in a
+//! program's scope: `namespace Gg` is a namespace like any other, so a program reaches
+//! `Gg.Views.OpenText` by writing the whole path and reaches `Views.OpenText` after writing
+//! `using Gg;` of its own. That line is what each module's
+//! [import](crate::sandbox::ModuleDoc::import) states, and a documentation view quotes it.
 //!
 //! # What holds this list to the directory
 //!
@@ -97,10 +106,6 @@ pub(super) const SDK_SOURCES: &[SdkSource] = &[
     SdkSource {
         name: "Files/Types.cs",
         text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Files/Types.cs"),
-    },
-    SdkSource {
-        name: "GlobalUsings.cs",
-        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/GlobalUsings.cs"),
     },
     SdkSource {
         name: "Internal/Native.cs",

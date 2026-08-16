@@ -45,17 +45,17 @@ module's path, qualified with `gg::` where a name of your own would make it
 ambiguous.
 {{/if}}
 {{#if (eq language.id "csharp")}}
-Your response is compiled verbatim, as a whole compilation unit. Write top-level
-statements: they run in the order you wrote them, with every declaration C# has
-legal beside them.
+Your response is compiled verbatim, as a whole compilation unit: the `using`
+lines you need, then top-level statements, which run in the order you wrote them
+with every declaration C# has legal beside them.
 
 Every method throws on failure. A failure you expect is a `ToolException` whose
 `Code` is an `enum`; let the rest escape, and gg names the call that failed.
 
-Required arguments are positional; optional ones have default values and are
-passed by name. Each module below is a `static class` already in scope through a
-`global using`, so nothing is constructed first and the last segment of a
-module's path is what you write.
+Everything gg offers lives in the namespace `Gg`. Write a name in full, or write
+its `using` line first and then the last segment of its path. Required arguments
+are positional; optional ones have default values and are passed by name; each
+module below is a `static class`, so nothing is constructed first.
 {{/if}}
 {{#if (eq language.id "java")}}
 Your response is a sequence of statements, which gg puts into the body of a

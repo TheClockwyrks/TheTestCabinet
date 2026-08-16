@@ -56,7 +56,7 @@ use wasmtime::component::Component;
 use super::GUEST_COMPONENT;
 use super::compile::{self, compile_program};
 use crate::sandbox::fake::{
-    CallLog, FakeToolApi, all_capabilities, canned_outcome, granted_operations,
+    CallLog, FakeToolApi, all_capabilities, all_operations, canned_outcome, granted_operations,
 };
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{SandboxError, SandboxOutcome};
@@ -251,9 +251,9 @@ fn run(source: &str) -> SandboxOutcome {
 
 /// One program under test: the model's own C#, unaltered.
 ///
-/// There is no preamble and no bridge to append, which is the whole point of what landed with the
-/// SDK: gg's surface is compiled into the program's own assembly and reaches its scope through a
-/// `global using`, so what a test writes here is exactly what a model would write.
+/// There is no preamble and no bridge to append: gg's surface is compiled into the program's own
+/// assembly and reached through the `using Gg;` the program itself writes, so what a test writes
+/// here is exactly what a model would write, import lines included.
 fn program(body: &str) -> String {
     body.to_string()
 }
@@ -362,6 +362,7 @@ fn a_csharp_program_dispatches_a_real_call_through_the_membrane() {
     let (outcome, calls) = evaluate(
         &prepare(&program(
             r#"
+using Gg;
 using System;
 
 public static class Program {
@@ -712,10 +713,13 @@ fn every_shape_of_entry_point_c_sharp_offers_is_one_a_model_may_write() {
     // `argv[0]` to take the program's path from. The failure was a wasm trap carrying a Mono
     // assertion, on a program a model would have had no reason to doubt.
     for source in [
-        "Console.WriteLine(\"ran\");\n",
-        "public static class Program { public static void Main() { Console.WriteLine(\"ran\"); } }\n",
-        "public static class Program { public static void Main(string[] args) { Console.WriteLine(\"ran\"); } }\n",
-        "public static class Program { public static int Main() { Console.WriteLine(\"ran\"); return 0; } }\n",
+        "using System;\nConsole.WriteLine(\"ran\");\n",
+        "using System;\npublic static class Program { public static void Main() { \
+         Console.WriteLine(\"ran\"); } }\n",
+        "using System;\npublic static class Program { public static void Main(string[] args) { \
+         Console.WriteLine(\"ran\"); } }\n",
+        "using System;\npublic static class Program { public static int Main() { \
+         Console.WriteLine(\"ran\"); return 0; } }\n",
     ] {
         assert_eq!(
             logs(&run(source)),
@@ -739,14 +743,16 @@ fn csharp_runs_a_program_written_the_async_way_a_model_reaches_for() {
     // reason to reach for it. So it is measured here rather than assumed.
     for source in [
         // The wrapper itself: a class, an async entry point, and an await inside it.
-        "using System.Threading.Tasks;\npublic static class Program {\n  public static async Task \
-         Main() {\n    await Task.CompletedTask;\n    Console.WriteLine(\"ran\");\n  }\n}\n",
+        "using System;\nusing System.Threading.Tasks;\npublic static class Program {\n  public \
+         static async Task Main() {\n    await Task.CompletedTask;\n    \
+         Console.WriteLine(\"ran\");\n  }\n}\n",
         // The same thing without the class: top-level statements containing an `await`, which
         // Roslyn lowers the same way.
-        "using System.Threading.Tasks;\nawait Task.CompletedTask;\nConsole.WriteLine(\"ran\");\n",
+        "using System;\nusing System.Threading.Tasks;\nawait Task.CompletedTask;\n\
+         Console.WriteLine(\"ran\");\n",
         // And an awaited value, so the lowering is doing more than swallowing a completed task.
-        "using System.Threading.Tasks;\nvar word = await Task.FromResult(\"ran\");\n\
-         Console.WriteLine(word);\n",
+        "using System;\nusing System.Threading.Tasks;\nvar word = await \
+         Task.FromResult(\"ran\");\nConsole.WriteLine(word);\n",
     ] {
         assert_eq!(
             logs(&run(source)),
@@ -754,6 +760,76 @@ fn csharp_runs_a_program_written_the_async_way_a_model_reaches_for() {
             "this async shape did not run: {source}"
         );
     }
+}
+
+/// **A whole C# program, written the way a model writes one, runs through gg's own turn path.**
+///
+/// Everything else in this file drives [`evaluate`], which is the production path with the language
+/// registry left out. This one calls [`run_program`](crate::sandbox::run_program) — the function a
+/// turn calls — so what answers is the registered arm: its real prepare step, a real `csc`, the real
+/// guest and the real membrane.
+///
+/// The program is what the [invariants](https://docs.testcabinet.ai/gg/responses-as-code/invariants/)
+/// ask a model for on this arm and nothing gg supplies: its own `using` lines, its own entry point,
+/// a call that crosses to the host, and a view opened on what came back. What is asserted is the
+/// whole round trip — the call arrived, the turn carries no error, and the view the program opened
+/// is in the outcome under the selector the program gave it.
+#[test]
+fn a_whole_csharp_program_a_model_would_write_runs_through_the_turn_path() {
+    let log = CallLog::default();
+    let api = FakeToolApi::with(&log, canned_outcome);
+    let operations = granted_operations(&all_operations(), false);
+    let scope = ProgramScope {
+        capabilities: &all_capabilities(),
+        operations: &operations,
+        modules: &[],
+        ending: RunEnding::None,
+    };
+    let (outcome, _api) = crate::sandbox::run_program(
+        crate::sandbox::language(GgProgramLanguage::CSharp),
+        r#"using Gg;
+using System;
+
+public static class Program
+{
+    public static void Main()
+    {
+        var notes = Files.ReadTextFile("notes.md");
+        Console.WriteLine($"read {notes.Length} characters");
+        Views.OpenText("notes", notes);
+    }
+}
+"#,
+        scope,
+        SandboxLimits::default(),
+        None,
+        api,
+    );
+
+    let result = match &outcome.result {
+        Ok(result) => result,
+        Err(error) => panic!("the program did not run: {error:?}"),
+    };
+    assert!(
+        result.error.is_none(),
+        "the program ran and reported a failure: {:?}",
+        result.error
+    );
+    assert_eq!(
+        log.names(),
+        ["read_file"],
+        "the call the program wrote did not reach the host"
+    );
+    let opened: Vec<&str> = outcome
+        .views_opened
+        .iter()
+        .map(|view| view.selector.as_str())
+        .collect();
+    assert_eq!(
+        opened,
+        ["notes"],
+        "the view the program opened is not in what the turn hands back"
+    );
 }
 
 /// **Gate [G8](super::super::g8) for C#** — all five shapes a runtime failure takes,
@@ -766,6 +842,8 @@ fn g8_a_runtime_failure_reaches_the_model() {
             Case {
                 shape: Shape::ToolError,
                 program: r#"// G8 (a): a gg call the host answers `not-found`, uncaught.
+using Gg;
+using System;
 
 var text = Files.ReadTextFile(
     "missing.md"
@@ -779,6 +857,7 @@ Console.WriteLine(text);
             Case {
                 shape: Shape::NativeFault,
                 program: r#"// G8 (b): an index past the end of an array.
+using System;
 
 var values = new int[] { 1, 2, 3 };
 var missing = values[
@@ -796,6 +875,7 @@ Console.WriteLine(missing);
             Case {
                 shape: Shape::FailureValue,
                 program: r#"// G8 (c): ending by returning a failure status.
+using System;
 
 public static class Program {
   public static int Main() {
@@ -811,6 +891,7 @@ public static class Program {
             Case {
                 shape: Shape::ResourceFault,
                 program: r#"// G8 (d): unbounded recursion.
+using System;
 
 public static class Program {
   static int Deeper(int n) {
@@ -828,6 +909,7 @@ public static class Program {
             Case {
                 shape: Shape::Abort,
                 program: r#"// G8 (e): stopping the process outright.
+using System;
 
 Console.WriteLine("before the exit");
 Environment.Exit(

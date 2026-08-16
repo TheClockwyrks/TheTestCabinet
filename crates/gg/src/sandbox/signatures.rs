@@ -229,14 +229,14 @@ pub struct ModuleDoc {
     ///   model copies it rather than guessing at the arm's import syntax. The PureScript arm emits
     ///   one for every module it declares: that language resolves a qualified name only under a
     ///   qualified import, so `Gg.Files.readFile` is an expression a program can write only after
-    ///   `import Gg.Files as Gg.Files`.
+    ///   `import Gg.Files as Gg.Files`. The C# arm emits `using Gg;` for all of its, because its
+    ///   modules are types in one namespace and one `using` of that namespace reaches them all.
     /// * **`None`** — there is *no line to write*, because gg puts the SDK in a program's scope
     ///   before the model's code is compiled: a prelude, a precompiled header, an
-    ///   `@_exported import`, a `global using`, a scope injection. Every other registered arm is in
-    ///   this state today. It is a fact about how that arm delivers its SDK rather than a field an
-    ///   arm left blank, and the honest rendering of it is to *say* the module is reachable already
-    ///   — not to fall silent and leave the model hunting for an import line its compiler would
-    ///   refuse.
+    ///   `@_exported import`, a scope injection. It is a fact about how that arm delivers its SDK
+    ///   rather than a field an arm left blank, and the honest rendering of it is to *say* the
+    ///   module is reachable already — not to fall silent and leave the model hunting for an import
+    ///   line its compiler would refuse.
     ///
     /// # Why it stays an `Option` and stays per module
     ///
@@ -962,7 +962,7 @@ pub(crate) fn spelling(
 ///   itself emits and what a docview is filed under;
 /// * the [spelling](TypeReference::spelled) a signature writes — `Files.FileRead`,
 ///   `files::FileRead` — which is module-qualified but relative, because that is what compiles at a
-///   call site under the arm's prelude or `global using`;
+///   call site under the arm's prelude or the module's own import line;
 /// * the bare [name](TypeDeclaration::name) — `FileRead`.
 ///
 /// The middle one is the string the model has most often just read, since it is the one printed in

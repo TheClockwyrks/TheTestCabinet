@@ -292,10 +292,10 @@ fn every_language_writes_the_program_that_opens_the_session() {
 ///
 /// A documentation view of every symbol tells a model how its program reaches that symbol, out of
 /// [`ModuleView::import`](crate::sandbox::ModuleView): a line to write, or nothing to write because
-/// this arm's SDK is in a program's scope before the model's code is compiled. Ten of the eleven
+/// this arm's SDK is in a program's scope before the model's code is compiled. Nine of the eleven
 /// arms are in the second state, and the second state is a claim about **how that arm delivers its
-/// SDK** — a prelude, a precompiled header, an `@_exported import`, a `global using`, a scope
-/// injection. Nothing about the catalogue notices when that stops being true. The day an arm's SDK
+/// SDK** — a prelude, a precompiled header, an `@_exported import`, a scope injection. Nothing
+/// about the catalogue notices when that stops being true. The day an arm's SDK
 /// has to be imported, every view on that arm quietly tells every model the opposite, and the model
 /// pays with a compile error naming a symbol it was told it already had.
 ///
@@ -304,10 +304,16 @@ fn every_language_writes_the_program_that_opens_the_session() {
 /// request. So it is the arm's own demonstration of what a program has to do to call `docs.search`
 /// and `views.openDocsView`, and the catalogue has to agree with it:
 ///
-/// * a module that states a line — PureScript's, whose compiler resolves a qualified name only under
-///   a qualified import — has that exact line in the program, character for character;
+/// * a module that states a line is reached in the program by one of the two routes the catalogue
+///   advertises — that exact line, character for character, or the module's own
+///   [path](crate::sandbox::ModuleDoc::path) written at the call site. PureScript's compiler
+///   resolves a qualified name only under a qualified import, so its program carries the line; C#'s
+///   modules are types the program may name in full, so its program carries the path;
 /// * a module that states none has **no line in the program bringing it into scope**, which is what
 ///   "already there" means when a compiler is the one being told.
+///
+/// What fails the first half is the case worth catching: a program calling into a module by a
+/// **short** name, with neither the line nor the path, which is an injection the catalogue denies.
 ///
 /// The negative half looks for a scope-bringing statement that names *that module's path*, rather
 /// than for import syntax in general, so a program that imports something else entirely — a
@@ -351,10 +357,10 @@ fn an_arms_import_line_is_the_one_its_own_opening_program_writes() {
             match module.import {
                 Some(line) => {
                     assert!(
-                        program.contains(line),
-                        "{name}: its catalogue says `{}` is reached with `{line}`, and the opening \
-                         program gg writes for this arm calls into it without that line. One of \
-                         the two is wrong, and the model is told the catalogue's \
+                        program.contains(line) || program.contains(module.path),
+                        "{name}: its catalogue says `{}` is reached with `{line}` or by that path, \
+                         and the opening program gg writes for this arm calls into it with \
+                         neither. One of the two is wrong, and the model is told the catalogue's \
                          answer:\n{program}",
                         module.path
                     );

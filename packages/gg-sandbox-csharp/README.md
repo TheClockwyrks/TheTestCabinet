@@ -68,13 +68,14 @@ Three things follow, and each of them is why:
   with no binary in between.
 - **it costs almost nothing.** ~70 ms on a ~210 ms compile, measured.
 
-What puts it in a model's scope without touching a byte of the model's file is a `global using` the
-SDK declares for itself, in `src/Gg/GlobalUsings.cs`. It is the same mechanism .NET's implicit usings
-use, and it works here for the same reason: one compilation.
+One compilation is how `csc` is told the library exists, and it puts **no name in a program's
+scope**. A program reaches `Gg.Views.OpenText` by writing the whole path, and `Views.OpenText` after
+writing `using Gg;` of its own — the line `tools/Catalogue.cs` states for every module and a
+documentation view quotes. The .NET class libraries arrive the same way.
 
 `Console.WriteLine` reaches the run's operator, because the SDK redirects `Console.Out` onto gg's
 feedback channel from a `[ModuleInitializer]`. That is why this arm has no logging function in its
-catalogue — there is nothing to catalogue, only `Console`.
+catalogue — there is nothing to catalogue, only `Console`, under the program's own `using System;`.
 
 ## What `build.sh` does
 

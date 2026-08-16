@@ -299,11 +299,10 @@ internal static class Signatures
             // anywhere but on a declaration of the SDK. See `ResolveModules` for where the
             // class-less module's declaration is.
             WriteProse(writer, modules[module.Id], $"the module `{module.Id}`");
-            // Nothing is imported: the SDK declares a `global using Gg;` of its own, in the same
-            // compilation as the program, so every module is in scope before the first line. A
-            // program that wants the shorter call site writes `using static Gg.Files;` for itself,
-            // which is its choice rather than a line gg requires.
-            writer.WriteNull("import");
+            // How a program reaches this module. The SDK is compiled beside the program, which tells
+            // `csc` the library exists and puts nothing in scope, so a call is either written out in
+            // full or written short under this line. See `Catalogue.Import`.
+            writer.WriteString("import", module.Import);
             writer.WriteEndObject();
         }
         writer.WriteEndArray();
@@ -713,7 +712,7 @@ internal static class Signatures
         foreach (var (fqn, type) in types)
         {
             // Both halves, recorded separately because they differ: a signature writes the name a
-            // program types (`Files.FileRead`, which resolves under the SDK's own `global using`),
+            // program types (`Files.FileRead`, which resolves under the program's own `using Gg;`),
             // and a documentation view is opened by the resolved one (`Gg.Files.FileRead`).
             writer.WriteStartObject();
             writer.WriteString("spelled", TypeName(type));
@@ -955,9 +954,9 @@ internal static class Signatures
     /// The name a documentation view of `type` is opened by: its module's path and its own name.
     private static string Fqn(INamedTypeSymbol type) => $"{ModuleOf(type).Path}.{type.Name}";
 
-    /// The name a signature writes, which is the name a program types: qualified by the containing
-    /// class where there is one, and bare for the `core` module's types, which the SDK's own
-    /// `global using` puts in scope.
+    /// The name a signature writes, which is the name a program types under its own `using Gg;`:
+    /// qualified by the containing class where there is one, and bare for the `core` module's
+    /// types.
     private static readonly SymbolDisplayFormat TypeFormat = new(
         typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypes,
         genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,

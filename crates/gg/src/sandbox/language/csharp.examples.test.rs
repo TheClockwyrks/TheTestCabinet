@@ -85,7 +85,7 @@ fn everything_on() -> SystemContext {
         modules: vec![ModuleView {
             path: "Gg.Files".to_string(),
             brief: "Read, write, edit and list the files of the workspace.".to_string(),
-            import: None,
+            import: Some(super::SURFACE_IMPORT.to_string()),
         }],
         code_headings: vec![CodeHeadingView {
             heading: "File".to_string(),
@@ -207,9 +207,23 @@ fn every_csharp_example_a_model_is_shown_compiles() {
         snippets.len()
     );
 
-    // The one entry point, and it comes first because C# requires top-level statements to precede
-    // every type declaration in the file.
-    let mut program = String::from("return;\n\n");
+    // What a program that copied these examples would have written above them. An example is a
+    // fragment shown inside a documentation view, so it carries no `using` of its own and cannot:
+    // the view states the line beside it (`ModuleView::import`), and the model writes it once at the
+    // top of its own program. Reconstructing that context is what makes this gate compile what a
+    // model would really have compiled.
+    //
+    // `using Gg;` is this arm's own import line, held to the catalogue's by `csharp.test.rs`. The
+    // rest are the .NET namespaces the SDK's examples write into, and each is here because an
+    // example needs it rather than to be generous — a namespace no example names is one this gate
+    // has no reason to open.
+    //
+    // The one entry point comes after them and before every type declaration, because C# requires
+    // top-level statements to precede both.
+    let mut program = format!(
+        "{}\nusing System;\nusing System.Collections.Generic;\nusing System.Linq;\n\nreturn;\n\n",
+        super::SURFACE_IMPORT,
+    );
     for (index, (label, snippet)) in snippets.iter().enumerate() {
         let body = snippet.trim_end();
         program.push_str(&format!(

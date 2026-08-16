@@ -8,10 +8,11 @@
 //! artifact gg ships is a runtime rather than a program, and the per-turn cost is one `csc` and
 //! nothing else.
 //!
-//! What `csc` is given is the model's program **and the SDK's own sources** — twenty-two `.cs` files
+//! What `csc` is given is the model's program **and the SDK's own sources** — twenty-six `.cs` files
 //! written into the preparation's workspace beside it, so that gg's surface is in the program's own
-//! assembly and the prebuilt guest has nothing extra to carry. See [`sdk`](super::sdk) for why, and
-//! below for what it costs.
+//! assembly and the prebuilt guest has nothing extra to carry. It puts no name in the program's
+//! scope: what reaches `Views.OpenText` is the `using Gg;` the program wrote. See [`sdk`](super::sdk)
+//! for why, and below for what it costs.
 //!
 //! That shape is what a prior feasibility study missed. Priced on `componentize-dotnet` —
 //! NativeAOT-LLVM, which compiles the *program* to native wasm — this arm measured **25–43 seconds a
@@ -405,10 +406,10 @@ impl Target {
 ///
 /// The **SDK's own sources** are compiled with the program, which is what makes gg's surface
 /// reachable without an assembly the guest would have to carry — see [`sdk`](super::sdk). They are
-/// listed before the program so that a `csc` reading them in order meets `GlobalUsings.cs` first;
-/// nothing about C# requires it, and it makes the response file read the way the compilation is
-/// meant to. `sources` is everything else, in the order it is to be read: a program's code modules
-/// and then its own file, or a single module on its own check.
+/// listed before it because a library is read before the thing that depends on it; nothing about C#
+/// requires the order, and it makes the response file read the way the compilation is meant to.
+/// `sources` is everything else, in the order it is to be read: a program's code modules and then
+/// its own file, or a single module on its own check.
 fn response_file(
     root: &Path,
     target: Target,
