@@ -1,5 +1,15 @@
 /// <reference types="vite/client" />
 
+interface ImportMetaEnv {
+  /**
+   * The short domain a run's share links are built against (e.g.
+   * `https://tcab.ai`). Unset falls back to the production short domain; set it
+   * to another domain for a staging gallery, or to an empty string to offer no
+   * share control at all. See `shareBaseUrl` in `staticGallery.ts`.
+   */
+  readonly VITE_TCAB_SHARE_BASE_URL?: string;
+}
+
 // Build-time published dataset, supplied by `vite-plugin-snapshot` from the
 // backend's public R2 snapshot. Inlined into the bundle at build time; empty in
 // dev and when no snapshot URL is configured.

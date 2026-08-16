@@ -9,6 +9,7 @@ import {
 import { useBackend, useWorkers } from "../../client/context";
 import {
   fetchGrafanaUrl,
+  fetchShareBaseUrl,
   fetchSnapshotUrl,
   referenceMediaKey,
 } from "../../transport";
@@ -360,6 +361,25 @@ export function useLiveGallery(
     };
   }, [backendUrl]);
 
+  // The short-link domain, reported by the same `GET /config`. Resolved here for
+  // the same reason as the two above. Its absence is meaningful rather than merely
+  // degraded: a deployment with no resolver in front of it should offer no share
+  // control, because a short code only means something against the corpus of
+  // published runs it was minted from — a staging console handing out a
+  // production-domain link would point at a different run, or at none.
+  const [shareBaseUrl, setShareBaseUrl] = useState<string | null>(null);
+  useEffect(() => {
+    setShareBaseUrl(null);
+    if (!backendUrl) return;
+    let active = true;
+    fetchShareBaseUrl(backendUrl)
+      .then((url) => active && setShareBaseUrl(url))
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [backendUrl]);
+
   const [producedSummaries, setProducedSummaries] = useState<RunSummary[]>([]);
   const [localIds, setLocalIds] = useState<ReadonlySet<string>>(new Set());
   const [writeups, setWriteups] = useState<Record<string, string>>({});
@@ -685,6 +705,7 @@ export function useLiveGallery(
     modelsStatus,
     canExecute: true,
     grafanaUrl,
+    shareBaseUrl,
     queryRunSummaries,
     fetchRunEvents,
     readRun,

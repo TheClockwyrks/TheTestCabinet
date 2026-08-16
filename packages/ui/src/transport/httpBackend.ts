@@ -1042,6 +1042,12 @@ interface ClientConfigResponse {
   // bucket, not in any run tree the artifact service holds. Absent on a backend
   // that predates the field.
   snapshotUrl?: string | null;
+  // The short-link domain's base URL (e.g. `https://tcab.ai`), or null when the
+  // deployment fronts no short-link resolver. Per-environment on purpose: a code
+  // means nothing against a corpus of published runs other than the one it was
+  // minted from, so a staging console must not hand out production short links.
+  // Absent on a backend that predates the field.
+  shareBaseUrl?: string | null;
 }
 
 // The backend's `POST /jobs` ack (`LaunchAck`): the enqueued job id plus the URLs
@@ -1196,6 +1202,23 @@ export async function fetchGrafanaUrl(
   try {
     const config = await getJson<ClientConfigResponse>(backendUrl, "/config");
     return config.grafanaUrl ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Resolve the short-link domain's base URL from the backend's `GET /config`, or
+// null when the deployment fronts no short-link resolver (or a backend that
+// predates the field). Best-effort like the resolvers around it, and here the
+// degradation is the point: null means the console offers no share control at all,
+// which is the right answer for an environment with no resolver in front of it —
+// far better than minting a link against the wrong corpus of published runs.
+export async function fetchShareBaseUrl(
+  backendUrl: string,
+): Promise<string | null> {
+  try {
+    const config = await getJson<ClientConfigResponse>(backendUrl, "/config");
+    return config.shareBaseUrl ?? null;
   } catch {
     return null;
   }

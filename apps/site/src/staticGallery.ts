@@ -35,6 +35,20 @@ import {
 
 const LOCAL_RUNS_URL = "/__local-runs__/index.json";
 
+// The default short domain in front of the public gallery. Unlike the consoles —
+// which ask their backend, since a console can be pointed at any environment —
+// this gallery *is* the deployment short links resolve to, so it names the domain
+// directly. `VITE_TCAB_SHARE_BASE_URL` overrides it for a staging gallery; setting
+// it empty offers no share control at all.
+const DEFAULT_SHARE_BASE_URL = "https://tcab.ai";
+
+function shareBaseUrl(): string | null {
+  const configured = import.meta.env.VITE_TCAB_SHARE_BASE_URL;
+  if (configured === undefined) return DEFAULT_SHARE_BASE_URL;
+  const trimmed = configured.trim();
+  return trimmed === "" ? null : trimmed.replace(/\/+$/, "");
+}
+
 interface LocalRunsResponse {
   runs?: RunRecord[];
   writeups?: Record<string, string>;
@@ -301,6 +315,12 @@ export function useStaticGallery(): GalleryDataInput {
     // have no access to one — the observability stack is VPN-only. Always null, so
     // the run view never offers a link nobody could follow.
     grafanaUrl: null,
+    // The short domain this gallery's runs are shared through. Unlike the consoles
+    // — which ask their backend, since a console can be pointed at any environment
+    // — the gallery *is* the deployment short links resolve to, so it names the
+    // domain in front of it directly. `VITE_TCAB_SHARE_BASE_URL` overrides it for a
+    // staging gallery (or empty to offer no share control at all).
+    shareBaseUrl: shareBaseUrl(),
     fetchRunEvents,
     // The host's lazy single-run fetcher; the gallery context's `fetchRun`
     // delegates to it (falling back to the in-memory `runs` internally).
