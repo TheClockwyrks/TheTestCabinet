@@ -117,6 +117,30 @@ spec:
           volumeMounts:
             - name: state
               mountPath: /state
+          # Sized from observed prod behaviour: this container sits near-idle on CPU
+          # (well under 100m) and holds ~650Mi resident, with periodic bursts to
+          # roughly a core when the publisher rebuilds the public snapshot.
+          #
+          # Requests exist mostly so the scheduler stops treating this pod as free.
+          # With no requests at all it lands in BestEffort — the first thing evicted
+          # under node pressure — which is a poor fit for a single-replica active
+          # coordinator whose every move is a ~1-2 min outage (see the
+          # safe-to-evict annotation above, which is guarding the same property).
+          #
+          # The ceilings are deliberately loose rather than tight. Throttling this
+          # container surfaces directly as console latency, so the CPU limit is a
+          # runaway backstop, not a shaping tool — normal snapshot bursts must fit
+          # under it comfortably. Memory gets 3x the observed resident set because
+          # the snapshot refresh materializes every run record at once, so its peak
+          # grows with the catalog; a snug limit would turn that growth into
+          # OOMKills long before anyone noticed the trend.
+          resources:
+            requests:
+              cpu: 250m
+              memory: 768Mi
+            limits:
+              cpu: "1500m"
+              memory: 2Gi
           # Readiness and liveness MUST stay on different endpoints — and this shape
           # is exactly why. /state is an emptyDir here, so the definition store starts
           # EMPTY on every reschedule and the ingest sidecar refills it over minutes.
