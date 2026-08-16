@@ -244,12 +244,16 @@ def _classify(exc: BaseException, filenames: frozenset) -> feedback.ProgramError
     :class:`gg.core.ToolError`, which is what a program sees; a program that reached past the SDK
     into ``wit_world`` gets the generated ``Err`` wrapper. Reading only the first would classify the
     second as an ordinary exception and lose the code the host branches on.
+
+    The message of the first is the exception's own rendering rather than the host's detail alone,
+    because ``gg.core.ToolError.__str__`` names the call that failed and a program with twenty reads
+    in it is otherwise told a file was not found and left to guess which read wanted it.
     """
     if isinstance(exc, ToolError):
         return feedback.ProgramError(
             kind=feedback.ErrorKind.TOOL_FAILURE,
             code=wit_types.ErrorCode[exc.code.name],
-            message=str(exc.args[0]) if exc.args else str(exc),
+            message=str(exc),
             location=_locate(exc, filenames),
         )
     if isinstance(exc, Err) and isinstance(exc.value, wit_types.ToolError):

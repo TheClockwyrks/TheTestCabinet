@@ -224,13 +224,6 @@ const KNOWN_HOLES: &[Hole] = &[
     // ---- python -----------------------------------------------------------------------------
     Hole {
         arm: GgProgramLanguage::Python,
-        shape: Shape::ToolError,
-        // The host's detail, and not a word about which call produced it. A program with twenty
-        // reads in it is told a file was not found and left to guess which read wanted it.
-        instead: Instead::Says("no such file or directory: missing.md"),
-    },
-    Hole {
-        arm: GgProgramLanguage::Python,
         shape: Shape::Abort,
         // The status the program chose is destroyed on the way out: `os._exit(3)` is reported as
         // `exit(1)`, for the reason Swift, C++ and C# report the same thing — the preview1 adapter

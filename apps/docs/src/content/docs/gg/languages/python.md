@@ -129,7 +129,8 @@ exception once and reports it as a located `ProgramError`:
 - a `SyntaxError` carries CPython's own message and the program's own line and
   1-based column, and has no traceback;
 - a raised `ToolError`, and the generated `Err` a program reaching past the SDK
-  receives, are a tool failure carrying the wire's error code;
+  receives, are a tool failure carrying the wire's error code, reported under the
+  exception's own rendering so that the call that failed is named;
 - a `NameError`, and an `AttributeError` against a module of the `gg` package, are
   an unknown name;
 - anything else is reported with the program's own frames and the exception,

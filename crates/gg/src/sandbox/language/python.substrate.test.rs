@@ -1413,7 +1413,13 @@ except gg.core.ToolError as failure:
     );
     let error = program_error(&outcome);
     assert_eq!(error.kind, ProgramErrorKind::ToolFailure, "{error:?}");
-    assert_eq!(error.message, "no such file, from `read_file`");
+    // The exception's own rendering, which names the call that failed before the host's detail:
+    // a program with twenty reads in it is otherwise told a file was not found and left to guess
+    // which read wanted it.
+    assert_eq!(
+        error.message,
+        "read_file: not-found: no such file, from `read_file`"
+    );
     assert!(
         error
             .location
@@ -1474,7 +1480,7 @@ except gg.core.ToolError as failure:
         );
         assert_eq!(
             program_error(&outcome).message,
-            "expected exactly one of `prompt` or `issue_id`",
+            "spawn_subagent: invalid-argument: expected exactly one of `prompt` or `issue_id`",
             "`{program}` was not refused"
         );
         assert!(log.calls().is_empty(), "`{program}` reached the host");
@@ -1500,9 +1506,11 @@ fn what_a_run_withholds_is_still_on_its_module_and_refused_when_it_is_called() {
     // side raised it: reaching for something this run does not offer is one event and one metric on
     // every arm.
     assert_eq!(error.kind, ProgramErrorKind::UnknownName, "{error:?}");
+    // The host's sentence, under the exception's own rendering: the call this program wrote, and
+    // the code a handler branches on.
     assert_eq!(
-        error.message, "`gg.files.read_file` is not available.",
-        "the call is named as this program would write it, and nothing more is said"
+        error.message,
+        "read_file: unavailable: `gg.files.read_file` is not available."
     );
     assert!(
         log.calls().is_empty(),
@@ -1520,7 +1528,10 @@ fn what_a_run_withholds_is_still_on_its_module_and_refused_when_it_is_called() {
     );
     let error = program_error(&outcome);
     assert_eq!(error.kind, ProgramErrorKind::UnknownName, "{error:?}");
-    assert_eq!(error.message, "`gg.board.create_epic` is not available.");
+    assert_eq!(
+        error.message,
+        "create_epic: unavailable: `gg.board.create_epic` is not available."
+    );
 
     // A name gg does not have AT ALL is the other failure, and it is still this arm's spelling of an
     // unknown name: the module says what it declares, which is now the whole of what gg declares.
