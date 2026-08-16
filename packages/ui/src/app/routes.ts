@@ -57,12 +57,13 @@ export const routes = {
   testCaseReference: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}/reference`,
   models: (): string => "/models",
+  // The model detail index — its Overview tab, which reports the model one test
+  // case at a time. The `?case=`/`?variant=` parameters the tab writes select
+  // which cohort it opens on, so a specific reading is linkable.
   modelDetail: (modelId: string): string =>
     `/models/${encodeURIComponent(modelId)}`,
   modelStats: (modelId: string): string =>
     `/models/${encodeURIComponent(modelId)}/stats`,
-  modelPricing: (modelId: string): string =>
-    `/models/${encodeURIComponent(modelId)}/pricing`,
   modelRuns: (modelId: string): string =>
     `/models/${encodeURIComponent(modelId)}/runs`,
   // The add/edit model config form (consoles only; the static site is read-only
@@ -234,7 +235,6 @@ export const routePatterns = {
   modelNew: "/models/new",
   modelDetail: "/models/:modelId",
   modelStats: "/models/:modelId/stats",
-  modelPricing: "/models/:modelId/pricing",
   modelEdit: "/models/:modelId/edit",
   modelRuns: "/models/:modelId/runs",
   about: "/about",

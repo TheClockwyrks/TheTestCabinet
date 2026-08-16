@@ -46,7 +46,7 @@ OpenRouter slug, and **Save**.
 
 Prices are not edited here: the backend records each model's OpenRouter price
 automatically — once when a run completes and again on a 24-hour refresh — and
-the model's detail page shows that history as a graph and a table.
+the model's **Stats** tab shows the latest per-Mtok rates.
 
 ## Verify
 

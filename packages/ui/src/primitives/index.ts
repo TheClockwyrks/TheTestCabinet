@@ -33,11 +33,9 @@ export {
 export {
   barChart,
   stackedBarChart,
-  priceHistoryChart,
   type BarPoint,
   type StackedBarSegment,
   type StackedSeries,
-  type PricePoint,
 } from "./plot/charts";
 export {
   basePlotOptions,

@@ -13,7 +13,7 @@ import styles from "./ModelDetailLayout.module.scss";
 
 // The model detail page's tabs. Each is a distinct route; this drives which tab
 // link reads as active.
-export type ModelDetailTab = "about" | "stats" | "pricing" | "runs";
+export type ModelDetailTab = "overview" | "stats" | "runs";
 
 interface ModelDetailLayoutProps {
   /** Which tab the rendering page represents. */
@@ -61,9 +61,8 @@ export function ModelDetailLayout({ tab, children }: ModelDetailLayoutProps) {
   }
 
   const tabs: { key: ModelDetailTab; label: string; to: string }[] = [
-    { key: "about", label: "About", to: routes.modelDetail(model.slug) },
+    { key: "overview", label: "Overview", to: routes.modelDetail(model.slug) },
     { key: "stats", label: "Stats", to: routes.modelStats(model.slug) },
-    { key: "pricing", label: "Pricing", to: routes.modelPricing(model.slug) },
     { key: "runs", label: "Runs", to: routes.modelRuns(model.slug) },
   ];
 
