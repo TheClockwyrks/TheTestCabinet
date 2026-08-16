@@ -163,6 +163,24 @@ connected to the GitHub mirror:
   because the gallery is one workspace of an npm workspace repo). So the
   middleware is at `/functions/_middleware.ts`, not under `apps/site/`. Leave the
   project's **Root directory** setting empty.
+- **Which requests reach the Function** is decided by
+  `apps/site/public/_routes.json`, and it is a **billing** control as much as a
+  routing one. A root `_middleware.ts` runs in front of *everything* — every
+  hashed JS chunk, every stylesheet, every logo — and each of those is a billable
+  Worker invocation, where a static asset served without a Function is free.
+  Absent this file Pages generates `include: ["/*"]` with no exclusions, so a
+  single page view spends a dozen invocations to decorate one document.
+  The file therefore keeps the `/*` include the 404 handling needs, and excludes
+  the paths that are purely static: `/assets/*` (the bundle, and the bulk of the
+  traffic), `/logos/*`, `/run-events/*`, `share-index.json`, and the standalone
+  SVGs. It is plain JSON and cannot carry comments, which is why the reasoning is
+  written down here.
+  One path is deliberately **not** excluded: the build's per-run
+  `/runs/<id>.json` records sit under the same prefix as the run pages, and a
+  `_routes.json` rule may only wildcard at its end, so no rule separates them. The
+  middleware answers those cheaply — it returns the response untouched as soon as
+  it sees a non-HTML content type — and one extra invocation per run-page view is
+  the price of keeping the run records where they are.
 - Create the project's **deploy hook** and give its URL to the backend as
   `TCAB_SITE_DEPLOY_HOOK_URL` (see [Deployment](/deployment/overview/)). The
   backend fires it after each snapshot upload, so a published run rebuilds the

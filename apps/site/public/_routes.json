@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "include": ["/*"],
+  "exclude": [
+    "/assets/*",
+    "/logos/*",
+    "/run-events/*",
+    "/share-index.json",
+    "/cabinet.svg",
+    "/openrouter.svg",
+    "/_redirects",
+    "/_routes.json"
+  ]
+}
