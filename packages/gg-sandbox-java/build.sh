@@ -41,6 +41,8 @@ OUT="$GG_ARTIFACTS_OUT_DIR/java.sdk.jar"
 
 # shellcheck source=packages/gg-sandbox-java/java-version.sh
 source "$HERE/java-version.sh"
+# shellcheck source=scripts/gg-downloads.sh
+source "$ROOT/scripts/gg-downloads.sh"
 
 INSTALL_DIR="${JAVA_INSTALL_DIR:-$HOME/.local/share/gg-java}"
 JAVAC="${TCAB_GG_JAVAC:-$INSTALL_DIR/jdk/bin/javac}"
@@ -97,3 +99,13 @@ done
 
 mv "$WORK/gg-sdk.jar" "$OUT"
 echo "wrote $OUT ($(wc -c <"$OUT") bytes, ${#ENTRIES[@]} classes)"
+
+# java.adapter.wasm — COPIED FROM A CACHE, NOT DOWNLOADED on a machine an installer has touched.
+# TeaVM's `WEBASSEMBLY_WASI` backend emits a core module importing the preview1 snapshot (four
+# functions: `clock_time_get`, `args_sizes_get`, `args_get`, `fd_write`); this is what implements
+# them in terms of the preview 2 interfaces gg's linker provides. Without it the component would
+# import a WASI generation the host does not have. See `jvm.rs`.
+cp "$(gg_wasmtime_adapter "$GG_WASMTIME_ADAPTER_VERSION" "$(gg_wasmtime_adapter_url)")" \
+	"$GG_ARTIFACTS_OUT_DIR/java.adapter.wasm"
+test -s "$GG_ARTIFACTS_OUT_DIR/java.adapter.wasm"
+echo "wrote $GG_ARTIFACTS_OUT_DIR/java.adapter.wasm (adapter $GG_WASMTIME_ADAPTER_VERSION)"

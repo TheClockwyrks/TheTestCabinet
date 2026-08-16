@@ -1135,6 +1135,96 @@ interface feedback {
     report-module-error: func(name: string, message: string);
 }
 
+/// **The one door the JVM arms come through**, and the only interface on this membrane that names a
+/// call by a string.
+///
+/// Every other guest reaches the fifteen interfaces above directly, because every other guest has a
+/// binding generator that can write the canonical ABI for them: `wit-bindgen` for Rust, C++ and
+/// Swift, `componentize-js` for the ECMAScript arms, `wit-bindgen` again through the C the C#, Python
+/// and Ruby guests link. **There is no wit-bindgen for Java**, and there is no prospect of one — so
+/// the Java and Kotlin arms, which compile to wasm through TeaVM, would otherwise have to carry a
+/// hand-written canonical-ABI lowering for every record, variant, enum, option and list in this
+/// 1200-line file. That is the cost this interface removes: the JVM side implements the canonical
+/// ABI for **one string and two byte lists**, and gg owns what travels inside them.
+///
+/// # This is not a generic door onto the capability model
+///
+/// The seam's rule — that a capability reaches a program as a typed, namespaced binding and never as
+/// a dispatcher taking a name as data — is a rule about **what a model writes**. A model writing
+/// Java writes `Files.readTextFile("notes.txt")`, on a typed surface that is namespaced exactly like
+/// every other arm's; this is what that surface is implemented over, one layer below anything a model
+/// can see, in a package no catalogue describes and no program imports. It is the same split the
+/// arms' SDKs already had when their far side was a JavaScript object rather than gg's Rust: one
+/// bridge, written once, under a typed surface.
+///
+/// What is on **this** side of it is unchanged by that. `op` is one of gg's own rendered operation
+/// ids (`files.read_file`, `views.open_text`), and the host answers it by decoding the request and
+/// calling the very same typed host function the fifteen interfaces above are implemented by — same
+/// capability gate, same recorded call, same deadline, same `tool-error`. Nothing here is a second
+/// implementation of anything, and nothing reachable through it is reachable any other way.
+///
+/// # What travels inside the byte lists
+///
+/// gg's own tagged value encoding, described where it is implemented
+/// (`crates/gg/src/sandbox/membrane/wire.rs`, `packages/gg-sandbox-java/src/gg/internal/Coding.java`).
+/// It is deliberately **not** JSON: the rule that neither an argument nor a result is a JSON document
+/// is about the model-facing surface, and this is the wire beneath it, where gg holds both ends and
+/// pays for what it chose. A tagged binary form costs the guest no parser and cannot be confused with
+/// a document a model was expected to read.
+interface wire {
+    /// Make one gg call: `op` is a rendered operation id, `request` is the encoded arguments, and
+    /// what comes back is the encoded result — the value the call returned, or the three fields of
+    /// the `tool-error` it failed with.
+    ///
+    /// It cannot trap and it cannot fail: a request the host cannot decode, or an `op` it does not
+    /// know, comes back as an encoded failure, because a guest that trapped on a malformed request
+    /// would report a defect in gg as a defect in the model's program.
+    call: func(op: string, request: list<u8>) -> list<u8>;
+}
+
+/// **The world the JVM arms' compiled programs declare**: gg through one door, and the same two
+/// exports every other component of this membrane has.
+///
+/// A Java or Kotlin program is compiled — by `javac`/`kotlinc`, then by TeaVM's `WEBASSEMBLY_WASI`
+/// backend — into a component of its own, per turn, exactly as the Rust, C++ and Swift arms are.
+/// There is no baked JVM guest and there cannot be one: TeaVM does not produce a Java interpreter
+/// that later runs a program, it produces the program.
+///
+/// The exports are byte-for-byte the `sandbox` world's, because they are what gg instantiates every
+/// component through. The imports are not: this world imports [`wire`] and nothing else of gg's, for
+/// the reason that interface states.
+world jvm-sandbox {
+    use session.{ending-kind};
+
+    /// One code module bound into a program's scope, from a code skill or a code memory the agent
+    /// has read. The same record the `sandbox` world declares, because `run` is the same function.
+    record code-module {
+        /// The binding key: the module is reached as `lib.<name>`.
+        name: string,
+        /// The module's source.
+        source: string,
+    }
+
+    import wire;
+
+    /// Evaluate one program — the `sandbox` world's `run`, with the same parameters and the same
+    /// nothing returned. See that world for what each parameter is and why a compiled arm reads
+    /// none of them.
+    export run: func(
+        program: string,
+        modules: list<code-module>,
+        tools: list<string>,
+        ending: ending-kind,
+        library: bool,
+    );
+
+    /// The gg tool interfaces this component imports. A compiled arm's component imports exactly one
+    /// — [`wire`] — and so answers the empty list; the export exists because gg instantiates every
+    /// component through the `sandbox` world's bindings and a missing export is an instantiation
+    /// failure.
+    export bound-tools: func() -> list<string>;
+}
+
 /// The sandbox: one baked component that evaluates a program against exactly the tools a run
 /// enables.
 world sandbox {

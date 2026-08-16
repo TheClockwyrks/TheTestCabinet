@@ -180,6 +180,7 @@ tar = "0.4"
 # preview1 module it emits has to be adapted to the preview 2 interfaces the host links. See the
 # workspace pin for why its version tracks wasmtime's wasmparser line.
 wit-component = { workspace = true }
+wit-parser = { workspace = true }
 
 [dev-dependencies]
 # A scratch workspace root for the tool tests (shell + filesystem): tools operate on

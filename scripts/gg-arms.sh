@@ -157,7 +157,7 @@ gg_arm purescript packages/gg-sandbox-purescript "purescript" \
 # Java: the SDK as the one jar both compilers a program passes through put on their classpath.
 gg_arm java packages/gg-sandbox-java "java" \
 	--catalogues java \
-	--artifacts java.sdk.jar
+	--artifacts java.sdk.jar java.adapter.wasm
 
 # Kotlin: the same shape as Java's, compiled by the Kotlin front end against the same TeaVM.
 gg_arm kotlin packages/gg-sandbox-kotlin "kotlin" \

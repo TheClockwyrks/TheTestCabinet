@@ -65,3 +65,14 @@ joda-time:joda-time:2.12.2
 com.jcraft:jzlib:1.1.3
 org.mozilla:rhino:1.7.15
 JARS
+
+# The `wasi_snapshot_preview1` REACTOR adapter, which turns the preview1 core module TeaVM's
+# `WEBASSEMBLY_WASI` backend emits into something `wit_component` can encode as a preview 2
+# component. The pin is this arm's own, for the reason the C++ and Swift arms each keep their own:
+# an adapter is paired with the wasmtime it was cut for, and one arm moving its engine expectations
+# must not silently move another's. `crates/gg/Cargo.toml` pins wasmtime 45, and this is 45's.
+GG_WASMTIME_ADAPTER_VERSION="45.0.3"
+
+gg_wasmtime_adapter_url() {
+	echo "https://github.com/bytecodealliance/wasmtime/releases/download/v${GG_WASMTIME_ADAPTER_VERSION}/wasi_snapshot_preview1.reactor.wasm"
+}

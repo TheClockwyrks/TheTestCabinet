@@ -785,3 +785,12 @@ pub(super) fn placed() -> Result<&'static Placed, String> {
 #[cfg(test)]
 #[path = "java.compile.test.rs"]
 mod tests;
+
+/// **The JVM arms' wasm substrate**, driven end to end through this file's own compiler pool.
+///
+/// Declared here rather than beside `jvm.rs` because what it drives is this arm's real driver, out
+/// of this arm's real pool: the pieces it proves are shared with Kotlin, but there is exactly one
+/// JVM daemon and it is checked out from here.
+#[cfg(test)]
+#[path = "jvm.wire.test.rs"]
+mod wire_tests;

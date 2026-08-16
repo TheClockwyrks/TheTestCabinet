@@ -325,6 +325,11 @@ wasmtime-wasi = { version = "45", default-features = false, features = ["p2"] }
 # component feature the runtime's validator does not know, and the failure would be a
 # validation error on a program nobody wrote wrong.
 wit-component = "0.248"
+# The WIT parser `wit-component` is built on, at the same pin for the same reason: gg stamps the
+# `component-type` section of the JVM arms' modules from its own Rust (`sandbox/language/jvm.rs`),
+# which needs a `Resolve` and a `WorldId` — types that must come from the very crate the encoder
+# reads them with.
+wit-parser = "0.248"
 
 # Desktop shell. Pinned to Tauri v2 so the desktop crate can inherit them.
 tauri = { version = "2", features = [] }

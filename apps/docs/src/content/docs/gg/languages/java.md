@@ -74,10 +74,12 @@ handshake. The driver and the SDK jar are placed in a shared directory keyed on
 the pinned TeaVM release and a digest of both files.
 
 The arm has no guest component of its own and declares TypeScript's. The build
-produces two things for it, and commits neither:
+produces three things for it, and commits none:
 
 - `java.sdk.jar`, the SDK compiled, cut by `crates/gg-sandbox-artifacts/java`
   running `packages/gg-sandbox-java/build.sh` and embedded in the gg binary.
+- `java.adapter.wasm`, the pinned `wasi_snapshot_preview1` reactor adapter both
+  JVM arms encode their WebAssembly components with.
 - `java.signatures.json`, the signature catalogue, reflected by
   `packages/gg-sandbox-java/signatures.sh` and embedded from the build's own
   `OUT_DIR`. gg refuses a catalogue generated for another language.

@@ -71,6 +71,22 @@ Java and Kotlin are moving onto TeaVM's WebAssembly target, where each program
 is its own component and no JavaScript is on the road. Both arm pages state what
 their arm does today.
 
+The two JVM arms reach gg through a single imported function,
+`test-cabinet:gg/wire`'s `call`, taking an operation id and the encoded
+arguments and answering the encoded result. Every other guest binds the typed
+interfaces directly, which requires a binding generator for its language; Java
+has none, so the ABI its SDK implements is one string and two byte lists. The
+host answers each id by calling the same typed host function the typed
+interfaces are implemented by, so the capability gate, the recorded call and the
+`tool-error` are one implementation for every arm. What travels inside the byte
+lists is gg's own tagged encoding, and the model-facing surface stays typed and
+namespaced.
+
+TeaVM emits a core module with no component metadata in it, so gg stamps the
+`component-type` section for the `jvm-sandbox` world from its own WIT and
+encodes the component in process with a pinned `wasi_snapshot_preview1` reactor
+adapter.
+
 Guest components and signature catalogues are build outputs. Each arm's
 artifacts are produced by the build from the sources in the checkout, so a
 source edited without a rebuild is not a state the tree can reach. See

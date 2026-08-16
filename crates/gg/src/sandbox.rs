@@ -568,6 +568,11 @@ fn linker<A: ToolApi>() -> Result<Linker<MembraneState<A>>, SandboxError> {
     let mut linker = Linker::new(engine::shared_engine());
     Sandbox::add_to_linker::<_, HasSelf<_>>(&mut linker, |state| state)
         .map_err(|error| SandboxError::Engine(error.to_string()))?;
+    // The one door the JVM arms come through, beside the fifteen typed interfaces rather than
+    // instead of them. Defined for every guest because a component is affected only by the imports
+    // it declares, and the ten that reach gg the typed way never ask for this one.
+    membrane::wire::add_to_linker(&mut linker)
+        .map_err(|error| SandboxError::Engine(error.to_string()))?;
     wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
         .map_err(|error| SandboxError::Engine(error.to_string()))?;
     Ok(linker)

@@ -1,23 +1,34 @@
 //! **What the two JVM arms share**: the JDK and TeaVM they both compile through, and the half of
 //! gg's compiler driver that does not depend on which language a program was written in.
 //!
-//! [Java](super::java) and [Kotlin](super::kotlin) reach the same guest by the same road — a program
-//! is compiled to **bytecode**, TeaVM translates the bytecode to JavaScript, and the ECMAScript
-//! guest evaluates it. What differs is the *front* of that road: which compiler reads the model's
-//! source, and what its diagnostics look like. This module is the rest of it.
+//! [Java](super::java) and [Kotlin](super::kotlin) reach gg by the same road — a program is compiled
+//! to **bytecode** and TeaVM translates the bytecode. What differs is the *front* of that road:
+//! which compiler reads the model's source, and what its diagnostics look like. This module is the
+//! rest of it.
 //!
 //! It is not a language and it is not registered anywhere: no
 //! [`ProgramLanguage`](super::ProgramLanguage) is implemented here and
 //! [the lookup](super::language()) never answers with it. It is the road two registered arms drive
 //! down.
 //!
+//! # Two targets, one of which both arms are moving to
+//!
+//! TeaVM's `WEBASSEMBLY_WASI` backend compiles a program into a **component of its own**, which
+//! [`component`] encodes and which reaches gg through the single imported function
+//! `test-cabinet:gg/wire` declares. That is where both arms are going, and everything it needs is
+//! here. Its JavaScript backend is what both arms compile through **today**, and their bundles are
+//! evaluated by the [ECMAScript guest](super::typescript); [`assembled`] is that road's own half.
+//!
 //! # Why the sharing is real rather than a pair of copies
 //!
-//! Two of TeaVM's settings are not optional, and one of them fails **silently** when it is missing:
-//! without `setStrict(true)` TeaVM omits the null checks that make a `NullPointerException` an
+//! Three of TeaVM's settings are not optional, and each fails **silently** when it is missing.
+//! Without `setStrict(true)` TeaVM omits the null checks that make a `NullPointerException` an
 //! exception at all, so `catch (NullPointerException)` never fires and a program that failed is
-//! recorded as one that succeeded. A second copy of the code that sets it would be a standing chance
-//! for one arm to lose it and for nobody to notice — which is the argument that has
+//! recorded as one that succeeded. Without `setClassesToPreserve` on the wasm route the entry class
+//! is dead-stripped and the encode produces a component with no exports. Without
+//! `setJsModuleType(NONE)` on the JavaScript route the entry point is not a bare name the guest's
+//! scope can reach. A second copy of the code that sets them would be a standing chance for one arm
+//! to lose any one and for nobody to notice — which is the argument that has
 //! [JavaScript](super::javascript) serve TypeScript's prebuilt component rather than a
 //! byte-identical copy of it, one level down.
 //!
@@ -40,6 +51,11 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use super::compile::shared_toolchain_dir;
+
+/// Encoding the core module TeaVM's `WEBASSEMBLY_WASI` backend writes as the component gg's engine
+/// instantiates.
+#[path = "jvm.component.rs"]
+pub(crate) mod component;
 
 /// The half of the driver both arms run.
 const BACKEND: &str = include_str!("../checkers/jvm.backend.java");

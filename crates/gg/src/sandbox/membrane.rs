@@ -99,6 +99,7 @@ mod programs;
 mod recording;
 mod session;
 mod views;
+pub(crate) mod wire;
 mod workspace;
 
 use recording::{GuardedApi, Recording};

@@ -8,15 +8,17 @@
 // package, no imports and no class of its own — the front end's import block serves this
 // text too, which is stated in each front end's own header.
 //
-// WHY IT IS SHARED RATHER THAN COPIED. Two arms reach the same guest through TeaVM, and
-// two of TeaVM's settings are not optional: `setJsModuleType(NONE)`, without which the
-// entry point is not a bare name the guest's scope can reach, and `setStrict(true)`,
-// without which a `NullPointerException` is not an exception at all and a program that
-// failed is recorded as one that succeeded. A second copy of `teavm(…)` would be a
-// standing chance for one arm to lose either of them silently — which is the same argument
-// that has JavaScript serve TypeScript's prebuilt component rather than a byte-identical
-// copy of it. The single-file launcher compiles one file, so "shared" here means gg
-// assembles the file rather than that javac does.
+// WHY IT IS SHARED RATHER THAN COPIED. Two arms reach gg through TeaVM, and three of TeaVM's
+// settings are not optional — each of them failing SILENTLY when it is missing:
+// `setStrict(true)`, without which a `NullPointerException` is not an exception at all and a
+// program that failed is recorded as one that succeeded; `setClassesToPreserve(PRESERVED)` on
+// the wasm route, without which the entry class is dead-stripped and the component is encoded
+// with no exports and no diagnostic; and `setJsModuleType(NONE)` on the JavaScript route,
+// without which the entry point is not a bare name the guest's scope can reach. A second copy
+// of `teavm(…)` would be a standing chance for one arm to lose any of them silently — which is
+// the same argument that has JavaScript serve TypeScript's prebuilt component rather than a
+// byte-identical copy of it. The single-file launcher compiles one file, so "shared" here means
+// gg assembles the file rather than that javac does.
 
     /**
      * Compile Java sources to bytecode, collecting whatever javac disagreed with.
@@ -52,7 +54,25 @@
         return ok;
     }
 
-    /** Turn the bytecode into JavaScript, collecting whatever TeaVM could not translate. */
+    /** The classes the wasm route must keep whatever the dependency analysis concludes.
+     *
+     * <p>MEASURED, AND A SILENT FOOTGUN. TeaVM emits a core export for an {@code @Export} method
+     * ONLY IF THE CLASS IS REACHABLE; an {@code @Export} on a class nothing calls is dead-stripped
+     * with no diagnostic and exit code 0, and the component encoded from the result has no exports
+     * at all. gg's generated entry class is called by nobody — the host calls its {@code run}
+     * through the component's own export — and {@code gg.internal.Abi} is reached only from the SDK
+     * classes a particular program happens to use, so both are named here rather than discovered.
+     */
+    static final String[] PRESERVED = { "GgEntry", "gg.internal.Abi" };
+
+    /**
+     * Turn the bytecode into what the guest runs, collecting whatever TeaVM could not translate.
+     *
+     * <p>WHICH TARGET IS TAKEN FROM {@code targetFile}'s own extension, because that is the one
+     * thing in the request that already says what kind of file is wanted: a {@code .wasm} module
+     * and a {@code .js} bundle are different artifacts, not two spellings of one. The two arms are
+     * moving from the second to the first — see the module note on {@code jvm.rs}.
+     */
     static void teavm(Path classes, Path output, List<String> classpath, String mainClass,
             String targetFile, List<Diagnostics.Entry> entries) throws Exception {
         // A FRESH strategy per build. A shared one produced no output for three of four
@@ -65,29 +85,48 @@
         entriesOnPath.add(classes.toString());
         entriesOnPath.addAll(classpath);
         build.setClassPathEntries(entriesOnPath);
-        build.setTargetType(TeaVMTargetType.JAVASCRIPT);
         build.setMainClass(mainClass);
         build.setTargetDirectory(output.toString());
         build.setTargetFileName(targetFile);
-        // NONE, so the emitted code declares its entry point as a bare name in the enclosing
-        // scope rather than as a module export. The guest evaluates a program as the body of a
-        // function whose parameters are the API objects, and a bare reference to one of those
-        // names has to resolve to the parameter — which a module wrapper would shadow.
-        build.setJsModuleType(JSModuleType.NONE);
-        // MANDATORY. Without it TeaVM omits the null and bounds checks that make a
+        // MANDATORY, on both targets. Without it TeaVM omits the null and bounds checks that make a
         // `NullPointerException` an exception at all, and `catch (NullPointerException)`
         // silently fails to catch — a program that failed would be recorded as one that did not.
         build.setStrict(true);
-        // Names a model can recognise in a stack, and the source map that turns a generated
-        // line back into the line the model wrote.
+        // Names a model can recognise in a stack.
         build.setObfuscated(false);
         build.setDebugInformationGenerated(true);
-        build.setSourceMapsFileGenerated(true);
-        build.setSourceFilePolicy(org.teavm.tooling.TeaVMSourceFilePolicy.DO_NOTHING);
         // SIMPLE rather than FULL: a model's program is short and read once, so the seconds
         // FULL spends inlining across the classlib buy a turn nothing.
         build.setOptimizationLevel(TeaVMOptimizationLevel.SIMPLE);
         build.setIncremental(false);
+        if (targetFile.endsWith(".wasm")) {
+            build.setTargetType(TeaVMTargetType.WEBASSEMBLY_WASI);
+            build.setClassesToPreserve(PRESERVED);
+            // MEASURED, AND THE FAILURE IS A HANG RATHER THAN AN ERROR. TeaVM's own heap sizes are
+            // a property of the emitted binary, not of the engine running it, and its default
+            // maximum is far below what gg's own ceilings imply a program may need: a single
+            // `byte[]` allocation past it does not throw an `OutOfMemoryError`, it spins — a 4 MiB
+            // array in a program that did nothing else ran until gg's execution timeout stopped it,
+            // with nothing on stderr and no call made. So the two are set from what gg allows:
+            // 128 MiB is half the sandbox's own 256 MiB linear-memory cap, which leaves the
+            // guest's other memory (the module, its static data, the ABI arena) room inside the
+            // cap that actually denies a runaway.
+            build.setMinHeapSize(4 * 1024 * 1024);
+            build.setMaxHeapSize(128 * 1024 * 1024);
+        } else {
+            build.setTargetType(TeaVMTargetType.JAVASCRIPT);
+            // NONE, so the emitted code declares its entry point as a bare name in the enclosing
+            // scope rather than as a module export. The guest evaluates a program as the body of a
+            // function whose parameters are the API objects, and a bare reference to one of those
+            // names has to resolve to the parameter — which a module wrapper would shadow. It goes
+            // with the JavaScript target: a wasm module has no enclosing scope to be bare in.
+            build.setJsModuleType(JSModuleType.NONE);
+            // The source map that turns a generated line back into the line the model wrote. The
+            // wasm route needs none: its failures reach the model as the runtime's own stderr, in
+            // the model's own coordinates, with nothing to remap.
+            build.setSourceMapsFileGenerated(true);
+            build.setSourceFilePolicy(org.teavm.tooling.TeaVMSourceFilePolicy.DO_NOTHING);
+        }
         BuildResult result = build.build();
         for (Problem problem : result.getProblems().getProblems()) {
             entries.add(Diagnostics.of(problem));
