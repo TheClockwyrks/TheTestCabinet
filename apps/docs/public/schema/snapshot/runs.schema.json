@@ -70,6 +70,10 @@
         "caseName": {
           "type": "string"
         },
+        "documentKey": {
+          "description": "Where this run's full document lives: its content-addressed\n`documents/runs/<id>/<digest>.json` key. The digest is over the document's own\nbytes, so the key cannot be composed from the run id — the summary index is how\na reader learns it, and following it is the only supported way to reach a run's\nrecord from the snapshot.\n\n`None` on a console card, which has no published document at all;\n[`RunSummary::from_stored`] leaves it unset and the snapshot builder fills it.\nAlways `Some` in `runs.json`.",
+          "type": ["string", "null"]
+        },
         "finishedAt": {
           "type": "string"
         },

@@ -16,10 +16,11 @@ The backend regenerates the whole snapshot from its full published set on each
 (coalesced) publish, uploads it, and swaps it into place. Regenerating
 everything rather than applying deltas keeps the operation idempotent.
 
-The JSON documents (the index, run summaries, per-run records, case metadata) are
-small and are rewritten every publish. **Media is not.** Two families of it live
-outside any single snapshot's prefix, are uploaded **once**, and are referenced by
-every later snapshot instead of being re-read and re-uploaded:
+Regenerating is not the same as re-**uploading**, though, and the difference is what
+keeps a publish from costing one write per published run forever. Everything whose
+content has not changed lives outside any single snapshot's prefix, is written
+**once**, and is referenced by every later snapshot instead of being re-read and
+re-uploaded:
 
 - A run's media — proof images/videos and an asset-generation run's produced
   images/logs — under [`media/runs/<run-id>/`](#run-media), keyed by the run id. It
@@ -28,9 +29,21 @@ every later snapshot instead of being re-read and re-uploaded:
   validation baselines — under [`media/cases/<slug>/<version>/`](#case-media). A
   version with a published run is [frozen](/development/frozen-versions/), so this
   is effectively immutable too.
+- Each published run's own JSON document, under
+  [`documents/runs/<run-id>/`](#run-documents). Unlike media this *can* change — a
+  new review, a proof that has now uploaded — so it is content-addressed rather than
+  written once, and only a run whose document actually differs is uploaded.
+
+So a refresh rebuilds every document in memory (cheap: no network, no bytes read)
+but writes only what genuinely differs. Only two documents are rewritten
+unconditionally, and both are single small objects: the `runs.json` summary index,
+which by contract summarizes every published run, and `models.json`. The per-case
+metadata files are rewritten too — those grow with the *catalog*, not with the runs.
 
 This is what keeps a publish cheap as runs and cases accumulate, and it lets a
 publish keep a run's media even after the volumes the bytes were read from are gone.
+Uploads are issued concurrently rather than one at a time, so what remains is not
+also serialized on bucket round trips.
 
 ## Atomic swap
 
@@ -50,28 +63,30 @@ period.
 ```text
 index.json                                                              # top-level pointer (overwritten last)
 snapshots/<snapshotId>/runs.json                                        # the run index — summaries (published runs only)
-snapshots/<snapshotId>/runs/<run-id>.json                               # per-run: record + reviews + links + media keys
 snapshots/<snapshotId>/cases/<slug>/<version>.json                      # per-case-version metadata
+documents/runs/<run-id>/<digest>.json                                   # per-run: record + reviews + links + media keys (content-addressed)
 media/runs/<run-id>/proof/<proof-id>.<ext>                              # a run's proof media (content-stable; shared across snapshots)
 media/runs/<run-id>/asset/<file>                                        # an asset-generation run's produced media (same)
 media/cases/<slug>/<version>/references/<scope>/<digest>-<view>.png     # rendered reference baselines (content-addressed)
 media/cases/<slug>/<version>/validation-baseline/<variant>/<digest>-<file>  # committed validation baselines (same)
 ```
 
-Only the **JSON documents** live under the per-snapshot `snapshots/<snapshotId>/`
-prefix and are rewritten each publish. All media — run-scoped (see
-[Run media](#run-media)) and case-scoped (see [Case media](#case-media)) — lives
-under the snapshot-independent `media/` prefix and is written once. A per-run or
-per-case document references its media by these snapshot-relative `media/…` keys, so
-the atomic `index.json` swap still points a site build at a complete,
-self-consistent dataset.
+Only the run index and the case metadata live under the per-snapshot
+`snapshots/<snapshotId>/` prefix and are rewritten each publish. The per-run
+documents (see [Run documents](#run-documents)) and all media — run-scoped (see
+[Run media](#run-media)) and case-scoped (see [Case media](#case-media)) — live
+under the snapshot-independent `documents/` and `media/` prefixes and are written
+only when their content changes. A per-run or per-case document references its media
+by these snapshot-relative `media/…` keys, so the atomic `index.json` swap still
+points a site build at a complete, self-consistent dataset.
 
 `<scope>` is `_common` for a reference shown on every variant, or a variant slug
 for one scoped to that variant. Each case-metadata file names its baselines by
 their snapshot-relative key (see [below](#casesslugversionjson--case-metadata)).
 
 The site reads `index.json`, then follows its prefixes to the rest. Every file
-carries a `schemaVersion` (currently `1`).
+carries a `schemaVersion` (currently `2`; `2` is what moved the per-run documents out
+of the generation prefix).
 
 ## `index.json` — the pointer
 
@@ -80,15 +95,21 @@ run count, and the keys/prefixes the rest of the snapshot lives under.
 
 ```jsonc
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "snapshotId": "2026-06-17T2148Z-1a7b",
   "generatedAt": "2026-06-17T21:48:00Z",
   "runCount": 128,
   "runsKey": "snapshots/2026-06-17T2148Z-1a7b/runs.json",
-  "runsPrefix": "snapshots/2026-06-17T2148Z-1a7b/runs/",
-  "casesPrefix": "snapshots/2026-06-17T2148Z-1a7b/cases/"
+  "runDocumentsPrefix": "documents/runs/",
+  "casesPrefix": "snapshots/2026-06-17T2148Z-1a7b/cases/",
+  "modelsKey": "snapshots/2026-06-17T2148Z-1a7b/models.json"
 }
 ```
+
+`runDocumentsPrefix` is snapshot-independent, so it is the same string in every
+generation. It is informational — a run's document is reached through the
+`documentKey` on its summary, never by composing a path (see
+[Run documents](#run-documents)).
 
 Schema: [`snapshot/index.schema.json`](https://docs.testcabinet.ai/schema/snapshot/index.schema.json).
 
@@ -104,8 +125,8 @@ every per-run file. Each summary carries the run's id and timestamps, its
 [run record](/components/core/run-records/), the denormalized case name for
 cards, the `validationLoaded` signal, the run state, the aggregate `rating` (the
 run's overall rating — the worst across every domain of every review — shown as a
-per-run badge), a `reviewCount` of how many reviews the run carries, and the
-links. The `rating` is nullable in the contract (an unrated console run carries
+per-run badge), a `reviewCount` of how many reviews the run carries, the
+`documentKey` naming where its full document lives, and the links. The `rating` is nullable in the contract (an unrated console run carries
 none), but the snapshot holds only reviewed runs, so it is always present here.
 The aggregate **score** (the average across reviews) is not summarized here; the
 site computes it client-side from the per-run file's reviews. The site fetches
@@ -115,7 +136,7 @@ run's detail page opens.
 
 Schema: [`snapshot/runs.schema.json`](https://docs.testcabinet.ai/schema/snapshot/runs.schema.json).
 
-## `runs/<run-id>.json` — per-run record
+## `documents/runs/<run-id>/<digest>.json` — per-run record
 
 The full [run record](/components/core/run-records/) blob, verbatim, with its
 links populated, plus the **array of [reviews](/components/core/results/#reviews)**
@@ -142,7 +163,7 @@ export is rewritten.
 
 ```jsonc
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "record": { "…": "full RunRecord, links populated" },
   "published": true,
   "reviews": [
@@ -168,6 +189,49 @@ export is rewritten.
 ```
 
 Schema: [`snapshot/run.schema.json`](https://docs.testcabinet.ai/schema/snapshot/run.schema.json).
+
+## Run documents
+
+These documents are the bulk of the snapshot — one per published run, each carrying a
+full run record and, often, an entire event stream. They used to live at
+`snapshots/<snapshotId>/runs/<run-id>.json`, which meant every refresh rewrote and
+re-uploaded one object per published run no matter how little had changed: publishing
+a single new run re-exported the whole corpus, and the cost of a publish grew without
+bound as runs accumulated. That is the same waste [run media](#run-media) and
+[case media](#case-media) already avoid for bytes, so the documents avoid it the same
+way.
+
+A run's document is therefore **content-addressed** under the snapshot-independent
+`documents/runs/` prefix, its key carrying a short digest of the document's own bytes:
+
+```text
+documents/runs/run_2f81c4/9d3b71a05fe2c846.json
+```
+
+A run's media can be keyed by run id and written once because it is immutable, but a
+document is not: a new review, a proof that has now uploaded, an edited record all
+legitimately change it. Hashing the content handles both cases with one rule — a run
+whose public content has not moved lands on the key it already occupies and is skipped
+with no upload, while any change at all mints a new key and is uploaded. There is no
+separate "has this run changed?" signal that can go stale, because the bytes *are* the
+signal.
+
+The key is not derivable from the run id, so a reader cannot compose a path to it.
+Each summary in [`runs.json`](#runsjson--the-run-index) names its run's key as
+`documentKey`, and following that is the only supported way to reach a run's record.
+This is also why `index.json` carries no `runsPrefix`.
+
+**Superseded revisions are not pruned.** Unlike a
+[superseded generation](#pruning-superseded-generations), an orphaned document offers
+no way to tell *when* it fell out of use — a bucket listing reports only when an
+object was written, and a document written months ago says nothing about the moment it
+was superseded. Pruning on that clock would delete a just-orphaned document
+immediately and 404 any site build still fetching the previous generation. The
+accumulation this leaves is a different order from the one the generation prune exists
+for: it accrues per *content change* rather than per refresh, so it settles at a small
+multiple of the live set instead of adding a full copy every publish. Reclaiming it
+needs a supersession timestamp the snapshot does not currently record — the same
+future cleanup orphaned run media is waiting on.
 
 ## Run media
 
@@ -242,14 +306,14 @@ guess. The prune is **best-effort**: it runs after the snapshot is already live,
 failure logs and leaves the work to the next refresh rather than failing the publish.
 
 Without this the bucket grows by a full generation per publish and never shrinks —
-which is exactly how it once reached ~7.8 GB of which 96% was unreachable. Run and
-case media under `media/` are never generation-scoped and are not touched by the
-prune; media orphaned by a *deleted* run is still a future cleanup.
+which is exactly how it once reached ~7.8 GB of which 96% was unreachable. Run
+documents under `documents/`, and run and case media under `media/`, are never
+generation-scoped and are not touched by the prune.
 
-Superseded snapshot generations *are* [pruned](#pruning-superseded-generations), but
-the media prefix is not: a run's media at `media/runs/<run-id>/` is orphaned but
-harmless once the run is deleted, since no snapshot references it. Pruning that is a
-future cleanup.
+Two kinds of orphan therefore survive it, both harmless because no snapshot references
+them, and both waiting on the same future cleanup: a run's media at
+`media/runs/<run-id>/` once the run is deleted, and a
+[superseded run document](#run-documents) once the run's content changes.
 
 ## `cases/<slug>/<version>.json` — case metadata
 

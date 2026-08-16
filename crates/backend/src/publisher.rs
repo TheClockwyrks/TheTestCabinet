@@ -12,6 +12,13 @@
 //! (idempotent — re-running converges on the same snapshot), uploads it
 //! atomically, and fires the hook. A forced refresh (`POST /snapshot/refresh`)
 //! bypasses the debounce and runs immediately.
+//!
+//! Regenerating the full set is a statement about *correctness*, not about work: the
+//! run and case media, and each run's own JSON document, are content-addressed under
+//! snapshot-independent prefixes, so a refresh lists what the bucket already holds and
+//! uploads only what genuinely differs. A publish therefore costs roughly the runs
+//! that changed rather than the runs that exist — see
+//! [`crate::snapshot::RUN_DOCUMENT_PREFIX`].
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -275,6 +282,27 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         None => std::collections::HashSet::new(),
     };
 
+    // The per-run **documents**, on the same principle and for the bigger win: they
+    // are content-addressed under `documents/runs/<id>/<digest>.json`, so learning
+    // which are already uploaded is what stops a refresh from re-PUTting one object
+    // per published run every time anything at all is published.
+    //
+    // As with media, a list failure is not fatal: an empty set re-uploads every
+    // document (landing on exactly the keys the next refresh will skip) rather than
+    // aborting the refresh.
+    let existing_documents = match &inner.r2 {
+        Some(r2) => match r2.list_keys(crate::snapshot::RUN_DOCUMENT_PREFIX).await {
+            Ok(keys) => keys.into_iter().collect(),
+            Err(err) => {
+                tracing::warn!(
+                    "listing existing run documents failed ({err}); re-exporting every run document"
+                );
+                std::collections::HashSet::new()
+            }
+        },
+        None => std::collections::HashSet::new(),
+    };
+
     // Each distinct reviewer's profile picture, fetched from the auth service so it
     // can be embedded in the public snapshot beside their reviews. Unlike run media,
     // a picture is mutable, so it is re-fetched every refresh (the set of distinct
@@ -311,6 +339,7 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         .with_reference_builds(reference_builds)
         .with_reference_sheets(reference_sheets)
         .with_existing_media(existing_media)
+        .with_existing_documents(existing_documents)
         .with_reviewer_pictures(reviewer_pictures)
         .build(generated_at)
         .await?;

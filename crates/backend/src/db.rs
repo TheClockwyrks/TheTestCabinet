@@ -3253,11 +3253,20 @@ impl Db {
     /// price is unavailable has its cost set to unknown rather than left at the
     /// misleading `$0.00` a free tag produces. Idempotent (an already-stripped run
     /// is unchanged) and best-effort per row. Returns how many runs were rewritten.
+    ///
+    /// Only rows whose `model_id` actually carries a `:` are loaded — the same
+    /// predicate [`Self::has_free_tag_candidates`] gates on. A `:`-free model id can
+    /// never be rewritten here, and pulling every run's `record_json` off disk to
+    /// discover that made a startup backfill cost the whole run corpus for what is
+    /// almost always zero work.
     pub async fn normalize_free_model_ids(
         &self,
         base_prices: &std::collections::HashMap<String, TokenPrices>,
     ) -> Result<usize> {
-        let rows = run::Entity::find().all(&self.conn()).await?;
+        let rows = run::Entity::find()
+            .filter(run::Column::ModelId.contains(":"))
+            .all(&self.conn())
+            .await?;
         let mut rewritten = 0usize;
         for row in rows {
             let harness = parse_harness_slug(&row.harness_slug);
