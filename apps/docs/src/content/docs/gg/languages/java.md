@@ -56,15 +56,18 @@ start 120 seconds; past either the failure is reported as a toolchain failure,
 and a JVM that did not answer its build is retired. Warming starts one JVM and
 places the driver and the SDK jar, so the first code turn pays for neither.
 
-Four TeaVM settings are required, and each fails silently when it is missing.
+Three TeaVM settings are required, and each fails silently when it is missing.
 `setStrict(true)`, without which TeaVM omits the null and bounds checks that make
 a `NullPointerException` an exception at all. `setClassesToPreserve`, without
 which `GgEntry` is dead-stripped and the encode produces a component with no
 exports. An equal minimum and maximum heap, because TeaVM gives a program its
-minimum rather than the difference. `setJsModuleType(NONE)` belongs to the
-JavaScript target the Kotlin arm still uses. The arm names `javac` as its
-checker, so compile time is recorded on the failing path as well as the
-succeeding one.
+minimum rather than the difference. The arm names `javac` as its checker, so
+compile time is recorded on the failing path as well as the succeeding one.
+
+One transformer is required with them. `java.lang.Math`'s transcendental methods
+are `native` in TeaVM's classlib and emitted as core imports of a module named
+`teavmMath`, which no WebAssembly component can resolve. `gg.internal.MathImports`
+rewrites that module to `test-cabinet:gg/math`, which gg's own host answers.
 
 A code module is checked with `javac` alone, which the driver selects with an
 empty target file. There is nothing a module can be compiled into that a later
@@ -90,10 +93,12 @@ The build produces three things for this arm, and commits none:
 
 - `java.sdk.jar`, the SDK compiled, cut by `crates/gg-sandbox-artifacts/java`
   running `packages/gg-sandbox-java/build.sh` and embedded in the gg binary. It
-  also carries `packages/gg-sandbox-java/vendor/`, one TeaVM runtime class kept
-  under its own licence and changed so that an uncaught exception prints what was
-  thrown as well as where. The jar goes first on TeaVM's program classpath, which
-  is what makes that copy the one the compiler translates.
+  also carries `packages/gg-sandbox-jvm/`, which both JVM arms compile: the
+  canonical ABI, the wire encoding, the `teavmMath` transformer, and one vendored
+  TeaVM runtime class kept under its own licence and changed so that an uncaught
+  exception prints what was thrown as well as where. The jar goes first on TeaVM's
+  program classpath, which is what makes that copy the one the compiler
+  translates.
 - `java.adapter.wasm`, the pinned `wasi_snapshot_preview1` reactor adapter every
   JVM component is encoded with.
 - `java.signatures.json`, the signature catalogue, reflected by

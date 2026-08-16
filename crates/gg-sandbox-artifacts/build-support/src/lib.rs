@@ -412,12 +412,16 @@ fn rerun_paths(root: &Path, id: &str) -> Vec<PathBuf> {
         // Java and Kotlin: an SDK, compiled to a jar, against a pinned JDK and TeaVM. Neither reads
         // the WIT — these two arms cross the membrane through the JVM arms' shared backend, which is
         // gg's own hand-written source under `crates/gg/src/sandbox/checkers/`.
+        //
+        // BOTH NAME `packages/gg-sandbox-jvm`, and that is the point of it: the canonical ABI and
+        // the wire encoding are compiled into BOTH jars from one tree, so an edit to either has to
+        // re-cut both. `vendor/` beside it is the one vendored TeaVM runtime class the two arms also
+        // share. It is not gg's text but it is gg's artifact: a change to it changes what an uncaught
+        // exception says, and that must re-cut a jar like any other source.
         "java" => vec![
             "packages/gg-sandbox-java/src",
-            // The one vendored TeaVM runtime class, which is compiled into the same jar. It is not
-            // gg's text but it is gg's artifact: a change to it changes what an uncaught exception
-            // says, and that must re-cut the jar like any other source.
-            "packages/gg-sandbox-java/vendor",
+            "packages/gg-sandbox-jvm/src",
+            "packages/gg-sandbox-jvm/vendor",
             "packages/gg-sandbox-java/build.sh",
             "packages/gg-sandbox-java/java-version.sh",
         ],
@@ -427,6 +431,8 @@ fn rerun_paths(root: &Path, id: &str) -> Vec<PathBuf> {
         // TeaVM bump re-cut the Java jar and left the Kotlin one at the previous vintage.
         "kotlin" => vec![
             "packages/gg-sandbox-kotlin/src",
+            "packages/gg-sandbox-jvm/src",
+            "packages/gg-sandbox-jvm/vendor",
             "packages/gg-sandbox-kotlin/build.sh",
             "packages/gg-sandbox-kotlin/kotlin-version.sh",
             "packages/gg-sandbox-java/java-version.sh",

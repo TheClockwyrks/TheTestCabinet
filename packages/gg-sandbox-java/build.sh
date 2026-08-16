@@ -38,6 +38,8 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 # shellcheck source=scripts/gg-artifacts-out-dir.sh
 source "$ROOT/scripts/gg-artifacts-out-dir.sh"
 OUT="$GG_ARTIFACTS_OUT_DIR/java.sdk.jar"
+# The crossing both JVM arms compile — see the two-pass note below.
+SHARED="$ROOT/packages/gg-sandbox-jvm"
 
 # shellcheck source=packages/gg-sandbox-java/java-version.sh
 source "$HERE/java-version.sh"
@@ -77,8 +79,15 @@ CLASSPATH="$(find "$LIBS" -name '*.jar' | sort | tr '\n' ':')"
 # classpath, AHEAD of TeaVM's own jars (see `java.compile.rs`). `-Xlint:all -Werror` is gg's gate on
 # gg's own sources and is not applied to it: upstream text is kept as upstream wrote it rather than
 # edited to satisfy a lint. The file's own header carries the whole argument.
-mapfile -t OWN < <(find "$HERE/src" -name '*.java' | sort)
-mapfile -t VENDORED < <(find "$HERE/vendor" -name '*.java' | sort)
+#
+# THE FIRST PASS READS TWO TREES. `packages/gg-sandbox-jvm/src` is the crossing BOTH JVM arms
+# compile — `gg.internal.Abi`, `gg.internal.Value` and `gg.internal.Frames`, which are the canonical
+# ABI and the wire encoding and are the same on either side of a compiler that only decides what
+# bytecode reaches them. The Kotlin arm's `build.sh` compiles the identical two trees into its own
+# jar; what is NOT shared is the one file above them that raises this arm's own `gg.ToolError`, which
+# is a model-facing class with a catalogue entry of its own. See `gg/internal/Abi.java`'s class note.
+mapfile -t OWN < <(find "$HERE/src" "$SHARED/src" -name '*.java' | sort)
+mapfile -t VENDORED < <(find "$SHARED/vendor" -name '*.java' | sort)
 "$JAVAC" -Xlint:all -Werror -g --release 21 -cp "$CLASSPATH" -d "$WORK/classes" "${OWN[@]}"
 "$JAVAC" -nowarn -g --release 21 -cp "$CLASSPATH" -d "$WORK/classes" "${VENDORED[@]}"
 

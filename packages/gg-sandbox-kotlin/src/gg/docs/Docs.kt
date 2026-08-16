@@ -16,13 +16,8 @@ package gg.docs
 
 import gg.core.ToolError
 import gg.internal.Read
-import gg.internal.docsObject
-import gg.internal.ggArgs
-import gg.internal.ggAsInteger
 import gg.internal.ggCall
 import gg.internal.ggNumber
-import gg.internal.ggRecord
-import gg.internal.ggSet
 import gg.internal.ggText
 
 /**
@@ -67,31 +62,18 @@ public fun search(
     kind: DocKind? = null,
     offset: Int? = null,
     limit: Int? = null,
-): DocSearch {
-    val args =
-        if (module == null && type == null && kind == null && offset == null && limit == null) {
-            ggArgs(ggText(query))
-        } else {
-            val options = ggRecord()
-            if (module != null) {
-                ggSet(options, "module", ggText(module))
-            }
-            if (type != null) {
-                ggSet(options, "type", ggText(type))
-            }
-            if (kind != null) {
-                ggSet(options, "kind", ggText(kind.wireName))
-            }
-            if (offset != null) {
-                ggSet(options, "offset", ggNumber(offset))
-            }
-            if (limit != null) {
-                ggSet(options, "limit", ggNumber(limit))
-            }
-            ggArgs(ggText(query), options)
-        }
-    return Read.docSearch(ggCall("search", docsObject(), "gg.docs", "search", args))
-}
+): DocSearch =
+    Read.docSearch(
+        ggCall(
+            "docs.search",
+            ggText(query),
+            ggText(module),
+            ggText(type),
+            ggText(kind?.wireName),
+            ggNumber(offset),
+            ggNumber(limit),
+        ),
+    )
 
 /**
  * Take one documentation view back out of the context window, by the key it was opened under.
@@ -108,8 +90,7 @@ public fun search(
  *   views. Opening one only ever appends to the end of the prompt, while closing one rewrites its
  *   middle, which is why opening is always available and closing is bought.
  */
-public fun close(key: String): Int =
-    ggAsInteger(ggCall("close", docsObject(), "gg.docs", "close", ggArgs(ggText(key))))
+public fun close(key: String): Int = ggCall("docs.close", ggText(key)).integer()
 
 /**
  * Take every documentation view out of the context window at once.
@@ -124,8 +105,7 @@ public fun close(key: String): Int =
  * @throws ToolError `UNAVAILABLE` for an agent this run did not give the closing of documentation
  *   views.
  */
-public fun closeAll(): Int =
-    ggAsInteger(ggCall("close_all", docsObject(), "gg.docs", "closeAll", ggArgs()))
+public fun closeAll(): Int = ggCall("docs.close_all").integer()
 
 /**
  * Which of the three things a documentation entry describes.

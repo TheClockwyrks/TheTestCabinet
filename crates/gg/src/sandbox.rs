@@ -573,6 +573,10 @@ fn linker<A: ToolApi>() -> Result<Linker<MembraneState<A>>, SandboxError> {
     // it declares, and the ten that reach gg the typed way never ask for this one.
     membrane::wire::add_to_linker(&mut linker)
         .map_err(|error| SandboxError::Engine(error.to_string()))?;
+    // The second interface those two arms alone declare, and the reason is the compiler rather than
+    // gg: TeaVM's WebAssembly backend leaves `java.lang.Math`'s transcendental methods to a host.
+    membrane::math::add_to_linker(&mut linker)
+        .map_err(|error| SandboxError::Engine(error.to_string()))?;
     wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
         .map_err(|error| SandboxError::Engine(error.to_string()))?;
     Ok(linker)

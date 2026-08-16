@@ -71,7 +71,7 @@ fn there_is_nothing_here_that_touches_a_program() {
     // beside a program is a second compilation unit that NAMES this class, which is the shape
     // ruling D2 blessed — and the constant is the whole of the convention.
     assert_eq!(PROGRAM_CLASS, "Program");
-    assert_eq!(ENTRY_CLASS, "GgEntry");
+    assert_eq!(crate::sandbox::language::jvm::ENTRY_CLASS, "GgEntry");
 }
 
 #[test]

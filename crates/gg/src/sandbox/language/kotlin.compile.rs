@@ -1,25 +1,28 @@
-//! **The Kotlin compile** — how a model's Kotlin becomes something the [guest](super) can evaluate,
-//! and what it costs.
+//! **The Kotlin compile** — how a model's Kotlin becomes the component that runs it, and what it
+//! costs.
 //!
 //! # The strategy, in one sentence
 //!
-//! A Kotlin program is compiled to **bytecode by the Kotlin compiler and then to JavaScript by
-//! TeaVM**, both inside a warm JVM gg keeps between preparations, and evaluated by the same
-//! ECMAScript guest the [TypeScript](super::super::typescript), [JavaScript](super::super::javascript),
-//! [PureScript](super::super::purescript) and [Java](super::super::java) arms use.
+//! A Kotlin program is compiled to **bytecode by the Kotlin compiler and then to a `wasm32` core
+//! module by TeaVM's `WEBASSEMBLY_WASI` backend**, both inside a warm JVM gg keeps between
+//! preparations, and gg encodes that module as a **component of its own**
+//! ([`component`](super::super::jvm::component)) — the same shape the
+//! [Java](super::super::java), [Rust](super::super::rust), [C++](super::super::cpp) and
+//! [Swift](super::super::swift) arms have. There is no baked guest and there cannot be one: TeaVM
+//! does not produce a Kotlin interpreter that later runs a program, it produces the program.
 //!
-//! It therefore rides [the road the Java arm already built](super::super::jvm): the same JDK, the
-//! same TeaVM jars, the same TeaVM settings, the same reading of TeaVM's source map. What is this
-//! arm's own is the **front** of it — the compiler that reads the model's source, what its
-//! diagnostics look like, and the shape a program is compiled in.
+//! It therefore rides [the road the Java arm shares with it](super::super::jvm): the same JDK, the
+//! same TeaVM jars, the same TeaVM settings, the same generated entry class, the same canonical ABI
+//! and the same component encode. What is this arm's own is the **front** of it — the compiler that
+//! reads the model's source, and what its diagnostics look like.
 //!
 //! # Why the compiler is embedded rather than spawned
 //!
 //! `kotlinc` is a shell script around a JVM and has no daemon of its own to ask, but the compiler
 //! **warms** dramatically when it is embedded. Measured on this repository's dev container, through
 //! this arm's own driver: the first build in a JVM costs 1.7–9 s and the ones after it cost
-//! **0.14–0.4 s** of Kotlin plus 0.15–0.6 s of TeaVM. A per-compile process would make this arm ten
-//! times dearer than every other one, which is a difference in the *harness* rather than in the
+//! **0.14–0.4 s** of Kotlin plus TeaVM's own translation. A per-compile process would make this arm
+//! ten times dearer than every other one, which is a difference in the *harness* rather than in the
 //! language, and a study cannot carry that.
 //!
 //! So the shape is [Java's](super::super::java::compile), for the same reasons and with the same
@@ -29,30 +32,35 @@
 //! that gg cannot reclaim from here. Two preparations are never inside one JVM together, which is
 //! the precondition of the measured TeaVM corruption the seam's isolation rule exists for.
 //!
-//! # What a Kotlin program is: a script
+//! # The three files a build reads, and which of them is the model's
 //!
-//! The one deep difference from the Java arm, and it is [`source`]'s to explain. A reply is
-//! compiled as a Kotlin **script** rather than as the body of a function gg declares, because
-//! Kotlin refuses `object`, `interface`, `enum class`, `typealias` and `private fun` as *local*
-//! declarations — five things a Kotlin author writes without thinking. In a script they are all
-//! legal, statements and declarations sit side by side, and a reply with no `import` in it is
-//! compiled **byte for byte as the model wrote it**.
+//! [`PROGRAM_FILE`] is the model's reply, byte for byte. Beside it gg writes [`ENTRY_FILE`] — the
+//! component's two exports and a call to `ProgramKt.main`, with no `try` and no `catch` — and, for
+//! an agent that has loaded code, one file per [code module](super::source::module_file), each in a
+//! package of its own so that the program reaches it at `lib.<key>`. TeaVM is given the **model's**
+//! own facade class as its main class, so the whole dependency graph is rooted at the program the
+//! model wrote.
 //!
-//! What that costs is here rather than there: four scripting jars in the toolchain, one experimental
-//! compiler flag (`-Xallow-any-scripts-in-source-roots`, which compiles a script instead of running
-//! it), a `kotlin-home` directory the plugin is found through, and three `idea.*` system properties
-//! without which the compiler's IntelliJ core cannot find a configuration directory and throws
-//! before it reads a line. All four are pinned, and all four are checked by this arm's tests
-//! starting a real daemon.
+//! # What a model is told when its program fails: whatever its runtime said
 //!
-//! # The three ways a compile can end, and whose fault each is
+//! Nothing. gg catches nothing, describes nothing and re-reports nothing. A program that throws dies
+//! the way TeaVM kills it — `printHeader(); printStack(); abort();` — and what the model reads is the
+//! exception's own message and the model's own file and lines, off the guest's standard error, which
+//! is where [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) says to read
+//! it. The one thing gg changed is that upstream TeaVM printed the frames and not the header; see
+//! `packages/gg-sandbox-jvm/vendor/org/teavm/runtime/ExceptionHandling.java`.
+//!
+//! There is no source map on this road and no offset anywhere in this file. A location arrives in the
+//! model's own coordinates because the file the compiler read *is* the model's file.
+//!
+//! # The four ways a compile can end, and whose fault each is
 //!
 //! | What happened | How it is reported |
 //! | --- | --- |
 //! | the Kotlin compiler's `SYNTAX` diagnostic | [`Syntax`](PrepareError::Syntax) — the parser could not read it |
-//! | any other Kotlin error | [`Compile`](PrepareError::Compile) — read whole and rejected, which is the band a typed arm exists to produce |
+//! | any other Kotlin error in the model's own file | [`Compile`](PrepareError::Compile) — read whole and rejected, which is the band a typed arm exists to produce |
 //! | TeaVM naming a class or method its classlib does not carry | [`Compile`](PrepareError::Compile), **including when the file it names is the standard library's** |
-//! | anything about a file gg generated, a compiler that could not run, or one that reported nothing | [a toolchain failure](PrepareFailure::Toolchain) — never the model's |
+//! | javac refusing [`ENTRY_FILE`] | [`Unsupported`](PrepareError::Unsupported) — a shape refusal quoting the one convention back |
 //!
 //! The third row is where this arm parts company with [Java's](super::super::java::compile::verdict),
 //! and the reason is the language rather than a preference. A Java program reaches TeaVM's classlib
@@ -68,11 +76,16 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::sandbox::language::compile::{CompilerDaemon, CompilerPool, daemon, place, place_bytes};
+use crate::sandbox::CodeModule;
+use crate::sandbox::language::compile::{
+    CompilerDaemon, CompilerPool, Workspace, daemon, place, place_bytes,
+};
 use crate::sandbox::language::jvm;
-use crate::sandbox::language::{PrepareContext, PrepareError, PrepareFailure, PreparedProgram};
+use crate::sandbox::language::{
+    PrepareContext, PrepareError, PrepareFailure, PreparedModule, PreparedProgram,
+};
 
-use super::source::{self, Wrapped};
+use super::source;
 
 /// This arm's half of gg's compiler driver: the front end that reads a model's **Kotlin**.
 const FRONT: &str = include_str!("../checkers/kotlin.compiler.java");
@@ -90,11 +103,11 @@ const MANIFEST_JSON: &str = include_str!("../checkers/kotlin.toolchain.json");
 /// vintage from the gg whose catalogue describes it — and a model shown one surface in its prompt and
 /// compiled against another is the failure this whole seam exists to prevent.
 ///
-/// **Compiled by this build**, out of `packages/gg-sandbox-kotlin/src`, by that package's
-/// `build.sh` — the same source and the same build that the catalogue describing it is reflected
-/// from, so the two cannot be two vintages. Committed, they only moved together when somebody
-/// remembered to re-cut the jar, which on the Java arm's identical setup is a thing that did not
-/// happen.
+/// **Compiled by this build**, out of `packages/gg-sandbox-kotlin/src` and
+/// `packages/gg-sandbox-jvm/src`, by that package's `build.sh` — the same sources and the same build
+/// that the catalogue describing it is reflected from, so the two cannot be two vintages. Committed,
+/// they only moved together when somebody remembered to re-cut the jar, which on the Java arm's
+/// identical setup is a thing that did not happen.
 const SDK: &[u8] = include_bytes!(concat!(env!("GG_ARTIFACTS_KOTLIN"), "/kotlin.sdk.jar"));
 
 /// The environment variable an operator points at the directory of Kotlin jars.
@@ -105,15 +118,6 @@ const IMAGE_ROOT: &str = "/opt/gg/toolchains/kotlin";
 
 /// Where `scripts/ci/install-kotlin.sh` installs them on a developer's or CI machine, under `$HOME`.
 const HOME_ROOT: &str = ".local/share/gg-kotlin";
-
-/// The directory inside either of those that the scripting plugin is loaded through.
-///
-/// The compiler looks for four jars by **unversioned** name under `<kotlin home>/lib`, which is the
-/// layout of a Kotlin distribution rather than of a Maven repository — so the install script writes
-/// one, and gg names it. Without it a script compiles to `SCRIPTING_ERROR: Unable to evaluate
-/// script, no scripting plugin loaded`, which is a sentence about gg's packaging wearing the shape
-/// of a diagnostic about the model's program.
-const KOTLIN_HOME: &str = "kotlin-home";
 
 /// How many programs one JVM builds before it is thrown away.
 const MAX_BUILDS: usize = 64;
@@ -136,19 +140,18 @@ const START_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The file a program's source is written into, and the one its diagnostics are located in.
 ///
-/// `.kts` rather than `.kt` because [a program is a script](super::source), and the extension is what
-/// tells the compiler so. A model reads the name in its diagnostics, which is honest: what it wrote
-/// really was compiled as a script.
-pub(super) const PROGRAM_FILE: &str = "Program.kts";
+/// `.kt` rather than `.kts`: [a program is an ordinary Kotlin file](super::source), and the file's
+/// own name is what decides the facade class gg's entry class calls.
+pub(super) const PROGRAM_FILE: &str = "Program.kt";
 
-/// The file a code module's source is written into.
+/// The file a code module is **checked** in at the read that binds it.
 pub(super) const MODULE_FILE: &str = "Module.kt";
 
 /// The file gg's generated entry class is written into.
 const ENTRY_FILE: &str = "GgEntry.java";
 
-/// What TeaVM is asked to write.
-const BUNDLE_FILE: &str = "program.js";
+/// What TeaVM is asked to write: a `wasm32` core module.
+const CORE_MODULE_FILE: &str = "program.wasm";
 
 /// The name the driver is placed under. The JDK's single-file launcher requires the file name to
 /// match the public class it holds.
@@ -156,12 +159,6 @@ const DRIVER_FILE: &str = "GgCompiler.java";
 
 /// The name this arm's SDK jar is placed under, beside the driver.
 const SDK_FILE: &str = "gg-sdk.jar";
-
-/// The name a model's own file is reported under in a located failure: `Program.kts` becomes
-/// `program.kts` and `Module.kt` becomes `module.kt`.
-fn label(file: &str) -> String {
-    file.to_ascii_lowercase()
-}
 
 /// What this arm's toolchain is pinned to.
 #[derive(Debug, Deserialize)]
@@ -197,106 +194,138 @@ pub(super) fn warm() {
     }
 }
 
-/// Compile a **program** — a model's reply — into the JavaScript the guest evaluates.
+/// Compile a **program** — a model's reply — into the component that runs it.
+///
+/// [`source`](PreparedProgram::source) is empty: there is nothing left for a guest to evaluate,
+/// because the guest *is* what this returned.
 pub(super) fn compile_program(
     source: &str,
+    modules: &[CodeModule],
     context: &PrepareContext,
 ) -> Result<PreparedProgram, PrepareFailure> {
-    let wrapped = source::wrap_program(source)?;
     Ok(PreparedProgram {
-        source: build(PROGRAM_FILE, &wrapped, Entry::Program, context)?,
-        component: None,
+        source: String::new(),
+        component: Some(compile(source, modules, context)?),
     })
 }
 
-/// Compile a **code module** — the code half of a [skill](crate::skills) or a
-/// [memory](crate::memories) — into JavaScript whose evaluation leaves a namespace behind.
+/// Compile one model program into a component, or say why it could not be.
+///
+/// `modules` are this agent's loaded code [skills](crate::skills) and [memories](crate::memories),
+/// each already through [`compile_module`]. They are **inputs to this compile**, which is what makes
+/// this arm's preparation take them at all: a compiled module is only reachable from the artifact it
+/// was built into. Each is written beside the program in a package of its own and reached at
+/// `lib.<key>`.
+fn compile(
+    program: &str,
+    modules: &[CodeModule],
+    context: &PrepareContext,
+) -> Result<Vec<u8>, PrepareFailure> {
+    let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
+    // THE MODEL'S OWN BYTES. No wrapper, no header, no entry point, no import.
+    workspace
+        .write(PROGRAM_FILE, program)
+        .map_err(PrepareFailure::Toolchain)?;
+    workspace
+        .write(ENTRY_FILE, &entry_class())
+        .map_err(PrepareFailure::Toolchain)?;
+
+    let mut files = vec![PROGRAM_FILE.to_string()];
+    for module in modules {
+        let file = source::module_file(&module.name);
+        let wrapped = source::wrap_module(&module.source, &source::module_package(&module.name))?;
+        workspace
+            .write(&file, &wrapped.source)
+            .map_err(PrepareFailure::Toolchain)?;
+        files.push(file);
+    }
+
+    let report = request(
+        workspace,
+        source::PROGRAM_CLASS,
+        CORE_MODULE_FILE,
+        ENTRY_FILE,
+        &files,
+    )?;
+    verdict(&report, PROGRAM_FILE)?;
+
+    let artifact = workspace.output().join(CORE_MODULE_FILE);
+    let module = std::fs::read(&artifact).map_err(|error| {
+        PrepareFailure::Toolchain(format!(
+            "TeaVM reported success and wrote no module to {}: {error}",
+            artifact.display(),
+        ))
+    })?;
+    jvm::component::componentize(&module).map_err(PrepareFailure::Toolchain)
+}
+
+/// Check a code [skill](crate::skills)'s or [memory](crate::memories)'s Kotlin, and report the names
+/// its namespace offers.
+///
+/// What comes back is **the author's own source**, not an artifact, and that is the honest shape for
+/// a compiled language: there is nothing a module can be compiled into that a later program could
+/// load, so what this hands on is the file the next [program compile](compile) will build against,
+/// under the key that program's agent bound it at.
+///
+/// The compiler still runs, and what it buys is the *location*. Without it a module that does not
+/// compile would take down every program the agent writes from then on — the diagnostic would arrive
+/// against the turn's own program, in a file the author never wrote, on every turn until the module
+/// was somehow unloaded. Running the Kotlin compiler here instead tells the author at the read, at
+/// the module's own line and column.
+///
+/// **The Kotlin compiler alone, and not TeaVM**: this output is thrown away, so asking for a wasm
+/// module would be paying TeaVM for an artifact nothing reads — and everything an author can get
+/// wrong that TeaVM would catch (a classlib method that is not there) is caught again, at the same
+/// line, on the first program compiled against it.
 pub(super) fn compile_module(
     source: &str,
     context: &PrepareContext,
-) -> Result<(String, Vec<String>), PrepareFailure> {
-    let wrapped = source::wrap_module(source)?;
-    let built = build(MODULE_FILE, &wrapped, Entry::Module, context)?;
-    Ok((built, wrapped.exports))
-}
-
-/// Which of the two things is being built.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Entry {
-    /// A model's program: run the script, and report what it threw.
-    Program,
-    /// A code module: export its functions, and hand the namespace back.
-    Module,
-}
-
-impl Entry {
-    /// What the driver is told this build is, which decides the classpath the model's own source is
-    /// compiled against.
-    fn kind(self) -> &'static str {
-        match self {
-            Self::Program => "program",
-            Self::Module => "module",
-        }
-    }
-
-    /// The entry class gg generates beside the model's own file.
-    fn source(self) -> String {
-        match self {
-            Self::Program => entry_for_program(),
-            Self::Module => entry_for_module(),
-        }
-    }
-
-    /// What the assembled bundle ends with.
-    fn tail(self) -> String {
-        // `main` is TeaVM's default export name, and the callback is how its runtime reports a
-        // failure — DIRECTLY, as the callback's argument. A program that read `result.exception`
-        // instead would report a failed program as a complete success, which was measured on the
-        // Java arm.
-        let start = "main([], function ($ggThrown) {\n  if (!$ggThrown) return;\n  \
-                     if ($ggFailure) throw $ggFailure;\n  \
-                     if (!$ggMessage) throw $ggThrown;\n  \
-                     throw new Error($ggMessage + $ggLocate($ggThrown.stack));\n});\n";
-        match self {
-            Self::Program => start.to_string(),
-            // A plain object rather than the class TeaVM exported onto. The guest binds `lib.<key>`
-            // to the value evaluating a module produces and takes it only if it is an `object`, and
-            // a class is a `function` — so returning the export directly binds an empty namespace
-            // and no error, which is the quiet kind of wrong.
-            Self::Module => format!(
-                "{start}var $ggNamespace = {{}};\n\
-                 for (var $ggKey of Object.keys({global})) $ggNamespace[$ggKey] = {global}[$ggKey];\n\
-                 return $ggNamespace;\n",
-                global = source::MODULE_GLOBAL,
-            ),
-        }
-    }
-}
-
-/// Compile one wrapped source and hand back the JavaScript the guest evaluates.
-fn build(
-    file: &str,
-    wrapped: &Wrapped,
-    entry: Entry,
-    context: &PrepareContext,
-) -> Result<String, PrepareFailure> {
+) -> Result<PreparedModule, PrepareFailure> {
     let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
+    let wrapped = source::wrap_module(source, source::MODULE_CHECK_PACKAGE)?;
     workspace
-        .write(file, &wrapped.source)
-        .map_err(PrepareFailure::Toolchain)?;
-    workspace
-        .write(ENTRY_FILE, &entry.source())
+        .write(MODULE_FILE, &wrapped.source)
         .map_err(PrepareFailure::Toolchain)?;
 
+    let report = request(
+        workspace,
+        CHECK_ONLY,
+        CHECK_ONLY,
+        CHECK_ONLY,
+        &[MODULE_FILE.to_string()],
+    )?;
+    verdict(&report, MODULE_FILE)?;
+    Ok(PreparedModule {
+        source: source.to_string(),
+        exports: wrapped.exports,
+    })
+}
+
+/// The main class, target file and entry file that ask [the driver](super::super::jvm) for the
+/// Kotlin compiler alone.
+///
+/// Empty, which is the one value none of the three can otherwise take: a class has a name, a target
+/// file has one and so does a source file. It exists because a module is *checked* rather than
+/// built — see [`compile_module`] — and asking TeaVM for a module with no entry point would be
+/// asking it for nothing.
+const CHECK_ONLY: &str = "";
+
+/// Send one build to a warm JVM and read what it answered.
+fn request(
+    workspace: &Workspace,
+    main_class: &str,
+    target: &str,
+    entry: &str,
+    files: &[String],
+) -> Result<Report, PrepareFailure> {
     let mut compiler = POOL
         .checkout(KotlinCompiler::start)
         .map_err(PrepareFailure::Toolchain)?;
     let request = format!(
-        "{}\t{}\t{}\t{BUNDLE_FILE}\t{}\t{file}\t{ENTRY_FILE}",
+        "{}\t{}\t{main_class}\t{target}\t{entry}\t{}",
         workspace.work().display(),
         workspace.output().display(),
-        source::ENTRY_CLASS,
-        entry.kind(),
+        files.join("\t"),
     );
     let answered = match compiler.request(&request, BUILD_TIMEOUT) {
         Ok(answered) => answered,
@@ -319,29 +348,13 @@ fn build(
     if compiler.spent() {
         compiler.retire();
     }
-
     if let Some(internal) = &report.internal {
         return Err(PrepareFailure::Toolchain(format!(
             "the Kotlin {} toolchain could not build the program: {internal}",
             compiler_version(),
         )));
     }
-    verdict(&report, file, wrapped.shift)?;
-
-    jvm::assembled(
-        workspace.output(),
-        BUNDLE_FILE,
-        file,
-        wrapped.shift,
-        &label(file),
-        &entry.tail(),
-    )
-    .map_err(|error| {
-        PrepareFailure::Toolchain(format!(
-            "the Kotlin {} toolchain: {error}",
-            compiler_version()
-        ))
-    })
+    Ok(report)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -351,7 +364,7 @@ fn build(
 /// What one build of the driver reported.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Report {
+pub(crate) struct Report {
     /// A failure of gg's driver or of a compiler itself rather than of the program — nothing read
     /// the model's Kotlin, so there is no diagnostic and the model is not blamed.
     internal: Option<String>,
@@ -405,7 +418,22 @@ const PARSE_ERROR_CODE: &str = "SYNTAX";
 const SHOWN: usize = 8;
 
 /// Turn a finished build into a verdict.
-fn verdict(report: &Report, file: &str, shift: usize) -> Result<(), PrepareFailure> {
+///
+/// Four bands, decided by **which file** — and by which compiler — was talking:
+///
+/// * the model's own file — the model's diagnostic, rendered in the model's own coordinates,
+///   because the file the compiler read is the file the model wrote and there is nothing to correct;
+/// * a **TeaVM** diagnostic about any other file — the classlib refusing to translate something the
+///   program's own call graph reached, named in the file it was found in. It is the model's, and the
+///   module note above says why this arm answers that differently from [Java's](super::super::java);
+/// * [`ENTRY_FILE`] — gg's own generated file, which names the model's own `main` and can fail for
+///   exactly one reason: the program did not declare what gg's file calls. That is a **shape refusal
+///   shown to the model**, in the words of the convention it broke, rather than a toolchain failure
+///   the model is not told about
+///   ([ruling D4](https://docs.testcabinet.ai/gg/responses-as-code/invariants/));
+/// * anything else — a code module's own file, or a file nobody named — which is drift rather than
+///   anything this program did, and is reported to the operator.
+pub(crate) fn verdict(report: &Report, file: &str) -> Result<(), PrepareFailure> {
     let errors: Vec<&Diagnostic> = report
         .diagnostics
         .iter()
@@ -415,38 +443,55 @@ fn verdict(report: &Report, file: &str, shift: usize) -> Result<(), PrepareFailu
         return Ok(());
     }
 
-    // A diagnostic about the file gg GENERATED is about gg's own entry class, which is gg's artifact
-    // rather than the model's program. Blaming a model for it would send it rewriting something that
-    // was never wrong. Everything else is the model's — including a diagnostic in a library file,
-    // which is this arm's own answer and the module's documentation says why.
-    let (mine, ours): (Vec<&&Diagnostic>, Vec<&&Diagnostic>) = errors
+    // A TeaVM diagnostic is the model's wherever it was found: this arm reaches TeaVM's classlib
+    // through a standard library written in Kotlin, so the file that names the refusal is routinely
+    // `kotlin/…` rather than the model's own.
+    let mine: Vec<&&Diagnostic> = errors
         .iter()
-        .partition(|diagnostic| diagnostic.file.as_deref() != Some(ENTRY_FILE));
+        .filter(|diagnostic| {
+            diagnostic.file.as_deref() == Some(file) || diagnostic.stage == "teavm"
+        })
+        .collect();
     if mine.is_empty() {
-        let rendered = ours
+        let rendered = errors
             .iter()
-            .map(|diagnostic| diagnostic.render(file, shift))
+            .map(|diagnostic| diagnostic.render(file))
             .collect::<Vec<_>>()
             .join(" | ");
+        if errors
+            .iter()
+            .all(|diagnostic| diagnostic.file.as_deref() == Some(ENTRY_FILE))
+        {
+            return Err(PrepareFailure::Program(PrepareError::Unsupported(format!(
+                "gg reaches your program by calling `{program}.main()`, and that does not compile \
+                 against what you wrote: {rendered}\n\nWrite your reply as one Kotlin file \
+                 declaring `fun main()` — no parameters, because `fun main(args: Array<String>)` \
+                 compiles to a method gg's call cannot resolve. Everything else you declare — a \
+                 class, an object, a sealed interface, an enum class, a typealias — goes beside it \
+                 at the top level of the same file.",
+                program = source::PROGRAM_CLASS,
+            ))));
+        }
         return Err(PrepareFailure::Toolchain(format!(
             "the Kotlin toolchain refused a file gg generated rather than the program: {rendered}"
         )));
     }
 
-    // Deduplicated, because one unsupported call is one thing to fix however many call sites TeaVM
-    // found it at, and capped, because a model reads the first few and pays for all of them. Both
-    // through the seam's own bound: this arm's answer to that question was measured against every
-    // other arm's and became the shared one, so what is left here is the number and the reason for
-    // it.
+    // Deduplicated and capped through the seam's own bound: TeaVM reports one problem per call site,
+    // so a single unsupported call is one thing to fix however many times it is named.
     let rendered = crate::sandbox::language::diagnostics::capped(
         mine.iter()
-            .map(|diagnostic| diagnostic.render(file, shift))
+            .map(|diagnostic| diagnostic.render(file))
             .collect(),
         SHOWN,
         "\n\n",
     );
     // A parse failure anywhere is the whole verdict: the compiler never got as far as meaning, so
     // whatever else it says is downstream of text it could not read.
+    //
+    // `mine` and not the capped rendering, and that is the invariant rather than a preference: the
+    // band is decided on the WHOLE set, so a parse error the bound did not show is still a parse
+    // error.
     Err(PrepareFailure::Program(
         match mine.iter().any(|diagnostic| diagnostic.is_parse_error()) {
             true => PrepareError::Syntax(rendered),
@@ -461,29 +506,25 @@ impl Diagnostic {
         self.stage == "kotlinc" && self.code.as_deref() == Some(PARSE_ERROR_CODE)
     }
 
-    /// This diagnostic as the model reads it: `program.kts:7:19: Unresolved reference 'nope'.`
+    /// This diagnostic as the model reads it: `Program.kt:7:19: Unresolved reference 'nope'.`
     ///
-    /// The line is moved back over whatever gg put in front of the program, so the coordinate names
-    /// the line of the reply the model actually wrote.
-    fn render(&self, file: &str, shift: usize) -> String {
-        let mine = self.file.as_deref() == Some(file);
-        let located = match (mine, self.line) {
-            (true, 0) => label(file),
-            (true, line) => {
-                let line = line.saturating_sub(shift).max(1);
-                match self.column {
-                    0 => format!("{}:{line}", label(file)),
-                    column => format!("{}:{line}:{column}", label(file)),
-                }
-            }
+    /// The coordinate is the compiler's own, uncorrected, because the file it read is the file the
+    /// model wrote.
+    fn render(&self, file: &str) -> String {
+        let located = match (self.file.as_deref() == Some(file), self.line) {
+            (true, 0) => file.to_string(),
+            (true, line) => match self.column {
+                0 => format!("{file}:{line}"),
+                column => format!("{file}:{line}:{column}"),
+            },
             // A library's own file, named as such. This is a fact about what the model's program
             // reached — Kotlin's standard library is where an unsupported call is *found*, because
             // the program reached TeaVM's classlib through it — so the file is quoted rather than
             // hidden, and it is not written as though the model could open it.
             (false, _) => match (&self.file, self.line) {
-                (Some(name), 0) => format!("{}, inside {name}", label(file)),
-                (Some(name), line) => format!("{}, inside {name}:{line}", label(file)),
-                (None, _) => label(file),
+                (Some(name), 0) => format!("{file}, inside {name}"),
+                (Some(name), line) => format!("{file}, inside {name}:{line}"),
+                (None, _) => file.to_string(),
             },
         };
         format!("{located}: {}", self.message.trim_end())
@@ -494,143 +535,25 @@ impl Diagnostic {
 // The generated entry class
 // ---------------------------------------------------------------------------------------------
 
-/// The exceptions the entry class names one by one, innermost subtype first.
+/// This arm's own additions to [the shared list](jvm::SPELLABLE): the class a program catches, and
+/// the two failures no Java program can throw.
 ///
-/// **Enumerated rather than derived**, for the reason [Java's](super::super::java::compile) is:
-/// `failure.getClass().getName()` answers `null` for a `NullPointerException` under TeaVM, which is
-/// how that arm was measured reporting `Error: Error: null`. Naming the classes gg cares about in
-/// `catch` clauses makes the answer the compiler's rather than the runtime's, and a class not on this
-/// list still gets `getName()` with a stated fallback.
-///
-/// Two of them are Kotlin's own and are why this list is not simply Java's. `!!` on a null and a
-/// failed `check(…)` are the two ways a Kotlin program most often stops, and
-/// `UninitializedPropertyAccessException` is the third — each of them a class no Java program can
-/// throw. Order matters: a subtype before its supertype, because Java takes the first clause that
-/// matches.
-const CAUGHT: [&str; 14] = [
+/// `!!` on a null and a `lateinit` read too early are two of the three ways a Kotlin program most
+/// often stops, and each raises a class `kotlin-stdlib` declares rather than one `java.base` does —
+/// so a list that was only Java's would print a blank header for both.
+const SPELLABLE: [&str; 3] = [
+    "gg.core.ToolError",
     "kotlin.KotlinNullPointerException",
-    "java.lang.NullPointerException",
     "kotlin.UninitializedPropertyAccessException",
-    "java.lang.ArrayIndexOutOfBoundsException",
-    "java.lang.StringIndexOutOfBoundsException",
-    "java.lang.IndexOutOfBoundsException",
-    "java.lang.ClassCastException",
-    "java.lang.ArithmeticException",
-    "java.lang.NumberFormatException",
-    "java.lang.IllegalArgumentException",
-    "java.lang.IllegalStateException",
-    "java.lang.UnsupportedOperationException",
-    "java.util.NoSuchElementException",
-    "java.util.ConcurrentModificationException",
 ];
 
-/// TeaVM's own marker on a Java wrapper around a **JavaScript** exception.
+/// [The shared entry class](jvm::entry_class), with this arm's own one line in it.
 ///
-/// A failure a binding raised — a `ToolError` the host refused a call with — arrives in the JVM as a
-/// `RuntimeException` whose message TeaVM prefixes with this. gg must not describe one: the guest
-/// classifies a tool failure from what the host said, and a re-description would turn a refusal the
-/// model can act on into prose about a class it never wrote.
-///
-/// # What that costs, said out loud
-///
-/// This is the **one** failure a Kotlin program can produce that carries no line of the model's own.
-/// Locating a failure and describing it are the same act here: `$ggMessage` is what
-/// [the tail](Entry::tail) branches on, and only the branch that sets it runs `$ggLocate` over
-/// TeaVM's source map. A refusal that arrives wearing this marker takes the pass-through branch
-/// instead, so the coordinate that reaches the outcome is the generated bundle's rather than the
-/// program's — `line 2529, column 19` of something the model never saw.
-///
-/// Kept, rather than fixed by locating without describing, because the two are not separable on this
-/// road: what the guest classifies from is the thrown value itself, and the only place a located line
-/// could go is the message it must not touch. The refusal's own sentence is the thing a model acts on
-/// — `setTimeout is not available in the sandbox` names the mistake far more precisely than a line
-/// number would — so the trade is deliberate and not this arm's alone: it follows from the shared
-/// [JVM road](super::super::jvm) and [Java's arm](super::super::java::compile) is on exactly the same
-/// terms. `a_refusal_raised_under_the_program_rather_than_by_it_is_passed_through_undescribed` in
-/// the substrate tests (`kotlin.substrate.test.rs`) holds it, so a future reader finds the exception rather
-/// than the unqualified claim.
-const FOREIGN_MARKER: &str = "(JavaScript) ";
-
-/// The entry class for a **program**: run the model's script, describe what it threw, and rethrow it.
-///
-/// The first `catch` is this arm's SDK rather than the language's, and it is the half no SDK could do
-/// for itself: a `ToolError` the program did not handle must reach the guest as a **tool failure**,
-/// because gg classifies a turn's error from the host's own code. The SDK catches a refusal in
-/// JavaScript and raises a real Kotlin exception so that `catch (failure: ToolError)` works at all;
-/// this records the same three fields on the way past, and the bundle's tail throws that record
-/// instead of the exception object. `ToolError` is imported from `gg.core`, which is where this SDK
-/// declares the failure every other module raises — an ordinary Java import of a Kotlin class,
-/// because what the classpath holds by then is bytecode.
-///
-/// Written in Java rather than in Kotlin, which is worth saying because the program it starts is
-/// Kotlin. A Kotlin entry class would have to be compiled by the compiler this class exists to
-/// wrap — before the model's own source, in a second pass, against annotations
-/// (`@JSBody`) whose Kotlin spelling is `external fun` — for a class that never appears in a
-/// diagnostic a model reads. Running a script is `new Program(new String[0])` from anywhere on the
-/// JVM.
-fn entry_for_program() -> String {
-    let chain: String = CAUGHT
-        .iter()
-        .map(|name| {
-            format!("        catch ({name} failure) {{ throw seen(\"{name}\", failure); }}\n")
-        })
-        .collect();
-    format!(
-        "import gg.core.ToolError;\n\
-         import org.teavm.jso.JSBody;\n\
-         \n\
-         public final class {entry} {{\n\
-         \x20   @JSBody(params = {{\"text\"}}, script = \"$ggMessage = text;\")\n\
-         \x20   static native void describe(String text);\n\
-         \n\
-         \x20   @JSBody(params = {{\"tool\", \"code\", \"message\"}}, \
-         script = \"$ggFailure = {{ tool: tool, code: code, message: message }};\")\n\
-         \x20   static native void refused(String tool, String code, String message);\n\
-         \n\
-         \x20   public static void main(String[] args) throws Throwable {{\n\
-         \x20       try {{ new {program}(new String[0]); }}\n\
-         \x20       catch (ToolError failure) {{\n\
-         \x20           refused(failure.getTool(), failure.getCode().getWireName(), \
-         failure.getMessage());\n\
-         \x20           throw failure;\n\
-         \x20       }}\n\
-         {chain}\
-         \x20       catch (StackOverflowError failure) {{ throw seen(\"java.lang.StackOverflowError\", failure); }}\n\
-         \x20       catch (Throwable failure) {{ throw seen(named(failure), failure); }}\n\
-         \x20   }}\n\
-         \n\
-         \x20   static String named(Throwable failure) {{\n\
-         \x20       Class<?> type = failure.getClass();\n\
-         \x20       String name = type == null ? null : type.getName();\n\
-         \x20       return name == null ? \"a failure whose class this runtime cannot name\" : name;\n\
-         \x20   }}\n\
-         \n\
-         \x20   static Throwable seen(String name, Throwable failure) {{\n\
-         \x20       String message = failure.getMessage();\n\
-         \x20       if (message != null && message.startsWith({marker:?})) {{ return failure; }}\n\
-         \x20       describe(message == null ? name : name + \": \" + message);\n\
-         \x20       return failure;\n\
-         \x20   }}\n\
-         }}\n",
-        entry = source::ENTRY_CLASS,
-        program = source::PROGRAM_CLASS,
-        marker = FOREIGN_MARKER,
-    )
-}
-
-/// The entry class for a **code module**: export the module's class, and leave the namespace where
-/// the bundle's tail can hand it back.
-fn entry_for_module() -> String {
-    format!(
-        "import org.teavm.jso.JSExportClasses;\n\
-         \n\
-         @JSExportClasses({{ {module}.class }})\n\
-         public final class {entry} {{\n\
-         \x20   public static void main(String[] args) {{ }}\n\
-         }}\n",
-        module = source::MODULE_CLASS,
-        entry = source::ENTRY_CLASS,
-    )
+/// `ProgramKt.main()` against Java's `Program.main(new String[0])`, and that is the whole of the
+/// difference between the two arms' generated entry classes.
+fn entry_class() -> String {
+    let spellable: Vec<&str> = jvm::SPELLABLE.iter().chain(&SPELLABLE).copied().collect();
+    jvm::entry_class(&spellable, &format!("{}.main();", source::PROGRAM_CLASS))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -653,12 +576,18 @@ impl KotlinCompiler {
     fn start() -> Result<Self, String> {
         let toolchain = toolchain()?;
         let placed = placed()?;
-        // The SDK goes on the two classpaths a MODEL's own source is read against, and on neither of
-        // the others: a program that could reach the compiler's own jars could import
-        // `kotlinx.coroutines`, which this sandbox cannot run. So `fs.readFile("x")` type-checks
-        // against the same bytes TeaVM translates, and there is no second path to keep in step.
-        let program_path = format!("{}:{}", toolchain.program_path, placed.sdk.display());
-        let module_path = format!("{}:{}", toolchain.module_path, placed.sdk.display());
+        // The SDK goes on the classpath a MODEL's own source is read against, and on no other: a
+        // program that could reach the compiler's own jars could import `kotlinx.coroutines`, which
+        // this sandbox cannot run. So `gg.files.readFile("x")` type-checks against the same bytes
+        // TeaVM translates, and there is no second path to keep in step.
+        //
+        // IT GOES FIRST, AND THE ORDER IS LOAD-BEARING. The jar carries one vendored TeaVM runtime
+        // class — `org.teavm.runtime.ExceptionHandling`, changed in one place so that an uncaught
+        // exception prints WHAT was thrown and not only where — and TeaVM resolves the classes it
+        // translates from the classpath it is given, first match winning. Behind `teavm-core.jar`
+        // the copy would never be read and the change would vanish with no diagnostic. See
+        // `packages/gg-sandbox-jvm/vendor/org/teavm/runtime/ExceptionHandling.java`.
+        let program_path = format!("{}:{}", placed.sdk.display(), toolchain.program_path);
         let started = daemon(&toolchain.java).and_then(|mut command| {
             command
                 // A developer's shell may carry either of these, and a JVM that picks one up prints
@@ -679,9 +608,7 @@ impl KotlinCompiler {
                 // which is why gg builds no jar of its own for it.
                 .arg(&placed.driver)
                 .arg(&toolchain.compile_path)
-                .arg(&program_path)
-                .arg(&module_path)
-                .arg(&toolchain.home);
+                .arg(&program_path);
             command.start()
         });
         started
@@ -792,8 +719,7 @@ struct Placed {
     sdk: PathBuf,
 }
 
-/// What this arm compiles with: one JDK, four classpaths and the directory the scripting plugin is
-/// loaded out of.
+/// What this arm compiles with: one JDK and three classpaths.
 struct Toolchain {
     /// The `java` a daemon is started as, which is [the JVM arms' shared JDK](jvm::toolchain).
     java: PathBuf,
@@ -801,8 +727,8 @@ struct Toolchain {
     classpath: String,
     /// What gg's generated entry class is compiled with, and what TeaVM translates from.
     compile_path: String,
-    /// What a model's **program** is compiled against: the Kotlin standard library and the script
-    /// runtime its script class extends, and nothing else.
+    /// What a model's **program** is compiled against: the Kotlin standard library, and nothing
+    /// else.
     ///
     /// This is the arm's library claim, and it is a claim gg can only make by being deliberate about
     /// it: the driver runs with a 60 MB Kotlin compiler and every TeaVM jar on its classpath, and a
@@ -812,19 +738,9 @@ struct Toolchain {
     /// `UNRESOLVED_IMPORT` at the model's own line rather than forty-five TeaVM errors inside
     /// somebody else's file.
     ///
-    /// This arm's [SDK] is appended to it as the daemon starts, because that jar is placed rather
+    /// This arm's [SDK] is prepended to it as the daemon starts, because that jar is placed rather
     /// than installed and its path is not known until then.
     program_path: String,
-    /// What a code **module** is compiled against: the above plus TeaVM's `@JSExport`, which gg
-    /// writes into a module and an author never types.
-    module_path: String,
-    /// The directory the scripting plugin is loaded out of, as the compiler's `-kotlin-home`.
-    ///
-    /// Not a classpath entry, and that is the point of it: the compiler looks for its scripting
-    /// plugin by four **unversioned** file names under `<home>/lib`, which is a Kotlin
-    /// distribution's layout rather than a Maven repository's, so the install script writes one and
-    /// gg names it.
-    home: String,
 }
 
 /// Find the toolchain, once per process.
@@ -836,7 +752,7 @@ fn toolchain() -> Result<&'static Toolchain, String> {
         .map_err(Clone::clone)
 }
 
-/// Look for the Kotlin jars, and build the four classpaths out of them and the JVM toolchain.
+/// Look for the Kotlin jars, and build the three classpaths out of them and the JVM toolchain.
 fn find_toolchain() -> Result<Toolchain, String> {
     let shared = jvm::toolchain()?;
     let root = jvm::named(KOTLIN_ENV)
@@ -854,29 +770,14 @@ fn find_toolchain() -> Result<Toolchain, String> {
         })?;
     let kotlin = jvm::jars(&root.join("libs"))?;
 
-    let home = root.join(KOTLIN_HOME);
-    if !home.join("lib").is_dir() {
-        return Err(format!(
-            "{} holds no scripting plugin; a Kotlin program is compiled as a script and the \
-             compiler loads that plugin out of a kotlin-home directory. Run \
-             scripts/ci/install-kotlin.sh.",
-            home.display()
-        ));
-    }
-
     // Named by prefix rather than by full file name, because the version is in the name and the pin
     // that decides it lives in `packages/gg-sandbox-kotlin/kotlin-version.sh` rather than in Rust.
     let stdlib = jar(&kotlin, "kotlin-stdlib-")?;
-    let script_runtime = jar(&kotlin, "kotlin-script-runtime-")?;
-    let jso = jar(&shared.classpath, "teavm-jso-")?;
-    let program_path = format!("{stdlib}:{script_runtime}");
     Ok(Toolchain {
         java: shared.java.clone(),
         classpath: format!("{kotlin}:{}", shared.classpath),
         compile_path: shared.classpath.clone(),
-        module_path: format!("{program_path}:{jso}"),
-        program_path,
-        home: home.to_string_lossy().into_owned(),
+        program_path: stdlib,
     })
 }
 

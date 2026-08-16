@@ -244,16 +244,13 @@ const UNCONVERTED: &[Unconverted] = &[
                   that no diagnostic moves",
     },
     // ---- kotlin ---------------------------------------------------------------------------------
-    //
-    // The program half keeps its bytes only because gg's own opening program writes no `import`:
-    // this arm hoists a model's imports to the head of the file when it wrote any, which is the
-    // conditional transform this gate's header says a byte comparison cannot see.
     Unconverted {
         arm: GgProgramLanguage::Kotlin,
         half: Half::Module,
         did: Did::Wrapped,
-        adds: "@file:JvmName(\"Module\")",
-        instead: "puts the file under file-level annotations and two imports of its own",
+        adds: "package lib.module; ",
+        instead: "compiles the file into a package of gg's naming so that a program reaches it at \
+                  `lib.<key>`, on the author's own first line so that no diagnostic moves",
     },
     // ---- swift ----------------------------------------------------------------------------------
     Unconverted {
@@ -286,8 +283,6 @@ const UNCONVERTED: &[Unconverted] = &[
     // No row, because there is nothing here to record: these arms hand the compiler what they were
     // handed, and what they do besides is a shape this measurement says it cannot see.
     //
-    // * Kotlin lifts a model's `import` lines to the head of the file when it wrote any, and gg's
-    //   own opening program writes none.
     // * PureScript supplies a module header when the reply has none and renames one that names
     //   something other than `Main`, and gg's own opening program writes `module Main where`.
 ];

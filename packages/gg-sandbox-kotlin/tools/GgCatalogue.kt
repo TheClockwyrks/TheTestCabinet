@@ -57,4 +57,16 @@ internal object GgCatalogue {
      * it up would put the crossing itself in front of a model instead of the surface.
      */
     const val BRIDGE: String = "gg.internal"
+
+    /**
+     * The root package, which holds exactly one public declaration and is reflected out of nothing.
+     *
+     * `gg.log` is this arm's `console.log`: a line for whoever is watching the run, which no
+     * capability offers and no gg tool answers. Every other arm keeps its own out of the catalogue
+     * too, and the reason is the same — the catalogue describes the **capability** modules, and this
+     * belongs to none of them. It is named here rather than merely omitted because the index refuses
+     * a package holding model-facing declarations that [MODULES] does not name, which is what stops a
+     * whole module from going undescribed by accident.
+     */
+    const val UNCATALOGUED: String = "gg"
 }

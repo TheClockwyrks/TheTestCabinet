@@ -168,9 +168,9 @@ RUN set -eux; \
 
 # --- Java -------------------------------------------------------------------
 # The first toolchain here that is not one file. A Java program is compiled to bytecode by `javac`
-# and then to JavaScript by TeaVM, both on the host before the program crosses the membrane, so this
-# arm adds no engine either — but it needs a JDK (javac is a JDK, not a JRE) and ~29 MB of TeaVM
-# jars named on a classpath.
+# and then to a WebAssembly component by TeaVM, both on the host before the program crosses the
+# membrane, so this arm adds no engine either — but it needs a JDK (javac is a JDK, not a JRE) and
+# ~29 MB of TeaVM jars named on a classpath.
 #
 # Eclipse Temurin satisfies constraint 1 outright: a plain relocatable tarball per platform, with no
 # installer and no distribution packaging, so the same tree works on the Debian-derived run images
@@ -215,11 +215,11 @@ RUN set -eux; \
 # that lends each JVM to one preparation at a time. Two preparations are never inside one compiler.
 # See `crates/gg/src/sandbox/language/kotlin.compile.rs`.
 #
-# One thing here is not a classpath. gg compiles a model's program as a Kotlin SCRIPT — because
-# Kotlin refuses `object`, `interface`, `enum class`, `typealias` and `private fun` as LOCAL
-# declarations, and a wrapper function would therefore refuse five things a Kotlin author writes
-# without thinking — and the compiler loads its scripting plugin by four UNVERSIONED file names out
-# of a `kotlin-home/lib` directory, which the installer writes.
+# WHAT USED TO BE HERE AND IS NOT: a `kotlin-home/lib` directory holding four scripting-plugin jars
+# under unversioned names. gg compiled a model's program as a Kotlin SCRIPT, because the shape it was
+# compared against wrapped a reply in a function gg declared and Kotlin refuses `object`,
+# `interface`, `enum class`, `typealias` and `private fun` as LOCAL declarations. Under whole
+# programs there is no wrapper and no local position, so the plugin went with the problem it solved.
 #
 # The versions are the ones `packages/gg-sandbox-kotlin/kotlin-version.sh` pins. The script is run
 # here for the same reason the Java one is, and it RUNS that one: this arm compiles through the same
@@ -235,7 +235,7 @@ RUN set -eux; \
 	KOTLIN_INSTALL_DIR=/opt/gg/toolchains/kotlin \
 	bash /tmp/gg-kotlin/scripts/ci/install-kotlin.sh; \
 	rm -rf /tmp/gg-kotlin; \
-	test -f /opt/gg/toolchains/kotlin/kotlin-home/lib/kotlin-scripting-compiler.jar
+	test -f /opt/gg/toolchains/kotlin/libs/kotlin-compiler-embeddable-*.jar
 
 # --- Rust -------------------------------------------------------------------
 # The heaviest toolchain in this image by a wide margin — **~380 MB** — and the first that is

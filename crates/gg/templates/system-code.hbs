@@ -89,19 +89,20 @@ of one options object in the last position. Every module below is bound under
 signature carries are documentation: they do not exist while your program runs.
 {{/if}}
 {{#if (eq language.id "kotlin")}}
-Your response is compiled as a Kotlin script, in the root package: statements and
-declarations side by side at the top level, in whatever order you write them.
-There is no class to write and no `main` to declare, so put your work at the top
-level. Write the `import` lines you would normally write.
+Your response is compiled verbatim, as one Kotlin file in the root package: the
+`import` lines you need, then a `fun main()` with no parameters, which is where
+your work goes. Anything else you declare — a class, an object, a sealed
+interface, an enum class, a typealias — goes beside it at the top level of the
+same file.
 
 A failure is a `gg.core.ToolError`, and Kotlin has no checked exceptions: let one
 escape, catch it with `catch (failure: gg.core.ToolError)`, or wrap a call in
 `runCatching`. Its `code` is an enum.
 
 Required arguments are positional, and an optional one is a default argument you
-may pass by name; a value that may be absent has a nullable type. Every gg name
-is written in full: a module's path below resolves in the root package as it
-stands, and an `import` of the one name you want is how you shorten it.
+may pass by name; a value that may be absent has a nullable type. Each module
+below is a package of top-level functions: write a module's path in full as it
+stands, or write that module's own `import` line and then the name alone.
 {{/if}}
 {{#if (eq language.id "purescript")}}
 Your response is a module whose `main` has type `Effect Unit`, written as a `do`

@@ -37,7 +37,8 @@
 //!
 //! The seam's rule that a capability reaches a program as a typed, namespaced binding rather than as
 //! a dispatcher taking a name as data is a rule about **what a model writes**. A model writing Java
-//! writes `Files.readTextFile("notes.txt")`; this is one layer below anything it can see, in a
+//! writes `Files.readTextFile("notes.txt")` and one writing Kotlin writes
+//! `gg.files.readTextFile("notes.txt")`; this is one layer below anything either can see, in a
 //! package no catalogue describes.
 //!
 //! # What it cannot do

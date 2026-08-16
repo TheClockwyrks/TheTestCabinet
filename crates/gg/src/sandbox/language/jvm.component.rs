@@ -11,10 +11,8 @@
 //!
 //! # Who calls it
 //!
-//! [Java](super::java::compile), on every program and on every turn. [Kotlin](super::kotlin) is
-//! still on the JavaScript road and converts in its own step: the model-facing half of that SDK is
-//! written against a **JavaScript object**, and moving it — with its code modules, its healing and
-//! its diagnostics — is that arm's own work.
+//! Both JVM arms — [Java](super::java::compile) and [Kotlin](super::kotlin::compile) — on every
+//! program and on every turn.
 //!
 //! ---------------------------------------------------------------------------------------------
 
@@ -24,7 +22,7 @@
 /// functions, measured: `clock_time_get`, `args_sizes_get`, `args_get` and `fd_write` — and this is
 /// what implements them in terms of the preview 2 interfaces gg's linker provides. It rides inside
 /// gg's binary for the reason every other arm's does: gg is copied as a single file into an
-/// ephemeral run container. `packages/gg-sandbox-java/java-version.sh` carries the pin.
+/// ephemeral run container. `packages/gg-sandbox-java/java-version.sh` carries the pin, for both arms.
 const ADAPTER: &[u8] = include_bytes!(concat!(env!("GG_ARTIFACTS_JAVA"), "/java.adapter.wasm"));
 
 /// The import namespace the adapter satisfies, which is the preview1 snapshot's own module name.

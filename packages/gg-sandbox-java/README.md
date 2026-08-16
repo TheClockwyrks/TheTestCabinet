@@ -6,6 +6,7 @@ The **Java** program language's toolchain pin and its hand-written SDK.
 | --- | --- |
 | [`java-version.sh`](java-version.sh) | the JDK and TeaVM releases this arm is pinned to |
 | [`src/gg/`](src/gg/) | the **SDK** a model's program is compiled against, and the doc comments every word a model reads is reflected out of |
+| [`../gg-sandbox-jvm/`](../gg-sandbox-jvm/) | the canonical ABI and the wire encoding, which the Kotlin arm compiles too |
 | [`libraries.txt`](libraries.txt) | the packages this arm says a program may reach, grouped as the catalogue renders them |
 | [`build.sh`](build.sh) | compiles the SDK to `$GG_ARTIFACTS_OUT_DIR/java.sdk.jar`; `crates/gg-sandbox-artifacts/java` runs it on every build |
 | [`signatures.sh`](signatures.sh) | reflects `java.signatures.json` out of the SDK's Javadoc, into `$GG_SIGNATURES_OUT_DIR`; `crates/gg/build.rs` runs it on every build |
@@ -27,9 +28,10 @@ the single-type `import` the catalogue states for that module, so every name a m
 in a signature is a name it can type and every name is qualified by the module a search
 filed it under.
 
-`gg.internal` is the crossing: `Abi` implements the canonical ABI for the one imported
-function `test-cabinet:gg/wire` declares, `Value` and `Coding` are gg's own encoding on top
-of it. Nothing there is model-facing and `signatures.sh` excludes the package.
+`gg.internal` is the crossing: [`../gg-sandbox-jvm/`](../gg-sandbox-jvm/) carries `Abi`,
+`Value` and `Frames`, which the Kotlin arm compiles too, and `Coding` here is the one half
+that cannot be shared because the class a program catches is this arm's own. Nothing there
+is model-facing and `signatures.sh` excludes the package.
 
 Where a value carries an operation of its own, it carries the method too:
 `handle.send(text)` beside `Delegation.sendMessage(id, text)`, `view.close()` beside
@@ -75,10 +77,10 @@ Each of them can only go one way, and where each goes is the argument:
   It fixes every jar entry's timestamp and sorts the entry list, so two builds of identical
   sources are identical bytes.
 
-  The jar also carries [`vendor/`](vendor/), one TeaVM runtime class kept under its own
-  licence and changed in one place so an uncaught exception prints what was thrown as well
-  as where. It goes first on TeaVM's program classpath, which is what makes that copy the
-  one the compiler translates.
+  The jar also carries [`../gg-sandbox-jvm/`](../gg-sandbox-jvm/): the crossing both JVM arms
+  compile, and one TeaVM runtime class kept under its own licence and changed in one place so
+  an uncaught exception prints what was thrown as well as where. It goes first on TeaVM's
+  program classpath, which is what makes that copy the one the compiler translates.
 
 ## What the pins mean
 

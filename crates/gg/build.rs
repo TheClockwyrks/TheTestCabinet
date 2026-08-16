@@ -340,8 +340,11 @@ fn rerun_paths(root: &Path) -> Vec<PathBuf> {
         "packages/gg-sandbox-purescript/tools",
         "packages/gg-sandbox-purescript/signatures.sh",
         "packages/gg-sandbox-purescript/spago.yaml",
-        // Java: javadoc with gg's own doclet, compiled fresh from `tools/` on every run.
+        // Java: javadoc with gg's own doclet, compiled fresh from `tools/` on every run. The
+        // crossing both JVM arms compile is on javadoc's source path so that `gg.internal.Value`
+        // resolves, and excluded from what it emits, so an edit there is an input to this.
         "packages/gg-sandbox-java/src",
+        "packages/gg-sandbox-jvm/src",
         "packages/gg-sandbox-java/tools",
         "packages/gg-sandbox-java/signatures.sh",
         "packages/gg-sandbox-java/libraries.txt",

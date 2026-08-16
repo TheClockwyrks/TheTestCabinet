@@ -181,6 +181,12 @@ tar = "0.4"
 # workspace pin for why its version tracks wasmtime's wasmparser line.
 wit-component = { workspace = true }
 wit-parser = { workspace = true }
+# The operating system's entropy, for the one function of `test-cabinet:gg/math` that is not
+# arithmetic (`src/sandbox/membrane/math.rs`). TeaVM's WebAssembly backend leaves `java.lang.Math`
+# to a host and gg answers it, `Math.random()` included. It is already in this crate's graph —
+# `wasmtime-wasi` fills WASI's `random_get` from it — and naming it here is what stops a second
+# generator from being a second answer to one question.
+getrandom = { workspace = true }
 
 [dev-dependencies]
 # A scratch workspace root for the tool tests (shell + filesystem): tools operate on

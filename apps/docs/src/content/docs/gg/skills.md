@@ -110,10 +110,10 @@ compaction.
 
 That reply is where a model learns the spelling. `lib` binds no catalogued
 function, so a search finds nothing and the [system prompt](/gg/prompts/) states
-that a skill carries code without saying how the code is reached. Nine arms
-write a path, and Kotlin and PureScript name both halves as strings, because on
-those two a module is compiled separately from the program that uses it. Each arm
-supplies its own form through `ProgramLanguage::lib_access`.
+that a skill carries code without saying how the code is reached. Ten arms write
+a path, and PureScript names both halves as strings, because on that one a module
+is compiled separately from the program that uses it. Each arm supplies its own
+form through `ProgramLanguage::lib_access`.
 
 What a module may contain, what it exports, and what it is refused for are one
 shared rule across skills and memories, documented under

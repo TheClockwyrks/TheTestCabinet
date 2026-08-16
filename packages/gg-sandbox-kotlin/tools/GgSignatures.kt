@@ -176,8 +176,10 @@ private class Index(
         /**
          * Parse every model-facing file under `root`, and hold the module table to the sources.
          *
-         * The bridge package is left out by name: every declaration in it is `internal`, a model
-         * cannot reach one, and reflecting it would put the crossing itself in front of a model.
+         * Two packages are left out by name. The bridge's declarations are all `internal`, a model
+         * cannot reach one, and reflecting it would put the crossing itself in front of a model; the
+         * root package holds `gg.log` alone, which every arm keeps out of its catalogue for the
+         * reason [GgCatalogue.UNCATALOGUED] states.
          */
         fun of(root: File): Index {
             // The environment is deliberately NOT disposed. PSI is lazy: a `KtFile`'s declarations
@@ -213,7 +215,7 @@ private class Index(
                 if (packaged.isEmpty()) {
                     fail("`${file.name}` declares no package, and every name here is qualified by one")
                 }
-                if (packaged == GgCatalogue.BRIDGE) {
+                if (packaged == GgCatalogue.BRIDGE || packaged == GgCatalogue.UNCATALOGUED) {
                     continue
                 }
                 byPackage.getOrPut(packaged) { ArrayList() }.add(parsed)
@@ -733,11 +735,21 @@ private class Catalogue(val index: Index, val libraries: Libraries) {
                         field("path", module.path)
                         field("brief", brief)
                         if (detail == null) nullField("detail") else field("detail", detail)
-                        // `null`, and truthfully. A Kotlin name written in full resolves with nothing
-                        // above it, and a model's program is compiled in the root package — so
-                        // `gg.files.readFile(…)` is a call it can write as it stands, and an import
-                        // line here would be one gg told it to write and does not need.
-                        nullField("import")
+                        // THE LINE A PROGRAM WRITES, which on this arm is a star import of the
+                        // module's own package. gg writes no import into a program, so this is the
+                        // only place a model is told how to reach `readFile` rather than
+                        // `gg.files.readFile` — and it is composed from the module's own path rather
+                        // than restated, which is the one thing this reflector is allowed to compose
+                        // (a KDoc reports no import line for anything).
+                        //
+                        // A STAR IMPORT AND NOT A NAMED ONE, because this arm's surface is top-level
+                        // FUNCTIONS. Kotlin imports a top-level declaration one name at a time —
+                        // `import gg.files.readFile` reaches exactly that call and nothing else — so
+                        // a per-module line naming one member would be a line that resolves a single
+                        // call, which is not what a module's entry is answering. `import gg.files.*`
+                        // is what a Kotlin author writes to reach a package's functions AND the types
+                        // its signatures name, and it is one line rather than one per call.
+                        field("import", "import ${module.path}.*")
                     }
                 }
             }

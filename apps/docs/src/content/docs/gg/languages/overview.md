@@ -33,7 +33,7 @@ SDK, its own segment of the shared prompt templates and its own healing dialect.
 | [Ruby](/gg/languages/ruby/) | `ruby` | Compiled to JavaScript on the host by an embedded Opal, evaluated by a guest carrying Opal's runtime. |
 | [PureScript](/gg/languages/purescript/) | `purescript` | Type-checked and compiled to JavaScript by the run image's `purs`, bundled, evaluated by the ECMAScript guest. |
 | [Java](/gg/languages/java/) | `java` | Compiled by `javac` and then TeaVM inside a warm JVM, into the wasm component that turn is evaluated by. |
-| [Kotlin](/gg/languages/kotlin/) | `kotlin` | Compiled by the Kotlin compiler and then TeaVM inside the same warm JVM, along the same road. |
+| [Kotlin](/gg/languages/kotlin/) | `kotlin` | Compiled by the Kotlin compiler and then TeaVM inside the same warm JVM, into the wasm component that turn is evaluated by. |
 | [Rust](/gg/languages/rust/) | `rust` | `rustc` compiles the program into the wasm component that turn is evaluated by. |
 | [Swift](/gg/languages/swift/) | `swift` | `swiftc` compiles the reply verbatim into that turn's wasm component. |
 | [C++](/gg/languages/cpp/) | `cpp` | `clang++` compiles the reply verbatim against a prelude precompiled once per machine. |
@@ -61,15 +61,18 @@ sees only the SDK. The rules the surface keeps in every language are on
 
 An arm owns its catalogue, its prompt segment and its healing dialect. A
 guest component is shared only between arms a declared table names, and a
-declared pair must hand back identical bytes. TypeScript, JavaScript, PureScript
-and Kotlin all declare the ECMAScript guest; Ruby compiles to JavaScript on
+declared pair must hand back identical bytes. TypeScript, JavaScript and
+PureScript all declare the ECMAScript guest; Ruby compiles to JavaScript on
 the host as well and still has its own, because that component carries Opal's
-runtime. Rust, Swift, C++ and Java have no guest to share, each program being its
-own component.
+runtime. Rust, Swift, C++, Java and Kotlin have no guest to share, each program
+being its own component.
 
-Java compiles to TeaVM's WebAssembly target, where each program is its own
-component and no JavaScript is on the road. Kotlin is moving onto the same
-target and its page states what that arm does today.
+Java and Kotlin compile to TeaVM's WebAssembly target. TeaVM emits per program
+only the classlib that program's own call graph reached, so there is no runtime
+two programs could share and the component is built per turn. Both arms reach gg
+through one imported function rather than the fifteen typed interfaces, because
+there is no binding generator for the JVM; the [Java](/gg/languages/java/) page
+carries that argument and the canonical ABI both arms compile.
 
 On that route an arm reaches gg through one imported interface,
 `test-cabinet:gg/wire`. Every other guest binds the typed interfaces directly,
@@ -87,6 +90,13 @@ interfaces are implemented by, so the capability gate, the recorded call and the
 lists is gg's own tagged encoding, and the model-facing surface stays typed and
 namespaced.
 
+`test-cabinet:gg/math` is the second interface those two arms alone import, and
+the reason is the compiler rather than gg: `java.lang.Math`'s transcendental
+methods are `native` in TeaVM's classlib and emitted as imports of a module no
+component can resolve. gg declares them and answers them from the host, and a
+transformer in each arm's SDK jar rewrites the module name the classlib asks for
+to this interface's id.
+
 TeaVM emits a core module with no component metadata in it, so gg stamps the
 `component-type` section for the `jvm-sandbox` world from its own WIT and
 encodes the component in process with a pinned `wasi_snapshot_preview1` reactor
@@ -100,8 +110,9 @@ error: the exception's header, then frames naming the model's own file and lines
 wasmtime's DWARF symbolication of a TeaVM artifact names other files, so the
 JVM arms report their trap frames without locations. TeaVM emits a class's name
 only where it sees that name being asked for, so gg's generated entry class names
-the classes a Java program fails with, reachable and never executed, to keep the
-header from arriving blank.
+the classes a program fails with, reachable and never executed, to keep the
+header from arriving blank. The two arms' entry classes differ by one line, the
+call to the model's own entry point.
 
 Guest components and signature catalogues are build outputs. Each arm's
 artifacts are produced by the build from the sources in the checkout, so a

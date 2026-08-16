@@ -16,22 +16,18 @@ package gg.memories
 
 import gg.core.ToolError
 import gg.internal.Read
-import gg.internal.ggArgs
-import gg.internal.ggAsString
 import gg.internal.ggCall
 import gg.internal.ggRecord
-import gg.internal.ggSet
 import gg.internal.ggText
 import gg.internal.ggTexts
-import gg.internal.memoryObject
 
 
 /**
  * Record a durable memory that survives context compaction.
  *
  * A memory's code costs no window, is never shown back, and counts against no body limit: a module is
- * bound at `lib.<name>` in every later program this session writes, so a helper got right once is
- * never written again, and an on-use script runs the first time the memory comes into use with its
+ * compiled into every later program this session writes and reached at `lib.<key>.<name>`, so a
+ * helper got right once is never written again, and an on-use script runs the first time the memory comes into use with its
  * views arriving on the next turn.
  *
  * @ggop memories.write_memory
@@ -40,8 +36,8 @@ import gg.internal.memoryObject
  * @param description A one-line description of what the memory holds, which is its line in a memory
  *   index where the run keeps one.
  * @param body The memory's contents.
- * @param code A Kotlin file whose public top-level functions are bound at `lib.<name>` for the rest
- *   of the session.
+ * @param code A Kotlin file whose public top-level functions are reached at `lib.<name>.<export>`
+ *   from every later program this session writes.
  * @param onUse A program gg runs the first time the memory comes into use, whose views arrive on the
  *   next turn.
  * @return how much of the memory budget is now used
@@ -54,7 +50,7 @@ public fun writeMemory(
     body: String,
     code: String? = null,
     onUse: String? = null,
-): MemoryUsage = write("write_memory", "writeMemory", name, description, body, code, onUse)
+): MemoryUsage = write("memories.write_memory", name, description, body, code, onUse)
 
 /**
  * Replace an existing memory's description and body, keyed on its name.
@@ -65,8 +61,8 @@ public fun writeMemory(
  * @param name The slug of the memory to replace.
  * @param description The one-line description to replace the old one with.
  * @param body The contents to replace the old ones with.
- * @param code A Kotlin file whose public top-level functions are bound at `lib.<name>`, replacing
- *   whatever module the memory carried.
+ * @param code A Kotlin file whose public top-level functions are reached at `lib.<name>.<export>`,
+ *   replacing whatever module the memory carried.
  * @param onUse A program gg runs the first time the memory comes into use, replacing whatever script
  *   the memory carried.
  * @return how much of the memory budget is now used
@@ -78,7 +74,7 @@ public fun updateMemory(
     body: String,
     code: String? = null,
     onUse: String? = null,
-): MemoryUsage = write("update_memory", "updateMemory", name, description, body, code, onUse)
+): MemoryUsage = write("memories.update_memory", name, description, body, code, onUse)
 
 /**
  * Record a new memory whose contents stay out of the context window until they are read.
@@ -91,8 +87,8 @@ public fun updateMemory(
  * @param description A one-line description of what the memory holds, which is its line in the index.
  * @param body The memory's initial contents, which stay out of the context window until they are
  *   read.
- * @param code A Kotlin file whose public top-level functions are bound at `lib.<name>` once the
- *   memory is read.
+ * @param code A Kotlin file whose public top-level functions are reached at `lib.<name>.<export>`
+ *   once the memory is read.
  * @param onUse A program gg runs on that first read, whose views arrive on the next turn.
  * @return how much of the memory budget is now used
  * @throws ToolError `CONFLICT` on a duplicate slug, and `LIMIT_EXCEEDED` when the contents, or the
@@ -104,13 +100,13 @@ public fun createMemory(
     body: String,
     code: String? = null,
     onUse: String? = null,
-): MemoryUsage = write("create_memory", "createMemory", name, description, body, code, onUse)
+): MemoryUsage = write("memories.create_memory", name, description, body, code, onUse)
 
 /**
  * Read one memory's full contents by slug, which is what brings them into the context window.
  *
- * A memory that carries code is also loaded by the read: the reply names the `lib.<key>` it is bound
- * at, and it stays bound for the rest of the session.
+ * A memory that carries code is also loaded by the read: the reply names the `lib.<key>` it is reached
+ * through, and it stays bound for the rest of the session.
  *
  * @ggop memories.read_memory
  * @param name The memory's slug.
@@ -118,7 +114,7 @@ public fun createMemory(
  * @throws ToolError `NOT_FOUND` when no memory has that slug.
  */
 public fun readMemory(name: String): String =
-    ggAsString(ggCall("read_memory", memoryObject(), "gg.memories", "readMemory", ggArgs(ggText(name))))
+    ggCall("memories.read_memory", ggText(name)).text()
 
 /**
  * Revise a memory in place, replacing the one exact occurrence of `search` with `replace`.
@@ -135,11 +131,12 @@ public fun readMemory(name: String): String =
  *   would leave the memory empty.
  */
 public fun editMemory(name: String, search: String, replace: String): MemoryUsage {
-    val edit = ggRecord()
-    ggSet(edit, "name", ggText(name))
-    ggSet(edit, "search", ggText(search))
-    ggSet(edit, "replace", ggText(replace))
-    return Read.memoryUsage(ggCall("edit_memory", memoryObject(), "gg.memories", "editMemory", ggArgs(edit)))
+    val edit =
+        ggRecord()
+            .put("name", ggText(name))
+            .put("search", ggText(search))
+            .put("replace", ggText(replace))
+    return Read.memoryUsage(ggCall("memories.edit_memory", edit))
 }
 
 /**
@@ -156,15 +153,7 @@ public fun editMemory(name: String, search: String, replace: String): MemoryUsag
  * @throws ToolError `INVALID_ARGUMENT` when every keyword is empty.
  */
 public fun searchMemories(vararg keywords: String): List<MemoryHit> =
-    Read.memoryHits(
-        ggCall(
-            "search_memories",
-            memoryObject(),
-            "gg.memories",
-            "searchMemories",
-            ggArgs(ggTexts(keywords.asIterable())),
-        ),
-    )
+    Read.memoryHits(ggCall("memories.search_memories", ggTexts(keywords.asIterable())))
 
 /**
  * Evict a memory by name, freeing room in the budget.
@@ -175,31 +164,25 @@ public fun searchMemories(vararg keywords: String): List<MemoryHit> =
  * @throws ToolError `NOT_FOUND` when no memory has that name.
  */
 public fun deleteMemory(name: String): MemoryUsage =
-    Read.memoryUsage(
-        ggCall("delete_memory", memoryObject(), "gg.memories", "deleteMemory", ggArgs(ggText(name))),
-    )
+    Read.memoryUsage(ggCall("memories.delete_memory", ggText(name)))
 
-/** The memory record every write of one takes, as the guest's own function wants it. */
+/** The `memory-input` record every write of one takes, as gg's own WIT declares it. */
 private fun write(
-    tool: String,
-    called: String,
+    op: String,
     slug: String,
     description: String,
     body: String,
     code: String?,
     onUse: String?,
 ): MemoryUsage {
-    val written = ggRecord()
-    ggSet(written, "name", ggText(slug))
-    ggSet(written, "description", ggText(description))
-    ggSet(written, "body", ggText(body))
-    if (code != null) {
-        ggSet(written, "code", ggText(code))
-    }
-    if (onUse != null) {
-        ggSet(written, "onUse", ggText(onUse))
-    }
-    return Read.memoryUsage(ggCall(tool, memoryObject(), "gg.memories", called, ggArgs(written)))
+    val written =
+        ggRecord()
+            .put("name", ggText(slug))
+            .put("description", ggText(description))
+            .put("body", ggText(body))
+            .put("code", ggText(code))
+            .put("on-use", ggText(onUse))
+    return Read.memoryUsage(ggCall(op, written))
 }
 
 /**

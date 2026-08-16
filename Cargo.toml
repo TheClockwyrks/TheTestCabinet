@@ -390,6 +390,10 @@ percent-encoding = "2"
 argon2 = "0.5"
 rand = "0.8"
 
+# The operating system's entropy, at the version `wasmtime-wasi` already pulls in, so gg's own
+# reads and WASI's `random_get` come from one generator.
+getrandom = "0.3"
+
 # Streaming HTTP bodies. The backend relays a run's live harness events to the
 # console as the run proceeds; `futures-util` adapts an mpsc receiver into the
 # `Stream` axum's `Body::from_stream` consumes, and `bytes` frames each NDJSON

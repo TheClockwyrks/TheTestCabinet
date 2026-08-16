@@ -1,6 +1,6 @@
 //! Tests for the [encoding](super) the JVM arms reach gg through.
 //!
-//! The guest half of this is Java (`packages/gg-sandbox-java/src/gg/internal/Coding.java`) and is
+//! The guest half of this is Java (`packages/gg-sandbox-jvm/src/gg/internal/Frames.java`) and is
 //! exercised where it belongs — end to end, through a real compiled program, in
 //! `crates/gg/src/sandbox/language/jvm.wire.test.rs`. What is asserted here is the half that can be
 //! asserted cheaply and exhaustively: that a value survives the round trip, and that every way a

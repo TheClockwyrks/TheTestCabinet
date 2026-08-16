@@ -332,14 +332,15 @@ fn an_arms_import_line_is_the_one_its_own_opening_program_writes() {
     /// one that had dropped its imports entirely.
     ///
     /// C#'s modules are `static class`es inside a namespace an assembly reference makes reachable
-    /// in full, Rust's are modules of a crate `--extern` puts in the extern prelude, and Java's are
-    /// classes a jar on the classpath makes reachable by their fully-qualified names, so all three
+    /// in full, Rust's are modules of a crate `--extern` puts in the extern prelude, and the two JVM
+    /// arms' are reached by their fully-qualified names off a jar on the classpath, so all four
     /// opening programs name them in full and write no line. Every other arm that states a line
     /// writes that line, and the table fails in both directions: an arm listed here that starts
     /// writing its line fails, and an arm not listed that stops writing one fails.
-    const PATH_ROUTE: [GgProgramLanguage; 3] = [
+    const PATH_ROUTE: [GgProgramLanguage; 4] = [
         GgProgramLanguage::CSharp,
         GgProgramLanguage::Java,
+        GgProgramLanguage::Kotlin,
         GgProgramLanguage::Rust,
     ];
 
@@ -462,7 +463,7 @@ fn every_language_says_how_a_bound_module_is_reached() {
     );
     assert_eq!(
         language(GgProgramLanguage::Kotlin).lib_access("csvTools"),
-        "gg.core.lib.<text|number|flag|run>(\"csvTools\", \"<name>\", …)"
+        "lib.csvTools.<name>"
     );
     assert_eq!(
         language(GgProgramLanguage::PureScript).lib_access("csvTools"),
@@ -802,25 +803,6 @@ const SHARED_ARTIFACTS: &[(GgProgramLanguage, GgProgramLanguage, &str)] = &[
         GgProgramLanguage::PureScript,
         "the transitive half of the two entries above: JavaScript serves TypeScript's component and \
          so does PureScript, so this pair shares one by consequence rather than by a third decision",
-    ),
-    (
-        GgProgramLanguage::TypeScript,
-        GgProgramLanguage::Kotlin,
-        "TypeScript's component is the ECMAScript guest every host-compiled arm is evaluated by, \
-         and Kotlin's output is JavaScript by the time it crosses",
-    ),
-    (
-        GgProgramLanguage::JavaScript,
-        GgProgramLanguage::Kotlin,
-        "the transitive half of the entry above: JavaScript serves TypeScript's component and so \
-         does Kotlin, so this pair shares one by consequence rather than by a third decision",
-    ),
-    (
-        GgProgramLanguage::PureScript,
-        GgProgramLanguage::Kotlin,
-        "the other transitive half: both arms compile to JavaScript on the host and both are \
-         evaluated by TypeScript's component, so this pair shares one by consequence rather than by \
-         a third decision",
     ),
 ];
 

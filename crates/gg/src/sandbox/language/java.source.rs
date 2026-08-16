@@ -51,9 +51,6 @@ use super::super::{PrepareError, PrepareFailure};
 /// The class a program declares, and the one gg's entry class calls `main` on.
 pub(super) const PROGRAM_CLASS: &str = "Program";
 
-/// The class gg generates to hold the component's two exports.
-pub(super) const ENTRY_CLASS: &str = "GgEntry";
-
 /// The class a program reaches its code modules through — `Lib.csvTools.parse(…)`.
 pub(super) const LIB_CLASS: &str = "Lib";
 

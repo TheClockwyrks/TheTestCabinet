@@ -705,8 +705,8 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// too, so it is the default and no language has to answer this.
     ///
     /// The two JVM arms are the exceptions and are the reason this exists: a [Java](java) program is a
-    /// sequence of statements and a Java code module is a **class body**, while a [Kotlin](kotlin)
-    /// program is a script and a Kotlin code module is an ordinary file whose public top-level
+    /// whole compilation unit and a Java code module is a **class body**, while a [Kotlin](kotlin)
+    /// program declares a `fun main()` and a Kotlin code module is a file whose public top-level
     /// functions are its namespace. On neither is one shape the other, and on both the default is a
     /// module that offers nothing.
     ///
@@ -1069,8 +1069,8 @@ pub const PARAM_LANGUAGE: &str = "language";
 /// | `"python"` | [`Python`](GgProgramLanguage::Python) — a committed CPython, evaluating the reply as written |
 /// | `"ruby"` | [`Ruby`](GgProgramLanguage::Ruby) — compiled to JavaScript by the embedded Opal, then evaluated |
 /// | `"purescript"` | [`PureScript`](GgProgramLanguage::PureScript) — type-checked and compiled to JavaScript by the image's `purs`, bundled, then evaluated |
-/// | `"java"` | [`Java`](GgProgramLanguage::Java) — compiled by `javac` and TeaVM in a warm JVM, then evaluated |
-/// | `"kotlin"` | [`Kotlin`](GgProgramLanguage::Kotlin) — compiled as a script by the Kotlin compiler and TeaVM in a warm JVM, then evaluated |
+/// | `"java"` | [`Java`](GgProgramLanguage::Java) — compiled by `javac` and TeaVM in a warm JVM into the wasm component the turn is evaluated by |
+/// | `"kotlin"` | [`Kotlin`](GgProgramLanguage::Kotlin) — compiled by the Kotlin compiler and TeaVM in a warm JVM into the wasm component the turn is evaluated by |
 /// | `"rust"` | [`Rust`](GgProgramLanguage::Rust) — compiled by `rustc` into the wasm component the turn is evaluated by |
 /// | `"swift"` | [`Swift`](GgProgramLanguage::Swift) — compiled by `swiftc`, byte for byte, into the wasm component the turn is evaluated by |
 /// | `"cpp"` | [`Cpp`](GgProgramLanguage::Cpp) — compiled by `clang++`, byte for byte, into the wasm component the turn is evaluated by |

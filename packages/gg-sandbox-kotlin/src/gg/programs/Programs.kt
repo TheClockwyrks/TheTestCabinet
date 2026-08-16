@@ -15,13 +15,10 @@ package gg.programs
 
 import gg.core.ToolError
 import gg.internal.Read
-import gg.internal.ggArgs
-import gg.internal.ggAsString
 import gg.internal.ggCall
 import gg.internal.ggNumber
 import gg.internal.ggRun
 import gg.internal.ggText
-import gg.internal.programsObject
 
 
 /**
@@ -40,7 +37,7 @@ import gg.internal.programsObject
  * @throws ToolError `UNAVAILABLE` when this agent keeps no program library.
  */
 public fun history(): List<ProgramSummary> =
-    Read.programSummaries(ggCall("history", programsObject(), "gg.programs", "history", ggArgs()))
+    Read.programSummaries(ggCall("programs.history"))
 
 /**
  * The exact source of one program that ran, as a string.
@@ -57,16 +54,7 @@ public fun history(): List<ProgramSummary> =
  * @throws ToolError `NOT_FOUND`, naming the turns that are held, for a turn that ran no program or
  *   one the library has dropped.
  */
-public fun get(turn: Int? = null): String =
-    ggAsString(
-        ggCall(
-            "get",
-            programsObject(),
-            "gg.programs",
-            "get",
-            if (turn == null) ggArgs() else ggArgs(ggNumber(turn)),
-        ),
-    )
+public fun get(turn: Int? = null): String = ggCall("programs.get", ggNumber(turn)).text()
 
 /**
  * Hand gg a program to run in place of this one.
@@ -85,7 +73,7 @@ public fun get(turn: Int? = null): String =
  *   source.
  */
 public fun rerun(source: String) {
-    ggRun("rerun", programsObject(), "gg.programs", "rerun", ggArgs(ggText(source)))
+    ggRun("programs.rerun", ggText(source))
 }
 
 /**

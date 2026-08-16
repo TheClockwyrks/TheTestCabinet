@@ -15,16 +15,14 @@ package gg.board
 import gg.core.Patch
 import gg.core.ToolError
 import gg.internal.Read
-import gg.internal.ggArgs
-import gg.internal.ggAsString
 import gg.internal.ggCall
+import gg.internal.ggList
 import gg.internal.ggRecord
 import gg.internal.ggRun
-import gg.internal.ggSet
 import gg.internal.ggText
 import gg.internal.ggTexts
-import gg.internal.lower
-import gg.internal.projectObject
+import gg.internal.lowered
+import gg.internal.loweredEpic
 
 
 /**
@@ -42,11 +40,12 @@ import gg.internal.projectObject
  *   another epic already holds it.
  */
 public fun createEpic(prefix: String, title: String, description: String): EpicCreated {
-    val epic = ggRecord()
-    ggSet(epic, "prefix", ggText(prefix))
-    ggSet(epic, "title", ggText(title))
-    ggSet(epic, "description", ggText(description))
-    return Read.epicCreated(ggCall("create_epic", projectObject(), "gg.board", "createEpic", ggArgs(epic)))
+    val epic =
+        ggRecord()
+            .put("prefix", ggText(prefix))
+            .put("title", ggText(title))
+            .put("description", ggText(description))
+    return Read.epicCreated(ggCall("board.create_epic", epic))
 }
 
 /**
@@ -93,25 +92,18 @@ public fun createIssue(
     epicId: String? = null,
     reviewers: List<String>? = null,
 ): IssueCreated {
-    val issue = ggRecord()
-    ggSet(issue, "title", ggText(title))
-    ggSet(issue, "inScope", ggText(inScope))
-    ggSet(issue, "outOfScope", ggText(outOfScope))
-    ggSet(issue, "completionCriteria", ggText(completionCriteria))
-    ggSet(issue, "agent", ggText(agent))
-    if (description != null) {
-        ggSet(issue, "description", ggText(description))
-    }
-    if (blockedBy != null) {
-        ggSet(issue, "blockedBy", ggTexts(blockedBy))
-    }
-    if (epicId != null) {
-        ggSet(issue, "epicId", ggText(epicId))
-    }
-    if (reviewers != null) {
-        ggSet(issue, "reviewers", ggTexts(reviewers))
-    }
-    return Read.issueCreated(ggCall("create_issue", projectObject(), "gg.board", "createIssue", ggArgs(issue)))
+    val issue =
+        ggRecord()
+            .put("title", ggText(title))
+            .put("description", ggText(description))
+            .put("in-scope", ggText(inScope))
+            .put("out-of-scope", ggText(outOfScope))
+            .put("completion-criteria", ggText(completionCriteria))
+            .put("blocked-by", if (blockedBy == null) ggList() else ggTexts(blockedBy))
+            .put("epic-id", ggText(epicId))
+            .put("agent", ggText(agent))
+            .put("reviewers", if (reviewers == null) ggList() else ggTexts(reviewers))
+    return Read.issueCreated(ggCall("board.create_issue", issue))
 }
 
 /**
@@ -143,25 +135,16 @@ public fun updateIssue(
     status: IssueStatus? = null,
     epicId: Patch<String>? = null,
 ) {
-    val patch = ggRecord()
-    if (title != null) {
-        ggSet(patch, "title", ggText(title))
-    }
-    description?.lower(patch, "description")
-    if (inScope != null) {
-        ggSet(patch, "inScope", ggText(inScope))
-    }
-    if (outOfScope != null) {
-        ggSet(patch, "outOfScope", ggText(outOfScope))
-    }
-    if (completionCriteria != null) {
-        ggSet(patch, "completionCriteria", ggText(completionCriteria))
-    }
-    if (status != null) {
-        ggSet(patch, "status", ggText(status.wireName))
-    }
-    epicId?.lower(patch, "epicId")
-    ggRun("update_issue", projectObject(), "gg.board", "updateIssue", ggArgs(ggText(id), patch))
+    val patch =
+        ggRecord()
+            .put("title", ggText(title))
+            .put("description", description.lowered())
+            .put("in-scope", ggText(inScope))
+            .put("out-of-scope", ggText(outOfScope))
+            .put("completion-criteria", ggText(completionCriteria))
+            .put("status", ggText(status?.wireName))
+            .put("epic", epicId.loweredEpic())
+    ggRun("board.update_issue", ggText(id), patch)
 }
 
 /**
@@ -173,13 +156,7 @@ public fun updateIssue(
  * @throws ToolError `NOT_FOUND` for an unknown id, and `CONFLICT` when an edge would close a cycle.
  */
 public fun setIssueBlockedBy(id: String, vararg blockedBy: String) {
-    ggRun(
-        "set_issue_blocked_by",
-        projectObject(),
-        "gg.board",
-        "setIssueBlockedBy",
-        ggArgs(ggText(id), ggTexts(blockedBy.asIterable())),
-    )
+    ggRun("board.set_issue_blocked_by", ggText(id), ggTexts(blockedBy.asIterable()))
 }
 
 /**
@@ -191,7 +168,7 @@ public fun setIssueBlockedBy(id: String, vararg blockedBy: String) {
  * @throws ToolError `NOT_FOUND` for an unknown id.
  */
 public fun removeEpic(id: String): BoardUsage =
-    Read.boardUsage(ggCall("remove_epic", projectObject(), "gg.board", "removeEpic", ggArgs(ggText(id))))
+    Read.boardUsage(ggCall("board.remove_epic", ggText(id)))
 
 /**
  * Remove an issue and every blocker edge pointing at it.
@@ -202,7 +179,7 @@ public fun removeEpic(id: String): BoardUsage =
  * @throws ToolError `NOT_FOUND` for an unknown id.
  */
 public fun removeIssue(id: String): BoardUsage =
-    Read.boardUsage(ggCall("remove_issue", projectObject(), "gg.board", "removeIssue", ggArgs(ggText(id))))
+    Read.boardUsage(ggCall("board.remove_issue", ggText(id)))
 
 /**
  * Register a wait on an issue and hand back gg's acknowledgement.
@@ -218,7 +195,7 @@ public fun removeIssue(id: String): BoardUsage =
  * @throws ToolError `NOT_FOUND` for an unknown id.
  */
 public fun waitForIssue(id: String): String =
-    ggAsString(ggCall("wait_for_issue", projectObject(), "gg.board", "waitForIssue", ggArgs(ggText(id))))
+    ggCall("board.wait_for_issue", ggText(id)).text()
 
 /**
  * How much of the run's board budget is used, after the call that returned it.
@@ -275,7 +252,7 @@ public enum class IssueStatus(public val wireName: String) {
     OPEN("open"),
 
     /** Dispatched, with its assigned agent working on it. */
-    IN_PROGRESS("in_progress"),
+    IN_PROGRESS("in-progress"),
 
     /** Finished and, where this run requires reviewers, approved. */
     DONE("done"),

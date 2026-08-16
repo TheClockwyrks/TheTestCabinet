@@ -102,8 +102,9 @@ fn every_registered_language_binds_exactly_the_tools_gg_offers() {
     /// **The arms whose component imports one interface rather than the fifteen**, and therefore
     /// answer this export with nothing.
     ///
-    /// There is no `wit-bindgen` for Java, so the JVM arms reach gg through `test-cabinet:gg/wire`
-    /// and the canonical ABI their SDK implements is one string, two byte lists and a scalar. A
+    /// There is no `wit-bindgen` for the JVM, so both JVM arms reach gg through
+    /// `test-cabinet:gg/wire` and the canonical ABI their SDKs compile is one string, two byte lists
+    /// and a scalar. A
     /// component of that shape has one import to report and the question this gate asks has no
     /// answer for it — what covers the same drift is
     /// `every_operation_is_reachable_through_the_wire`, which walks gg's own operations table
@@ -111,7 +112,7 @@ fn every_registered_language_binds_exactly_the_tools_gg_offers() {
     ///
     /// The table fails in both directions: an arm listed here that starts binding the fifteen fails,
     /// and an arm not listed that stops fails.
-    const ONE_DOOR: [GgProgramLanguage; 1] = [GgProgramLanguage::Java];
+    const ONE_DOOR: [GgProgramLanguage; 2] = [GgProgramLanguage::Java, GgProgramLanguage::Kotlin];
 
     let mut expected: Vec<String> = crate::sandbox::signatures::sandbox_tool_names()
         .into_iter()

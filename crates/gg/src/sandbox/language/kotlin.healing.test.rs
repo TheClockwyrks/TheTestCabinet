@@ -295,7 +295,8 @@ fn a_reply_that_is_not_ascii_is_read_rather_than_crashed_on() {
 #[test]
 fn the_fence_tags_are_this_languages_own() {
     assert_eq!(kotlin().program_fence_tags(), ["kotlin", "kt", "kts"]);
-    // `kts` is not a mistake: a program on this arm really is compiled as a Kotlin script, so a
-    // model that tagged its block with the script extension tagged it correctly.
+    // `kts` is not a mistake, though a program is compiled as an ordinary `.kt` file: a model that
+    // reached for the script extension has still written the Kotlin its block holds, and refusing
+    // to read the block over its tag would cost a turn for a label.
     assert!(!kotlin().program_fence_tags().contains(&"java"));
 }

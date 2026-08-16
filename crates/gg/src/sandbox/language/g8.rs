@@ -418,21 +418,6 @@ const KNOWN_HOLES: &[Hole] = &[
         // reported as `exit(1)`.
         instead: Instead::Says("the program called exit(1) instead of returning"),
     },
-    // ---- kotlin -----------------------------------------------------------------------------
-    Hole {
-        arm: GgProgramLanguage::Kotlin,
-        shape: Shape::NativeFault,
-        // Java's defect, on the road the two arms share: the model's own line in the message and a
-        // bundle line appended after it.
-        instead: Instead::Says("at program.kts:5\n    at line "),
-    },
-    Hole {
-        arm: GgProgramLanguage::Kotlin,
-        shape: Shape::ResourceFault,
-        // The JavaScript engine's own words for a Kotlin program's stack overflow, at a bundle
-        // line.
-        instead: Instead::Says("InternalError: too much recursion"),
-    },
 ];
 
 /// The tool responder every G8 program is driven against.

@@ -9,10 +9,17 @@ import org.teavm.interop.StaticInit;
  * <b>The crossing</b> — the whole of what this SDK implements of the WebAssembly canonical ABI, and
  * the only class in it that knows there is a host at all.
  *
+ * <p><b>Both JVM arms compile this file.</b> It lives in {@code packages/gg-sandbox-jvm} beside
+ * {@link Value} and {@link Frames}, and each arm's {@code build.sh} compiles the three into its own
+ * SDK jar — because a second canonical-ABI implementation would be a second thing to keep in step
+ * with one WIT, which is the whole point of there being one door. Everything above the frames is the
+ * arm's own: {@code gg.internal.Coding} on the Java arm and {@code gg.internal.ggCall} on the Kotlin
+ * one, each raising the failure class its own model-facing surface documents.
+ *
  * <p>Nothing here is model-facing, and nothing describes it to a model: no catalogue entry covers
- * {@code gg.internal} ({@code signatures.sh} excludes the package) and no prompt names it. What
- * makes it non-model-facing is that silence rather than any barrier — a program that wrote
- * {@code import gg.internal.Coding;} would compile, because the jar a program is compiled against is
+ * {@code gg.internal} (each arm's {@code signatures.sh} excludes the package) and no prompt names it.
+ * What makes it non-model-facing is that silence rather than any barrier — a program that wrote
+ * {@code import gg.internal.Frames;} would compile, because the jar a program is compiled against is
  * one jar. That is the same position every arm's SDK is in, and the seam's rule it serves is a rule
  * about what a model is <i>offered</i>: what a model reads is the typed, namespaced surface the
  * {@code gg} classes build on top of this.
@@ -28,7 +35,7 @@ import org.teavm.interop.StaticInit;
  * ABI this class implements is therefore <b>a string, two byte lists and a scalar</b>, which is
  * about forty lines of it.
  *
- * <p>What travels inside those byte lists is {@link Coding}'s business, and gg owns both ends of it.
+ * <p>What travels inside those byte lists is {@link Frames}' business, and gg owns both ends of it.
  *
  * <h2>Two regions, because two allocators share one {@code cabi_realloc}</h2>
  *

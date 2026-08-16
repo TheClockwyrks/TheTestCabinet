@@ -57,10 +57,7 @@ and no module system, so a program reaches gg through that membrane alone.
 
 The JavaScript and PureScript arms evaluate their prepared JavaScript in these
 same bytes, reached through this arm's constant rather than through a second
-embedding, and that sharing is declared in the seam's exemption table. The Kotlin
-arm is declared there too while it still compiles to JavaScript;
-[program languages](/gg/languages/overview/) states the wasm component it is
-moving to.
+embedding, and that sharing is declared in the seam's exemption table.
 
 ## The toolchain
 

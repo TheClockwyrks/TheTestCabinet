@@ -4,8 +4,7 @@
  * It catalogues no capability of its own. What it holds is the vocabulary the other twelve modules
  * share, gathered here so that no module has to reach into another to name a failure — and so that a
  * program catching one writes a single `import gg.core.ToolError` rather than one per module it
- * calls. The session-wide `lib` namespace sits here for the same reason: a code module arrives from
- * a skill or from a memory, so it belongs to neither.
+ * calls.
  *
  * @ggmodule core
  */
@@ -30,14 +29,25 @@ package gg.core
  * checked exceptions, so a composed program is not forced into a `try` around every line, and a
  * surface that returned a `Result` from each call would force a branch after every line instead.
  *
+ * An unexpected one is best left to escape: the program dies the way its runtime kills it, and what
+ * the model reads is the runtime's own dying words — this exception's message, then the stack, in
+ * the program's own file and lines. That is why `message` is
+ * **`` `tool` failed (code): what went wrong ``** rather than gg's sentence alone: an uncaught
+ * failure has no second channel to carry the call's name and its class on, and every arm of a study
+ * reports one in that same shape. [detail] is the sentence without them.
+ *
  * @property tool The gg call that failed, under gg's own name for it (`read_file`, `spawn_subagent`).
  * @property code The failure class, so a catch site branches on a value rather than on prose.
+ * @property detail What went wrong, in gg's own words alone.
+ *
+ *   Without the call's name and its class, which `message` carries in front of them so that an
+ *   uncaught failure names all three.
  */
 public class ToolError(
     public val tool: String,
     public val code: ToolErrorCode,
-    message: String,
-) : RuntimeException(message)
+    public val detail: String,
+) : RuntimeException("`" + tool + "` failed (" + code.wireName + "): " + detail)
 
 /**
  * Why a gg call failed — the [ToolError.code] a catch site branches on.

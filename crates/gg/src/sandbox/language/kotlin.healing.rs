@@ -1,7 +1,8 @@
 //! **Kotlin's [healing dialect](crate::healing::Dialect)** — the lexical half of
 //! [response healing](crate::healing), answered in Kotlin's own terms.
 //!
-//! This arm shares a compiler road, a guest and a classlib with [Java's](super::super::java), which
+//! This arm shares a compiler road, a canonical ABI and a classlib with
+//! [Java's](super::super::java), which
 //! makes it the sharpest test the seam has of whether a dialect is *derived* or copied: two arms
 //! that could hardly be closer downstream reach a **different answer to both readings**, and each of
 //! the two is the same rule reading a different grammar.
@@ -79,8 +80,9 @@ impl Dialect for KotlinDialect {
 /// `text`, `bash` or `xml` is context the model showed rather than the program, and tier 3 of the
 /// candidacy ladder is what keeps the closed list from being a trap.
 ///
-/// `kts` is here and is not a mistake: a program on this arm really is compiled as a **Kotlin
-/// script**, so a model that tagged its block with the script extension tagged it correctly.
+/// `kts` is here on purpose, though a program is compiled as an ordinary `.kt` file: a model that
+/// reached for the script extension has still written the Kotlin its block holds, and refusing to
+/// read the block over its tag would cost a turn for a label.
 const PROGRAM_TAGS: &[&str] = &["kotlin", "kt", "kts"];
 
 /// The statement and declaration keywords a line of Kotlin code may open with, matched

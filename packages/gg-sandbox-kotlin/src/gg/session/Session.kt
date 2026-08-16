@@ -14,12 +14,9 @@
 package gg.session
 
 import gg.core.ToolError
-import gg.internal.ggArgs
 import gg.internal.ggRun
 import gg.internal.ggText
 import gg.internal.ggTexts
-import gg.internal.harnessObject
-import gg.internal.reviewObject
 
 /**
  * End the session, reporting what was done in a sentence or two.
@@ -33,7 +30,7 @@ import gg.internal.reviewObject
  * @throws ToolError `REFUSED` for a second ending in one turn.
  */
 public fun finish(summary: String) {
-    ggRun("finish", harnessObject(), "gg.session", "finish", ggArgs(ggText(summary)))
+    ggRun("session.finish", ggText(summary))
 }
 
 /**
@@ -46,7 +43,7 @@ public fun finish(summary: String) {
  * @throws ToolError `REFUSED` for a second verdict in one turn.
  */
 public fun approve() {
-    ggRun("approve", reviewObject(), "gg.session", "approve", ggArgs())
+    ggRun("session.approve")
 }
 
 /**
@@ -62,11 +59,5 @@ public fun approve() {
  *   one turn.
  */
 public fun requestChanges(vararg items: String) {
-    ggRun(
-        "request_changes",
-        reviewObject(),
-        "gg.session",
-        "requestChanges",
-        ggArgs(ggTexts(items.asIterable())),
-    )
+    ggRun("session.request_changes", ggTexts(items.asIterable()))
 }

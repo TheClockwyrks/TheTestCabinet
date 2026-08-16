@@ -1,53 +1,61 @@
-//! **What gg does to a model's Kotlin before the compiler sees it** — very little for a program, and
-//! an export scan for a code module. Everything here is lexical and everything here is
-//! line-preserving.
+//! **What gg puts around a model's Kotlin before the compiler sees it: nothing.**
 //!
-//! # A program is a Kotlin *script*, and that is the whole design
+//! A program on this arm is a whole Kotlin file — the `import` lines the model wrote and the
+//! `fun main()` it declared. gg writes no prologue, no epilogue, no entry point and no import into
+//! that file, so the compiler reads the bytes the model sent and every diagnostic, every stack frame
+//! and every location is already in the model's own coordinates. There is nothing here to subtract.
 //!
-//! Kotlin has no place for a loose statement in an ordinary `.kt` file, so the obvious shape — the
-//! one [Java's arm](super::super::java::source) takes — is to wrap a model's reply in the body of a
-//! function gg declares. That shape was built and **measured**, and it is wrong for this language:
-//! Kotlin's rules for what may be declared *locally* are far tighter than Java's, and each of the
-//! following was refused by the real compiler inside a wrapper function:
+//! # The script is retired, and why that is the whole of the change
 //!
-//! | What a model wrote | What Kotlin said |
-//! | --- | --- |
-//! | `object Registry { … }` | `LOCAL_OBJECT_NOT_ALLOWED` |
-//! | `interface Shape`, and therefore `sealed interface Event` | `LOCAL_INTERFACE_NOT_ALLOWED` |
-//! | `enum class Colour { … }` | `WRONG_MODIFIER_TARGET`: enum is not applicable to a local class |
-//! | `companion object` inside a helper class | `WRONG_MODIFIER_CONTAINING_DECLARATION` |
-//! | `typealias Rows = List<Int>` | `UNSUPPORTED_FEATURE`: local type aliases are experimental |
-//! | `private fun helper() = 1` | `WRONG_MODIFIER_TARGET`: private is not applicable to a local function |
+//! A program used to be compiled as a Kotlin **script** (`Program.kts`), and the reason was real: the
+//! shape it was compared against wrapped a model's reply in the body of a function gg declared, which
+//! puts every declaration the model wrote in a *local* position — and Kotlin refuses five things
+//! there that a Kotlin author writes without thinking (`object`, `interface`, `enum class`,
+//! `typealias`, `private fun`). A script accepted all five.
 //!
-//! Five of those six are ordinary modern Kotlin — a `sealed interface` with `data class` arms is
-//! *the* idiom for a closed set of cases, and `private fun` is what a Kotlin author types without
-//! thinking. An arm that refused them would be measuring how well a model copes with gg's wrapper
-//! rather than how well it works in Kotlin, which is the one thing a language study must not do.
+//! Under whole programs the wrapper is gone, so the local position is gone with it. A model writes an
+//! ordinary `.kt` file, every one of those five is a top-level declaration, and the scripting plugin,
+//! its four unversioned jars, the `kotlin-home` directory they were loaded through and the
+//! `-Xallow-any-scripts-in-source-roots` flag all go with the problem they solved.
 //!
-//! So a program is compiled as a **script** (`Program.kts`), which is a real Kotlin compilation
-//! shape in which statements and declarations sit side by side at the top level in any order.
-//! Every one of the six above compiles. What that costs is one flag and four jars in the toolchain
-//! (see [`compile`](super::compile)) and **nothing at all** in the model's source: a reply with no
-//! `import` in it is compiled byte for byte as the model wrote it, which no other arm can say.
+//! # The one convention, and what enforces it
 //!
-//! # What is left to do to a program, then
+//! The file is [`PROGRAM_FILE`](super::compile::PROGRAM_FILE) and the class gg's generated entry
+//! class calls is [`PROGRAM_CLASS`] — the **file facade** the Kotlin compiler emits a file's
+//! top-level declarations into, named for the file. So a program declares `fun main()` and nothing
+//! else is asked of it, and the two ways of getting it wrong are both located diagnostics rather than
+//! gg's opinion:
 //!
-//! Two things, and both are the same ones Java's arm does:
+//! * a `fun main(args: Array<String>)` compiles to `main(String[])` and no `main()`, so gg's entry
+//!   class cannot resolve the call — measured: the no-argument form emits **both** methods and the
+//!   argument form emits only one, and the `main(String[])` beside a `fun main()` is marked
+//!   synthetic, which javac ignores;
+//! * a file declaring no `main` at all, or renaming its facade with `@file:JvmName`, leaves the same
+//!   call unresolved.
 //!
-//! * an `import` is **hoisted** into the file's header and blanked where it stood, because a script's
-//!   imports must precede its statements and a model that writes one half way down its reply has
-//!   written a syntax error rather than a mistake worth failing a turn for. Blanking rather than
-//!   deleting is what keeps every later line where the model put it;
-//! * a `package` declaration is **refused by name**, because a program is one anonymous compilation
-//!   unit and silently dropping one would leave a model wondering why its own names did not resolve.
+//! Both are javac's own diagnostic about gg's own file, which [`compile`](super::compile) turns into
+//! a refusal that quotes the convention back — a shape refusal shown to the model rather than
+//! reported as a toolchain failure.
+//!
+//! # What is left in this file
+//!
+//! The names a compile is written under, the **code module** wrapper, and the export scan.
+//!
+//! A code module is
+//! [outside the authorship rule](https://docs.testcabinet.ai/gg/responses-as-code/invariants/): its
+//! author writes an ordinary Kotlin file whose public top-level functions are the namespace
+//! `lib.<key>` binds. [`wrap_module`] is what puts that file in a package of its own, and it adds
+//! **no line at all** — the `package` declaration shares the author's own first line, so the module's
+//! line *n* is line *n* of the file and no diagnostic is moved by anything.
 //!
 //! # Why a lexer rather than a regular expression
 //!
-//! Because the input is untrusted text a model wrote, and `import ` at the start of a line inside a
-//! raw string is not an import. [`Lexer`] is the smallest thing that can tell code from a string, a
+//! Because the input is untrusted text a model wrote, and `fun ` at the start of a line inside a raw
+//! string is not a declaration. [`Lexer`] is the smallest thing that can tell code from a string, a
 //! character literal, a comment, a raw string and a backquoted identifier.
 //!
-//! Kotlin needs three things Java's reading of the same question does not:
+//! Kotlin needs three things [Java's](super::super::java::source) reading of the same question does
+//! not:
 //!
 //! * **string templates**. `"total: ${rows["n"]}"` is one string, and a scan that stopped at the
 //!   quote before `n` would read the rest of the line as code — so a `${…}` is followed through with
@@ -55,8 +63,7 @@
 //! * **nested block comments**. `/* a /* b */ c */` is one comment in Kotlin and two in Java, and
 //!   reading it Java's way leaves ` c */` as code.
 //! * **backquoted identifiers**. `` fun `a name with spaces`() `` is legal, so the bytes between
-//!   backticks are skipped like a string: they can hold a brace or the word `import` and mean
-//!   neither.
+//!   backticks are skipped like a string: they can hold a brace or the word `fun` and mean neither.
 //!
 //! Everything it does is a **byte** comparison rather than a slice of the source, and that is not a
 //! style: the scan walks one byte at a time, so `&source[at..]` panics on any index that is not a
@@ -67,61 +74,64 @@
 
 use super::super::{PrepareError, PrepareFailure};
 
-/// The class a **program** compiles to, which is the script file's own name.
-pub(super) const PROGRAM_CLASS: &str = "Program";
-
-/// The class a code **module** compiles to: the file facade, renamed off the export name so the two
-/// do not collide.
+/// The class a **program** compiles to: the file facade the Kotlin compiler emits `Program.kt`'s
+/// top-level declarations into, which is the file's name with `Kt` on the end.
 ///
-/// They must differ. TeaVM emits the exported class under one name and the translated class under
-/// another, both in the bundle's scope — and when the two are the same word, the inner declaration
-/// shadows the outer one and the namespace gg hands back is `undefined`. Measured, on a module whose
-/// facade was called `GgModule` outright.
-pub(super) const MODULE_CLASS: &str = "Module";
+/// It is the one name gg's generated entry class has to write, and the only thing this arm asks of a
+/// model beyond "write Kotlin".
+pub(super) const PROGRAM_CLASS: &str = "ProgramKt";
 
-/// The name a module's namespace is exported to JavaScript under, and the value evaluating a
-/// prepared module hands back.
-pub(super) const MODULE_GLOBAL: &str = "GgModule";
+/// The package a code module is **checked** under at the read that binds it, before any program has
+/// named a key for it.
+pub(super) const MODULE_CHECK_PACKAGE: &str = "lib.module";
 
-/// The class gg generates to hold the entry point and the catch chain.
-pub(super) const ENTRY_CLASS: &str = "GgEntry";
+/// The package one code module's file is compiled into in a program's own compile, given its binding
+/// key — which is what makes a program reach it at `lib.<key>.<name>`.
+///
+/// A package rather than a wrapping object or a generated accessor, because a Kotlin file's public
+/// top-level functions already *are* a namespace and a package is what names one. That gives the
+/// shape [Rust](super::super::rust)'s `lib::<key>::…` has and the reason neither arm reaches a module
+/// by string: a code module is compiled *into* the program here, so there is a path the compiler can
+/// check the two against.
+pub(super) fn module_package(key: &str) -> String {
+    format!("lib.{key}")
+}
 
-/// A model's source, wrapped into something the compiler will read.
+/// The file one code module is compiled from.
+///
+/// Named for the key rather than for the package, because two modules would otherwise be two files
+/// of one name in one compile.
+pub(super) fn module_file(key: &str) -> String {
+    format!("GgModule_{key}.kt")
+}
+
+/// A code module's file, put in a package of its own, and the names its namespace offers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Wrapped {
-    /// The whole file.
+    /// The whole `.kt` file.
     pub source: String,
-    /// How many lines gg put in front of the model's first line. Every diagnostic located in this
-    /// file is moved back by it, so the coordinate names the line of the reply the model wrote.
-    pub shift: usize,
-    /// The names a module's namespace offers, in source order. Empty for a program.
+    /// The names the module's namespace offers, in source order.
     pub exports: Vec<String>,
 }
 
-/// Wrap a model's **program** — statements and declarations, in whatever order it wrote them — into
-/// the script the compiler reads.
+/// Put a code [skill](crate::skills)'s or [memory](crate::memories)'s **module** — an ordinary Kotlin
+/// file — into `package`, and say what its namespace will offer.
 ///
-/// "Wrap" overstates it: with no `import` to hoist there is nothing to add, and the source is the
-/// model's own bytes with a shift of zero.
-pub(super) fn wrap_program(source: &str) -> Result<Wrapped, PrepareFailure> {
-    let (body, imports) = hoist(source)?;
-    Ok(headed(&imports, &body, Vec::new()))
-}
-
-/// Wrap a code [skill](crate::skills)'s or [memory](crate::memories)'s **module** — an ordinary
-/// Kotlin file — and say what its namespace will offer.
+/// Its public top-level functions become the namespace and everything else is the module's own
+/// business, which is the visibility rule a Kotlin author already writes.
 ///
-/// A module is a file rather than a script, and that is this arm's own answer rather than an
-/// oversight: what `lib.<key>` binds is a namespace of functions, a Kotlin file's public top-level
-/// functions are exactly that, and they compile to the static methods of one class that TeaVM can
-/// export. A script's declarations are members of a script *instance*, which is a thing that would
-/// have to be constructed before anything could be read off it.
+/// **Nothing gg writes here takes a line.** The `package` declaration goes on the front of the
+/// author's own first line, terminated with the semicolon Kotlin allows so that an author whose first
+/// line is an `import` still parses, so the file has exactly as many lines as the module did and
+/// every one of them is where its author put it. There is no offset for any diagnostic to be moved
+/// back by, which is what
+/// [rule D11](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) asks of a location.
 ///
-/// Each exported function gets `@JSExport` inserted **inline**, so TeaVM emits it onto the namespace
-/// object without a line moving.
-pub(super) fn wrap_module(source: &str) -> Result<Wrapped, PrepareFailure> {
-    let (body, imports) = hoist(source)?;
-    let (body, exports) = mark_exports(&body);
+/// A `package` the author wrote is refused rather than moved: gg names the one this file goes in, and
+/// two would not parse.
+pub(super) fn wrap_module(source: &str, package: &str) -> Result<Wrapped, PrepareFailure> {
+    refuse_package(source)?;
+    let exports = exports(source);
     if exports.is_empty() {
         return Err(PrepareFailure::Program(PrepareError::Unsupported(
             "this module offers nothing: gg binds a code module's public top-level functions at \
@@ -130,92 +140,43 @@ pub(super) fn wrap_module(source: &str) -> Result<Wrapped, PrepareFailure> {
                 .to_string(),
         )));
     }
-    let mut header = vec![
-        format!("@file:JvmName(\"{MODULE_CLASS}\")"),
-        format!("@file:JSClass(name = \"{MODULE_GLOBAL}\")"),
-        "import org.teavm.jso.JSClass".to_string(),
-        "import org.teavm.jso.JSExport".to_string(),
-    ];
-    header.extend(imports);
-    Ok(headed(&header, &body, exports))
+    Ok(Wrapped {
+        source: format!("package {package}; {source}"),
+        exports,
+    })
 }
 
-/// A header and a body, joined so that the body's lines are exactly `header.len()` lines further
-/// down than the model wrote them.
+/// Refuse a `package` a module's author wrote, naming it.
 ///
-/// The empty header is its own case rather than an accident of `join`: a program with no `import`
-/// gets **no** leading blank line and a shift of zero, so the bytes the model wrote are the bytes
-/// the compiler reads.
-fn headed(header: &[String], body: &str, exports: Vec<String>) -> Wrapped {
-    match header.is_empty() {
-        true => Wrapped {
-            source: body.to_string(),
-            shift: 0,
-            exports,
-        },
-        false => Wrapped {
-            source: format!("{}\n{body}", header.join("\n")),
-            shift: header.len(),
-            exports,
-        },
-    }
-}
-
-// ---------------------------------------------------------------------------------------------
-// The import hoist
-// ---------------------------------------------------------------------------------------------
-
-/// Lift every `import` the source declares into the header, leaving a blank line where each stood.
-///
-/// A model writing Kotlin writes imports, and in a script they are only legal above the first
-/// statement — so a reply that explains itself for three lines and then imports something is a
-/// syntax error rather than a mistake. They are moved rather than refused, and blanking rather than
-/// deleting is what keeps every later line where the model put it.
-fn hoist(source: &str) -> Result<(String, Vec<String>), PrepareFailure> {
+/// gg puts the module in a package of its own so that a program reaches it at `lib.<key>`, and a
+/// second `package` line is not a thing a Kotlin file may have. Refusing it by name is what stops an
+/// author wondering why their own names did not resolve.
+fn refuse_package(source: &str) -> Result<(), PrepareFailure> {
     let code = Lexer::new(source).code_mask();
-    let mut body = String::with_capacity(source.len());
-    let mut imports = Vec::new();
     let mut at = 0usize;
     for (number, line) in source.split_inclusive('\n').enumerate() {
         let start = at;
         at += line.len();
         let trimmed = line.trim();
-        // Only a line that *starts* in code is a candidate: the first byte of `import` inside a raw
-        // string is masked out, and so is a commented-out one.
         let offset = line.len() - line.trim_start().len();
         if !code.get(start + offset).copied().unwrap_or(false) {
-            body.push_str(line);
             continue;
         }
         if let Some(rest) = keyword(trimmed, "package") {
             return Err(PrepareFailure::Program(PrepareError::Unsupported(format!(
-                "line {}: a gg program is one anonymous compilation unit with no package, so \
-                 `package {}` has nowhere to go. Remove it; every name you declare is already \
-                 visible to the rest of your program.",
+                "line {}: gg compiles a code module into a package of its own so that a program \
+                 reaches it at `lib.<key>`, so `package {}` has nowhere to go. Remove it; every \
+                 name you declare is already visible to the rest of the module.",
                 number + 1,
-                rest.trim(),
+                rest.trim().trim_end_matches(';').trim(),
             ))));
         }
-        // No trailing `;` to insist on: Kotlin's imports end at the line, and one written with a
-        // semicolon is the same import.
-        match keyword(trimmed, "import") {
-            Some(_) => {
-                imports.push(trimmed.trim_end_matches(';').trim_end().to_string());
-                // The line's own terminator is kept, so the body has exactly as many lines as the
-                // reply did.
-                body.push_str(match line.ends_with('\n') {
-                    true => "\n",
-                    false => "",
-                });
-            }
-            None => body.push_str(line),
-        }
     }
-    Ok((body, imports))
+    Ok(())
 }
 
 /// The rest of `line` when it opens with `word` followed by whitespace — `None` otherwise, so
-/// `importantThing()` is not read as an `import`.
+/// `packages()` is not read as a `package`.
 fn keyword<'a>(line: &'a str, word: &str) -> Option<&'a str> {
     line.strip_prefix(word)
         .filter(|rest| rest.starts_with(char::is_whitespace))
@@ -236,8 +197,8 @@ const HIDDEN: [&str; 2] = ["private", "internal"];
 ///
 /// A closed list on purpose: the scan walks backwards from `fun` and stops at the first word that is
 /// not one of these, so an unknown word ends the run rather than being read as part of it. Being
-/// wrong here can only mean gg *fails to see* a `private` — and that direction is a compile error
-/// about an exported private function, not a silently missing member.
+/// wrong here can only mean gg *fails to see* a `private` — and that direction is a name reported to
+/// an author that a program then cannot reach, rather than a name silently missing.
 const MODIFIERS: [&str; 12] = [
     "public",
     "private",
@@ -253,37 +214,23 @@ const MODIFIERS: [&str; 12] = [
     "actual",
 ];
 
-/// Insert `@JSExport` before every public top-level function of a module, and report their names in
-/// source order.
+/// The names a module's file offers: every public top-level function of it, in source order.
 ///
-/// Inline insertion, because the annotation must not cost a line. What counts is a `fun` at the
-/// file's own level whose modifier run holds neither `private` nor `internal` and which reaches a
-/// name before its parameter list — so `fun interface Greeter` is not a function, an anonymous
-/// `fun(x: Int)` has no name to bind, and a top-level `val` is a property rather than something a
-/// namespace of functions offers.
-fn mark_exports(body: &str) -> (String, Vec<String>) {
-    let functions = Lexer::new(body).top_level_functions();
-    let mut out = String::with_capacity(body.len() + functions.len() * 11);
-    let mut exports = Vec::new();
-    let mut copied = 0usize;
-    for function in functions {
-        if function.hidden {
-            continue;
-        }
-        out.push_str(&body[copied..function.at]);
-        out.push_str("@JSExport ");
-        copied = function.at;
-        exports.push(function.name);
-    }
-    out.push_str(&body[copied..]);
-    (out, exports)
+/// A **reading** rather than a rewriting: nothing is inserted, because the module is compiled into
+/// the program that uses it and a program reaches an export by naming it. What this produces is the
+/// list the module's author is *told* the namespace holds.
+fn exports(source: &str) -> Vec<String> {
+    Lexer::new(source)
+        .top_level_functions()
+        .into_iter()
+        .filter(|function| !function.hidden)
+        .map(|function| function.name)
+        .collect()
 }
 
 /// One top-level function declaration.
 #[derive(Debug, PartialEq, Eq)]
 struct Function {
-    /// The byte offset of its `fun` keyword, which is where gg's annotation goes.
-    at: usize,
     /// The name it declares — the last identifier before its parameter list, so an extension
     /// function is known by its own name rather than by its receiver's.
     name: String,
@@ -297,10 +244,10 @@ struct Function {
 
 /// The smallest reading of Kotlin that can tell **code** from everything that merely looks like it.
 ///
-/// It answers two questions and no others: which bytes are code (so a line that opens with `import`
-/// inside a raw string is not an import), and where each top-level function of a file begins (so an
-/// annotation can be inserted in front of one). It is not a parser and does not try to be — the
-/// Kotlin compiler is downstream of it and is what actually reads the program.
+/// It answers two questions and no others: which bytes are code (so a line that opens with `package`
+/// inside a raw string is not a package declaration), and which top-level functions a file declares
+/// (so a module's namespace can be reported). It is not a parser and does not try to be — the Kotlin
+/// compiler is downstream of it and is what actually reads the module.
 struct Lexer<'a> {
     /// The source.
     source: &'a str,
@@ -379,7 +326,6 @@ impl<'a> Lexer<'a> {
     fn function_at(&self, at: usize, end: usize, spans: &[(usize, usize)]) -> Option<Function> {
         let name = self.declared_name(end, spans)?;
         Some(Function {
-            at,
             name,
             hidden: self
                 .modifiers_before(at)

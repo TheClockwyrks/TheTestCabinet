@@ -59,7 +59,7 @@
 //! exception's own message and the model's own file and lines, off the guest's standard error, which
 //! is where [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) says to read
 //! it. The one thing gg changed is that upstream TeaVM printed the frames and not the header; see
-//! `packages/gg-sandbox-java/vendor/org/teavm/runtime/ExceptionHandling.java`.
+//! `packages/gg-sandbox-jvm/vendor/org/teavm/runtime/ExceptionHandling.java`.
 //!
 //! There is no source map on this road and no offset anywhere in this file. A location arrives in the
 //! model's own coordinates because the file javac read *is* the model's file.
@@ -610,110 +610,15 @@ impl Diagnostic {
 // The generated entry class
 // ---------------------------------------------------------------------------------------------
 
-/// **The classes a program's runtime must be able to spell when a program dies of one.**
-///
-/// Not a catch chain and not an interception: nothing here changes what is thrown, what is caught or
-/// where a program stops. What it changes is whether the **name string** of the class exists in the
-/// binary at all, and that is a fact about TeaVM's dependency analysis rather than about failure
-/// handling.
-///
-/// TeaVM emits a class's name only where its analysis sees that name being asked for. The vendored
-/// `org.teavm.runtime.ExceptionHandling` asks — `exception.getClass().getName()`, on the uncaught
-/// path — but the only classes the analysis can see reaching it are the three faults the runtime
-/// raises itself, so **every other failure printed a blank header**. Measured, before this list:
-/// `values.get(7)` past the end of an `ArrayList` died with `an exception carrying no message` and
-/// five correct frames, which is [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/)'s
-/// *where* with none of its *what*. With `java.lang.IndexOutOfBoundsException` on this list the same
-/// program dies with `java.lang.IndexOutOfBoundsException` and the same five frames.
-///
-/// Enumerated rather than derived because there is nothing to derive it from: the set is "the
-/// classes a Java program actually fails with", which is a judgement about programs and not
-/// something a compiler can be asked. A class not on it still fails correctly — it simply prints its
-/// message, or the blank header where it has none.
-const SPELLABLE: [&str; 16] = [
-    "java.lang.NullPointerException",
-    "java.lang.ArrayIndexOutOfBoundsException",
-    "java.lang.StringIndexOutOfBoundsException",
-    "java.lang.IndexOutOfBoundsException",
-    "java.lang.ClassCastException",
-    "java.lang.ArithmeticException",
-    "java.lang.NegativeArraySizeException",
-    "java.lang.NumberFormatException",
-    "java.lang.IllegalArgumentException",
-    "java.lang.IllegalStateException",
-    "java.lang.UnsupportedOperationException",
-    "java.util.NoSuchElementException",
-    "java.util.ConcurrentModificationException",
-    "java.lang.StackOverflowError",
-    "java.lang.OutOfMemoryError",
-    "gg.ToolError",
-];
+/// This arm's own addition to [the shared list](jvm::SPELLABLE): the class a program catches.
+const SPELLABLE: [&str; 1] = ["gg.ToolError"];
 
-/// **The two lines the host reaches a compiled program through**, and nothing else.
-///
-/// It is the world's `run` — eight canonically-lowered parameters a compiled arm reads none of — and
-/// a call to the model's own `main`, with **no `try` and no `catch`**. What replaced the twelve-clause
-/// chain this used to hold is the runtime itself: a program that throws dies the way TeaVM kills it
-/// and its own dying words reach the model on standard error, which is what
-/// [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) asks for and what a
-/// catch chain made impossible.
-///
-/// It declares **no `main` of its own**, on purpose: TeaVM is given the *model's* class as its main
-/// class, so nothing in the dependency graph reaches this one and `setClassesToPreserve` in
-/// [the shared driver](super::super::jvm) is the only thing keeping it. Without that list the class
-/// is dead-stripped silently, at exit code 0, and the component gg encodes has no exports at all.
-///
-/// `run` declares `throws Throwable` because a Java author writes `throws Exception` on a `main`
-/// every day, and an export that did not would refuse a shape the language has.
-///
-/// The [`SPELLABLE`] loop is the one thing here that is not two lines, and it is a **no-op at run
-/// time**: `System.getProperty` answers `null` in this sandbox, so the array is empty and the loop
-/// runs zero times. It is reachable, which is the whole of its purpose — a preserved method nothing
-/// calls is not analysed at all, measured — and it is written past a property lookup because
-/// anything a constant folder can see through would be folded away with the names.
-///
-/// The one line that differs between the two JVM arms is the call to the model's own entry point.
+/// [The shared entry class](jvm::entry_class), with this arm's own one line in it.
 fn entry_class() -> String {
-    let spellable: String = SPELLABLE
-        .iter()
-        .map(|name| format!("            {name}.class,\n"))
-        .collect();
-    format!(
-        "import gg.internal.Abi;\n\
-         import org.teavm.interop.Export;\n\
-         \n\
-         public final class {entry} {{\n\
-         \x20   private {entry}() {{\n\
-         \x20   }}\n\
-         \n\
-         \x20   private static final Class<?>[] SPELLABLE = spellable();\n\
-         \n\
-         \x20   @Export(name = \"run\")\n\
-         \x20   public static void run(int program, int programLength, int modules, \
-         int modulesLength,\n\
-         \x20           int tools, int toolsLength, int ending, int library) throws Throwable {{\n\
-         \x20       for (Class<?> type : SPELLABLE) {{\n\
-         \x20           System.err.println(type.getName());\n\
-         \x20       }}\n\
-         \x20       {program}.main(new String[0]);\n\
-         \x20   }}\n\
-         \n\
-         \x20   @Export(name = \"bound-tools\")\n\
-         \x20   public static int boundTools() {{\n\
-         \x20       return Abi.emptyList();\n\
-         \x20   }}\n\
-         \n\
-         \x20   private static Class<?>[] spellable() {{\n\
-         \x20       if (System.getProperty(\"gg.spell.every.failure\") == null) {{\n\
-         \x20           return new Class<?>[0];\n\
-         \x20       }}\n\
-         \x20       return new Class<?>[] {{\n\
-         {spellable}\
-         \x20       }};\n\
-         \x20   }}\n\
-         }}\n",
-        entry = source::ENTRY_CLASS,
-        program = source::PROGRAM_CLASS,
+    let spellable: Vec<&str> = jvm::SPELLABLE.iter().chain(&SPELLABLE).copied().collect();
+    jvm::entry_class(
+        &spellable,
+        &format!("{}.main(new String[0]);", source::PROGRAM_CLASS),
     )
 }
 
@@ -746,7 +651,7 @@ impl JavaCompiler {
         // exception prints WHAT was thrown and not only where — and TeaVM resolves the classes it
         // translates from the classpath it is given, first match winning. Behind `teavm-core.jar`
         // the copy would never be read and the change would vanish with no diagnostic. See
-        // `packages/gg-sandbox-java/vendor/org/teavm/runtime/ExceptionHandling.java`.
+        // `packages/gg-sandbox-jvm/vendor/org/teavm/runtime/ExceptionHandling.java`.
         let classpath = format!("{}:{}", placed.sdk.display(), toolchain.classpath);
         let started = daemon(&toolchain.java).and_then(|mut command| {
             command

@@ -8,19 +8,17 @@
 // package, no imports and no class of its own — the front end's import block serves this
 // text too, which is stated in each front end's own header.
 //
-// WHY IT IS SHARED RATHER THAN COPIED. Two arms reach gg through TeaVM, and four of TeaVM's
+// WHY IT IS SHARED RATHER THAN COPIED. Two arms reach gg through TeaVM, and three of TeaVM's
 // settings are not optional — each of them failing SILENTLY when it is missing:
 // `setStrict(true)`, without which a `NullPointerException` is not an exception at all and a
-// program that failed is recorded as one that succeeded; `setClassesToPreserve(PRESERVED)` on
-// the wasm route, without which the entry class is dead-stripped and the component is encoded
-// with no exports and no diagnostic; an equal minimum and maximum heap on the same route,
-// without which a program gets the minimum and a generous maximum reads as an allowance it
-// never has; and `setJsModuleType(NONE)` on the JavaScript route, without which the entry
-// point is not a bare name the guest's scope can reach. A second copy of `teavm(…)` would be a
-// standing chance for one arm to lose any of them silently — which is the same argument that
-// has JavaScript serve TypeScript's prebuilt component rather than a byte-identical copy of it.
-// The single-file launcher compiles one file, so "shared" here means gg assembles the file
-// rather than that javac does.
+// program that failed is recorded as one that succeeded; `setClassesToPreserve(PRESERVED)`,
+// without which the entry class is dead-stripped and the component is encoded with no exports
+// and no diagnostic; and an equal minimum and maximum heap, without which a program gets the
+// minimum and a generous maximum reads as an allowance it never has. A second copy of
+// `teavm(…)` would be a standing chance for one arm to lose any of them silently — which is the
+// same argument that has JavaScript serve TypeScript's prebuilt component rather than a
+// byte-identical copy of it. The single-file launcher compiles one file, so "shared" here means
+// gg assembles the file rather than that javac does.
 
     /**
      * Compile Java sources to bytecode, collecting whatever javac disagreed with.
@@ -56,7 +54,7 @@
         return ok;
     }
 
-    /** The classes the wasm route must keep whatever the dependency analysis concludes.
+    /** The classes TeaVM must keep whatever the dependency analysis concludes.
      *
      * <p>MEASURED, AND A SILENT FOOTGUN. TeaVM emits a core export for an {@code @Export} method
      * ONLY IF THE CLASS IS REACHABLE; an {@code @Export} on a class nothing calls is dead-stripped
@@ -66,6 +64,21 @@
      * classes a particular program happens to use, so both are named here rather than discovered.
      */
     static final String[] PRESERVED = { "GgEntry", "gg.internal.Abi" };
+
+    /** The transformers TeaVM runs over every class it parses.
+     *
+     * <p>ONE, and it makes {@code java.lang.Math} reachable at all. The classlib declares fourteen
+     * of its methods {@code native} and annotates each {@code @Import(module = "teavmMath", …)}, so
+     * the backend emits them as core imports of a module a WebAssembly component has no way to
+     * resolve — measured: a program whose only unusual line was {@code Math.sqrt} produced a module
+     * gg could not encode, naming {@code teavmMath::sqrt}. {@code gg.internal.MathImports} rewrites
+     * that module to {@code test-cabinet:gg/math}, which gg's own host answers; its class note
+     * carries the whole argument.
+     *
+     * <p>Named rather than discovered, and loaded out of the build's own classpath, which is where
+     * each arm's SDK jar is.
+     */
+    static final String[] TRANSFORMERS = { "gg.internal.MathImports" };
 
     /**
      * The Java heap a compiled program gets, which is its <b>minimum and its maximum at once</b>.
@@ -94,7 +107,8 @@
      * that the SDK's {@code cabi_realloc} handed the preview1 adapter its state out of a buffer the
      * SDK then abandoned, so the adapter's magic-number check failed as soon as a collection reused
      * it — and a bigger heap only postponed the collection. That is fixed where it lives, in
-     * {@code gg/internal/Abi.java}'s permanently-held region, and {@code jvm.wire.test.rs} drives
+     * {@code gg-sandbox-jvm}'s {@code Abi.java} permanently-held region, and
+     * {@code jvm.wire.test.rs} drives
      * forty-four megabytes of collection with a write to standard error after every one.
      *
      * <h3>What it does answer for</h3>
@@ -113,12 +127,13 @@
     static final int HEAP = 128 * 1024 * 1024;
 
     /**
-     * Turn the bytecode into what the guest runs, collecting whatever TeaVM could not translate.
+     * Turn the bytecode into the core module gg encodes as a component, collecting whatever TeaVM
+     * could not translate.
      *
-     * <p>WHICH TARGET IS TAKEN FROM {@code targetFile}'s own extension, because that is the one
-     * thing in the request that already says what kind of file is wanted: a {@code .wasm} module
-     * and a {@code .js} bundle are different artifacts, not two spellings of one. The two arms are
-     * moving from the second to the first — see the module note on {@code jvm.rs}.
+     * <p>ONE TARGET, AND BOTH ARMS ARE ON IT. TeaVM's JavaScript backend and everything that went
+     * with it — the module type, the source map, the source-file policy — are gone, because both
+     * JVM arms now compile to a WebAssembly component of their own and a second road kept alive
+     * "just in case" is a road nothing tests.
      */
     static void teavm(Path classes, Path output, List<String> classpath, String mainClass,
             String targetFile, List<Diagnostics.Entry> entries) throws Exception {
@@ -146,26 +161,12 @@
         // FULL spends inlining across the classlib buy a turn nothing.
         build.setOptimizationLevel(TeaVMOptimizationLevel.SIMPLE);
         build.setIncremental(false);
-        if (targetFile.endsWith(".wasm")) {
-            build.setTargetType(TeaVMTargetType.WEBASSEMBLY_WASI);
-            build.setClassesToPreserve(PRESERVED);
-            // ONE NUMBER FOR BOTH, AND THAT IS THE POINT — see `HEAP`.
-            build.setMinHeapSize(HEAP);
-            build.setMaxHeapSize(HEAP);
-        } else {
-            build.setTargetType(TeaVMTargetType.JAVASCRIPT);
-            // NONE, so the emitted code declares its entry point as a bare name in the enclosing
-            // scope rather than as a module export. The guest evaluates a program as the body of a
-            // function whose parameters are the API objects, and a bare reference to one of those
-            // names has to resolve to the parameter — which a module wrapper would shadow. It goes
-            // with the JavaScript target: a wasm module has no enclosing scope to be bare in.
-            build.setJsModuleType(JSModuleType.NONE);
-            // The source map that turns a generated line back into the line the model wrote. The
-            // wasm route needs none: its failures reach the model as the runtime's own stderr, in
-            // the model's own coordinates, with nothing to remap.
-            build.setSourceMapsFileGenerated(true);
-            build.setSourceFilePolicy(org.teavm.tooling.TeaVMSourceFilePolicy.DO_NOTHING);
-        }
+        build.setTargetType(TeaVMTargetType.WEBASSEMBLY_WASI);
+        build.setClassesToPreserve(PRESERVED);
+        build.setTransformers(TRANSFORMERS);
+        // ONE NUMBER FOR BOTH, AND THAT IS THE POINT — see `HEAP`.
+        build.setMinHeapSize(HEAP);
+        build.setMaxHeapSize(HEAP);
         BuildResult result = build.build();
         for (Problem problem : result.getProblems().getProblems()) {
             entries.add(Diagnostics.of(problem));

@@ -10,12 +10,8 @@
 package gg.skills
 
 import gg.core.ToolError
-import gg.internal.Read
-import gg.internal.ggArgs
-import gg.internal.ggAsString
 import gg.internal.ggCall
 import gg.internal.ggText
-import gg.internal.skillsObject
 
 
 /**
@@ -23,9 +19,10 @@ import gg.internal.skillsObject
  *
  * The body comes back with its front matter stripped, and a skill that has been read stays read.
  *
- * A skill may be code rather than prose, or as well as it. Code is bound at `lib.<key>` for the rest
- * of the session and the reply names the key and what it exports, reachable through `gg.core.lib`. An
- * on-use script runs once the program has ended, and whatever it shows arrives on the next turn.
+ * A skill may be code rather than prose, or as well as it. Code is compiled into every later program
+ * this session writes and reached at `lib.<key>.<name>`, and the reply that read it names the key and
+ * what it exports. An on-use script runs once the program has ended, and whatever it shows arrives on
+ * the next turn.
  *
  * @ggop skills.read_skill
  * @param name The skill's name, as the system prompt lists it.
@@ -33,4 +30,4 @@ import gg.internal.skillsObject
  * @throws ToolError `NOT_FOUND`, listing the skills that do exist, when the name is unknown.
  */
 public fun readSkill(name: String): String =
-    ggAsString(ggCall("read_skill", skillsObject(), "gg.skills", "readSkill", ggArgs(ggText(name))))
+    ggCall("skills.read_skill", ggText(name)).text()

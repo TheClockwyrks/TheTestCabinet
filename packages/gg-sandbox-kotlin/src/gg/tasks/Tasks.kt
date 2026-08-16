@@ -16,15 +16,13 @@ package gg.tasks
 import gg.core.Patch
 import gg.core.ToolError
 import gg.internal.Read
-import gg.internal.ggArgs
 import gg.internal.ggCall
+import gg.internal.ggList
 import gg.internal.ggRecord
 import gg.internal.ggRun
-import gg.internal.ggSet
 import gg.internal.ggText
 import gg.internal.ggTexts
-import gg.internal.lower
-import gg.internal.tasksObject
+import gg.internal.lowered
 
 
 /**
@@ -44,16 +42,13 @@ public fun addTask(
     description: String? = null,
     blockedBy: List<String>? = null,
 ): TaskUsage {
-    val task = ggRecord()
-    ggSet(task, "id", ggText(id))
-    ggSet(task, "title", ggText(title))
-    if (description != null) {
-        ggSet(task, "description", ggText(description))
-    }
-    if (blockedBy != null) {
-        ggSet(task, "blockedBy", ggTexts(blockedBy))
-    }
-    return Read.taskUsage(ggCall("add_task", tasksObject(), "gg.tasks", "addTask", ggArgs(task)))
+    val task =
+        ggRecord()
+            .put("id", ggText(id))
+            .put("title", ggText(title))
+            .put("description", ggText(description))
+            .put("blocked-by", if (blockedBy == null) ggList() else ggTexts(blockedBy))
+    return Read.taskUsage(ggCall("tasks.add_task", task))
 }
 
 /**
@@ -77,15 +72,12 @@ public fun updateTask(
     description: Patch<String>? = null,
     status: TaskStatus? = null,
 ) {
-    val patch = ggRecord()
-    if (title != null) {
-        ggSet(patch, "title", ggText(title))
-    }
-    description?.lower(patch, "description")
-    if (status != null) {
-        ggSet(patch, "status", ggText(status.wireName))
-    }
-    ggRun("update_task", tasksObject(), "gg.tasks", "updateTask", ggArgs(ggText(id), patch))
+    val patch =
+        ggRecord()
+            .put("title", ggText(title))
+            .put("description", description.lowered())
+            .put("status", ggText(status?.wireName))
+    ggRun("tasks.update_task", ggText(id), patch)
 }
 
 /**
@@ -97,13 +89,7 @@ public fun updateTask(
  * @throws ToolError `NOT_FOUND` for an unknown id, and `CONFLICT` when an edge would close a cycle.
  */
 public fun setBlockedBy(id: String, vararg blockedBy: String) {
-    ggRun(
-        "set_blocked_by",
-        tasksObject(),
-        "gg.tasks",
-        "setBlockedBy",
-        ggArgs(ggText(id), ggTexts(blockedBy.asIterable())),
-    )
+    ggRun("tasks.set_blocked_by", ggText(id), ggTexts(blockedBy.asIterable()))
 }
 
 /**
@@ -114,7 +100,7 @@ public fun setBlockedBy(id: String, vararg blockedBy: String) {
  * @throws ToolError `NOT_FOUND` for an unknown id.
  */
 public fun completeTask(id: String) {
-    ggRun("complete_task", tasksObject(), "gg.tasks", "completeTask", ggArgs(ggText(id)))
+    ggRun("tasks.complete_task", ggText(id))
 }
 
 /**
@@ -126,7 +112,7 @@ public fun completeTask(id: String) {
  * @throws ToolError `NOT_FOUND` for an unknown id.
  */
 public fun removeTask(id: String): TaskUsage =
-    Read.taskUsage(ggCall("remove_task", tasksObject(), "gg.tasks", "removeTask", ggArgs(ggText(id))))
+    Read.taskUsage(ggCall("tasks.remove_task", ggText(id)))
 
 /**
  * How much of the run's task budget is used, after the call that returned it.
@@ -146,7 +132,7 @@ public enum class TaskStatus(public val wireName: String) {
     PENDING("pending"),
 
     /** Being worked on now. */
-    IN_PROGRESS("in_progress"),
+    IN_PROGRESS("in-progress"),
 
     /** Finished. Tasks blocked on it become actionable once all their blockers are done. */
     DONE("done"),

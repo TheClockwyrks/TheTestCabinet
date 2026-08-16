@@ -11,16 +11,17 @@
 // exactly one name in `ALL_TOOL_NAMES` (crates/gg/src/tools/mod.rs); a test asserts the two sets are
 // equal, so a tool cannot be added, renamed, or removed without a typed signature following it.
 //
-// Seven interfaces stand outside that correspondence, and each is separate for exactly that reason:
+// Eight interfaces stand outside that correspondence, and each is separate for exactly that reason:
 // `feedback` is the shim's private channel back to gg and is never model-facing at all; `session`
 // carries the model-facing calls that end the run; `docs` is the always-bound documentation lookup;
 // `views` is how a program puts material into its own context window; `programs` is the library
 // of programs this agent has already run; `helpers` holds the convenience wrappers built on a
-// tool without being one; and `wire` is not model-facing either — it is the one door the JVM arms
-// come through, naming a call by string BELOW their typed surface, for the reason it states. None of
-// the five model-facing ones has a name in `ALL_TOOL_NAMES` — no capability offers them and nothing
-// dispatches them by name — so keeping them out of the tool interfaces is what lets the bijection
-// above be checked mechanically rather than by reading.
+// tool without being one; `wire` is not model-facing either — it is the one door the JVM arms
+// come through, naming a call by string BELOW their typed surface, for the reason it states; and
+// neither is `math`, which answers the `java.lang.Math` primitives TeaVM's WebAssembly backend
+// leaves to a host. None of the five model-facing ones has a name in `ALL_TOOL_NAMES` — no
+// capability offers them and nothing dispatches them by name — so keeping them out of the tool
+// interfaces is what lets the bijection above be checked mechanically rather than by reading.
 package test-cabinet:gg;
 
 /// The types shared across the tool interfaces. It declares no functions: it exists so that one
@@ -1216,6 +1217,68 @@ interface wire {
     take: func() -> list<u8>;
 }
 
+/// **The `java.lang.Math` primitives TeaVM's WebAssembly backend leaves to its host** — and the
+/// second of the two interfaces the JVM arms import that no model can see.
+///
+/// TeaVM's `WEBASSEMBLY_WASI` backend does not lower `Math.sin` to anything: `java.lang.Math`'s
+/// transcendental methods are `native`, annotated `@Import(module = "teavmMath", …)`, and the
+/// backend emits them as **core imports of a module named `teavmMath`** for a host to answer. Its
+/// own C runtime answers them with `#define teavmMath_sqrt sqrt` — that is, with libc — and a
+/// WebAssembly component has no libc. Measured on the production route: a program calling
+/// `Math.sqrt` produced a module gg could not encode at all, *"failed to resolve import
+/// `teavmMath::sqrt`"*.
+///
+/// So gg answers them, and a `ClassHolderTransformer` in each arm's SDK jar
+/// (`gg.internal.MathImports`) rewrites the annotation's module to this interface's own id, which is
+/// what makes the emitted import one `wit-component` resolves against this world. Nothing about the
+/// program changes; what changes is which module name the same fourteen imports carry.
+///
+/// **The set is the classlib's rather than gg's.** These are exactly the methods
+/// `org.teavm.classlib.java.lang.TMath` annotates with that module, read out of the compiled class
+/// rather than chosen — so a TeaVM release that added a fifteenth would fail the encode by name
+/// rather than silently losing a function.
+///
+/// Not model-facing, and not a capability: no name here is in `ALL_TOOL_NAMES`, nothing dispatches
+/// one, and a model writes `kotlin.math.sqrt(2.0)` or `Math.sqrt(2.0)` exactly as it would anywhere
+/// else. Every one is a total function on `f64` with no failure mode, which is why none of them can
+/// return a `tool-error`: `log(-1)` is `NaN` on this interface for the same reason it is `NaN` in
+/// Java.
+interface math {
+    /// The sine of an angle in radians.
+    sin: func(x: f64) -> f64;
+    /// The cosine of an angle in radians.
+    cos: func(x: f64) -> f64;
+    /// The tangent of an angle in radians.
+    tan: func(x: f64) -> f64;
+    /// The arc sine, in radians.
+    asin: func(x: f64) -> f64;
+    /// The arc cosine, in radians.
+    acos: func(x: f64) -> f64;
+    /// The arc tangent, in radians.
+    atan: func(x: f64) -> f64;
+    /// The angle in radians from the x-axis to the point (`x`, `y`).
+    atan2: func(y: f64, x: f64) -> f64;
+    /// Euler's number raised to `x`.
+    exp: func(x: f64) -> f64;
+    /// The natural logarithm.
+    log: func(x: f64) -> f64;
+    /// `base` raised to `power`.
+    pow: func(base: f64, power: f64) -> f64;
+    /// The positive square root.
+    sqrt: func(x: f64) -> f64;
+    /// The smallest whole number that is not less than `x`.
+    ceil: func(x: f64) -> f64;
+    /// The largest whole number that is not greater than `x`.
+    floor: func(x: f64) -> f64;
+    /// A pseudo-random number in [0, 1).
+    ///
+    /// Declared because the classlib annotates a method with it, and **not imported on this
+    /// target**: measured, `Math.random()` on `WEBASSEMBLY_WASI` reaches `random_get` through WASI
+    /// instead, and this is the WebAssembly-GC backend's spelling. Answered all the same, from the
+    /// same source WASI would have used, so the two roads cannot disagree.
+    random: func() -> f64;
+}
+
 /// **The world the JVM arms' compiled programs declare**: gg through one door, and the same two
 /// exports every other component of this membrane has.
 ///
@@ -1240,6 +1303,7 @@ world jvm-sandbox {
     }
 
     import wire;
+    import math;
 
     /// Evaluate one program — the `sandbox` world's `run`, with the same parameters and the same
     /// nothing returned. See that world for what each parameter is and why a compiled arm reads

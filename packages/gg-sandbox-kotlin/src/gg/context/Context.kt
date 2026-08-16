@@ -11,17 +11,14 @@ package gg.context
 
 import gg.core.ToolError
 import gg.internal.Read
-import gg.internal.contextObject
-import gg.internal.ggArgs
+import gg.internal.Value
 import gg.internal.ggCall
+import gg.internal.ggList
 import gg.internal.ggNumber
 import gg.internal.ggRecord
 import gg.internal.ggRun
-import gg.internal.ggSet
 import gg.internal.ggText
 import gg.internal.ggTexts
-import org.teavm.jso.JSObject
-import org.teavm.jso.core.JSArray
 
 
 /**
@@ -38,15 +35,7 @@ import org.teavm.jso.core.JSArray
  *   a failure.
  */
 public fun evictFileView(path: String? = null): ReclaimReport =
-    Read.reclaimReport(
-        ggCall(
-            "evict_file_view",
-            contextObject(),
-            "gg.context",
-            "evictFileView",
-            if (path == null) ggArgs() else ggArgs(ggText(path)),
-        ),
-    )
+    Read.reclaimReport(ggCall("context.evict_file_view", ggText(path)))
 
 /**
  * Move whole turns out of the context window and report what that reclaimed.
@@ -62,15 +51,16 @@ public fun evictFileView(path: String? = null): ReclaimReport =
  * @throws ToolError `INVALID_ARGUMENT` for a span whose ends are not turn numbers.
  */
 public fun archiveThread(vararg ranges: IntRange): ReclaimReport {
-    val lowered = JSArray<JSObject>()
-    for (range in ranges) {
-        val span = ggRecord()
-        ggSet(span, "from", ggNumber(range.first))
-        ggSet(span, "to", ggNumber(range.last))
-        lowered.push(span)
+    val spans = arrayOfNulls<Value>(ranges.size)
+    for (index in ranges.indices) {
+        spans[index] =
+            ggRecord()
+                .put("start", ggNumber(ranges[index].first))
+                .put("end", ggNumber(ranges[index].last))
     }
+    @Suppress("UNCHECKED_CAST")
     return Read.reclaimReport(
-        ggCall("archive_thread", contextObject(), "gg.context", "archiveThread", ggArgs(lowered)),
+        ggCall("context.archive_thread", ggList(*(spans as Array<Value>))),
     )
 }
 
@@ -87,9 +77,7 @@ public fun archiveThread(vararg ranges: IntRange): ReclaimReport {
  * @throws ToolError `INVALID_ARGUMENT` for an empty query.
  */
 public fun searchArchive(query: String): ArchiveSearch =
-    Read.archiveSearch(
-        ggCall("search_archive", contextObject(), "gg.context", "searchArchive", ggArgs(ggText(query))),
-    )
+    Read.archiveSearch(ggCall("context.search_archive", ggText(query)))
 
 /**
  * Compact the context window: the detailed thread is dropped and restarted from a summary.
@@ -108,13 +96,7 @@ public fun searchArchive(query: String): ArchiveSearch =
  *   while a compaction is in flight, since nothing else can clear the window.
  */
 public fun compact(summary: String, vararg files: String) {
-    ggRun(
-        "compact",
-        contextObject(),
-        "gg.context",
-        "compact",
-        ggArgs(ggText(summary), ggTexts(files.asIterable())),
-    )
+    ggRun("context.compact", ggText(summary), ggTexts(files.asIterable()))
 }
 
 /**

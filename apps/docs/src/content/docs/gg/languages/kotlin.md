@@ -5,36 +5,28 @@ title: "Kotlin"
 ## The arm
 
 `language: "kotlin"` selects this arm on an agent's responses-as-code
-capability. A reply is a Kotlin script: statements and declarations side by side
-at the top level, in whatever order the model wrote them. The Kotlin compiler
-(`K2JVMCompiler`, embedded in a JVM gg keeps warm) compiles that script to
-bytecode, TeaVM translates the bytecode to JavaScript, and the shared ECMAScript
-guest evaluates it. The JDK, the TeaVM jars, the TeaVM settings and the reading
-of TeaVM's source map are the shared JVM road.
+capability. A reply is a whole Kotlin file: the `import` lines the model wrote,
+and a `fun main()` it declared. The Kotlin compiler (`K2JVMCompiler`, embedded
+in a JVM gg keeps warm) compiles that file to bytecode, TeaVM's
+`WEBASSEMBLY_WASI` backend translates the bytecode to a `wasm32` core module,
+and gg encodes that module as the WebAssembly component the turn runs. The JDK,
+the TeaVM jars, the TeaVM settings, the canonical ABI, the wire encoding and the
+generated entry class are the shared [JVM road](/gg/languages/java/).
 
-This arm does not keep the [invariants](/gg/responses-as-code/invariants/) yet,
-and this page states what it does today. gg hoists the `import` lines a model
-wrote into a header and moves a compile diagnostic back by the number of lines
-it added.
-
-The script shape is required. A function body would put every declaration the
-model wrote in a local position, where Kotlin refuses `object`, `interface`,
-`enum class`, `typealias` and `private fun`. In a script all of them compile,
-and a top-level function can read a top-level `val`.
+gg writes no prologue, no epilogue, no entry point and no import into the file
+the compiler reads, so every diagnostic and every stack frame is already in the
+model's own coordinates.
 
 ## Preparation
 
-- Every `import` is hoisted into the file's header and blanked where it stood,
-  so no later line moves. The hoist runs over a lexer that reads string
-  templates, nested block comments and backquoted identifiers, so an `import`
-  inside one of them stays where it is. A reply with no `import` is compiled
-  byte for byte with a shift of zero, and otherwise a diagnostic located in the
-  model's file is moved back by the number of header lines gg added.
-- A `package` declaration is refused by name, because a program is one anonymous
-  compilation unit.
-- A program is written as `Program.kts` and reported as `program.kts`.
-- A `main` the model declares is an ordinary function that nothing calls. The
-  top-level statements are what run.
+- The model's reply is written to `Program.kt` byte for byte and compiled as it
+  stands.
+- The model declares `fun main()`, with no parameters. That form compiles to a
+  `main()` on the file facade `ProgramKt`, which is the method gg's generated
+  entry class calls; `fun main(args: Array<String>)` compiles to a different
+  method and is refused with the convention quoted back.
+- Anything else the model declares — a class, an object, a sealed interface, an
+  enum class, a typealias — is an ordinary top-level declaration beside `main`.
 
 ## Toolchain
 
@@ -50,15 +42,11 @@ The compiler is driven embedded rather than as the `kotlinc` shell script,
 because the first build in a JVM costs seconds and every build after it costs a
 fraction of one. Preparations are served from a pool of four JVM processes, each
 lent to one preparation at a time and retired after 64 builds. Warm-up starts a
-JVM and places the driver and the SDK jar. The script shape needs four scripting
-jars found by unversioned name under a `kotlin-home/lib` directory, the
-`-Xallow-any-scripts-in-source-roots` flag, and three `idea.*` system
-properties, all pinned.
+JVM and places the driver and the SDK jar.
 
-A model's source is read against the Kotlin standard library, the script runtime
-its script class extends and gg's SDK. A code module gets TeaVM's `@JSExport`
-jar as well. The driver's own compiler and TeaVM jars are a separate classpath,
-so a program cannot import the compiler's internals or `kotlinx.coroutines`.
+A model's source is read against the Kotlin standard library and gg's SDK. The
+driver's own compiler and TeaVM jars are a separate classpath, so a program
+cannot import the compiler's internals or `kotlinx.coroutines`.
 
 `packages/gg-sandbox-kotlin/libraries.txt` declares in groups what a program may
 import, which is the Kotlin standard library as TeaVM is able to translate it.
@@ -70,28 +58,36 @@ compile and run.
 ## Build outputs
 
 Nothing for this arm is committed. `crates/gg-sandbox-artifacts/kotlin` compiles
-`packages/gg-sandbox-kotlin/src` into `kotlin.sdk.jar`, which the gg binary
-embeds and places beside the driver. The jar must carry
-`META-INF/<module>.kotlin_module`, or a program's calls fail to resolve.
-`crates/gg/build.rs` reflects the signature catalogue into the build's `OUT_DIR`
-as `kotlin.signatures.json`, and the arm asserts the parsed catalogue names this
-language, so the SDK and its description come out of one build.
+`packages/gg-sandbox-kotlin/src` and `packages/gg-sandbox-jvm` into
+`kotlin.sdk.jar`, which the gg binary embeds and places beside the driver. The
+jar must carry `META-INF/<module>.kotlin_module`, or a program's calls fail to
+resolve. `crates/gg/build.rs` reflects the signature catalogue into the build's
+`OUT_DIR` as `kotlin.signatures.json`, and the arm asserts the parsed catalogue
+names this language, so the SDK and its description come out of one build.
 
-This arm has no guest artifact of its own. It evaluates on the TypeScript arm's
-component, which the seam records as a declared share.
+This arm has no guest artifact and cannot have one. TeaVM emits per program only
+the classlib and standard-library methods that program's own call graph reached,
+so there is no runtime two programs could share. The component is built per
+turn.
 
 ## The SDK
 
 The SDK is declared in `gg.*` packages as top-level functions, one package per
-capability module plus `gg.core`. gg writes no import for it, and a program
-calls the fully-qualified name: `gg.files.readFile("src/a.kt", offset = 2,
-limit = 5)`, `gg.shell.run("npm test", timeoutSecs = 30)`. A type is written
-under the module that produces it (`gg.files.FileRead`, `gg.tasks.TaskStatus`).
+capability module plus `gg.core`. A program reaches a call either by writing the
+fully-qualified name (`gg.files.readFile("src/a.kt", offset = 2, limit = 5)`) or
+by writing the module's own import line, `import gg.files.*`, which every
+module's catalogue entry states. A type is written under the module that
+produces it (`gg.files.FileRead`, `gg.tasks.TaskStatus`).
+
+`gg.log` writes one line to the run's log, which reaches the operator and never
+the model. It is outside the catalogue, because the catalogue describes the
+capability modules. Standard output reaches nobody at all.
+
 Bridge declarations are `internal`, which is module visibility, and a program is
 its own module, so a program cannot name the crossing. Every function is bound
 on every turn: a call the agent was not granted compiles and fails when it runs,
-which is the rule the
-[agent surface](/gg/languages/agent-surface/) states for every arm.
+which is the rule the [agent surface](/gg/languages/agent-surface/) states for
+every arm.
 
 The surface is idiomatic Kotlin:
 
@@ -107,9 +103,8 @@ The surface is idiomatic Kotlin:
 - A span of turns is an `IntRange`.
 - A result is a `data class`, and a read is a sealed type narrowed by `when`.
 - A failure is a thrown `gg.core.ToolError` with an enum `code`, caught with
-  `catch` or `runCatching`.
-- The code a skill or memory carried is reached by string through `gg.core.lib`:
-  `text`, `number`, `flag`, `run` and `has`.
+  `catch` or `runCatching`. Its message is ``​`tool` failed (code): what went
+  wrong``, so an uncaught one names all three; `detail` is gg's sentence alone.
 
 ## The catalogue
 
@@ -118,15 +113,18 @@ file into the same `KtFile` the compiler compiles and reads KDoc with the
 compiler's own KDoc parser, so the release that describes the surface is the
 release that compiles a program against it. `@ggmodule` on a module file carries
 module identity, and `tools/GgCatalogue.kt` fixes the module set and its order.
+Each module's entry states `import <package>.*` as the line a program writes,
+composed from the module's own path, which is the one thing the reflector
+composes.
 
 `build.sh` compiles the SDK under `-Xexplicit-api=strict -Werror`, which is a
 second reading of the same sources beside the reflector's, and the reflector
 refuses to emit a catalogue containing a blank, an identity the SDK does not
 declare, a `@param` naming an argument a function does not take, or a public
-function of a module the identity table does not name. A
-signature states `: Unit` out loud, because that a call returns nothing tells a
-model the rest of its program still runs, and a sealed type's declaration
-carries its arms inline, because Kotlin has no clause that names them.
+function of a module the identity table does not name. A signature states
+`: Unit` out loud, because that a call returns nothing tells a model the rest of
+its program still runs, and a sealed type's declaration carries its arms inline,
+because Kotlin has no clause that names them.
 
 ## Checker and failures
 
@@ -137,9 +135,9 @@ arm's compile time recorded on every turn, the failing path included.
 | What happened | How it is reported |
 | --- | --- |
 | the Kotlin compiler's `SYNTAX` diagnostic | a syntax failure |
-| any other Kotlin error | a compile failure |
+| any other Kotlin error in the model's own file | a compile failure |
 | TeaVM naming a class or method its classlib lacks | a compile failure |
-| every error naming the file gg generated | a toolchain failure |
+| javac refusing gg's generated entry class | a shape refusal quoting the `fun main()` convention |
 | a compiler that could not run, a timeout, or a failed handshake | a toolchain failure |
 
 The compile asks for `-Xrender-internal-diagnostic-names`, which is what makes
@@ -150,23 +148,31 @@ A diagnostic in a library file is the model's problem on this arm, because a
 Kotlin program reaches TeaVM's classlib through a standard library written in
 Kotlin. It is reported against the model's own file with the library's file and
 line named inside it, rather than as a coordinate the model could open.
-Diagnostics are deduplicated and capped at eight with the rest counted. A
-toolchain failure reaches the model as a notice that its program was not run,
-and the diagnostic goes to the operator. The bands are described under
-[compilation](/gg/languages/compilation/).
+Diagnostics are deduplicated and capped at eight with the rest counted. The
+bands are described under [compilation](/gg/languages/compilation/).
 
-Integer division by zero answers `0` rather than throwing, because the
-arithmetic underneath is JavaScript's, and a `Thread` a program starts is
-refused by the sandbox.
+A runtime failure is the program's own. gg catches nothing: the program dies the
+way TeaVM kills it, and what the model reads is the exception's header and
+TeaVM's stack trace over the model's own file, off the guest's standard error.
+The DWARF wasmtime symbolicates this artifact from is misattributed, so this arm
+declares its wasm frames unlocated and gg strikes those locations out.
+
+Integer division by zero is a wasm trap rather than an `ArithmeticException`,
+because TeaVM lowers `/` to `i32.div_s`. `kotlin.io`'s `use` reaches TeaVM's own
+reflection classes through `Throwable.addSuppressed` and is refused at compile
+time, so a program closes a resource with `try`/`finally` instead. A `Thread` a
+program starts is refused by the sandbox.
 
 ## Code modules
 
-A code module is an ordinary Kotlin file rather than a script, and `kt` is the
-only extension this arm compiles. Its namespace is the file's public top-level
-functions, each given `@JSExport` inline so no line moves. A module offering
-none is refused by name. The file's JVM class name and the name TeaVM exports it
-under must differ, or the exported namespace resolves to `undefined`. A module
-key is camelCase and ASCII-only, since a program names it as a string.
+A code module is an ordinary Kotlin file, and `kt` is the only extension this arm
+compiles. Its namespace is the file's public top-level functions, and a module
+offering none is refused by name. gg compiles the file into `package lib.<key>`,
+written on the author's own first line so no diagnostic moves, and the module is
+compiled into every program that uses it. A program reaches an export at
+`lib.<key>.<name>` or imports it by name, and a name the module does not export
+is a compile error rather than a run-time failure. A module key is camelCase and
+ASCII-only.
 
 ## Prompt segment
 
@@ -175,12 +181,12 @@ key is camelCase and ASCII-only, since a program names it as a string.
 Neither names a function or a signature: every spelling they quote is resolved
 from this arm's catalogue as the template renders. The segment states:
 
-- the reply is compiled as a script, so statements and declarations sit side by
-  side at the top level and an `import` written anywhere is lifted;
+- the reply is compiled verbatim as one Kotlin file with a `fun main()`, and
+  everything else the model declares goes beside it at the top level;
 - a failed call is a `gg.core.ToolError`, and Kotlin has no checked exceptions,
   so one may escape or be caught;
-- an optional argument is a named default, and every gg name is written fully
-  qualified.
+- an optional argument is a named default, and a module is reached either by its
+  full path or by its own import line.
 
 The arm names `kotlinc` as its [checker](/gg/languages/compilation/), so the
 shared body states that a program is compiled before it runs, that one the
@@ -190,7 +196,9 @@ by the prompt.
 
 ## Healing dialect
 
-The fence tags are `kotlin`, `kt` and `kts`. A backtick is code punctuation
+The fence tags are `kotlin`, `kt` and `kts`; the script extension stays on the
+list because a model that reached for it has still written Kotlin. A backtick is
+code punctuation
 here, because Kotlin has backquoted identifiers, so a line carrying one is never
 deleted as prose. A `#` line is prose and is deleted, because Kotlin has no `#`
 token at all and one left in a program is a syntax error. A `;` says almost

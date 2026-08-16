@@ -95,6 +95,7 @@ mod context;
 mod delegation;
 mod docs;
 mod knowledge;
+pub(crate) mod math;
 mod programs;
 mod recording;
 mod session;

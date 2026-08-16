@@ -32,9 +32,8 @@
 //!
 //! # What this is **not** proving
 //!
-//! Anything about either arm's own preparation. [Java](super::super::java) is on this route and
-//! [its own tests](super::super::java::substrate) drive it; [Kotlin](super::super::kotlin) still
-//! answers TypeScript's component and still compiles to JavaScript. Every program here is
+//! Anything about either arm's own preparation. Both are on this route and each has
+//! [tests](super::super::java::substrate) of its own that drive it. Every program here is
 //! hand-written, so what is measured is the substrate rather than the SDK built on it.
 
 use std::time::Instant;
