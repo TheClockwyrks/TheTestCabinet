@@ -16,6 +16,12 @@
 //
 // A crawler gets a preview document carrying the run's card. Anything else gets a
 // redirect, because a person who clicked a link wants the run, not a stub.
+//
+// A path this domain does not serve — a code that names no run, or anything that
+// is not a short link — gets a 404 with the gallery offered as the way out. It
+// used to get a quiet redirect to the run index, which is worse in both
+// directions: the person who followed a dead link is told they arrived somewhere,
+// and a crawler is told the URL is real.
 
 import {
   SHARE_INDEX_PATH,
@@ -23,6 +29,7 @@ import {
   renderPreviewDocument,
   type ShareIndex,
 } from "@test-cabinet/share-links";
+import { renderNotFoundDocument } from "./notFound.js";
 import { resolveShortLink } from "./resolve.js";
 
 export interface Env {
@@ -51,15 +58,35 @@ async function loadIndex(env: Env): Promise<ShareIndex | null> {
   }
 }
 
-// Where to send a visitor when the index cannot be read at all. Falling back to
-// the gallery keeps a broken link from being a dead end: the visitor lands on the
-// site rather than on an error from a domain with nothing else on it.
+// Where to send a visitor when the index cannot be read at all. Deliberately a
+// redirect and not a 404: the link may well be perfectly good, and this resolver
+// simply cannot say right now. Manufacturing a 404 out of an infrastructure
+// failure would tell the visitor — and any crawler — that a real link is dead.
 function fallbackRedirect(env: Env): Response {
   const origin = (env.GALLERY_ORIGIN || "https://testcabinet.ai").replace(
     /\/+$/,
     "",
   );
   return Response.redirect(`${origin}/runs`, 302);
+}
+
+// The 404 for a path this domain does not serve: a code that names no run, or a
+// path that is not a short link at all. It carries the gallery as the way out, so
+// a dead link is still not a dead end.
+function notFound(url: string): Response {
+  return new Response(renderNotFoundDocument(url), {
+    status: 404,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      // A dead short link must not be indexed. It is exactly the kind of URL a
+      // crawler follows from wherever the link was shared.
+      "x-robots-tag": "noindex",
+      // Not cached, for the same reason the redirect below is a 302: a code that
+      // names nothing today names a run the moment that run is published, and a
+      // cached 404 would outlive the fact it recorded.
+      "cache-control": "no-store",
+    },
+  });
 }
 
 export default {
@@ -78,7 +105,8 @@ export default {
 
     const url = new URL(request.url);
     const resolution = resolveShortLink(url.pathname, index);
-    if (resolution.kind === "elsewhere") {
+    if (resolution.kind === "notFound") return notFound(resolution.url);
+    if (resolution.kind === "gallery") {
       return Response.redirect(resolution.url, 302);
     }
 
