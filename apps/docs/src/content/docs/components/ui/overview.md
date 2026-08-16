@@ -75,7 +75,8 @@ interfaces. A host imports only what it needs.
   desktop's old `tcab-proof://` / `tcab-asset://` schemes were removed.)
 - **Presentational primitives** (`./` root) — the brand-neutral building blocks
   every GUI uses: the Markdown renderer, the rating badge, panels, the metric
-  tile, the spec/reference accordion, pagination, and the chart wrapper.
+  tile, the spec/reference accordion, pagination, the chart wrapper, and the
+  modal `Dialog` (see [Dialogs](#dialogs)).
 - **The client interfaces** (`./client`) — the `BackendClient` and
   `WorkerClient` interfaces the consoles are written against, plus the React
   contexts that supply them. The app depends only on these interfaces; each
@@ -84,6 +85,40 @@ interfaces. A host imports only what it needs.
 - **The rating model** (`./` root) — the `Rating` tiers and their display
   metadata, mirroring the [reviews](/components/core/results/#reviews) model in
   the core, so every GUI shows ratings identically.
+
+## Dialogs
+
+No GUI uses the browser's own `alert()` / `confirm()`. Every question a
+destructive control asks — deleting a run, killing or sweeping in-flight runs,
+halting a plan or ladder, deleting a group/plan/ladder or a model configuration,
+marking a run unplayable, restoring a run's validator verdicts — is asked through
+the themed modal instead, so it reads as part of the cabinet rather than as the
+operating system, and so it can carry more than a line of plain text.
+
+Two pieces:
+
+- **`Dialog`** (a presentational primitive) — the scrim and neon-outlined panel,
+  portalled to `document.body` so it escapes any panel's overflow or stacking
+  context. It is modal: Escape and a click on the scrim dismiss it, focus opens
+  on the default action and is trapped until the dialog is answered, and the page
+  behind it cannot scroll. Its height is capped at the viewport, and its optional
+  **detail region** scrolls at a capped height inside that — so a dialog that
+  enumerates a hundred changes asks its question exactly the way a three-line one
+  does, and can never grow taller than the page.
+- **`useConfirm()`** (app layer, provided once by `GalleryApp`) — the imperative
+  `confirm(…)` / `alert(…)` pair a click handler awaits, so a call site keeps the
+  guard-clause shape the native dialogs had:
+
+  ```tsx
+  if (!(await confirm({ title: "Delete run", message: "…" }))) return;
+  ```
+
+  Both take an optional `details` node, which lands in the dialog's scrollable
+  detail region. The reviewer's bulk **Restore validator verdicts** uses it to
+  list every point the restore would change and which way each verdict would flip
+  (`describeAutoVerdictRestore`), because by the time a reviewer reaches for that
+  control they cannot be expected to hold which of their own calls the machine
+  disagrees with.
 
 ## Theming
 

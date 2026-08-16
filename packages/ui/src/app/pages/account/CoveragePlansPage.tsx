@@ -9,6 +9,7 @@ import { useBackend } from "../../../client/context";
 import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
+import { useConfirm } from "../../components/ConfirmDialog";
 import { routes } from "../../routes";
 import { AccountTabs } from "./AccountTabs";
 import exec from "../runs/RunExec.module.scss";
@@ -101,6 +102,7 @@ function BufferSetting({
 export function CoveragePlansPage() {
   const { token } = useAuth();
   const { client: backend } = useBackend();
+  const { confirm } = useConfirm();
 
   const [plans, setPlans] = useState<CoveragePlanSummary[] | null>(null);
   const [settings, setSettings] = useState<CoverageSettings | null>(null);
@@ -161,10 +163,13 @@ export function CoveragePlansPage() {
     async (id: string, name: string) => {
       if (!backend?.deleteCoveragePlan || !token) return;
       if (
-        !window.confirm(
-          `Delete the plan “${name}”? This removes the plan (its groups are left ` +
+        !(await confirm({
+          title: "Delete plan",
+          message:
+            `Delete the plan “${name}”? This removes the plan (its groups are left ` +
             `untouched) and cannot be undone.`,
-        )
+          confirmLabel: "Delete plan",
+        }))
       ) {
         return;
       }
@@ -179,7 +184,7 @@ export function CoveragePlansPage() {
         setBusy(false);
       }
     },
-    [backend, token, reload],
+    [backend, token, reload, confirm],
   );
 
   if (!token) {

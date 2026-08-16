@@ -18,6 +18,7 @@ import { DEFAULT_ORCHESTRATOR_SLUG } from "../../data/orchestrators";
 import { OPENROUTER_PROVIDER, resolveLaunchModel } from "../../data/providers";
 import { PageLayout } from "../../components/PageLayout";
 import { BackChevron } from "../../components/BackChevron";
+import { useConfirm } from "../../components/ConfirmDialog";
 import {
   claimSectionReturn,
   useRecordSectionIndex,
@@ -543,6 +544,7 @@ export function CoveragePlanPage() {
   const { planId = "" } = useParams();
   const { token } = useAuth();
   const { client: backend } = useBackend();
+  const { confirm } = useConfirm();
   const { active: worker } = useWorkers();
   const runtime = useRunsRuntime();
   const testCaseName = useTestCaseName();
@@ -733,11 +735,14 @@ export function CoveragePlanPage() {
       if (!supported) return;
       if (
         all &&
-        !window.confirm(
-          "Cancel every job this plan launched, including runs already executing? " +
+        !(await confirm({
+          title: "Halt everything",
+          message:
+            "Cancel every job this plan launched, including runs already executing? " +
             "Their work so far is lost and their cost is already spent. Use “Halt” " +
             "to cancel only what has not started.",
-        )
+          confirmLabel: "Halt everything",
+        }))
       ) {
         return;
       }
@@ -757,7 +762,7 @@ export function CoveragePlanPage() {
         setBusy(false);
       }
     },
-    [backend, token, planId, refresh],
+    [backend, token, planId, refresh, confirm],
   );
 
   // The matrix grouped on the plan's own ordering axis, in the plan's own order.
