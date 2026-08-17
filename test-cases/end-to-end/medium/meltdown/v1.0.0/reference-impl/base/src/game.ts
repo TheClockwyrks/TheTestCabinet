@@ -366,6 +366,26 @@ export class Game {
 
   // ---- Fixed-timestep simulation -----------------------------------------
 
+  // ---- Render interpolation ---------------------------------------------
+  // The simulation advances in whole FIXED_STEP ticks, but a frame is presented
+  // whenever the display asks for one, and the two rates do not divide evenly.
+  // `syncView` stamps where the units stood when the displayed step began, and
+  // the animation loop sets `renderAlpha` to the fraction of the next step the
+  // wall clock has already covered; render.ts draws between the two. Towers and
+  // the field are static and need none of it. Nothing here feeds back into the
+  // simulation — these are written by the step and read by the renderer, never
+  // the other way about, so the same tick sequence produces the same state
+  // whatever the frame rate.
+  renderAlpha = 0;
+
+  // Stamp the interpolation window. Called once per displayed step by the
+  // animation loop — fast-forward runs several simulation steps per displayed
+  // step, and the window has to span the whole group so the drawn motion is
+  // continuous across it.
+  syncView(): void {
+    for (const u of this.surge) u.syncView();
+  }
+
   fixedStep(dt: number): void {
     if (this.state !== "playing") return;
 
@@ -1124,9 +1144,37 @@ export class Game {
 
   // Move the held preview so its footprint top-left sits at (col, row); the
   // valid/invalid state updates through the real placement check.
+  //
+  // This moves the POINTER and then recomputes the preview from it, rather than writing
+  // a preview into the game state directly. Both give the same answer to the very next
+  // `snapshot()`, and only one of them survives to be drawn: `update()` rebuilds
+  // `this.preview` from `input.mouseX/mouseY` on every frame while a tower is armed, so a
+  // directly-written preview is gone by the time the next frame paints. That was
+  // invisible to a check reading `snapshot().build` and glaring in a SCREENSHOT — every
+  // still meant to show a footprint hovering somewhere (a sealing placement being
+  // refused, a build-zone boundary, a tower held against the casing) instead showed the
+  // preview parked wherever the real cursor happened to sit, which under an automated
+  // driver is the top-left corner of the stage.
+  //
+  // Driving the pointer is also what `specs/instrumentation.md` actually asks for —
+  // "moves the held preview ... exactly as moving the mouse over the floor does" — and it
+  // brings the debug path under the same keep-it-on-the-grid clamp `snapTopLeft` applies
+  // to the mouse, so an off-grid request behaves the same either way.
   debugMovePreview(col: number, row: number): void {
     if (!this.armed) return;
-    this.preview = { col, row, valid: this.canPlaceAt(this.armed, col, row) };
+    const size = TOWER_DEFS[this.armed].size;
+    // The pointer sits at the footprint's centre, which is the point `snapTopLeft`
+    // centres that footprint on.
+    this.input.setMouse(
+      FLOOR_X0 + (col + size / 2) * TILE,
+      FLOOR_Y0 + (row + size / 2) * TILE,
+    );
+    const snapped = this.snapTopLeft(this.input.mouseX, this.input.mouseY, size);
+    this.preview = {
+      col: snapped.col,
+      row: snapped.row,
+      valid: this.canPlaceAt(this.armed, snapped.col, snapped.row),
+    };
   }
 
   // Rotate the held preview 90 degrees, turning its radiator faces.
@@ -1154,7 +1202,8 @@ export class Game {
     if (this.state !== "playing") return;
     this.armed = type;
     this.armedRot = rot;
-    this.preview = { col, row, valid: this.canPlaceAt(type, col, row) };
+    // Through the pointer, exactly as `debugMovePreview` does and for the same reason.
+    this.debugMovePreview(col, row);
     this.placeTower(type, col, row, rot);
   }
 
@@ -1294,7 +1343,12 @@ export class Game {
       money: this.money,
       lives: this.lives,
       score: this.score,
-      wave: inMatch ? (this.openingPhase ? 0 : this.waveNumber) : 0,
+      // A build phase belongs to the wave it is preparing for, so the opening phase
+      // reports Wave 1 and a cleared wave `n` advances to `n + 1` as its build phase
+      // begins (specs/gameplay.md). `waveNumber` already tracks exactly that — the
+      // opening phase is `enterBuildPhase(1)` and `clearWave` enters `n + 1` — so
+      // there is nothing to adjust here beyond having no run at all outside a match.
+      wave: inMatch ? this.waveNumber : 0,
       waveCount: this.cfg.totalWaves,
       buildTimer,
       wavePreview,

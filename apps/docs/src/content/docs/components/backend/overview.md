@@ -90,6 +90,31 @@ projection.
 
 The backend serializes publishes so two operators cannot race on shared state.
 
+## Review scheduling
+
+The backend also holds each account's reviewer scheduling state: what runs that
+account wants to exist, and how fast it wants them arriving. The data is
+private, per-account and console-only — no runner consults it and none of it
+reaches the public snapshot or the projection.
+
+- A [coverage plan](/components/backend/coverage/) declares version-pinned cases
+  crossed with harness+model combinations and a target run count per cell. The
+  backend expands the declaration into a matrix, counts what exists against it,
+  and enqueues what is missing.
+- A [ladder](/components/backend/ladders/) applies the same machinery to an
+  ordered series of cases, which each combination climbs until a gate stops it.
+
+Two properties of that design follow from the backend being the single central
+entity, and are its to enforce. Run counts stay global while judgement stays
+per-account: a run someone else produced satisfies a plan's target and is never
+re-requested, but "unreviewed" means unreviewed by the requesting account, and a
+ladder's gate reads only that account's own review, so two reviewers share the
+cabinet's runs without sharing each other's worklists. And enqueueing is bounded
+and serialized: a plan holds a bounded review buffer rather than firing its
+whole matrix, refilling it is an endpoint the console calls rather than a
+background daemon, and each plan's or ladder's top-up claims its row first, so
+two console tabs cannot both observe the same shortfall and both enqueue for it.
+
 ## Public snapshot
 
 The [gallery](/components/site/serving/) shows published runs to anonymous

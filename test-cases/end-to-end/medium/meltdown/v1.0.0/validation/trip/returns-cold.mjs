@@ -22,18 +22,19 @@
 // left off. That coarse bound is all the return-instant reading can honestly carry,
 // and it is enough — a build that resumes at its pre-trip heat reads ~100 there.
 
-// The Stutter is set into a vent corridor so it engages the Core whatever route that
-// build walks it on. The trip has to happen for real before there is a cooldown to
-// read, and an emitter aimed at a lane the build does not use never fires — which
-// would fail this item on its first assertion for a pathing choice
-// `pathing.opposite-left` already owns. See `buildVentCorridor` in `_helpers`.
+// The Stutter stands at the gate so it engages the Core whatever route that build walks
+// it on. The trip has to happen for real before there is a cooldown to read, and an
+// emitter aimed at a lane the build does not use never fires — which would fail this
+// item on its first assertion for a pathing choice `pathing.opposite-left` already
+// owns. See `buildGate` in `_helpers`.
 
 import {
   newGame,
   arrangeNearRedline,
   actTripAndRecover,
+  actTail,
   REDLINE,
-  CORRIDOR_WALLS,
+  GATE_WALLS,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -45,14 +46,16 @@ export default function item() {
     id: "trip.returns-cold",
 
     // The trip cooldown is a fixed 5 s (specs/heat.md) and the emitter has to reach the
-    // redline first, so this is the longest of the trip items by nature.
-    clipMs: 10000,
+    // redline first, so this is the longest of the trip items by nature — and it has to
+    // cover the beat AFTER the return as well, or the clip ends on the frame its subject
+    // arrives (see the tail in `act`).
+    clipMs: 14000,
 
     async arrange(api) {
       await newGame(api, "containment", "medium", 100000);
       const c = await arrangeNearRedline(api, "stutter", {
         heat: 92,
-        corridor: true,
+        gate: true,
       });
       id = c.id;
       walls = c.walls;
@@ -61,18 +64,24 @@ export default function item() {
     // The whole trip-and-recover cycle, which is exactly what the clip should show:
     // the emitter overheating, going offline, and coming back cold.
     //
-    // No tail. This is the one event item that does not need one: the drive already
-    // spends five seconds on a visibly tripped tower before it comes back, so the
-    // return lands in a clip that has been holding on the subject the whole time
-    // rather than cutting the instant something happens.
+    // The tail is what puts the RETURN in the clip. It used to be argued away — the
+    // drive already spends five seconds on a visibly tripped tower, so the return lands
+    // in a clip that has been holding on its subject throughout — and that reasoning
+    // covers the wait but not the arrival. `actTripAndRecover` stops on the first step
+    // the tower is back online, and `act` returning ends the record pass, so the clip
+    // ran out exactly as the thing it is named for happened: a reviewer watched six
+    // seconds of a red, dead tower and never saw it light up. Three seconds afterwards
+    // is the tower back on the floor, cold, and visibly heating from scratch — which is
+    // the whole of "returns cold".
     async act(api) {
       r = await actTripAndRecover(api, id);
+      await actTail(api, 180); // 3 s of the recovered tower online and warming again
     },
 
     async assert(api, check) {
-      // A hole in the corridor lets the Core walk round the emitter, which would read
-      // here as a tower that never tripped rather than as missing scenery.
-      check.expectEq("the vent corridor was built", walls, CORRIDOR_WALLS);
+      // A hole in the gate lets the Core walk round the emitter, which would read here
+      // as a tower that never tripped rather than as missing scenery.
+      check.expectEq("the gate wall was built", walls, GATE_WALLS);
       check.expectOk("the emitter tripped", r.tripped.hit);
       check.expectOk(
         "it was seen offline in its cooldown",

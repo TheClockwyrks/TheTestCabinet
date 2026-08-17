@@ -25,11 +25,23 @@ import {
   towerById,
   firstInRange,
   focusOnParent,
+  clipBudget,
   TICK,
   MAP,
 } from "../_helpers.mjs";
 
 const MAX_DRAIN_TICKS = 1800; // 1800 ticks = the old 30 s cap — game time, not wall clock
+// How long the board is held after the pool breaks. This item's whole claim is that NOTHING
+// is paid while the pool drains and then the entire pool is paid at once, so the instant the
+// figure jumps is the evidence — and the clip cut on it, then immediately reset into the
+// second scenario. The review could not tell whether the payout had landed at all before the
+// board changed under it. Three seconds either side of the break is enough to watch the
+// number sit at zero, jump, and stay there.
+const HOLD_TICKS = 180;
+// A drain is a few seconds, not the thirty its safety cap allows; the budget is sized for a
+// realistic pair of drains plus their holds rather than for the cap, so a pathological build
+// cannot produce a minute of film.
+const DRAIN_BUDGET_TICKS = 420;
 
 const unitById = (snap, id) => snap.matter.find((u) => u.id === id);
 
@@ -70,13 +82,16 @@ async function actDrainCluster(api, { unitId, start, maxBond }) {
     { max: MAX_DRAIN_TICKS, poll: TICK },
   );
 
-  return {
+  const out = {
     broke: r.hit,
     maxBond,
     paidWhileDraining,
     totalPaid: r.snap.energy,
     bondBeforeBreak: lastPositiveBond,
   };
+  // Held on the moment of payment, before the next scenario replaces the board.
+  await api.advance(HOLD_TICKS);
+  return out;
 }
 
 export default function item() {
@@ -86,6 +101,8 @@ export default function item() {
 
   return {
     id: "economy.buffer-pays-on-break",
+
+    clipMs: clipBudget(2 * (DRAIN_BUDGET_TICKS + HOLD_TICKS)),
 
     // An Emitter strips 1 a shot, so it chips a Dimer's pool a point at a time and the
     // pool runs out exactly, with no damage wasted. That is the arranged run.

@@ -37,7 +37,9 @@ use crate::auth::AuthUser;
 use crate::error::ApiError;
 
 use super::AppState;
-use super::jobs::{LaunchAck, build_new_job, now_rfc3339, resolve_gg_model_facts};
+use super::jobs::{
+    LaunchAck, LaunchQuery, attribution, build_new_job, now_rfc3339, resolve_gg_model_facts,
+};
 
 /// The default variant a gg run targets when the request omits one — the same
 /// baseline variant every case defines.
@@ -191,15 +193,22 @@ impl GgRunRequest {
 /// enqueues a `queued` job carrying the gg launch body verbatim. It returns the same
 /// [`LaunchAck`] a conventional launch does, so the console watches a gg run through
 /// the existing `GET /jobs/{id}` status and `GET /jobs/{id}/live` monitor unchanged.
+///
+/// The run is **attributed** to the token's account (`job.user_id`) and to no
+/// [origin](super::jobs::LaunchQuery::origin): a gg run is always launched by hand
+/// through this endpoint, so — exactly like a launch from the console's conventional
+/// run form — it is never swept up by a coverage plan's or ladder's scoped halt. A
+/// plan's top-up mints its own jobs (see [`super::coverage::enqueue_top_up`]) and
+/// never reaches this handler, so there is no scheduling origin for it to carry.
 #[tracing::instrument(
     name = "gg.launch",
-    skip(state, _user, body),
+    skip(state, user, body),
     fields(case.slug = %body.test_case, case.version = %body.version),
     err(Debug),
 )]
 pub async fn launch_gg(
     State(state): State<AppState>,
-    _user: AuthUser,
+    user: AuthUser,
     Json(body): Json<GgRunRequest>,
 ) -> Result<Response, ApiError> {
     let variant = body.resolved_variant();
@@ -236,10 +245,15 @@ pub async fn launch_gg(
         .await
         .map_err(ApiError::bad_request)?;
     let now = now_rfc3339()?;
+    // The launching account, and deliberately no origin: this endpoint is the by-hand
+    // launch path, and it takes no `origin` query the way `POST /jobs` does because
+    // nothing schedules a gg run through it.
+    let attribution = attribution(&user, &LaunchQuery::default())?;
     // The type comes from the manifest already read above, so a gg run's job row
     // carries the same test type a conventional launch's does — which is what the
     // queue serializes the must-not-overlap run types on.
-    let new = build_new_job(&launch, manifest.test_type, &now).map_err(ApiError::bad_request)?;
+    let new = build_new_job(&launch, manifest.test_type, &now, &attribution)
+        .map_err(ApiError::bad_request)?;
     let id = new.id.clone();
 
     state.db.enqueue_job(new).await.map_err(ApiError::from)?;

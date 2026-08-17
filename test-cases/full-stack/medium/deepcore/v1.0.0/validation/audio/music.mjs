@@ -6,7 +6,7 @@
 // `armAudio` is called from `act`, not `arrange`: `before` must be read on a fresh, untouched
 // title, before anything has interacted.
 
-import { newRun, armAudio, audioCount } from "../_helpers.mjs";
+import { newRun, armAudio, audioCount, awaitCue } from "../_helpers.mjs";
 
 export default function item() {
   let before;
@@ -25,8 +25,19 @@ export default function item() {
     // and starts the music bed looping.
     async act(api) {
       await armAudio(api);
-      after = await audioCount(api);
-      await api.advance(15); // a short tail so the clip shows the bed looping in
+      // Poll for the bed rather than reading once the moment `armAudio` returns.
+      //
+      // `armAudio` settles a fixed 250 ms after the gesture to let the first-gesture decode finish.
+      // That is ample for a sound effect and is not ample for this one: the music bed is a LOOP
+      // (`specs/assets.md` asks for an atmospheric loop, and the reference's own `.wav` is 2.5 MB
+      // against ~10–250 kB for the cues), so its fetch and `decodeAudioData` can still be running
+      // when the fixed settle expires. A single read then reports silence for a build whose music
+      // starts perfectly well a moment later — which is what both builds under review looked like.
+      // Polling to a real deadline accepts a bed that arrives late without accepting one that never
+      // arrives; the `before` read in `arrange` still holds the honest half of this item, that
+      // nothing plays before the first interaction.
+      after = await awaitCue(api, before);
+      await api.advance(30); // 30 ticks = 0.5 s so the clip runs on with the bed playing
     },
 
     async assert(api, check) {

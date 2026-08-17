@@ -35,7 +35,8 @@ gh run list --workflow=build-service-images.yml --branch master --limit 10 \
   --json headSha,status,conclusion,displayTitle,createdAt
 
 # 2. Re-pin all THREE files: the images: block and the two env-value image refs.
-#    Leave TCAB_CONTAINER_TAG alone.
+#    Leave TCAB_CONTAINER_TAG alone — it changes what every future RUN executes
+#    in, so it moves with a rehearsed release rather than with a roll.
 OLD=<current-sha>; NEW=<full-target-sha>
 sed -i "s/$OLD/$NEW/g" \
   deployments/k8s/overlays/azure-prod/kustomization.yaml \

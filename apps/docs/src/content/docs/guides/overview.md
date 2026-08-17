@@ -108,6 +108,10 @@ constraints that govern the task. The matching
   deploys a case variant's authored, correct static build out-of-band.
 - [Rolling Production Service Images](/guides/devops/rolling-prod-service-images/)
   promotes a CI-built service-image sha to the production cluster.
+- [Cutting a Release](/guides/devops/cutting-a-release/) walks the whole `vX.Y.Z`
+  sequence: prepare the release on `nightly`, rehearse it on staging, publish
+  the artifacts from GitHub, then land the catalog and the services in
+  production.
 
 ## Component documentation
 

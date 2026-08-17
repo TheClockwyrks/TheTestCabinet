@@ -86,8 +86,10 @@ there.
   `tcab-driver`, `tcab-artifacts`, `tcab-arena`, `tcab-publisher`, `tcab-web`) by
   `build-service-images.yml`, and the run-container images by
   `build-containers.yml`. All are published for `linux/amd64` and `linux/arm64`
-  and tagged both `:latest` and an immutable `:<git-sha>`. If the registry is
-  private, create an `imagePullSecret` and name it in
+  and tagged both `:latest` and an immutable `:<git-sha>`. Both workflows run on
+  every push to `master` and `staging`, unfiltered, so any sha on those branches
+  has a complete image set and both halves are always pinnable to the same one.
+  If the registry is private, create an `imagePullSecret` and name it in
   `TCAB_K8S_IMAGE_PULL_SECRETS`.
 - A `StorageClass` for the backend, auth, and artifact `PersistentVolumeClaim`s.
   `ReadWriteOnce` is sufficient; none of the volumes is shared.

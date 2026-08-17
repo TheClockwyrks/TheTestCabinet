@@ -140,6 +140,9 @@ function quantumWarp(game: Game): boolean {
   game.fxQueue.push({ kind: "core-extract", x: minerCenterX(m), y: minerCenterY(m) });
   game.sndQueue.push("impact");
   game.updateCamera(1);
+  // A warp is a jump, not travel — re-anchor so neither the miner nor the camera
+  // is drawn streaking across the mine.
+  game.syncView();
   game.note("QUANTUM JUMP — BRACE FOR LANDING");
   return true;
 }

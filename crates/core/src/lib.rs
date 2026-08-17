@@ -154,8 +154,8 @@ pub use review::{
     missing_verdicts, parse_writeup, score,
 };
 pub use run_record::{
-    AuthMode, HarnessSlug, PriorGameJamEntry, PriorGameJamEntryRef, RunEnvironment, RunLinks,
-    RunRecord, RunState, RunStatus, RunSubject, RunTooling,
+    AuthMode, HarnessSlug, PriorGameJamEntry, RunEnvironment, RunLinks, RunRecord, RunState,
+    RunStatus, RunSubject, RunTooling,
 };
 pub use seeding::FsRepoSeeder;
 pub use test_case::{
@@ -1537,16 +1537,10 @@ where
             // The per-tool invocation tally the parser accumulated over the run,
             // including consumed todo tools, for comparison diagnostics.
             tool_calls: outcome.tool_calls.clone(),
-            // …and record the earlier entries this run was itself briefed with, so the
-            // briefing is visible on the run rather than only inferable from the games.
-            game_jam_prior_entries: self
-                .prior_game_jam_entries
-                .iter()
-                .map(|entry| PriorGameJamEntryRef {
-                    run_id: entry.run_id.clone(),
-                    finished_at: entry.finished_at.clone(),
-                })
-                .collect(),
+            // …and record the earlier entries this run was itself briefed with —
+            // READMEs and all, since they are inputs the run was given and the Inputs
+            // tab shows them inline like every other seeded file.
+            game_jam_prior_entries: self.prior_game_jam_entries.clone(),
             // The seed commit computed when this run's workspace was seeded, carried
             // through so anything measuring the produced tree can tell the scaffolding
             // the run was given from the code the model actually wrote — exactly,

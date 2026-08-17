@@ -40,12 +40,15 @@ rather than as the backup.
 
 ### Recreating a cluster
 
-If the whole cluster is deleted and recreated while the database survives, the
-on-cluster volumes do not come back with it: the backend's definition store is an
-ephemeral volume, and the artifact service's `PersistentVolumeClaim` is a
-per-cluster disk that a full delete destroys. The database still holds every
-published run, so recovery is about refilling those volumes before the next
-publish regenerates the snapshot from them.
+If the whole cluster is deleted and recreated while the database survives, an
+external managed PostgreSQL or a restored SQLite file, the on-cluster volumes do
+not come back with it. The backend's definition store and the
+[artifact service](/components/artifacts/overview/)'s media both sit on
+per-cluster `PersistentVolumeClaim`s that a full delete destroys. A claim
+survives an ordinary pod reschedule, which is what it is for, and it ends with
+the cluster its disk belongs to. The database still holds every published run, so
+recovery is about refilling those volumes before the next publish regenerates the
+snapshot from them.
 
 1. Definition store. Re-ingested by the in-pod ingest sidecar on backend start,
    or on demand with `scripts/reingest-cluster.sh --env <env>`. This restores

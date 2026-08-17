@@ -63,7 +63,9 @@ for uncached input, cached input, and output tokens, with reasoning tokens
 priced at the output rate. A class that carries tokens but whose per-token price
 is unknown makes the whole cost unknown rather than under-counted; a class with
 zero tokens needs no price. A cost of `null` means unknown, distinct from `0.0`,
-a genuinely free run.
+a genuinely free run. Both figures are `null` whenever the cost cannot be
+determined, including when no token class was reported at all: a run whose usage
+never reached us is not a free run, so it is never recorded as `$0.00`.
 
 ### Price history
 

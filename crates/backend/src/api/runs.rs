@@ -104,6 +104,13 @@ pub async fn add_review(
 /// the publisher reports a terminal success (see [`crate::api::publish_jobs`]).
 /// Requires a bearer token. `404` for an unknown run. Returns `202 Accepted` with
 /// the publish-job id and the live URL to observe it on.
+///
+/// **Idempotent while a release is under way.** When the run already has a live
+/// publish job ([`crate::db::Db::active_publish_job_for_run`]) this answers with
+/// *that* job instead of enqueuing another, so repeated calls re-attach to the
+/// running publish rather than starting a second one. That is load-bearing rather
+/// than a nicety: every publish job deploys a brand-new Cloudflare Pages
+/// deployment, so a duplicate silently leaves an orphaned public build behind.
 #[tracing::instrument(
     name = "runs.publish",
     skip(state, _user),
@@ -124,11 +131,38 @@ pub async fn publish(
         .await
         .map_err(ApiError::from)?;
 
-    let publish_job_id = cuid2::create_id();
-    let job_token = cuid2::create_id();
     let created_at = OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .map_err(|e| ApiError::internal(format!("formatting created_at: {e}")))?;
+
+    // Idempotency: a run whose release is already under way answers with *that*
+    // publish job rather than enqueuing a second one. A publish is not idempotent
+    // externally — every job runs `wrangler pages deploy`, which mints a brand-new
+    // Cloudflare Pages deployment — so a duplicate job leaves an orphaned public
+    // build behind (the `gh` side reuses the repo, so only the Pages side shows it).
+    // A double-click, a second console tab, or a retry after the live stream dropped
+    // therefore re-attaches to the publish already running.
+    if let Some(existing) = state
+        .db
+        .active_publish_job_for_run(&id, &created_at)
+        .await
+        .map_err(ApiError::from)?
+    {
+        tracing::info!(
+            publish_job.id = %existing.id,
+            publish_job.state = %existing.state,
+            "publish already under way for this run; re-attaching to it"
+        );
+        let publish_job_id = existing.id;
+        let body = PublishResponse {
+            live_url: format!("/publish-jobs/{publish_job_id}/live"),
+            publish_job_id,
+        };
+        return Ok((StatusCode::ACCEPTED, Json(body)).into_response());
+    }
+
+    let publish_job_id = cuid2::create_id();
+    let job_token = cuid2::create_id();
 
     state
         .db
@@ -206,9 +240,12 @@ pub async fn delete(
 /// infrastructure failures), ordered by finish time — the console's "produced"
 /// worklist, disjoint from the default published listing.
 /// `state=any` (summary + offset path only) applies **no** lifecycle predicate at
-/// all: every recorded run, published or not, in any terminal state — what a
-/// listing scoped by something other than the publish lifecycle needs (the gg
-/// analysis section's Sessions tab, narrowed by `harness=gg`).
+/// all: every recorded run, published or not, in any terminal state. That is what
+/// the consoles' run listings need — an unpublished run has to sort and page
+/// alongside the published ones — and what a listing scoped by something other than
+/// the publish lifecycle needs (the gg analysis section's Sessions tab, narrowed by
+/// `harness=gg`). It is offered only on the numbered-pager path below; the cursor
+/// listings walk one lifecycle slice at a time.
 ///
 /// `fields=summary` returns bounded [`RunSummary`] cards (the lightweight shape
 /// the console's run log and list pages consume) instead of full
@@ -232,6 +269,9 @@ pub async fn list(
             test_case: params.test_case.clone(),
             model: params.model.clone(),
             harness: params.harness.clone(),
+            variant: params.variant.clone(),
+            version: params.version.clone(),
+            latest_versions: params.latest_versions.unwrap_or(false),
             q: params.q.clone(),
         };
         let sort = parse_sort(params.sort.as_deref());
@@ -629,6 +669,19 @@ pub struct ListParams {
     model: Option<String>,
     /// Filter to one harness slug (summary + offset path only).
     harness: Option<String>,
+    /// Filter to one variant slug (summary + offset path only). Paired with
+    /// `testCase` — a variant slug is only unique within its case.
+    variant: Option<String>,
+    /// Filter to one exact test-case version (summary + offset path only).
+    /// Normally paired with `testCase`, since a version only means something
+    /// within a case.
+    version: Option<String>,
+    /// Restrict every run to its case's current `major.minor` — the newest one
+    /// that case has a run for in the selected `state` slice (summary + offset
+    /// path only). Ignored when `version` names an exact version. Wire:
+    /// `latestVersions`.
+    #[serde(rename = "latestVersions")]
+    latest_versions: Option<bool>,
     /// Case-insensitive free-text query across the lifted identity columns (summary
     /// + offset path only).
     q: Option<String>,
@@ -665,6 +718,10 @@ pub struct SummaryListResponse {
 
 /// Map the `state` query param to the summary listing's lifecycle slice, mirroring
 /// the cursor path's `state` handling (`review`/`all` → the reviewer worklist).
+///
+/// `any` has no cursor-path equivalent: it is the summary listing's union slice
+/// (published + unpublished), which only the numbered pager needs — see
+/// [`SummaryState::Any`].
 fn summary_state(state: Option<&str>) -> SummaryState {
     match state {
         Some("review") | Some("all") => SummaryState::Review,

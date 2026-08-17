@@ -24,6 +24,21 @@
 // is live, which is the moment specs/gameplay.md is about. Where a held key takes the
 // critter next belongs to `controls.one-tile`, not here.
 //
+// THE KEY COMES UP THE MOMENT THE LIFE DOES. Holding the direction through the DEATH is
+// the point — that is a hand at the keyboard, and it is what a build has to survive —
+// but the hold used to run on through the respawn as well, until after the fresh
+// crossing had been found. On a build that hands a still-held key to the fresh critter,
+// the clip then showed it hop straight off the near shore into the traffic and die
+// again, seconds after an item titled "respawns on the near shore after a death" had
+// finished measuring. Worse, whether it happened at all depended on how many wall-clock
+// milliseconds the record pass spent between two driver calls, so the same script filmed
+// a clean respawn one run and an extra death the next. Releasing on the death instant
+// changes no reading (the respawn is captured after it either way) and leaves the clip
+// showing the one thing the item is about: where the fresh critter comes back.
+//
+// Where a held key takes the critter next is `controls.one-tile`'s item, and whether the
+// pause protects it from one is `respawn.death-pause`'s.
+//
 // THE SWEEP MUST NOT LOOK FOR THE ANSWER. An earlier version waited for
 // `phase === "crossing" && critter.row === ROW_NEAR` and then asserted that the
 // critter's row was ROW_NEAR — the very fact it had just searched for. That assertion
@@ -61,10 +76,20 @@ const CRITTER_COL = 20;
 const PLOW_COL = 26;
 const PLOW_SPEED = 6;
 
-// A moment on the median before the player's hop, so the clip shows the solid tile the
-// critter left, and a tail after the second respawn so the fresh critter is on camera.
-const LEAD_TICKS = 36; // 0.3 s
-const TAIL_TICKS = 60; // 0.5 s
+// The camera time between the two deaths, and after the second.
+//
+// THE TWO DEATHS HAVE TO READ AS TWO EVENTS. `act` is the recording, and the second
+// scenario used to be posed 0.3 s after the first respawn — so the fresh critter
+// appeared on the near shore and was teleported to the median almost in the same breath.
+// A reviewer saw a flicker, not a respawn, and certainly not two different causes of
+// death. `REST_TICKS` holds on the first respawn where it lands, before anything is
+// re-posed, which is the moment this item is about; `LEAD_TICKS` then shows the critter
+// sitting on the median before the player's hop takes it into the water. Neither is
+// read: `driveDeath` captures the respawn instant as it happens, so these spans are
+// camera time and change nothing about the verdict.
+const REST_TICKS = 120; // 1 s holding on the first respawn, before the re-pose
+const LEAD_TICKS = 72; // 0.6 s on the median before the player's hop
+const TAIL_TICKS = 90; // 0.75 s after the second respawn
 
 export default function item() {
   // One entry per scenario, and the level's full timer length, for `assert` to read.
@@ -81,11 +106,14 @@ export default function item() {
    * would skip past the respawn and read the critter wherever a still-held key had
    * since taken it, failing a build whose respawn landed exactly where it should.
    */
-  const driveDeath = async (api, who, livesBefore) => {
+  const driveDeath = async (api, who, livesBefore, onDeath) => {
     const died = await actUntilDeath(api, livesBefore, {
       max: 240,
       poll: TICK,
     });
+    // Anything the caller wants done the instant the life is spent — releasing a key it
+    // was holding through the death — happens here, before the respawn is waited for.
+    if (onDeath) await onDeath();
     const fresh = await api.until(
       (s) => s.screen === "playing" && s.phase === "crossing",
       { max: 360, poll: TICK }, // 3 s — covers a build that pauses on the death
@@ -122,6 +150,10 @@ export default function item() {
       // anything.
       await driveDeath(api, "crushed", LIVES);
 
+      // Stay on that respawn for a beat before touching anything, so the fresh critter
+      // is seen where the rule says it lands.
+      await api.advance(REST_TICKS);
+
       // Self-inflicted: pose the second scenario on the fresh crossing the first one
       // produced — open water above the median, the critter on the median, the clock
       // wound down again — then hop up into the water and HOLD the key through the
@@ -132,8 +164,9 @@ export default function item() {
       await api.call("placeCritter", CRITTER_COL, ROW_MEDIAN);
       await api.advance(LEAD_TICKS);
       await api.call("keyDown", "ArrowUp"); // still down as the critter goes in
-      await driveDeath(api, "drowned", LIVES - 1);
-      await api.call("keyUp", "ArrowUp");
+      await driveDeath(api, "drowned", LIVES - 1, () =>
+        api.call("keyUp", "ArrowUp"),
+      );
       await api.advance(TAIL_TICKS);
     },
 

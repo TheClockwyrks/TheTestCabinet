@@ -93,3 +93,6 @@ same task in full. A machine that has never run The Test Cabinet starts with
   with a shipped version without a version bump.
 - [Roll Production Service Images](/quickstarts/devops/roll-prod-service-images/)
   promotes CI-built service images to the prod cluster.
+- [Cut a Release](/quickstarts/devops/cut-a-release/) ships `vX.Y.Z`: prepare the
+  release, rehearse it on staging, publish the artifacts, then land the catalog
+  and the services in prod.

@@ -17,7 +17,7 @@
 // Opening the run is the arrange; the three ACCEPTED placements are the behavior under test and
 // are the act.
 
-import { startBuild, snap, towerAt } from "../_helpers.mjs";
+import { startBuild, snap, stemRow, towerAt } from "../_helpers.mjs";
 
 // A frame for the still, so the capture shows the three walls standing against the platform.
 // 100 ms = 6 ticks.
@@ -39,13 +39,15 @@ export default function item() {
       stamps0 = s0.stampsLeft;
 
       // Which way the stem points decides which side of the platform's row is clear for a 2x2.
-      const down = wp.row < 16; // stem at (c, r+1); the row above the platform is free
+      // The rule itself lives in `stemRow` (`specs/board.md`: one row off the anchor toward the
+      // board's vertical centre), so this reads the direction off it rather than restating it.
+      const down = stemRow(wp.row) > wp.row; // stem at (c, r+1); the row above the platform is free
       const outsideRow = down ? wp.row - 2 : wp.row + 1; // a 2x2 that stops one row short of `r`
-      const stemRow = down ? wp.row + 1 : wp.row - 2; // a 2x2 alongside the stem, never on it
+      const besideStem = down ? wp.row + 1 : wp.row - 2; // a 2x2 alongside the stem, never on it
       spots = [
         { name: "beyond the outer arm", col: wp.col + 2, row: wp.row },
         { name: "on the row outside the platform", col: wp.col - 1, row: outsideRow },
-        { name: "beside the stem", col: wp.col - 2, row: stemRow },
+        { name: "beside the stem", col: wp.col - 2, row: besideStem },
       ];
     },
 

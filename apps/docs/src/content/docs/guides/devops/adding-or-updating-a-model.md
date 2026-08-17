@@ -131,7 +131,7 @@ them as a per-model history:
   seeding is missing-only, so a model already on record is left to the two paths
   above.
 - An observation is appended only when something changed: the price, or one of
-  the catalog facts riding along on it. The graph and table collapse
+  the catalog facts riding along on it. The stored history collapses
   consecutive-equal prices, so an observation recorded for a fact change adds no
   spurious price step.
 - Fetching at run-completion time captures promotional pricing as it stood when
@@ -139,8 +139,10 @@ them as a per-model history:
 - A `:free`-tagged OpenRouter run is priced at the model's base rate. The free
   variant is a routing tag rather than a free run.
 
-A model's detail page shows this history as a graph and a table, one row per
-newly-observed price.
+The history is what a run's comparable cost is priced against, so a run keeps the
+rate it actually ran at. It is not charted in the console: a model's price
+changes rarely enough that a chart of it was almost always two or three points,
+so the model's Stats tab shows the latest per-Mtok rates instead of the series.
 
 ## Catalog facts recorded with each price
 
@@ -161,8 +163,8 @@ default window, because a run measured against a guessed one reports the wrong
 thing while looking healthy. See
 [Runs with no resolved window](/gg/context-visibility/#runs-with-no-resolved-window).
 
-The input modalities (`text`, `image`, `file`, …) are shown on the model's detail
-page under Specs as both the raw list and a plain Vision line reading either
+The input modalities (`text`, `image`, `file`, …) are shown on the model's Stats
+tab under Specs as both the raw list and a plain Vision line reading either
 "accepts images" or "text only". They travel to a gg run on the same launch as
 the context window and decide whether the agent may be shown the reference images
 a test case's specs ship. See

@@ -96,11 +96,17 @@ places bodies or sets a value, then `step()` runs the real simulation forward an
 `snapshot()` reads what happened.
 
 - `startGame()` starts a new game, exactly as choosing `PLAY` from the title would.
-  It enters the in-game state and spawns the first wave.
+  It enters the in-game state and begins wave 1 — which, per `specs/gameplay.md`, a
+  build may open either by spawning the rocks at once or by running the `WAVE 1`
+  banner first and spawning as it ends. So the call guarantees a game that has
+  STARTED, not one with rocks already on the field: read `snapshot().waveBanner` and
+  `snapshot().rocks` to see which opening this build chose.
 - `setScore(n)` sets the score directly, as a precondition. The extra-life and
   game-over rules still resolve through real play, so drive a real event to trigger
   them.
-- `setLives(n)` sets the number of ships in reserve, as a precondition.
+- `setLives(n)` sets the number of ships the player has left, counting the one
+  currently in play, as a precondition. It is the same quantity `snapshot().lives`
+  reports; see the note under [Snapshot shape](#snapshot-shape).
 - `setInvuln(seconds)` sets the ship's post-respawn invulnerability window to
   `seconds` remaining; `0` clears it, so lethal collisions resume. This only sets the
   timer; whether a collision then kills the ship is decided by the real collision
@@ -148,11 +154,27 @@ work.
   `"Space"`, `"Enter"`, `"Escape"`, `"KeyP"`, `"KeyM"`{{#if (eq variant.slug "warhead")}}, `"KeyF"`{{/if}}. The key becomes
   held, so a movement or thrust key drives the ship while it is held and the
   simulation is stepped in ticks, and any one-shot action the key triggers on the current
-  screen (a menu move, a confirm, a pause, a mute toggle) is applied immediately.
+  screen (a menu move, a confirm, **a single shot**, a pause, a mute toggle{{#if (eq variant.slug "warhead")}}, a torpedo
+  launch{{/if}}) is applied on the press itself.
 - `keyUp(code)` releases a previously pressed key, ending its held state.
 - `press(code)` is a convenience tap, a `keyDown` immediately followed by `keyUp`.
   This is the usual way to trigger a one-shot action (moving a menu selection,
   confirming it, firing a single shot, pausing, muting) without leaving the key held.
+
+The two bullets above are one rule, and it is worth being explicit about the half
+that is easy to miss. **Firing is an action of the press, not of the held key.**
+`press` leaves the key held for no time at all, so a build that decides whether to
+fire by asking "is the fire key down?" at the top of a fixed step never sees it and
+never fires — the shot is lost, and every scripted check that takes a shot fails
+against a game that shoots perfectly well for a player holding the key a little
+longer. Take the shot when the key goes down. A build is free to launch the round
+inside `keyDown` or to latch the request there and launch it on the next fixed step,
+whichever suits its loop; what it must not do is depend on the key still being held
+once that step arrives.
+
+Holding the fire key goes on firing at the 22-tick rate `specs/ship.md` sets —
+that is the held path, and it is separate from, not a replacement for, the shot the
+press itself takes.
 
 ## Snapshot shape
 
@@ -164,7 +186,7 @@ work.
   screen: "title" | "howto" | "playing" | "paused" | "gameover",
   menuIndex: <number>,   // the highlighted entry (0-based) on a menu screen
   score: <number>,
-  lives: <number>,       // ships in reserve
+  lives: <number>,       // ships left, INCLUDING the one in play (3 at the start)
   wave: <number>,        // the current wave number (0 before the first spawns)
   waveBanner: <boolean>, // whether the WAVE N banner is currently showing
   muted: <boolean>,      // whether the mute toggle is currently on
@@ -198,6 +220,14 @@ work.
   simTime: <number>,   // accumulated simulation time, in seconds
 }
 ```
+
+`lives` counts every ship the player has left, **including the one being flown**, so
+a game that has just started reports `3` (`specs/gameplay.md`), it drops by one on
+each death, and the run ends when the last ship is lost — the game is over at `0`,
+never with a ship still on the field. Do not report the reserve here. The HUD is the
+other way round on purpose: it draws one glyph per ship *in reserve*
+(`specs/ui.md`), which is `lives - 1`, so a fresh game shows two glyphs beside the
+ship it is flying. The two counts differing by one is the intent, not a discrepancy.
 
 `speed` is the ship's current speed, the magnitude of its velocity. `invuln` is
 positive while the ship is in its post-respawn grace window and `0` otherwise.

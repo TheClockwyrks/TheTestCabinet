@@ -9,6 +9,12 @@ uploads a published run's record, its events, and all media to a public
 is the [public projection](/components/backend/projection/), whose rows name
 these objects. This page is the authoritative contract for the bucket's layout.
 
+A run's row carries every headline figure a listing needs — outcome, rating and
+aggregate score — so ranking and paging the published set costs no document
+fetch. The score is the one figure not readable from a run record alone, because
+the checklist point weights live in the case catalog rather than on the record,
+so it is computed where both are in hand and written to the row.
+
 The bucket holds documents for published runs. A produced run that has not been
 published is private, and a run that can never be published, such as an
 infrastructure failure or a [`canceled`](/components/core/run-records/#status)
@@ -26,6 +32,13 @@ This gives a publish a cost proportional to what changed. A run's media and a
 [frozen](/development/frozen-versions/) case version's baselines are written once
 and referenced by every later publish. A run document that gains a review lands
 on a new key and is uploaded, and one whose content is unchanged is skipped.
+There is no separate "has this run changed?" signal that can go stale, because
+the bytes are the signal.
+
+A refresh therefore rebuilds every document in memory, which costs no network
+and no source bytes, and writes only what genuinely differs. The uploads that do
+remain are issued concurrently rather than one at a time, so the publish is not
+serialized on bucket round trips either.
 
 An object at a given key is immutable, so the gallery and the browser cache it
 indefinitely, and a projection row naming a key always names complete content.
@@ -52,8 +65,10 @@ pfp/<account-id>
 for one scoped to that variant.
 
 A document is reached through the projection row that names its key, so a reader
-follows a key rather than composing a path. Every document carries a
-`schemaVersion`, currently `1`.
+follows a key rather than composing a path. The key carries a digest of the
+document's own bytes and cannot be composed from the run id, which is why the
+row naming it is the only supported way in. Every document carries a
+`schemaVersion`, currently `2`.
 
 ## Run documents
 
@@ -80,7 +95,7 @@ backend's own stored copy is left intact; only this public export is rewritten.
 
 ```jsonc
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "record": { "…": "full RunRecord, links populated" },
   "reviews": [
     {
@@ -215,6 +230,12 @@ A run whose content changes mints a new key, so the object it previously occupie
 is left with nothing referencing it. Reclaiming those, and the media of a deleted
 run, is a future cleanup. The accumulation is proportional to content changes
 rather than to publishes, so it settles at a small multiple of the live set.
+
+Deleting them needs a signal the bucket does not carry. A listing reports when an
+object was *written*, not when it fell out of use, so a document written months
+ago says nothing about the moment it was superseded — pruning on that clock would
+delete a just-orphaned document and 404 any reader still following the key it had
+a moment ago. Reclaiming the space waits on a recorded supersession time.
 
 ## Case documents
 

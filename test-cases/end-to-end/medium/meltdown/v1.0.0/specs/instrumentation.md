@@ -18,7 +18,8 @@ in whole steps, decoupled from rendering. Two properties make it drivable from c
 
 - Render-free core. Game state advances by stepping the simulation and must not depend
   on a canvas, on `requestAnimationFrame`, or on wall-clock time to make progress.
-  Rendering reads the state, never the other way around.
+  The dependency runs one way: the simulation never reads from, waits on, or is
+  driven by the renderer.
 - Seeded randomness. Any randomness the game uses (which vent each unit of a wave
   enters from, the spawn timing jitter within a wave, and any variation the special
   modes introduce) runs off a seedable generator, so reseeding and replaying the same
@@ -109,10 +110,12 @@ cooling, movement, pathing, and scoring forward.
   spending and refunds still resolve through the real economy.
 - `setLives(count)` sets the lives remaining, a precondition for driving toward a loss
   or a win.
-- `setWave(n)` sets the current wave and rebuilds the run to the build phase just before
-  wave `n` (its money, lives, and progression as they would stand entering that wave), a
-  precondition for exercising a deep wave, a milestone wave, or the per-wave HP scaling
-  without playing through every wave by hand.
+- `setWave(n)` sets the current wave and rebuilds the run to wave `n`'s build phase, the
+  one preceding its release (its money, lives, and progression as they would stand
+  entering that wave), a precondition for exercising a deep wave, a milestone wave, or
+  the per-wave HP scaling without playing through every wave by hand. A snapshot taken
+  there reports `wave: n`, since a build phase belongs to the wave it is preparing for
+  (`specs/gameplay.md`).
 - `setBuildTimer(seconds)` sets the between-wave build-phase countdown, so a scenario
   can drive it toward auto-start or measure the early-send bonus at a known time left.
   It applies only during a timed build phase, not the untimed opening phase.
@@ -206,7 +209,8 @@ game, then `press` a hotkey (arm a tower, rotate, send the wave, pause, mute) an
   money: <number>,
   lives: <number>,
   score: <number>,
-  wave: <number>,          // current wave number; 0 in the opening phase before wave 1
+  wave: <number>,          // the wave this phase belongs to, incl. a build phase's
+                           // coming wave (`specs/gameplay.md`); 0 outside a match
   waveCount: <number>,     // total waves N for this mode/difficulty
   buildTimer: <number> | null,  // between-wave countdown seconds; null otherwise
   wavePreview: [ <surgeType>, ... ] | null,  // coming wave's types, else null
@@ -244,7 +248,8 @@ game, then `press` a hotkey (arm a tower, rotate, send the wave, pause, mute) an
       slowFactor: <number>,  // the Rime's live slow fraction (0..slowCeil); 0 otherwise
       tripped: <boolean>,    // whether it is offline in its trip cooldown
       tripTimer: <number>,   // seconds left on the trip cooldown, else 0
-      firing: <boolean>,     // whether it has a target and is firing this step
+      firing: <boolean>,     // whether it has a target and is firing this step; always
+                             // false while `tripped`, including the step that tripped it
       radiatorFaces: [ "N" | "E" | "S" | "W", ... ],  // radiator faces, world-oriented
       kills: <number>,       // lifetime kills by this tower
       damageDealt: <number>, // lifetime total damage by this tower

@@ -106,16 +106,16 @@ describe("DebugScriptList", () => {
     const passRow = screen
       .getByRole("rowheader", { name: "Scores when a ball crosses a goal" })
       .closest("tr")!;
-    expect(within(passRow).getByRole("img", { name: "Pass" })).toHaveTextContent(
-      "✔",
-    );
+    expect(
+      within(passRow).getByRole("img", { name: "Pass" }),
+    ).toHaveTextContent("✔");
 
     const failRow = screen
       .getByRole("rowheader", { name: "Match win at 11, lead by 2" })
       .closest("tr")!;
-    expect(within(failRow).getByRole("img", { name: "Fail" })).toHaveTextContent(
-      "✘",
-    );
+    expect(
+      within(failRow).getByRole("img", { name: "Fail" }),
+    ).toHaveTextContent("✘");
 
     const notRunRow = screen
       .getByRole("rowheader", { name: "No spin from a stationary paddle" })
@@ -142,6 +142,35 @@ describe("DebugScriptList", () => {
     // Clicking again collapses it.
     fireEvent.click(row);
     expect(screen.queryByText(detail)).toBeNull();
+  });
+
+  // Every surface that shows this list as reference context rather than as the
+  // reviewer's task folds it away, so it never stands between the reader and what
+  // sits below it.
+  it("starts collapsed when collapsible, and opens on the heading", () => {
+    render(
+      <DebugScriptList
+        scripts={scripts}
+        heading="Automated validation"
+        collapsible
+      />,
+    );
+
+    // Closed: the heading and how much it hides, but none of the tables.
+    const toggle = screen.getByRole("button", { name: /Automated validation/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText("3 checks")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Gameplay" })).toBeNull();
+    expect(screen.queryByRole("table")).toBeNull();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(
+      screen.getByRole("heading", { name: "Gameplay" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    expect(screen.queryByRole("table")).toBeNull();
   });
 
   it("narrows to failed scripts when failedOnly is set", () => {

@@ -96,6 +96,39 @@ read the artifact, arena, snapshot, and Grafana URLs the backend reports from
 the protocol. The desktop app supplies its own arena transport, because its
 arena runs in-process.
 
+## Dialogs
+
+No GUI uses the browser's own `alert()` or `confirm()`. Every question a
+destructive control asks is asked through the themed modal instead: deleting a
+run, killing or sweeping in-flight runs, halting a plan or a ladder, deleting a
+group, plan, ladder or model configuration, marking a run unplayable, and
+restoring a run's validator verdicts. It reads as part of the cabinet rather
+than as the operating system, and it can carry more than a line of plain text.
+
+`Dialog` is the presentational half, a scrim and outlined panel portalled to
+`document.body` so it escapes any panel's overflow or stacking context. It is
+modal: Escape and a click on the scrim dismiss it, focus opens on the default
+action and is trapped until the dialog is answered, and the page behind it does
+not scroll. Its height is capped at the viewport, and its optional detail region
+scrolls at a capped height inside that, so a dialog enumerating a hundred
+changes asks its question exactly the way a three-line one does and never grows
+taller than the page.
+
+`useConfirm()` is the app-layer half, provided once by `GalleryApp`. It hands a
+click handler the imperative `confirm(…)` and `alert(…)` pair it awaits, so a
+call site keeps the guard-clause shape the native dialogs had:
+
+```tsx
+if (!(await confirm({ title: "Delete run", message: "…" }))) return;
+```
+
+Both take an optional `details` node that lands in the dialog's scrollable
+detail region. The reviewer's bulk restore of validator verdicts uses it to list
+every point the restore would change and which way each verdict would flip
+(`describeAutoVerdictRestore`), because by the time a reviewer reaches for that
+control they cannot be expected to hold in mind which of their own calls the
+machine disagrees with.
+
 ## Theming
 
 Components are themed through the `--tcab-*` CSS custom properties. The

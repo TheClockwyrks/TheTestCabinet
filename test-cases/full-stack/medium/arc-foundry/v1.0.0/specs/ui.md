@@ -86,7 +86,12 @@ fully visible:
 - Status bar (`y` in `[0, 56]`): Charge, Grid Integrity (turning to the alert color
   as it runs low), the wave indicator `WAVE n / N` with the current wave's progress or
   a BUILD read between waves (the phase is untimed), and the speed, pause, and mute
-  controls. There is no score readout; the run keeps no running score. A clear `PAUSED`
+  controls. Each of those three reads its own CURRENT STATE at a glance, so the bar
+  shows what the game is doing and not merely what can be clicked: the speed control
+  reads the live multiplier, and the pause and mute controls each look visibly
+  different while paused and while muted than they do otherwise. Muting from the
+  status bar or with `M` (`specs/controls.md`) must therefore change what the bar
+  draws. There is no score readout; the run keeps no running score. A clear `PAUSED`
   read shows while paused in place; during the post-final finale the bar reads
   OVERLOAD and shows the Maze Rating accruing live on the invincible boss.
 - Build panel (`x` in `[1000, 1280]`), top to bottom: the quality-roll odds at the

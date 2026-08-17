@@ -5,7 +5,7 @@
 // event under test — the audio log must grow once the gesture unlocks the build's
 // `AudioContext` and it starts the loop (`audio.ts`'s `resume`/`startMusic`).
 
-import { startBuild, armAudio, audioCount, waitForAudio } from "../_helpers.mjs";
+import { startBuild, armAudio, audioCount, audioCueLabel, waitForAudio } from "../_helpers.mjs";
 
 export default function item() {
   let before;
@@ -27,7 +27,7 @@ export default function item() {
     async assert(api, check) {
       check.expectEq("nothing plays before the first interaction", before, 0);
       check.expectGt(
-        "the music bed starts once armed (Web Audio sources started)",
+        audioCueLabel("the music bed starts once armed", after),
         after,
         before,
       );

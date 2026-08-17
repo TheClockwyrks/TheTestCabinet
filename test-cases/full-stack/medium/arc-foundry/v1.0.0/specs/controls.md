@@ -114,9 +114,9 @@ structure, deselecting, or opening an overlay. Those are the only permitted caus
   live stats (damage, range, fire rate, targeting), and its action controls. For a
   firing component it also shows a per-component performance tally, its kills and total
   damage dealt. A Regulator, and any other non-firing support piece, shows its aura
-  (radius and damage bonus) in place of damage/rate and has no targeting control
-  (below). A blocker reads as inert (no range, no targeting) and offers only a
-  DISMANTLE action (below).
+  (radius and damage bonus) in place of damage/rate and has no targeting control, since
+  it never picks a target (below). A blocker reads as inert (no range, no targeting) and
+  offers only a DISMANTLE action (below).
 - Multi-select (for combining). Shift-click additional base structures (candidates or
   base components) to add them to an explicit combine set alongside the primary; the
   set's members pulse brighter than the ambient combinable-piece pulse (below).
@@ -187,11 +187,33 @@ structure, deselecting, or opening an overlay. Those are the only permitted caus
   back, on each click or press of `T`. The priority applies to that component only,
   defaults to `first` (furthest along the waypoint chain), and takes effect immediately
   (`specs/towers.md`). Targeting may be changed at any time, including during a live
-  wave, since it is not a build action. A non-firing piece, the Regulator, whose only
-  effect is its aura (`specs/towers.md`), has no targeting control, since it never
-  picks a target. The automatic abilities (slow, burn, crit, multishot, aura) need no
-  player controls; they apply on their own when a component that carries them fires or
-  radiates.
+  wave, since it is not a build action. The automatic abilities (slow, burn, crit,
+  multishot, aura) need no player controls; they apply on their own when a component
+  that carries them fires or radiates.
+
+  **Only a piece that fires has a targeting control at all.** A piece that never picks
+  a target has no priority to cycle, so the control is not drawn for it — it is absent,
+  not merely disabled. That covers exactly two cases:
+
+  - a **candidate**, which is a rolled rock and does not fire (`specs/build.md`: "only
+    a component fires"); it has no targeting control at any tier or type, and reports
+    no priority in the debug snapshot (`targeting: null`,
+    `specs/instrumentation.md`); and
+  - a **Regulator**, whose only effect is its aura and which never picks a target
+    (`specs/towers.md`), likewise at any tier and whether a candidate or a kept
+    component.
+
+  A **blocker** is not a base structure at all and offers only DISMANTLE (above).
+
+  This does not conflict with the fixed-slot rule at the top of this section. That rule
+  fixes the action set for **the structure that is selected, as it currently is**, and
+  guarantees it against changes *the player did not trigger*: a wave starting or ending,
+  Charge accruing, a partner appearing. A candidate becoming a firing component is a
+  harvest, which the player commits deliberately — the same kind of cause as selecting a
+  different structure — so the panel may differ between a candidate and the component it
+  becomes, and gaining the targeting control at the harvest is expected. What may never
+  happen is the set changing under a selected piece for a reason the player did not
+  cause.
 - Dismantle. With a structure selected during the build phase, the inspector shows a
   DISMANTLE control, or press `X` (also `Delete` / `Backspace`), that removes it,
   clears its footprint, and re-paths the floor (`specs/board.md`). It is a

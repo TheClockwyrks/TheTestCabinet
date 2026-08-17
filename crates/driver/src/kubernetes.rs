@@ -63,6 +63,33 @@ const RUN_CONTAINER: &str = "run";
 /// run's pod that shares the `managed-by: tcab-driver` label.
 const JOB_ID_LABEL: &str = "tcab.dev/job-id";
 
+/// The cluster-autoscaler annotation that pins a pod to its node.
+///
+/// A sandbox holds the single copy of a run's working tree — nothing replicates it
+/// and nothing replays it, so evicting a sandbox destroys the run. Today the
+/// autoscaler declines to drain a node hosting one anyway, but only incidentally:
+/// the sandbox is a *bare* pod (deliberately — see the ownership discussion in the
+/// dispatcher's `kubernetes` module) and the autoscaler's default policy spares pods
+/// with no controller behind them. That is a property of the cluster's configuration,
+/// not of this manifest, and it inverts the moment anything gives the sandbox an
+/// owner. State the requirement explicitly instead of inheriting it.
+///
+/// The dispatcher stamps the same annotation on the driver `Job` it creates; the two
+/// crates do not depend on each other, so the literal is duplicated exactly as
+/// [`JOB_ID_LABEL`] already is, and both sides are covered by tests asserting it.
+const SAFE_TO_EVICT_ANNOTATION: &str = "cluster-autoscaler.kubernetes.io/safe-to-evict";
+
+/// The annotation value that forbids the cluster autoscaler from evicting a pod.
+const SAFE_TO_EVICT_FALSE: &str = "false";
+
+/// The default [`pod_active_deadline`](KubernetesConfig::pod_active_deadline): 24
+/// hours.
+///
+/// Chosen to be well past any plausible run — a multi-session `ralph` orchestration
+/// is measured in hours, not days — so it can only ever fire on a sandbox that has
+/// genuinely been abandoned. It is a leak backstop, not a run timeout.
+const DEFAULT_POD_ACTIVE_DEADLINE: Duration = Duration::from_secs(24 * 60 * 60);
+
 /// How many times to attempt the streaming `tar` artifact collection before giving
 /// up. The collection rides the kube exec WebSocket, where a transient tunnel drop
 /// surfaces as a missing exit `Status` (`tar exit -1`) on an otherwise-finished run;
@@ -102,6 +129,22 @@ pub struct KubernetesConfig {
     /// only to cap how long a run may queue (for example to catch a pod whose
     /// resource requests no node can ever satisfy).
     pub pod_schedule_timeout: Option<Duration>,
+    /// `activeDeadlineSeconds` on each sandbox pod — the last-resort bound on how
+    /// long one may live, after which the kubelet terminates it.
+    ///
+    /// Every *ordinary* teardown happens long before this: the driver deletes the
+    /// sandbox when the run ends and when a run is canceled, and the dispatcher
+    /// reaps it if the driver died without doing so. This exists for the case where
+    /// all of those fail at once — a `SIGKILL`ed driver *and* a dispatcher that is
+    /// down or has lost its RBAC — because the alternative is a pod whose `sleep
+    /// infinity` keep-alive holds a node's capacity until an operator notices.
+    ///
+    /// So the default is deliberately far longer than any real run rather than a
+    /// tuned timeout: it must never be what ends a legitimate long orchestration.
+    /// Nothing else in the system caps a run's duration, and a run that genuinely
+    /// needs more than the 24-hour `DEFAULT_POD_ACTIVE_DEADLINE` should raise this
+    /// rather than rely on it. `None` disables the backstop entirely.
+    pub pod_active_deadline: Option<Duration>,
     /// The driver pod's own IP, used to route a watched asset-generation sandbox
     /// pod's live preview frames back to the driver via a `hostAlias`. `None`
     /// disables the route (previews are best-effort, so runs are unaffected).
@@ -128,6 +171,7 @@ impl Default for KubernetesConfig {
             memory_limit: None,
             pod_ready_timeout: Duration::from_secs(180),
             pod_schedule_timeout: None,
+            pod_active_deadline: Some(DEFAULT_POD_ACTIVE_DEADLINE),
             pod_ip: None,
             run_pod_prefix: "tcab-run-".to_string(),
             job_id: None,
@@ -988,6 +1032,14 @@ fn build_run_pod(name: &str, spec: &ContainerSpec, config: &KubernetesConfig) ->
         service_account_name: config.run_service_account.clone(),
         image_pull_secrets,
         host_aliases,
+        // The last-resort bound on a sandbox's life. The container's keep-alive is
+        // `sleep infinity`, so a sandbox whose driver died by SIGKILL — and which the
+        // dispatcher's reaper never got to either — would otherwise run until an
+        // operator noticed, holding its requests against the node the whole time.
+        // Sized to outlast any real run; see `pod_active_deadline`.
+        active_deadline_seconds: config
+            .pod_active_deadline
+            .map(|deadline| deadline.as_secs() as i64),
         // Untrusted model code runs here; it never needs the API, so withhold a
         // service-account token from the run pod.
         automount_service_account_token: Some(false),
@@ -998,6 +1050,10 @@ fn build_run_pod(name: &str, spec: &ContainerSpec, config: &KubernetesConfig) ->
         metadata: ObjectMeta {
             name: Some(name.to_string()),
             labels: Some(labels),
+            annotations: Some(BTreeMap::from([(
+                SAFE_TO_EVICT_ANNOTATION.to_string(),
+                SAFE_TO_EVICT_FALSE.to_string(),
+            )])),
             ..Default::default()
         },
         spec: Some(pod_spec),

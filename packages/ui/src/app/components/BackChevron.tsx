@@ -1,5 +1,9 @@
 import { Link } from "react-router";
-import { sectionReturnTo, type BackSection } from "./backReturn";
+import {
+  sectionReturnLabel,
+  sectionReturnTo,
+  type BackSection,
+} from "./backReturn";
 import styles from "./BackChevron.module.scss";
 
 /**
@@ -53,12 +57,19 @@ type BackChevronTarget =
 // with it. Every detail page uses the same control so they read as one family.
 export function BackChevron(
   props: BackChevronTarget & {
-    /** Accessible label / tooltip for the icon-only control. */
+    /**
+     * Accessible label / tooltip for the icon-only control. A cross-section claim
+     * (see `backReturn`) supplies its own, because such a claim has redirected the
+     * control somewhere this page's wording does not describe.
+     */
     label?: string;
   },
 ) {
   const label = props.label ?? "Back";
   if (props.onBack) {
+    // A page taking the step itself has no section, so there is no claim that could
+    // have moved the destination out from under this label: what the caller said is
+    // what happens.
     return (
       <button
         type="button"
@@ -71,12 +82,13 @@ export function BackChevron(
       </button>
     );
   }
+  const announced = sectionReturnLabel(props.section, label);
   return (
     <Link
       className={styles.back}
       to={sectionReturnTo(props.section, props.to)}
-      aria-label={label}
-      title={label}
+      aria-label={announced}
+      title={announced}
     >
       <span aria-hidden>&lsaquo;</span>
     </Link>

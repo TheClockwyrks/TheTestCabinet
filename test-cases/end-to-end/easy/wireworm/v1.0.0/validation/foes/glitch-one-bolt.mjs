@@ -17,7 +17,7 @@
 // glitch's disappearance looked like a clean one-bolt kill when nothing had been shot
 // at all.
 
-import { actFireAndResolve, foesOf, freshBoard, tileCY } from "../_helpers.mjs";
+import { actShootFoeDead, foesOf, freshBoard, tileCY } from "../_helpers.mjs";
 
 export default function item() {
   let before;
@@ -42,7 +42,9 @@ export default function item() {
       before = start.score;
       levelBefore = start.level;
       glitchesBefore = foesOf(start, "glitch").length;
-      snap = await actFireAndResolve(api);
+      // Waits for the glitch to actually leave the board, not just for the bolt to
+      // be consumed — see `actShootFoeDead`.
+      snap = await actShootFoeDead(api, "glitch");
       // Both operands are captured; the sim runs on only so the kill is legible at
       // the end of the clip.
       await api.advance(60); // 0.5s of visible aftermath

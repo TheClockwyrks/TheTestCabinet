@@ -12,20 +12,20 @@
 // and this floor holds exactly one tower, so a pair of fresh casualties inside one
 // step can only have come from one shot landing on both.
 
-// The Bloom is set into a vent corridor. Two things follow from that, and this item
-// needs both: the clump has to come into the Bloom's range at all — which an emitter
-// parked beside an assumed lane cannot count on, since the spec fixes the vent and the
-// exhaust but not the route between them (see the note above `buildVentCorridor` in
-// `_helpers`) — and the corridor funnels the four Motes down the same two rows, so
-// they arrive as the tight clump a splash claim needs rather than fanned across the
-// opening's four rows, which are further apart than the splash radius.
+// The Bloom stands at the gate. Two things follow from that, and this item needs both:
+// the clump has to come into the Bloom's range at all — which an emitter parked beside
+// an assumed lane cannot count on, since the spec fixes the vent and the exhaust but not
+// the route between them (see the note above `buildGate` in `_helpers`) — and the gate
+// squeezes the four Motes through the same two-row gap, so they arrive as the tight
+// clump a splash claim needs rather than fanned across the opening's four rows, which
+// are further apart than the splash radius.
 
 import {
   newGame,
-  buildVentCorridor,
+  buildGate,
   spawn,
   actTail,
-  CORRIDOR_WALLS,
+  GATE_WALLS,
   TICK,
 } from "../_helpers.mjs";
 
@@ -41,14 +41,14 @@ export default function item() {
     // nature; the ceiling only stops a badly-routed clump from stretching it.
     clipMs: 4000,
 
-    // A Bloom beside the lane at moderate power, with a tight clump of real Motes
-    // walking into its range.
+    // A Bloom at the gate at moderate power, with a tight clump of real Motes walking
+    // into its range.
     async arrange(api) {
       await newGame(api, "containment", "medium", 100000);
       await api.call("setLives", 100000);
-      const corridor = await buildVentCorridor(api, "bloom");
-      walls = corridor.walls;
-      await api.call("setHeat", corridor.id, 40); // moderate power: hits, but does not one-shot Motes
+      const gate = await buildGate(api, "bloom");
+      walls = gate.walls;
+      await api.call("setHeat", gate.id, 40); // moderate power: hits, but does not one-shot Motes
       for (let i = 0; i < 4; i += 1) await spawn(api, "mote", "left");
     },
 
@@ -82,9 +82,9 @@ export default function item() {
     },
 
     async assert(api, check) {
-      // A hole in the corridor lets the clump spread out or bypass the Bloom, and
+      // A hole in the gate lets the clump spread out or bypass the Bloom, and
       // "nothing was splashed" would then be about the scenery, not the splash.
-      check.expectEq("the vent corridor was built", walls, CORRIDOR_WALLS);
+      check.expectEq("the gate wall was built", walls, GATE_WALLS);
       check.expectOk(
         "one Bloom shot damaged more than one unit in the clump",
         hit,

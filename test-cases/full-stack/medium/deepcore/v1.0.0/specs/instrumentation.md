@@ -18,7 +18,8 @@ driveable from code:
 
 - Render-free core. Game state advances by stepping the simulation and must not depend
   on a canvas, on `requestAnimationFrame`, or on wall-clock time to make progress.
-  Rendering reads the state, never the other way around.
+  The dependency runs one way: the simulation never reads from, waits on, or is
+  driven by the renderer.
 - Seeded randomness. All of the game's randomness runs off a seedable generator: the
   per-game mine generation (`specs/world.md`, the tunnels and the ore/gemstone/hazard/
   stone scatter and the random material-node positions) and any other gameplay

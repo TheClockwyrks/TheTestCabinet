@@ -17,6 +17,7 @@
 
 import {
   startClean,
+  protectShip,
   spawnDrone,
   findDrone,
   enemyBullets,
@@ -32,15 +33,24 @@ const SLOT_X = 640;
 const SHIP_LEFT_X = 200;
 const SHIP_RIGHT_X = 1080;
 
-// How near the player's x a dive must come for it to count as a real attack.
+// How much of its opening gap a dive must CLOSE for it to count as a real attack.
 //
-// The spec asks for a dive that threatens the player but "stays dodgeable, sweeping
-// in rather than homing perfectly", so this is deliberately loose: 80 px is two ship
-// widths — close enough that the player has to move, far enough that a build need
-// not track to the pixel. A dive that starts 440 px away and never gets nearer than
-// this has not bent toward the player at all; it cannot reach the player's column,
-// so it is not the attack `specs/drones.md` describes.
-const THREAT_X = 80;
+// `specs/drones.md` fixes no distance. It asks for two things at once — the path
+// "threatens the player, bending toward the player ship's `x` so it is a real
+// attack, not a fixed track", but "stays dodgeable, sweeping in rather than homing
+// perfectly onto the player" — so any absolute "comes within N px" threshold is a
+// number the spec does not state, and the tighter it is the more it asks for the
+// homing the same sentence rules out. The old check demanded 80 px, which failed
+// builds whose dives visibly bend across the field toward the ship.
+//
+// What the spec DOES separate is bending from a fixed track, and that is a
+// relative claim: a dive is run twice from the same slot, once with the ship far
+// left and once far right, and each run is asked to close a third of the 440 px it
+// starts away from the ship. A fixed track cannot do both — whichever way it
+// sweeps, it closes on one player position only by opening away from the other —
+// while a path that bends toward the player closes on both. That is exactly the
+// distinction `specs/drones.md` draws, tested without inventing a distance.
+const CLOSE_FRACTION = 1 / 3;
 
 // The old sweep was 130 reads 0.02 s apart — a 2.6 s window. 0.02 s is 2.4 ticks,
 // which the tick contract refuses rather than rounds, so the poll rounds DOWN to 2:
@@ -58,8 +68,10 @@ const WINDOW_TICKS = 720;
  * dives are measured identically and only one costs clip time.
  *
  * Returns the phase the drone entered, the closest its x came to the ship's during
- * the dive, the band of the first enemy bullet it fired (null if it never fired),
- * and the band the drone itself was reading while diving.
+ * the dive (a DISTANCE in px, not a field coordinate), the drone's own x at that
+ * closest approach (which IS a field coordinate), the band of the first enemy
+ * bullet it fired (null if it never fired), and the band the drone itself was
+ * reading while diving.
  */
 async function runDive(api, { shipX, advanceBy, leadInTicks = 0 }) {
   await api.call("clearField");
@@ -81,6 +93,7 @@ async function runDive(api, { shipX, advanceBy, leadInTicks = 0 }) {
   const entered = findDrone(await api.snapshot(), id).phase;
 
   let nearest = Math.abs(SLOT_X - shipX);
+  let nearestX = SLOT_X;
   let firedBand = null;
   let droneBand = "cyan";
   for (let spent = 0; spent < WINDOW_TICKS; spent += POLL_TICKS) {
@@ -88,14 +101,18 @@ async function runDive(api, { shipX, advanceBy, leadInTicks = 0 }) {
     const s = await api.snapshot();
     const d = findDrone(s, id);
     if (d && d.phase === "diving") {
-      nearest = Math.min(nearest, Math.abs(d.x - s.ship.x));
+      const gap = Math.abs(d.x - s.ship.x);
+      if (gap < nearest) {
+        nearest = gap;
+        nearestX = d.x;
+      }
       droneBand = d.effectiveBand ?? d.band;
     }
     const shots = enemyBullets(s);
     if (firedBand === null && shots.length > 0) firedBand = shots[0].band;
     if (!d || d.phase !== "diving") break;
   }
-  return { entered, nearest, firedBand, droneBand };
+  return { entered, nearest, nearestX, firedBand, droneBand };
 }
 
 export default function item() {
@@ -110,6 +127,10 @@ export default function item() {
     // are set up identically.
     async arrange(api) {
       await startClean(api);
+      // Two full dives are flown at the ship, and a diver fires on the way down.
+      // Three hits would end the run and stop the wave advancing, leaving the
+      // second dive unmeasurable. See `protectShip`.
+      await protectShip(api);
       await api.call("setShipX", SHIP_LEFT_X);
     },
 
@@ -134,16 +155,31 @@ export default function item() {
 
     async assert(api, check) {
       check.expectEq("the drone enters a dive", left.entered, "diving");
+
+      // Each dive starts this far from the ship, and must close `CLOSE_FRACTION` of
+      // it. The asserted value is the closest approach as a DISTANCE in px — how
+      // near the diver's x came to the ship's — not a position on the field.
+      const startGap = Math.abs(SLOT_X - SHIP_LEFT_X);
+      const mustReach = startGap * (1 - CLOSE_FRACTION);
       check.expectLt(
-        "a dive with the player to the left reaches the player's x",
+        "with the player far left, the dive closes a third of the px gap to the player's x",
         left.nearest,
-        THREAT_X,
+        mustReach,
       );
       check.expectLt(
-        "a dive with the player to the right reaches the player's x",
+        "with the player far right, the dive closes a third of the px gap to the player's x",
         right.nearest,
-        THREAT_X,
+        mustReach,
       );
+      // …and it closes them in opposite directions, which is what a fixed track
+      // cannot do. Sign only: the spec fixes no distance, and the pair of closing
+      // tests above already carries the magnitude.
+      check.expectGt(
+        "the dive's closest-approach x follows the player from left to right",
+        right.nearestX,
+        left.nearestX,
+      );
+
       check.expectOk("the diver fires while diving", left.firedBand !== null);
       if (left.firedBand !== null) {
         check.expectEq(

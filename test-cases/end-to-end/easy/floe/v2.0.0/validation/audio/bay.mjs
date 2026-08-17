@@ -7,7 +7,7 @@ import {
   startCrossing,
   armAudio,
   audioCount,
-  BAYS,
+  BAY_COL,
   WATER_TOP,
 } from "../_helpers.mjs";
 
@@ -15,7 +15,7 @@ export default function item() {
   let before;
   let after;
   let filled;
-  const col = BAYS[0][0]; // a column under the leftmost open bay
+  const col = BAY_COL[0]; // the column under the leftmost open bay (see `BAY_COL`)
 
   return {
     id: "audio.bay",

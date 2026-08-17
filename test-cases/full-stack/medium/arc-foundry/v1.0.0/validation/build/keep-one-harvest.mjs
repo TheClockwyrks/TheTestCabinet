@@ -8,6 +8,11 @@
 
 import { startBuild, placeCandidate, towerAt, snap, SECOND } from "../_helpers.mjs";
 
+// A beat on the three candidates before one of them is kept. The claim is about what the harvest
+// does to the OTHER two — they harden into inert blockers — and that is a change a reviewer can
+// only see against the board as it was. The act used to open on the keep itself, so all three
+// pieces had already resolved before the first frame.
+const LEAD_TICKS = 1.5 * SECOND;
 // How much of the launched wave to show after the harvest. Two seconds is enough for the first
 // units to walk in, which is what "the harvest launched the wave" looks like on screen.
 const WAVE_TICKS = 2 * SECOND;
@@ -31,6 +36,7 @@ export default function item() {
 
     async act(api) {
       before = await snap(api);
+      await api.advance(LEAD_TICKS); // the three candidates standing, none of them resolved yet
 
       await api.call("keep", keepId);
       s = await snap(api);

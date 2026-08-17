@@ -8,8 +8,9 @@
 
 import {
   startClean,
+  holdDrones,
   spawnDrone,
-  shootDrone,
+  spawnBystander,
   shootFromLane,
   findDrone,
   friendlyBullets,
@@ -19,9 +20,6 @@ import {
 // Room for the shot to cross the ~280 px up to the drone and be consumed by it.
 const REACH_MAX_TICKS = 150;
 
-// Long enough for a shot posed on the drone to resolve.
-const CONTACT_TICKS = 24;
-
 export default function item() {
   // The drone under test and its state once the shot has resolved.
   let shardId;
@@ -30,9 +28,12 @@ export default function item() {
   return {
     id: "polarity.mismatch-no-destroy",
 
-    // One formation Shard on an empty field, so its survival below is unambiguous.
+    // One formation Shard, held still (`holdDrones`) so it stands exactly where it
+    // was posed, plus a bystander well off to the side to keep the wave live.
     async arrange(api) {
       await startClean(api);
+      await holdDrones(api);
+      await spawnBystander(api);
       shardId = await spawnDrone(api, {
         kind: "shard",
         band: "cyan",
@@ -47,21 +48,20 @@ export default function item() {
       // than on the shot already having landed.
       await api.advance(LEAD_IN_TICKS);
 
-      // One shot the reviewer can watch: fired from the ship's lane so it visibly
-      // rises into the drone and fails to break it, which is the whole point of the
-      // item and invisible when the bullet starts on top of its target.
+      // ONE shot, fired from the ship's lane so it visibly rises into the drone and
+      // fails to break it — which is the whole point of the item and invisible when
+      // the bullet starts on top of its target.
+      //
+      // The old script had to fire twice: a lane shot for the clip, then a second
+      // posed ON the drone for the verdict, because a lane shot could miss a
+      // swaying drone and "the drone survived" would then mean nothing. With the
+      // drone held, the lane shot cannot miss its own column, so contact is certain
+      // and the one shot the reviewer watches is the one the verdict rests on.
       await shootFromLane(api, shardId, "magenta"); // opposite band
+      // The bullet being consumed is the contact: the collision has resolved.
       await api.until((s) => friendlyBullets(s).length === 0, {
         max: REACH_MAX_TICKS,
       });
-
-      // …and one posed ON the drone, which is what the verdict rests on. The item's
-      // evidence is that nothing happened, and a lane shot that simply MISSED — the
-      // formation sways while it is in flight — would leave the drone alive for
-      // entirely the wrong reason. Posed, the contact is certain, so a surviving
-      // drone can only mean the band rule held.
-      await shootDrone(api, shardId, "magenta");
-      await api.advance(CONTACT_TICKS);
       after = findDrone(await api.snapshot(), shardId);
 
       // Hold on the survivor: "the shot did not destroy it" only reads on film if

@@ -20,17 +20,29 @@ import {
   startCrossing,
   poseClimb,
   actClimbByPress,
-  BAY_LEFT,
+  BAY_COL,
 } from "../_helpers.mjs";
 
 // How long the clip keeps filming after the catch: enough for the score to land and
 // the next crossing to start, so the +200 is visibly the result of the hop.
 const TAIL_TICKS = 180; // 1.5 s
 
+// AND THE RUN HAS TO STILL BE LIVE WHEN THE FISH IS SOUGHT. The wait for the fish is a
+// skip through the build's own simulation, and a build can lose the whole run inside it
+// without any help: one audited against this case emerges a bear onto the fresh
+// critter's spawn tile and catches it there, three lives inside two seconds, so the skip
+// ended on a game-over screen where no fish will ever appear. Read as "no bonus-catch
+// fish appears in an open bay" that is a true sentence about a false subject — the fish
+// timer was never the thing that failed. The run's own state is read alongside it, so a
+// build that ended its run before the fish was due fails on that, and the reviewer is
+// pointed at the defect that actually happened (`hunter.fair-reset-bay`'s, or
+// `progression.gameover`'s) rather than at the fish.
+
 export default function item() {
   // The skip that waited for the fish, which bay it landed in, and the score either
   // side of the hop into it.
   let r;
+  let stillPlaying;
   let fishBay;
   let fishBeforeHop;
   let before;
@@ -50,8 +62,9 @@ export default function item() {
         max: 1440,
         poll: 12,
       }); // up to 12 s of the build's own fish timer, at a 0.1 s cadence
+      stillPlaying = r.snap.screen === "playing";
       fishBay = r.snap.fishBay;
-      if (fishBay !== null) await poseClimb(api, BAY_LEFT[fishBay]);
+      if (fishBay !== null) await poseClimb(api, BAY_COL[fishBay]);
     },
 
     // The crossing itself: the climb up the fish's column and the hop into its bay —
@@ -68,6 +81,10 @@ export default function item() {
     },
 
     async assert(api, check) {
+      check.expectOk(
+        "the run is still being played when the fish is due",
+        stillPlaying,
+      );
       check.expectOk("a bonus-catch fish appears in an open bay", r.hit);
       check.expectEq(
         "the fish is still in its bay before the hop",

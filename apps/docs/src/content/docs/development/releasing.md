@@ -4,9 +4,14 @@ title: Releasing
 
 This page covers cutting a release of the downloadable binaries and the desktop
 app, and the one-time configuration behind the project's deployed static sites.
-Standing the always-on services up as staging or production environments is
-covered by [Deployment](/deployment/overview/); running them on your own machine
-is covered by [Running](/development/running/); building locally is covered by
+For the whole `vX.Y.Z` sequence these workflows sit inside — preparing the
+release on `nightly`, rehearsing it on staging, and landing the catalog and the
+services in production afterwards — see
+[Cutting a Release](/guides/devops/cutting-a-release/) and its
+[quickstart](/quickstarts/devops/cut-a-release/). Standing the always-on services
+up as staging or production environments is covered by
+[Deployment](/deployment/overview/); running them on your own machine is covered
+by [Running](/development/running/); building locally is covered by
 [Building](/development/building/).
 
 ## Releasing the binaries and desktop app

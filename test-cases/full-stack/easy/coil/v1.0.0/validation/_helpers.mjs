@@ -169,6 +169,46 @@ export function makeLongSnake() {
 // scenario never eats it.
 export const PARK_PELLET = { col: 28, row: 16 };
 
+// ---- The tail-chase lane (collision) ------------------------------------------
+//
+// The shared pose behind BOTH tail items: `tail-follow-safe`, where the head enters
+// the cell the tail is vacating that tick and lives, and `growth-tail-fatal`, where
+// the same entry on a GROWTH tick — the tail staying put — kills. One geometry, two
+// items, so the pair reads as the single rule it is: whether that cell is free
+// depends only on whether the tail moves.
+//
+// The snake is a flattened hook. The head runs RIGHT along row 8 down a clear
+// corridor; the body drops to row 9, runs out ahead of it, turns up the far side, and
+// comes back along row 7. That puts the far corner (`TAIL_CHASE_TARGET`) in the
+// head's path with the tail retracting toward it at exactly the same rate.
+//
+// THE INVARIANT, which is what makes the approach filmable. On tick `i` the cell
+// vacated is the one at index `L - i` (the tail is index `L - 1` and one cell leaves
+// per non-growth tick). For the head to arrive exactly as the target is vacated, with
+// `k` ticks of approach, the target must sit at index `L - k`. Here k = 7 and L = 16,
+// so the target is index 9 — and the head, 7 cells short of it, reaches it on the very
+// tick the tail does. Change one of those numbers and the other two must move with it,
+// or the follow lands a tick early (into solid body — a death, not a follow) or a tick
+// late (into empty board — no collision at all, and the item checks nothing).
+//
+// Rows 7-9 and cols 4-11 carry no Maze obstacle, so the whole lane is clear in both
+// variants.
+export const TAIL_CHASE_APPROACH = 7;
+export const TAIL_CHASE_TARGET = { col: 11, row: 8 };
+
+/**
+ * The tail-chase pose: head first, facing right, 16 cells. See the block above for
+ * the index invariant that ties its length to `TAIL_CHASE_APPROACH`.
+ */
+export function tailChaseSnake() {
+  const cells = [{ col: 4, row: 8 }]; // head, 7 cells short of the target
+  for (let c = 4; c <= 11; c += 1) cells.push({ col: c, row: 9 }); // out along row 9
+  cells.push({ col: 11, row: 8 }); // index 9 — the target the tail reaches on tick 7
+  cells.push({ col: 11, row: 7 });
+  for (let c = 10; c >= 6; c -= 1) cells.push({ col: c, row: 7 }); // back along row 7
+  return cells;
+}
+
 // ---- Round setup (arrange) -----------------------------------------------------
 //
 // These pose the world with control ops and consume no time, so they are callable
@@ -260,10 +300,10 @@ export async function actAwait(api, predicate, { max = MAX_TICK_LAG } = {}) {
 
 /**
  * ACT half of a forced-eat run: eat `count` pellets in the clear lane
- * `arrangeEatLane` posed, one per tick, and report what the real eat resolved to
- * after each. Each iteration places the pellet one cell ahead of the CURRENT head
- * (a precondition) and advances one tick, so the head runs into it and the real
- * eat / combo / scoring / spawn all resolve through the tick.
+ * `arrangeEatLane` posed and report what the real eat resolved to after each. Each
+ * iteration places the pellet `gap` cells ahead of the CURRENT head (a precondition)
+ * and advances that many ticks, so the head runs into it and the real eat / combo /
+ * scoring / spawn all resolve through the tick.
  *
  * Each eat is then WAITED FOR before the next one is posed (`actAwait`). Growth is
  * the eat's own signature and `snapshot` reports it in both variants, so that is what
@@ -273,13 +313,23 @@ export async function actAwait(api, predicate, { max = MAX_TICK_LAG } = {}) {
  * pending tick was about to eat, so half the rally is silently lost from the clip
  * while the validate pass — exact, and therefore right — still reports every eat.
  *
+ * `gap` is how many cells AHEAD of the head each pellet is placed, and so how many
+ * ticks the snake travels to reach it. The default of 1 is an eat every tick, which
+ * is what the combo items want: they are about what happens when eats land in quick
+ * succession, and a wider gap would drain the very window they are testing. Widen it
+ * only for an item whose subject is the eat ITSELF rather than the rate — at one eat
+ * per 125 ms a reviewer sees a blur, where a gap of a few cells shows the snake
+ * travel, arrive, and eat. Cost the widening against the lane: the head advances
+ * `count * gap` cells from where `arrangeEatLane` posed it and must stay inside the
+ * interior (`IN_COL1`), or the run ends against the wall part-way through.
+ *
  * Pair with `arrangeEatLane`. Returns `{ combos, scores, pellets, heads, snaps }` —
  * four parallel arrays of the per-eat multiplier, score, AUTO-spawned pellet (the
  * one the real spawn code chose, not the one posed), and head cell, plus `snaps`,
  * the full snapshot after each eat for a caller that needs more than those four.
  * The first four are what the old `eatSequence` returned.
  */
-export async function actEatSequence(api, { count = 4 } = {}) {
+export async function actEatSequence(api, { count = 4, gap = 1 } = {}) {
   const combos = [];
   const scores = [];
   const pellets = [];
@@ -288,8 +338,10 @@ export async function actEatSequence(api, { count = 4 } = {}) {
   for (let i = 0; i < count; i += 1) {
     const before = await api.snapshot();
     const head = before.snake[0];
-    await api.call("setPellet", { col: head.col + 1, row: head.row });
-    await api.advance(1); // 1 tick = the old step(TICK_DT); the head enters the pellet cell
+    await api.call("setPellet", { col: head.col + gap, row: head.row });
+    // `gap` ticks = the head crossing the cells between it and the pellet, entering
+    // the pellet cell on the last of them.
+    await api.advance(gap);
     const s = await actAwait(api, (snap) => snap.length > before.length);
     combos.push(s.combo);
     scores.push(s.score);
@@ -356,6 +408,37 @@ export async function actSteer(api, code) {
   await api.call("press", code);
   await api.advance(1); // 1 tick = the old step(TICK_DT); the buffered turn applies
   return (await api.snapshot()).dir;
+}
+
+/** One second of run-in at 8 Hz — `actLeadIn`'s default. */
+export const LEAD_IN_TICKS = 8;
+
+/**
+ * ACT head: let the posed scenario play for a readable moment BEFORE the event the
+ * assertions read, so the RECORDED clip opens on the starting situation and the
+ * reviewer watches the event arrive instead of finding it already over.
+ *
+ * The mirror of `actPlayOn`, and subject to one extra rule. A tail runs after the
+ * asserted state has been captured and so cannot move a verdict; a lead-in runs
+ * BEFORE it and moves the simulation, so it is part of the checked scenario and every
+ * assertion downstream must be written for where it leaves the snake. That is the
+ * point rather than a caveat: the clip then shows the run-in the assertions actually
+ * drove, which is the rule the collision items were rewritten under (see
+ * `collision/wall-fatal.mjs`) — a lead-in extends the checked scenario backwards, it
+ * does not stage a different one in front of it.
+ *
+ * It has to be `advance`. `skip` lands in the same state instantly and films nothing,
+ * which is the opposite of what a lead-in is for; `settle` paints without moving the
+ * simulation in the validate pass but, in the record pass, lets the build's own clock
+ * run — so the two passes would diverge and the check would be reading a different
+ * scenario from the one on camera.
+ *
+ * The default of 8 ticks is exactly one second at Coil's 8 Hz. Lower it where the
+ * geometry is tight — the snake covers a cell a tick, so a lead-in spends board, and
+ * in the Maze variant it can also spend it into an obstacle (`MAZE_OBSTACLES`).
+ */
+export async function actLeadIn(api, ticks = LEAD_IN_TICKS) {
+  await api.advance(ticks);
 }
 
 /**

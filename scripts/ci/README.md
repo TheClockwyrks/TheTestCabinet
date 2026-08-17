@@ -37,8 +37,9 @@ and can be run from anywhere, including locally:
 | `binary-smoke.sh`    | release-build, `cargo nextest run --release` + doctests, run binary | yes |
 | `smoke-binary.sh`  | run a built binary (`--version`/`--help`/commands) | yes      |
 | `web-build.sh`     | `npm ci`, type-check + `vite build` of the front ends | yes   |
+| `web-test.sh`      | `npm ci`, build the workspace runtime packages, `vitest run` across every workspace | yes |
 | `specs-lint.sh`    | markdownlint + cspell over `test-cases/**`         | no       |
-| `contract-drift.sh`| regenerate TS bindings, JSON Schemas and gg's reference, fail on diff | yes |
+| `contract-drift.sh`| regenerate TS bindings, JSON Schemas and gg's prompt templates, fail on diff | yes |
 | `frozen-check.sh`  | `.frozen` test-case versions match their recorded digests | yes |
 | `build-context.sh` | every Dockerfile `COPY` source — and every gg guest package — survives the `.dockerignore` allowlist | yes |
 
@@ -110,12 +111,21 @@ touches, so they go in a prefix of their own rather than widening the run list
 and every run image with it.
 
 Every surface that compiles `test-cabinet-gg` therefore calls **both** —
-`rust-test.sh`, `contract-drift.sh`, the release workflow's `gg` job, the driver
-image's gg build stage and the devcontainer's gg layer. Skipping the second one
+`rust-test.sh`, the release workflow's `gg` job, the driver image's gg build
+stage and the devcontainer's gg layer. (`contract-drift.sh` is deliberately not
+on that list any more: it stopped building gg when the backend's committed
+`gg_reference.json` was retired, so it needs neither installer — see its
+header.) Skipping the second one
 does not break the build, which is exactly why the call is explicit everywhere:
 `packages/gg-sandbox-csharp/build.sh` falls back to fetching both into that
 package's own `.build/`, so what a missing prefix buys is a silent ~1.4 GB
 download in the middle of somebody's first `cargo build`.
+
+`web-test.sh` is the TypeScript counterpart of `rust-test.sh`, and is separate
+from `web-build.sh` for two reasons. A failing assertion should report as a failing
+test rather than as a failing build; and the two need different things, so they
+run in parallel — the tests need only the small workspace runtime packages built
+(`npm run build:packages`), never the app bundles.
 
 `binary-smoke.sh` is the release gate that keeps a flat-out-broken binary from
 ever being published: it builds `tcab` in the shipped release profile, runs the
@@ -140,7 +150,8 @@ the `tcab-backend` (`crates/backend`) server, the run-topology services
 `crates/core`/`crates/telemetry` libraries they share. On the TypeScript
 side it is the front ends built by `web-build.sh`: the gallery (`apps/site`), the
 operator web console (`apps/web`), and these docs (`apps/docs`), all on top of
-`packages/run-record` and the source-consumed `packages/ui`.
+`packages/run-record` and the source-consumed `packages/ui`; plus, through
+`web-test.sh`, every workspace's unit suite.
 
 The Tauri desktop app (`crates/desktop`, `apps/desktop`) is deliberately **not**
 built by these per-change CI scripts, so their runners do not need the desktop

@@ -7,16 +7,19 @@ import { RegisterPage } from "./RegisterPage";
 import { CoveragePlansPage } from "./CoveragePlansPage";
 import { CoveragePlanPage } from "./CoveragePlanPage";
 import { CoveragePlanEditPage } from "./CoveragePlanEditPage";
+import { LaddersPage } from "./LaddersPage";
+import { LadderPage } from "./LadderPage";
+import { LadderEditPage } from "./LadderEditPage";
 import { GroupsPage } from "./GroupsPage";
 import { GroupEditPage } from "./GroupEditPage";
 import { GgConfigsPage } from "./GgConfigsPage";
 import { GgConfigEditPage } from "./GgConfigEditPage";
 
 // Routes owned by the account section: the signed-in account view (its Profile,
-// Coverage, Groups, and gg tabs) plus the sign-in and registration pages, each its
-// own URL so it is linkable (the top-bar account control links to them). The
-// reviewer coverage tooling — multiple coverage plans and the reusable groups they
-// reference — lives here too, scoped to the account it belongs to, as do the
+// Coverage, Ladders, Groups, and gg tabs) plus the sign-in and registration pages,
+// each its own URL so it is linkable (the top-bar account control links to them).
+// The reviewer coverage tooling — coverage plans, ladders, and the reusable groups
+// both reference — lives here too, scoped to the account it belongs to, as do the
 // operator's saved gg configurations (named capability sets the new-run form
 // launches once `gg` is picked as the orchestrator). They drive the
 // auth context the static site does not provide, so they mount only when the host
@@ -52,6 +55,19 @@ export function accountRoutes(canExecute: boolean) {
             path={routePatterns.accountCoveragePlan}
             element={<CoveragePlanPage />}
           />
+          <Route
+            path={routePatterns.accountLadders}
+            element={<LaddersPage />}
+          />
+          <Route
+            path={routePatterns.accountLadderNew}
+            element={<LadderEditPage />}
+          />
+          <Route
+            path={routePatterns.accountLadderEdit}
+            element={<LadderEditPage />}
+          />
+          <Route path={routePatterns.accountLadder} element={<LadderPage />} />
           <Route path={routePatterns.accountGroups} element={<GroupsPage />} />
           <Route
             path={routePatterns.accountGroupNew}

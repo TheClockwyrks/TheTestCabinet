@@ -65,6 +65,13 @@ under `[workspace.dependencies]` and inherited with `{ workspace = true }`.
 - `packages/run-record`: `@test-cabinet/run-record`. Shared TypeScript types
   and JSON Schema for the [run record](/components/core/run-records/), the
   central data contract.
+- `packages/run-stats`: `@test-cabinet/run-stats`. The framework-free rules for
+  scoring a reviewed run, each mirroring a counterpart in
+  `crates/core/src/review.rs`, plus the set-level rollup that keeps a figure
+  frozen at one moment comparable with the same figure recomputed later. It has
+  no runtime dependencies and imports only types from `run-record`, so it runs in
+  a bundle, a build script, or a worker alike. `packages/ui`'s `ratings` module
+  re-exports the scoring half alongside its display metadata.
 - `packages/browser-driver`: `@test-cabinet/browser-driver`. The Playwright
   driver script the [validator](/components/core/validation/) shells out to,
   used to render reference mockups and to drive and screenshot a produced

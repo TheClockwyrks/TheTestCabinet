@@ -130,6 +130,10 @@
           ],
           "description": "The ranking-relevant slice of the run's [code\nanalysis](test_cabinet_core::code_analysis), lifted onto the card so a\n\"which model writes the tightest code?\" ordering can be computed from the\nbounded summary set without loading every run's full record. See\n[`CodeSummaryOut`], which also explains why the provenance rides along with\nthe figures.\n\n`None` means the run was **never analysed** — not that it wrote no code. The\ncorpus is [not backfilled], so every run that finished before the analyzer\nshipped carries `None` forever, and any view that renders this must say\n\"not measured\" rather than draw a zero.\n\nCatalog-free (the figures are already on the record), so\n[`RunSummary::from_stored`] fills it.\n\n[not backfilled]: https://docs.testcabinet.ai/gg/analysis/code-analysis/#publishing-and-the-analyzer-version"
         },
+        "documentKey": {
+          "description": "Where this run's full document lives: its content-addressed\n`documents/runs/<id>/<digest>.json` key. The digest is over the document's own\nbytes, so the key cannot be composed from the run id — the summary index is how\na reader learns it, and following it is the only supported way to reach a run's\nrecord from the snapshot.\n\n`None` on a console card, which has no published document at all;\n[`RunSummary::from_stored`] leaves it unset and the snapshot builder fills it.\nAlways `Some` in `runs.json`.",
+          "type": ["string", "null"]
+        },
         "finishedAt": {
           "type": "string"
         },

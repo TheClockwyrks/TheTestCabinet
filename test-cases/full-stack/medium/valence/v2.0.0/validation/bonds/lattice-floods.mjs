@@ -23,6 +23,7 @@ import {
   unitById,
   focusOnParent,
   poolSpent,
+  clipBudget,
   TICK,
   MAP,
 } from "../_helpers.mjs";
@@ -33,12 +34,19 @@ const ATOM_ELECTRONS = 6; // each constituent atom is a full 6-electron atom
 const LATTICE_TOTAL_SHELLS = LATTICE_POOL + LATTICE_ATOMS * ATOM_ELECTRONS; // 104
 const POLYMER_POOL = 11; // MATTER.polymer.bondHP — the thinner-pool comparison
 const MAX_OPEN_TICKS = 1800; // 1800 ticks = the old 30 s cap
+// The lead-in: the Lattice on screen with its pool intact, before anything comes off it, so
+// the flood that follows has something to be a change FROM.
+const LEAD_IN_TICKS = 120;
 // Sixteen atoms are born at their parent's own position (specs/board.md), so on the frame the
 // pool gives way they are one illegible pile — which is precisely where the clip used to cut.
 // Freed atoms are faster than the cluster they came from (specs/matter.md), so running on is
 // what turns the pile into the flood the item is named for. The sweep keeps counting through
 // the tail, so a build that releases the tail of its spray a moment later is still counted.
-const TAIL_TICKS = 120;
+// Two seconds of that was not enough to tell sixteen atoms apart from a pile — the review
+// could not count them on screen at all. The COUNTS this item asserts never depended on the
+// picture (see the note above `assert`), but the clip is what the rest of the item is graded
+// on, so the tail is five seconds.
+const TAIL_TICKS = 300;
 
 export default function item() {
   let id;
@@ -51,6 +59,8 @@ export default function item() {
 
   return {
     id: "bonds.lattice-floods",
+
+    clipMs: clipBudget(LEAD_IN_TICKS + 360 + TAIL_TICKS),
 
     async arrange(api) {
       const snap = await startScenario(api, MAP.single);
@@ -67,10 +77,31 @@ export default function item() {
     // The cluster opening and flooding the lane — the behavior the item is about, and
     // the only thing worth filming.
     async act(api) {
+      // What each atom was BORN with, keyed on `maxHp` — "remaining and starting shells"
+      // (specs/instrumentation.md) — and never on the live `electrons` count.
+      //
+      // This is the same distinction `decayKind` in `_helpers.mjs` exists to make, and this
+      // item had the bug it warns about. `electrons` FALLS as an atom is stripped, so
+      // recording it at first sighting records 6 only if the sweep happens to see the atom
+      // before anything hits it. A Lattice's pool is a thin 8 (two Cleaver hits), so the
+      // flood arrives almost immediately and the strippers are straight onto it — and the
+      // moment two of the sixteen were first seen at 5 rather than 6, a conformant reference
+      // build reported "94 of 96 shells" and failed its own item. `maxHp` does not move, so
+      // it reads the same however late the atom is first sighted and whatever the poll rate.
       const collect = (s) => {
         for (const u of s.matter)
-          if (u.type === "atom" && !seen.has(u.id)) seen.set(u.id, u.electrons);
+          if (u.type === "atom" && !seen.has(u.id)) seen.set(u.id, u.maxHp);
       };
+      // The lead-in COLLECTS as it films. An `advance` here would be two seconds of the
+      // sweep not running, which on a unit that opens this fast is two seconds in which the
+      // whole spray can be born and start taking hits unobserved.
+      await api.until(
+        (s) => {
+          collect(s);
+          return false;
+        },
+        { max: LEAD_IN_TICKS, poll: TICK },
+      );
       // Poll every TICK: an atom can be shed and neutralized between coarser reads, and
       // this check counts the spray exhaustively.
       r = await api.until(
@@ -95,6 +126,10 @@ export default function item() {
       );
     },
 
+    // Every number below is read out of the snapshot — the pool the unit was born with, the
+    // ids of the atoms it released, and the electrons each of those carried. None of it is
+    // measured off the picture, so the counts hold whether or not the spray is legible on
+    // screen; the longer tail above is for the reviewer, not for the verdict.
     async assert(api, check) {
       check.expectEq("a Lattice is a bonded cluster", born.traits.bonded, true);
       check.expectEq("its bond pool is a thin 8", born.maxBond, LATTICE_POOL);
@@ -112,7 +147,7 @@ export default function item() {
       );
       const shells = [...seen.values()].reduce((a, b) => a + b, 0);
       check.expectEq(
-        "every atom in the spray is a full 6-electron atom",
+        "every atom in the spray was born a full 6-electron atom",
         shells,
         LATTICE_ATOMS * ATOM_ELECTRONS,
       );

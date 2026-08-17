@@ -97,6 +97,25 @@ and weights produce the run's score: the earned weight over the total declared
 weight. An erratum may retire a point from scoring entirely; see
 [Authoring Errata](/guides/devops/authoring-errata/).
 
+### Overriding and restoring an automated verdict
+
+A point the case [instruments](/testing/end-to-end/instrumentation/) arrives
+already answered by validation, shown **desaturated** to mark it as the machine's
+call rather than yours. Click it to override where the build clearly does the right
+thing regardless; the option fills in full color to show the verdict is now yours.
+
+An override is undoable at any time, including in a later edit of an
+already-submitted review: an overridden point grows a **Restore** control beside its
+note, and the checklist rail offers **Restore validator verdicts** to put every
+overridden point back at once. Both restore only the pass/fail — validation writes
+no notes, so yours are kept, and yours to clear. The controls appear only where your
+answer actually differs from a verdict validation decided; a subjective point, or one
+whose check could not run, has no machine value to restore and is never touched.
+
+This works however many edits later because the machine's verdicts live in the
+run record, which never changes, rather than in the review — a stored verdict itself
+keeps no memory of having been auto-set.
+
 ## Write the review
 
 A review file is Markdown with YAML frontmatter: a rating for each scoring domain

@@ -3,8 +3,10 @@ import { Link } from "react-router";
 import type { CoverageGroup } from "@test-cabinet/run-record/coverage";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
+import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
+import { useConfirm } from "../../components/ConfirmDialog";
 import { routes } from "../../routes";
 import { AccountTabs } from "./AccountTabs";
 import exec from "../runs/RunExec.module.scss";
@@ -17,6 +19,7 @@ import styles from "./Coverage.module.scss";
 export function GroupsPage() {
   const { token } = useAuth();
   const { client: backend } = useBackend();
+  const { confirm } = useConfirm();
 
   const [groups, setGroups] = useState<CoverageGroup[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -56,10 +59,13 @@ export function GroupsPage() {
     async (group: CoverageGroup) => {
       if (!backend?.deleteCoverageGroup || !token) return;
       if (
-        !window.confirm(
-          `Delete the group “${group.name}”? Plans that reference it will simply ` +
+        !(await confirm({
+          title: "Delete group",
+          message:
+            `Delete the group “${group.name}”? Plans that reference it will simply ` +
             `drop it. This cannot be undone.`,
-        )
+          confirmLabel: "Delete group",
+        }))
       ) {
         return;
       }
@@ -74,7 +80,7 @@ export function GroupsPage() {
         setBusy(false);
       }
     },
-    [backend, token, reload],
+    [backend, token, reload, confirm],
   );
 
   if (!token) {
@@ -141,7 +147,7 @@ export function GroupsPage() {
       {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
 
       {loading ? (
-        <p className={styles.empty}>Loading groups…</p>
+        <LoadingState size="section" label="Loading groups…" />
       ) : (groups?.length ?? 0) === 0 ? (
         <div className={styles.emptyState}>
           <p className={styles.empty}>

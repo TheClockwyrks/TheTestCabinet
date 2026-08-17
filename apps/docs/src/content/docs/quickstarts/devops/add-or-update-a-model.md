@@ -47,7 +47,7 @@ back.
 
 Prices are recorded by the backend rather than edited here: when the model is
 saved, when a run using it is enqueued, when a run completes, and on a 24-hour
-refresh. The model's detail page shows that history as a graph and a table.
+refresh. The model's Stats tab shows the latest per-Mtok rates.
 
 ## Verify
 

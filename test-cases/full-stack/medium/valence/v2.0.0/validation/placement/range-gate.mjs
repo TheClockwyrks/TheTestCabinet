@@ -23,14 +23,30 @@ import {
   unitById,
   towerById,
   preconditionUnmet,
+  LEAD_TICKS,
+  TAIL_TICKS,
+  TICK,
   MAP,
 } from "../_helpers.mjs";
 
-const WINDOW_TICKS = 72; // 72 ticks = the old 1.2 s
-// How much conduit to leave between the far unit and its collector. The fastest atom moves
-// at 112 px/s (specs/matter.md), so this is comfortably more than it can cover in the window
-// — the far unit has to still be ON the path at the end of it, not leaked at the collector.
-const LEAK_MARGIN_PX = 220;
+// The contrast is the evidence here, and a contrast needs long enough to read: one unit
+// visibly taking hit after hit while the other, on screen the whole time, is never touched.
+// At the old 1.2 s the clip was over before the Emitter's second shot (it reloads at
+// 1.8/s), so what a reviewer saw was one shot and a cut.
+const WINDOW_TICKS = 180; // 3 s of the tower working on one unit and ignoring the other
+
+// Both posed atoms carry SIX electrons, the most an atom can (specs/matter.md), for two
+// separate reasons. Six is the slowest atom (44 px/s against a 1-electron atom's 112), so
+// the far one stays where it was posed for the whole of a now much longer window rather
+// than walking to its collector; and six shells is six Emitter hits at 1 damage each, so
+// the near one is still alive at the end to be read.
+const ATOM_ELECTRONS = 6;
+
+// How much conduit to leave between the far unit and its collector. The far unit travels
+// for the whole framed span — the lead-in, the window, and the tail — and has to still be
+// ON the path at the end of it rather than leaked at the collector. A 6-electron atom
+// covers 44 px/s × (120 + 180 + 120)/60 s ≈ 308 px, so this leaves real headroom on top.
+const LEAK_MARGIN_PX = 380;
 
 export default function item() {
   let near;
@@ -41,6 +57,9 @@ export default function item() {
   let farDist0;
   let farDist1;
   let now;
+  // The lowest hp the near unit was ever seen at during the window (0 if it was stripped
+  // out of existence). A fresh value per pass, so it is set in `arrange`.
+  let nearLow;
 
   return {
     id: "placement.range-gate",
@@ -69,13 +88,13 @@ export default function item() {
 
       near = await spawnAt(api, {
         type: "atom",
-        electrons: 5,
+        electrons: ATOM_ELECTRONS,
         pathId: 0,
         s: s0,
       });
       far = await spawnAt(api, {
         type: "atom",
-        electrons: 5,
+        electrons: ATOM_ELECTRONS,
         pathId: 0,
         s: out.s,
       });
@@ -83,6 +102,7 @@ export default function item() {
       const snap0 = await api.snapshot();
       nearHp0 = unitById(snap0, near).hp;
       farHp0 = unitById(snap0, far).hp;
+      nearLow = nearHp0;
       farDist0 = Math.hypot(
         unitById(snap0, far).x - tower.x,
         unitById(snap0, far).y - tower.y,
@@ -91,22 +111,44 @@ export default function item() {
 
     // The tower working on the near unit and plainly ignoring the far one.
     async act(api) {
-      await api.advance(WINDOW_TICKS);
+      // The board as posed, before the tower's first shot lands: both units on screen, so
+      // the reviewer knows which two the rest of the clip is about.
+      await api.advance(LEAD_TICKS);
+
+      // The window itself, swept rather than jumped, so the LOWEST hp the near unit ever
+      // reaches is what the verdict reads. Reading only the snapshot at the end makes the
+      // check fragile in one direction it should be strongest in: a tower that strips the
+      // near unit all the way to zero has demonstrated the requirement about as forcefully
+      // as it can be demonstrated, and the unit is then gone from `matter` — so an
+      // end-of-window read finds nothing, falls back to the starting hp, and reports "the
+      // in-range unit is fired on" as FAILED against a build that did exactly that.
+      await api.until(
+        (s) => {
+          const u = unitById(s, near);
+          if (u == null) nearLow = 0;
+          else nearLow = Math.min(nearLow, u.hp);
+          return false;
+        },
+        { max: WINDOW_TICKS, poll: TICK },
+      );
+
       now = await api.snapshot();
       const tw = towerById(now, towerId);
       const u = unitById(now, far);
       farDist1 = u ? Math.hypot(u.x - tw.x, u.y - tw.y) : Infinity;
+
+      // Hold on the outcome: the near unit spent, the far one still sailing past untouched.
+      await api.advance(TAIL_TICKS);
     },
 
     async assert(api, check) {
       const tw = towerById(now, towerId);
       // Both reads are guarded: a unit that is gone reports as the failure it is, rather
       // than throwing and being reported as a broken debug API.
-      const nearNow = unitById(now, near);
       const farNow = unitById(now, far);
       check.expectLt(
-        "the in-range unit is fired on (hp drops)",
-        nearNow ? nearNow.hp : nearHp0,
+        "the in-range unit is fired on (lowest hp seen)",
+        nearLow,
         nearHp0,
       );
 

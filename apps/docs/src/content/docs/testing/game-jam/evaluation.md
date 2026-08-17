@@ -21,10 +21,14 @@ category.
 | Tier | Emoji | Points |
 | --- | --- | --- |
 | Broken | 💩 | 0 |
-| Not great | 🙁 | 1 |
-| Neutral | 😐 | 3 |
-| Great | 😀 | 5 |
+| Not great | 🙁 | 2 |
+| Neutral | 😐 | 5 |
+| Great | 😀 | 8 |
 | Incredible | 💎 | 10 |
+
+The scale is centred rather than punitive: a neutral category earns half its
+available points and a great one four fifths, so a jam's percentage reads
+comparably to a pass/fail case's earned-over-declared score.
 
 The default categories are Playability, Fun, Theme, Presentation, Audio, Polish,
 and Creativity. A jam may author its own; see

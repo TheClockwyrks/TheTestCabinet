@@ -2,15 +2,22 @@ import { useMemo, useRef, type CSSProperties, type ReactNode } from "react";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import { GradeBadge, RatingBadge } from "@test-cabinet/ui";
 import { Panel, canonicalModelId } from "@test-cabinet/ui";
+import {
+  useVersionPick,
+  useVersionScope,
+  versionInScope,
+  VersionPicker,
+  VersionScopeControl,
+} from "../../../components/VersionScope";
 import { useCaseRunSummaries } from "../../../data/useRuns";
 import { useFindReview } from "../../../data/writeups";
 import { useFindModel } from "../../../data/useModels";
 import { isGgRun } from "../../../data/runLinks";
 import { perModelBestFuel } from "../../../data/fuelRanking";
 import {
+  asGrade,
   GRADE_LEVELS,
   type GradeStatus,
-  isGrade,
   overallGradeOf,
   RATINGS,
   scoreChecklist,
@@ -26,8 +33,15 @@ import {
   type ColumnMenuHandle,
 } from "../../../components/ColumnMenu";
 import { useColumnVisibility } from "../../../components/useColumnVisibility";
+import { LoadingState } from "../../../components/LoadingState";
 import { formatCompact, formatUsd, totalTokens } from "../../../format";
 import styles from "./TestCaseLeaderboardPage.module.scss";
+
+// The `Map` key separator for a `(harness, model)` pair: NUL, the one character
+// neither a harness slug nor a model id can contain, so no two legal pairs can
+// collide on it. Spelled as an escape rather than written as a byte, which would
+// make the line unsearchable.
+const PAIR_SEP = "\u0000";
 
 // One `(harness, model)` pair's aggregate result on this case + variant, folded
 // across ALL of that pair's scored runs (not just its single best). The
@@ -252,9 +266,18 @@ function ReviewLeaderboard({
   testCase: TestCaseSummary;
   variant: VariantSummary;
 }) {
-  const { summaries, localWriteups } = useCaseRunSummaries(testCase.slug);
+  const { summaries, localWriteups, loading } = useCaseRunSummaries(
+    testCase.slug,
+  );
   const findReview = useFindReview();
   const findModel = useFindModel();
+
+  // Which versions of the case the board ranks over — the same control the
+  // Metrics tab carries. Without it a revised case ranks models against each
+  // other that were never set the same task; the `current` default keeps the
+  // board to the version in play, and widening it is the visitor's call.
+  const versionScope = useVersionScope(testCase);
+  const { scope, specificVersion } = versionScope;
 
   const { isVisible, toggle } = useColumnVisibility(
     "ttc:leaderboard:visible",
@@ -306,6 +329,17 @@ function ReviewLeaderboard({
       // models, so it has no single model to rank on a per-model board (see
       // docs/comparisons/metrics-split). Its results live in gg's own views.
       if (isGgRun(run.subject.harnessSlug)) continue;
+      // Only runs of the versions the visitor scoped to.
+      if (
+        !versionInScope(
+          run.subject.testCaseVersion,
+          scope,
+          testCase.latestVersion,
+          specificVersion,
+        )
+      ) {
+        continue;
+      }
       // The run's earned/total points and overall rating, read from whichever
       // source this host populated: a published run arrives as a summary card the
       // backend/snapshot already enriched with its aggregate score + rating (the
@@ -320,9 +354,8 @@ function ReviewLeaderboard({
       // run and its base form fold into one model, not two rows.
       const modelId = canonicalModelId(run.subject.modelId, harnessSlug);
       // The board splits by harness as well as model, so the pair — not the model
-      // alone — is the fold key: the same model under two harnesses is two rows.
-      // NUL separates the pair, the one character neither part can contain.
-      const key = `${harnessSlug}\u0000${modelId}`;
+      // alone — is the fold key.
+      const key = `${harnessSlug}${PAIR_SEP}${modelId}`;
       // Null when the run's comparable cost / token total is unknown; such runs
       // are excluded from the respective mean rather than folded in as zero.
       const cost = run.metrics.cost.comparable;
@@ -383,17 +416,44 @@ function ReviewLeaderboard({
     findReview,
     findModel,
     testCase.slug,
+    testCase.latestVersion,
     variant.slug,
     variant.reviewItems,
+    scope,
+    specificVersion,
   ]);
 
+  // The case's runs drain over several requests, so an unqualified empty board
+  // would claim "no scored runs yet" before any had arrived. Wait for the drain
+  // to settle before reading anything into an empty entry list.
+  if (loading) {
+    return (
+      <section className={styles.section}>
+        <LoadingState size="section" label="Loading leaderboard…" />
+      </section>
+    );
+  }
+
+  // The control stays mounted alongside the empty state: a scope that filtered
+  // every run away must still be adjustable, or the visitor is stuck on an empty
+  // board with no way back.
   if (entries.length === 0) {
     return (
       <section className={styles.section}>
+        <VersionScopeControl state={versionScope} />
         <Panel>
           <p className={styles.empty}>
-            No scored runs of {variant.name} yet — the leaderboard ranks models
-            once their runs have been reviewed.
+            {versionScope.show && scope !== "all" ? (
+              <>
+                No scored runs of {variant.name} in the selected versions —
+                widen the version scope, or review a run of this one.
+              </>
+            ) : (
+              <>
+                No scored runs of {variant.name} yet — the leaderboard ranks
+                models once their runs have been reviewed.
+              </>
+            )}
           </p>
         </Panel>
       </section>
@@ -402,6 +462,7 @@ function ReviewLeaderboard({
 
   return (
     <section className={styles.section}>
+      <VersionScopeControl state={versionScope} />
       <Panel>
         <div className={styles.wrap}>
           <div className={styles.menuAnchor}>
@@ -471,8 +532,10 @@ function ReviewLeaderboard({
 // of the selected variant, ranked by the fuel of its BEST correct engine (lower is
 // better). A model appears once — folding its runs to their best keeps a re-run
 // model from flooding the board, since deterministic fuel makes reruns identical.
-// Fuel is only comparable within one scored scenario set, so the board is scoped to
-// the case's latest version and the selected variant.
+// Fuel is only comparable within one scored scenario set, so the board ranks ONE
+// version of the case at a time (the latest by default, any of them via the
+// picker) and the selected variant — never a mix, which would rank engines that
+// were never set the same scenarios against each other.
 function PerformanceLeaderboard({
   testCase,
   variant,
@@ -480,8 +543,13 @@ function PerformanceLeaderboard({
   testCase: TestCaseSummary;
   variant: VariantSummary;
 }) {
-  const { summaries } = useCaseRunSummaries(testCase.slug);
+  const { summaries, loading } = useCaseRunSummaries(testCase.slug);
   const findModel = useFindModel();
+
+  // One exact version, not the review board's widening scope: a fuel cohort is
+  // only comparable within a single version.
+  const versionPick = useVersionPick(testCase);
+  const { version } = versionPick;
 
   const entries = useMemo(
     () =>
@@ -489,21 +557,38 @@ function PerformanceLeaderboard({
         summaries,
         {
           slug: testCase.slug,
-          version: testCase.latestVersion,
+          version,
           variant: variant.slug,
         },
         (id, harness) => findModel(id, harness)?.name ?? id,
       ),
-    [summaries, findModel, testCase.slug, testCase.latestVersion, variant.slug],
+    [summaries, findModel, testCase.slug, version, variant.slug],
   );
 
-  if (entries.length === 0) {
+  // As on the review board, an empty entry list means nothing until the case's
+  // runs have finished draining.
+  if (loading) {
     return (
       <section className={styles.section}>
+        <LoadingState size="section" label="Loading leaderboard…" />
+      </section>
+    );
+  }
+
+  // As on the review board, the picker stays mounted alongside the empty state
+  // so a version with no correct runs is not a dead end. The empty state names
+  // the version only when there was a version to choose.
+  if (entries.length === 0) {
+    const cohort = versionPick.show
+      ? `${variant.name} on ${version}`
+      : variant.name;
+    return (
+      <section className={styles.section}>
+        <VersionPicker state={versionPick} />
         <Panel>
           <p className={styles.empty}>
-            No correct runs of {variant.name} yet — the leaderboard ranks models
-            by the fuel of their best correct engine, and only a correct engine
+            No correct runs of {cohort} yet — the leaderboard ranks models by
+            the fuel of their best correct engine, and only a correct engine
             earns a fuel score.
           </p>
         </Panel>
@@ -516,10 +601,11 @@ function PerformanceLeaderboard({
 
   return (
     <section className={styles.section}>
+      <VersionPicker state={versionPick} />
       <Panel>
         <p>
           Ranked by total fuel — lower is better. Each model counts once, at its
-          most efficient correct run of {testCase.latestVersion}.
+          most efficient correct run of {version}.
         </p>
         <div className={styles.wrap}>
           <div
@@ -624,12 +710,6 @@ export function resolveRunScore(
     rating: worstRating(review.ratings.map((r) => r.rating)),
     grade: null,
   };
-}
-
-// Narrow a `VerdictStatus` (which also covers pass/fail) to one of the five
-// graded tiers, or null.
-function asGrade(status: string | null | undefined): GradeStatus | null {
-  return status && isGrade(status) ? status : null;
 }
 
 // The best (highest-point) graded tier among `grades`, or null when empty — the

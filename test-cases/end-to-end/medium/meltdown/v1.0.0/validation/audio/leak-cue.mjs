@@ -4,12 +4,23 @@
 // `surge.leak-costs-life`); audio is armed, and letting it walk out an exhaust must
 // grow the audio log.
 
+//
+// EVERY READ OF THE AUDIO LOG IS A SETTLED ONE (`audioSettled`, not `audioCount`).
+// The validate pass advances the simulation instantly, so a count taken on the tick an
+// event happens gives the build no wall clock in which to schedule anything — and a
+// build that raises its cues from its render frame, or rate-limits them against
+// `AudioContext.currentTime`, has scheduled nothing yet. Both are conformant, and
+// reading unsettled reported a full set of working cues as silence. See the note above
+// `armAudio` in `_helpers`.
+
 import {
   newGame,
   spawn,
   armAudio,
-  audioCount,
+  audioSettled,
   skipToApproach,
+  giveClockToBuild,
+  untilOnOwnClock,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -36,9 +47,12 @@ export default function item() {
     // the exhaust is the only thing that can drop lives. The count is taken after the
     // skip, so nothing the approach played is inside the window.
     async act(api) {
-      before = await audioCount(api);
-      const r = await api.until((s) => s.lives < 10, { max: 300, poll: 6 });
-      after = await audioCount(api);
+      await giveClockToBuild(api);
+      before = await audioSettled(api);
+      const r = await untilOnOwnClock(api, (s) => s.lives < 10, {
+        maxMs: 8000,
+      });
+      after = await audioSettled(api);
       leaked = r.hit;
       await api.advance(60); // a short tail so the clip shows the leak
     },

@@ -17,13 +17,22 @@ namespace. Each pod runs under its `ServiceAccount`, and the in-cluster
 Kubernetes client picks up the mounted token, so no kubeconfig is needed.
 
 The dispatcher (`tcab-dispatcher`) claims queued runs, creates one `Job` per run,
-watches them, and reads a dead driver pod's logs. It creates no pods directly.
+watches them, reads a dead driver pod's logs, and deletes the sandbox pods that
+driver orphaned. It creates no pods directly.
 
 | Resource | Verbs | Why |
 | --- | --- | --- |
 | `batch`/`jobs` | `create`, `get`, `list`, `watch`, `delete` | create the per-run driver `Job`, watch it to completion, delete it |
-| `core`/`pods` | `get`, `list` | find the `Job`'s driver pod |
+| `core`/`pods` | `get`, `list`, `delete` | find the `Job`'s driver pod; reap the sandbox pods a `SIGKILL`ed driver could not delete itself (see [sandbox reaping](/components/dispatcher/overview/#sandbox-reaping)) |
 | `core`/`pods/log` | `get` | surface a dead driver pod's logs in the run's failure detail |
+
+The `delete` verb is for sandbox pods, not driver pods: the reaper's selector
+pins the driver's `managed-by` label alongside the job id, so it cannot match a
+driver `Job`'s own pod. A deployment that points the driver at a different
+sandbox namespace (`TCAB_K8S_NAMESPACE`) must grant the same pod `list` and
+`delete` there too; otherwise reaping fails in that namespace, which is logged
+and never fatal, leaving the sandbox's `activeDeadlineSeconds` as the only
+backstop.
 
 The driver (`tcab-driver`) runs inside each `Job` and is the trusted process that
 creates the untrusted sandbox pod. The dispatcher names this `ServiceAccount` on
@@ -38,6 +47,12 @@ Both verbs on `pods/exec` are required. The driver's Kubernetes client execs ove
 a WebSocket, which the API server authorizes as a `get` on the subresource;
 `create` covers the SPDY exec path. A `Role` carrying only one of them fails the
 transport it does not cover.
+
+The driver's own `delete` only covers the runs it survives to the end of. A
+driver killed by `SIGKILL` leaves its sandbox behind, which is why the dispatcher
+reaps above and why each sandbox carries an `activeDeadlineSeconds`
+(`TCAB_K8S_RUN_ACTIVE_DEADLINE_SECONDS`, default 24h) as the last-resort
+backstop. See [sandbox lifetime](/components/driver/overview/#sandbox-lifetime).
 
 The dispatcher needs no `secrets` rule. It references the driver and publisher
 Secrets by name on the `Job` it creates, and the kubelet projects them into the
@@ -61,6 +76,8 @@ work.
 | `TCAB_DISPATCHER_MAX_INFLIGHT` | no | Queue-admission cap on concurrent runs | `8` |
 | `TCAB_DISPATCHER_POLL_INTERVAL_SECONDS` | no | Back-off after an empty claim or a full cap | `2` |
 | `TCAB_DISPATCHER_JOB_TTL_SECONDS` | no | TTL after which a finished `Job` is garbage-collected | `300` |
+| `TCAB_DISPATCHER_DRIVER_CPU_REQUEST` / `_MEMORY_REQUEST` | no | Requests on the driver container, there to keep the driver pod out of the `BestEffort` QoS class, where it is evicted and OOM-killed first — taking its sandbox cleanup with it | `100m` / `512Mi` |
+| `TCAB_DISPATCHER_DRIVER_CPU_LIMIT` / `_MEMORY_LIMIT` | no | Limits on the driver container. Unset by default on purpose: a memory limit re-introduces the same `SIGKILL`, and the driver holds a whole run tree in memory while it tars it | — |
 | `TCAB_DISPATCHER_DRIVER_SECRETS` | no | Comma-separated `Secret` names mounted into each driver `Job` with `envFrom`, carrying the harness API keys | — |
 | `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET` | no | `Secret` of harness subscription credential files, mounted read-only into each driver `Job` | — |
 | `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR` | no | Where that Secret is mounted, forwarded to the driver | `/var/run/tcab/subscription` |
@@ -72,7 +89,8 @@ The dispatcher also forwards a set of variables into each `Job` verbatim without
 interpreting them: `TCAB_K8S_NAMESPACE`, `TCAB_K8S_RUN_SERVICE_ACCOUNT`,
 `TCAB_K8S_IMAGE_PULL_SECRETS`, the `TCAB_K8S_RUN_CPU_*` and
 `TCAB_K8S_RUN_MEMORY_*` pairs, `TCAB_K8S_POD_READY_TIMEOUT_SECONDS`,
-`TCAB_K8S_POD_SCHEDULE_TIMEOUT_SECONDS`, `TCAB_K8S_RUN_POD_PREFIX`,
+`TCAB_K8S_POD_SCHEDULE_TIMEOUT_SECONDS`, `TCAB_K8S_RUN_ACTIVE_DEADLINE_SECONDS`,
+`TCAB_K8S_RUN_POD_PREFIX`,
 `TCAB_CONTAINER_REGISTRY` and `TCAB_CONTAINER_TAG` with the per-image
 `TCAB_CONTAINER_IMAGE_*` overrides, `TCAB_ARTIFACTS_URL`, the `TCAB_GG_*` install
 controls, the `OTEL_EXPORTER_OTLP_*` variables, and `TCAB_ENV`. Each is forwarded

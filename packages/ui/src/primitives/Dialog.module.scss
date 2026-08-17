@@ -1,0 +1,142 @@
+@use "../styles/tokens" as t;
+
+// The scrim: a dimmed, lightly blurred sheet over the whole viewport that both
+// signals modality and stops the page behind taking clicks. It sits above every
+// other layer in the app — the highest of those is the fullscreen result viewer
+// at 1000 — so a confirmation raised from inside one still reads on top.
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: t.$space-lg;
+  background: color-mix(in srgb, t.$color-bg 78%, transparent);
+  backdrop-filter: blur(2px);
+}
+
+// The dialog itself. Opaque (not the shared translucent panel background) so the
+// page behind never reads through the text, and a column so the message and the
+// detail region take the space left over between a fixed heading and footer.
+//
+// `max-height` is the guarantee the whole component rests on: however much
+// detail a caller passes, the dialog is capped at the viewport and the overflow
+// scrolls inside it rather than growing the panel off-screen.
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  width: min(38rem, 100%);
+  max-height: min(85vh, 44rem);
+  padding: t.$space-lg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: t.$color-surface;
+  color: t.$color-text;
+  font-family: var(--tcab-font);
+  box-shadow:
+    0 0 1.5rem color-mix(in srgb, t.$color-accent 25%, transparent),
+    0 1rem 3rem color-mix(in srgb, #000 55%, transparent);
+
+  &:focus {
+    outline: none;
+  }
+}
+
+.title {
+  flex: none;
+  margin: 0;
+  font-family: var(--tcab-display);
+  font-size: t.$font-lg;
+  color: t.$color-accent;
+  text-shadow: var(--tcab-glow);
+}
+
+// The message. Allowed to scroll on its own so an unusually long explanation
+// shrinks before it crowds out the detail region below it.
+.body {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  font-size: t.$font-md;
+  line-height: 1.5;
+
+  p {
+    margin: 0 0 t.$space-sm;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+}
+
+// The capped, scrollable detail region — e.g. the full list of changes a restore
+// would make. `min-height: 0` is what lets it actually shrink inside the flex
+// column instead of overflowing the panel's max-height.
+.details {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: min(45vh, 22rem);
+  overflow-y: auto;
+  padding: t.$space-sm t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  background: t.$color-bg-2;
+  font-size: t.$font-sm;
+}
+
+.actions {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: t.$space-sm;
+}
+
+// The footer buttons, matching the app's own primary/secondary/danger trio so a
+// dialog's controls read as the same family as the button that raised it.
+.action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: t.$space-sm t.$space-lg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  font-family: var(--tcab-font);
+  font-size: t.$font-md;
+  line-height: 1.2;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: t.$space-2xs;
+  }
+}
+
+.primary {
+  background: t.$color-accent;
+  border-color: t.$color-accent;
+  color: t.$color-bg;
+  box-shadow: var(--tcab-glow);
+}
+
+.secondary {
+  background: t.$color-surface-2;
+  color: t.$color-text;
+
+  &:hover {
+    border-color: t.$color-accent;
+  }
+}
+
+// A destructive affirmative: reads like the secondary button until hover, where
+// it takes on the negative cue — the same restraint the app's own `.danger` uses.
+.danger {
+  background: t.$color-surface-2;
+  color: t.$color-negative;
+
+  &:hover {
+    border-color: t.$color-negative;
+  }
+}

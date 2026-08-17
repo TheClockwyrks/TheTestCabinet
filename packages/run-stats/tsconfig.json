@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
+    "noEmit": false,
+    "allowImportingTsExtensions": false
+  },
+  "references": [{ "path": "../run-record" }],
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
+}

@@ -1,0 +1,462 @@
+@use "../../styles/tokens" as t;
+@use "../../styles/surfaces" as s;
+
+// Styles specific to the ladder surfaces (the list, the editor, and the climb
+// dashboard). Everything a ladder page shares with the coverage plan pages — the
+// detail header, the card list, the chips, the group pills, the control strip — is
+// taken from `Coverage.module.scss`, which the ladder pages import alongside this
+// file. A ladder is a sibling of a coverage plan, not a different product, and the
+// two must not drift into looking like separate applications; this file therefore
+// holds only what a ladder has and a plan does not: rungs, climbers, and the gate.
+
+// ---- The climb dashboard ---------------------------------------------------
+
+// The board: one card per climber, stacked in the order the ladder feeds them.
+.climbers {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  margin-bottom: t.$space-xl;
+}
+
+.climber {
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-md t.$space-lg;
+}
+
+// A climber's header row: the expander (identity + status + how far it got) on the
+// left, the steering controls on the right. Wraps rather than scrolls, so a narrow
+// viewport stacks the controls under the row they steer.
+.climberHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-sm t.$space-md;
+}
+
+// The clickable left region: a reset button that grows to fill the row, so a click
+// anywhere on the identity toggles the per-rung detail. A sibling of the steering
+// buttons, never their parent — no button is nested inside another.
+.climberToggle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-sm t.$space-md;
+  flex: 1 1 20rem;
+  min-width: 0;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+
+  &:focus-visible {
+    outline: none;
+  }
+}
+
+// The combination's name — the row's subject, in the accent like every other title.
+.climberTitle {
+  color: t.$color-accent;
+  font-size: t.$font-lg;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.climberMeta {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  white-space: nowrap;
+}
+
+// The steering controls (focus, priority, hold), pushed to the far right.
+.climberActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-sm;
+  margin-left: auto;
+}
+
+// The "watch this one" star: a bare glyph control that fills in the accent once set,
+// so a focused climber is findable in a long board without reading any text.
+.focusButton {
+  padding: 0 t.$space-2xs;
+  font-size: t.$font-md;
+  line-height: 1;
+  color: t.$color-text-muted;
+  background: none;
+  border: 0;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-accent;
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
+}
+
+.focusOn {
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+}
+
+// The climb-order weight beside the star. Narrow: it holds a single digit in
+// practice, and a wide field here would read as the row's main content.
+.priorityField {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+
+  input {
+    width: 4rem;
+  }
+}
+
+// Where a climber stands, as a pill. Five states with five colours, because the
+// whole point of the board is that "stopped" has three different causes and the
+// reviewer's next move differs for each.
+.statusPill {
+  flex: none;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  color: t.$color-bg;
+  border-radius: t.$radius-sm;
+  padding: t.$space-2xs t.$space-sm;
+  white-space: nowrap;
+}
+
+// Working a rung: runs are still to come.
+.statusClimbing {
+  background: t.$color-accent;
+}
+
+// Every run is in and the climb is waiting on *you* — the one state a reviewer can
+// clear themselves, so it takes the amber that means "your move".
+.statusAwaiting {
+  background: t.$color-warning;
+}
+
+// Stopped by the gate.
+.statusWalled {
+  background: t.$color-negative;
+}
+
+// Stopped by hand: muted, because it is not a result — it is a decision that can be
+// taken back.
+.statusHeld {
+  background: t.$color-text-muted;
+}
+
+// Cleared every rung.
+.statusTopped {
+  background: t.$color-positive;
+}
+
+// The climb itself, drawn as one segment per rung so "how far did this model get,
+// and where is the wall" is answered without reading a number. Fixed-height blocks
+// laid in a row; the segments shrink as rungs are added rather than wrapping.
+.rungTrack {
+  display: flex;
+  gap: t.$space-2xs;
+  flex: 1 1 8rem;
+  min-width: 6rem;
+  max-width: 16rem;
+}
+
+.rungStep {
+  flex: 1 1 0;
+  height: 0.5rem;
+  background: t.$color-bg-2;
+  border-radius: t.$radius-sm;
+}
+
+// A rung this climber cleared.
+.rungStepDone {
+  background: t.$color-positive;
+}
+
+// The rung it is working now.
+.rungStepCurrent {
+  background: t.$color-accent;
+}
+
+// The rung that stopped it. Reading the track left to right, the first non-green
+// segment is the wall — which is the question the dashboard exists to answer.
+.rungStepWall {
+  background: t.$color-negative;
+}
+
+.rungCount {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  white-space: nowrap;
+}
+
+// The per-rung detail revealed when a climber is expanded.
+.rungList {
+  list-style: none;
+  margin: t.$space-md 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  border-top: t.$border-hairline solid t.$color-border;
+  padding-top: t.$space-md;
+}
+
+// One rung's line: its position and case, the verdict, the evidence, and the
+// controls that override it. Wraps on a narrow viewport instead of truncating —
+// the verdict and the evidence behind it are the row's whole content.
+.rungRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-sm t.$space-md;
+  padding: t.$space-2xs 0;
+}
+
+// The rung a climber currently stands on, marked so the eye lands on it first when
+// a long climb is expanded.
+.rungRowCurrent {
+  background: t.$color-bg-2;
+  border-radius: t.$radius-sm;
+  padding: t.$space-xs t.$space-sm;
+}
+
+.rungIndex {
+  flex: none;
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+}
+
+.rungName {
+  color: t.$color-text;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  min-width: 0;
+}
+
+// The verdict pill: what the gate (or the reviewer) decided about this rung.
+.verdict {
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  color: t.$color-bg;
+  border-radius: t.$radius-sm;
+  padding: t.$space-2xs t.$space-sm;
+  white-space: nowrap;
+}
+
+.verdictAdvanced {
+  background: t.$color-positive;
+}
+
+.verdictWalled {
+  background: t.$color-negative;
+}
+
+// A verdict that is nobody's decision yet.
+.verdictUndecided {
+  background: t.$color-bg-2;
+  color: t.$color-text-muted;
+}
+
+// The trailing qualifiers on a verdict: that it was overridden by hand, that it was
+// decided against a version the rung no longer pins, or that it has not been written
+// down yet. Muted so they read as footnotes to the verdict, not as verdicts.
+.verdictNote {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+}
+
+// An override is the one qualifier that changes what governs the climb, so it takes
+// the accent rather than the muted note colour.
+.overrideNote {
+  color: t.$color-accent-2;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+}
+
+// The gate evidence behind a rung's verdict (completed / judged / passing /
+// pending), stated as a sentence rather than a table: it is read once, when the
+// reviewer asks why a climber stopped.
+.tally {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+}
+
+// The row's trailing controls (runs link, promote, clear override, bump the pin),
+// pushed right so every rung's controls line up down the column.
+.rungActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-sm;
+  margin-left: auto;
+}
+
+// A quiet text control inside a rung row (the runs link, the override actions).
+.rungLink {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-accent;
+    text-decoration: underline;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+    text-decoration: none;
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
+}
+
+// ---- The editor ------------------------------------------------------------
+
+// The ordered rung list in the editor. Numbered, because the order *is* the climb —
+// a bare list of cases would hide the only thing that distinguishes a ladder from a
+// coverage plan.
+.rungEditList {
+  list-style: none;
+  margin: 0 0 t.$space-md;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.rungEditItem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-sm t.$space-md;
+  padding: t.$space-xs t.$space-sm;
+  background: t.$color-bg-2;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+}
+
+// The rung's ordinal, fixed-width so the case names line up down the list however
+// many rungs there are.
+.rungEditIndex {
+  flex: none;
+  min-width: 2ch;
+  color: t.$color-accent;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+}
+
+.rungEditName {
+  flex: 1 1 12rem;
+  min-width: 0;
+  color: t.$color-text;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// The per-rung runs override: empty inherits the ladder's target, which is why it
+// carries a placeholder rather than a pre-filled number.
+.rungEditRuns {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+
+  input {
+    width: 4.5rem;
+  }
+}
+
+// The move-up / move-down / remove controls at the end of a rung row.
+.rungEditActions {
+  display: flex;
+  align-items: center;
+  gap: t.$space-xs;
+  margin-left: auto;
+}
+
+// A single-glyph reorder control. Disabled at the ends of the list rather than
+// hidden, so the row's controls never shift position as a rung moves.
+.rungMove {
+  padding: 0 t.$space-xs;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  line-height: 1;
+  color: t.$color-text-muted;
+  background: none;
+  border: 0;
+  cursor: pointer;
+
+  &:hover:not(:disabled),
+  &:focus-visible {
+    color: t.$color-accent;
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
+}
+
+// The gate's two controls (the rating floor and the threshold), laid on one row so
+// they read as the single sentence they compose rather than as two settings.
+.gateRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: t.$space-md;
+  margin-bottom: t.$space-sm;
+}
+
+// The worked example under the gate: the rule restated in runs, at the ladder's own
+// target. The gate is one parameterised rule and its two knobs interact, so the
+// example is what makes the setting checkable at a glance instead of guessable.
+.gateExample {
+  margin: 0 0 t.$space-md;
+  max-width: 42rem;
+  padding: t.$space-sm t.$space-md;
+  background: t.$color-bg-2;
+  border-left: 0.2rem solid t.$color-accent;
+  border-radius: t.$radius-sm;
+  color: t.$color-text;
+  font-size: t.$font-sm;
+}

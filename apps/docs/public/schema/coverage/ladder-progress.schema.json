@@ -1,0 +1,498 @@
+{
+  "$defs": {
+    "ClimberStatus": {
+      "description": "Where one climber stands. Five states, because \"stopped\" has three genuinely\ndifferent causes and conflating them makes a ladder impossible to act on.",
+      "oneOf": [
+        {
+          "const": "climbing",
+          "description": "Runs are still to complete on the current rung. The ladder will keep feeding\nthis climber.",
+          "type": "string"
+        },
+        {
+          "const": "awaitingReview",
+          "description": "The current rung has run everything it was going to and is waiting on *your*\nreview. Nothing will move until you look — this is the state a full review\nbuffer is made of.",
+          "type": "string"
+        },
+        {
+          "const": "walled",
+          "description": "The current rung was failed. Reversible by hand with a promote; the automatic\nverdict underneath is never destroyed.",
+          "type": "string"
+        },
+        {
+          "const": "held",
+          "description": "Stopped by hand. The automatic outcomes underneath are untouched, so clearing\nthe hold resumes the climb from exactly where it stood.",
+          "type": "string"
+        },
+        {
+          "const": "toppedOut",
+          "description": "Every rung cleared. There is nothing left to climb.",
+          "type": "string"
+        }
+      ]
+    },
+    "GateOutcome": {
+      "description": "What a rung's evidence says about one climber.",
+      "oneOf": [
+        {
+          "const": "advance",
+          "description": "The rung is passed; the climber moves to the next one.",
+          "type": "string"
+        },
+        {
+          "const": "wall",
+          "description": "The rung is failed; the climber stops here. Reversible by hand — a\n`promote` override advances past a wall — so this is a computed opinion,\nnever a destroyed one.",
+          "type": "string"
+        },
+        {
+          "const": "undecided",
+          "description": "Not enough evidence yet: runs are still to complete, or completed runs are\nstill waiting on the requester's review. The climber holds.",
+          "type": "string"
+        }
+      ]
+    },
+    "LadderAxis": {
+      "description": "Which axis a ladder's emission loop nests on — and therefore the order its runs\nexecute in, by the same mechanism a plan's axis works: emission order is queue\norder is execution order.",
+      "oneOf": [
+        {
+          "const": "rung",
+          "description": "Bring every climber up one rung before anyone moves on — the board advances\nas a row. The default: it is what makes a ladder comparable across models.",
+          "type": "string"
+        },
+        {
+          "const": "combination",
+          "description": "Take one climber as far up as it gets before starting the next — the board\nadvances as a column. Answers \"how far does *this* model get?\" soonest.",
+          "type": "string"
+        }
+      ]
+    },
+    "LadderCell": {
+      "description": "The rung a climber currently stands on: the coverage cell it is filling, the gate\nevidence gathered so far, and what the gate makes of it right now.",
+      "properties": {
+        "completed": {
+          "description": "Completed runs for this cell, counted globally.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "desired": {
+          "description": "The target run count (the plan's `runs_per_cell`).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "harness": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/HarnessSlug",
+          "description": "The harness."
+        },
+        "inFlight": {
+          "description": "In-flight jobs (queued / pending / dispatched / starting / running) for this\ncell, counted globally.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "latestVersion": {
+          "description": "The newest ingested version of this case (may differ from `version` when\nthe pin is stale). Empty when the case is not ingested.",
+          "type": "string"
+        },
+        "model": {
+          "description": "The model id.",
+          "type": "string"
+        },
+        "outcome": {
+          "$ref": "#/$defs/GateOutcome",
+          "description": "What the gate makes of that evidence *now*, including its \"not decided yet\"\nanswer — which a recorded outcome can never express."
+        },
+        "pending": {
+          "description": "How many of [`Self::in_flight`] are `pending` — deliberately held back rather\nthan merely waiting to be claimed, because their harness is at its parallelism\ncap or (for a game jam) another run of the same jam is already going on that\nmodel.\n\nSurfaced separately because it is the answer to \"why is my buffer full but\nnothing running?\", which is otherwise indistinguishable from a stuck queue. It\nis a **subset** of `inFlight`, not an addition to it.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "position": {
+          "description": "The rung's position in the climb, from zero.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "provider": {
+          "description": "The provider for a provider-routed harness, or null.",
+          "type": ["string", "null"]
+        },
+        "remaining": {
+          "description": "How many more runs to trigger: `max(0, desired - (completed + in_flight))`.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rungId": {
+          "description": "Which rung, by its stable id.",
+          "type": "string"
+        },
+        "slug": {
+          "description": "The test-case slug.",
+          "type": "string"
+        },
+        "stale": {
+          "description": "Whether the pinned `version` is not the newest ingested one — a hint to the\nreviewer that they may want to bump the pin.",
+          "type": "boolean"
+        },
+        "tally": {
+          "$ref": "#/$defs/RungTally",
+          "description": "The gate evidence gathered so far."
+        },
+        "unreviewed": {
+          "description": "How many of [`Self::completed`] the **requesting account** has not reviewed.\nThe only per-account number on the cell: it changes nothing about what the\ncell needs, but it occupies the review buffer, which is what makes an\notherwise mysteriously idle plan explicable.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "variant": {
+          "description": "The variant.",
+          "type": "string"
+        },
+        "version": {
+          "description": "The pinned version this cell counts against.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rungId",
+        "position",
+        "slug",
+        "version",
+        "variant",
+        "harness",
+        "model",
+        "desired",
+        "completed",
+        "inFlight",
+        "pending",
+        "unreviewed",
+        "remaining",
+        "latestVersion",
+        "stale",
+        "tally",
+        "outcome"
+      ],
+      "type": "object"
+    },
+    "LadderClimber": {
+      "description": "One climber's whole standing on the ladder.",
+      "properties": {
+        "currentRung": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LadderCell"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The rung it stands on, or null once it has topped out."
+        },
+        "focused": {
+          "description": "The reviewer's \"watch this one\" flag, and the tiebreak between equal\npriorities.",
+          "type": "boolean"
+        },
+        "harness": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/HarnessSlug",
+          "description": "The harness."
+        },
+        "held": {
+          "description": "Whether the climber is stopped by hand.",
+          "type": "boolean"
+        },
+        "key": {
+          "description": "The combination's canonical key (`harness|model|provider`), which is how\nsteering and verdicts reference it.",
+          "type": "string"
+        },
+        "model": {
+          "description": "The canonical model id.",
+          "type": "string"
+        },
+        "outcomes": {
+          "description": "Every verdict this climber has on the ladder, in climb order, with any decided\nagainst a superseded version flagged and trailing.",
+          "items": {
+            "$ref": "#/$defs/LadderRungOutcome"
+          },
+          "type": "array"
+        },
+        "priority": {
+          "description": "Climb-order weight; higher goes first, zero is the default. Pushes one model to\nthe front without reordering the ladder — which would change what every *other*\nclimber is measured against.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "provider": {
+          "description": "The provider for a provider-routed harness, or null.",
+          "type": ["string", "null"]
+        },
+        "status": {
+          "$ref": "#/$defs/ClimberStatus",
+          "description": "Where the climber stands."
+        }
+      },
+      "required": [
+        "key",
+        "harness",
+        "model",
+        "priority",
+        "focused",
+        "held",
+        "status",
+        "outcomes"
+      ],
+      "type": "object"
+    },
+    "LadderOutcome": {
+      "description": "A resolved verdict on one rung, as the wire names it. The gate's third answer,\n\"not decided yet\", is deliberately absent: an unresolved rung has *no* verdict,\nand is reported as the absence of one rather than as a verdict of nothing.",
+      "oneOf": [
+        {
+          "const": "advanced",
+          "description": "The rung was cleared; the climber moved up.",
+          "type": "string"
+        },
+        {
+          "const": "walled",
+          "description": "The rung was failed; the climber stopped there.",
+          "type": "string"
+        }
+      ]
+    },
+    "LadderProgressRung": {
+      "description": "One rung as the progress board describes it: the declaration plus how its pin has\naged.",
+      "properties": {
+        "id": {
+          "description": "The rung's **stable opaque id**, minted when the rung is added and never\nreused.\n\nEmphatically not its position. Rungs get reordered and re-pinned, and every\nrecorded verdict references this id — a positional identifier would silently\nreattribute a climber's verdicts to a different case the moment the ladder was\nrearranged.",
+          "type": "string"
+        },
+        "latestVersion": {
+          "description": "The newest ingested version of this case. Empty when the case is not ingested.",
+          "type": "string"
+        },
+        "position": {
+          "description": "Its position in the climb, from zero.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "runs": {
+          "description": "This rung's override of the ladder's runs-per-cell target, or null to inherit\nit — so one pivotal step can demand more evidence without making the whole\nclimb more expensive.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "slug": {
+          "description": "The test-case slug.",
+          "type": "string"
+        },
+        "stale": {
+          "description": "Whether the pinned version is not the newest ingested one — a hint that the\nrung could be bumped, and a warning that doing so re-opens every verdict on it.",
+          "type": "boolean"
+        },
+        "variant": {
+          "description": "The variant to climb.",
+          "type": "string"
+        },
+        "version": {
+          "description": "The pinned, exact version.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "slug",
+        "version",
+        "variant",
+        "position",
+        "latestVersion",
+        "stale"
+      ],
+      "type": "object"
+    },
+    "LadderRungOutcome": {
+      "description": "One recorded (or freshly computed) verdict on one rung for one climber.",
+      "properties": {
+        "decidedAt": {
+          "description": "RFC 3339 of when the automatic outcome was computed.",
+          "type": "string"
+        },
+        "decidedVersion": {
+          "description": "The exact case version the verdict was decided against.\n\nPart of the verdict's identity, not decoration: bumping a rung to a newer case\nneither erases the verdict earned on the old one nor silently inherits it, and\nre-pinning back restores it.",
+          "type": "string"
+        },
+        "effective": {
+          "$ref": "#/$defs/LadderOutcome",
+          "description": "The verdict that actually governs the climb: the override when there is one,\nelse the automatic outcome."
+        },
+        "outcome": {
+          "$ref": "#/$defs/LadderOutcome",
+          "description": "What the gate computed. Recomputable at any time from your reviews."
+        },
+        "overrideAt": {
+          "description": "RFC 3339 of when the override was applied, or null when there is none.",
+          "type": ["string", "null"]
+        },
+        "overrideOutcome": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LadderOutcome"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Your manual override of that result, or null for none. Kept beside the\nautomatic verdict rather than replacing it, so a recompute can never silently\nundo it and clearing it reverses the override exactly."
+        },
+        "recorded": {
+          "description": "Whether the verdict is stored, or was computed live for this response and will\nbe written down by the next top-up. A read never writes.",
+          "type": "boolean"
+        },
+        "rungId": {
+          "description": "Which rung, by its stable id.",
+          "type": "string"
+        },
+        "stale": {
+          "description": "Whether this verdict was decided against a version the rung no longer pins —\nhistory kept honest across a bump, and never allowed to govern the climb.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "rungId",
+        "decidedVersion",
+        "outcome",
+        "effective",
+        "decidedAt",
+        "stale",
+        "recorded"
+      ],
+      "type": "object"
+    },
+    "RungTally": {
+      "description": "The counts one gate decision was made from, so a dashboard can say *why* a climber\nis walled or waiting without re-deriving the floor and unloaded-run rules a second\ntime and getting them subtly different.\n\nThe wire mirror of [`GateTally`], which is an internal type of the pure core.",
+      "properties": {
+        "completed": {
+          "description": "Completed runs on the rung.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "judged": {
+          "description": "Completed runs the gate has a rating for — reviewed by you, or decided as\nbroken because the build never loaded.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "passing": {
+          "description": "Judged runs rated at or above the gate's floor.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "pending": {
+          "description": "Runs the rung has yet to complete against its target.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "required": {
+          "description": "How many passing runs the threshold demands, as the whole number of runs it\nactually takes — a fractional bar of 2.5 means three.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "unjudged": {
+          "description": "Completed runs still waiting on your review.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "completed",
+        "judged",
+        "unjudged",
+        "passing",
+        "pending",
+        "required"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/coverage/ladder-progress.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The ladder's board: the climb, every climber's standing, and the roll-ups the\ndashboard header shows.",
+  "properties": {
+    "bufferTarget": {
+      "description": "The buffer target in force (the ladder's override, else the account's setting,\nelse the backend default).",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "climbers": {
+      "description": "Every climber, in the order the ladder would feed them.",
+      "items": {
+        "$ref": "#/$defs/LadderClimber"
+      },
+      "type": "array"
+    },
+    "climbersToppedOut": {
+      "description": "How many climbers have cleared every rung.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "climbersWalled": {
+      "description": "How many climbers are walled.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "ladderId": {
+      "description": "The ladder's id.",
+      "type": "string"
+    },
+    "outerAxis": {
+      "$ref": "#/$defs/LadderAxis",
+      "description": "The axis the climbers below are ordered on, and the order runs are emitted in."
+    },
+    "rungs": {
+      "description": "The rungs, low to high.",
+      "items": {
+        "$ref": "#/$defs/LadderProgressRung"
+      },
+      "type": "array"
+    },
+    "runsMissing": {
+      "description": "The runs still to trigger across every climber's current rung.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "runsOutstanding": {
+      "description": "The review-buffer occupancy: in-flight jobs plus unreviewed runs. When this has\nreached `bufferTarget`, a top-up deliberately enqueues nothing — which is the\ndifference between a finished ladder and a full one.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "runsUnreviewed": {
+      "description": "The completed runs across those rungs the requester has not reviewed.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "ladderId",
+    "outerAxis",
+    "rungs",
+    "climbers",
+    "climbersToppedOut",
+    "climbersWalled",
+    "runsMissing",
+    "runsUnreviewed",
+    "runsOutstanding",
+    "bufferTarget"
+  ],
+  "title": "LadderProgress",
+  "type": "object"
+}

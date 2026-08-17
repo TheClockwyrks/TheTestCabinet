@@ -59,8 +59,9 @@ roleRef:
 # ── Dispatcher ───────────────────────────────────────────────────────────────
 # The dispatcher Deployment runs under the `tcab-dispatcher` ServiceAccount. It
 # claims queued jobs from the backend and turns each into one driver Job, watches
-# the Jobs it created, reaps finished ones, and reads a dead driver pod's logs to
-# report the failure. That is the whole of its API surface.
+# the Jobs it created, reaps finished ones, reads a dead driver pod's logs to
+# report the failure, and deletes the sandbox pods a dead driver orphaned. That is
+# the whole of its API surface.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -77,10 +78,25 @@ rules:
   - apiGroups: ["batch"]
     resources: ["jobs"]
     verbs: ["create", "get", "list", "watch", "delete"]
-  # Find a driver Job's pod (to read its status) when a Job fails.
+  # Find a driver Job's pod (to read its status) when a Job fails, and delete the
+  # SANDBOX pods that Job's driver orphaned.
+  #
+  # `delete` is here for the sandbox reaper, not for driver pods. The driver deletes
+  # its own sandbox at the end of a run and on cancellation, but both paths are
+  # in-process: a driver killed by SIGKILL (OOM kill, eviction, node drain, spot
+  # preemption) runs neither, and the sandbox it leaves has no ownerReference to
+  # garbage-collect it — its `sleep infinity` keep-alive then holds the node's
+  # capacity indefinitely. The dispatcher watches every driver Job it created, so it
+  # is the one component that learns a driver died and can clean up after it. It
+  # selects on BOTH the job-id and the driver's managed-by label, so this verb can
+  # never reach a driver pod (which shares only the former).
+  #
+  # NOTE this Role is namespaced. A deployment that points the driver at a different
+  # sandbox namespace (TCAB_K8S_NAMESPACE) must grant the same pods list/delete
+  # there, or sandbox reaping fails in that namespace (logged, non-fatal).
   - apiGroups: [""]
     resources: ["pods"]
-    verbs: ["get", "list"]
+    verbs: ["get", "list", "delete"]
   # Surface a dead driver pod's logs in the job's failure detail.
   - apiGroups: [""]
     resources: ["pods/log"]

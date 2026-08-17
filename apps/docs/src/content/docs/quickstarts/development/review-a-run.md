@@ -38,6 +38,12 @@ build submitted, browsable independent of the checklist.
 Re-submitting from the same account updates that account's review in place. Use
 Edit review on your own review to revise a verdict, a rating, or the writeup.
 
+A verdict [automated validation](/components/core/validation/) decided is
+recoverable in an edit: a point whose answer differs from the machine's carries a
+Restore control, and the checklist rail's Restore validator verdicts puts every
+overridden point back at once, keeping the notes. See
+[overriding and restoring an automated verdict](/guides/development/reviewing-test-run-results/#overriding-and-restoring-an-automated-verdict).
+
 An edit that changes something requires a short note explaining what changed.
 Each edit is kept as a revision in the review's public edit history alongside a
 generated diff of the ratings, verdicts, and writeup. The review keeps its first

@@ -5,12 +5,18 @@ import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { ReviewerWidgets } from "./ReviewerWidgets";
 import { useAuth } from "../../../client/auth";
-import { RatingBadge, canonicalModelId } from "@test-cabinet/ui";
+import { GradeBadge, RatingBadge, canonicalModelId } from "@test-cabinet/ui";
 import { LoadingState } from "../../components/LoadingState";
 import { RunLog, useRunTable } from "../../components/RunLog";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { useFindModel } from "../../data/useModels";
-import { type Rating, worstRating } from "../../data/ratings";
+import {
+  asGrade,
+  overallGradeOf,
+  type GradeStatus,
+  type Rating,
+  worstRating,
+} from "../../data/ratings";
 import { useGalleryData } from "../../data/galleryContext";
 import { useFindReview } from "../../data/writeups";
 import { useTestCaseName } from "../../data/useTestCaseName";
@@ -30,23 +36,24 @@ const RECENT_LIMIT = 20;
 export function HomePage() {
   const {
     canExecute,
-    producedSummaries,
     localIds,
     writeups: localWriteups,
     queryRunSummaries,
   } = useGalleryData();
   const { token } = useAuth();
   const findReview = useFindReview();
-  const [published, setPublished] = useState<RunSummary[]>([]);
+  const [recentRuns, setRecentRuns] = useState<RunSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // The most recent published runs, newest first — a single page-0 query rather
-  // than the whole cabinet.
+  // The most recent runs, newest first — a single page-0 query rather than the
+  // whole cabinet. The consoles draw from the union slice so a produced (still
+  // unpublished) run takes its place in that recent window by date, exactly as it
+  // does in the runs index; the public gallery holds only published runs.
   useEffect(() => {
     let active = true;
     setLoading(true);
     queryRunSummaries({
-      state: "published",
+      state: "any",
       sort: "date",
       dir: "desc",
       offset: 0,
@@ -54,12 +61,12 @@ export function HomePage() {
     })
       .then((res) => {
         if (!active) return;
-        setPublished(res.summaries);
+        setRecentRuns(res.summaries);
         setLoading(false);
       })
       .catch(() => {
         if (!active) return;
-        setPublished([]);
+        setRecentRuns([]);
         setLoading(false);
       });
     return () => {
@@ -67,16 +74,11 @@ export function HomePage() {
     };
   }, [queryRunSummaries]);
 
-  // Produced (local) runs lead the recent list, ahead of the queried published
-  // window (the numbered listing never returns unpublished runs), then everything
-  // sorted newest first.
+  // The queried window is already the newest runs of whichever slice this host
+  // draws from; re-sort defensively so the hero and the log agree on "latest".
   const recent = useMemo(
-    () =>
-      [
-        ...producedSummaries,
-        ...published.filter((s) => !localIds.has(s.id)),
-      ].sort(byRecencyDesc),
-    [producedSummaries, published, localIds],
+    () => [...recentRuns].sort(byRecencyDesc),
+    [recentRuns],
   );
   // The hero spotlights the latest *completed* run: a failed run produced no
   // stats or rating, so featuring it would lead with zeros. Failed runs still
@@ -94,11 +96,20 @@ export function HomePage() {
   // A local, unpublished writeup wins the featured rating (an in-progress edit
   // must show before it is published); absent one, the summary's own aggregate
   // rating stands in.
+  const featuredReview = featured
+    ? findReview(featured.id, localWriteups)
+    : undefined;
   const featuredRating = featured
-    ? (worstRating(
-        findReview(featured.id, localWriteups)?.ratings.map((r) => r.rating) ??
-          [],
-      ) ?? featured.rating)
+    ? (worstRating(featuredReview?.ratings.map((r) => r.rating) ?? []) ??
+      featured.rating)
+    : null;
+  // A game jam carries no per-domain rating: its badge is the reviewer's
+  // whole-game overall grade, resolved the same way (a local, in-progress review
+  // first, then the summary card's aggregate) so the hero shows a jam's verdict
+  // rather than a bare dash.
+  const featuredGrade = featured
+    ? ((featuredReview && overallGradeOf(featuredReview.checklist)) ??
+      asGrade(featured.score?.overallGrade))
     : null;
 
   return (
@@ -127,8 +138,12 @@ export function HomePage() {
             {featured && (
               <FeaturedRun
                 run={featured}
-                local={localIds.has(featured.id)}
+                // Unpublished per the console's produced worklist OR per the card
+                // itself (a queried run carries no publish timestamp until it is
+                // published), mirroring the run log's own tag.
+                local={localIds.has(featured.id) || !featured.publishedAt}
                 rating={featuredRating}
+                grade={featuredGrade}
               />
             )}
             {rest.length > 0 && (
@@ -158,10 +173,14 @@ function FeaturedRun({
   run,
   local,
   rating,
+  grade,
 }: {
   run: RunSummary;
   local: boolean;
   rating: Rating | null;
+  /** A game jam's whole-game overall grade, shown in place of the rating a jam
+   * does not carry. Null for every domain-rated run. */
+  grade: GradeStatus | null;
 }) {
   const { subject, metrics } = run;
   const model = useFindModel()(subject.modelId, subject.harnessSlug);
@@ -205,6 +224,8 @@ function FeaturedRun({
           value={
             rating ? (
               <RatingBadge rating={rating} />
+            ) : grade ? (
+              <GradeBadge status={grade} />
             ) : (
               <span className={styles.noRating}>—</span>
             )

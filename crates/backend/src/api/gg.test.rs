@@ -1,6 +1,24 @@
 use super::*;
 
+use crate::api::jobs::JobAttribution;
 use crate::db::Db;
+
+/// The attribution a gg launch stamps, resolved the way [`launch_gg`] resolves it:
+/// the account that posted the run, and no origin (nothing schedules a gg run — see
+/// the handler). The minting tests below are about the capability set the job
+/// carries, so they all mint under this one.
+fn launch_attribution() -> JobAttribution {
+    attribution(
+        &AuthUser(test_cabinet_core::Account {
+            id: "acct-gg".to_string(),
+            username: "reviewer".to_string(),
+            display_name: "Reviewer".to_string(),
+            picture_updated_at: None,
+        }),
+        &LaunchQuery::default(),
+    )
+    .expect("no origin is not an error")
+}
 
 /// A launchable gg request: the `pong` case bound to the mock model on the primary
 /// slot — the smallest set that a real gg session runs against.
@@ -137,6 +155,7 @@ fn build_new_job_persists_the_capability_set_for_a_gg_run() {
         &launch,
         test_cabinet_core::TestType::EndToEnd,
         "2026-07-23T00:00:00Z",
+        &launch_attribution(),
     )
     .unwrap();
     assert_eq!(new.harness_slug, "gg");
@@ -169,6 +188,7 @@ fn build_new_job_leaves_gg_config_null_for_a_conventional_run() {
         &launch,
         test_cabinet_core::TestType::EndToEnd,
         "2026-07-23T00:00:00Z",
+        &launch_attribution(),
     )
     .unwrap();
     assert!(new.gg_config_json.is_none());
@@ -185,6 +205,7 @@ async fn enqueue_persists_and_retrieves_the_gg_capability_set() {
         &launch,
         test_cabinet_core::TestType::EndToEnd,
         "2026-07-23T00:00:00Z",
+        &launch_attribution(),
     )
     .unwrap();
     let id = new.id.clone();

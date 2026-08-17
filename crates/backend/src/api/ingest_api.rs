@@ -21,6 +21,7 @@ use crate::db::ReferenceSheetEntry;
 use crate::error::ApiError;
 use crate::ingest::{IngestEvent, IngestReport, IngestRequest, Ingestor};
 use crate::publisher::Publisher;
+use crate::readiness::Readiness;
 use crate::store::DefinitionStore;
 
 use super::AppState;
@@ -75,6 +76,7 @@ pub async fn ingest(
             protected,
             state.publisher.clone(),
             state.gg_docs.clone(),
+            state.ready.clone(),
         ));
     }
 
@@ -101,6 +103,15 @@ pub async fn ingest(
         // erratum's `exclude_from_score`) without touching a single `run` row, which is
         // precisely the change the index's per-id freshness rule cannot observe.
         state.gg_docs.invalidate_all().await;
+    }
+
+    // A backend that started on an empty store is held out of its Service until one
+    // of these scans fills it (see `crate::readiness`). Gate on what the store now
+    // holds rather than on the scan merely succeeding: a scan against an empty or
+    // broken checkout returns Ok having ingested nothing, and must not flip an
+    // still-empty backend Ready.
+    if state.store.is_populated() {
+        state.ready.mark_store_populated();
     }
 
     Ok(Json(IngestResponse::from(report)).into_response())
@@ -276,6 +287,7 @@ fn ingest_streaming(
     protected: std::collections::HashSet<(String, String)>,
     publisher: Publisher,
     gg_docs: crate::gg_docs::GgDocIndex,
+    readiness: Readiness,
 ) -> Response {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Bytes>();
 
@@ -301,6 +313,11 @@ fn ingest_streaming(
                     // queries the moment ingest reports finished cannot be served the
                     // pre-ingest scores.
                     tokio::runtime::Handle::current().block_on(gg_docs.invalidate_all());
+                }
+                // …and, as on the non-streaming path, a scan that leaves the store
+                // populated releases the readiness latch.
+                if store.is_populated() {
+                    readiness.mark_store_populated();
                 }
                 StreamEvent::done(&report)
             }

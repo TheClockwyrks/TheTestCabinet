@@ -19,15 +19,17 @@ The dispatcher runs one loop forever. Each tick:
 
 1. Reconcile against the live cluster: list the `Job`s this dispatcher owns
    (selected by their `app.kubernetes.io/managed-by` label), count the
-   non-terminal ones as the in-flight total, and report any driver-pod death the
-   driver itself could not. Counting from the cluster rather than from an
-   in-memory tally is what makes a restart safe.
+   non-terminal ones as the in-flight total, report any driver-pod death the
+   driver itself could not, and reap the sandbox pods a dead driver orphaned
+   (see [Sandbox reaping](#sandbox-reaping)). Counting from the cluster rather
+   than from an in-memory tally is what makes a restart safe.
 2. Admit while the in-flight total is under `TCAB_DISPATCHER_MAX_INFLIGHT`:
    claim the oldest queued run job (`POST /jobs/next`) and create one driver
-   `Job` for it. When the run queue is empty and a publisher image is
-   configured, claim the oldest queued publish job instead and create one
-   publisher `Job`. Both kinds carry the same `managed-by` label, so one
-   in-flight cap covers both.
+   `Job` for it. The backend hands jobs back in enqueue order across harnesses,
+   skipping any it is holding back (see [Queue order](#queue-order)). When the
+   run queue is empty and a publisher image is configured, claim the oldest
+   queued publish job instead and create one publisher `Job`. Both kinds carry
+   the same `managed-by` label, so one in-flight cap covers both.
 3. Let each finished `Job` reap itself (`ttlSecondsAfterFinished`).
 
 A tick that admits a job loops straight back, so the queue keeps draining while
@@ -54,6 +56,53 @@ dispatcher.
   [game-jam](/testing/game-jam/overview/) job back while another run of the same
   jam by the same model is in flight under any harness, so a model's jam entries
   run one at a time and each is briefed with the previous one's README.
+
+## Queue order
+
+The backend hands jobs back in the order they were enqueued. Each job takes a
+monotonic queue position, `job.queue_seq`, when it is inserted, and the claim
+orders by that position rather than by the enqueue timestamp. A timestamp cannot
+order a batch, because every run of one `POST /jobs/batch` shares a single one,
+and being stored as an RFC 3339 string with a variable-length subsecond part it
+does not always compare chronologically either.
+
+The consequence is that a batch runs in the order the console listed it, and
+that is the whole mechanism by which anything upstream controls execution order:
+nothing in the dispatcher, the driver, or the queue needs to know why a run was
+enqueued, because emitting is choosing.
+
+Both consoles exploit that by emitting a case's repeats together. The new-run
+form fans each harness and model combination out over its "runs each" count
+before moving to the next combination, and a [coverage
+plan](/components/backend/coverage/) emits each cell's missing runs together, so
+three runs each of three cases start as three of the first case, then three of
+the second, then three of the third, and finish in roughly that order. That is
+what makes a repeated set reviewable a case at a time instead of arriving
+interleaved. A caller that wants a different execution order submits the runs in
+that order.
+
+Which axis a coverage plan puts outside that per-cell grouping is configurable
+per plan rather than fixed. `outerAxis: "case"`, the default, finishes one case
+across every combination before starting the next, while
+`outerAxis: "combination"` takes one model through every case first. A
+[ladder](/components/backend/ladders/) makes the same choice between advancing
+every climber one rung and taking one climber as far as it gets. Both settings
+are purely a decision about the order cells are handed to `POST /jobs/batch`;
+the dispatcher behaves identically either way.
+
+A plan or ladder also does not enqueue its whole matrix at once. It keeps a
+bounded [review buffer](/components/backend/coverage/#the-review-buffer) of
+outstanding runs and refills it as they are reviewed, so the queue this
+dispatcher drains is normally a short, deliberately ordered slice rather than an
+entire sweep.
+
+Ordering governs when a run starts, not when it finishes: runs still execute
+concurrently up to the in-flight cap and the per-harness limit, so a slow early
+run can finish after a fast later one. The one queue the backend fully
+serializes is a game jam per model, for the reason above.
+
+An automatic retry is a fresh enqueue, so it goes to the back of the queue
+rather than jumping ahead of work queued while it was running.
 
 ## The driver Job
 
@@ -91,13 +140,86 @@ leaves that job to its own driver's reporting.
 The publish path carries no equivalent detection. A publisher that dies surfaces
 as a stuck `dispatched` publish job or is reaped by its TTL.
 
+## Sandbox reaping
+
+The [driver](/components/driver/overview/) normally deletes its own sandbox pod,
+but that cleanup is in-process. A driver killed by `SIGKILL`, whether by an OOM
+kill, an eviction, a node drain, or a spot preemption, never runs it, and the
+orphaned sandbox has no `ownerReference` to garbage-collect it, so it runs until
+something deletes it and holds its requests against the node the whole time.
+Left alone this compounds: the leaked requests crowd the node, which makes the
+next driver more likely to be killed, which leaks another sandbox.
+
+The dispatcher is the only component positioned to clean this up, since it is
+long-lived and already watches every driver `Job` it created. When one fails
+terminally it deletes that job's sandbox pods, selecting on both the job-id
+label and the driver's `managed-by` label. Both are required: the driver `Job`'s
+own pod carries the same job id, and matching it would destroy the logs the
+failure report reads.
+
+The reap is deliberately independent of the death report. Reporting needs a
+retained per-job token and a non-terminal backend job, neither of which is
+guaranteed, while a sandbox must be cleaned up regardless, so the reap is gated
+only on the `Job` having failed. A failed reap is retried on the next tick
+rather than recorded as done.
+
+The driver pod also carries small resource requests
+(`TCAB_DISPATCHER_DRIVER_CPU_REQUEST` and
+`TCAB_DISPATCHER_DRIVER_MEMORY_REQUEST`) purely to keep it out of the
+`BestEffort` QoS class, which is what made it the first thing evicted and
+OOM-killed. Limits are deliberately unset by default, because a memory limit
+would re-introduce the same `SIGKILL` from the container's own cgroup.
+
+## Surviving the cluster autoscaler
+
+Reaping an orphaned sandbox limits the damage from a killed driver; it does not
+stop the run from dying. The cluster autoscaler is a standing source of exactly
+that kill, and by default it has every reason to pick a driver.
+
+- A driver pod is a `Job` pod, so the autoscaler treats it as replaceable: for
+  an ordinary `Job` a new pod would simply appear elsewhere. These `Job`s are
+  `backoffLimit: 0`, so there is no replacement, and evicting one destroys the
+  run it is conducting mid-flight along with whatever model spend that run had
+  already incurred.
+- Those deliberately small requests make the driver's node look idle. The run's
+  real reservation belongs to the sandbox, a separate pod and frequently on a
+  separate node, so a node whose only tenant is a driver sits under the
+  autoscaler's utilization threshold for the entire length of the run, which is
+  precisely the profile it consolidates away.
+
+Every pod the dispatcher and driver create, meaning driver `Job`s, publish
+`Job`s, and sandbox pods, therefore carries
+`cluster-autoscaler.kubernetes.io/safe-to-evict: "false"`, and a node running
+one lingers until the work on it finishes. The sandbox carries the annotation
+even though the autoscaler already spares controller-less pods: that exemption
+is a property of the cluster's configuration rather than of the manifest, and it
+would silently invert if anything ever gave the sandbox an owner.
+
+This is a scale-down guard only. It does not pin the pod against a node the
+operator drains, a spot reclaim, or a kubelet node-pressure eviction; the
+sandbox reaping above and the driver's own `activeDeadlineSeconds` backstop
+remain the answer for those.
+
+When a driver is disrupted anyway, the death report says so. The dispatcher
+reads the pod's `DisruptionTarget` condition ahead of its container state,
+because an evicted driver's container reports the `SIGTERM` it received,
+describing how it died rather than why, which would otherwise read as an
+ordinary crash. If the pod is gone entirely, the report distinguishes a `Job`
+that never started a pod from a pod that ran and was deleted out from under the
+run, using the `Job`'s own `status.failed` count, which outlives the pod.
+
 ## RBAC
 
 The dispatcher runs under its own `ServiceAccount` with a namespaced `Role`
-granting exactly `batch`/`jobs` create/get/list/watch/delete and `core`/`pods`
-plus `pods/log` get/list. It creates no pods directly; the
-[driver](/components/driver/overview/) does that under its own identity. Naming
-a `Secret` on a `Job` needs no `secrets` rule, because the kubelet reads and
+granting exactly `batch`/`jobs` create/get/list/watch/delete, `core`/`pods`
+get/list/delete, and `core`/`pods/log` get. The pod rules cover reading a dead
+driver pod's status and logs for the failure report and deleting the sandbox
+pods that pod orphaned. It creates no pods directly; the
+[driver](/components/driver/overview/) does that under its own identity. A
+deployment that points the driver at a different sandbox namespace
+(`TCAB_K8S_NAMESPACE`) must grant the same pod `list` and `delete` there, or
+reaping fails in that namespace, which is logged and never fatal. Naming a
+`Secret` on a `Job` needs no `secrets` rule, because the kubelet reads and
 projects it. The manifests are in `deployments/k8s/base/rbac.yaml`. See
 [Kubernetes: staging & prod](/deployment/kubernetes/run-plane/#rbac).
 

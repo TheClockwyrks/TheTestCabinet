@@ -1,9 +1,8 @@
 @use "../../styles/tokens" as t;
-@use "../../styles/surfaces" as s;
 @use "../../styles/halo" as h;
 
-// The runs tab bar sits on its own full-width row above the full-width search
-// field, matching the Test Cases page's controls block.
+// The runs tab bar sits on its own full-width row above the full-width filter
+// bar, matching the Test Cases page's controls block.
 .controls {
   display: flex;
   flex-direction: column;
@@ -14,31 +13,9 @@
 
   // `RunsTabs` carries the `$space-lg` gap it needs when it sits directly above
   // a page body (Failures, Unreviewed); here the flex gap owns the spacing, so
-  // the two index pages put the same distance between tabs and search field.
+  // the two index pages put the same distance between tabs and filter bar.
   > nav {
     margin-bottom: 0;
-  }
-}
-
-// Mirrors the Test Cases search field so the two index pages read identically.
-.search {
-  width: 100%;
-  padding: t.$space-sm t.$space-md;
-  font-family: var(--ttc-font);
-  font-size: t.$font-md;
-  color: t.$color-text;
-  background: s.$panel-bg;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-md;
-
-  &::placeholder {
-    color: t.$color-text-muted;
-  }
-
-  &:focus {
-    outline: none;
-    border-color: t.$color-accent;
-    box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 40%, transparent);
   }
 }
 

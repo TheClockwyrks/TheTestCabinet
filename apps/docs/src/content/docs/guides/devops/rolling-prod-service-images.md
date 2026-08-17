@@ -104,8 +104,10 @@ sed -i "s/$OLD/$NEW/g" \
 
 Then read the diff and confirm the only changes are the eight `newTag`s, the
 `TCAB_DRIVER_IMAGE` value, and the `TCAB_PUBLISHER_IMAGE` value, and that
-`TCAB_CONTAINER_TAG` is untouched. Update the comment block at the top of
-`kustomization.yaml` to name the new sha and what it carries.
+`TCAB_CONTAINER_TAG` is untouched: it pins the run-container images, which move
+with a rehearsed release rather than with a service roll, as described below.
+Update the comment block at the top of `kustomization.yaml` to name the new sha
+and what it carries.
 
 ## 3. Preview against the live cluster
 
@@ -169,12 +171,17 @@ The run-container images the driver resolves for each sandbox pod are pinned by
 the [driver](/components/driver/overview/) reads at run time and the dispatcher
 forwards into every driver Job.
 
-They roll on their own cadence: they rebuild only when the
+They roll on their own cadence by choice rather than by availability.
 [`build-containers.yml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/.github/workflows/build-containers.yml)
-workflow runs, so `TCAB_CONTAINER_TAG` tracks the latest sha at which
-`build-containers` published multi-arch, usually behind the service-image sha.
-Leave it alone during a service roll, and advance it only to a sha where
-`build-containers` published. The general pinning model is in
+runs unfiltered on every push to `master`, so multi-arch run images exist at every
+sha the service images do and `TCAB_CONTAINER_TAG` can always be advanced to the
+sha the services are being rolled to. The pin historically trailed a long way
+behind, because the workflow was once path-filtered and most shas carried no run
+images; a production overlay still sitting on such a sha is safe to move forward.
+
+Keep it a separate decision from the service roll all the same. The tag changes
+the image every future run executes inside, so it belongs to a release rehearsed
+on staging rather than to a service hotfix. The general pinning model is in
 [Kubernetes](/deployment/kubernetes/overview/#prerequisites).
 
 ## Rolling back

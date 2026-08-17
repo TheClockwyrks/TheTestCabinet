@@ -378,7 +378,7 @@ id = "quickens"
 title = "The worm quickens each level"
 description = "The worm's step interval shortens each level (about 5% per level) down to a floor, so it moves faster on higher levels."
 validation = { script = "validation/worm/quickens.mjs", outputs = [
-  { id = "cadence", name = "A high-level worm at speed", kind = "image" },
+  { id = "cadence", name = "A level 1 worm and a level 12 worm at speed", kind = "video" },
 ] }
 
 # --- Cursor & Firing ----------------------------------------------------------

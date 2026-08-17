@@ -85,12 +85,13 @@ export function useStaticGallery(): GalleryDataInput {
   // emitted `runs/<id>.json` asset.
   const localById = new Map(local.map((run) => [run.id, run]));
 
-  // The produced (dev-only local) runs as their own summary cards, pinned ahead of
-  // the queried published window by a paged page — mirroring the console's
-  // `producedSummaries`. Dev-only local runs have no published summary, so derive
-  // theirs from the full record (they are unreviewed previews, so no reviews / null
-  // rating is correct). The published summary index stays internal to this module
-  // (queried by `queryRunSummaries` below); it is never exposed whole.
+  // The produced (dev-only local) runs as their own summary cards — mirroring the
+  // console's `producedSummaries`, and folded into the `any` slice by
+  // `queryRunSummaries` below so a listing sorts and pages them with the published
+  // rows. Dev-only local runs have no published summary, so derive theirs from the
+  // full record (they are unreviewed previews, so no reviews / null rating is
+  // correct). The published summary index stays internal to this module (queried by
+  // `queryRunSummaries` below); it is never exposed whole.
   const producedSummaries = local.map((run) => toRunSummary(run, []));
 
   // The public gallery lists only models that a run has actually used. The
@@ -115,7 +116,18 @@ export function useStaticGallery(): GalleryDataInput {
     referencedModelSlugs.has(model.slug),
   );
 
+  // The snapshot inlines each case in full at build time, so this host holds both
+  // halves of the catalog contract: the listing summaries and, behind
+  // `readTestCase`, the detail a case page needs. There is nothing to fetch —
+  // `readTestCase` just resolves out of the same in-memory array — but supplying
+  // it is what keeps the detail pages working here, since they no longer read
+  // variants and errata off the listing.
   const testCases = catalogTestCases;
+  const readTestCase = useCallback(
+    async (slug: string) =>
+      catalogTestCases.find((entry) => entry.slug === slug) ?? null,
+    [],
+  );
 
   // Local previews take precedence over the published framing on id collision.
   const writeups = { ...publishedWriteups, ...localWriteups };
@@ -186,7 +198,10 @@ export function useStaticGallery(): GalleryDataInput {
     async (runId: string): Promise<RunDetail | null> => {
       const runReviews = publishedReviews[runId] ?? [];
       const localRun = localById.get(runId);
-      if (localRun) return { record: localRun, reviews: runReviews };
+      // A dev-only local run is by definition not published; everything the
+      // static site serves as an emitted asset is.
+      if (localRun)
+        return { record: localRun, reviews: runReviews, published: false };
       const url = `${import.meta.env.BASE_URL}runs/${encodeURIComponent(
         runId,
       )}.json`;
@@ -194,7 +209,7 @@ export function useStaticGallery(): GalleryDataInput {
         const response = await fetch(url);
         if (!response.ok) return null;
         const record = (await response.json()) as RunRecord;
-        return { record, reviews: runReviews };
+        return { record, reviews: runReviews, published: true };
       } catch {
         return null;
       }
@@ -206,16 +221,25 @@ export function useStaticGallery(): GalleryDataInput {
 
   // Answer a paged summary query purely in memory — the static analog of the
   // console's backend offset endpoint. The queryable set is the published summary
-  // index (minus any dev local overrides, which a page pins via
-  // `producedSummaries`); `runSummaryPage` filters/sorts/windows it with the same
-  // semantics the backend uses, so a numbered page behaves identically on both
-  // hosts. Stable identity keyed on the loaded local runs (the only varying input).
+  // index (minus any dev local overrides, which the local card supersedes), plus —
+  // for the `any` slice the listings ask for — the dev-only produced runs, so an
+  // unpublished preview sorts and pages among the published rows exactly as it does
+  // against the backend's `any` slice. `runSummaryPage` filters/sorts/windows the
+  // set with the same semantics the backend uses, so a numbered page behaves
+  // identically on both hosts. Stable identity keyed on the loaded local runs (the
+  // only varying input).
   const queryRunSummaries = useCallback(
-    async (query: RunQuery) =>
-      runSummaryPage(
-        publishedRunSummaries.filter((summary) => !localIds.has(summary.id)),
+    async (query: RunQuery) => {
+      const published = publishedRunSummaries.filter(
+        (summary) => !localIds.has(summary.id),
+      );
+      return runSummaryPage(
+        query.state === "any"
+          ? [...producedSummaries, ...published]
+          : published,
         query,
-      ),
+      );
+    },
     // `localIds` is rebuilt each render from the loaded local runs; key on those.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [localRuns],
@@ -291,6 +315,7 @@ export function useStaticGallery(): GalleryDataInput {
     queryRunSummaries,
     testCases,
     testCasesStatus: "ready",
+    readTestCase,
     // The model catalog is baked into the snapshot at build time, so it is always
     // resolved; the site has no backend to mutate it, so the config affordances
     // hide (no `createModel` on any client here). Narrowed above to the models a

@@ -51,7 +51,14 @@ import {
   VISION_GAIN,
   VISION_MIN,
 } from "./constants";
-import { advance, Drifter, Forager, Predator, wanderDir } from "./entities";
+import {
+  advance,
+  Drifter,
+  Forager,
+  Mover,
+  Predator,
+  wanderDir,
+} from "./entities";
 import { Effects } from "./effects";
 import { Input } from "./input";
 import { Maze } from "./maze";
@@ -117,6 +124,13 @@ export class Game {
   // API turns it off (reset/step) to take exact, load-independent measurements by
   // driving the clock itself, and back on (setAutoStep(true)) to record live clips.
   autoStep = true;
+
+  // The creatures' own minds (specs/instrumentation.md). On by default, as normal
+  // play requires; a scenario turns them off so a posed predator or drifter holds
+  // where it was put and an interaction with it is reproducible rather than a bet on
+  // where its wander happened to take it. Only their initiative is suspended — the
+  // forager, the light, cooldowns, waves, ink, eating, scoring, and contact all run.
+  creatureAI = true;
 
   // The read-only debug overlay, toggled with the backtick key. Off by default;
   // never affects gameplay (specs/instrumentation.md).
@@ -458,7 +472,38 @@ export class Game {
   }
 
   // ---- fixed-step simulation -------------------------------------------
+
+  // ---- Render interpolation ---------------------------------------------
+  // The simulation advances in whole FIXED_STEP ticks, but a frame is presented
+  // whenever the display asks for one, and the two rates do not divide evenly.
+  // `fixedStep` stamps where the movers stood when the step began, and the
+  // animation loop sets `renderAlpha` to the fraction of the next step the wall
+  // clock has already covered; render.ts draws between the two (Mover.viewX /
+  // Mover.viewY, SonarWave.viewFront). Nothing here feeds back into the
+  // simulation — these are written by the step and read by the renderer, never
+  // the other way about, so the same tick sequence produces the same state
+  // whatever the frame rate.
+  renderAlpha = 0;
+
+  // Every mover the renderer interpolates: the forager, the predators, and the
+  // drifters.
+  private movers(): Mover[] {
+    return [this.forager, ...this.predators, ...this.drifters];
+  }
+
+  // Collapse the interpolation window onto the current state, so anything that
+  // was repositioned rather than moved is not drawn smearing across the jump.
+  syncView(): void {
+    for (const m of this.movers()) m.syncView();
+    for (const w of this.waves) w.prevFront = w.front;
+  }
+
+
   fixedStep(dt: number): void {
+    // Where everything stood before this step, for the renderer to interpolate
+    // from (see the render-interpolation block above).
+    this.syncView();
+
     this.time += dt;
     switch (this.state) {
       case GameState.Dive:
@@ -545,7 +590,9 @@ export class Game {
       inkBetween: this.inkBetween,
       spawnWave: this.spawnWave,
     };
-    for (const p of this.predators) updatePredator(p, dt, world);
+    if (this.creatureAI) {
+      for (const p of this.predators) updatePredator(p, dt, world);
+    }
 
     // Bonus drifters.
     this.updateDrifters(dt);
@@ -575,16 +622,20 @@ export class Game {
 
   private updateDrifters(dt: number): void {
     // Existing drifters wander until eaten — a drifter is permanent, no fade-out
-    // (specs/playfield.md), so an amber glimmer you spot stays out there.
-    for (const d of this.drifters) {
-      advance(
-        d,
-        dt,
-        this.maze,
-        () => wanderDir(d, this.maze, this.rng),
-        (c, r) => this.maze.foragerOpen(c, r) && !this.maze.isWrapEdge(c, r),
-        () => true,
-      );
+    // (specs/playfield.md), so an amber glimmer you spot stays out there. A drifter is
+    // a creature, so its wander is one of the minds `setCreatureAI(false)` suspends;
+    // being eaten and scoring below are not, and keep working either way.
+    if (this.creatureAI) {
+      for (const d of this.drifters) {
+        advance(
+          d,
+          dt,
+          this.maze,
+          () => wanderDir(d, this.maze, this.rng),
+          (c, r) => this.maze.foragerOpen(c, r) && !this.maze.isWrapEdge(c, r),
+          () => true,
+        );
+      }
     }
     // Eat any drifter the forager is on (score each).
     const before = this.drifters.length;
@@ -644,12 +695,19 @@ export class Game {
     this.depth = 1;
     this.buildTrench(true);
     this.autoStep = false;
+    this.creatureAI = true;
   }
 
   // Turn automatic (wall-clock) stepping on or off. Input and the other control
   // ops do not change it.
   debugSetAutoStep(enabled: boolean): void {
     this.autoStep = enabled;
+  }
+
+  // Turn the creatures' own minds on or off. With them off every predator and drifter
+  // holds its tile, facing, and state; nothing else about the simulation changes.
+  debugSetCreatureAI(enabled: boolean): void {
+    this.creatureAI = enabled;
   }
 
   // Begin a dive, exactly as choosing DIVE from the title menu (opens on the

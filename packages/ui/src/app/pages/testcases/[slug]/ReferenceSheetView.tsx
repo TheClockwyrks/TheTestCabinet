@@ -1,7 +1,7 @@
 import { Panel } from "@test-cabinet/ui";
 import type {
   ReferenceSheet,
-  TestCaseSummary,
+  TestCaseDetail,
   VariantSummary,
 } from "../../../data/testCases";
 import { useGalleryData } from "../../../data/galleryContext";
@@ -62,7 +62,7 @@ export function ReferenceSheetView({
   variant,
   referenceSheet,
 }: {
-  testCase: TestCaseSummary;
+  testCase: TestCaseDetail;
   variant: VariantSummary;
   /** The variant's published frame indices. */
   referenceSheet: ReferenceSheet;

@@ -713,6 +713,33 @@
   gap: t.$space-sm;
 }
 
+// The per-verdict undo, trailing the note field: it appears only once the
+// reviewer's answer differs from the one this run's debug script decided, and puts
+// that machine call back. A quiet, text-weight control — the override it undoes is
+// the deliberate act; restoring is the cheap one — accented on hover to match the
+// rail's bulk restore.
+.verdictRestore {
+  flex: 0 0 auto;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  padding: 0 t.$space-sm;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid transparent;
+  background: none;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-accent;
+    border-color: t.$color-accent;
+  }
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 2px;
+  }
+}
+
 // The mechanical assertions behind a verdict's auto-set pass/fail — one fact per
 // row, each with its own detail — shown beneath the validation media and above the
 // Pass/Fail control so a reviewer reads what was checked before deciding. A leading
@@ -1014,9 +1041,10 @@
 // The "Mark unplayable" shortcut atop the rail: one click fails every checklist
 // item and rates every domain the worst tier, so a run that never launched can be
 // submitted without walking each question. Styled as an outlined negative control
-// so it reads as the heavy, all-or-nothing action it is.
+// so it reads as the heavy, all-or-nothing action it is. Stretched to the rail's
+// full width so it lines up with the category rows beneath it.
 .unplayable {
-  align-self: flex-start;
+  align-self: stretch;
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
   padding: t.$space-xs t.$space-md;
@@ -1035,6 +1063,87 @@
     opacity: 0.5;
     cursor: not-allowed;
   }
+}
+
+// The "Restore validator verdicts" undo beside it: puts every point the reviewer
+// overrode back to what this run's automated validation decided. Shares the
+// shortcut's outlined shape — it is the same kind of all-at-once action — but
+// hovers to the accent rather than the negative cue, since it restores rather than
+// condemns. Inert (dimmed) while nothing is overridden. Shares the same full-width
+// rail alignment.
+.restoreAuto {
+  align-self: stretch;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  padding: t.$space-xs t.$space-md;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid t.$color-border;
+  background: s.$panel-bg;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: t.$color-accent;
+    border-color: t.$color-accent;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+// The change list inside the bulk restore's confirmation: one row per point the
+// restore would put back, reading "<point> — <your answer> → <what validation
+// decided>". It lives in the dialog's own capped, scrollable detail region, so it
+// needs no height limit of its own however many points a case declares.
+.restoreList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.restoreRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
+  padding: t.$space-2xs 0;
+
+  & + & {
+    border-top: t.$border-hairline solid
+      color-mix(in srgb, t.$color-border 45%, transparent);
+  }
+}
+
+.restorePoint {
+  flex: 1 1 12rem;
+  color: t.$color-text;
+}
+
+// The category a sub-item sits under, so a bare "Keyboard" is placed without
+// having to widen the row.
+.restoreCategory {
+  color: t.$color-text-muted;
+}
+
+.restoreFlip {
+  flex: 0 0 auto;
+  color: t.$color-text-muted;
+  white-space: nowrap;
+}
+
+// What is being discarded, struck through; what it becomes, in the accent.
+.restoreFrom {
+  text-decoration: line-through;
+}
+
+.restoreTo {
+  color: t.$color-accent;
 }
 
 .itemNavList {

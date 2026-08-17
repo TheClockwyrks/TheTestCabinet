@@ -2,9 +2,10 @@ import type { ReactNode } from "react";
 import { Link, NavLink, useLocation, useParams } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
+import { BackChevron } from "../../components/BackChevron";
 import { useGalleryData } from "../../data/galleryContext";
-import { useTestCases } from "../../data/useTestCases";
-import type { TestCaseSummary, VariantSummary } from "../../data/testCases";
+import { useTestCase } from "../../data/useTestCase";
+import type { TestCaseDetail, VariantSummary } from "../../data/testCases";
 import { routes } from "../../routes";
 import { useSelectedVariant } from "../../pages/testcases/[slug]/useSelectedVariant";
 // A game jam shares the catalog data pipeline (and so the detail chrome) with a
@@ -26,7 +27,7 @@ interface JamDetailLayoutProps {
   tab: JamDetailTab;
   /** The tab body, given the resolved jam and the selected variant. */
   children: (ctx: {
-    testCase: TestCaseSummary;
+    testCase: TestCaseDetail;
     variant: VariantSummary;
   }) => ReactNode;
 }
@@ -41,25 +42,25 @@ export function JamDetailLayout({ tab, children }: JamDetailLayoutProps) {
   const { slug } = useParams<{ slug: string }>();
   const { search } = useLocation();
   const { canExecute } = useGalleryData();
-  const { testCases, status: testCasesStatus } = useTestCases();
+  // Like the test-case detail layout, the jam tabs need the whole case, so the
+  // one jam this route is about is fetched rather than carried in the listing.
+  const { testCase: resolved, status } = useTestCase(slug);
   // Only a game jam is reachable here; a slug that resolves to some other test
   // type is treated as not found so a jam URL can't surface a non-jam case.
-  const testCase = testCases.find(
-    (entry) => entry.slug === slug && entry.testType === "game-jam",
-  );
+  const testCase = resolved?.testType === "game-jam" ? resolved : undefined;
   // Called unconditionally (hook rules); it tolerates an undefined case and
   // simply resolves no variant, which the guard below turns into the loading or
   // not-found state.
   const [variant, setVariant] = useSelectedVariant(testCase);
 
   if (!testCase || !variant) {
-    // While the catalog is still loading the jam isn't resolvable yet, so show
-    // the branded full-body loading state (the topbar stays) rather than the
-    // not-found text, which is reserved for a jam genuinely absent from a
-    // catalog that has finished loading.
+    // While the jam is still being fetched it isn't resolvable yet, so show the
+    // branded full-body loading state (the topbar stays) rather than the
+    // not-found text, which is reserved for a jam genuinely absent once the
+    // fetch has settled.
     return (
       <PageLayout>
-        {testCasesStatus === "loading" ? (
+        {status === "loading" ? (
           <LoadingState label="Loading game jam…" />
         ) : (
           <p className={styles.notFound}>
@@ -101,6 +102,14 @@ export function JamDetailLayout({ tab, children }: JamDetailLayoutProps) {
       <header className={styles.header}>
         <div className={styles.titleRow}>
           <div className={styles.titleGroup}>
+            {/* Back returns to the Other tab the user came from; on a fresh deep
+                link (nothing recorded) it falls back to the Game Jams tab, which
+                is where a jam is listed. */}
+            <BackChevron
+              to={routes.otherGameJams()}
+              section="other"
+              label="All game jams"
+            />
             <h1 className={styles.title}>{testCase.name}</h1>
             <span className={styles.version}>{testCase.latestVersion}</span>
           </div>

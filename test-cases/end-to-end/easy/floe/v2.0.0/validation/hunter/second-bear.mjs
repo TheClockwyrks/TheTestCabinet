@@ -11,12 +11,15 @@
 // the act keeps filming afterwards, long enough for both bears to be seen moving on
 // the critter together.
 
+import { arrangeLevel } from "../_helpers.mjs";
+
 // How long the clip keeps filming once both bears are out.
 const TAIL_TICKS = 240; // 2 s
 
 export default function item() {
   // How many hunter slots level 5 fields (read instantly in `arrange`), and the sweep
   // that waited for both to emerge.
+  let posed;
   let slots;
   let r;
 
@@ -27,8 +30,14 @@ export default function item() {
     // advanced onto a safe floe up top, which is the precondition both bears' emerge
     // logic is waiting on.
     async arrange(api) {
-      await api.reset();
-      await api.call("setLevel", 5);
+      posed = await arrangeLevel(api, 5);
+      // The pursuit is suspended for the sweep. What is under test is that both bears
+      // COME OUT, and emergence is not the pursuit: specs/instrumentation.md keeps the
+      // rest of a bear's life running with the brain off. Left running, a bear that
+      // reaches the critter inside this deliberately generous window catches it, which
+      // ends the crossing and removes BOTH bears (specs/hunter.md) — so the item would
+      // fail to see two bears precisely because its first bear hunted well.
+      await api.call("setBearAI", false);
       slots = (await api.snapshot()).bears.length;
       await api.call("setLane", 3, { cols: [20], speed: 0 }); // safe floe up top
       await api.call("placeCritter", 20, 3); // advanced, so both may emerge
@@ -46,10 +55,17 @@ export default function item() {
         (s) => s.bears.length === 2 && s.bears[0].present && s.bears[1].present,
         { max: 900, poll: 12 }, // 7.5 s at a 0.1 s cadence
       );
+      // Hand the pursuit back for the tail, so the clip shows what the item is about:
+      // two bears converging on the critter. The verdict is already decided above.
+      await api.call("setBearAI", true);
       await api.advance(TAIL_TICKS); // both bears on the hunt — the point of the item
     },
 
     async assert(api, check) {
+      check.expectOk(
+        "posing the level begins a fresh crossing on it, rather than leaving the run on a menu",
+        posed.began,
+      );
       check.expectEq("level 5 fields two hunter slots", slots, 2);
       check.expectOk("both bears eventually emerge", r.hit);
     },

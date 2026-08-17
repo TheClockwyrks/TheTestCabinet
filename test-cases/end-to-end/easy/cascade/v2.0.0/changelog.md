@@ -21,11 +21,16 @@ Win detection is checked once per gesture that can cause it — `detect-drag` an
 `detect-double-click` in place of the single `detect` — and each drives the last
 card home from both the waste and a tableau column. Completing the foundations is
 one rule, but reaching it is two different input paths, and a build can get one
-right and the other wrong: a drag commits on release, while a double-click may be
-recognized on the second press and then have its own release land on the
-already-won screen, where a click deals a fresh game. Both items therefore run the
-whole gesture, release included, and assert that the cascade is still running after
-it — a build that detects the win correctly and then immediately clears it fails.
+right and the other wrong: a drag commits on release, over a target the player
+chose, while a double-click hands the card to the auto-move, which picks the
+foundation itself. Both items run the whole gesture — the drag through the pointer
+operations, the double-click as a real browser double-click rather than the
+`doubleClick` operation — and assert that the cascade is still running once the
+gesture is over. A build that detects the win correctly and then undoes it with the
+rest of that same gesture fails: on the won screen a click deals a fresh game, so a
+build that recognizes the double on the second press and lets that press run on into
+the dismiss deals a new game before the cascade draws a frame, and a player never
+sees the ending the game is named for.
 
 ## The seeded specs are renamed and tightened
 
@@ -45,3 +50,24 @@ self-contained game.
 - `specs/overview.md` drops the "inspired by classic patience card games" framing.
 - Touchscreen support is now a hard requirement: the game must be fully playable
   with a mouse and on a touchscreen alike (v1 listed touch as out of scope).
+
+## The render-decoupling requirement no longer contradicts itself
+
+`specs/victory.md` and `specs/instrumentation.md` require the simulation to run
+on a fixed timestep **decoupled from rendering**, and then described that
+decoupling as "Rendering reads the state, never the other way around." Read as a
+constraint on the renderer, the second sentence says the opposite of the first:
+it pins what is drawn to whatever the last completed step left behind, tying the
+picture to the tick boundary rather than freeing it from one.
+
+The wording now states the requirement only as the one-way dependency it is —
+the simulation never reads from, waits on, or is driven by the renderer — and
+says nothing about how the renderer presents that state. Nothing was added to
+what a build must do: the decoupling requirement is the one that was already
+there, and the sentence that could be read against it is gone.
+
+The reference implementation needed no matching change. The victory cascade is
+the only thing in the game that moves under the clock, and each in-flight card
+is stamped onto a persistent trail layer once per simulation step rather than
+redrawn at a live position — one mark per step, however many steps a frame
+happens to run. What is drawn is already independent of the frame rate.

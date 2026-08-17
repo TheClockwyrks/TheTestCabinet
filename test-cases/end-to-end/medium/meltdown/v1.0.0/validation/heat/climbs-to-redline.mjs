@@ -20,9 +20,24 @@ export default function item() {
     // in _helpers.
     clipMs: 8000,
 
+    // The Arc is SELECTED, so the clip carries the number this item is about.
+    //
+    // The ramp is posed with `setHeat` and nothing is spawned, so on the floor the only
+    // thing that moves across the whole drive is the tower's glow — which is why the
+    // clip reads as a block sitting still while a reviewer waits for something to
+    // happen. The claim is not the glow, though: it is that "the multiplier climbs as
+    // the tower heats ... and then holds flat at that maximum from the redline"
+    // (specs/controls.md), and the selected-tower inspector shows exactly that, as a
+    // live `damage (xN.N heat)` read beside a heat bar with the redline marked on it.
+    // Selected, the clip shows the multiplier stepping 0.35 -> 0.55 -> 1.14 -> 2.12 ->
+    // 3.5 and then holding, which is the assertion list made visible. The shop hover is
+    // cleared because a hovered type's info panel occupies that area "in place of" the
+    // inspector (specs/controls.md), and laying out the floor leaves a placement armed.
     async arrange(api) {
       await newGame(api, "containment", "medium", 100000);
       towerId = await build(api, "arc", 6, 20);
+      await api.call("hoverShop", null);
+      await api.call("selectTower", towerId);
     },
 
     // Walk the emitter up the heat range and read the real damage curve's multiplier

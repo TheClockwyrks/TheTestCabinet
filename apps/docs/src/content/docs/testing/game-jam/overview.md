@@ -101,9 +101,12 @@ is a different game rather than a reskin.
 - When at least one earlier entry was seeded, the prompt gains a distinctness
   section telling the model to read `previous-entries/` and build a genuinely
   different game: a different core idea, genre, or central mechanic.
-- The entries a run was briefed with are recorded on it
-  (`RunRecord.gameJamPriorEntries`, the id and finish time of each) and listed
-  on the run's Inputs tab.
+- The entries a run was briefed with are recorded on it as the inputs they were:
+  `RunRecord.gameJamPriorEntries` carries each earlier run's id, finish time,
+  and the README body itself, and the run's Inputs tab renders each README
+  inline at the `previous-entries/entry-NN.md` path the model read it at,
+  beside the jam's prompt. What a run was shown is readable on the run rather
+  than inferred from the games.
 
 The match is on the jam and the model, and it spans harnesses: what repeats a
 game is the model, so an entry the same model built under another harness is

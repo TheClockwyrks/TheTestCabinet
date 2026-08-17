@@ -674,12 +674,12 @@ fn graded_item_scores_by_tier_points_times_weight() {
     // A graded item is worth `weight × 10`; it earns the tier's points × weight.
     let items = [graded_item("fun", 1), graded_item("theme", 2)];
     let checklist = [
-        grade("fun", VerdictStatus::Great),        // 5 × 1 = 5, of 10
+        grade("fun", VerdictStatus::Great),        // 8 × 1 = 8, of 10
         grade("theme", VerdictStatus::Incredible), // 10 × 2 = 20, of 20
     ];
     let score = score_checklist(&items, &checklist);
     assert_eq!(score.total, 30);
-    assert_eq!(score.earned, 25.0);
+    assert_eq!(score.earned, 28.0);
 }
 
 #[test]
@@ -701,9 +701,9 @@ fn broken_grade_earns_zero() {
 #[test]
 fn grade_points_match_the_five_tiers() {
     assert_eq!(VerdictStatus::Broken.grade_points(), Some(0));
-    assert_eq!(VerdictStatus::Poor.grade_points(), Some(1));
-    assert_eq!(VerdictStatus::Neutral.grade_points(), Some(3));
-    assert_eq!(VerdictStatus::Great.grade_points(), Some(5));
+    assert_eq!(VerdictStatus::Poor.grade_points(), Some(2));
+    assert_eq!(VerdictStatus::Neutral.grade_points(), Some(5));
+    assert_eq!(VerdictStatus::Great.grade_points(), Some(8));
     assert_eq!(VerdictStatus::Incredible.grade_points(), Some(10));
     assert_eq!(VerdictStatus::Pass.grade_points(), None);
     assert_eq!(VerdictStatus::Fail.grade_points(), None);

@@ -2,7 +2,11 @@
 // the debug API captures it. The state
 // is reached the real way — losing the last life.
 
-import { freshBoard, setWorm } from "../_helpers.mjs";
+import {
+  actWormReachesCursor,
+  arrangeWormIntoCursor,
+  freshBoard,
+} from "../_helpers.mjs";
 
 export default function item() {
   let screen;
@@ -10,16 +14,18 @@ export default function item() {
   return {
     id: "ui.state-gameover",
 
+    // The worm WALKS into the cursor rather than being posed on top of it — see
+    // `arrangeWormIntoCursor` for why a posed overlap left this deciding on a
+    // build's choice of when to test for contact rather than on the screen it
+    // reaches.
     async arrange(api) {
       await freshBoard(api);
       await api.call("setLives", 1);
-      await api.call("setCursor", 640, 688);
-      await setWorm(api, [{ c: 20, r: 19 }], 1, 1);
+      await arrangeWormIntoCursor(api);
     },
 
     async act(api) {
-      await api.advance(6); // 6 ticks = the old 0.05s — one sim beat, enough for the touch
-      screen = (await api.snapshot()).screen;
+      screen = (await actWormReachesCursor(api)).screen;
       await api.settle(300); // a real pause so the Game-over screen has painted
       await api.screenshot("gameover");
     },

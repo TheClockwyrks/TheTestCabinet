@@ -25,13 +25,14 @@
 
 import {
   startClean,
+  holdDrones,
   spawnDrone,
   spawnBystander,
   findDrone,
   readsAs,
   opposite,
   shootDrone,
-  shootUntil,
+  shootFromLane,
   LEAD_IN_TICKS,
 } from "../_helpers.mjs";
 
@@ -60,8 +61,16 @@ export default function item() {
     // the ship's column, plus a bystander off to the side so the wave is not emptied
     // by the kill (see `spawnBystander`). Every drone is found by id, so a hit can
     // only ever be read against the Prism it was aimed at.
+    //
+    // The swarm is held (`holdDrones`) for the whole four-hit sequence. Four hits
+    // with a readable beat between them runs well past the two seconds a live
+    // assault leaves a posed drone in its slot, and a Prism that gets peeled into a
+    // dive both moves out from under the next shot and — if it reaches the bottom —
+    // triggers a spectral inversion that swaps the band each layer answers to. Held,
+    // the four shots land on a stationary target in a stable band.
     async arrange(api) {
       await startClean(api);
+      await holdDrones(api);
       await spawnBystander(api);
       prismId = await spawnDrone(api, {
         kind: "prism",
@@ -91,10 +100,8 @@ export default function item() {
       await api.advance(BETWEEN_TICKS);
 
       // The shell's band breaks the shell and exposes the core.
-      await shootUntil(
-        api,
-        prismId,
-        (s) => readsAs(s, prismId),
+      await shootFromLane(api, prismId, readsAs(await api.snapshot(), prismId));
+      await api.until(
         (s) => {
           const x = findDrone(s, prismId);
           return x !== null && x.shellAlive === false;
@@ -118,13 +125,10 @@ export default function item() {
       await api.advance(BETWEEN_TICKS);
 
       // The core's band destroys the drone.
-      killed = await shootUntil(
-        api,
-        prismId,
-        (s) => readsAs(s, prismId),
-        (s) => findDrone(s, prismId) === null,
-        { max: RESOLVE_MAX_TICKS },
-      );
+      await shootFromLane(api, prismId, readsAs(await api.snapshot(), prismId));
+      killed = await api.until((s) => findDrone(s, prismId) === null, {
+        max: RESOLVE_MAX_TICKS,
+      });
 
       // Hold on the pop so the clip ends on the kill rather than cutting on it.
       await api.advance(72);

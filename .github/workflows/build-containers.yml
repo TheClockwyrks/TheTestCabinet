@@ -50,74 +50,37 @@ name: Build containers
 # not name (see the manifest job at the bottom for why).
 # A newly-added image needs this the first time it is published.
 on:
+  # DELIBERATELY UNFILTERED, for the same reason as build-service-images.yml: every
+  # push to master/staging must leave a COMPLETE `:<git-sha>` run-image set behind,
+  # because the deployments pin the run images by the sha of a commit
+  # (TCAB_CONTAINER_TAG in the azure-staging/azure-prod overlays), not by "the last
+  # sha that happened to build". With a path filter, most release shas had no run
+  # images at all, which is why the two pins drifted apart for entire release trains
+  # — the overlays sat on a months-old TCAB_CONTAINER_TAG while the service images
+  # moved ahead, and every roll had to first go hunting for a sha at which this
+  # workflow actually published.
+  #
+  # The filter was also a standing correctness trap on its own: it hand-enumerated
+  # the crates baked into the images, so it silently went stale every time an image
+  # gained a source. It had already drifted — it listed every `foray-*` crate for the
+  # adversarial image but NONE of the `lattice-*` crates the performance image bakes,
+  # so a change to the Lattice engine shipped a stale performance image with no
+  # signal. A filter that has to be maintained in lockstep with every Dockerfile is
+  # a filter that will be wrong again. Do not reintroduce `paths:`.
+  #
+  # The inputs also reach well outside `containers/`, which is the other half of the
+  # same argument: `.dockerignore` is an allowlist, so the fix for a `COPY` that
+  # cannot see its source is an edit to that file alone; the `-gg` variants bake what
+  # `scripts/ci/install-*.sh` installs; and each arm's pin lives with the arm
+  # (`packages/gg-sandbox-*/*-version.sh`, plus the PureScript package set in
+  # `spago.yaml` and the wit-bindgen release in the Rust arm's `Cargo.lock`). Every
+  # one of those changed what an image contains while naming no path a filter listed.
+  #
+  # The cost is real here (these images compile Rust and wasm, uncached), but
+  # master/staging only move at rc/release cadence, and a stale or missing run image
+  # is paid for by every run that lands on it.
   push:
     branches: [master, staging]
-    # The asset-generation and adversarial images bake binaries compiled from
-    # `crates/` (the `draw`/`draw-sheet` tools, the `voxel`/`voxel-anim` tools, and
-    # the Foray CLI + buildkit + reference modules), so a change to those crates
-    # must rebuild the images too — not just a change under `containers/`.
-    #
-    # `.dockerignore` and the gg toolchain installers are here for a subtler reason:
-    # both are INPUTS to a build that lives entirely under `containers/`, and neither
-    # is under it. `.dockerignore` is an allowlist, so the fix for a `COPY` that
-    # cannot see its source is an edit to that file alone — which, without this
-    # trigger, would leave the broken build unretried until something else pushed.
-    #
-    # The gg toolchain half is expressed as GLOBS, and it is worth saying why, because
-    # it was an enumeration and the enumeration was wrong. It named exactly two files —
-    # `scripts/ci/install-java.sh` and the Java arm's version file — from when Java was
-    # the only arm `containers/gg-toolchains/Dockerfile` installed by script. That
-    # Dockerfile now also runs the Kotlin, Swift, wasi-sdk, .NET and PureScript
-    # installers, and `build_gg_toolchains` in containers/build.sh additionally sources
-    # the Rust arm's pins to pass as build args — so a Swift or .NET pin bump changed
-    # what every `-gg` variant bakes in and rebuilt nothing. A glob covers an arm added
-    # tomorrow; a list covers the arms someone remembered.
-    #
-    # Two files are still enumerated, because the glob over `*-version.sh` cannot reach
-    # them and they are pins all the same. `packages/gg-sandbox-purescript/spago.yaml`
-    # holds the registry package set, where Spago reads it, and purescript-version.sh
-    # projects it rather than restating it; `packages/gg-sandbox-rust/Cargo.lock` holds
-    # the wit-bindgen release cargo resolved for the Rust arm's runtime crate, which is
-    # what decides the generator, and rust-version.sh reads it from there. Single-sourcing
-    # a pin moves where it lives; it does not stop it being a pin.
-    paths:
-      - ".dockerignore"
-      - "containers/**"
-      - "scripts/ci/install-*.sh"
-      - "scripts/ci/lib.sh"
-      - "packages/gg-sandbox-*/*-version.sh"
-      - "packages/gg-sandbox-purescript/spago.yaml"
-      - "packages/gg-sandbox-rust/Cargo.lock"
-      - "rust-toolchain.toml"
-      - "crates/draw/**"
-      - "crates/voxel/**"
-      - "crates/voxel-anim/**"
-      - "crates/voxel-mesh/**"
-      - "crates/model-core/**"
-      - "crates/mc/**"
-      - "crates/mc-anim/**"
-      - "crates/sn/**"
-      - "crates/sn-anim/**"
-      - "crates/dc/**"
-      - "crates/dc-anim/**"
-      - "crates/paint/**"
-      - "crates/model-skin/**"
-      - "crates/mc-skin/**"
-      - "crates/sn-skin/**"
-      - "crates/dc-skin/**"
-      - "crates/particle-core/**"
-      - "crates/particle-2d/**"
-      - "crates/particle-3d/**"
-      - "crates/audio-core/**"
-      - "crates/sfx-synth/**"
-      - "crates/sfx-sample/**"
-      - "crates/music/**"
-      - "crates/foray-core/**"
-      - "crates/foray-controller-sdk/**"
-      - "crates/foray-cli/**"
-      - "crates/foray-host/**"
-      - "crates/foray-ref-*/**"
-      - ".github/workflows/build-containers.yml"
   workflow_dispatch:
 
 permissions:
@@ -156,13 +119,13 @@ jobs:
 
       # `build.sh` runs `scripts/presign-sample-pack.mjs` (node-only, no npm install)
       # to mint the R2 download URL for the sfx-sample/music audio packs.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20.20.2
 
       # Authenticate to GHCR with the built-in token (packages: write above).
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -219,10 +182,10 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}

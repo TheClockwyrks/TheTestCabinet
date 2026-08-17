@@ -14,13 +14,12 @@ export default function item() {
   return {
     id: "modes.deep-pockets",
 
-    // The opening balance is read first, then the balance is re-posed to a round 500
-    // so the payout at the clear can be read as an exact number.
+    // The opening balance is read here; posing it down to a round 500 and releasing the
+    // wave waits until `act`, so the OPENING still below is a still of the mode's actual
+    // opening state rather than of a balance this script substituted.
     async arrange(api) {
       s = await newGame(api, "deeppockets");
       await api.call("setLives", 1000000);
-      await api.call("setMoney", 500);
-      await api.call("startWave");
     },
 
     // Run wave 1 to its clear with nothing built, so the whole wave leaks past and
@@ -39,6 +38,18 @@ export default function item() {
     // whole hazard: with no wall clock to run out, no conformant build can be failed
     // for taking longer than another one.
     async act(api) {
+      // The mode's headline number, in the frame. The old single still was taken after
+      // the wave-clear payout and showed 525 — which is the evidence for the NO-INTEREST
+      // half and says nothing at all about the 10,000 opening the mode is named for, so
+      // the reviewer had one of the item's two claims and a balance whose starting point
+      // was off-screen. This is that starting point.
+      await api.settle(120);
+      await api.screenshot("opening");
+
+      // Now pose a round 500 so the payout at the clear reads as an exact number.
+      await api.call("setMoney", 500);
+      await api.call("startWave");
+
       r = await api.skipUntil((t) => t.wave >= 2, { max: 2400, poll: 12 });
       money = (await api.snapshot()).money;
       await api.settle(80);

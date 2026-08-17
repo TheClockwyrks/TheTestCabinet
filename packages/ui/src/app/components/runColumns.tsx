@@ -4,8 +4,8 @@ import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import { GradeBadge, RatingBadge, canonicalModelId } from "@test-cabinet/ui";
 import type { InProgressRun } from "../../client/types";
 import {
+  asGrade,
   type GradeStatus,
-  isGrade,
   overallGradeOf,
   type Rating,
   RATINGS,
@@ -41,13 +41,6 @@ import styles from "./RunLog.module.scss";
  */
 export type RunScope = "global" | "variant" | "model";
 
-// Narrow a summary card's overall-grade field (a `VerdictStatus`, which also
-// covers the binary pass/fail) to one of the five graded tiers, or null. A non-jam
-// run carries none.
-function asGrade(status: string | null | undefined): GradeStatus | null {
-  return status && isGrade(status) ? status : null;
-}
-
 /**
  * A finished run resolved for the table: the summary card plus the values a cell
  * (and a sort) needs that aren't ready to render off the card — the case's display
@@ -57,6 +50,8 @@ function asGrade(status: string | null | undefined): GradeStatus | null {
  */
 export interface EnrichedRun {
   summary: RunSummary;
+  /** Whether the run is still unpublished — a produced run awaiting review or
+   * publish — and so carries the UNPUBLISHED tag. */
   local: boolean;
   displayName: string;
   /** The model's catalog display name, resolved once so the cell and its sort
@@ -585,6 +580,11 @@ export function sortRuns(
  * A local, unpublished writeup still wins the rating (an in-progress edit must
  * show before it is published); absent one, the summary's own aggregate rating
  * (`summary.rating`) stands in.
+ *
+ * A row reads as unpublished when the console's produced worklist claims it OR the
+ * card itself carries no publish timestamp — the listings draw produced runs from
+ * the server now, so a row can be unpublished without the (separately loaded, and
+ * worker-dependent) worklist knowing about it.
  */
 export function useEnrichedRuns(
   runs: readonly RunSummary[],
@@ -600,7 +600,7 @@ export function useEnrichedRuns(
         const review = findReview(summary.id, localWriteups);
         return {
           summary,
-          local: localIds.has(summary.id),
+          local: localIds.has(summary.id) || !summary.publishedAt,
           displayName: testCaseName(summary.subject.testCaseSlug),
           modelName:
             findModel(summary.subject.modelId, summary.subject.harnessSlug)

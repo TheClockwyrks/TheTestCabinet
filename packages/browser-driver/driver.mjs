@@ -291,6 +291,52 @@ function makeScriptApi(page, handle, outDir, producedImages) {
     // coordinates it expects to be INERT — a field corner, typically — and arming
     // never triggers a game action (placing a unit, firing, moving a menu).
     userClick: (x, y) => page.mouse.click(Number(x) || 0, Number(y) || 0),
+    // A genuine, browser-trusted DOUBLE-click on the game surface: the real
+    // `pointerdown`/`pointerup` pair twice, with the second carrying `clickCount:
+    // 2`, so Chromium emits the `dblclick` event too.
+    //
+    // It exists because a double-click is the one gesture nothing else here can
+    // render. A build may recognize the double on the `dblclick` event, on the
+    // second release, or on the second press, and that choice decides which of the
+    // gesture's OWN events land after the action it triggers — which is where a
+    // build that undoes what it just did gives itself away. None of the other
+    // primitives reach that: a debug `doubleClick` op is the recognition alone, not
+    // the events around it; injected pointer ops call a build's handlers directly
+    // and so bypass the DOM listeners its double detection lives in (usually keyed
+    // on wall-clock timing, which injected ops never satisfy); and two `userClick`s
+    // in a row each carry `clickCount: 1`, so a build watching for `dblclick` never
+    // sees one. Composing the missing events by hand only fabricates input no
+    // player produces — an unpaired release, say, which a build is free to read as
+    // a click or ignore, and which then decides a check on a distinction no
+    // specification draws.
+    //
+    // Unlike `userClick`, which takes viewport pixels because it only needs an
+    // inert corner to arm audio with, this takes NORMALIZED coordinates over the
+    // largest canvas — `(u, v)` fractions in `[0, 1]`, exactly as `pixel` does —
+    // because it must land on an exact game element, and a caller knows where that
+    // element is in the field's logical space, not in the viewport.
+    userDoubleClick: async (u, v) => {
+      const point = await page.evaluate(
+        ([fu, fv]) => {
+          const canvases = Array.from(document.querySelectorAll("canvas"));
+          if (canvases.length === 0) {
+            throw new Error("no <canvas> element to double-click");
+          }
+          // The game surface is the largest canvas on the page.
+          let canvas = canvases[0];
+          for (const c of canvases) {
+            if (c.width * c.height > canvas.width * canvas.height) canvas = c;
+          }
+          // Its on-screen rect, so a fraction of the drawing surface maps to the
+          // viewport point Chromium dispatches at however the build sizes, scales
+          // or letterboxes it.
+          const r = canvas.getBoundingClientRect();
+          return { x: r.left + fu * r.width, y: r.top + fv * r.height };
+        },
+        [u, v],
+      );
+      await page.mouse.dblclick(point.x, point.y);
+    },
     // Real wall-clock pause: unlike `step` (which advances the simulation
     // instantly), this lets the build's render loop animate on screen, so a video
     // output captures real motion.

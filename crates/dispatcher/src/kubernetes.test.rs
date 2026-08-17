@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use k8s_openapi::api::batch::v1::{Job, JobCondition, JobStatus};
 use k8s_openapi::api::core::v1::{
     ContainerState, ContainerStateTerminated, ContainerStateWaiting, ContainerStatus, Pod,
-    PodStatus,
+    PodCondition, PodStatus,
 };
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 
@@ -128,4 +128,88 @@ fn waiting_reason_describes_an_image_pull_failure() {
 #[test]
 fn no_container_status_yields_no_reason() {
     assert!(container_failure_reason(&Pod::default()).is_none());
+}
+
+fn pod_with_disruption(reason: Option<&str>, status: &str, message: Option<&str>) -> Pod {
+    Pod {
+        status: Some(PodStatus {
+            conditions: Some(vec![PodCondition {
+                type_: "DisruptionTarget".to_string(),
+                status: status.to_string(),
+                reason: reason.map(str::to_string),
+                message: message.map(str::to_string),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
+}
+
+/// The condition the cluster autoscaler leaves behind when it drains a node it is
+/// consolidating — the case that previously surfaced as "failed before its pod
+/// started" and sent the reader looking at admission instead of at the cluster.
+#[test]
+fn autoscaler_eviction_is_named_as_a_disruption() {
+    let pod = pod_with_disruption(
+        Some("EvictionByEvictionAPI"),
+        "True",
+        Some("deleting pod for node scale down"),
+    );
+    assert_eq!(
+        disruption_reason(&pod).as_deref(),
+        Some("EvictionByEvictionAPI: deleting pod for node scale down"),
+    );
+}
+
+#[test]
+fn disruption_without_a_reason_still_reports_one() {
+    let pod = pod_with_disruption(None, "True", None);
+    assert_eq!(disruption_reason(&pod).as_deref(), Some("Evicted"));
+}
+
+#[test]
+fn an_untriggered_disruption_condition_is_not_a_disruption() {
+    let pod = pod_with_disruption(Some("PreemptionByScheduler"), "False", None);
+    assert!(disruption_reason(&pod).is_none());
+}
+
+#[test]
+fn a_pod_that_died_on_its_own_has_no_disruption() {
+    let pod = pod_with_container_state(ContainerState {
+        terminated: Some(ContainerStateTerminated {
+            reason: Some("OOMKilled".to_string()),
+            exit_code: 137,
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    assert!(disruption_reason(&pod).is_none());
+}
+
+#[test]
+fn sandbox_selector_pins_both_the_job_id_and_the_driver_managed_by() {
+    let selector = sandbox_selector("job-123");
+
+    assert_eq!(
+        selector,
+        "tcab.dev/job-id=job-123,app.kubernetes.io/managed-by=tcab-driver"
+    );
+}
+
+#[test]
+fn sandbox_selector_cannot_match_a_driver_job_pod() {
+    // This is the safety property that keeps the reaper from destroying the very
+    // evidence `failure_detail` reads. A driver Job's pod carries the SAME job-id
+    // label as the sandbox it created, and differs only by `managed-by` — so the
+    // selector must constrain that key, not just the job id.
+    let selector = sandbox_selector("job-123");
+
+    assert!(selector.contains(&format!(
+        "app.kubernetes.io/managed-by={SANDBOX_MANAGED_BY}"
+    )));
+    assert!(!selector.contains(&format!(
+        "app.kubernetes.io/managed-by={}",
+        crate::job::MANAGED_BY
+    )));
 }
