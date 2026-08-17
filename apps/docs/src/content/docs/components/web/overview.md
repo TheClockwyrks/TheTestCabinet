@@ -102,6 +102,38 @@ Only a run's **detail** page loads that run's full
 [`RunSummary`](/components/backend/snapshot/#runsjson--the-run-index) cards back
 every list, card, leaderboard, and metric.
 
+## The runs section
+
+`/runs` is four linkable tabs, each its own route. **Runs** is the all-runs index
+above; the other three are console-only worklists, and the public gallery — which
+holds nothing unreviewed or unpublished by definition — sees only the first, where
+a tab bar would be redundant and is dropped entirely.
+
+- **Failures** — the produced
+  [publishable failures](/components/core/results/#publish) awaiting publish, each
+  showing its failure tier and recorded detail so a real model failure can be told
+  from a subscription auth-token refresh before it is released.
+- **Unreviewed** — completed runs no account has reviewed yet
+  ([`state=unreviewed`](/components/backend/api/#get-runs)): the "needs a first
+  pass" queue.
+- **Unpublished** — runs that have cleared the publish gate but have not been
+  released ([`state=publishable`](/components/backend/api/#get-runs)). This is the
+  publish backlog, and it exists chiefly because a publish is asynchronous and can
+  fail: a release that did not land leaves the run *exactly* as it was, which in
+  the all-runs listing is indistinguishable from one nobody has got round to
+  publishing. Runs collect here instead. The list is the same dense run log with
+  the same filter bar, so a backlog can be narrowed to one case or model, and rows
+  are **selectable**: check them and right-click to publish the whole selection.
+  The slice is deliberately the publish gate rather than everything unpublished —
+  a worklist whose purpose is "select these and publish them" must not offer rows
+  the backend is about to refuse.
+
+A batch publish **enqueues** each release and stops there rather than watching them
+finish: a release takes minutes in its own Job, and awaiting them would hold a live
+stream open per run and pin the user to the page. A refused gate still surfaces
+immediately; a release that starts and then fails arrives as a
+[publish-failed notification](/components/core/results/#publish).
+
 ## Planning and steering runs
 
 The console's Account section is where a reviewer declares what they want run and

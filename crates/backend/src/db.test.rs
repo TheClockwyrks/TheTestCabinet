@@ -2610,6 +2610,86 @@ async fn list_summaries_failures_slice_covers_the_publishable_failure_tiers() {
     assert_eq!(ids, ["cat", "harness", "slow"]);
 }
 
+/// The `publishable` slice is the console's Unpublished worklist, where every
+/// listed run is meant to be selectable and published — so it must list exactly
+/// what the publish gate accepts, no more. Rather than restating the rule, this
+/// asks the gate itself about each seeded run and compares the two sets, so the
+/// query and `gate_publishable` cannot drift apart.
+#[tokio::test]
+async fn publishable_slice_matches_the_publish_gate() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Every combination that decides publishability: terminal state × reviewed.
+    let seeded = [
+        ("done-reviewed", RunState::Completed, true),
+        ("done-unreviewed", RunState::Completed, false),
+        ("cat", RunState::Catastrophic, false),
+        ("slow", RunState::TimedOut, false),
+        ("harness", RunState::HarnessError, false),
+        ("infra", RunState::Infrastructure, false),
+        // A reviewed infrastructure failure is the case the review count alone
+        // would wrongly admit: it is our fault, so it is never publishable.
+        ("infra-reviewed", RunState::Infrastructure, true),
+    ];
+    for (id, state, reviewed) in seeded {
+        let mut r = record(id);
+        r.status.state = state;
+        db.push(&r, &links(), None).await.unwrap();
+        if reviewed {
+            db.add_review(id, &review_by("u1", Rating::Great), None)
+                .await
+                .unwrap();
+        }
+    }
+
+    let filter = SummaryFilter {
+        state: SummaryState::Publishable,
+        ..SummaryFilter::default()
+    };
+    let mut listed = summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await;
+    listed.sort();
+
+    let mut accepted_by_the_gate = Vec::new();
+    for (id, _, _) in seeded {
+        if db.ensure_publishable(id).await.is_ok() {
+            accepted_by_the_gate.push(id.to_string());
+        }
+    }
+    accepted_by_the_gate.sort();
+
+    assert_eq!(listed, accepted_by_the_gate);
+    assert_eq!(listed, ["cat", "done-reviewed", "harness", "slow"]);
+}
+
+/// Publishing a run retires it from the worklist — the slice is what is *still*
+/// waiting to be published, not everything that ever could be.
+#[tokio::test]
+async fn publishable_slice_drops_a_run_once_it_is_published() {
+    let db = Db::connect_in_memory().await.unwrap();
+    for id in ["kept", "released"] {
+        db.push(&record(id), &links(), None).await.unwrap();
+        db.add_review(id, &review_by("u1", Rating::Great), None)
+            .await
+            .unwrap();
+    }
+
+    let filter = SummaryFilter {
+        state: SummaryState::Publishable,
+        ..SummaryFilter::default()
+    };
+    let mut ids = summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await;
+    ids.sort();
+    assert_eq!(ids, ["kept", "released"]);
+
+    db.publish("released", "2026-06-18T00:00:00Z")
+        .await
+        .unwrap();
+
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await,
+        ["kept"]
+    );
+}
+
 #[tokio::test]
 async fn list_summaries_free_text_matches_across_fields_case_insensitively() {
     let db = Db::connect_in_memory().await.unwrap();

@@ -255,7 +255,6 @@ export function CoveragePlanEditPage() {
           <p className={exec.sectionLabel}>Run order</p>
           <AxisPicker value={outerAxis} onChange={setOuterAxis} />
 
-          <p className={exec.sectionLabel}>Review buffer</p>
           <BufferTargetField
             value={bufferTarget}
             accountDefault={accountBuffer}

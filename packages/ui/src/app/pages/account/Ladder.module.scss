@@ -436,27 +436,3 @@
     outline: none;
   }
 }
-
-// The gate's two controls (the rating floor and the threshold), laid on one row so
-// they read as the single sentence they compose rather than as two settings.
-.gateRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: t.$space-md;
-  margin-bottom: t.$space-sm;
-}
-
-// The worked example under the gate: the rule restated in runs, at the ladder's own
-// target. The gate is one parameterised rule and its two knobs interact, so the
-// example is what makes the setting checkable at a glance instead of guessable.
-.gateExample {
-  margin: 0 0 t.$space-md;
-  max-width: 42rem;
-  padding: t.$space-sm t.$space-md;
-  background: t.$color-bg-2;
-  border-left: 0.2rem solid t.$color-accent;
-  border-radius: t.$radius-sm;
-  color: t.$color-text;
-  font-size: t.$font-sm;
-}

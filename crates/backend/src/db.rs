@@ -701,6 +701,17 @@ impl Db {
         Ok(self.assemble(vec![run]).await?.into_iter().next())
     }
 
+    /// Fetch one run's **row** by id — the lifted columns only, without decoding
+    /// its `record_json` blob or joining its reviews and links. For a caller that
+    /// needs a run's identity rather than its record (the publish-failure
+    /// notification, which describes the run it could not release); use
+    /// [`Db::get_run`] when the record itself is wanted.
+    pub async fn get_run_row(&self, id: &str) -> Result<Option<run::Model>> {
+        Ok(run::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?)
+    }
+
     /// List **published** runs newest-first (by `published_at`), paginated by a
     /// `published_at` cursor. This is the public read side; pending runs never
     /// appear. Returns at most `limit` runs and the next cursor when more remain.
@@ -3246,6 +3257,18 @@ pub enum SummaryState {
     Failures,
     /// Every unpublished run whatever its terminal state — the "produced" worklist.
     Unpublished,
+    /// The unpublished runs that would **publish right now** — the subset of
+    /// [`Self::Unpublished`] that clears the publish gate (`gate_publishable`, the
+    /// rule [`Db::ensure_publishable`] enforces): a reviewed completed run, or a
+    /// publishable failure tier (which needs no review). Never an infrastructure
+    /// failure, whatever reviews it carries.
+    ///
+    /// This is the console's publish worklist. It is deliberately narrower than
+    /// [`Self::Unpublished`], which also holds the runs nobody has reviewed yet and
+    /// the infrastructure failures that can never go public — listing those in a
+    /// worklist whose whole purpose is "select these and publish them" would offer
+    /// rows the backend is about to refuse.
+    Publishable,
     /// Completed runs no account has reviewed yet (`review_count = 0`) — the
     /// reviewer's "needs a first pass" worklist, a subset of [`Self::Review`].
     /// Excludes the automatically-graded types, which no reviewer can clear (see
@@ -3360,6 +3383,18 @@ fn state_slice(state: SummaryState) -> Select<run::Entity> {
             query.filter(run::Column::RunState.is_in(publishable_failure_states()))
         }
         SummaryState::Unpublished => query.filter(run::Column::Published.eq(false)),
+        // Mirrors `gate_publishable` as a query: not already public, never an
+        // infrastructure failure, and either a publishable failure tier (no review
+        // required) or a run someone has reviewed. Kept in step with the gate by
+        // `publishable_slice_matches_the_publish_gate`.
+        SummaryState::Publishable => query
+            .filter(run::Column::Published.eq(false))
+            .filter(run::Column::RunState.ne("infrastructure"))
+            .filter(
+                Condition::any()
+                    .add(run::Column::RunState.is_in(publishable_failure_states()))
+                    .add(run::Column::ReviewCount.gt(0)),
+            ),
         SummaryState::Unreviewed => query
             .filter(run::Column::RunState.eq("completed"))
             .filter(run::Column::ReviewCount.eq(0))
