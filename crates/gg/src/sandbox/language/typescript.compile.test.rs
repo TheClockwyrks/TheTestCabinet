@@ -92,7 +92,7 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
         "the compiler's own unresolved-name diagnostic is what the model reads: {text}"
     );
 
-    // Nor is the aggregate, nor the error type the prompt teaches a `catch` to narrow to.
+    // Nor is the aggregate, nor the error type a `catch` narrows against.
     for name in ["gg", "ToolError", "lib"] {
         let text = diagnostics(&format!("const x = {name};\n"))
             .unwrap_or_else(|| panic!("`{name}` is in scope with no line the program wrote"));
@@ -298,6 +298,37 @@ fn a_compiler_that_cannot_run_is_not_the_models_failure() {
     );
 }
 
+/// **A call this run withheld still type-checks**, which is what makes the two arms of a study
+/// count the same event.
+///
+/// The surface is the whole one rather than the agent's: the host refuses a withheld call and
+/// records the refusal, so the same reach is `program_unknown_name` on an unchecked arm and a
+/// refusal on this one. A checker that read the grant would record it as a compile error here and
+/// as a refusal there, and the two numbers would no longer be about the same thing.
+///
+/// A compile rather than a search of the generated `gg.d.ts`, because what is claimed is that `tsc`
+/// accepts the program — and the import is the model's own line, exactly as a program writes it.
+#[test]
+fn a_withheld_call_is_still_a_program_that_compiles() {
+    let across_every_module = r#"import * as gg from "gg";
+
+gg.tasks.addTask({ id: "one", title: "one" });
+gg.memories.createMemory({ name: "n", description: "d", body: "b" });
+gg.board.createEpic({ prefix: "p", title: "t", description: "d" });
+gg.skills.readSkill("s");
+gg.context.compact("done so far");
+gg.delegation.spawnSubagent({ agent: "coder", prompt: "do it" });
+gg.programs.history();
+gg.session.approve();
+gg.session.finish("done");
+"#;
+    assert_eq!(
+        diagnostics(across_every_module),
+        None,
+        "every module is declared, including the ones a given run withholds"
+    );
+}
+
 /// **The generated surface is the guest's own module graph, one level up.**
 #[test]
 fn the_generated_surface_declares_every_specifier_the_loader_resolves() {
@@ -321,7 +352,7 @@ fn the_generated_surface_declares_every_specifier_the_loader_resolves() {
         surface.contains(&format!(
             "  export {{ {ERROR_TYPE} }} from \"gg:{ERROR_MODULE}\";"
         )),
-        "the error type the prompt teaches a `catch` to narrow to is exported bare"
+        "the error type a `catch` narrows against is exported bare, so a named import resolves it"
     );
     assert!(
         surface.ends_with("declare module \"lib:*\";\n"),
