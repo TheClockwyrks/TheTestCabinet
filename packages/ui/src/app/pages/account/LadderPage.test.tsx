@@ -242,9 +242,9 @@ describe("describeLadderTopUp", () => {
     return { bufferTarget: 5, enqueued: 0, cells: [], ...over };
   }
 
-  it("names a paused ladder as paused rather than as idle", () => {
+  it("names a disabled ladder as disabled rather than as idle", () => {
     expect(describeLadderTopUp(result({ skipped: "paused" }))).toMatch(
-      /paused/i,
+      /disabled/i,
     );
   });
 
@@ -295,12 +295,12 @@ describe("describeLadderHalt", () => {
   });
 });
 
-// An idle ladder is either paused, waiting on the reviewer, or finished — and the last
-// of those is a result, not a fault.
+// An idle ladder is either disabled, waiting on the reviewer, or finished — and the
+// last of those is a result, not a fault.
 describe("ladderStatusNote", () => {
-  it("explains a pause before anything else", () => {
+  it("explains being disabled before anything else", () => {
     const note = ladderStatusNote(progress(), true);
-    expect(note).toMatch(/paused/i);
+    expect(note).toMatch(/disabled/i);
     expect(note).toMatch(/already queued is untouched/i);
   });
 
@@ -537,14 +537,16 @@ describe("topUpLaddersAfterReview", () => {
     } as unknown as BackendClient;
   }
 
-  it("tops up only the ladders that opted in and are not paused", async () => {
+  it("tops up only the ladders that opted in and are enabled", async () => {
     const topUp = vi.fn();
     const enqueued = await topUpLaddersAfterReview(
       backend(
         [
           entry({ id: "on", autoTopUp: true }),
           entry({ id: "off", autoTopUp: false }),
-          entry({ id: "paused", autoTopUp: true, paused: true }),
+          // Disabled is what every ladder is until its reviewer enables it, so this
+          // is also the check that a review of something else can never start one.
+          entry({ id: "disabled", autoTopUp: true, paused: true }),
         ],
         topUp,
       ),

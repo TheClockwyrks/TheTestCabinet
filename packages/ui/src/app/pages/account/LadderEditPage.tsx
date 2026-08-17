@@ -43,12 +43,14 @@ const DEFAULT_RUNS_PER_CELL = 3;
 // the climb (an ordered list of version-pinned rungs), the climbers (the same
 // reusable combination groups a coverage plan references, plus one-offs), the single
 // gate every rung is judged by, and how the ladder is fed (climb order, review
-// buffer, auto-top-up, paused).
+// buffer, auto-top-up).
 //
 // Rungs are reconciled on their stable ids by the save, so reordering the climb or
 // bumping a rung's version here keeps every climber's recorded verdicts attached to
-// the case that earned them. Halting — which cancels queued jobs — is deliberately
-// not here: it belongs beside the board that shows what would be cancelled.
+// the case that earned them. Enabling and halting — the two controls that decide
+// whether the ladder spends anything — are deliberately not here: they belong beside
+// the board that shows what would be started or cancelled. Saving here never enqueues,
+// and a ladder created here is created disabled.
 // Console-only; gated on a signed-in account.
 export function LadderEditPage() {
   const { ladderId } = useParams();
@@ -72,8 +74,12 @@ export function LadderEditPage() {
   // How the ladder is fed. The defaults match the wire's, so a ladder created here is
   // fed exactly as one created by any other client.
   const [outerAxis, setOuterAxis] = useState<LadderAxis>("rung");
-  const [autoTopUp, setAutoTopUp] = useState(false);
-  const [paused, setPaused] = useState(false);
+  const [autoTopUp, setAutoTopUp] = useState(true);
+  // Carried through untouched rather than edited here, exactly as a coverage plan's is:
+  // a new ladder is created **disabled** and enabling it is the dashboard's control,
+  // beside the board that shows what enabling would start. Saving a climb describes the
+  // question; it must never be the gesture that starts paying for the answer.
+  const [paused, setPaused] = useState(true);
   const [bufferTarget, setBufferTarget] = useState<number | null>(null);
   const [accountBuffer, setAccountBuffer] = useState(FALLBACK_BUFFER_TARGET);
 
@@ -293,22 +299,20 @@ export function LadderEditPage() {
           <SettingRow
             label="Top this ladder up when I submit a review"
             description="Each review submitted enqueues more of the rung every climber is currently on, up to the review buffer."
-            modified={autoTopUp}
-            onReset={() => setAutoTopUp(false)}
+            help="On by default, and it only applies once the ladder is enabled: a review is the verdict that decides a rung, so it is the moment the next runs should be asked for. Turn it off to feed the ladder only with “Top up now”."
+            modified={!autoTopUp}
+            onReset={() => setAutoTopUp(true)}
           >
             {(id) => (
               <Switch id={id} checked={autoTopUp} onChange={setAutoTopUp} />
             )}
           </SettingRow>
-          <SettingRow
-            label="Pause this ladder"
-            description="Stops anything new being enqueued. Runs already queued carry on."
-            help="Cancelling queued runs is the halt control on the ladder's dashboard, where what would be cancelled is visible."
-            modified={paused}
-            onReset={() => setPaused(false)}
-          >
-            {(id) => <Switch id={id} checked={paused} onChange={setPaused} />}
-          </SettingRow>
+          {!editing && (
+            <p className={styles.empty}>
+              A new ladder starts disabled and enqueues nothing. Enable it from
+              its dashboard when you want the climb to start.
+            </p>
+          )}
 
           <p className={exec.sectionLabel}>
             Climbers{" "}

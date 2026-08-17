@@ -206,10 +206,11 @@ export function LaddersPage() {
                     >
                       {entry.name}
                     </Link>
-                    {/* A paused ladder that is not climbing is otherwise
-                        indistinguishable from one whose climbers are all walled. */}
+                    {/* A disabled ladder that is not climbing — which every ladder is
+                        until it is enabled — is otherwise indistinguishable from one
+                        whose climbers are all walled. */}
                     {entry.paused && (
-                      <span className={styles.pausedBadge}>paused</span>
+                      <span className={styles.pausedBadge}>disabled</span>
                     )}
                   </span>
                   <span className={styles.rowSub}>

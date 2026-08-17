@@ -644,7 +644,11 @@ halting verbatim, so only its own endpoints are listed here.
 
 - `GET|POST /ladders`, `GET|PUT|DELETE /ladders/{id}` — the declaration: rungs,
   climbers, `runsPerCell`, and the single parameterised `gate` (`floor`,
-  `threshold`, `unloadedCountsAsBroken`, `earlyStop`). Rungs are matched on their
+  `threshold`, `unloadedCountsAsBroken`, `earlyStop`). A create with no `schedule`
+  takes the ladder default, which is **`paused: true`, `autoTopUp: true`** — a new
+  ladder enqueues nothing until it is enabled, and from then on each review feeds it
+  (see [A ladder starts disabled](/components/backend/ladders/#a-ladder-starts-disabled)).
+  Rungs are matched on their
   stable ids and **reconciled, never replaced**, so a reorder or a version bump keeps
   every climber's recorded verdicts. A rung holding a
   [performance](/testing/performance/overview/) or
@@ -672,8 +676,10 @@ halting verbatim, so only its own endpoints are listed here.
   and the control for "stop here regardless" is a hold.
 - `GET|PUT /ladders/{id}/schedule`, `POST /ladders/{id}/topup`,
   `GET /ladders/{id}/queue`, `POST /ladders/{id}/pause`, `.../halt`,
-  `.../halt-all` — the plan endpoints above, with one restriction: a top-up only
-  ever launches a climber's **current** rung.
+  `.../halt-all` — the plan endpoints above, with two differences: a top-up only ever
+  launches a climber's **current** rung, and `pause` is the ladder's enable/disable
+  switch — a ladder starts on its paused side, and `{ "paused": false }` only permits
+  spending, so the caller that enables follows with a `topup` (the console does).
 
 ## Stopping runs in bulk
 
