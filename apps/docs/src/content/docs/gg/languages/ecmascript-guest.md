@@ -61,7 +61,8 @@ then dies, so gg records a failed turn. Five shapes are covered:
   properties are rendered beside its message, which is how a `ToolError` names
   the call that failed and the class it failed under;
 - a syntax error, at the model's own line;
-- a floating rejection, through the engine's rejection tracker;
+- a rejected promise nothing ever handled, through the engine's rejection
+  tracker;
 - a stack overflow, as `RangeError: Maximum call stack size exceeded` with the
   frames;
 - a runaway loop, as `InternalError: interrupted` naming the function that was
@@ -69,6 +70,25 @@ then dies, so gg records a failed turn. Five shapes are covered:
 
 One failure can arrive from more than one of the engine's channels. The guest
 reports each distinct rendering once.
+
+### A rejection is read after the queue drains
+
+The engine's tracker fires the instant a promise rejects with nothing attached to
+it, and every handler in JavaScript is attached after that instant. So a
+rejection is held until the program's job queue is empty and reported only if it
+is still unhandled then. `try { await p } catch`, `p.catch(…)` and
+`Promise.allSettled` all run to completion.
+
+### Where a frame points
+
+The engine carries a position for a statement, a call, a `new`, a `throw` and a
+binary operator. A fault raised inside a variable declarator's initializer by
+anything else — a property read on a bad base, an unresolved name — carries the
+position of the statement before it, which is the last one the engine emitted.
+
+wasmtime's own backtrace under the engine's rendering names the engine's
+internals by index alone, so those frames are struck and the reason is what the
+model reads after the engine's words.
 
 ### The two stacks a recursion spends
 

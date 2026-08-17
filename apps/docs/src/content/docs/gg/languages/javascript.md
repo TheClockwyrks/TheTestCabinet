@@ -15,7 +15,8 @@ all before its program runs.
 
 What the arm accepts is what the guest's engine accepts, because that engine is
 the first thing to read a program. A construct the engine does not have is its
-own `SyntaxError`, at the line and column the model wrote it on, and nothing runs.
+own `SyntaxError`, at the line the model wrote it on, and nothing runs. The
+engine anchors a syntax error at the start of the statement carrying it.
 
 Code modules on this arm are `.js` files, handed over the same way. What a module
 offers is what its top level exports.
@@ -92,6 +93,10 @@ that follows. What the model reads is the engine's account of its own failure,
 with every frame located in `program.js`, which is the model's own file. There is
 no map between the two and no arithmetic anywhere, because the bytes that ran are
 the bytes the model sent.
+
+Which construct the engine carries a position for, and when a rejected promise
+counts as a failure, are the guest's own rules and are on
+[the ECMAScript guest](/gg/languages/ecmascript-guest/) page.
 
 The SDK validates the argument shapes the wire cannot express, such as an options
 object that arrived as a bare number, an `offset` outside the `u32` range, or a

@@ -25,9 +25,9 @@
 //! # `gg:<family>` and `sdk:gg/<family>.js` are ONE module
 //!
 //! `gg:files` resolves *to* `sdk:gg/files.js` rather than declaring a second copy, so a program and
-//! the SDK share one module instance. Two instances would mean two `ToolError` classes, and
-//! `error instanceof ToolError` — which is the shape the prompt teaches — would be false for an error
-//! the SDK threw.
+//! the SDK share one module instance. Two instances would mean two `ToolError` classes, and the
+//! `error instanceof ToolError` a program writes to narrow a `catch` would be false for an error the
+//! SDK threw.
 
 use rquickjs::loader::{ImportAttributes, Loader, Resolver};
 use rquickjs::module::Declared;

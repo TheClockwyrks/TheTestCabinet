@@ -35,7 +35,9 @@
 //! * a throw the program did not catch, including a `ToolError` a refused gg call raised;
 //! * a syntax error, at the model's own line, where a `new Function` construction failure had no
 //!   location at all;
-//! * a **floating rejection** — a promise nothing awaited — through the engine's rejection tracker;
+//! * a **floating rejection** — a promise nothing awaited — through the engine's rejection tracker,
+//!   read once the job queue has drained so that a rejection the program went on to handle is not
+//!   one (see [`unhandled`]);
 //! * a **stack overflow**, as `RangeError: Maximum call stack size exceeded` with the frames, rather
 //!   than as a store-killing `wasm trap: call stack exhausted`.
 //!
@@ -178,11 +180,10 @@ fn say(line: &str) {
 ///
 /// `prefix` is the shape (`"Uncaught"`, `"Uncaught (in promise)"`) and `rendered` is the engine's own
 /// text — its `name`, its `message` and its stack, unedited. The de-duplication is on `rendered`
-/// alone, and it is not editing: ONE failure genuinely reaches this from up to three places. A
-/// program whose top-level `await` rejects arrives at the rejection tracker (which fires the moment a
-/// rejection has no handler yet), at the tracker AGAIN if the module promise is separate, and at the
-/// handler attached to the module's own evaluation promise. Printing the same stack three times
-/// would tell a model it had three problems.
+/// alone, and it is not editing: ONE failure genuinely reaches this from two places. A program whose
+/// module body throws rejects the module's own evaluation promise, which the handler attached to it
+/// reports, and it reaches the rejection tracker as well — the second copy is dropped rather than
+/// telling a model it had two problems.
 fn report(prefix: &str, rendered: &str) {
     thread_local! {
         static REPORTED: std::cell::RefCell<Vec<String>> = const {
@@ -204,6 +205,30 @@ fn report(prefix: &str, rendered: &str) {
         }
     }
     failed(true);
+}
+
+/// **Rejections that have no handler yet**, by the engine's own rendering of each, held until the
+/// job queue has drained.
+///
+/// The engine's tracker fires the instant a promise rejects with nothing attached to it, and every
+/// handler in JavaScript is attached after that instant — `try { await p } catch`, `p.catch(…)`,
+/// `Promise.allSettled`. So the moment of the callback says nothing about whether the program
+/// handled the rejection, and reporting there would fail the turn of every program that caught its
+/// own error. quickjs answers the question itself, later: it calls the tracker a second time with
+/// `handled` set when a handler reaches an already-rejected promise, exactly once per promise
+/// (`js_promise_then` sets `is_handled` immediately after). What is still here when the queue is
+/// empty is what nothing ever awaited.
+///
+/// The key is the rendering rather than the promise, and that is exactly as precise as the
+/// reporting: [`report`] de-duplicates on the rendering too, so two rejections this cannot tell
+/// apart are two the model would have read as one.
+fn unhandled<R>(with: impl FnOnce(&mut Vec<String>) -> R) -> R {
+    thread_local! {
+        static UNHANDLED: std::cell::RefCell<Vec<String>> = const {
+            std::cell::RefCell::new(Vec::new())
+        };
+    }
+    UNHANDLED.with(|rejections| with(&mut rejections.borrow_mut()))
 }
 
 struct Component;
@@ -236,13 +261,19 @@ impl Guest for Component {
 
         // A promise nothing awaited. The one failure shape a `catch` cannot see, and a silent exit 0
         // on the incumbent — the engine there defines `addEventListener("unhandledrejection", …)`
-        // and never fires it.
+        // and never fires it. Both directions are recorded and neither is reported here; see
+        // [`unhandled`] for why the answer is only available after the drain below.
         runtime.set_host_promise_rejection_tracker(Some(Box::new(
             |ctx: Ctx<'_>, _promise: Value<'_>, reason: Value<'_>, handled: bool| {
-                if handled {
-                    return;
-                }
-                report("Uncaught (in promise)", &describe(&ctx, reason));
+                let rendered = describe(&ctx, reason);
+                unhandled(|rejections| match handled {
+                    true => {
+                        if let Some(at) = rejections.iter().position(|seen| *seen == rendered) {
+                            rejections.remove(at);
+                        }
+                    }
+                    false => rejections.push(rendered),
+                });
             },
         )));
 
@@ -274,6 +305,12 @@ impl Guest for Component {
                     break;
                 }
             }
+        }
+
+        // The queue is empty, so a rejection still here is one nothing in the program ever attached
+        // a handler to.
+        for rendered in unhandled(std::mem::take) {
+            report("Uncaught (in promise)", &rendered);
         }
 
         // The engine is NOT freed. quickjs-ng asserts `list_empty(&rt->gc_obj_list)` inside

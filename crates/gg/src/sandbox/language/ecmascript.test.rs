@@ -386,6 +386,113 @@ console.log("the program itself ended fine");
     );
 }
 
+/// **A rejection the program handled is not a failure**, which is the other direction of the test
+/// above and the one that decides whether this arm can be written in at all.
+///
+/// The engine's tracker fires the instant a promise rejects with nothing attached to it, and every
+/// handler in JavaScript is attached after that instant. Read there, `try { await p } catch`,
+/// `p.catch(…)` and `Promise.allSettled` are all failures — which is every idiomatic way a
+/// JavaScript program handles an error, including the one gg's own prompt teaches a program to
+/// catch a `ToolError` with. The guest holds the rejection until the job queue is empty instead.
+///
+/// Four shapes, and the last one is the one a count cannot fake: two promises rejecting with the
+/// same message, one awaited and one not, must leave exactly one failure behind.
+#[test]
+fn a_rejection_the_program_handled_is_not_a_failure() {
+    for handled in [
+        r#"const p = Promise.reject(new Error("caught by await"));
+try { await p; } catch (e) { console.log("caught " + e.message); }
+"#,
+        r#"const value = await Promise.reject(new Error("caught by catch")).catch(() => "recovered");
+console.log(value);
+"#,
+        r#"const settled = await Promise.allSettled([Promise.resolve(1), Promise.reject(new Error("settled"))]);
+console.log(settled.map((entry) => entry.status).join(","));
+"#,
+        r#"const p = Promise.reject(new Error("caught a microtask later"));
+await Promise.resolve();
+try { await p; } catch (e) { console.log("caught " + e.message); }
+"#,
+    ] {
+        let ran = run(handled);
+        assert!(
+            ran.result.is_ok(),
+            "a program that handled its own rejection failed the turn; it returned {:?} with \
+             stderr {:?} for:\n{handled}",
+            ran.result,
+            ran.stderr
+        );
+        assert!(
+            ran.stderr.is_empty(),
+            "and nothing should have been written to standard error; it was {:?} for:\n{handled}",
+            ran.stderr
+        );
+        assert_eq!(ran.logs.len(), 1, "the handler ran, for:\n{handled}");
+    }
+
+    let ran = run(r#"const caught = Promise.reject(new Error("one of two"));
+const floating = Promise.reject(new Error("one of two"));
+try { await caught; } catch (e) { console.log("caught " + e.message); }
+"#);
+    assert!(
+        ran.result.is_err(),
+        "the promise nothing awaited still fails the turn; it returned {:?}",
+        ran.result
+    );
+    assert_eq!(
+        ran.stderr.matches("Uncaught (in promise)").count(),
+        1,
+        "and exactly one of the two is reported; stderr was {:?}",
+        ran.stderr
+    );
+}
+
+/// **Which constructs the engine carries a position for**, pinned because the answer is not "all of
+/// them" and a model is pointed at a line it also wrote either way.
+///
+/// quickjs emits a source position for a statement, a call, a `new`, a `throw` and a binary
+/// operator. A variable declaration is not among them, so a fault raised inside a declarator's
+/// initializer by something that emits no position of its own — a property read on a bad base, an
+/// unresolved identifier — carries the last position that was emitted, which is the statement
+/// before it. A call inside a declarator is a call, and does carry its own.
+///
+/// It is the engine's own number in every case, so nothing here corrects one. What this test is for
+/// is that the boundary cannot move without somebody deciding it: `apps/docs/src/content/docs/gg/languages/javascript.md`
+/// states it to a reader, and this states it to CI.
+#[test]
+fn a_frame_carries_the_position_of_the_construct_that_emitted_one() {
+    for (program, expected, why) in [
+        (
+            "const xs = [1];\nconsole.log(\"a\");\nxs[9].toString();\n",
+            "program.js:3:",
+            "an expression statement carries its own position",
+        ),
+        (
+            "const xs = [1];\nconsole.log(\"a\");\nconst value = xs.nosuch();\n",
+            "program.js:3:",
+            "and so does a call inside a declarator, which is the shape every gg call is",
+        ),
+        (
+            "const xs = [1];\nconsole.log(\"a\");\nconst value = xs[9].toString();\n",
+            "program.js:2:",
+            "but a property read inside a declarator carries the previous statement's",
+        ),
+        (
+            "const xs = [1];\nconsole.log(\"a\");\nconst value = missing.thing;\n",
+            "program.js:2:",
+            "and so does an unresolved name inside one",
+        ),
+    ] {
+        let ran = run(program);
+        assert!(ran.result.is_err(), "the program failed, for:\n{program}");
+        assert!(
+            ran.stderr.contains(expected),
+            "{why}: expected {expected} and stderr was {:?} for:\n{program}",
+            ran.stderr
+        );
+    }
+}
+
 /// **A syntax error is located.**
 ///
 /// On the incumbent this arrives from `new Function`'s construction with no location at all, because
