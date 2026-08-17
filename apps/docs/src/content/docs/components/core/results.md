@@ -231,6 +231,16 @@ organization repository (a short settle before the first push, then bounded
 retries with backoff), so a transient post-create `403` self-heals instead of
 failing the publish.
 
+A release that does **not** land — GitHub returning a `503`, say — records its
+reason on the publish job and raises a **publish-failed notification** on the
+console's worker-wide feed: a toast and an entry in the notifications bell, linking
+to the run it could not release. This matters precisely because the publish is
+asynchronous: enqueuing it and moving straight on to the next run is the intended
+workflow, and without the alert a failed release is silent — the run simply stays
+unpublished, indistinguishable from one nobody has published yet. Nothing retries a
+failed publish automatically — a failed publish job does not block a new one, so
+publishing the run again is the recovery.
+
 The public snapshot, and therefore the gallery, contains **only published runs**.
 A published catastrophic/timeout failure shows its generated source but has no
 playable build (it produced none); its outcome is reported as a per-model

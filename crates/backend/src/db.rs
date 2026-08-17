@@ -701,6 +701,17 @@ impl Db {
         Ok(self.assemble(vec![run]).await?.into_iter().next())
     }
 
+    /// Fetch one run's **row** by id — the lifted columns only, without decoding
+    /// its `record_json` blob or joining its reviews and links. For a caller that
+    /// needs a run's identity rather than its record (the publish-failure
+    /// notification, which describes the run it could not release); use
+    /// [`Db::get_run`] when the record itself is wanted.
+    pub async fn get_run_row(&self, id: &str) -> Result<Option<run::Model>> {
+        Ok(run::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?)
+    }
+
     /// List **published** runs newest-first (by `published_at`), paginated by a
     /// `published_at` cursor. This is the public read side; pending runs never
     /// appear. Returns at most `limit` runs and the next cursor when more remain.

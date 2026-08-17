@@ -140,11 +140,31 @@ export const useNotifications = create<NotificationsState>()(
 export const selectUnreadCount = (state: NotificationsState): number =>
   state.items.reduce((count, n) => (n.read ? count : count + 1), 0);
 
-// Build the in-app notification from a worker/desktop run-completion push. The
-// body is the run's identity for a completed run, or the failure reason. Kept
-// here so the SSE and Tauri paths produce identical notifications.
+// Build the in-app notification from a pushed backend notification. The body is
+// the run's identity for a completed run, or the failure reason. Kept here so
+// every transport produces identical notifications.
 export function notificationFromPush(push: RunNotification): AppNotification {
   const identity = `${push.testCaseSlug} · ${push.harnessSlug} · ${push.variant} · ${canonicalModelId(push.modelId)}`;
+
+  // A failed publish: the run itself finished fine (and has almost certainly
+  // already raised its own "Run complete" alert), so this is keyed by the publish
+  // job rather than the run — otherwise it would dedupe against that completion,
+  // and a second failed attempt would overwrite the first instead of alerting
+  // again. It still links to the run, which is where the publish is retried.
+  if (push.kind === "publish-failed") {
+    return {
+      id: `publish:${push.jobId}`,
+      runId: push.recordId ?? null,
+      outcome: "failed",
+      title: "Publish failed",
+      // Both halves matter: the reason alone doesn't say which run stayed
+      // unpublished, and the identity alone doesn't say why it did.
+      body: push.message ? `${identity} — ${push.message}` : identity,
+      read: false,
+      createdAt: Date.now(),
+    };
+  }
+
   const completed = push.outcome === "completed";
   return {
     id: push.recordId ?? push.jobId,

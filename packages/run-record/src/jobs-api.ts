@@ -312,24 +312,27 @@ export type BulkCancelOut = {
 export type NotificationOutcome = "completed" | "failed";
 
 /**
- * The kind of a [`Notification`]. Only [`Self::RunCompleted`] exists today;
- * modeled as an enum so it is part of the generated contract and the console can
- * switch on it as more are added.
+ * The kind of a [`Notification`] — which event in a run's life it announces. The
+ * console switches on it, because the kinds mean different things about the same
+ * run: a completion changes the in-flight list, a publish failure does not.
  */
-export type NotificationKind = "run-completed";
+export type NotificationKind = "run-completed" | "publish-failed";
 
 /**
- * A worker-wide notification that a run reached a terminal state. Carries the
- * run's display identity (flattened to the console's notification shape) plus
- * how it ended. Delivered over `GET /notifications` (SSE).
+ * A worker-wide notification about a run: that it reached a terminal state, or
+ * that publishing it failed. Carries the run's display identity (flattened to the
+ * console's notification shape) plus how it ended. Delivered over
+ * `GET /notifications` (SSE).
  */
 export type Notification = {
   /**
-   * The notification kind. Only `run-completed` exists today.
+   * Which event this announces.
    */
   kind: NotificationKind;
   /**
-   * The job id the run was observed under.
+   * The job the notification is about — the **run** job for `run-completed`,
+   * the **publish** job for `publish-failed`. It identifies the attempt rather
+   * than the run, so a run that fails to publish twice raises two alerts.
    */
   jobId: string;
   /**
@@ -338,7 +341,8 @@ export type Notification = {
   outcome: NotificationOutcome;
   /**
    * The persisted run record's id the console links the alert to: the produced
-   * record's id for a `completed` run, the job id for a `failed` one.
+   * record's id for a `completed` run, the job id for a `failed` one, and the
+   * run that could not be released for a `publish-failed` one.
    */
   recordId?: string;
   /**

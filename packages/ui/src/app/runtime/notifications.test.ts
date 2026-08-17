@@ -108,4 +108,32 @@ describe("notificationFromPush", () => {
     expect(n.title).toBe("Run failed");
     expect(n.body).toBe("the container would not start");
   });
+
+  const publishFailed: RunNotification = {
+    ...base,
+    kind: "publish-failed",
+    jobId: "publish-9",
+    outcome: "failed",
+    recordId: "rec-7",
+    message: "`gh repo create` failed: HTTP 503",
+  };
+
+  it("names a failed publish, links it to the run, and gives both the identity and the reason", () => {
+    const n = notificationFromPush(publishFailed);
+    expect(n.title).toBe("Publish failed");
+    expect(n.outcome).toBe("failed");
+    expect(n.runId).toBe("rec-7");
+    expect(n.body).toContain("pong");
+    expect(n.body).toContain("HTTP 503");
+  });
+
+  it("keys a failed publish on the publish job, so it neither dedupes against the run's completion nor overwrites an earlier attempt", () => {
+    const first = notificationFromPush(publishFailed);
+    const second = notificationFromPush({
+      ...publishFailed,
+      jobId: "publish-10",
+    });
+    expect(first.id).not.toBe(notificationFromPush(base).id);
+    expect(first.id).not.toBe(second.id);
+  });
 });
