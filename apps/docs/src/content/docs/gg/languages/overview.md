@@ -88,9 +88,11 @@ any length.
 
 The host answers each id by calling the same typed host function the typed
 interfaces are implemented by, so the capability gate, the recorded call and the
-`tool-error` are one implementation for every arm. What travels inside the byte
-lists is gg's own tagged encoding, and the model-facing surface stays typed and
-namespaced.
+`tool-error` are one implementation for every arm. Each id's arm reads the
+arguments its WIT function declares, in the order it declares them, so the WIT is
+the one statement both halves of the crossing are built from. What travels inside
+the byte lists is gg's own tagged encoding, and the model-facing surface stays
+typed and namespaced.
 
 `test-cabinet:gg/math` is the second interface those two arms alone import, and
 the reason is the compiler rather than gg: `java.lang.Math`'s transcendental
