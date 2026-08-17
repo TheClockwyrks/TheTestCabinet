@@ -506,6 +506,13 @@ description = "The saucer can be shot down with a bullet, for points."
 validation = { script = "validation/saucer/destroyable.mjs", outputs = [
   { id = "kill", name = "Shooting down the saucer", kind = "video" },
 ] }
+[[review.categories.items]]
+id = "restart-despawns"
+title = "A restart clears the saucer"
+description = "Restarting a game from the pause menu begins a new game clear of saucers: a saucer that was on the field when the game was restarted is gone, and the new game plays on without it rather than inheriting the last game's."
+validation = { script = "validation/saucer/restart-despawns.mjs", outputs = [
+  { id = "cleared", name = "A saucer up at the restart, and gone from the new game", kind = "video" },
+] }
 
 # --- Waves --------------------------------------------------------------------
 [[review.categories]]

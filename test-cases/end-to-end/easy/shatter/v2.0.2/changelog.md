@@ -1,3 +1,38 @@
+## A new item: a restart does not carry the saucer into the new game
+
+`specs/ui.md` puts `RESTART` on the pause menu, and `specs/hazards.md` fixes when a saucer
+may be up — "the first appears about 18 seconds into a game" — so however the last game
+ended, the next one begins clear of saucers. Nothing was grading that. Every saucer item
+starts from a game the script itself began, so a build that rebuilds its world on a restart
+but leaves the saucer flying passed all five of them while handing a fresh wave 1 an enemy
+it never spawned, already firing at a ship that has just launched.
+
+`saucer/restart-despawns` grades it, in the shape a player would: a game already down to two
+ships with a saucer crossing the field is paused, the pause menu's `RESTART` entry is
+confirmed, and the new game is read back. The saucer must be gone the moment it starts, and
+still gone two seconds in.
+
+Two readings keep it from passing for the wrong reason. The saucer is read at the PAUSE as
+well as after the restart, because a visit only lasts about twelve seconds and a saucer that
+left of its own accord would leave a field indistinguishable from one a restart cleared —
+so the item requires it still up the instant before, which is what makes its absence
+afterwards the restart's doing. And the scenario spends a life first: `specs/gameplay.md`
+fixes a new game at three ships, but a game that merely RESUMED has three as well unless one
+has already been spent, so the count reading three afterwards is what separates a restart
+from a resume. Both matter — a build wired to quit to the title instead of restarting clears
+the saucer too, and it is the screen and the life count that catch it.
+
+The pause selection is read from `menuIndex` and driven to the restart entry with the real
+Up/Down bindings rather than pressed a fixed number of times. `specs/ui.md` fixes the ORDER
+of the pause entries, so `RESTART` is entry 1, but nothing fixes which entry the menu opens
+on — and on a build that opens on `RESTART`, one Down press lands on `QUIT TO MENU`.
+
+The clip is the whole event at the speed it runs: 1.5 s of the saucer crossing, the pause
+menu held long enough to read which entry is taken, then two seconds of the new game playing
+on without it. A Large rock is parked out of every lane the item drives, because the cleared
+field the scenario poses is also a cleared WAVE, and without it the build is entitled to
+raise a banner and spawn five rocks partway through the beat being filmed.
+
 ## `saucer/avoids-star` flies the saucer across the star, not into it
 
 `specs/hazards.md` states the saucer's relationship with the star in one sentence — it
@@ -194,16 +229,21 @@ than a target.
 
 ## Nothing seeded changed
 
-No specification, prompt, reference, or manifest moved: the seeded inputs of `v2.0.2` are
-byte-for-byte those of `v2.0.1`, and so are its review items — every `id`, `title`,
-`description`, `weight`, `domain` and validation script path is the one `v2.0.1` declared.
-A score computed against one version is directly comparable with the other; what changes is
-which builds the scripts decide correctly.
+No specification, prompt, or reference moved: the seeded inputs of `v2.0.2` are
+byte-for-byte those of `v2.0.1`. A build is asked for exactly what `v2.0.1` asked for.
+
+The manifest moves only to add `saucer/restart-despawns`. Every review item `v2.0.1`
+declared is untouched — each `id`, `title`, `description`, `weight`, `domain` and validation
+script path is the one it declared — so every verdict carries across unchanged. What changes
+is the denominator: the checklist is one point longer, so a raw point total is not a
+`v2.0.1` total, while the earned-over-available rate the case is scored on compares
+directly.
 
 On the validation side these scripts changed — `_helpers.mjs`, `saucer/avoids-star.mjs`,
 `rocks/fragment-fan.mjs`, the three `waves/` items, and six `torpedo/` items
 (`refills-on-respawn`, `flies-true`, `destroyed-by-star`, `one-hit-large`,
-`one-hit-medium`, `harder-scatter`). No script is new. The only baseline media recaptured
-are the outputs of those scripts: the saucer clip, the fan clip and the three wave outputs
-in both variants, plus the six torpedo clips in `warhead`. Every other baseline is the
-capture `v2.0.1` shipped, untouched.
+`one-hit-medium`, `harder-scatter`); `saucer/restart-despawns.mjs` is the one new script.
+The only baseline media recaptured are the outputs of those scripts: the saucer clip, the
+fan clip and the three wave outputs in both variants, plus the six torpedo clips in
+`warhead`, and the new restart clip in both. Every other baseline is the capture `v2.0.1`
+shipped, untouched.
