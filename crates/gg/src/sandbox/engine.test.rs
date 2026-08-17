@@ -114,36 +114,52 @@ fn an_unwrapped_failure_is_reported_as_itself() {
     );
 }
 
-/// **An explicit `exit` is named, with its status, instead of being shown as a wall of frames.**
+/// **An explicit `exit` is named instead of being shown as a wall of frames, and no status is
+/// reported that the program did not choose.**
 ///
 /// A program that calls its language's `exit` traps through WASI's `proc_exit`, and what wasmtime
 /// hands back is a backtrace containing neither the word "exit" nor the status — so the model was
 /// shown the machinery over a program that had simply stopped on purpose.
 ///
-/// `exit(0)` is named too. It is still a failure — the program stopped before its own last statement
-/// — and the status is what separates the two cases in the sentence.
+/// `exit(0)` is named with its number, because zero is the one status that survives the crossing:
+/// the preview1 adapter lowers `proc_exit(rval)` to `wasi:cli/exit.exit(rval == 0)`, so `Ok` means
+/// the program passed zero and nothing else can produce it. Every non-zero status arrives as the
+/// same `1`, whatever the program passed, which is why the sentence says a status was lost rather
+/// than naming one — see [`exit_message`](super::exit_message)'s own note.
 #[test]
-fn an_explicit_exit_is_named_with_its_status() {
+fn an_explicit_exit_is_named_without_inventing_its_status() {
     let limits = SandboxLimits::default();
     let store = classifiable_store(limits);
 
-    for status in [3, 0] {
+    let rendered = |status: i32| {
         let error = wasmtime::Error::new(I32Exit(status))
             .context("error while executing at wasm backtrace:\n    0: 0x1a2b - program.wasm!main");
         assert!(
             !error.to_string().contains("exit"),
             "this test proves nothing unless the error really does hide the exit: {error}"
         );
+        classify(&store, limits, &error, SandboxError::Trap).to_string()
+    };
 
-        let rendered = classify(&store, limits, &error, SandboxError::Trap).to_string();
-        assert_eq!(
-            rendered,
-            format!(
-                "the sandbox trapped: the program called exit({status}) instead of returning; \
-                 nothing after the call ran"
-            )
-        );
-    }
+    assert_eq!(
+        rendered(0),
+        "the sandbox trapped: the program called exit(0) instead of returning; nothing after the \
+         call ran"
+    );
+    let failed = rendered(1);
+    assert_eq!(
+        failed,
+        "the sandbox trapped: the program called exit with a non-zero status instead of returning; \
+         nothing after the call ran, and the status itself did not reach gg — what crosses the \
+         sandbox boundary is that the exit was a failure, not the number the program passed"
+    );
+    // The number the model would have read is the one the adapter invented. A `1` here means every
+    // `exit(n)` in the tree, and a sentence naming it would be gg reporting a program other than
+    // the one the model wrote.
+    assert!(
+        !failed.contains("exit(1)"),
+        "a status no program chose must not be reported as one it did: {failed}"
+    );
 }
 
 /// **A frame the artifact names nothing for is struck, and so is the header over a backtrace of
@@ -324,10 +340,7 @@ fn the_ceilings_report_what_the_guest_said() {
         "the guest's own words must lead: {exit}"
     );
     assert!(
-        exit.ends_with(
-            "the program called exit(1) instead of returning; nothing after the call \
-                        ran"
-        ),
+        exit.ends_with("not the number the program passed"),
         "gg's account must follow: {exit}"
     );
 }

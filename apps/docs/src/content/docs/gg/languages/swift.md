@@ -169,8 +169,10 @@ Two further failures are not reported faithfully, and both are the language or
 the adapter rather than this arm. A `Task` never runs: Swift's cooperative
 executor needs a drain, an `@main async` performs one and a top-level file has
 none, so an unobserved failing task is a turn recorded as a success. And
-`exit(3)` arrives as `exit(1)`, because the pinned preview1 adapter imports
-`wasi:cli/exit.exit`, which carries a boolean rather than a status.
+`exit(3)` is reported as an exit with a non-zero status, because the pinned
+preview1 adapter lowers every non-zero status to the same failure before gg is
+told. What that costs, and why gg names no number for it, is on
+[the sandbox page](/gg/responses-as-code/sandbox/#stopping-the-process).
 
 ## Prompt segment
 

@@ -1106,6 +1106,12 @@ int main() {
 /// adapter imports `wasi:cli/exit.exit`, which carries a boolean rather than a status, so the number
 /// the program chose is gone before gg sees it. It is asserted rather than left out, so the gap is a
 /// measurement and not a silence.
+///
+/// **And the measurement is what the claim rests on.** Two programs that differ only in the status
+/// they exit with are driven through the whole road — compiler, encode, adapter, engine — and what
+/// the model reads is compared. Identical readings are the proof that the number is destroyed
+/// rather than merely unprinted, and they are why gg's sentence names a lost status instead of
+/// naming a number (`exit_message` in `sandbox::engine` carries the adapter source behind it).
 #[test]
 fn a_status_a_cpp_program_ends_with_reaches_the_model_however_it_was_written() {
     let said = |source: &str| {
@@ -1131,13 +1137,25 @@ fn a_status_a_cpp_program_ends_with_reaches_the_model_however_it_was_written() {
         None,
         "C++ defines falling off the end of `main` as returning zero, and a clean turn must stay one"
     );
-    assert!(
-        said("#include <cstdlib>\nint main() { std::exit(3); }\n")
-            .expect("a program that exits says so")
-            .contains("exit(1)"),
+    let exited = |status: u8| {
+        said(&format!(
+            "#include <cstdlib>\nint main() {{ std::exit({status}); }}\n"
+        ))
+        .expect("a program that exits says so")
+    };
+    let three = exited(3);
+    assert_eq!(
+        three,
+        exited(7),
         "MEASURED, and recorded rather than asserted as desirable: the pinned preview1 adapter's \
-         `wasi:cli/exit.exit` carries a boolean, so the status a program exits with is destroyed on \
-         the way out. gate G8 carries the row"
+         `wasi:cli/exit.exit` carries a boolean, so two programs exiting with different statuses \
+         are indistinguishable by the time gg is told. gate G8 carries the row"
+    );
+    assert!(
+        three.contains("the program called exit with a non-zero status")
+            && !three.chars().any(|character| character.is_ascii_digit()),
+        "the shape is named and no status — neither the program's own 3 nor the adapter's 1 — is \
+         reported for it: {three}"
     );
 }
 

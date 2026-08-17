@@ -498,15 +498,51 @@ fn without_frame_locations(reason: &str) -> String {
 /// What a program that called its language's `exit` is told, in place of the backtrace that carried
 /// neither the word "exit" nor the status.
 ///
-/// Two facts, because they are the two a model can act on: which status it exited with, and that
+/// Two facts, because they are the two a model can act on: that it stopped itself, and that
 /// returning is how a program ends. `exit(0)` is not spared — it is a program that stopped before
-/// its own last statement, and the status is what separates the two cases in the sentence.
+/// its own last statement — and it is the one status this sentence names, because it is the one gg
+/// is told.
+///
+/// # Why a non-zero status is not a number here
+///
+/// **Because gg is never handed one.** Every arm that can reach an exit at all reaches it through
+/// the pinned `wasi_snapshot_preview1` adapter, whose `proc_exit` is
+///
+/// ```text
+/// let status = if rval == 0 { Ok(()) } else { Err(()) };
+/// crate::bindings::wasi::cli::exit::exit(status); // does not return
+/// ```
+///
+/// — `crates/wasi-preview1-component-adapter/src/lib.rs` at the pinned release and on `main` alike.
+/// The import it calls, `wasi:cli/exit.exit`, carries a `result` and not a status, and the host end
+/// of it (`wasmtime_wasi`'s `p2::host::exit`) turns that back into `I32Exit(0)` or `I32Exit(1)`. So
+/// a program's `exit(3)` and its `exit(7)` arrive here as the same integer, and that integer is not
+/// one either program chose.
+///
+/// The interface does carry an `exit-with-code(u8)` that would survive, and the host implements it;
+/// no adapter calls it, so nothing gg runs can produce one. Reaching it would mean gg building its
+/// own adapter out of a patched upstream source — replacing the one input a component's ABI is
+/// pinned by with a binary of gg's own making — and that is a worse trade than a sentence that says
+/// what is true.
+///
+/// So the number is not printed. A model reading `exit(1)` after writing `exit(3)` would be reading
+/// gg's report of a program other than its own, which is the thing
+/// [the invariants](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) forbid; a model
+/// told the status did not survive knows both that it stopped itself and that the value it picked
+/// is not a channel back to gg. Gate G8 holds the five arms that can reach this to what they read.
 ///
 /// It is composed here rather than being a [`SandboxError`] variant of its own for the reason
 /// [`Trap`](SandboxError::Trap) states: a recordable variant is one-to-one with a **published** turn
 /// error type, and minting `sandbox_exit` is a contract change rather than a classification fix.
 fn exit_message(status: i32) -> String {
-    format!("the program called exit({status}) instead of returning; nothing after the call ran")
+    match status {
+        0 => "the program called exit(0) instead of returning; nothing after the call ran"
+            .to_string(),
+        _ => "the program called exit with a non-zero status instead of returning; nothing after \
+              the call ran, and the status itself did not reach gg — what crosses the sandbox \
+              boundary is that the exit was a failure, not the number the program passed"
+            .to_string(),
+    }
 }
 
 /// **Why** a wasmtime error happened, in front of the frames it happened in.

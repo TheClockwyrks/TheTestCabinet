@@ -129,6 +129,22 @@ the host cannot open `/` at all. The failure is ignored: a guest that never
 touches the filesystem is unaffected, and one that does gets an ordinary WASI
 error from its own runtime.
 
+### Stopping the process
+
+A program that calls its language's `exit` is reported as having stopped itself,
+in place of the wasm backtrace that carries neither the word nor the status.
+
+The status reaches gg as success or failure and not as a number. The
+`wasi_snapshot_preview1` adapter every component is encoded with lowers
+`proc_exit(n)` to `wasi:cli/exit.exit`, whose argument is a result. So `exit(0)`
+is reported with its number, and every other status is reported as a non-zero
+exit whose value gg was not told. Naming the `1` that arrives would be gg
+reporting a program the model did not write, which the
+[invariants](/gg/responses-as-code/invariants/) forbid.
+
+A status a model wants read is one its entry point returns. On the arms whose
+entry point carries a status, gg reports the number the program chose.
+
 ### Globals an ECMAScript guest shadows
 
 Six globals cannot be honoured, and each is replaced with a thrower so it raises

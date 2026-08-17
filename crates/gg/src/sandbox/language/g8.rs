@@ -225,12 +225,14 @@ const KNOWN_HOLES: &[Hole] = &[
     Hole {
         arm: GgProgramLanguage::Python,
         shape: Shape::Abort,
-        // The status the program chose is destroyed on the way out: `os._exit(3)` is reported as
-        // `exit(1)`, for the reason Swift, C++ and C# report the same thing — the preview1 adapter
-        // this guest is linked through imports only `wasi:cli/exit.exit`, and that import carries a
-        // boolean rather than a status. The sentence is gg's and it is right about everything
-        // except the one number the program picked.
-        instead: Instead::Says("the program called exit(1) instead of returning"),
+        // The status the program chose is destroyed on the way out, and gg says so rather than
+        // naming a number: `os._exit(3)` reaches the model as an exit with a non-zero status and no
+        // 3 in it. The reason is the same one Rust, Swift, C++ and C# carry a row for — the preview1
+        // adapter every one of them is encoded with lowers `proc_exit(rval)` to
+        // `wasi:cli/exit.exit(rval == 0)`, so what crosses is a boolean — and it is measured at the
+        // adapter's own source in `exit_message`'s note. What is left is a shape gg answers with
+        // everything except the one token the program picked.
+        instead: Instead::Says("the program called exit with a non-zero status"),
     },
     // ---- ruby -------------------------------------------------------------------------------
     Hole {
@@ -258,12 +260,10 @@ const KNOWN_HOLES: &[Hole] = &[
     Hole {
         arm: GgProgramLanguage::Rust,
         shape: Shape::Abort,
-        // The status the program chose is destroyed on the way out: `std::process::exit(3)` is
-        // reported as `exit(1)`, for the reason Python, Swift, C++ and C# report the same thing —
-        // the preview1 adapter this program is encoded with imports only `wasi:cli/exit.exit`, and
-        // that import carries a boolean rather than a status. The sentence is gg's and it is right
-        // about everything except the one number the program picked.
-        instead: Instead::Says("the program called exit(1) instead of returning"),
+        // The status the program chose is destroyed on the way out: `std::process::exit(3)` reaches
+        // the model as an exit with a non-zero status and no 3 in it, for the reason the Python row
+        // above states in full.
+        instead: Instead::Says("the program called exit with a non-zero status"),
     },
     // ---- swift ------------------------------------------------------------------------------
     Hole {
@@ -297,26 +297,26 @@ const KNOWN_HOLES: &[Hole] = &[
     Hole {
         arm: GgProgramLanguage::Swift,
         shape: Shape::Abort,
-        // The status the program chose is destroyed on the way out: `exit(3)` is reported as
-        // `exit(1)`, because the committed preview1 adapter imports only `wasi:cli/exit.exit` and
-        // that import carries a boolean, not a status.
-        instead: Instead::Says("the program called exit(1) instead of returning"),
+        // The status the program chose is destroyed on the way out: `exit(3)` reaches the model as
+        // an exit with a non-zero status and no 3 in it, for the reason the Python row above states
+        // in full.
+        instead: Instead::Says("the program called exit with a non-zero status"),
     },
     // ---- cpp --------------------------------------------------------------------------------
     Hole {
         arm: GgProgramLanguage::Cpp,
         shape: Shape::Abort,
-        // The status the program chose is destroyed on the way out: `std::exit(3)` is reported as
-        // `exit(1)`.
-        instead: Instead::Says("the program called exit(1) instead of returning"),
+        // The status the program chose is destroyed on the way out: `std::exit(3)` reaches the
+        // model as an exit with a non-zero status and no 3 in it.
+        instead: Instead::Says("the program called exit with a non-zero status"),
     },
     // ---- csharp -----------------------------------------------------------------------------
     Hole {
         arm: GgProgramLanguage::CSharp,
         shape: Shape::Abort,
-        // The status the program chose is destroyed on the way out: `Environment.Exit(3)` is
-        // reported as `exit(1)`.
-        instead: Instead::Says("the program called exit(1) instead of returning"),
+        // The status the program chose is destroyed on the way out: `Environment.Exit(3)` reaches
+        // the model as an exit with a non-zero status and no 3 in it.
+        instead: Instead::Says("the program called exit with a non-zero status"),
     },
 ];
 

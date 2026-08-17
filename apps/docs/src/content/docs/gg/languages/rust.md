@@ -191,8 +191,9 @@ and then aborts, which traps the store; gg shows the trap with that stderr in
 front of it. A `main` returning `Err` has `std`'s `Termination` write
 `Error: …` before the shell propagates the status, so the turn fails rather
 than reporting a program that did nothing. `std::process::exit` is `proc_exit`,
-which reaches gg as an `I32Exit`. `-Cstrip=symbols` leaves `Location` intact,
-since it is static data.
+which reaches gg as an `I32Exit` carrying success or failure rather than the
+status the program passed. `-Cstrip=symbols` leaves `Location` intact, since it
+is static data.
 
 ## Prompt segment
 

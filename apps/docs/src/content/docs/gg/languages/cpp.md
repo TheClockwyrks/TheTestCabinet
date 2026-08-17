@@ -178,8 +178,10 @@ behaviour is a trap with no words, located at the model's own line and no more.
 
 Two failures this arm cannot report faithfully are recorded by
 [gate G8](/gg/responses-as-code/invariants/). `std::exit(3)` reaches the model as
-`exit(1)`, because the pinned preview1 adapter imports `wasi:cli/exit.exit` and
-that import carries a boolean rather than a status. A null dereference is not a
+an exit with a non-zero status, because the pinned preview1 adapter lowers every
+non-zero status to the same failure before gg is told, which
+[the sandbox page](/gg/responses-as-code/sandbox/#stopping-the-process) states in
+full. A null dereference is not a
 fault at all: address zero is ordinary linear memory in wasm, so reading and
 writing through a null pointer succeeds and the turn is recorded as a clean one.
 
