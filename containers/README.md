@@ -459,6 +459,16 @@ Dockerfile against `.dockerignore` and fails on a source that is missing or
 excluded, so the mistake is caught at commit time rather than the next time
 someone needs a run container. Run it after adding a `COPY`.
 
+**And after adding a `packages/gg-sandbox*` package**, which is the same mistake
+without a `COPY` to point at. The driver image's gg stage copies the whole context
+and then compiles those packages — the eleven signature catalogues and the eleven
+arms' artifacts are built, not committed — so a forgotten one fails deep inside a
+`cargo build` with an arm's own "no such file or directory" rather than with
+Docker's cache-key error, and it reads as a broken arm. That is how
+`packages/gg-sandbox-jvm` (the crossing the java and kotlin arms both compile)
+landed, so the same gate now asserts every one of those directories survives the
+allowlist too.
+
 ## The sample library and instrument bank
 
 The [`sfx-sample`](../apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md)

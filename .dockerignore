@@ -241,6 +241,16 @@
 !/packages/gg-sandbox-swift
 !/packages/gg-sandbox-cpp
 !/packages/gg-sandbox-csharp
+# The eleventh entry is not an arm, and that is exactly why it was missed: nothing is
+# compiled or reflected out of `packages/gg-sandbox-jvm` on its own. It holds the
+# canonical ABI, the wire encoding and the one vendored TeaVM runtime class that the java
+# and kotlin arms BOTH compile into their own jars, so it is an input of two builds while
+# looking like the package of none. Its absence took a `make local-rebuild` down
+# mid-`cargo build` with `find: '/src/packages/gg-sandbox-jvm/src': No such file or
+# directory`, reported by the kotlin arm's crate rather than by a COPY — which is why the
+# COPY-reading half of scripts/ci/build-context.sh could not see it coming, and why that
+# script now also asserts every `packages/gg-sandbox*` directory survives this file.
+!/packages/gg-sandbox-jvm
 # And the scripts that drive all of that, which is a CLOSURE rather than a file: the
 # gg-build stage runs scripts/build-gg-static.sh, whose cargo build runs
 # scripts/gg-signatures.sh, which runs the ten per-arm reflectors; the stage separately

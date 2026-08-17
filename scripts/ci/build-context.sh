@@ -344,10 +344,60 @@ for dockerfile in "${dockerfiles[@]}"; do
 	done < <(copy_instructions "$dockerfile")
 done
 
+# --- what a COPY cannot tell you --------------------------------------------
+
+# Everything above reads `COPY` sources, and there is one build input in this
+# repository that no `COPY` names: the gg guest packages. The driver image's gg stage
+# does `COPY . .` and then `cargo build`, and it is the BUILD — crates/gg/build.rs
+# reflecting eleven signature catalogues, and the eleven crates under
+# crates/gg-sandbox-artifacts/ running each arm's `packages/gg-sandbox*/build.sh` —
+# that reads them. A whole-context copy is deliberately unchecked above, because it
+# takes whatever the allowlist admits; so a `packages/gg-sandbox*` directory the
+# allowlist forgets is invisible to every check in this file and to every other gate
+# in the repository. It surfaces as a compiler or a `find` saying "no such file or
+# directory" minutes into an image build, blamed on the arm rather than on the
+# context.
+#
+# That has now happened: `packages/gg-sandbox-jvm`, the crossing the java and kotlin
+# arms both compile, was split out of the java arm and the allowlist was not widened,
+# which took `make local-rebuild` down. So the rule is asserted here rather than left
+# to be rediscovered — the whole of every guest package rides along, which is what the
+# root .dockerignore says in prose right above its own entries.
+#
+# The directory itself must survive, not merely something under it: these are read as
+# trees, so `context_includes_dir`'s weaker question (does the copy transfer
+# ANYTHING) would pass a package admitted only through the devcontainer's
+# `*-version.sh` glob and still leave the build without an `src`.
+#
+# Root allowlist only. This is a statement about the builds that compile gg, all of
+# which are built from the repository root; `.devcontainer/ubuntu.dockerfile` bakes
+# toolchains from pins and compiles none of this, and its own narrower allowlist is
+# correct to keep the sources out.
+load_dockerignore "$REPO_ROOT/.dockerignore"
+mapfile -t guest_packages < <(
+	git ls-files 'packages/gg-sandbox*' | cut -d/ -f1-2 | sort -u |
+		while IFS= read -r candidate; do
+			[[ -d "$REPO_ROOT/$candidate" ]] && printf '%s\n' "$candidate"
+		done
+)
+((${#guest_packages[@]} > 0)) || {
+	echo "error: no packages/gg-sandbox* directories found; this check would pass vacuously." >&2
+	exit 1
+}
+for package in "${guest_packages[@]}"; do
+	checked=$((checked + 1))
+	context_includes "$package" && continue
+	echo "error: .dockerignore keeps '$package' OUT of the build context, and gg's build reads it." >&2
+	echo "       No COPY names it — the driver image's gg stage copies the whole context and then" >&2
+	echo "       compiles, so this fails as 'no such file or directory' from inside an arm's build." >&2
+	echo "       Fix: add '!/$package' to the .dockerignore allowlist, with a comment saying what reads it." >&2
+	problems=$((problems + 1))
+done
+
 ((problems == 0)) || {
 	echo >&2
-	echo "$problems build-context problem(s) found across ${#dockerfiles[@]} Dockerfiles." >&2
+	echo "$problems build-context problem(s) found across ${#dockerfiles[@]} Dockerfiles and ${#guest_packages[@]} gg guest packages." >&2
 	exit 1
 }
 
-echo "$checked context source(s) across ${#dockerfiles[@]} Dockerfiles are all in the build context."
+echo "$checked context source(s) — every COPY across ${#dockerfiles[@]} Dockerfiles, plus the ${#guest_packages[@]} packages/gg-sandbox* trees the driver image's gg stage compiles — are all in the build context."

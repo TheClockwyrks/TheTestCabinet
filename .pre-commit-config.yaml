@@ -126,7 +126,7 @@ repos:
 
       - id: build-context
         name: Dockerfile build context
-        description: Reject a Dockerfile COPY whose source the .dockerignore allowlist keeps out of the build context.
+        description: Reject a Dockerfile COPY — or a gg guest package — that the .dockerignore allowlist keeps out of the build context.
         entry: scripts/ci/build-context.sh
         language: script
         # Reads every Dockerfile against the allowlist that applies to it, so it does
@@ -142,7 +142,14 @@ repos:
         # prefers a per-dockerfile ignore over the context root's). Under the previous
         # pattern neither file could trigger this hook, which is precisely the shape
         # of defect it exists to catch.
-        files: '(^|/)[^/]*[Dd]ockerfile[^/]*$|(^|/)\.dockerignore$'
+        #
+        # `packages/gg-sandbox` is the third arm of the pattern because the gate's
+        # second check is not about a COPY at all: the driver image's gg stage copies
+        # the whole context and then COMPILES those packages, so a new one — the java
+        # and kotlin arms' shared `gg-sandbox-jvm` crossing was the first — belongs in
+        # the allowlist while no Dockerfile mentions it. Staging the new package is the
+        # only moment anything can notice.
+        files: '(^|/)[^/]*[Dd]ockerfile[^/]*$|(^|/)\.dockerignore$|^packages/gg-sandbox'
         pass_filenames: false
 
       - id: rust-fmt

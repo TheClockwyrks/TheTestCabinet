@@ -40,7 +40,7 @@ and can be run from anywhere, including locally:
 | `specs-lint.sh`    | markdownlint + cspell over `test-cases/**`         | no       |
 | `contract-drift.sh`| regenerate TS bindings, JSON Schemas and gg's reference, fail on diff | yes |
 | `frozen-check.sh`  | `.frozen` test-case versions match their recorded digests | yes |
-| `build-context.sh` | every Dockerfile `COPY` source survives the `.dockerignore` allowlist | yes |
+| `build-context.sh` | every Dockerfile `COPY` source — and every gg guest package — survives the `.dockerignore` allowlist | yes |
 
 "Critical" scripts are the ones that catch a genuinely broken change (a crate or
 front end failing to build or test), so they run on both CI systems. The lint
@@ -57,6 +57,17 @@ source that is missing or excluded. It has teeth: it reproduces both defects tha
 have actually landed this way (the Blender image's authoring helpers, and the gg
 toolchain builder's Java installer — which broke the `-gg` variant of every
 language, not just Java's), and it self-tests its matcher before it trusts a verdict.
+
+It also checks something no `COPY` names. The driver image's gg stage copies the
+whole context and then **compiles** the gg guest packages — `crates/gg/build.rs`
+reflects eleven signature catalogues out of them and the crates under
+`crates/gg-sandbox-artifacts/` run each arm's `build.sh` — so a
+`packages/gg-sandbox*` tree the allowlist forgets is invisible to the `COPY` half
+above and to every other gate here. It surfaces minutes into an image build as a
+compiler saying "no such file or directory", blamed on the arm rather than on the
+context. That is the third defect of this shape to land (`packages/gg-sandbox-jvm`,
+the crossing the java and kotlin arms both compile, split out of the java arm), so
+the script now asserts every one of those directories survives the root allowlist.
 
 `install-nextest.sh` is a provisioning helper rather than a validation check
 (hence no "Critical" mark): the Rust test scripts run the suite with

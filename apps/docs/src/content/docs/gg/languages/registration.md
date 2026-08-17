@@ -171,6 +171,12 @@ below.
    ordinary dependency; declared as a build dependency, the `DEP_*` variable
    carrying the output directory is simply absent. List the arm's real inputs in
    the rerun set and nothing a build writes into.
+
+   Re-include every `packages/` directory the arm reads in the root
+   `.dockerignore`, which is an allowlist. The images that build gg copy the
+   whole context and compile these packages, so a missing entry fails inside the
+   arm's own build rather than at a `COPY`. `scripts/ci/build-context.sh` is the
+   gate.
 6. Add the row to `scripts/gg-arms.sh`, which is the one list of gg's arms. A
    row names the id, the package, the label a person reads while it runs, the
    catalogue stems the reflector promises to write, and the artifact files
