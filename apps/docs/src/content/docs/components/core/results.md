@@ -239,7 +239,8 @@ asynchronous: enqueuing it and moving straight on to the next run is the intende
 workflow, and without the alert a failed release is silent — the run simply stays
 unpublished, indistinguishable from one nobody has published yet. Nothing retries a
 failed publish automatically — a failed publish job does not block a new one, so
-publishing the run again is the recovery.
+publishing the run again is the recovery, and the run waits in the console's
+[Unpublished worklist](/components/web/overview/#the-runs-section) until it does.
 
 The public snapshot, and therefore the gallery, contains **only published runs**.
 A published catastrophic/timeout failure shows its generated source but has no

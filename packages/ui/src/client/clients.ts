@@ -21,6 +21,7 @@ import type {
   ModelSeed,
   MyReviewsPage,
   ProgressCallback,
+  PublishEnqueued,
   PublishProgress,
   PublishResult,
   ReviewItem,
@@ -725,6 +726,21 @@ export interface WorkerClient {
     token: string,
     onProgress?: (progress: PublishProgress) => void,
   ): Promise<PublishResult>;
+
+  /**
+   * Enqueue a publish (`POST /runs/{id}/publish`, Bearer) and resolve as soon as
+   * the backend has accepted it — the gate half of {@link publish} without the
+   * wait for the release. It rejects on a refused gate (a run with no reviews, an
+   * infrastructure failure) exactly as {@link publish} does, so a caller still
+   * learns immediately that a run *cannot* be published; what it does not learn
+   * is whether the release later succeeded.
+   *
+   * This is what a **batch** publish uses. Awaiting each release instead would
+   * hold one live NDJSON stream open per selected run for minutes, and the whole
+   * point of the batch is to hand the work off and move on — the backend's
+   * `publish-failed` notification is what reports a release that did not land.
+   */
+  enqueuePublish(id: string, token: string): Promise<PublishEnqueued>;
 
   /**
    * Permanently delete a produced run (`DELETE /runs/{id}`, Bearer): remove its
