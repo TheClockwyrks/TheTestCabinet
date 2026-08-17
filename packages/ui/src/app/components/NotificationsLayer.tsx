@@ -27,10 +27,13 @@ const RECONCILE_INTERVAL_MS = 15_000;
 // toasts and sidebar can use <Link>) and only where runs execute. It:
 //   - seeds the in-progress list from each worker's active runs, so a run the
 //     user is watching survives a page reload (the session store is rebuilt);
-//   - subscribes to every worker's completion push (SSE on web, a Tauri event on
-//     desktop) and, per completion, raises a toast, files the notification for the
-//     bell, and prunes the finished run from the in-progress list — globally, so
-//     it works even when the live monitor isn't open;
+//   - subscribes to every worker's notification push (SSE) and, per completion,
+//     raises a toast, files the notification for the bell, and prunes the finished
+//     run from the in-progress list — globally, so it works even when the live
+//     monitor isn't open;
+//   - does the same, minus the pruning, for a **failed publish** — the alert that
+//     exists because publishing is asynchronous and the console has usually
+//     navigated away from the release's live stream by the time it fails;
 //   - marks a run's notification read once the user opens that run.
 // It is rendered by `GalleryApp` behind the `canExecute` gate, so the static site
 // (no workers, no bell) never mounts it.
@@ -72,17 +75,22 @@ export function NotificationsLayer() {
     };
   }, [workerKey]);
 
-  // Handle one completion push: file it, prune the in-progress run, and toast.
+  // Handle one push: file it, reconcile whatever it changed, and toast.
   const handlePush = useCallback(
     (push: RunNotification) => {
       const notification = notificationFromPush(push);
       add(notification);
 
-      // The run is no longer in progress; drop it from the list (keyed by the
-      // live job id) and refresh produced runs so a completed run appears.
-      const current = runtimeRef.current;
-      current.remove(push.jobId);
-      current.requestRefresh();
+      if (push.kind === "run-completed") {
+        // The run is no longer in progress; drop it from the list (keyed by the
+        // live job id) and refresh produced runs so a completed run appears.
+        const current = runtimeRef.current;
+        current.remove(push.jobId);
+        current.requestRefresh();
+      }
+      // A failed publish changes neither list: the run finished long ago and is
+      // simply still unpublished, exactly as the console already shows it. (Its
+      // `jobId` is a publish job, so pruning by it would match nothing anyway.)
 
       // toastId dedupes if the same completion is delivered twice (e.g. a brief
       // reconnect); the container owns the close/auto-dismiss behavior.

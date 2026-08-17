@@ -22,15 +22,17 @@ export type { RunSort, SortDir };
 export interface RunQuery {
   /** The lifecycle slice to draw from (default `published`). `any` is the union of
    * published and unpublished runs — the consoles' listings, where an unpublished
-   * (and so unreviewed) run must sort and page alongside the published ones. The
-   * static site only holds published runs, so `any` is `published` there and every
-   * other non-`published` state matches nothing. */
+   * (and so unreviewed) run must sort and page alongside the published ones;
+   * `publishable` is the narrower publish worklist (unpublished *and* clearing the
+   * backend's publish gate). The static site only holds published runs, so `any` is
+   * `published` there and every other non-`published` state matches nothing. */
   state?:
     | "published"
     | "any"
     | "review"
     | "failures"
     | "unpublished"
+    | "publishable"
     | "unreviewed";
   /** Filter to one test-case slug (an empty string is ignored). */
   testCase?: string;

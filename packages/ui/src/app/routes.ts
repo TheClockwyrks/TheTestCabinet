@@ -89,6 +89,7 @@ export const routes = {
   settingsAppearance: (): string => "/settings/appearance",
   settingsConnections: (): string => "/settings/connections",
   settingsHarnesses: (): string => "/settings/harnesses",
+  settingsReviewing: (): string => "/settings/reviewing",
   // Account routes (consoles only; the static site is read-only and never links
   // to them). The account view shows the signed-in user and a sign-out control;
   // login/register are their own pages. `login`/`register` take an optional
@@ -136,6 +137,11 @@ export const routes = {
   // reviewer surface the static site never links to. Static segment beside
   // `/runs/:runId`, like `/runs/new`.
   runUnreviewed: (): string => "/runs/unreviewed",
+  // The publish worklist (consoles only): runs that have cleared the publish gate
+  // but have not been released yet, so a reviewer can find and batch-publish them
+  // instead of hunting through the all-runs listing. Nothing on the public gallery
+  // could appear here by definition.
+  runUnpublished: (): string => "/runs/unpublished",
   // Run-execution routes (consoles only; the static site never links to them).
   // `runNew` optionally carries a test case to pre-select, so the Run button on
   // a test case lands on the new-run form with that case already chosen.
@@ -244,6 +250,7 @@ export const routePatterns = {
   settingsAppearance: "/settings/appearance",
   settingsConnections: "/settings/connections",
   settingsHarnesses: "/settings/harnesses",
+  settingsReviewing: "/settings/reviewing",
   account: "/account",
   login: "/login",
   register: "/register",
@@ -268,6 +275,7 @@ export const routePatterns = {
   runs: "/runs",
   runFailures: "/runs/failures",
   runUnreviewed: "/runs/unreviewed",
+  runUnpublished: "/runs/unpublished",
   runNew: "/runs/new",
   runMonitor: "/runs/:runId/live",
   runDetail: "/runs/:runId",

@@ -309,27 +309,39 @@ pub enum NotificationOutcome {
     Failed,
 }
 
-/// The kind of a [`Notification`]. Only [`Self::RunCompleted`] exists today;
-/// modeled as an enum so it is part of the generated contract and the console can
-/// switch on it as more are added.
+/// The kind of a [`Notification`] — which event in a run's life it announces. The
+/// console switches on it, because the kinds mean different things about the same
+/// run: a completion changes the in-flight list, a publish failure does not.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum NotificationKind {
     /// A run reached a terminal state (produced a record, or failed before one).
     RunCompleted,
+    /// A run's **publish** failed — the release Job reported a terminal failure.
+    ///
+    /// Publishing is asynchronous and the console typically navigates away from
+    /// the live publish stream as soon as it is enqueued (the whole point of
+    /// enqueuing it), so without this alert a failed release — a transient GitHub
+    /// 5xx, say — is invisible: the run simply stays unpublished and the operator
+    /// finds out much later. The durable record of the failure is the publish job
+    /// row; this is how a reviewer *learns* about it.
+    PublishFailed,
 }
 
-/// A worker-wide notification that a run reached a terminal state. Carries the
-/// run's display identity (flattened to the console's notification shape) plus
-/// how it ended. Delivered over `GET /notifications` (SSE).
+/// A worker-wide notification about a run: that it reached a terminal state, or
+/// that publishing it failed. Carries the run's display identity (flattened to the
+/// console's notification shape) plus how it ended. Delivered over
+/// `GET /notifications` (SSE).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct Notification {
-    /// The notification kind. Only `run-completed` exists today.
+    /// Which event this announces.
     pub kind: NotificationKind,
-    /// The job id the run was observed under.
+    /// The job the notification is about — the **run** job for `run-completed`,
+    /// the **publish** job for `publish-failed`. It identifies the attempt rather
+    /// than the run, so a run that fails to publish twice raises two alerts.
     pub job_id: String,
     /// The run's display identity (test case, variant, harness, model).
     #[serde(flatten)]
@@ -337,7 +349,8 @@ pub struct Notification {
     /// How the run ended.
     pub outcome: NotificationOutcome,
     /// The persisted run record's id the console links the alert to: the produced
-    /// record's id for a `completed` run, the job id for a `failed` one.
+    /// record's id for a `completed` run, the job id for a `failed` one, and the
+    /// run that could not be released for a `publish-failed` one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub record_id: Option<String>,
@@ -379,4 +392,28 @@ impl Notification {
             message: Some(message.to_string()),
         }
     }
+
+    /// A run whose **publish** failed, with the publisher's reason. `publish_job_id`
+    /// is the release attempt that failed (not the run job that produced the run),
+    /// and `run_id` the run it was releasing — the run the console links the alert
+    /// to, so the reviewer lands where they can retry the publish.
+    pub fn publish_failed(
+        publish_job_id: &str,
+        summary: JobSummary,
+        run_id: &str,
+        message: &str,
+    ) -> Self {
+        Self {
+            kind: NotificationKind::PublishFailed,
+            job_id: publish_job_id.to_string(),
+            summary,
+            outcome: NotificationOutcome::Failed,
+            record_id: Some(run_id.to_string()),
+            message: Some(message.to_string()),
+        }
+    }
 }
+
+#[cfg(test)]
+#[path = "job_api.test.rs"]
+mod tests;

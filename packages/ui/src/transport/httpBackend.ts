@@ -32,6 +32,7 @@ import type {
   ModelSeed,
   MyReviewsPage,
   ProgressCallback,
+  PublishEnqueued,
   PublishProgress,
   PublishResult,
   ReviewDocumentInput,
@@ -1563,22 +1564,19 @@ export function createBackendExec(
       );
     },
 
+    enqueuePublish(id: string, token: string): Promise<PublishEnqueued> {
+      return enqueuePublish(backendUrl, id, token);
+    },
+
     async publish(
       id: string,
       token: string,
       onProgress?: (progress: PublishProgress) => void,
     ): Promise<PublishResult> {
-      // Publishing is asynchronous. `POST /runs/{id}/publish` is the gate (the
-      // backend refuses a run with zero reviews / an infra failure) and the
-      // *enqueue*: it answers `202` with the publish-job id and the live URL to
-      // observe the gh/wrangler release on. Subscribe to that NDJSON stream and
-      // resolve once it reports the terminal result — never poll.
-      const ack = await postJson<{ publishJobId: string; liveUrl: string }>(
-        backendUrl,
-        `/runs/${encodeURIComponent(id)}/publish`,
-        {},
-        token,
-      );
+      // Publishing is asynchronous: the POST only gates and enqueues. Subscribe to
+      // the live NDJSON stream it points at and resolve once that reports the
+      // terminal result — never poll.
+      const ack = await enqueuePublish(backendUrl, id, token);
       return streamPublish(backendUrl, ack.liveUrl, onProgress);
     },
 
@@ -1773,6 +1771,25 @@ type PublishStreamLine =
       playableBuild?: string | null;
       detail?: string | null;
     };
+
+// Gate and enqueue a publish (`POST /runs/{id}/publish`, Bearer). The backend
+// refuses a run that cannot be published (no reviews, an infrastructure failure)
+// here, synchronously; on acceptance it answers `202` with the queued publish job
+// and the live URL its release can be watched on. Shared by the transport's
+// enqueue-only method and by `publish`, which goes on to watch that stream, so the
+// two can never gate differently.
+function enqueuePublish(
+  backendUrl: string,
+  id: string,
+  token: string,
+): Promise<PublishEnqueued> {
+  return postJson<PublishEnqueued>(
+    backendUrl,
+    `/runs/${encodeURIComponent(id)}/publish`,
+    {},
+    token,
+  );
+}
 
 // Read the backend's live publish stream (`GET /publish-jobs/{id}/live`, NDJSON),
 // forwarding each progress line to `onProgress` and resolving with the terminal

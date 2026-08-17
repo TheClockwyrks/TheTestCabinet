@@ -22,6 +22,7 @@ import { useTestCases } from "../../data/useTestCases";
 import { useCatalog } from "../../runtime/useCatalog";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { ModelCombobox } from "../../components/ModelCombobox";
+import { SettingRow } from "../../components/SettingRow";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
@@ -107,70 +108,69 @@ export function AxisPicker({
 }
 
 /**
- * The plan's review-buffer override: how many runs this plan may leave outstanding
+ * The review-buffer override: how many runs this plan or ladder may leave outstanding
  * (in flight, or finished and unreviewed by you) before a top-up stops.
  *
  * Empty is not zero, and the field is built around that distinction: empty means
- * "no opinion — use my account default", while `0` means "never top this plan up",
+ * "no opinion — use my account default", while `0` means "never top this one up",
  * which is a different instruction the reviewer is entitled to give. So the value is
  * a nullable number, the placeholder shows the account default that an empty field
- * inherits, and clearing the field is always available as its own control rather
- * than something you reach by deleting digits until the input happens to be blank.
+ * inherits, and the row's reset control drops the override rather than making the
+ * reviewer delete digits until the input happens to be blank.
  */
 export function BufferTargetField({
   value,
   accountDefault,
   onChange,
+  subject = "plan",
 }: {
-  /** The plan's override, or null to inherit the account default. */
+  /** The override, or null to inherit the account default. */
   value: number | null;
   /** The account-wide default an empty field falls back to. */
   accountDefault: number;
   onChange: (next: number | null) => void;
+  /** What the override belongs to, so the row names it. */
+  subject?: "plan" | "ladder";
 }) {
+  const description =
+    value === null
+      ? `Empty inherits your account default of ${accountDefault} outstanding runs.`
+      : value === 0
+        ? `0 stops this ${subject} topping itself up at all, which is different from empty, where it inherits your account default.`
+        : `This ${subject} keeps ${value} run${value === 1 ? "" : "s"} outstanding before a top-up stops.`;
   return (
-    <div className={styles.bufferField}>
-      <label className={exec.runCountField}>
-        <span className={exec.fieldLabel}>Review buffer (this plan)</span>
-        <input
-          className={exec.input}
-          type="number"
-          min={0}
-          max={500}
-          step={1}
-          value={value ?? ""}
-          placeholder={String(accountDefault)}
-          onChange={(e) => {
-            const raw = e.target.value.trim();
-            if (raw === "") {
-              onChange(null);
-              return;
-            }
-            const n = Math.floor(Number(raw));
-            onChange(Number.isFinite(n) ? Math.min(Math.max(n, 0), 500) : null);
-          }}
-        />
-      </label>
-      <p className={styles.fieldHint}>
-        {value === null
-          ? `Optional. Empty inherits your account default of ${accountDefault} outstanding runs.`
-          : value === 0
-            ? "0 stops this plan topping itself up at all — different from empty, which inherits your account default."
-            : `This plan keeps ${value} run${value === 1 ? "" : "s"} outstanding before a top-up stops.`}
-        {value !== null && (
-          <>
-            {" "}
-            <button
-              type="button"
-              className={styles.chipGroupClear}
-              onClick={() => onChange(null)}
-            >
-              Use my default
-            </button>
-          </>
-        )}
-      </p>
-    </div>
+    <SettingRow
+      label="Review buffer"
+      description={description}
+      modified={value !== null}
+      onReset={() => onChange(null)}
+    >
+      {(id) => (
+        <span className={styles.settingNumber}>
+          <input
+            id={id}
+            className={exec.input}
+            type="number"
+            min={0}
+            max={500}
+            step={1}
+            value={value ?? ""}
+            placeholder={String(accountDefault)}
+            onChange={(e) => {
+              const raw = e.target.value.trim();
+              if (raw === "") {
+                onChange(null);
+                return;
+              }
+              const n = Math.floor(Number(raw));
+              onChange(
+                Number.isFinite(n) ? Math.min(Math.max(n, 0), 500) : null,
+              );
+            }}
+          />
+        </span>
+      )}
+    </SettingRow>
   );
 }
 

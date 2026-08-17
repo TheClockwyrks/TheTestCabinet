@@ -657,6 +657,17 @@ export interface PublishResult {
   playableBuild: string | null;
 }
 
+// The acknowledgement of an **enqueued** publish (`202` from
+// `POST /runs/{id}/publish`): the queued publish job and where its release can be
+// watched. This is the whole of a publish the caller is guaranteed to see
+// synchronously — the release itself runs minutes later in its own Job. Watching
+// it is optional (see `WorkerClient.publish`); a caller that does not raises no
+// alert of its own and relies on the backend's `publish-failed` notification.
+export interface PublishEnqueued {
+  publishJobId: string;
+  liveUrl: string;
+}
+
 // A human-readable progress line streamed while a publish runs, surfaced so a
 // console can show "Publishing…" advance (creating repo → pushing → deploying)
 // rather than a frozen spinner. Mirrors the Rust `PublishProgress`
@@ -787,14 +798,21 @@ export interface HarnessConfigEntry {
   maxParallelism: number | null;
 }
 
-// A worker-wide run-completion notification, pushed to the console without
-// polling (SSE over `GET /notifications` on web; a global Tauri event on desktop).
-// Mirrors the worker's `WorkerNotification` / desktop `RunNotification` field for
-// field, so both transports deserialize into this one type. `recordId` (the run to
-// open) is present when `outcome` is "completed"; `message` (the reason) when
-// "failed".
+// A worker-wide notification about a run, pushed to the console without polling
+// (SSE over `GET /notifications`). Mirrors the backend's `Notification` field for
+// field. Two kinds arrive here:
+//
+//   - "run-completed" — the run reached a terminal state. `recordId` (the run to
+//     open) is present when `outcome` is "completed"; `message` (the reason) when
+//     "failed". `jobId` is the run job, so the console prunes it from the
+//     in-flight list.
+//   - "publish-failed" — the run's release did not land (`outcome` is always
+//     "failed"). `jobId` is the *publish* job, `recordId` the run that stayed
+//     unpublished, and `message` the publisher's reason. Publishing is
+//     asynchronous and the console rarely stays on the live stream, so this is
+//     how a failed release becomes visible at all.
 export interface RunNotification {
-  kind: "run-completed";
+  kind: "run-completed" | "publish-failed";
   jobId: string;
   testCaseSlug: string;
   variant: string;

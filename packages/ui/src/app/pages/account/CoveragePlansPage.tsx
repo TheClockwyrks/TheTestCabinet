@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
-import type {
-  CoveragePlanSummary,
-  CoverageSettings,
-} from "@test-cabinet/run-record/coverage";
+import type { CoveragePlanSummary } from "@test-cabinet/run-record/coverage";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { LoadingState } from "../../components/LoadingState";
@@ -38,66 +35,12 @@ export function planProgress(plan: CoveragePlanSummary): PlanProgress {
   };
 }
 
-// The account-wide review buffer control: how many runs the reviewer is willing to
-// have outstanding — in flight, or finished and waiting on their review — before
-// every plan and ladder of theirs stops enqueueing more.
-//
-// It lives here, on the section's index, because it is a property of the *reviewer*
-// rather than of any one plan: it says how much unreviewed work they want waiting on
-// them at once. A plan that wants a different depth overrides it in its own editor;
-// `0` is a legitimate value meaning "never top me up automatically".
-function BufferSetting({
-  settings,
-  busy,
-  onSave,
-}: {
-  settings: CoverageSettings;
-  busy: boolean;
-  onSave: (bufferTarget: number) => void;
-}) {
-  const [draft, setDraft] = useState(String(settings.bufferTarget));
-  const parsed = Math.floor(Number(draft));
-  const valid = draft.trim() !== "" && Number.isFinite(parsed) && parsed >= 0;
-  const dirty = valid && parsed !== settings.bufferTarget;
-
-  return (
-    <div className={styles.settingsBar}>
-      <label className={exec.runCountField}>
-        <span className={exec.fieldLabel}>Review buffer</span>
-        <input
-          className={exec.input}
-          type="number"
-          min={0}
-          max={500}
-          step={1}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-        />
-      </label>
-      <p className={styles.fieldHint}>
-        Runs your plans may leave outstanding — in flight, or finished and
-        unreviewed by you — before a top-up stops.{" "}
-        {settings.isDefault
-          ? "You have not chosen one, so this is the default."
-          : "Your choice; individual plans can override it."}
-      </p>
-      <button
-        type="button"
-        className={exec.secondary}
-        disabled={busy || !dirty}
-        onClick={() => onSave(Math.min(parsed, 500))}
-      >
-        {dirty ? "Save buffer" : "Saved"}
-      </button>
-    </div>
-  );
-}
-
 // The Coverage tab (`/account/coverage`): the signed-in reviewer's coverage plans,
 // each a card with its roll-up (cells covered / runs missing / waiting on you) and
-// how it is being fed, linking to its own dashboard, plus create / edit / delete —
-// over the account-wide review buffer every plan inherits. Splitting the model space
-// across several smaller plans keeps each dashboard manageable.
+// how it is being fed, linking to its own dashboard, plus create / edit / delete.
+// The account-wide review buffer every plan inherits is a property of the reviewer
+// rather than of this list, so it lives in Settings → Reviewing. Splitting the model
+// space across several smaller plans keeps each dashboard manageable.
 // Console-only and gated on a signed-in account (plans are per-account).
 export function CoveragePlansPage() {
   const { token } = useAuth();
@@ -105,7 +48,6 @@ export function CoveragePlansPage() {
   const { confirm } = useConfirm();
 
   const [plans, setPlans] = useState<CoveragePlanSummary[] | null>(null);
-  const [settings, setSettings] = useState<CoverageSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -123,14 +65,10 @@ export function CoveragePlansPage() {
     let active = true;
     setLoading(true);
     setError(null);
-    Promise.all([
-      backend.getCoveragePlansSummary?.(token) ?? Promise.resolve([]),
-      backend.getCoverageSettings?.(token) ?? Promise.resolve(null),
-    ])
-      .then(([p, s]) => {
+    (backend.getCoveragePlansSummary?.(token) ?? Promise.resolve([]))
+      .then((p) => {
         if (!active) return;
         setPlans(p);
-        setSettings(s);
         setLoading(false);
       })
       .catch((e) => {
@@ -142,22 +80,6 @@ export function CoveragePlansPage() {
       active = false;
     };
   }, [backend, token]);
-
-  const saveBuffer = useCallback(
-    async (bufferTarget: number) => {
-      if (!backend?.setCoverageSettings || !token) return;
-      setBusy(true);
-      setError(null);
-      try {
-        setSettings(await backend.setCoverageSettings({ bufferTarget }, token));
-      } catch (e) {
-        setError(String(e));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [backend, token],
-  );
 
   const deletePlan = useCallback(
     async (id: string, name: string) => {
@@ -217,14 +139,6 @@ export function CoveragePlansPage() {
       <AccountTabs active="coverage" />
 
       {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
-
-      {settings && (
-        <BufferSetting
-          settings={settings}
-          busy={busy}
-          onSave={(target) => void saveBuffer(target)}
-        />
-      )}
 
       {loading ? (
         <LoadingState size="section" label="Loading plans…" />

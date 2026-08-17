@@ -21,6 +21,12 @@ export interface SelectableRun {
   active: boolean;
   /** In-progress and still cancelable (not one already observed to have failed). */
   killable: boolean;
+  /**
+   * Finished, unpublished, and clearing the backend's publish gate — so a batch
+   * publish would actually release it (see `isPublishable`). Always false for an
+   * in-progress run, which has no record to publish yet.
+   */
+  publishable: boolean;
   testCaseSlug: string;
   modelId: string;
   harnessSlug: string;
