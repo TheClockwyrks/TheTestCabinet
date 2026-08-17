@@ -77,10 +77,11 @@
 #   - the SOURCE of the packages the console actually bundles: apps/web itself
 #     plus its workspace deps @test-cabinet/ui and @test-cabinet/run-record, which
 #     Vite resolves to their TypeScript sources (packages/ui exports ./src/*), and
-#     @test-cabinet/voxel-runtime and @test-cabinet/particle-runtime, whose
-#     compiled `./three` subpaths the ui library imports (the Dockerfile builds
-#     their dist/ before the console — the sources ride along here, dist/ is
-#     re-excluded below and rebuilt in-image).
+#     @test-cabinet/run-stats, @test-cabinet/voxel-runtime and
+#     @test-cabinet/particle-runtime, whose compiled subpaths the ui library
+#     imports (run-stats' scoring rules and rollup; the two runtimes' `./three`).
+#     The Dockerfile builds their dist/ before the console — the sources ride
+#     along here, dist/ is re-excluded below and rebuilt in-image.
 # node_modules/ and dist/ are re-excluded below (those re-exclusions come last and
 # win), so a local install/build never rides along.
 !/package.json
@@ -91,6 +92,7 @@
 !/apps/site/package.json
 !/apps/web
 !/packages/run-record
+!/packages/run-stats
 !/packages/ui
 !/packages/voxel-runtime
 !/packages/particle-runtime
