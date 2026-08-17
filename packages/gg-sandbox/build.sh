@@ -80,7 +80,14 @@ if [ ! -x "$ROOT/node_modules/.bin/tsc" ]; then
 	echo "       Run \`npm ci\` at the repository root." >&2
 	exit 1
 fi
+#
+#    `dist` is removed first because `tsc` writes the outputs of the sources it reads and removes
+#    nothing: a module deleted from `src` leaves its JavaScript behind, and step 2 bakes `dist/gg/**`
+#    into the guest unchanged, so the deleted module would keep shipping. It also keeps a stale
+#    build output from being the first thing a search of this tree finds. Emitting from empty costs
+#    one type-check, which this step performs either way.
 echo "Type-checking and emitting $PACKAGE/dist ..."
+rm -rf "${ROOT:?}/$PACKAGE/dist"
 "$ROOT/node_modules/.bin/tsc" -p "$ROOT/$PACKAGE/tsconfig.json"
 
 # 2. Build the ECMAScript guest under `guest/` — quickjs-ng inside a `wit-bindgen` component — and

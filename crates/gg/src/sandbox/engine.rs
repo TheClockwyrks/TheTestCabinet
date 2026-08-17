@@ -431,7 +431,10 @@ fn spent_its_budget<A: ToolApi>(store: &Store<MembraneState<A>>, limits: Sandbox
 ///
 /// Struck rather than counted, on the same terms [`without_frame_locations`] drops a misattributed
 /// location: a frame with no name and no location is not a shorter account of the failure, it is no
-/// account of it, and a count of how many there were is the same nothing one line longer.
+/// account of it, and a count of how many there were is the same nothing one line longer. That is
+/// the [invariants page](https://docs.testcabinet.ai/gg/responses-as-code/invariants/)'s
+/// distinction between a strike and a trim, and it is why a
+/// [trim](super::membrane::GuestStderr) beside it does count.
 ///
 /// A frame the name section does name is kept, which is every frame on the arms whose program is
 /// the wasm module.
@@ -473,7 +476,8 @@ fn without_nameless_frames(reason: &str) -> String {
 ///
 /// wasmtime renders a located frame over two lines: the address and the function name, then an
 /// indented `at <file>:<line>:<column>`. The function names come from the module's name section and
-/// are right; only the second line is the lie, so only the second line goes. What is left is the
+/// are right; only the second line is the lie, so only the second line goes. A strike rather than a
+/// trim, and it closes without a count for the reason [`without_nameless_frames`] gives. What is left is the
 /// reason, the frames a model can recognise, and no claim about where in its own source they are —
 /// which for the JVM arms is what the guest's own standard error already says, correctly.
 fn without_frame_locations(reason: &str) -> String {

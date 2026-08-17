@@ -131,6 +131,13 @@ template instantiation traces above all. Reaching the same size by rewriting a
 compiler's words would put gg's account of the failure in front of the
 language's.
 
+A line the runtime emitted that states nothing true is struck rather than
+trimmed, and closes without a count. A stack frame carrying neither a name nor a
+location, and a location a toolchain misattributed, are the two gg strikes. What
+is left is the whole of what the runtime had to say, so a count there would tell
+a model there is more to read when there is not. Each strike states at its own
+site what it removes and why it is untrue.
+
 ## The system prompt
 
 The prompt describes what an agent can do rather than how one language spells it.
