@@ -2,17 +2,6 @@
 title: "C#"
 ---
 
-This arm keeps three of the [invariants](/gg/responses-as-code/invariants/) for a
-program: it compiles the model's own bytes, writes no import around them, and
-locates every diagnostic and every runtime frame in the model's coordinates. A
-code module is put in a class gg declares around it, which the invariants place
-outside the authorship rule.
-
-The one it does not keep is shared rather than this arm's. A guest's standard
-error is trimmed to a byte budget without counting what it dropped, so a stack
-overflow reaches the model as a report that begins part way through a frame and
-says nothing about the frames above it.
-
 ## Preparation
 
 The arm is selected per agent by the responses-as-code capability's `language`
@@ -168,6 +157,13 @@ loads the runtime, which is what makes that information readable.
 A program that ends by returning a non-zero status from its entry point is
 reported with the status it chose. That is the one failure C# reports without
 throwing.
+
+A stack overflow is the one failure whose report is larger than the
+[bound on a guest's standard error](/gg/responses-as-code/sandbox/). The runtime
+names `System.StackOverflowException` on the first line and then repeats the
+recursive frame for fifty kilobytes, so what the model reads is the naming line,
+the frames under it, the count of what was deleted, and the frames the runtime
+wrote last.
 
 ## Prompt segment
 

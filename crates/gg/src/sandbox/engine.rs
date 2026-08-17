@@ -358,7 +358,7 @@ pub(crate) fn component_bytes(language: &'static dyn ProgramLanguage) -> &'stati
 /// came from, because a guest that exited is a program that stopped itself and never the artifact
 /// drift `fallback` names on the instantiate path.
 ///
-/// [What the guest said](MembraneState::stderr_tail) rides on **every** one of those paths. It used
+/// [What the guest said](MembraneState::stderr_kept) rides on **every** one of those paths. It used
 /// to ride on the last one alone, so the two early returns above threw it away: a Swift program
 /// stopped at the memory cap had already written `Fatal error: failed to allocate 33554440 bytes of
 /// memory with alignment 4`, and gg had already located it at `main.swift:3:32`, and the model was
@@ -373,7 +373,7 @@ pub(crate) fn classify<A: ToolApi>(
     err: &wasmtime::Error,
     fallback: fn(String) -> SandboxError,
 ) -> SandboxError {
-    let said = store.data().stderr_tail();
+    let said = store.data().stderr_kept();
     if store.data().timed_out() || spent_its_budget(store, limits) {
         return SandboxError::Timeout {
             limit: limits.timeout,

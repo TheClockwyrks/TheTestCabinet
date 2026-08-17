@@ -968,8 +968,12 @@ public static class Program {
   }
 }
 "#,
+                // The fault's name is the FIRST thing Mono writes and the thousand identical frames
+                // under it are the last, so this cell is what holds the guest stderr bound to
+                // keeping both ends: a bound that kept either one alone would lose one of these
+                // two assertions.
                 names: &["StackOverflowException"],
-                located: Located::Nowhere,
+                located: Located::At("./program.cs:6"),
                 answered: Answered::AtRuntime,
             },
             Case {

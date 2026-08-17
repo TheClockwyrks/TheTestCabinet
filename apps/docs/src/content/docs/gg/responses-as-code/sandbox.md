@@ -93,9 +93,23 @@ guest cannot run a command through its standard library and an agent not granted
 the call cannot run one at all.
 
 Stdout is withheld, because gg's telemetry stream is on fd 1. Stderr is captured
-rather than inherited: the host keeps the last 8 KiB of it and never fails a
-write, so a guest runtime's dying message reaches the model's feedback instead
-of the operator's log.
+rather than inherited and never fails a write, so a guest runtime's dying message
+reaches the model's feedback instead of the operator's log.
+
+What is captured is bounded at both ends: the host keeps the first 4 KiB and the
+last 4 KiB, so anything a guest wrote up to 8 KiB reaches the model whole. Both
+ends are kept because the runtimes disagree about which one carries the fault.
+Mono names a `StackOverflowException` on the first line and then repeats one
+frame for fifty kilobytes, while a Rust panic and a Swift `fatalError` are the
+last thing on a channel the program itself has been writing to. Keeping one end
+alone loses the fault on the arms that use the other.
+
+Where the two ends do not meet, a line of its own counts the deletion between
+them, reading `… 43992 bytes dropped`.
+[Trimming](/gg/responses-as-code/invariants/#trimming) requires that of every
+trim, so a model can tell a bounded report from a whole one. Each cut is moved
+out to the nearest line boundary and the bytes that move with it are added to
+the count, so a model never reads a frame the bound cut in half.
 
 gg adds `GG_SANDBOX_DEADLINE_MS` to the environment, holding this program's
 execution budget one epoch tick short of gg's own deadline. It is for a guest

@@ -445,6 +445,38 @@ fn a_panic_reaches_the_model_in_stds_own_words_at_the_models_own_line() {
     // gg attaches no location of its own, on this shape or any other. The location a model reads is
     // inside the runtime's own sentence, which is the only place this arm has one.
     assert_eq!(program_error_location(&outcome), None);
+
+    // A program that writes a hundred kilobytes to fd 2 and then panics. This arm leaves standard
+    // error to the program, so `std`'s dying sentence is the LAST thing on a channel the program
+    // filled — the opposite of C#, where the runtime names the fault on the first line and repeats
+    // one frame for fifty kilobytes. It is the pair of cases the guest stderr bound is shaped by:
+    // both ends survive, and the deletion between them is counted.
+    let outcome = run(r#"fn main() {
+    eprintln!("the first line the program wrote");
+    for line in 0..2000u32 {
+        eprintln!("filler line {line} of a program that said a great deal");
+    }
+    panic!("and then it gave up");
+}
+"#);
+    let reported = trap(&outcome);
+    assert!(
+        reported.starts_with("the first line the program wrote"),
+        "the head of what the program wrote was evicted: {reported}"
+    );
+    assert!(
+        reported.contains("panicked at program.rs:6:5:")
+            && reported.contains("and then it gave up"),
+        "the panic at the far end of a long report was evicted: {reported}"
+    );
+    assert!(
+        reported.contains(" bytes dropped"),
+        "a bounded report did not count what it dropped: {reported}"
+    );
+    assert!(
+        !reported.contains("filler line 1000 "),
+        "a report this size reached the model whole: {reported}"
+    );
 }
 
 /// **The bytes `rustc` reads are the bytes the model sent**, read back off the disk the compiler

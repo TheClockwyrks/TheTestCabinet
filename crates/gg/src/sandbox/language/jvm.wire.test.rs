@@ -524,7 +524,7 @@ fn run_against_the_membrane(
     let returned = bound
         .call_run(&mut store, "", &[], &granted, RunEnding::None.into(), false)
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
-    let said = store.data().stderr_tail();
+    let said = store.data().stderr_kept();
     let failed = returned.as_ref().err().map(ToString::to_string);
     let (outcome, _api) = reclaim(store, returned, None, None);
     Ran {

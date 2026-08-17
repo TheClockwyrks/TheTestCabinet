@@ -111,7 +111,7 @@ fn drive(
         .map_err(|error| {
             crate::sandbox::engine::classify(&store, limits, &error, SandboxError::Trap)
         });
-    let stderr = store.data().stderr_tail();
+    let stderr = store.data().stderr_kept();
     let parts = store.into_data().into_parts();
     Ran {
         result,
