@@ -792,15 +792,32 @@ fn the_fixture_language_has_no_wire_id() {
 /// A pair listed here is held to something *stronger* than the rule, not weaker: the sharing must be
 /// real (the same bytes, not two files that happen to agree today), and everything a language owns
 /// beyond the shared artifact must still be its own.
-const SHARED_ARTIFACTS: &[(GgProgramLanguage, GgProgramLanguage, &str)] = &[(
-    GgProgramLanguage::TypeScript,
-    GgProgramLanguage::JavaScript,
-    "the pair is one language with the type check varied, so both arms evaluate a module in the \
-         ECMAScript guest and reach it through one constant. A second copy of that artifact is 1.2 \
-         MB in every released binary for bytes that must not differ: an arm whose guest resolved \
-         `gg` differently, or reported a frame differently, would make the pair's A/B measure the \
-         guest as well as the compiler",
-)];
+const SHARED_ARTIFACTS: &[(GgProgramLanguage, GgProgramLanguage, &str)] = &[
+    (
+        GgProgramLanguage::TypeScript,
+        GgProgramLanguage::JavaScript,
+        "the pair is one language with the type check varied, so both arms evaluate a module in \
+         the ECMAScript guest and reach it through one constant. A second copy of that artifact is \
+         1.2 MB in every released binary for bytes that must not differ: an arm whose guest \
+         resolved `gg` differently, or reported a frame differently, would make the pair's A/B \
+         measure the guest as well as the compiler",
+    ),
+    (
+        GgProgramLanguage::TypeScript,
+        GgProgramLanguage::PureScript,
+        "PureScript compiles to JavaScript on the host, so what it hands the guest is an ES module \
+         the ECMAScript guest declares exactly as it declares this one's emission — down to the \
+         `gg` its SDK imports and the source map its frames are read back through. A guest of its \
+         own would be a second copy of one artifact and a second engine under a study that varies \
+         the source language rather than the runtime",
+    ),
+    (
+        GgProgramLanguage::JavaScript,
+        GgProgramLanguage::PureScript,
+        "the same artifact, for the same reason: three arms compile to JavaScript and one guest \
+         evaluates it",
+    ),
+];
 
 /// Why `a` and `b` are allowed to share a component, or `None` if they are not.
 fn shared_artifacts(a: GgProgramLanguage, b: GgProgramLanguage) -> Option<&'static str> {

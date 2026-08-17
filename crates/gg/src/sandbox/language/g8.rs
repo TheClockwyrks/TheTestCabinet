@@ -43,8 +43,8 @@
 //!
 //! A row pins what is **stable about the arm's own program**: a coordinate a preparation computed
 //! from the model's own text is pinned to the number, because it is a function of that program; a
-//! line inside a bundle or a Mono assembly guid is not, because it moves with the SDK, and a table
-//! that failed for an SDK edit would be a table people delete rather than fix.
+//! Mono assembly guid is not, because it moves with the SDK, and a table that failed for an SDK edit
+//! would be a table people delete rather than fix.
 //!
 //! # What "the model-facing reading" means
 //!
@@ -244,37 +244,15 @@ const KNOWN_HOLES: &[Hole] = &[
         instead: Instead::Nothing,
     },
     // ---- purescript -------------------------------------------------------------------------
-    //
-    // Every located cell on this arm is located in the ESBUILD BUNDLE, hundreds of lines into a
-    // file the model did not write and cannot open. The rows pin the WORDS rather than the wrong
-    // line: a bundle coordinate moves whenever the SDK or the library set does, so pinning it
-    // would make this table fail for edits that have nothing to do with reporting.
-    Hole {
-        arm: GgProgramLanguage::PureScript,
-        shape: Shape::ToolError,
-        instead: Instead::Says("`read_text_file` failed (not-found)"),
-    },
-    Hole {
-        arm: GgProgramLanguage::PureScript,
-        shape: Shape::NativeFault,
-        instead: Instead::Says("Failed pattern match at Data.Maybe"),
-    },
     Hole {
         arm: GgProgramLanguage::PureScript,
         shape: Shape::FailureValue,
-        // Nothing. `main`'s value is discarded by the entry gg synthesizes, so a program that ends
-        // by RETURNING its failure is a clean turn — the shape PureScript has no other spelling of.
+        // Nothing, and PureScript is where the shape runs out rather than this arm. `main`'s value
+        // is discarded by the entry gg synthesizes, and the arm's other two spellings do not exist:
+        // the shipped library set has no `Effect.Aff` and no process module, so there is no
+        // unobserved rejected async and no exit status to fail with — and a single-file program
+        // cannot declare the FFI that would reach either.
         instead: Instead::Nothing,
-    },
-    Hole {
-        arm: GgProgramLanguage::PureScript,
-        shape: Shape::ResourceFault,
-        instead: Instead::Says("too much recursion"),
-    },
-    Hole {
-        arm: GgProgramLanguage::PureScript,
-        shape: Shape::Abort,
-        instead: Instead::Says("Error: the third step did not finish"),
     },
     // ---- rust -------------------------------------------------------------------------------
     Hole {

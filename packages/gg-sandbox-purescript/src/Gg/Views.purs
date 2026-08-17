@@ -115,7 +115,7 @@ openFile path options =
   fileRead TextFile ImageFile
     -- `read_file`, not `open_file`: the first argument is the GATE, and showing a file is a read gg
     -- also puts in the window, so it is `read_file` being withheld that this call refuses under.
-    <$> Wire.call "read_file" "view" "Gg.Views.openFile" [ Wire.wire path, Wire.lower {} options ]
+    <$> Wire.call "read_file" "views" "Gg.Views.openFile" [ Wire.wire path, Wire.lower {} options ]
 
 -- | Place a value the program computed in the context window, under a label.
 -- |
@@ -143,7 +143,7 @@ openFile path options =
 -- | silently truncated.
 openText :: String -> String -> Effect Unit
 openText label body =
-  Wire.call_ "open_text" "view" "Gg.Views.openText" [ Wire.wire label, Wire.wire body ]
+  Wire.call_ "open_text" "views" "Gg.Views.openText" [ Wire.wire label, Wire.wire body ]
 
 -- | Place one module's, function's or type's full documentation in the context window.
 -- |
@@ -169,7 +169,7 @@ openText label body =
 -- |
 -- | `NotFound` for an unknown or unbound name.
 openDocsView :: String -> Effect Unit
-openDocsView name = Wire.call_ "open_docs_view" "view" "Gg.Views.openDocsView" [ Wire.wire name ]
+openDocsView name = Wire.call_ "open_docs_view" "views" "Gg.Views.openDocsView" [ Wire.wire name ]
 
 -- | Close every view carrying a selector, freeing the tokens they occupied.
 -- |
@@ -201,7 +201,7 @@ openDocsView name = Wire.call_ "open_docs_view" "view" "Gg.Views.openDocsView" [
 -- | `InvalidArgument` for an empty selector, which names nothing rather than everything — no call
 -- | here closes the window wholesale.
 close :: String -> Effect Int
-close selector = Wire.call "close" "view" "Gg.Views.close" [ Wire.wire selector ]
+close selector = Wire.call "close" "views" "Gg.Views.close" [ Wire.wire selector ]
 
 -- | Close a view that is open, freeing the tokens it occupied.
 -- |
@@ -244,7 +244,7 @@ closeView view = close view.selector
 -- | Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and — for
 -- | a paged file view — the `region` it covers.
 current :: Effect (Array OpenView)
-current = map openView <$> Wire.call "current" "view" "Gg.Views.current" []
+current = map openView <$> Wire.call "current" "views" "Gg.Views.current" []
 
 -- | One open view. A paged file view carries the window it covers; nothing else does.
 openView :: Wire.Wire -> OpenView

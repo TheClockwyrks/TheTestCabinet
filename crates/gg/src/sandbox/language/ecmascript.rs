@@ -7,10 +7,10 @@
 //! host sent — so it writes its own `import` lines, declares whatever top-level names it likes, and
 //! reads its own line numbers back out of any failure.
 //!
-//! The TypeScript and JavaScript arms are registered against it, which is what holds that pair to
-//! differing in the compiler and nothing else. The PureScript arm still evaluates in its own
-//! `componentize-js` guest, which is the guest this one replaces; converting it is a change to that
-//! arm's prepare step, its prompt and its page.
+//! Every arm whose program becomes JavaScript evaluates here. The TypeScript and JavaScript arms are
+//! registered against it as a declared pair, which is what holds them to differing in the compiler
+//! and nothing else, and the PureScript arm's `esbuild` bundle is a module this guest declares
+//! exactly as it declares theirs.
 //!
 //! # Why a second guest exists at all
 //!
@@ -31,14 +31,14 @@
 //!
 //! # What it costs, measured on this artifact
 //!
-//! | | `typescript.component.wasm` | this |
+//! | | the `componentize-js` guest this replaces | this |
 //! | --- | --- | --- |
 //! | artifact | 14,123,934 B | ~1.2 MB core + 52 KB adapter |
 //! | `Component::new`, gg's own `Config` | 11.7–24.3 s | 0.85–2.04 s |
 //!
-//! Both are paid once per process, behind a `OnceLock`; for the CLI a run is a process, so it is
-//! once per run. The figures were taken minutes apart on one machine under a load average of ~30 on
-//! 18 cores, so the absolutes are inflated and the ratio is the number to read.
+//! It is paid once per process, behind a `OnceLock`; for the CLI a run is a process, so it is once
+//! per run. The figures were taken minutes apart on one machine under a load average of ~30 on 18
+//! cores, so the absolutes are inflated and the ratio is the number to read.
 
 use std::sync::OnceLock;
 
@@ -82,6 +82,13 @@ pub(crate) const MANIFEST: &str = include_str!(concat!(
 
 /// The import namespace the adapter satisfies, which is the preview1 snapshot's own module name.
 const ADAPTER_NAME: &str = "wasi_snapshot_preview1";
+
+/// **The name the guest declares a program under**, which is
+/// `packages/gg-sandbox/guest/src/loader.rs`'s own `PROGRAM`.
+///
+/// It is the name every frame in a program carries, so an arm whose compiler emits a source map
+/// files that map under this name for [`locate`](crate::sandbox::locate) to find.
+pub(super) const PROGRAM: &str = "program.js";
 
 /// **The scheme a code module is reached under**, which is `packages/gg-sandbox/guest/src/loader.rs`'s
 /// own `LIB` constant.

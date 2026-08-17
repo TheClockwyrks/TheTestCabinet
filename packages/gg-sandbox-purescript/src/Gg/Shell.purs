@@ -75,7 +75,7 @@ shell
   -> Record given
   -> Effect ShellOutput
 shell command options =
-  shellOutput <$> Wire.call "shell" "system" "Gg.Shell.shell" [ Wire.wire command, Wire.lower {} options ]
+  shellOutput <$> Wire.call "shell" "shell" "Gg.Shell.shell" [ Wire.wire command, Wire.lower {} options ]
 
 -- | A finished command. `exitCode` is absent when a signal killed the process.
 shellOutput :: Wire.Wire -> ShellOutput

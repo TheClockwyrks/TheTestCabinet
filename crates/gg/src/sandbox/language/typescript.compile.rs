@@ -182,9 +182,10 @@ const PROGRAM_SOURCE: &str = "program.ts";
 
 /// What `tsc` emits beside it, and the name the guest declares that emission under.
 ///
-/// The two names have to agree: a frame the engine reports says `program.js`, and
-/// [`locate`](crate::sandbox::locate) finds this program's map by that name.
-pub(super) const PROGRAM_EMITTED: &str = "program.js";
+/// The two names have to agree — a frame the engine reports says `program.js`, and
+/// [`locate`](crate::sandbox::locate) finds this program's map by that name — so it is the guest's
+/// own constant rather than a second spelling of it.
+pub(super) const PROGRAM_EMITTED: &str = crate::sandbox::language::ecmascript::PROGRAM;
 
 /// The file a **code module** is compiled under.
 const MODULE_SOURCE: &str = "module.ts";

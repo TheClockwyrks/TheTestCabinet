@@ -85,13 +85,13 @@ it.
 
 A component is affected only by the imports it declares, and gg's
 `test-cabinet:gg/*` namespace does not overlap WASI's, so a guest pays nothing
-for what it leaves out. The `componentize-js` guest imports seven interfaces:
-`wasi:clocks`, `wasi:random` and `wasi:io`, which is how a program's `Date.now()`
-reads the host clock, and `wasi:cli/stderr`. The ECMAScript guest is a preview1
-module through the reactor adapter, so the adapter's whole surface is declared
-whether the engine reaches it or not. The Python guest imports the whole surface,
-twenty of them. Each guest's list is asserted against its built artifact, because
-the list is decided by how that arm's guest is built.
+for what it leaves out. The ECMAScript guest is a preview1 module through the
+reactor adapter, so the adapter's whole surface is declared whether the engine
+reaches it or not. The Ruby guest imports seven interfaces: `wasi:clocks`,
+`wasi:random` and `wasi:io`, which is how a program reads the host clock, and
+`wasi:cli/stderr`. The Python guest imports the whole surface, twenty of them.
+Each guest's list is asserted against its built artifact, because the list is
+decided by how that arm's guest is built.
 
 A program's context inherits the process environment and the network, and
 preopens the container's root. A model reaching for its language's ordinary file

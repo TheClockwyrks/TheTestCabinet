@@ -132,20 +132,17 @@ removes the WASI import but leaves the builtin defined, so an unshadowed `fetch`
 reaches a missing import and traps the whole store, which is uncatchable and
 unreportable.
 
-`queueMicrotask` is a thrower on the `componentize-js` guest, whose `run` export
-never drains a job queue, and is real on the
-[ECMAScript guest](/gg/languages/ecmascript-guest/), which drains one before it
-returns.
+`queueMicrotask` is real: the [ECMAScript guest](/gg/languages/ecmascript-guest/)
+drains its job queue before it returns, which is the same mechanism a top-level
+`await` finishes on.
 
 Nothing here denies a capability the component has. The clock, `Math.random` and
 `crypto` are real and reachable. `fetch`'s reason is a fact about this artifact:
 the host links `wasi:sockets` for every guest, so a guest that imported it would
 have the network.
 
-Each replacement is defensive. Some globals in this engine are accessor
-properties with no setter, and a plain assignment to one throws out of the
-shim's own setup, which `componentize-js` turns into an opaque trap. A global
-that refuses redefinition keeps its engine behaviour instead.
+Each is a named thrower rather than an absence, because the engine's message for
+calling a missing global carries neither the name nor a reason.
 
 ## Build and distribution
 
@@ -160,7 +157,7 @@ Each arm's `build.sh` writes the files that arm needs into
 `crates/gg-sandbox-artifacts/<arm>/`. That crate's `links` key carries the
 output directory to `crates/gg`'s build script, which republishes it as an
 environment variable the arm's module reads with `include_bytes!`. Ten crates
-serve eleven arms: `typescript` (whose guests serve the JavaScript and PureScript
+serve eleven arms: `typescript` (whose guest serves the JavaScript and PureScript
 arms too), `python`, `ruby`, `java`, `kotlin`, `rust`, `purescript`, `cpp`,
 `swift` and `csharp`.
 

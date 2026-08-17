@@ -21,9 +21,13 @@
 //! # What a rewritten frame says
 //!
 //! A frame the engine wrote as `program.js:11:9` is read back as `program.ts:21:1`: the file is the
-//! one the map names as its source, and the line and column are the ones it resolves to. A frame in
-//! a name no map covers is left exactly as the engine wrote it, which is what an SDK frame and a
-//! host frame are.
+//! one the map names as that token's source, and the line and column are the ones it resolves to. A
+//! frame in a name no map covers is left exactly as the engine wrote it, which is what an SDK frame
+//! and a host frame are.
+//!
+//! A map made from several sources therefore names several files. That is what a bundled arm needs:
+//! one map covers the model's own file, the SDK's and every library's, and a frame reads as whichever
+//! of them the token came from.
 
 use sourcemap::SourceMap;
 
@@ -31,8 +35,11 @@ use sourcemap::SourceMap;
 struct Mapped {
     /// The name the guest declares the text under, which is the name its frames carry.
     guest: String,
-    /// What a rewritten frame names instead of [`guest`](Self::guest).
-    reads_as: String,
+    /// The one name every rewritten frame takes, for a text whose frames should all read as one
+    /// thing whatever the map's own sources are called.
+    ///
+    /// `None` takes each frame's name from the map, which is the token's own source.
+    reads_as: Option<String>,
     /// The compiler's own map from the text the guest evaluated to the text it was compiled from.
     map: SourceMap,
 }
@@ -56,12 +63,10 @@ impl Locations {
         let mapped: Vec<Mapped> = texts
             .into_iter()
             .filter_map(|(guest, reads_as, source)| {
-                let map = embedded(source)?;
-                let reads_as = reads_as.or_else(|| sole_source(&map).map(ToString::to_string));
                 Some(Mapped {
                     guest,
-                    reads_as: reads_as?,
-                    map,
+                    reads_as,
+                    map: embedded(source)?,
                 })
             })
             .collect();
@@ -98,8 +103,8 @@ impl Mapped {
             let after = &from[self.guest.len()..];
             match position(after) {
                 Some((line, column, tail)) => match self.resolve(line, column) {
-                    Some((line, column)) => {
-                        out.push_str(&format!("{}:{line}:{column}", self.reads_as));
+                    Some((source, line, column)) => {
+                        out.push_str(&format!("{source}:{line}:{column}"));
                         rest = tail;
                     }
                     None => {
@@ -117,22 +122,38 @@ impl Mapped {
         out
     }
 
-    /// The 1-based line and column one 1-based generated position resolves to.
+    /// The source, 1-based line and 1-based column one 1-based generated position resolves to.
     ///
     /// The engine counts from one and a source map counts from zero, so both ends are converted
     /// here and nowhere else. That is the whole of the arithmetic in this module, and it is a change
     /// of base rather than a correction: no offset is added, and the numbers that come back are the
     /// map's.
     ///
-    /// A lookup answers with the last token **at or before** the position, which for a position on a
-    /// generated line the map does not cover at all is a token on some earlier line. That answer is
-    /// refused: a line the compiler emitted with no mapping is a line the compiler wrote of its own,
-    /// and reporting the nearest thing that happens to have a token would be gg inventing a
-    /// location.
-    fn resolve(&self, line: u32, column: u32) -> Option<(u32, u32)> {
+    /// A lookup answers with the last token **at or before** the position. Where that token is on an
+    /// earlier generated line, the position is one the map has nothing at or before on its own line
+    /// — a call whose callee the compiler mapped on the line above, say — and the answer taken is
+    /// the map's first token on the line the engine named instead. It is still the map's answer
+    /// about the engine's own line rather than a number computed here.
+    ///
+    /// A generated line the map covers nowhere at all resolves to nothing, and so does a token the
+    /// map names no source for: a line the compiler emitted with no mapping is a line the compiler
+    /// wrote of its own, and reporting the nearest thing that happens to have a token on some other
+    /// line would be gg inventing a location.
+    fn resolve(&self, line: u32, column: u32) -> Option<(String, u32, u32)> {
         let line = line.checked_sub(1)?;
-        let token = self.map.lookup_token(line, column.checked_sub(1)?)?;
-        (token.get_dst_line() == line).then(|| (token.get_src_line() + 1, token.get_src_col() + 1))
+        let before = self.map.lookup_token(line, column.checked_sub(1)?);
+        let token = match before.filter(|token| token.get_dst_line() == line) {
+            Some(token) => token,
+            None => self
+                .map
+                .tokens()
+                .find(|token| token.get_dst_line() == line)?,
+        };
+        let source = match &self.reads_as {
+            Some(name) => name.clone(),
+            None => token.get_source()?.to_string(),
+        };
+        Some((source, token.get_src_line() + 1, token.get_src_col() + 1))
     }
 }
 
@@ -167,17 +188,6 @@ pub(crate) fn embedded(source: &str) -> Option<SourceMap> {
     let located = sourcemap::locate_sourcemap_reference_slice(source.as_bytes()).ok()??;
     match located.get_embedded_sourcemap().ok()?? {
         sourcemap::DecodedMap::Regular(map) => Some(map),
-        _ => None,
-    }
-}
-
-/// The one source a map was made from, or `None` where it names none or several.
-///
-/// An arm compiles one text at a time here, so a map with several sources is one gg has no single
-/// answer for and leaves alone.
-fn sole_source(map: &SourceMap) -> Option<&str> {
-    match map.get_source_count() {
-        1 => map.get_source(0),
         _ => None,
     }
 }

@@ -289,13 +289,6 @@ const UNCONVERTED: &[Unconverted] = &[
         adds: "public static class Module",
         instead: "puts the module in a class it declares, anchored by a `#line` directive",
     },
-    // ---- the cells that keep their bytes and are not converted ----------------------------------
-    //
-    // No row, because there is nothing here to record: these arms hand the compiler what they were
-    // handed, and what they do besides is a shape this measurement says it cannot see.
-    //
-    // * PureScript supplies a module header when the reply has none and renames one that names
-    //   something other than `Main`, and gg's own opening program writes `module Main where`.
 ];
 
 /// One way an arm failed the gate.

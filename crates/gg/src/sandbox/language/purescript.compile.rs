@@ -4,8 +4,8 @@
 //! # The strategy, in one sentence
 //!
 //! A PureScript program is **compiled to JavaScript on the host** — by `purs`, against a library
-//! set that was compiled once and is shipped inside gg's binary, then flattened into one script by
-//! `esbuild` — and evaluated by [this arm's own `componentize-js` guest](super::COMPONENT).
+//! set that was compiled once and is shipped inside gg's binary, then flattened into one ES module
+//! by `esbuild` — and evaluated as a module by the [ECMAScript guest](super::super::ecmascript).
 //!
 //! Nothing about it is per-run: the tree a program is compiled against is a build-time artifact,
 //! the compiler is a binary in the run image, and what crosses the membrane is JavaScript.
@@ -24,7 +24,7 @@
 //! The **library set** goes the other way. `purs` cannot type-check a program without both the
 //! sources and the compiled externs of everything it imports (measured: with externs alone every
 //! import is `ModuleNotFound`), and compiling the set from scratch costs ~16 s — so it is compiled
-//! once, by `packages/gg-sandbox-purescript/build.sh`, into a 1.3 MB tarball that gg embeds — cut
+//! once, by `packages/gg-sandbox-purescript/build.sh`, into a 1.4 MB tarball that gg embeds — cut
 //! by the same `cargo build` that compiles this file, so it cannot be a different vintage from the
 //! SDK inside it. This arm's **SDK** is compiled into that same tree, which is what makes the
 //! surface a model is shown in its prompt and the surface its program is compiled against one
@@ -41,14 +41,14 @@
 //!
 //! | | |
 //! | --- | --- |
-//! | Hard-linking the tree into this preparation's workspace (1,119 files) | ~19 ms |
-//! | `purs compile` — dominated by loading 9 MB of externs, not by the program | ~200 ms |
-//! | `esbuild` — bundling and tree-shaking the module graph | ~65 ms |
-//! | End to end | **~290 ms** |
+//! | Hard-linking the tree into this preparation's workspace (1,430 files) | ~27 ms |
+//! | `purs compile` — dominated by loading 9 MB of externs, not by the program | ~205 ms |
+//! | `esbuild` — bundling, tree-shaking and composing the source maps | ~58 ms |
+//! | End to end | **~298 ms** |
 //!
 //! The feasibility study priced this arm at 0.45–0.65 s per turn with a `purs ide server` needed to
 //! bring it to 151–713 ms. It is cheaper than that here, and the difference is the staging: a real
-//! `cp -a` of the tree costs ~150 ms where a hard-linked one costs ~19 ms, and the study's figure
+//! `cp -a` of the tree costs ~150 ms where a hard-linked one costs ~27 ms, and the study's figure
 //! included the copy. So the **daemon is not taken**, and the reason is a measurement rather than a
 //! preference — batch compilation already sits inside the range a warm `purs ide server` was
 //! measured in, and [`CompilerPool`](crate::sandbox::CompilerPool) is here for the arm that needs
@@ -66,11 +66,11 @@
 //! 1. **The shared tree is never written.** It is unpacked once per machine into a content-keyed
 //!    [shared toolchain directory](crate::sandbox::shared_toolchain_dir) through [`place_tree`],
 //!    which renames a finished tree into place and seals every file and directory in it read-only.
-//! 2. **Each preparation compiles in its own tree**, hard-linked from that one in ~19 ms. Hard links
+//! 2. **Each preparation compiles in its own tree**, hard-linked from that one in ~27 ms. Hard links
 //!    are what make a private tree affordable — and they are also what makes the sealing bite, since
 //!    a link to a read-only inode is read-only too. The two files `purs` rewrites whatever else it
-//!    does are the ones at the root of `output/`, and those are staged as real copies; the other
-//!    1,050 stay linked and stay sealed. The seal is what found the second of the two — left linked,
+//!    does are the ones at the root of `output/`, and those are staged as real copies; every other
+//!    file in the tree stays linked and stays sealed. The seal is what found the second of the two — left linked,
 //!    the compile failed with `Permission denied` naming `output/package.json` rather than writing
 //!    through into every other agent's tree.
 //! 3. **The spawn goes through [`PrepareContext::compiler`]**, so the working directory, `HOME`,
@@ -96,10 +96,14 @@
 //! | `purs` or `esbuild` could not run, was killed, or reported nothing | [`PrepareFailure::Toolchain`] — **not** the model's, and never shown to it as its own |
 //! | the `purs` on `PATH` is not the release the shipped tree was compiled by | [`PrepareFailure::Toolchain`], refused by [`agree_on_the_compiler`] at the first compile of the process, naming both releases — because externs are a compiler-version-private format and the alternative is every program failing over gg's own library files |
 //!
-//! Diagnostics are located in the model's **own** coordinates. A program is compiled as module
-//! `Main` whatever the model called it, so that the entry point can be imported by a fixed path; the
-//! rename is done in place and costs no lines, and the one case that does — a reply with no module
-//! header at all, which gg supplies — moves every line number back by exactly one on the way out.
+//! Diagnostics are located in the model's **own** coordinates, because the file `purs` reads is the
+//! reply and nothing else: the model declares its own module header and its own `main`, and
+//! [`module_name`] reads the header it wrote rather than replacing it. A reply with no header is
+//! `ErrorParsingModule` at line 1, which is the compiler's own answer to the compiler's own
+//! question.
+//!
+//! A **run-time** location travels the other way, through the source map `purs` and `esbuild` both
+//! emit and gg composes — see [`locations`](crate::sandbox::ProgramLanguage::locations).
 
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
@@ -108,7 +112,9 @@ use std::time::Duration;
 use serde::Deserialize;
 
 use crate::sandbox::language::compile::{CompilerReport, place_tree, shared_toolchain_dir};
-use crate::sandbox::language::{PrepareContext, PrepareError, PrepareFailure, PreparedProgram};
+use crate::sandbox::language::{
+    CodeModule, PrepareContext, PrepareError, PrepareFailure, PreparedProgram,
+};
 
 /// The library set, compiled: every package's PureScript sources beside the externs and JavaScript
 /// `purs` emitted for them — **and this arm's own SDK**, staged into the same tree and compiled with
@@ -160,27 +166,21 @@ pub(super) const PROGRAM_FILE: &str = "program.purs";
 /// The file a code module is compiled under.
 pub(super) const MODULE_FILE: &str = "module.purs";
 
-/// The module name every program and every module is compiled as, whatever the model called it.
+/// The SDK module whose foreign half holds the bridge, and the one gg's entry module names.
 ///
-/// Fixed so that the bundler's entry point can name it: the entry imports
-/// `./output/Main/index.js`, which is where `purs` puts the module of this name. A model that wrote
-/// `module Solve where` gets its header rewritten rather than an error, because the name of a module
-/// nothing else imports carries no meaning a program can depend on — and `Main` is what a PureScript
-/// author would have called it anyway.
-const MODULE_NAME: &str = "Main";
+/// It takes the code modules this turn was given; see [`Entry::source`].
+const WIRE_MODULE: &str = "Gg.Internal.Wire";
 
 /// The entry module `esbuild` is pointed at.
 const ENTRY_FILE: &str = "entry.js";
 
-/// What the bundler writes, in this preparation's own output directory.
-const BUNDLE_FILE: &str = "program.js";
-
-/// The name a bundled **code module**'s namespace is bound to inside the bundle, and the value the
-/// guest gets back when it evaluates it.
+/// What the bundler writes, beside the model's own source in this preparation's working directory.
 ///
-/// Deliberately not a name a skill's author could collide with: it is declared in the same function
-/// body their module's code ends up in.
-const MODULE_GLOBAL: &str = "__ggPureScriptModule";
+/// Beside it rather than in the workspace's output directory because a source map's `sources` are
+/// relative to the file carrying it: written here, a frame in the model's own PureScript reads
+/// `program.purs:11:27` and one in a library reads that library's own path, where a bundle written
+/// a directory away would name both through a `../`.
+const BUNDLE_FILE: &str = "bundle.js";
 
 /// The glob that names the library set's sources to `purs`.
 ///
@@ -278,31 +278,31 @@ pub(super) fn compiler_version() -> &'static str {
 
 /// Unpack the library tree now, so the first compile does not.
 ///
-/// The whole of this language's warm-up: ~1.3 MB decompressed into 1,119 files, once per machine.
+/// The whole of this language's warm-up: ~1.4 MB decompressed into 1,430 files, once per machine.
 /// The result is dropped, because a failure here is the failure the first compile will make, and
 /// there it is classified, counted and reported.
 pub(super) fn warm() {
     let _ = libraries();
 }
 
-/// Compile a **program** — a model's reply — into the JavaScript the guest evaluates.
+/// Compile a **program** — a model's reply — into the JavaScript module the guest evaluates.
 pub(super) fn compile_program(
     source: &str,
+    modules: &[CodeModule],
     context: &PrepareContext,
 ) -> Result<PreparedProgram, PrepareFailure> {
     Ok(PreparedProgram {
-        source: compile(PROGRAM_FILE, source, Entry::Program, context)?,
+        source: compile(PROGRAM_FILE, source, Entry::Program(modules), context)?,
         component: None,
     })
 }
 
 /// Compile a **code module** — the code half of a [skill](crate::skills) or a
-/// [memory](crate::memories) — into JavaScript whose evaluation leaves a namespace behind.
+/// [memory](crate::memories) — into the JavaScript module the guest declares at `lib:<key>`.
 ///
 /// The difference from a program is entirely in the entry module the bundler is pointed at: a
-/// program's runs `main`, a module's re-exports everything the module exported and hands the
-/// namespace back. There is no wrapper around the author's source and therefore nothing to correct a
-/// diagnostic for — the author's module is compiled as itself.
+/// program's calls `main`, a module's re-exports everything the module exported. The author's module
+/// is compiled as itself either way.
 pub(super) fn compile_module(
     source: &str,
     context: &PrepareContext,
@@ -312,78 +312,101 @@ pub(super) fn compile_module(
 
 /// Which of the two things a compiled module is being turned into.
 #[derive(Clone, Copy)]
-enum Entry {
-    /// A model's program: import `main` and run it.
-    Program,
-    /// A code module: re-export everything and hand the namespace back.
+enum Entry<'a> {
+    /// A model's program: hand over the code modules this turn was given, then call `main`.
+    Program(&'a [CodeModule]),
+    /// A code module: re-export everything the author's module exported.
     Module,
 }
 
-impl Entry {
-    /// The JavaScript entry module `esbuild` is pointed at.
-    fn source(self) -> String {
-        let module = format!("./output/{MODULE_NAME}/index.js");
+impl Entry<'_> {
+    /// The JavaScript entry module `esbuild` is pointed at, for a program whose own module is
+    /// called `module`.
+    ///
+    /// It is gg's, and it names exactly two things: the entry point the model declared, and — where
+    /// this turn carries code modules — the specifiers the guest declares those under. `main` is
+    /// imported by name rather than through the namespace so that a program with no entry point is
+    /// refused by the bundler, with a diagnostic, instead of failing inside the guest as an ordinary
+    /// `TypeError` on `undefined`.
+    ///
+    /// A code module is reached by an `import` the model cannot write: [`Gg.Core.lib`](super) names
+    /// a module and an export as strings, because a code module is compiled separately and there is
+    /// no import for `purs` to check the two against. So the imports are here, and the set is handed
+    /// to the SDK's own bridge before `main` runs.
+    fn source(self, module: &str) -> String {
+        let target = format!("./{OUTPUT_DIR}/{module}/index.js");
         match self {
-            // `main` is imported by name rather than through the namespace so that a program with no
-            // entry point is refused by the bundler, with a diagnostic, instead of failing inside
-            // the guest as an ordinary `TypeError` on `undefined`.
-            Self::Program => format!("import {{ main }} from {module:?};\nmain();\n"),
-            Self::Module => format!("export * from {module:?};\n"),
-        }
-    }
-
-    /// The name the bundle binds its exports to, for the half that has any.
-    fn global(self) -> Option<&'static str> {
-        match self {
-            Self::Program => None,
-            Self::Module => Some(MODULE_GLOBAL),
+            Self::Module => format!("export * from {target:?};\n"),
+            Self::Program([]) => format!("import {{ main }} from {target:?};\n\nmain();\n"),
+            Self::Program(modules) => {
+                let mut imports = String::new();
+                let mut bound = String::new();
+                for (index, module) in modules.iter().enumerate() {
+                    let specifier = format!(
+                        "{}{}",
+                        crate::sandbox::language::ecmascript::MODULE_SCHEME,
+                        module.name
+                    );
+                    imports.push_str(&format!("import * as lib{index} from {specifier:?};\n"));
+                    bound.push_str(&format!(
+                        "  {}: lib{index},\n",
+                        serde_json::Value::String(module.name.clone())
+                    ));
+                }
+                format!(
+                    "{imports}import {{ registerLib }} from \
+                     \"./{OUTPUT_DIR}/{WIRE_MODULE}/index.js\";\nimport {{ main }} from \
+                     {target:?};\n\nregisterLib({{\n{bound}}})();\nmain();\n"
+                )
+            }
         }
     }
 }
 
-/// Compile one PureScript source, filed as `file`, and hand back the JavaScript.
+/// Compile one PureScript source, filed as `file`, and hand back the JavaScript module.
 ///
 /// The one entry point: a program and a code module differ in the name their diagnostics are located
 /// in and in what the bundler is asked to produce, never in how they are compiled.
 fn compile(
     file: &str,
     source: &str,
-    entry: Entry,
+    entry: Entry<'_>,
     context: &PrepareContext,
 ) -> Result<String, PrepareFailure> {
     let libraries = libraries().map_err(PrepareFailure::Toolchain)?;
     let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
     agree_on_the_compiler(context)?;
 
-    let (retargeted, shift) = retarget(source);
     workspace
-        .write(file, &retargeted)
-        .map_err(PrepareFailure::Toolchain)?;
-    workspace
-        .write(ENTRY_FILE, &entry.source())
+        .write(file, source)
         .map_err(PrepareFailure::Toolchain)?;
     stage(workspace.work(), libraries).map_err(PrepareFailure::Toolchain)?;
 
     let report = invoke_purs(file, context).map_err(PrepareFailure::Toolchain)?;
-    classify(&report, file, shift)?;
+    classify(&report, file)?;
 
-    let bundle = workspace.output().join(BUNDLE_FILE);
-    let report =
-        invoke_esbuild(&bundle, entry.global(), context).map_err(PrepareFailure::Toolchain)?;
-    classify_bundle(&report)?;
+    // Read AFTER `purs` accepted the source, so a reply gg cannot find a header in is answered by
+    // the compiler's own `ErrorParsingModule` at line 1 rather than by anything written here.
+    let module = module_name(source).ok_or_else(|| {
+        PrepareFailure::Toolchain(format!(
+            "purs {} compiled {file} and gg could not read its module header",
+            compiler_version(),
+        ))
+    })?;
+    workspace
+        .write(ENTRY_FILE, &entry.source(module))
+        .map_err(PrepareFailure::Toolchain)?;
 
-    let bundled = std::fs::read_to_string(&bundle).map_err(|error| {
+    let report = invoke_esbuild(context).map_err(PrepareFailure::Toolchain)?;
+    classify_bundle(&report, module)?;
+
+    let bundle = workspace.work().join(BUNDLE_FILE);
+    std::fs::read_to_string(&bundle).map_err(|error| {
         PrepareFailure::Toolchain(format!(
             "esbuild {} reported success but wrote no JavaScript to {}: {error}",
             manifest().esbuild,
             bundle.display(),
         ))
-    })?;
-    Ok(match entry.global() {
-        // The bundle assigns the module's namespace to a `var`; handing it back is what makes
-        // evaluating this source produce the namespace, which is the protocol `lib.<key>` needs.
-        Some(global) => format!("{bundled}\nreturn {global};\n"),
-        None => bundled,
     })
 }
 
@@ -391,27 +414,18 @@ fn compile(
 // The module header
 // ---------------------------------------------------------------------------------------------
 
-/// Rewrite the source's module header to [`MODULE_NAME`], and say how many lines that added.
+/// The name of the module `source` declares, or `None` for a source that declares none.
 ///
-/// Every program is compiled under one module name so that the bundler's entry point can import it
-/// by a fixed path. A model that wrote a header gets its **name** replaced in place, which changes no
-/// line and therefore no diagnostic coordinate; a reply with no header at all — which is what a model
-/// that thought it was writing a script produces — gets one supplied, which costs exactly one line
-/// and is the number returned here for the diagnostics to be moved back by.
+/// The model writes its own header, and the name it chose is what the bundler's entry point imports
+/// `main` from — `purs` files a module's emitted JavaScript under its own name. Nothing rewrites the
+/// header and nothing supplies one, so every line of what runs is a line the model wrote and every
+/// coordinate is already the model's.
 ///
-/// Comments before the header are skipped rather than searched through, because `--` and `{- -}` may
-/// legally precede it and a `module` inside one is not the header.
-fn retarget(source: &str) -> (String, usize) {
-    match module_name_span(source) {
-        Some(span) => {
-            let mut retargeted = String::with_capacity(source.len() + MODULE_NAME.len());
-            retargeted.push_str(&source[..span.start]);
-            retargeted.push_str(MODULE_NAME);
-            retargeted.push_str(&source[span.end..]);
-            (retargeted, 0)
-        }
-        None => (format!("module {MODULE_NAME} where\n{source}"), 1),
-    }
+/// Read after `purs` has accepted the source, so this never has to answer for a header the compiler
+/// would have rejected. Comments before the header are skipped rather than searched through, because
+/// `--` and `{- -}` may legally precede it and a `module` inside one is not the header.
+fn module_name(source: &str) -> Option<&str> {
+    module_name_span(source).map(|span| &source[span])
 }
 
 /// The byte span of the module **name** in a source that opens with a module header, or `None` for
@@ -562,10 +576,20 @@ fn invoke_purs(file: &str, context: &PrepareContext) -> Result<CompilerReport, S
         // Structured diagnostics on stdout: an error's own code and its exact span, rather than
         // prose gg would have to scrape a location out of.
         .arg("--json-errors")
+        // The map that reads a frame in the bundle back into the PureScript it was compiled from.
+        // `esbuild` follows the `sourceMappingURL` comment `purs` writes and composes the two, and
+        // `crates/gg/src/sandbox/locate.rs` reads the composition with a standard library — which is
+        // the only means the invariants allow a location to be recovered by.
+        //
+        // The shipped library tree is compiled with the same codegen set
+        // (`packages/gg-sandbox-purescript/build.sh`). A tree without the maps is a tree every
+        // program's compile finds stale, which is ~2.9 s instead of ~200 ms.
+        .arg("--codegen")
+        .arg("js,sourcemaps")
         // Relative to the working directory, which is this preparation's own — so this is the
         // hard-linked tree and nothing else can see it.
         .arg("--output")
-        .arg("output")
+        .arg(OUTPUT_DIR)
         .arg(file)
         .arg(LIBRARY_GLOB)
         .run(COMPILE_TIMEOUT)
@@ -575,12 +599,8 @@ fn invoke_purs(file: &str, context: &PrepareContext) -> Result<CompilerReport, S
         })
 }
 
-/// Spawn `esbuild` over what `purs` emitted, writing the bundle to `bundle`.
-fn invoke_esbuild(
-    bundle: &Path,
-    global: Option<&str>,
-    context: &PrepareContext,
-) -> Result<CompilerReport, String> {
+/// Spawn `esbuild` over what `purs` emitted, writing [`BUNDLE_FILE`] into the working directory.
+fn invoke_esbuild(context: &PrepareContext) -> Result<CompilerReport, String> {
     let esbuild = tool(ESBUILD_ENV, "esbuild");
     let mut command = context
         .compiler(&esbuild)
@@ -588,19 +608,25 @@ fn invoke_esbuild(
     command
         .arg(ENTRY_FILE)
         .arg("--bundle")
-        // The guest evaluates a program as the body of a function whose parameters are the API
-        // objects, so the bundle has to be an expression-level thing that leaves no module syntax
-        // behind and closes over the enclosing scope. That is what makes a capability withheld by
-        // the host an undefined identifier inside compiled PureScript, exactly as it is inside
-        // TypeScript.
-        .arg("--format=iife")
-        .arg(format!("--outfile={}", bundle.display()))
+        // The guest declares what comes out of here as a module, so what comes out of here is a
+        // module: the two `import` lines below survive into it and the guest's own loader resolves
+        // them.
+        .arg("--format=esm")
+        // gg's SDK, which the bridge in `Gg/Internal/Wire.js` imports. Left to the guest so that a
+        // program and the SDK share one instance, and therefore one `ToolError` class.
+        .arg("--external:gg")
+        // The code modules this turn was given, which the guest declares under these specifiers.
+        .arg(format!(
+            "--external:{}*",
+            crate::sandbox::language::ecmascript::MODULE_SCHEME
+        ))
+        // The map, inline, so it travels wherever the source does — see
+        // [`locations`](crate::sandbox::ProgramLanguage::locations).
+        .arg("--sourcemap=inline")
+        .arg(format!("--outfile={BUNDLE_FILE}"))
         // Warnings are the bundler's opinion about generated code and reach nobody; errors are read
         // from stderr either way.
         .arg("--log-level=warning");
-    if let Some(global) = global {
-        command.arg(format!("--global-name={global}"));
-    }
     command
         .run(BUNDLE_TIMEOUT)
         .map_err(|error| match error.starts_with("could not run") {
@@ -693,7 +719,7 @@ const PARSE_ERROR_CODES: [&str; 2] = ["ErrorParsingModule", "ErrorParsingFFIModu
 const SHOWN: usize = 8;
 
 /// Turn a finished `purs` invocation into a verdict.
-fn classify(report: &CompilerReport, file: &str, shift: usize) -> Result<(), PrepareFailure> {
+fn classify(report: &CompilerReport, file: &str) -> Result<(), PrepareFailure> {
     if report.ok {
         return Ok(());
     }
@@ -728,7 +754,7 @@ fn classify(report: &CompilerReport, file: &str, shift: usize) -> Result<(), Pre
     // program used it, each carrying the same paragraph of prose.
     let rendered = crate::sandbox::language::diagnostics::capped(
         mine.iter()
-            .map(|diagnostic| diagnostic.render(file, shift))
+            .map(|diagnostic| diagnostic.render(file))
             .collect(),
         SHOWN,
         "\n\n",
@@ -764,15 +790,13 @@ impl Diagnostic {
     /// This diagnostic as the model reads it: `program.purs:7:19: TypesDoNotUnify`, then the
     /// compiler's own prose.
     ///
-    /// The line is moved back over any header gg supplied, so the coordinate names the line of the
-    /// reply the model actually wrote.
-    fn render(&self, file: &str, shift: usize) -> String {
+    /// The coordinate is `purs`'s own, against the file gg wrote the reply into unchanged, so it
+    /// names the line of the reply the model actually wrote.
+    fn render(&self, file: &str) -> String {
         let located = match &self.position {
             Some(position) => format!(
                 "{file}:{}:{}: {}",
-                position.start_line.saturating_sub(shift).max(1),
-                position.start_column,
-                self.error_code,
+                position.start_line, position.start_column, self.error_code,
             ),
             None => format!("{file}: {}", self.error_code),
         };
@@ -784,20 +808,37 @@ impl Diagnostic {
 /// for this arm means one thing: no `main`.
 const NO_ENTRY_POINT: &str = "No matching export";
 
+/// What `esbuild` says when the entry module names a file that is not there.
+const NO_SUCH_MODULE: &str = "Could not resolve";
+
 /// Turn a finished `esbuild` invocation into a verdict.
 ///
 /// Only one of its failures is the model's, and it is a real one: a program that compiled cleanly but
 /// declares no `main` has nothing to run, and the model is told that in a sentence rather than being
 /// shown a bundler's error about a JavaScript file it never wrote.
-fn classify_bundle(report: &CompilerReport) -> Result<(), PrepareFailure> {
+///
+/// The one below it is gg's: `purs` files a module's emitted JavaScript under the name in its header,
+/// and [`module_name`] read that name out of the same text — so a specifier that does not resolve
+/// means the two disagreed about where the header ended, which is this file's defect and is reported
+/// as one.
+fn classify_bundle(report: &CompilerReport, module: &str) -> Result<(), PrepareFailure> {
     if report.ok {
         return Ok(());
     }
     if report.stderr.contains(NO_ENTRY_POINT) {
-        return Err(PrepareFailure::Program(PrepareError::Compile(format!(
-            "your program has no entry point: it must define `main :: Effect Unit`, and export it if \
-             the `module {MODULE_NAME} (…) where` header lists its exports"
-        ))));
+        return Err(PrepareFailure::Program(PrepareError::Compile(
+            "your program has no entry point: it must define `main :: Effect Unit`, and export it \
+             if its `module … (…) where` header lists its exports"
+                .to_string(),
+        )));
+    }
+    if report.stderr.contains(NO_SUCH_MODULE) {
+        return Err(PrepareFailure::Toolchain(format!(
+            "purs {} compiled the program and gg read its module header as {module:?}, which is \
+             not the name purs filed it under{}",
+            compiler_version(),
+            report.stderr_tail(),
+        )));
     }
     Err(PrepareFailure::Toolchain(format!(
         "esbuild {} {}{}",
@@ -819,7 +860,7 @@ struct Libraries {
 
 /// The unpacked library tree for this process, unpacking it on first use.
 ///
-/// Unpacking is ~1.3 MB decompressed into 1,119 files and happens once per machine, not once per
+/// Unpacking is ~1.4 MB decompressed into 1,430 files and happens once per machine, not once per
 /// process: a second gg process finds the tree already placed. A run normally pays it before its
 /// first turn, off the critical path, because [`warm`] is called from
 /// [`precompile`](crate::sandbox::precompile); a run whose warm-up lost the race pays it inside the
@@ -874,7 +915,7 @@ fn fingerprint() -> u64 {
 
 /// Give this preparation its own copy of the library tree, inside `work`.
 ///
-/// Hard links rather than copies: 1,119 files land in ~19 ms instead of ~150 ms, and — because a hard
+/// Hard links rather than copies: 1,430 files land in ~27 ms instead of ~150 ms, and — because a hard
 /// link shares the inode, and the shared tree's inodes are sealed read-only — a compiler that tried to
 /// rewrite a library's artifact would be refused rather than corrupting every other agent's tree. The
 /// directories are made fresh, so `purs` can create the one directory it needs (the program's own
@@ -883,7 +924,7 @@ fn fingerprint() -> u64 {
 /// The exception is the files at the **root** of `output/`, which `purs` rewrites on every compile
 /// however little it recompiled: `cache-db.json` (what it believes is up to date) and `package.json`
 /// (the `{"type": "module"}` that makes its emitted `.js` files ES modules). Those are staged as real,
-/// writable copies. Every one of the tree's 1,050 other files stays linked and stays sealed — and the
+/// writable copies. Every other file in the tree stays linked and stays sealed — and the
 /// seal is what found the second of the two: left linked, the compile failed with `Permission denied`
 /// naming `output/package.json`, which is exactly the loud failure the seal exists to turn a silent
 /// corruption into.

@@ -145,8 +145,8 @@ mod javascript;
 
 /// The ECMAScript guest, which is a shared artifact rather than a language arm: quickjs-ng in a
 /// component that declares gg's own world, evaluating a program as a **module**.
-/// [TypeScript](typescript) and [JavaScript](javascript) are registered against it;
-/// [PureScript](purescript) still evaluates in the guest it is converting away from.
+/// [TypeScript](typescript), [JavaScript](javascript) and [PureScript](purescript) all evaluate in
+/// it, since all three compile to JavaScript.
 #[path = "language/ecmascript.rs"]
 pub(super) mod ecmascript;
 
@@ -218,7 +218,7 @@ mod isolation;
 // there be either described by a manifest or argued for by name.
 //
 // GG CARRIES NO COMMITTED BINARY ANY MORE, so it had no subject left. Ten crates under
-// `crates/gg-sandbox-artifacts/` serve the eleven arms — `typescript` cuts the guests the JavaScript
+// `crates/gg-sandbox-artifacts/` serve the eleven arms — `typescript` cuts the guest the JavaScript
 // and PureScript arms read too — each running its `build.sh` into a cargo `OUT_DIR`, and the arm
 // modules `include_bytes!` from there — so a source edited without a rebuild is not a
 // state the tree can reach, rather than a state a test reports. `guests/` no longer exists at all,

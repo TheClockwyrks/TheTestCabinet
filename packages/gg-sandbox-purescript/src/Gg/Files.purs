@@ -161,7 +161,7 @@ readFile
   -> Effect FileRead
 readFile path options =
   fileRead TextFile ImageFile
-    <$> Wire.call "read_file" "fs" "Gg.Files.readFile" [ Wire.wire path, Wire.lower {} options ]
+    <$> Wire.call "read_file" "files" "Gg.Files.readFile" [ Wire.wire path, Wire.lower {} options ]
 
 -- | Read a text file and hand back its contents directly.
 -- |
@@ -195,7 +195,7 @@ readTextFile
   -> Record given
   -> Effect String
 readTextFile path options =
-  Wire.call "read_file" "fs" "Gg.Files.readTextFile" [ Wire.wire path, Wire.lower {} options ]
+  Wire.call "read_file" "files" "Gg.Files.readTextFile" [ Wire.wire path, Wire.lower {} options ]
 
 -- | Write UTF-8 text to a file, creating parent directories and replacing what is there.
 -- |
@@ -221,7 +221,7 @@ readTextFile path options =
 -- | write itself failed.
 writeFile :: String -> String -> Effect Int
 writeFile path contents =
-  Wire.call "write_file" "fs" "Gg.Files.writeFile" [ Wire.wire path, Wire.wire contents ]
+  Wire.call "write_file" "files" "Gg.Files.writeFile" [ Wire.wire path, Wire.wire contents ]
 
 -- | Replace the one exact occurrence of some text in a file with something else.
 -- |
@@ -244,7 +244,7 @@ writeFile path contents =
 -- | appears more than once.
 editFile :: String -> String -> String -> Effect Unit
 editFile path oldString newString =
-  Wire.call_ "edit_file" "fs" "Gg.Files.editFile"
+  Wire.call_ "edit_file" "files" "Gg.Files.editFile"
     [ Wire.wire path, Wire.wire oldString, Wire.wire newString ]
 
 -- | List a directory, sorted by name; `{}` lists the workspace root.
@@ -274,7 +274,7 @@ listDir
   => Record given
   -> Effect (Array DirEntry)
 listDir options =
-  map dirEntry <$> Wire.call "list_dir" "fs" "Gg.Files.listDir" [ Wire.pick "path" options ]
+  map dirEntry <$> Wire.call "list_dir" "files" "Gg.Files.listDir" [ Wire.pick "path" options ]
 
 -- | One directory entry, with its kind as an arm rather than a word.
 dirEntry :: Wire.Wire -> DirEntry

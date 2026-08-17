@@ -1550,22 +1550,30 @@ end
 
 #[test]
 fn the_embedded_guest_imports_the_membrane_and_the_wasi_it_was_baked_with() {
-    // This guest is the PureScript arm's engine plus a Ruby runtime — both are `componentize-js`
-    // builds of one base — so its imports must be that guest's exactly: a capability operations here
-    // and not there would be a difference between two arms of a study that nobody chose.
-    // `wasi:filesystem` and `wasi:sockets` are absent because the component is baked without them,
-    // not because the host withholds them — gg's linker defines the whole surface for every guest.
+    // What this component asks the host for, written down rather than inferred: `wasi:filesystem`
+    // and `wasi:sockets` are absent because it is baked without them, not because the host withholds
+    // them — gg's linker defines the whole surface for every guest, so what a component declares is
+    // the whole of what it can reach.
     let mut imports = interface_imports(component());
-    let (purescript, _) =
-        engine::component(crate::sandbox::language(GgProgramLanguage::PureScript))
-            .expect("the PureScript arm's guest compiles");
-    let expected = interface_imports(purescript);
     imports.sort_unstable();
     assert_eq!(
-        imports, expected,
-        "the embedded Ruby guest reaches something the PureScript arm's guest does not, or the \
-         other way round; a capability on one side only is a difference between arms of a study \
-         that nobody chose"
+        imports
+            .iter()
+            .filter(|name| name.starts_with("wasi:"))
+            .map(String::as_str)
+            .collect::<Vec<&str>>(),
+        [
+            "wasi:cli/stderr",
+            "wasi:clocks/monotonic-clock",
+            "wasi:clocks/wall-clock",
+            "wasi:io/error",
+            "wasi:io/poll",
+            "wasi:io/streams",
+            "wasi:random/random",
+        ],
+        "the embedded Ruby guest's WASI surface changed; if that was intended, update the prose \
+         that describes what this guest can reach (`packages/gg-sandbox-ruby/README.md`, \
+         `gg/languages/agent-surface.md`) in the same commit"
     );
 
     // Every gg interface the world declares is present, because this guest's entry module imports

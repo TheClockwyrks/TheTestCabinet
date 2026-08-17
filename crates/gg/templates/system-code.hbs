@@ -107,15 +107,18 @@ below is a package of top-level functions: write a module's path in full as it
 stands, or write that module's own `import` line and then the name alone.
 {{/if}}
 {{#if (eq language.id "purescript")}}
-Your response is a module whose `main` has type `Effect Unit`, written as a `do`
-block. The module name is yours to pick. Import each module you use under its own
-full name, as in `import Gg.Files as Gg.Files`, so a module's path below is the
-expression you write.
+Your response is compiled verbatim, as one PureScript module: your own
+`module … where` header, the `import` lines you need, and a `main :: Effect Unit`
+written as a `do` block, which is where your work goes. The module name is yours
+to pick. Import each module below under its own full name, as in
+`import Gg.Files as Gg.Files`, so a module's path below is the expression you
+write.
 
 A failed call is thrown rather than returned, so the happy path is already
 unwrapped. `Gg.Core.attempt` takes a call and hands back
 `Either Gg.Core.ToolError a` for a failure you expect, re-throwing anything that
-is not a gg failure; let the rest escape, and gg names the call that failed.
+is not a gg failure; let the rest escape, and it reaches you located in your own
+module.
 
 Functions are curried and required arguments are positional; optional ones are
 the fields of a record argument, where a field a signature marks `limit?` may be

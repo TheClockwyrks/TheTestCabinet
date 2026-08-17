@@ -33,7 +33,7 @@ open them, run `scripts/gg-artifacts.sh` and `scripts/gg-signatures.sh`.
 
 | Artifact | What it is |
 | --- | --- |
-| `purescript.libraries.tar.gz`, in `$GG_ARTIFACTS_PURESCRIPT` | Every package's PureScript sources beside the externs and JavaScript `purs` emitted for them, plus this package's own `src/` under `libs/gg-sdk/`. **~1.3 MB** gzipped, ~15 MB unpacked, `include_bytes!`d by the host and unpacked once per machine. |
+| `purescript.libraries.tar.gz`, in `$GG_ARTIFACTS_PURESCRIPT` | Every package's PureScript sources beside the externs and JavaScript `purs` emitted for them, plus this package's own `src/` under `libs/gg-sdk/`. **~1.4 MB** gzipped, ~16 MB unpacked, `include_bytes!`d by the host and unpacked once per machine. |
 | `purescript.compiler.json`, in `$GG_ARTIFACTS_PURESCRIPT` | What that tree was built from — `purs`, `esbuild` and registry versions — and what is in it, package by package. |
 | `purescript.signatures.json`, in the build's `OUT_DIR` | The **signature catalogue**: every module, function, argument, field and type a model is told about, reflected out of the SDK's own doc comments by [`signatures.sh`](signatures.sh), which `crates/gg/build.rs` runs. |
 

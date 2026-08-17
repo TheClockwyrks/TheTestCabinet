@@ -26,42 +26,25 @@
 //!
 //! # The strategy, in one sentence
 //!
-//! **A PureScript program is compiled to JavaScript on the host by `purs`, flattened into one script
-//! by `esbuild`, and evaluated as a function body by [this arm's `componentize-js` guest](COMPONENT).**
+//! **A PureScript program is compiled to JavaScript on the host by `purs`, flattened into one ES
+//! module by `esbuild`, and evaluated as a module by the [ECMAScript guest](super::ecmascript).**
 //!
 //! Nothing about it is per-run: the tree a program is compiled against is a build-time artifact, the
 //! compiler is a binary in the gg toolchain image, and what crosses the membrane is JavaScript.
 //!
-//! # This arm does not keep the invariants
-//!
-//! `apps/docs/src/content/docs/gg/responses-as-code/invariants.md` requires that a location be
-//! resolved through a source map and that every SDK name come from a line the program wrote. The
-//! bundle `esbuild` produces is what the guest evaluates, so a frame is in the bundle's coordinates;
-//! the guest binds gg's surface into a program's scope as formal parameters, which is what
-//! `Gg.Internal.Wire`'s free identifiers resolve against. Converting this arm onto the
-//! [ECMAScript guest](super::ecmascript) — which the [TypeScript](super::typescript) and
-//! [JavaScript](super::javascript) arms run on, and which ruling D12 keeps this arm's JavaScript
-//! backend for — is its own step, and it is what retires the component above.
-//!
-//! # What that costs today, stated rather than hidden
-//!
-//! One thing: a guest backtrace is in the **bundle's** coordinates, not the model's PureScript,
-//! because owning `run` is what would let a guest map one to the other and this arm does not own
-//! `run`. The map is not lost — `purs` and `esbuild` both emit source maps and the host that produced
-//! the bundle holds them — but `feedback.program-error` carries a single `location` and the frame the
-//! guest picks is the innermost, which once the SDK is linked into the bundle is inside the SDK. The
-//! fix is a frame **list** on the wire, shared with a future Java arm, and it rebuilds every baked
-//! guest component; it is not made cheaper or dearer by the component decision above.
-//!
 //! # What a PureScript program is, here
 //!
-//! A **module**. PureScript has no loose statements, so a program is a module with a `main` of type
-//! `Effect Unit` that reaches gg's surface by importing the capability modules it uses, and the
-//! compile
-//! [renames its header](compile) to a fixed name so the bundler can find the entry point. A reply
-//! with no header at all is given one, which costs exactly one line and is the number every
-//! diagnostic is moved back by; a program that defines no `main` is refused with a sentence saying
-//! so.
+//! A **module**. PureScript has no loose statements, so a program is a module with its own header,
+//! its own `main :: Effect Unit`, and an `import` line for each of gg's capability modules it uses.
+//! Every one of those is the model's: `purs` reads the reply and nothing else, `purs` files the
+//! emitted JavaScript under the header the model wrote, and gg's entry module imports `main` from
+//! there. A reply with no header is `ErrorParsingModule` at line 1 and a program that defines no
+//! `main` is refused with a sentence saying so, both before anything runs.
+//!
+//! The bytes that **execute** are `purs`'s emission rather than the model's, which is the position
+//! every compiled arm is in. What makes it legitimate is the pair the invariants require: the bytes
+//! gg compiles are the model's, and a run-time location is recovered through the compilers' own
+//! source maps — see [`locations`](crate::sandbox::ProgramLanguage::locations).
 //!
 //! The library set a program may import is a **build-time fact about the embedded tree** rather than
 //! a policy: `packages/gg-sandbox-purescript/spago.yaml` declares it, the build compiles exactly that
@@ -104,13 +87,12 @@
 //! * **The brief a child agent is spawned with is a constructor** — `Prompt` or `Issue` — so "both"
 //!   and "neither" are programs that do not compile rather than calls the host refuses.
 //!
-//! The bridge underneath it is `Gg.Internal.Wire`, one foreign module naming the namespaces the
-//! guest binds. Those are free identifiers in the bundle, resolved at call time against the scope
-//! the guest built, which is why a capability this run withheld is a `ToolError`
-//! carrying `unavailable` rather than a `ReferenceError` — the SDK exposes the whole surface, as
-//! every arm's does, and the refusal is the host's. The guest's own spellings are the lowering and
-//! not the surface: they are written once, beside the function that uses them, and a model never
-//! sees one.
+//! The bridge underneath it is `Gg.Internal.Wire`, one foreign module whose JavaScript half writes
+//! `import * as gg from "gg"` — the same line a TypeScript program writes, reaching the same SDK
+//! instance in the same guest, so both arms produce byte-identical arguments for one capability. A
+//! capability this run withheld is refused by the host as a `ToolError` carrying `unavailable`, as
+//! it is on every arm. gg's own spellings for the families are the lowering and not the surface:
+//! they are written once, beside the function that uses them, and a model never sees one.
 //!
 //! # What this arm has that no other does
 //!
@@ -133,6 +115,7 @@ use super::{
     ProgramLanguage, spell,
 };
 use crate::docs::MAX_SEARCH_LIMIT;
+use crate::sandbox::locate::Locations;
 use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE};
 
 #[path = "purescript.compile.rs"]
@@ -143,25 +126,6 @@ mod modules;
 
 #[path = "purescript.healing.rs"]
 pub(super) mod healing;
-
-/// **The interpreter component this arm evaluates a bundle in**: the `componentize-js` guest in
-/// `packages/gg-sandbox`, built by that package's `build.sh`.
-///
-/// It is ~13.4 MB because it embeds a JavaScript engine, and it is **embedded in the binary** rather
-/// than read from disk because gg is copied as a single file into an ephemeral run container and
-/// must carry everything it needs with it.
-///
-/// It is not committed. `gg-artifact-typescript` runs that `build.sh` as a step of building this
-/// crate and this line embeds what it wrote into that crate's `OUT_DIR`, so the guest a bundle is
-/// evaluated in is baked out of the SDK sources in this checkout, on the build that compiles the
-/// module describing it. A guest is exactly the artifact that most needs it: nothing about a 13 MB
-/// `.wasm` looks stale, and what a stale one costs is not a build error but every program on this
-/// arm being evaluated by last month's scope, refusals and argument handling while the catalogue and
-/// the prompt describe this checkout's.
-pub(super) const COMPONENT: &[u8] = include_bytes!(concat!(
-    env!("GG_ARTIFACTS_TYPESCRIPT"),
-    "/typescript.component.wasm"
-));
 
 /// This arm's catalogue, reflected out of the SDK's own doc comments by
 /// `packages/gg-sandbox-purescript/signatures.sh` with `purs compile --codegen docs`.
@@ -182,8 +146,8 @@ static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
 /// straight to `&'static dyn ProgramLanguage`.
 pub(super) static PURESCRIPT: PureScript = PureScript;
 
-/// PureScript: compiled to JavaScript on the host by `purs`, bundled by `esbuild`, and evaluated by
-/// this arm's `componentize-js` guest.
+/// PureScript: compiled to JavaScript on the host by `purs`, bundled by `esbuild`, and evaluated as
+/// a module by the shared ECMAScript guest.
 pub(super) struct PureScript;
 
 impl ProgramLanguage for PureScript {
@@ -199,6 +163,10 @@ impl ProgramLanguage for PureScript {
     /// `purs` to check the two against and a program names both halves as strings.
     /// [`Gg.Core.lib`](https://docs.testcabinet.ai/gg/languages/purescript/) hands back a `Maybe` of
     /// whatever type the program says it is.
+    ///
+    /// There is therefore no [`lib_import`](ProgramLanguage::lib_import) either: the modules a turn
+    /// carries are imported by [the entry module gg generates](compile), which is the one thing on
+    /// this arm a program cannot write for itself.
     fn lib_access(&self, key: &str) -> String {
         format!("Gg.Core.lib \"{key}\" \"<name>\"")
     }
@@ -209,10 +177,10 @@ impl ProgramLanguage for PureScript {
     fn prepare_program(
         &self,
         source: &str,
-        _modules: &[CodeModule],
+        modules: &[CodeModule],
         context: &PrepareContext,
     ) -> Result<PreparedProgram, PrepareFailure> {
-        compile::compile_program(source, context)
+        compile::compile_program(source, modules, context)
     }
 
     /// `purs`, which is what a PureScript programmer calls it and what its own binary is called — not
@@ -225,7 +193,7 @@ impl ProgramLanguage for PureScript {
         Some("purs")
     }
 
-    /// Unpack the embedded library tree — 1.3 MB into 1,119 files, once per machine — so the first
+    /// Unpack the embedded library tree — 1.4 MB into 1,430 files, once per machine — so the first
     /// code turn is not charged for it.
     ///
     /// Idempotent and best effort: the result is cached for the process, and a failure here is
@@ -269,9 +237,33 @@ impl ProgramLanguage for PureScript {
         binding_name(name)
     }
 
-    /// [This arm's own `componentize-js` guest](COMPONENT).
+    /// The [ECMAScript guest](super::ecmascript), which the [TypeScript](super::typescript) and
+    /// [JavaScript](super::javascript) arms are also registered against: one artifact, embedded
+    /// once, evaluating every module gg compiles to JavaScript.
     fn guest_component(&self) -> Option<&'static [u8]> {
-        Some(COMPONENT)
+        Some(super::ecmascript::embedded())
+    }
+
+    /// The **composition** of `purs`'s source map and `esbuild`'s, which `esbuild` performs itself
+    /// and inlines into the bundle it writes.
+    ///
+    /// A frame the engine reports as `bundle.js:206:26` therefore reads back as `program.purs:11:27`
+    /// — the model's own file at the line it wrote — and a frame in a library or in this arm's SDK
+    /// reads as that PureScript module's own path in the shipped tree. The name each frame takes is
+    /// the one the map itself records for the token, rather than a single name gg picks, because a
+    /// bundle is made of many sources and only the map knows which one a frame came from.
+    fn locations(&self, program: &str, modules: &[CodeModule]) -> Option<Locations> {
+        Locations::read(
+            std::iter::once((super::ecmascript::PROGRAM.to_string(), None, program)).chain(
+                modules.iter().map(|module| {
+                    (
+                        format!("{}{}", super::ecmascript::MODULE_SCHEME, module.name),
+                        None,
+                        module.source.as_str(),
+                    )
+                }),
+            ),
+        )
     }
 
     /// This language's catalogue, parsed once and checked to be **this** language's.
@@ -548,7 +540,7 @@ mod tests;
 /// compiler, linker, membrane and store.
 ///
 /// A separate test file from [`tests`], because these are a different kind of test: each one compiles
-/// a 20 MB component, unpacks a 1.2 MB library tree and spawns a real `purs`, which is seconds rather
+/// the guest, unpacks a 1.4 MB library tree and spawns a real `purs`, which is seconds rather
 /// than microseconds, where everything next door is a pure function over text.
 #[cfg(test)]
 #[path = "purescript.substrate.test.rs"]
