@@ -465,7 +465,7 @@ fn tidy(rendered: &str) -> String {
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SystemContext {
-    /// Whether the run is in [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/tools/)
+    /// Whether the run is in [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/api-surface/)
     /// mode, where the tools are described as functions a program calls rather than as tool calls.
     pub responses_as_code: bool,
     /// The [language](LanguageView) this agent writes its programs in. `None` on the tool-calling

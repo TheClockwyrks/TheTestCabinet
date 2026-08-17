@@ -98,7 +98,7 @@ JavaScript arm's catalogue from the same declarations under a second id.
 
 The SDK is hand-written in `packages/gg-sandbox/src` and reads as idiomatic
 TypeScript: `camelCase` names, required arguments positional, optional arguments
-in a trailing options object, and failures thrown as `ToolError`. It maps that
+in a trailing options object, and failures thrown as `ApiError`. It maps that
 idiom onto the WIT wire, and it validates the argument shapes the wire cannot
 express, such as an options object that arrived as a bare number, a negative
 `offset` that would wrap, or an absent `list<T>` field. The rules every arm's
@@ -108,7 +108,9 @@ The catalogue is reflected out of those same declarations by `tsc`'s declaration
 emit, so the briefs the
 [opening turn](/gg/responses-as-code/views/#the-opening-turn)'s search listings
 carry, the signatures a documentation view answers with, and the signatures the
-compiler enforces all come off one set of declarations.
+compiler enforces all come off one set of declarations. A declaration's `@throws`
+tags are the error types it declares, and the catalogue carries them as that
+function's `throws` list.
 
 ## What a program is compiled against
 
@@ -184,14 +186,10 @@ broken module another skill loaded cannot fail this turn.
 
 [`system-code.hbs`](/gg/prompts/) reaches this arm through a segment gated on
 `typescript`, and `code-nothing-shown.hbs` through a clause naming `console.log`.
-Neither names a catalogued function. The segment states:
-
-- the reply is compiled verbatim as a whole TypeScript module, and top-level
-  statements run in the order they were written;
-- a failed call throws a `ToolError`, which a `catch` narrows to before reading
-  it, since a caught error is `unknown`;
-- optional arguments are the fields of a trailing options object, and
-  `import * as gg from "gg";` is the line that reaches every module.
+Neither names a catalogued function. The segment states that the reply is
+compiled verbatim as a whole TypeScript module, whose top-level statements run in
+the order they were written. Each entry of the module list beside it carries
+`import * as gg from "gg";` as the line that brings that module into scope.
 
 The arm names `tsc` as its [checker](/gg/languages/compilation/), so the shared
 body states that a program is compiled in strict mode before it runs and one that

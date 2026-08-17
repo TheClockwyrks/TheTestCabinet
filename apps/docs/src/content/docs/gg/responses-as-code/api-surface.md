@@ -5,13 +5,13 @@ title: "The API surface"
 ## Typed functions
 
 Every gg operation is a distinct, typed function in the run's program language,
-named at a path the arm files it under. A program names no tool through a
+named at a path the arm files it under. A program names no operation through a
 dispatcher and assembles no JSON.
 
 The interface between a program and gg is a
 [WIT](https://component-model.bytecodealliance.org/design/wit.html) membrane,
 `crates/gg/wit/gg-sandbox.wit`. It declares one function per operation, with
-typed parameters and a typed `result<T, tool-error>`, grouped one interface per
+typed parameters and a typed `result<T, api-error>`, grouped one interface per
 family: `types`, `shell`, `files`, `helpers`, `skills`, `memories`, `tasks`,
 `board`, `context`, `session`, `docs`, `views`, `programs`, `delegation`,
 `feedback`. Three properties follow, and each is required:
@@ -40,7 +40,7 @@ gg's surface is divided into modules, and a program names the ones it calls.
 The module ids, in the order the prompt and the agent surface present them:
 `files`, `shell`, `board`, `tasks`, `memories`, `docs`, `views`, `context`,
 `delegation`, `skills`, `programs`, `session`, `core`. `core` carries no
-function; it holds `ToolError` and the types other signatures name.
+function; it holds `ApiError` and the types other signatures name.
 
 The model-facing spelling of a call is its fully-qualified name,
 `gg.<module>.<name>`. That is the key documentation is filed under, the key a
@@ -57,7 +57,7 @@ search hit carries, and a path a program writes. TypeScript spellings:
 | `gg.views.openText(label: string, body: string)` | `void` |
 | `gg.delegation.spawnSubagent(request: { agent: string } & ({ prompt: string } \| { issueId: string }))` | `SubagentHandle` |
 
-Two names belong to the surface without being a capability. `ToolError` is the
+Two names belong to the surface without being a capability. `ApiError` is the
 failure type every failed call raises, documented under `core` and reached the
 way every other name is. `lib` holds the code the agent has loaded, and the
 reply to the read that loaded something quotes the form that reaches it.
@@ -137,14 +137,14 @@ exemption.
 
 ### Refusals
 
-A refusal is a typed `ToolError` with code `unavailable`, which a program can
+A refusal is a typed `ApiError` with code `unavailable`, which a program can
 catch and recover from on the same turn. Its message says the call is not
 available and, where the agent has one, which call to make instead. It says
 nothing about what would have unlocked the call, since the profile was fixed
 before the session began and no program can edit it. The call the message quotes
 is spelled in the program's own language, because the sentence is an instruction
-the model can act on; the error's `tool` field carries the operation's own key
-instead, because a catch site branches on identity rather than on prose.
+the model can act on; the error's `operation` field carries the operation's own
+key, so a catch site branches on that key.
 
 An uncaught refusal is classified from the failure code where the arm's guest
 carries one up with the throw, and it records as `program_unknown_name`. The
@@ -154,17 +154,17 @@ cross-arm count of refusals joins on the refusal roster rather than on the
 
 ## Failed calls
 
-A failed call throws a typed `ToolError` carrying `.tool`, `.code` and
+A failed call throws a typed `ApiError` carrying `.operation`, `.code` and
 `.message`, and an uncaught throw ends the program at that statement. Every call
 the program landed before the throw has landed for good. What the model is told
 is which statement threw, at the coordinates of its own program.
 
-- `.tool` names the failed call by the key of the operation the program wrote.
-  The guest re-tags a binding-level `TypeError` as a `ToolError` on the call it
-  came out of, and that one carries the SDK's spelling, so
+- `.operation` names the failed call by the key of the operation the program
+  wrote. The guest re-tags a binding-level `TypeError` as an `ApiError` on the
+  call it came out of, and that one carries the SDK's spelling, so
   `gg.tasks.addTask({ title: "x" })` reports as `` `addTask` failed
   (invalid-argument) `` with the bindings' own complaint after it.
-- `ToolError` serialises. It carries an explicit `toJSON`, because a plain
+- `ApiError` serialises. It carries an explicit `toJSON`, because a plain
   `Error`'s `message` is non-enumerable and a failure a program put in a view
   would otherwise arrive as `{}`.
 - Every classifier in the guest asks `Object.prototype.toString` for a value's

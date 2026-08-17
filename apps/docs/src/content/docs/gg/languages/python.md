@@ -69,7 +69,7 @@ Python library rather than as a transliteration of another arm's surface:
   defaults, so a record the wire declares is spelled as the function's own
   arguments rather than as a value a program must construct first.
 - Results are frozen dataclasses, fixed choices are enums, a union is narrowed
-  with `isinstance` or `match`, and the wire's error arm is a raised `ToolError`
+  with `isinstance` or `match`, and the wire's error arm is a raised `ApiError`
   whose `code` is an enum member.
 - `UNCHANGED` is the third state of a patch argument: leave it out to keep what
   is there, pass `None` to clear it, pass a value to replace it.
@@ -115,6 +115,8 @@ the reflector fails the build rather than emitting a gap:
   griffe describes what a package declares and not how another file reaches it;
 - every parameter carries an `Args:` entry and every `Args:` entry names a
   parameter;
+- a `Raises:` entry names an error type the function declares, and the catalogue
+  carries those types as the function's `throws` list;
 - every type and every type member is documented, and every type a signature
   refers to is resolved to its fully-qualified name through the transitive
   reference closure.
@@ -128,8 +130,8 @@ exception once and reports it as a located `ProgramError`:
 
 - a `SyntaxError` carries CPython's own message and the program's own line and
   1-based column, and has no traceback;
-- a raised `ToolError`, and the generated `Err` a program reaching past the SDK
-  receives, are a tool failure carrying the wire's error code, reported under the
+- a raised `ApiError`, and the generated `Err` a program reaching past the SDK
+  receives, are a failed call carrying the wire's error code, reported under the
   exception's own rendering so that the call that failed is named;
 - a `NameError`, and an `AttributeError` against a module of the `gg` package, are
   an unknown name;
@@ -190,10 +192,10 @@ from this arm's catalogue when the template renders. The segment states:
 - the reply is executed as written, as the whole of a `program.py` with
   `__name__` set to `"__main__"`, and the model writes the `import` lines it
   would normally write;
-- a failed call raises `gg.core.ToolError`, whose `code` is an enum member, and an
-  escaping failure is named by gg;
-- optional arguments are keyword arguments with defaults, and `import gg` is the
-  line that reaches every module.
+- statements and definitions sit side by side at the top level of a module body.
+
+Each entry of the module list beside it carries `import gg` as the line that
+brings that module into scope.
 
 The arm names no [checker](/gg/languages/compilation/), so nothing in the prompt
 describes a compile step. A program that imports outside the set the guest

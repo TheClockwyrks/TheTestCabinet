@@ -9,7 +9,7 @@ added to the core enum fails to compile until it is registered, and a registered
 language is then covered by every gate that iterates the registered set.
 
 Registration is additive. Adding an arm leaves the WIT world, the host's
-`ToolApi`, the membrane, the gate model and every other language's
+`OperationApi`, the membrane, the gate model and every other language's
 implementation untouched.
 
 ## Trait requirements
@@ -52,19 +52,20 @@ its model with half a sentence.
 ### The prompt segment
 
 One `system-code.hbs` serves every arm, and an arm reaches it through a segment
-gated on its own id. A segment carries the shape of a reply, the failure model
-and the name that catches one, and how a call's optional arguments are written.
-A gate holds it to three paragraphs, so anything an arm could report at the
-moment it matters is reported there instead. See [prompts](/gg/prompts/).
+gated on its own id. A segment states the shape of a whole reply in that
+language and names no type: how the language reports a failure and how a call's
+arguments are passed are the language's own, and a documentation view renders
+the whole signature. A gate holds it to two paragraphs and to a character bound,
+so anything an arm could report at the moment it matters is reported there
+instead. See [prompts](/gg/prompts/).
 
 ### The bootstrap program
 
 The program gg runs to seed a fresh window is the arm's own, generated from the
 module list and the documentation keys gg hands it. It is one program by the
 arm's own rules, meaning one module, one `main` or one translation unit where
-the language wants one, and it handles a failed call the way the arm's segment
-of the prompt says to. It is the model's first example of its own output, so it
-is written the way that arm's users write.
+the language wants one. It is the model's first example of its own output, so it
+is written the way that arm's users write, down to how it handles a failed call.
 
 ### Guest shapes
 
@@ -227,11 +228,11 @@ below.
     the new arm under every context fixture and checks every required section,
     every configured value, the ending call, every rule a program runs under,
     and that the render carries this arm's segment and no other arm's, within
-    the three-paragraph ceiling. The bootstrap gate prepares and runs the arm's
-    bootstrap program and requires the views it promised. The spelling gates
-    refuse a segment that names a catalogued function of any arm. The healing
-    invariant re-earns delete-only over the new dialect's fixtures and over the
-    shared corpus.
+    the two-paragraph and character ceilings. The bootstrap gate prepares and
+    runs the arm's bootstrap program and requires the views it promised. The
+    spelling gates refuse a segment that names a catalogued function of any arm.
+    The healing invariant re-earns delete-only over the new dialect's fixtures
+    and over the shared corpus.
 
 Every step is either a new file the arm owns or a one-line registration the
 compiler refuses to let anyone skip.

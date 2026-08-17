@@ -178,8 +178,8 @@ resolved to, so a view call, a documentation lookup, an ending call and a
 is, and three functions over one implementation (`gg.files.readFile`,
 `gg.files.readTextFile` and `gg.views.openFile` all perform one read) are three
 figures rather than one shared between them. The file's own heading names the
-documentation mode this instance ran under, because the tokens that mode cost are
-this agent's own. Every row carries a figure, so a `0×` is a bound function the
+documentation-view flags this instance ran under, because the tokens those flags
+cost are this agent's own. Every row carries a figure, so a `0×` is a bound function the
 model did not use rather than a gap in the record.
 
 ### The Overview file

@@ -76,7 +76,7 @@ rules for that surface are on
 The spellings are ordinary JavaScript. A module is a property of the imported
 `gg` namespace (`gg.files`, `gg.views`), a function is camelCase, optional
 arguments are a trailing options object, a call returns its value directly, and a
-failure is a thrown `ToolError` carrying `tool`, `code` and `message`.
+failure is a thrown `ApiError` carrying `operation`, `code` and `message`.
 
 ## Checker
 
@@ -100,7 +100,7 @@ counts as a failure, are the guest's own rules and are on
 
 The SDK validates the argument shapes the wire cannot express, such as an options
 object that arrived as a bare number, an `offset` outside the `u32` range, or a
-list argument that is not an array, and raises a `ToolError` naming what it
+list argument that is not an array, and raises an `ApiError` naming what it
 wanted. Any other mistyped argument reaches the generated bindings and raises
 their `TypeError`. An uncaught throw ends the turn there, so the statements after
 it do not run.
@@ -113,11 +113,10 @@ it do not run.
 
 - the reply is evaluated verbatim as a whole JavaScript module, and top-level
   statements run in the order they were written;
-- a failed call throws a `gg.core.ToolError`, which an `instanceof` check narrows
-  to before reading its `tool` and `code`;
-- optional arguments are the fields of a trailing options object,
-  `import * as gg from "gg";` is the line that reaches every module, and the type
-  names a signature carries are documentation.
+- the type names a signature carries are documentation.
+
+Each entry of the module list beside it carries `import * as gg from "gg";` as
+the line that brings that module into scope.
 
 The arm names no [checker](/gg/languages/compilation/), so nothing in the
 prompt describes a compile step.

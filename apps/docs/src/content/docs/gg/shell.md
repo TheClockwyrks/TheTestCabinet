@@ -27,10 +27,9 @@ merged `output`, and whether that output was `truncated`. An omitted
 an `invalid-argument` refusal, the same answer the tool surface gives. The
 requested timeout is clamped to 24 hours and then to whatever is left of the
 run's wall-clock budget, since a host call cannot be cut short once it is in
-flight. The system
-prompt renders one line for this capability when the agent is offered it, saying
-that a program can run a command in the workspace and that the exit code and
-output come back to the program.
+flight. What the call does is carried by the function's own one-line brief, which
+the [opening turn](/gg/responses-as-code/views/#the-opening-turn)'s search puts
+in front of the agent.
 
 ## Output offloading
 

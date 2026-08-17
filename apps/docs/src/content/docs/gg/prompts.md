@@ -106,23 +106,30 @@ neither half and is reachable through its tools alone.
 
 Each system template is therefore one `{{#if}}` section per capability over a
 rendering context that carries both whether each capability is on and how it is
-configured. A run's actual limits are interpolated inline rather than restated
-in prose:
+configured. A run's actual configuration is interpolated inline rather than
+restated in prose, and each template interpolates what its own mode acts on.
 
-- whether this run's model can be shown an image, and, in the tool-calling
-  template alone, the `read_file` line cap when one is in force;
-- where a command's output goes, when the [shell](/gg/shell/) offloads it;
-- in the tool-calling template alone, a memory's description length and the task
-  count ceiling, both of which the code arm leaves to the refusal that reports
-  the breach;
-- the epic and issue ceilings, and the rosters an issue's agent and reviewers
-  may be named from;
-- the agents this one may spawn as subagents;
+The code template interpolates:
+
+- the language's display name, and the arm's checker where it names one;
+- the module list, the message headings, and this agent's ending calls;
 - the catalog of available skills, each with its description and with whether it
   carries code and whether it carries an on-use script, so that reading one is
   described by what it will actually do. The catalog covers both the workspace's
   authored skills and the built-ins gg generates for this agent's own function
-  families.
+  families;
+- the agents this one may spawn as subagents, the rosters an issue's agent and
+  reviewers may be named from, and the id of the issue this agent was dispatched
+  to implement;
+- whether this run's model can be shown an image, where the run offers a file
+  read.
+
+The tool-calling template interpolates this agent's ending calls, the same
+skills catalog, the same three rosters, the assigned issue's id, whether the
+model can be shown an image, and the scope a linked memory set is shared under.
+It also interpolates the three limits the code arm leaves to the refusal that
+reports a breach: the `read_file` line cap where one is in force, a memory's
+description length, and the task count ceiling.
 
 The rendering context is a typed Rust struct (`prompts::SystemContext`), and
 rendering runs in strict mode: a template that references a variable the context
@@ -156,60 +163,51 @@ selected with an `eq` helper over the `language` view the rendering context
 carries. That view holds an id, a display name and the arm's checker where it
 names one, and no prose: a sentence a model reads lives in the template.
 
-A segment states at most what a model can neither find by searching nor be told
-at the moment it matters:
+A segment states the shape of a whole reply in that language: what the compiler
+or the runtime requires of a whole program, the import lines a program writes
+for itself, and where the model's work goes. The language itself defines how a
+failure is reported and how a call's arguments are passed, and a documentation
+view renders the whole signature, so a segment names no type.
 
-- the shape of a reply in this language;
-- what a failed call does, the one name that catches it, and, where the arm has
-  one, the helper a program builds a failure of its own with;
-- how a call's optional arguments are written, and how a module is reached where
-  the module list's own import field does not answer it.
+A gate holds every arm's segment to two paragraphs and to a character bound.
 
-A gate holds every arm's segment to three paragraphs. Fenced examples inside a
-segment carry that arm's own language tag, so an arm that compiles the examples
-it is shown goes on compiling exactly those.
-
-Three gates hold what renders. One asserts every required section survives for
+Four gates hold what renders. One asserts every required section survives for
 every registered language; a second asserts each rendered prompt states the
 values the run configured; a third asserts it states the standing rules a
-program runs under. A fourth asserts each arm's render carries that arm's
+program runs under; a fourth asserts each arm's render carries that arm's
 segment and no other arm's.
 
 ## The code arm
 
-The opening section states the reply contract: the model's whole reply is the
-program, with no plain text, no Markdown formatting and no other non-code text,
-and it is run as a program in that language every turn.
+The opening section states the reply contract: the model's whole reply is legal
+code in this run's language and nothing else, run as a program every turn.
 
-Four rules follow it, stated for every arm, because none of them is visible in a
-signature and each costs a turn to discover by trying it:
+Three rules follow it, stated for every arm, because none of them is visible in
+a signature and each costs a turn to discover by trying it:
 
-- every call is synchronous, so `await` is not a thing to reach for and a return
-  value is not a promise;
-- a view is the only way to read data out of a program, and nothing written to
-  the console reaches the model;
-- a returned value is discarded;
+- every call is synchronous;
+- a view is the only way to read data out of a program, and nothing a program
+  prints reaches the model;
 - what a view holds arrives on the next turn.
 
-A fifth is stated where the endings are: a failed program's ending is revoked. A
-gate holds every registered arm's rendered prompt to all five.
+A fourth is stated where the endings are: a failed program's ending is revoked.
+A gate holds every registered arm's rendered prompt to the reply contract and
+all four rules.
 
-Beyond those, the opening section states what only this run can answer. When the
-run's [read mode](/gg/filesystem/#read-modes) caps a read it states the cap,
-that a window can be named with an offset and a limit, and that a larger limit
-is honored; under `unlimited` a read takes no window and none of that renders.
-When the run offers a shell it states that the call hands the program back the
-command's exit code and its merged output, with the reminder to open a view on
-that output to read it, naming neither field in a spelling only one arm uses.
-Whether a value can be shown is never withheld, since a run with no tools at all
-must still be able to show its model something.
+Beyond those, the prompt states the one fact about this run that no function's
+brief can answer: whether this run's model can be shown an image, carried by
+itself under the Views heading on a run that offers a file read. The read cap
+the run's [read mode](/gg/filesystem/#read-modes) sets, the window an offset and
+a limit name, and the exit code and merged output a [shell](/gg/shell/) call
+hands back each belong to the documentation of the function that does it.
 
 Where the arm names a [checker](/gg/languages/compilation/), the prompt states
 that the program is compiled before it runs, names the checker, and states that
 a program the checker refuses is not executed. The same gate carries the one
-consequence of a checked arm a model has to act on: a call the run withheld
-compiles and then fails at the capability it needed, so what a program may write
-is wider than what a search will find.
+consequence of a checked arm a model has to act on: the SDK declares every
+function whatever this run enabled, so a call to one the run withheld compiles
+and then fails when it runs, naming the call. What the documentation holds is
+what the run granted.
 
 ### Modules
 
@@ -233,9 +231,9 @@ opening turn](/gg/responses-as-code/views/#the-opening-turn).
 ### Function names
 
 A prompt may name only what a model could not find for itself: the module paths,
-the failure type, the language-level helpers no catalogue carries, and the
-agent's own ending calls. It may never name a catalogued function, because that
-is precisely the set a search will hand over.
+the language-level helpers no catalogue carries, and the agent's own ending
+calls. It may never name a catalogued function, because that is precisely the
+set a search will hand over.
 
 Three gates hold this. Two read the template sources, so they cover every branch
 including the sections a test's context leaves off: one fails a template that
@@ -263,9 +261,10 @@ repeat that work.
 
 `View` is qualified by the label the view was opened under (`View: changed-files`),
 because a label is the only thing telling two views apart. A documentation view
-is qualified the same way. The list closes on the sentence that makes the
-vocabulary legible: a turn with no message from the harness is a turn that
-worked.
+is qualified the same way. A worked example of one heading and its `----` rule
+follows the list, and the list closes on the sentence that makes the vocabulary
+legible: a program that ran is not announced, because the views it opened are
+the result.
 
 ### Ending a session
 

@@ -528,7 +528,7 @@ pub fn check_launch(profile: &GgAgentConfig, report: &mut LaunchReport) {
 
 /// The two **code** halves a memory may carry beside its body, and the shape a write hands them in.
 ///
-/// Both are [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/tools/) only: the native
+/// Both are [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/api-surface/) only: the native
 /// memory tools' schemas do not offer them, so a native-mode run can neither write one nor be
 /// handed one, and [`Default`] — both absent — is what that path always passes.
 ///

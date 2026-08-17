@@ -54,17 +54,22 @@ program that failed can be read against the text healing produced and a defect i
 healing told apart from a mistake by the model. The model is shown the healed
 program alone, so its own history is a history of replies that ran.
 
-## The SDK is reached by import
+## Everything a program uses, it imports
 
-gg's SDK is a library the model's program depends on, and every SDK name a
-program writes is reached through an import that program writes. What an arm
-offers is in scope once the model has asked for it and not before.
+Every library a program names is reached through a line that program wrote, gg's
+SDK and the language's own standard library alike. What an arm offers is in
+scope once the model has asked for it and not before. Names the language's own
+definition puts in scope, such as `java.lang` or the JavaScript global object,
+are in scope from a program's first line.
 
-The entry point of an executed program is the model's own code, and gg's code is
-reached from inside it. That is what makes the measured program the model's
-program rather than gg's arrangement of it.
+The entry point of an executed program is the model's own code, and every library
+it uses is reached from inside it. That is what makes the measured program the
+model's program rather than gg's arrangement of it.
 
-Because an import is the only route in, a documentation view states the line a
+An arm supplies package availability itself: a classpath entry, an extern, an
+include path, a linked archive, each of which declares no name.
+
+Because a line is the only route in, a documentation view states the line a
 program writes to reach the symbol it describes. An arm whose views omit it
 offers a surface no program can call.
 
@@ -88,6 +93,11 @@ Documentation covers the parameters a function takes, the failures it raises and
 the value it returns, and states the preconditions, postconditions and
 invariants a function holds. Concision carries the same weight: the detail says
 what a model cannot read off the signature, and stops there.
+
+A declared failure is recorded as well as read. An arm's catalogue carries, per
+function, the error types that function's comment declares in its language's own
+tag for one, and a documentation view opens those types beside the function it
+documents. A function documenting none carries an empty list.
 
 ## Search and documentation views
 
@@ -140,12 +150,15 @@ site what it removes and why it is untrue.
 
 ## The system prompt
 
-The prompt describes what an agent can do rather than how one language spells it.
-One section carries what is specific to the arm, in no more than three
-paragraphs, and that bound is what lets every arm share one prompt.
+The prompt states what a model can neither find by searching the documentation
+nor be told at the moment it matters: the shape of a reply in the agent's own
+language, the module list, the message headings, the ending rule, and the facts
+only this run's configuration answers.
 
-Everything else a model needs about its own language reaches it the way the rest
-of the surface does: through a documentation view it opened, or through the
+One section carries what is specific to the arm, in no more than two paragraphs,
+and that bound is what lets every arm share one prompt. Everything else a model
+needs reaches it the way the rest of the surface does: through a brief the
+opening turn placed in the window, a documentation view it opened, or the
 diagnostic its own program earned.
 
 ## The opening turn

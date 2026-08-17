@@ -2,11 +2,12 @@
 title: "Program languages"
 ---
 
-Under [responses as code](/gg/responses-as-code/overview/) a model answers a turn by
-writing a program over its tools. gg supports more than one language for those
-programs to determine whether a model's effectiveness depends on the language it
-writes in. If a model performs noticeably better in Python than in JavaScript, a
-harness that forces the model to write JavaScript handicaps it for no reason.
+Under [responses as code](/gg/responses-as-code/overview/) a model answers a
+turn by writing a program over gg's operations. gg supports more than one
+language for those programs to determine whether a model's effectiveness depends
+on the language it writes in. If a model performs noticeably better in Python
+than in JavaScript, a harness that forces the model to write JavaScript
+handicaps it for no reason.
 
 Supporting several languages also lets gg price the other things a language
 choice buys. Some languages are more verbose than others, so two arms that score
@@ -36,7 +37,7 @@ SDK, its own segment of the shared prompt templates and its own healing dialect.
 | [Kotlin](/gg/languages/kotlin/) | `kotlin` | Compiled by the Kotlin compiler and then TeaVM inside the same warm JVM, into the wasm component that turn is evaluated by. |
 | [Rust](/gg/languages/rust/) | `rust` | `rustc` compiles the program into the wasm component that turn is evaluated by. |
 | [Swift](/gg/languages/swift/) | `swift` | `swiftc` compiles the reply verbatim into that turn's wasm component. |
-| [C++](/gg/languages/cpp/) | `cpp` | `clang++` compiles the reply verbatim against a prelude precompiled once per machine. |
+| [C++](/gg/languages/cpp/) | `cpp` | `clang++` compiles the reply verbatim into that turn's wasm component, with the program writing its own `#include` for every library it names. |
 | [C#](/gg/languages/csharp/) | `csharp` | Roslyn compiles the reply to an IL assembly on the host, which a guest holding Mono's IL interpreter loads. |
 
 ## Rules every arm keeps
@@ -85,7 +86,7 @@ any length.
 
 The host answers each id by calling the same typed host function the typed
 interfaces are implemented by, so the capability gate, the recorded call and the
-`tool-error` are one implementation for every arm. Each id's arm reads the
+`api-error` are one implementation for every arm. Each id's arm reads the
 arguments its WIT function declares, in the order it declares them, so the WIT is
 the one statement both halves of the crossing are built from. What travels inside
 the byte lists is gg's own tagged encoding, and the model-facing surface stays

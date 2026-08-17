@@ -32,7 +32,7 @@ Each arm's SDK is written by hand, reads as idiomatic code in its own language,
 and is the whole of what the model sees. It bridges that idiom onto the WIT
 wire. Generated code belongs one layer down, in the WIT bindings under the SDK.
 The hand-written layer above them stays thin: it validates the argument shapes
-the wire cannot express, maps the wire's `result<T, tool-error>` onto the
+the wire cannot express, maps the wire's `result<T, api-error>` onto the
 language's failure idiom, and gives every function the shape its language would
 give it.
 
@@ -47,12 +47,12 @@ Every model-facing host function opens a recording bracket, which records the
 call under gg's own identity and is the only source of the token a host function
 needs to reach anything further. Every function that dispatches a gg tool then
 funnels through one place, where the run's wall-clock deadline is honoured, the
-ordered call record is kept, and a failed outcome becomes a typed `tool-error`.
+ordered call record is kept, and a failed outcome becomes a typed `api-error`.
 The three session endings, the documentation lookups, four of the five view
 calls and the program-library calls dispatch no tool and reach the host API
 directly. The fifth, the call that opens a file view, dispatches a `read_file`
 like any other read and is still recorded as itself. A host function cannot
-trap, so a refusal, a spent budget and a failed tool all arrive inside the
+trap, so a refusal, a spent budget and a failed call all arrive inside the
 program as values the model can catch and work around.
 
 ## Gating at the boundary
@@ -68,8 +68,9 @@ model can call cannot disagree.
 
 A refused call returns the `unavailable` error class. Its message says the call
 is not available and, where the agent has one, which call to make instead,
-spelled in the language this program is written in. Its `tool` field carries the
-operation's key, so a catch site branches on what failed rather than on prose.
+spelled in the language this program is written in. Its `operation` field
+carries the operation's key, so a catch site branches on what failed rather than
+on prose.
 Every refusal is opened and closed as an API call and lands on the turn's refusal
 roster under gg's own operation id, caught or uncaught, which is the record a
 cross-arm count joins on. A new SDK exposes the whole surface, so that every arm
@@ -177,9 +178,9 @@ searching. Three gates hold that line.
   module publishes. This reads what is rendered, for every language.
 
 A prompt may name what a model could not find for itself: the module paths that
-are the entry point into search, the failure type and language-level helpers no
-catalogue carries, and the ending calls, which reach it through its context and
-are spelled per language.
+are the entry point into search, the language-level helpers no catalogue
+carries, and the ending calls, which reach it through its context and are
+spelled per language.
 
 The same rule holds on the host side. No string literal in gg's own source
 contains a catalogued `object.name` pair, with the mock model's canned fixtures
@@ -200,15 +201,15 @@ out. Four things must survive the rendering.
 
 - Every required section. A copied template can lose a section whole, and a
   heading can survive with nothing under it.
-- Every value the run configured: each roster name and description, each
-  ceiling, the assigned issue's id.
+- Every value the run configured: each roster name and description, the
+  assigned issue's id.
 - The ending call, resolved through that arm's own catalogue rather than written
   down, so the sentence names something the model could type. It is the one
   catalogued call a prompt is allowed to name at all.
 - Every rule a program is written under: that calls are synchronous, that a
-  view is the only way to read data out, that a returned value is discarded,
-  that what a view holds arrives on the next turn, and that a failed program's
-  ending is revoked.
+  view is the only way to read data out and nothing a program prints reaches
+  the model, that what a view holds arrives on the next turn, and that a failed
+  program's ending is revoked.
 
 A fifth is read the other way, off a context with every capability off: a
 capability the agent was not granted appears nowhere. Both contexts are needed,
@@ -216,10 +217,10 @@ because the maximal one alone cannot show that an ungranted capability stays
 out.
 
 A sixth reads the language segments against each other. Every arm's render
-carries that arm's segment, no arm's render carries another's, and no segment is
-longer than three paragraphs. What an arm might have said beyond them is said by
-the error that reports it, which is where the library set an arm declares
-reaches its model.
+carries that arm's segment, no arm's render carries another's, and every segment
+stays within two paragraphs and a character bound. What an arm might have said
+beyond them is said by the error that reports it, which is where the library set
+an arm declares reaches its model.
 
 Wording is not asserted. The gate reads names, numbers, identifiers and the one
 term each rule cannot be stated without, so rewrapping a paragraph or rewriting

@@ -22,13 +22,13 @@ The two error bands carry the error and nothing else. No preamble, no advice, no
 roster of what the program called, no restatement of the rules it broke.
 
 Everything gg might otherwise add is already somewhere better. A failed call
-throws into the program, carrying the tool name, the failure code and the
+throws into the program, carrying the operation, the failure code and the
 message, at the statement that made the call. A refused view throws at the call
 site naming the cap it breached. What is left over is a standing rule, and a
 standing rule is stated once in the [system prompt](/gg/prompts/): that a
 program which throws does not end the session, that whatever it did before the
-throw stands, that a returned value is discarded, that logging is not a channel
-to the model.
+throw stands, that a view is the only channel out of a program, that logging is
+not a channel to the model.
 
 gg may remove from an error, and removal is the only edit it may make. What the
 model reads is a subsequence of what the compiler or the runtime emitted, so a
@@ -103,9 +103,8 @@ agent's own language:
 ```text
 Your program ran and put nothing in your context.
 
-A view is the only way to see anything — a value you computed, or a file. A
-value your program computed is discarded unless you open a view of it, and
-nothing `console.log` writes is readable by you.
+A view is the only way to see anything — a value you computed, or a file.
+Nothing `console.log` writes is readable by you.
 ```
 
 The condition is tested against the assembled window rather than inferred from

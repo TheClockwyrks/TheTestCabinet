@@ -106,8 +106,8 @@ The surface is idiomatic Kotlin:
   `gg.core.Patch.Clear`, with a left-out argument meaning "leave it alone".
 - A span of turns is an `IntRange`.
 - A result is a `data class`, and a read is a sealed type narrowed by `when`.
-- A failure is a thrown `gg.core.ToolError` with an enum `code`, caught with
-  `catch` or `runCatching`. Its message is ``​`tool` failed (code): what went
+- A failure is a thrown `gg.core.ApiError` with an enum `code`, caught with
+  `catch` or `runCatching`. Its message is ``​`operation` failed (code): what went
   wrong``, so an uncaught one names all three; `detail` is gg's sentence alone.
 
 ## The catalogue
@@ -117,6 +117,8 @@ file into the same `KtFile` the compiler compiles and reads KDoc with the
 compiler's own KDoc parser, so the release that describes the surface is the
 release that compiles a program against it. `@ggmodule` on a module file carries
 module identity, and `tools/GgCatalogue.kt` fixes the module set and its order.
+An `@throws` tag names an error type a function declares, and the catalogue
+carries those types as that function's `throws` list.
 Each module's entry states `import <package>.*` as the line a program writes,
 composed from the module's own path, which is the one thing the reflector
 composes.
@@ -197,14 +199,12 @@ told about drift.
 [`system-code.hbs`](/gg/prompts/) reaches this arm through a segment gated on
 `kotlin`, and `code-nothing-shown.hbs` through a clause naming `println`.
 Neither names a function or a signature: every spelling they quote is resolved
-from this arm's catalogue as the template renders. The segment states:
+from this arm's catalogue as the template renders. The segment states that the
+reply is compiled verbatim as one Kotlin file with a `fun main()`, and that
+everything else the model declares goes beside it at the top level.
 
-- the reply is compiled verbatim as one Kotlin file with a `fun main()`, and
-  everything else the model declares goes beside it at the top level;
-- a failed call is a `gg.core.ToolError`, and Kotlin has no checked exceptions,
-  so one may escape or be caught;
-- an optional argument is a named default, and a module is reached either by its
-  full path or by its own import line.
+Each module is a package of top-level functions, and each entry of the module
+list beside the segment carries that module's own `import` line.
 
 The arm names `kotlinc` as its [checker](/gg/languages/compilation/), so the
 shared body states that a program is compiled before it runs, that one the

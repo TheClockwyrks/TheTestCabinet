@@ -35,7 +35,7 @@ read as its own language. One call, three arms:
 
 ```text
 rust
-  read_file(path: &str, options: files::ReadOptions) -> Result<files::FileRead, ToolError>
+  read_file(path: &str, options: files::ReadOptions) -> Result<files::FileRead, ApiError>
 purescript
   readFile :: String -> { offset? :: Int, limit? :: Int } -> Effect Gg.Files.FileRead
 ruby
@@ -182,11 +182,11 @@ value of it offers.
 
 Under that are the declarations the signature reaches, transitively closed, as
 names linked to their own entries in the same document rather than as expanded
-declarations. Each row is marked with whether it is in the return position and
-whether opening this function mid-session would open it too, under either
-[documentation-view mode](/gg/responses-as-code/overview/). Both sets are gg's
-own answer, computed by the same function a run calls: opening goes exactly one
-level deep and the closure does not.
+declarations. Each row states which
+[documentation-view flags](/gg/responses-as-code/overview/) would place it beside
+the function mid-session, out of `return`, `parameters` and `errors`, and a row
+no flag places says so. Each answer is gg's own, computed by the same function a
+run calls: opening goes exactly one level deep and the closure does not.
 
 A filter box sits above the tree. It matches the loaded arm's names, briefs and
 bodies and hides rows. It does not rank, and it is captioned to say so, because

@@ -27,12 +27,12 @@ top-level `await`.
 
 | Specifier | What it resolves to |
 | --- | --- |
-| `gg` | the whole SDK: one namespace per family, plus `ToolError` |
+| `gg` | the whole SDK: one namespace per family, plus `ApiError` |
 | `gg:<family>` | one family alone, such as `gg:files` |
 | `lib:<name>` | a [code module](/gg/modules/) the agent loaded |
 
 `gg:<family>` and the SDK's own copy of that family are one module instance, so
-`error instanceof ToolError` holds for an error the SDK threw.
+`error instanceof ApiError` holds for an error the SDK threw.
 
 The SDK's own files and the membrane interfaces beneath them resolve only for an
 importer inside the SDK. A program that names one is told which specifier to
@@ -43,9 +43,9 @@ write instead.
 The guest imports every interface of the sandbox world directly. The lowering
 between WIT values and JavaScript values is generated from
 `crates/gg/wit/gg-sandbox.wit`, so a family gg adds is reachable from the SDK as
-soon as its declarations land, and the guest's `bound-tools` export is derived
-from the same source. It follows the canonical component-model mapping, so the guest lowers
-a call exactly as a generated binding would.
+soon as its declarations land, and the guest's `bound-operations` export is
+derived from the same source. It follows the canonical component-model mapping,
+so the guest lowers a call exactly as a generated binding would.
 
 Building the lowering from the WIT requires that gg's membrane use only the
 constructs the generator covers: records, variants, enums, options, lists and
@@ -57,8 +57,8 @@ A failure reaches the model as the engine's own words on standard error, which
 gg's membrane already routes into the model's feedback. The guest reports and
 then dies, so gg records a failed turn. Five shapes are covered:
 
-- an uncaught throw, including a `ToolError` from a refused call. An error's own
-  properties are rendered beside its message, which is how a `ToolError` names
+- an uncaught throw, including an `ApiError` from a refused call. An error's own
+  properties are rendered beside its message, which is how an `ApiError` names
   the call that failed and the class it failed under;
 - a syntax error, at the model's own line;
 - a rejected promise nothing ever handled, through the engine's rejection

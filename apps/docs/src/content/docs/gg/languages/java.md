@@ -132,9 +132,9 @@ The SDK is spelled the way a Java library is spelled:
   and a value the wire may omit is `Optional` or `OptionalInt`.
 - A fixed choice is an enum, and one with a wire spelling carries it as
   `wireName()`.
-- A failure is an unchecked `ToolError` carrying `code()` and `tool()`, so a
+- A failure is an unchecked `ApiError` carrying `code()` and `operation()`, so a
   composed program needs no `try` around every line. Its message is
-  ``​`tool` failed (code): what went wrong``, which is what an uncaught one
+  ``​`operation` failed (code): what went wrong``, which is what an uncaught one
   prints; `detail()` is gg's sentence without the first two.
 - `Gg.log` is the one channel a program has to whoever is watching the run. It
   is outside the catalogue, on the same terms every other arm's `console.log`
@@ -149,6 +149,8 @@ is javac's reading of the declaration and every word of prose comes off the
 declaration it describes. An `@ggop` block tag carries operation identity,
 `tools/GgCatalogue.java` holds the thirteen module identities and the order they
 are presented in, and the doclet refuses to emit a catalogue with a blank in it.
+An `@throws` tag names an error type a function declares, and the catalogue
+carries those types as that function's `throws` list.
 Each module states the line a program writes to reach it, composed from the
 module's own path: `import gg.files.Files;` for a module that is a class, and
 `import gg.*;` for `core`, whose path is the package the exception and the shared
@@ -229,16 +231,12 @@ A `Thread` a program starts is refused by the sandbox.
 
 [`system-code.hbs`](/gg/prompts/) reaches this arm through a segment gated on
 `java`, and `code-nothing-shown.hbs` through a clause naming
-`System.out.println`. The segment states:
+`System.out.println`. The segment states that the reply is compiled verbatim as
+one compilation unit declaring `public final class Program` with a `main` in it,
+and that anything else it declares goes beside that class without `public`.
 
-- the reply is compiled verbatim as one compilation unit declaring
-  `public final class Program` with a `main` in it, and anything else it declares
-  goes beside that class without `public`;
-- a failed call throws an unchecked `gg.ToolError`, caught as
-  `catch (ToolError failure)` and told apart by `failure.code()`;
-- an optional argument is an overload, a bag of them is a builder and a list is
-  a varargs, and each module is a class of `static` methods reached by writing
-  that module's own `import` line.
+Each module is a class of `static` methods, and each entry of the module list
+beside the segment carries that module's own `import` line.
 
 The arm names `javac` as its [checker](/gg/languages/compilation/), so the
 shared body states that a program is compiled before it runs, that one the

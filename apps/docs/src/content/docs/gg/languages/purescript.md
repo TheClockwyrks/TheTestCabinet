@@ -101,12 +101,12 @@ of `output/` that `purs` rewrites are staged as real copies.
 
 The SDK is `packages/gg-sandbox-purescript/src/Gg/`: one module per capability
 (`Gg.Files`, `Gg.Shell`, `Gg.Board`, …) plus `Gg.Core`, which binds no
-capability and carries the failure types, `attempt`, `toolError`,
-`toolErrorCode` and `lib`. Each module carries an explicit export list.
+capability and carries the failure types, `attempt`, `apiError`, `apiErrorCode`
+and `lib`. Each module carries an explicit export list.
 `Gg.Internal.Wire` is the only module that reaches gg's own SDK: its foreign half
 writes `import * as gg from "gg"`, which `esbuild` leaves external and the guest's
 loader resolves to the instance a TypeScript program shares, so a call the agent
-was not granted arrives as a `ToolError` carrying `unavailable` from the host. The
+was not granted arrives as an `ApiError` carrying `unavailable` from the host. The
 rules every arm's SDK obeys are on
 [the agent surface](/gg/languages/agent-surface/).
 
@@ -125,6 +125,8 @@ Doc comments carry what an ML signature cannot:
   declaration as an alias of one.
 - `# Arguments` names and describes each argument in call order.
 - `# Fields` names and describes every field of a record type, and only those.
+- `# Throws` names the error types a declaration declares, which the catalogue
+  carries as that declaration's `throws` list.
 - A row-typed optional argument is printed flat with its optional fields marked
   `limit?`, since `Record given` alone describes nothing.
 
@@ -185,7 +187,7 @@ The SDK is spelled the way a PureScript library is:
 - A three-way patch field is `Maybe`: leave the field out to keep the value,
   pass `Nothing` to clear it, pass `Just` to replace it.
 - A fixed choice is a `data` type and a read is a sum type a program matches on.
-- A failure is thrown, and `Gg.Core.attempt` hands back `Either ToolError a` and
+- A failure is thrown, and `Gg.Core.attempt` hands back `Either ApiError a` and
   re-throws anything that is not a gg failure.
 - A child agent's brief is a constructor, `Prompt` or `Issue`, so exactly one of
   the two type-checks.
@@ -197,15 +199,12 @@ The SDK is spelled the way a PureScript library is:
 [`system-code.hbs`](/gg/prompts/) reaches this arm through a segment gated on
 `purescript`, and `code-nothing-shown.hbs` through a clause naming
 `Effect.Console.log`. Both quote every function name from the catalogue rather
-than writing one out. The segment states:
-
-- the reply is compiled verbatim as one module, with its own header, its own
-  `import` lines and a `main :: Effect Unit` written as a `do` block;
-- a failed call is thrown rather than returned, and `Gg.Core.attempt` catches
-  one as an `Either`;
-- optional arguments are the fields of a record argument, with `{}` passing none
-  of them and `?` marking an optional field of the row, and each capability
-  module is imported under its own full name.
+than writing one out. The segment states that the reply is compiled verbatim as
+one module, with its own header, its own `import` lines and a
+`main :: Effect Unit` written as a `do` block, and that the module name is the
+model's to pick. Each entry of the module list beside it carries that module's
+own import line, `import Gg.Files as Gg.Files`, so the path a module is listed
+under is the expression a call site writes.
 
 The arm names `purs` as its [checker](/gg/languages/compilation/), so the shared
 body states that a program is compiled before it runs, that one `purs` refuses

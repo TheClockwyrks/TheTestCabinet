@@ -58,7 +58,7 @@ named. There are seventeen types, one per distinction gg makes.
 | --- | --- |
 | `model_api` | `model_auth` (the credential was refused), `model_rejected` (another non-retryable `4xx`), `model_retry_exhausted` (the provider never served the request), `model_response_loop` (it served it and [loop detection](/gg/loop-detection/) discarded every answer), `model_vision_unsupported`, `model_parse` |
 | `transpile` | `transpile_syntax`, `transpile_compile` (the language's compiler read the whole program and rejected it), `transpile_unsupported` |
-| `program_fault` | `program_tool_error` (an uncaught failed call: the model is fighting the API rather than mis-writing it), `program_unknown_name` (it reached for something this run does not offer it, either a name that is not in scope or a call the host refused as `unavailable`), `program_throw` |
+| `program_fault` | `program_api_error` (an uncaught failed call: the model is fighting the API rather than mis-writing it), `program_unknown_name` (it reached for something this run does not offer it, either a name that is not in scope or a call the host refused as `unavailable`), `program_throw` |
 | `sandbox_limit` | `sandbox_timeout`, `sandbox_out_of_memory`, `sandbox_trap` |
 | `missing_completion` | `missing_completion_no_call`, `missing_completion_compaction` (a prose reply where a compaction was pending, which is answered differently) |
 
@@ -113,7 +113,7 @@ denominator can never come from different mechanisms.
             "sandboxLimit": 0, "missingCompletion": 0,
             "loopAborts": 7,
             "byType": { "model_response_loop": 1, "transpile_syntax": 2,
-                        "program_tool_error": 1 },
+                        "program_api_error": 1 },
             "toolFailures": { "not-found": 12, "invalid-argument": 3 } }
 ```
 
@@ -170,7 +170,7 @@ their own.
 
 ```text
 has.summary:true | stats avg(summary.errors.maxConsecutive) as streak by model
-has.summary:true | stats sum(summary.errors.byType.program_tool_error) as fights by model
+has.summary:true | stats sum(summary.errors.byType.program_api_error) as fights by model
 ```
 
 ## Ceilings

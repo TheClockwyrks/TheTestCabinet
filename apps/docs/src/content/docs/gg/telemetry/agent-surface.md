@@ -127,25 +127,27 @@ figure and a zero is a measurement.
 
 `executionMode`, `programLanguage` and `docViewTypes` are per agent, which is
 what makes a within-run comparison possible: one run may drive its root in one
-language and at one documentation mode and a subagent in another, so both arms
-share the task, the workspace, the models and the wall clock. Each instance
-reports its own, so "which arm was this agent on, and what did it cost?" is a
-join by `agentId` from this event to that agent's `context_breakdown` bands
+language and at one set of documentation-view flags and a subagent in another, so
+both arms share the task, the workspace, the models and the wall clock. Each
+instance reports its own, so "which arm was this agent on, and what did it cost?"
+is a join by `agentId` from this event to that agent's `context_breakdown` bands
 (`docs_view` and `search_results`) and to its `api_call` counts.
 
-`docViewTypes` is the mode the agent ran under, which is the mode its profile
-wrote: a value gg cannot honour refuses the launch, so a recorded run has one
-mode and the event names it. Its values are `off`, `return` and
-`return-and-parameters`.
+`docViewTypes` is the flag set the agent ran under, which is the set its profile
+wrote: a value gg cannot honour refuses the launch, so a recorded run has one set
+and the event names it. The recorded id is the enabled flags joined by `+` in the
+fixed order `return`, `parameters`, `errors`, and `none` when all three are off,
+so `return+errors`, `return`, `return+parameters+errors` and `none` are among its
+values.
 
 One caveat a study has to carry: `api_call` counts lookups, not the views a
 lookup placed, and views per lookup is exactly what `docViewTypes` changes. One
-`openDocsView` is one `api_call` under every mode, while it places the function's
-view alone under `off` and that view plus the types the mode selects otherwise.
-To count what a lookup cost, read the placed views: each is a `context_message`
-on the `docs_view` band whose `label` names what it documents and whose `tokens`
-say what it cost, and each turn's `prompt` event points at the ones resident that
-turn.
+`openDocsView` is one `api_call` under every flag set, while it places the
+function's view alone under `none` and that view plus the types the enabled flags
+select otherwise. To count what a lookup cost, read the placed views: each is a
+`context_message` on the `docs_view` band whose `label` names what it documents
+and whose `tokens` say what it cost, and each turn's `prompt` event points at the
+ones resident that turn.
 
 The [Reference](/gg/reference/) section answers a neighbouring question. It is
 what gg can offer, catalogue-wide, projected out of gg's own definitions; this

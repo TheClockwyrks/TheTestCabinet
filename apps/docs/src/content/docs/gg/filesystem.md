@@ -134,8 +134,10 @@ The declared stage reads the model catalog, which records the input modalities
 OpenRouter reports per model, and the launch pushes them into the run alongside
 each model's [context window](/gg/configurations/). A model declared without
 `image` is never sent one: `read_file` describes the file instead of attaching
-it, and the system prompt states up front, in a section it renders only when the
-run offers `read_file`, that reading images is unsupported.
+it, and both [system prompts](/gg/prompts/) state up front that reading images is
+unsupported, on a run that offers `read_file`. The tool-calling prompt carries
+that line in its Reading Files section; the code prompt carries the line by
+itself, under its Views heading.
 
 The learned stage covers what the catalog does not. A model with no modality
 list is treated optimistically, since unknown is distinct from text-only and a

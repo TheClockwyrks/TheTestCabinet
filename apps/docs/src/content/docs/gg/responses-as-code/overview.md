@@ -49,23 +49,24 @@ the agent-type selector is its switch. Six parameters are read:
 | `language` | `typescript` | The program language this agent writes in. |
 | `timeoutSecs` | `30` | Guest-execution ceiling for one program, in seconds. A fraction is honoured. |
 | `maxMemoryBytes` | `268435456` | Guest linear-memory ceiling for one program, as a whole number of bytes. |
-| `docViewTypes` | `return` | Which SDK types opening a function's documentation opens beside it: `return`, `return-and-parameters` or `off`. |
+| `docViewTypes` | `return` and `errors` on, `parameters` off | Which SDK types opening a function's documentation opens beside it, as independent toggles keyed `return`, `parameters` and `errors`. `true` and `{}` take the defaults, and `false` turns all three off. |
 | `healing` | per-strategy defaults | Which [response-healing](/gg/response-healing/) repairs are armed. |
 | `assistantMessages` | `response-healing` | How the assistant turn is recorded: `response-healing` records the healed program that ran, `none` records the reply as the model sent it. |
 
 Each param takes the default above when it is absent, and neither numeric param
 is clamped. A value that is present and unhonourable refuses the launch: a
 `timeoutSecs` that is not a positive number, a `maxMemoryBytes` that is not a
-positive whole number of bytes, and a `language`, `docViewTypes`, `healing` or
-`assistantMessages` outside its own vocabulary. The refusal names every such
-value in the configuration, so one pass fixes them all.
+positive whole number of bytes, a `language` or `assistantMessages` outside its
+own vocabulary, and a `docViewTypes` or `healing` carrying a key gg does not
+recognise or a value that is not a boolean. The refusal names every such value in
+the configuration, so one pass fixes them all.
 
 JSON has no integer type, so `5e8` and `500000000` are one `maxMemoryBytes`
 declaration. `500000000.5` names no count of bytes and is refused, since
 rounding it would run the guest at a ceiling nobody wrote.
 
 All six resolve per agent, from that agent's own profile. The language and the
-documentation-type mode land on that agent's `agent_surface`
+documentation-view flags land on that agent's `agent_surface`
 [event](/gg/telemetry/overview/), beside its execution mode. A root that opens
 every type a signature names and a reviewer subagent that opens none are one
 configuration.
@@ -89,8 +90,8 @@ for each arm.
 - [Programs](/gg/responses-as-code/programs/): the reply gg accepts, how a turn
   executes, the outcomes a turn can have, hand-over chains, and the rules for
   ending a session.
-- [APIs](/gg/responses-as-code/tools/): the typed function surface a program
-  calls, the module vocabulary, the capability gate, how a failed call is
+- [APIs](/gg/responses-as-code/api-surface/): the typed function surface a
+  program calls, the module vocabulary, the capability gate, how a failed call is
   reported, and `lib` for code the agent loaded.
 - [Views](/gg/responses-as-code/views/): the four kinds of view, their caps and
   supersession rules, and how an agent discovers and reads documentation.

@@ -95,7 +95,7 @@ reads any of it, and no source gg compiles contains it.
   and this arm's `member_separator` is `::`. Each module owns the types it
   produces, so `files::FileRead` is a path and two modules may declare a type of
   the same name.
-- Every call returns `Result<_, gg::core::ToolError>`, `ToolError` implements
+- Every call returns `Result<_, gg::core::ApiError>`, `ApiError` implements
   `std::error::Error`, and its `code` is an enum, so `?` composes a gg call with
   the standard library's own fallible operations inside a `main` returning
   `Result<(), gg::Failure>`.
@@ -135,7 +135,9 @@ once per process and asserted to carry `rust` as its language. Reflection needs
 the generated `src/bindings.rs`, cut by `bindings.sh`, which both
 `signatures.sh` and `build.sh` call. Rust has no per-parameter doc slot, so a
 signature taking *N* arguments documents *N* under a `# Arguments` heading, in
-order, under their own names.
+order, under their own names. A `# Errors` heading names the error types a
+function declares, and the catalogue carries those types as that function's
+`throws` list.
 
 Each module states `use gg::<module>;` as the line a program writes to reach it
 by its own name, composed by the reflector because rustdoc describes what a
@@ -204,12 +206,11 @@ segment states:
 
 - the reply is compiled verbatim, as a whole Rust program that must define
   `main`, and the `use` lines are the program's to write;
-- every call returns `Result<_, gg::core::ToolError>` and `main` returns a
-  `Result`, so `?` propagates a failure and a `match` on the `code` branches on
-  one, and a failure of the program's own is built with `gg::program::message`;
-- a call with one optional argument takes an `Option<T>`, a call with two or
-  more takes an options struct with a `Default`, and a module is reached by its
-  path in full or under its own `use` line.
+- `main` returns `Result<(), gg::Failure>`, and a failure of the program's own is
+  built with `gg::program::message`.
+
+Each entry of the module list beside the segment carries that module's own `use`
+line.
 
 `gg::Failure` and `gg::program::message` are the two names any segment writes
 that no catalogue carries. Neither binds a capability, so the reflection over the

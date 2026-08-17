@@ -95,8 +95,10 @@ conventions are contracts the reflector holds the SDK to:
 
 - `- Parameter <label>:` and `- Parameters:` document an argument under the name
   a call site writes, which for a labelled argument is the label;
-- `- Returns:` and `- Throws:` stay in the description, landing in the detail
-  rather than the brief;
+- `- Returns:` stays in the description, landing in the detail rather than the
+  brief;
+- `- Throws:` names the error types a function declares, which the catalogue
+  carries as that function's `throws` list;
 - `- ggop:` names the operation a function binds and `- ggop-alias:` a second
   spelling of one, and a public module function naming neither is refused;
 - `- ggmodule:` says which of gg's modules a namespace is.
@@ -179,16 +181,14 @@ told. What that costs, and why gg names no number for it, is on
 [`system-code.hbs`](/gg/prompts/) reaches this arm through a segment gated on
 `swift`, and `code-nothing-shown.hbs` through a clause naming `print`. Neither
 writes a function name or a signature: every spelling they quote is resolved
-from this arm's catalogue when the template renders. The segment states:
+from this arm's catalogue when the template renders. The segment states that the
+reply is compiled verbatim as a whole Swift file, whose top-level statements are
+the program, and that every module beyond the standard library is reached by
+writing its `import`.
 
-- the reply is compiled verbatim as a whole Swift file, whose top-level
-  statements are the program, and every module beyond the standard library is
-  reached by writing its `import`;
-- a fallible call is `throws`, so `try` is required, and an expected failure is
-  caught as `core.ToolError` and branched on by its `code`;
-- optional arguments are default values passed by label, and `import gg` is the
-  line that brings each module into scope as a caseless `enum`, with the fully
-  qualified form always reaching gg's.
+Each entry of the module list beside the segment carries `import gg` as the line
+that brings that module into scope as a caseless `enum`, whose fully qualified
+form always reaches gg's.
 
 The arm names `swiftc` as its [checker](/gg/languages/compilation/), so the
 shared body states that a program is compiled before it runs, that one `swiftc`
@@ -223,7 +223,7 @@ let built = try shell.run("swift build", timeout: 300)
 try views.openText("build", body: built.output)
 ```
 
-Every fallible call throws and `core.ToolError` is an ordinary Swift `Error`
+Every fallible call throws and `core.ApiError` is an ordinary Swift `Error`
 carrying a `code`. Required arguments are positional and optional ones are default values.
 A fixed choice is an `enum` and a choice that carries something is an `enum`
 with an associated value, so a wrong value is a program that does not compile. A

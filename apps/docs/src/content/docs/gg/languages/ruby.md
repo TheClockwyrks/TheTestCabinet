@@ -80,13 +80,13 @@ into the component as the requirable unit `gg`. Thirteen modules are declared,
 `GG::Core` last and carrying types alone. A call is a module function on the
 module that owns the capability, `GG::Files.read_file`, and a type is written
 under the module that produces it, `GG::Files::TextFile`. A failed call raises
-`GG::Core::ToolError`, which is a `StandardError` with a Symbol `code`. Every
+`GG::Core::ApiError`, which is a `StandardError` with a Symbol `code`. Every
 module of the catalogue states `require "gg"` as the line a program writes to
 reach it, and a documentation view quotes it.
 
 `require "gg"` runs the SDK's whole top level, which binds every declaration
 onto its module. A call this agent was not granted reaches the host and comes
-back as a `ToolError` naming the capability it needed. The rules that surface
+back as an `ApiError` naming the capability it needed. The rules that surface
 obeys are on [the agent surface](/gg/languages/agent-surface/).
 
 `GG::Scope` lifts each module function off its module and puts it back behind a
@@ -125,8 +125,10 @@ baked in as well, since Opal lowers `case … in` into a corelib module.
 
 The catalogue is reflected by `packages/gg-sandbox-ruby/signatures.sh`, which
 runs YARD over the SDK's own documentation and reads `GG::Surface.registry` for
-operation identity. It is written into the build's `OUT_DIR` and embedded from
-there, parsed once per process and checked to name Ruby.
+operation identity. A `@raise` tag names an error type the function declares, and
+the catalogue carries those types as that function's `throws` list. It is written
+into the build's `OUT_DIR` and embedded from there, parsed once per process and
+checked to name Ruby.
 
 ## Checking and failures
 
@@ -180,11 +182,11 @@ states:
 
 - the reply is executed exactly as written, as the whole of a `program.rb` at its
   top level, whose last expression's value goes nowhere;
-- a failed call raises `GG::Core::ToolError`, a `StandardError` that `rescue`
-  catches, and its `code` is a Symbol, and gg names the call that failed;
-- optional arguments are keyword arguments with defaults, `*items` is variadic
-  and `&body` is a block, and `require "gg"` is the line that reaches every
-  module.
+- statements and definitions sit side by side, and the model writes the `require`
+  lines it would normally write.
+
+Each entry of the module list beside it carries `require "gg"` as the line that
+brings that module into scope.
 
 The arm names `opal` as its [checker](/gg/languages/compilation/), so the shared
 body states that a program is compiled before it runs and one the compiler

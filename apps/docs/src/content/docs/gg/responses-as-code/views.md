@@ -113,7 +113,7 @@ is not.
 | `MAX_COMPOSED_VIEW_BYTES_PER_TURN` | 8 MiB | every `openText` body across one turn's programs |
 | `IMAGE_ATTACH_CAP` | 8 MiB | one attached picture |
 
-Breaching one of the three text-view caps is a catchable `ToolError` with code
+Breaching one of the three text-view caps is a catchable `ApiError` with code
 `limit-exceeded` naming the cap, thrown at the call site, and never a
 truncation. The program can split the body, trim it, or write it to a file and
 open a file view of that, in the same turn, before it has finished running.
@@ -194,10 +194,15 @@ line per function in it this agent binds, each with its own brief. A
 module every function of which this run withheld is `not-found`, on the rule a
 type is gated by: what a model can read describes a surface it can use.
 
-One open places types one level deep, from the names the function's own
-signature writes down. Which of them it places is the agent's `docViewTypes`
-setting: `return` (the default), `return-and-parameters` or `off`. Re-opening a
-function whose view is already open still places any of its types that are not.
+One open places types one level deep. Which of them it places is the agent's
+`docViewTypes` flags, each independent of the others: `return` places the types
+the signature writes in the return position, `parameters` the types of its
+arguments, and `errors` the error types the function's own documentation comment
+declares. `return` and `errors` are on by default. Whichever flags are set,
+exactly one level is opened, and a type view opens no further type view.
+
+Re-opening a function whose view is already open still places any of its types
+that are not.
 
 An argument that is neither a bound function nor a name is refused in the guest,
 before the lookup. `undefined` and `null` answer that no documentation was

@@ -3,7 +3,7 @@
 //! for the ones it just read.
 //!
 //! A [skill](https://docs.testcabinet.ai/gg/skills/) or a memory is prose. Under
-//! [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/tools/) it may instead, or as
+//! [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/api-surface/) it may instead, or as
 //! well, be **code**, in two independent halves:
 //!
 //! - a **module**, whose exports are bound at `lib.<key>` in every program the agent writes from

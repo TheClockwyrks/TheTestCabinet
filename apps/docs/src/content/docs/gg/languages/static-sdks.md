@@ -91,11 +91,9 @@ A refused call raises the arm's own gg failure type, the one every failed call
 raises. It carries three fields.
 
 - `code` is `unavailable`.
-- `tool` carries the key of the operation the program reached for: `read_file`
-  for `gg.files.readFile`, `read_text_file` for `gg.files.readTextFile`. The
-  field's name belongs to the failure type every call shares; what a refusal
-  puts in it is an operation key, so a `catch` branches on the call that was
-  refused rather than on prose.
+- `operation` carries the key of the operation the program reached for:
+  `read_file` for `gg.files.readFile`, `read_text_file` for
+  `gg.files.readTextFile`, so a `catch` branches on that key.
 - `message` says the call is not available, written in this program's own
   spelling of it.
 
