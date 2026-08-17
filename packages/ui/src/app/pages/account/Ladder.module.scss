@@ -364,6 +364,45 @@
   background: t.$color-bg-2;
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-sm;
+  // Opaque so a row being dragged over its neighbours hides them rather than
+  // blending with them, and positioned so the lifted row can be raised above the
+  // rows it slides past.
+  position: relative;
+}
+
+// The row under the pointer (or lifted by the keyboard). Raised rather than faded:
+// the reviewer is reading the rung they are placing, so it stays fully legible and
+// the list beneath it is what moves.
+.rungEditItemDragging {
+  z-index: 1;
+  border-color: t.$color-accent;
+  box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 40%, transparent);
+}
+
+// The grip that starts a drag. Confined to its own control rather than the whole
+// row, so the run-count field can still be selected and dragged within.
+.rungDragHandle {
+  flex: none;
+  padding: 0 t.$space-xs;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  line-height: 1;
+  color: t.$color-text-muted;
+  background: none;
+  border: 0;
+  cursor: grab;
+  // Required by the pointer sensor: without it a touch drag scrolls the page
+  // instead of picking the rung up.
+  touch-action: none;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-accent;
+  }
+
+  &:active {
+    cursor: grabbing;
+  }
 }
 
 // The rung's ordinal, fixed-width so the case names line up down the list however
