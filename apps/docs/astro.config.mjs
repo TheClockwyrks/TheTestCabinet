@@ -394,6 +394,8 @@ export default defineConfig({
           items: [
             "deployment/overview",
             "deployment/public-gallery",
+            "deployment/backups",
+            "deployment/telemetry",
             // The cluster itself, split by plane: what always runs, what a run
             // is scheduled onto, the database, and how they reach each other.
             {
@@ -407,8 +409,6 @@ export default defineConfig({
                 "deployment/kubernetes/internal-ingress",
               ],
             },
-            "deployment/backups",
-            "deployment/telemetry",
           ],
         },
         // The supported coding-agent harnesses. The catalogue overview lists
@@ -520,10 +520,7 @@ export default defineConfig({
         {
           label: "Orchestrators",
           collapsed: true,
-          items: [
-            "orchestrators/overview",
-            "orchestrators/one-shot",
-          ],
+          items: ["orchestrators/overview", "orchestrators/one-shot"],
         },
         // gg is The Test Cabinet's own first-party harness. It has its own
         // top-level section rather than an entry under Harnesses: we own both
@@ -579,6 +576,13 @@ export default defineConfig({
                 "gg/ending-a-session",
                 // The lifecycle seam an operator scripts a run through.
                 "gg/hooks",
+                // A property of responses as code: the counted, disclosed
+                // repairs gg makes to a reply before running it as a program.
+                "gg/response-healing",
+                // Likewise: what gg keeps of the programs it has already run.
+                "gg/program-library",
+                "gg/result-aggregation",
+                "gg/session-record",
                 // Answering a turn by writing a program over gg's typed calls.
                 // Its own group: the capability spans the program contract, the
                 // API surface, views, gg's replies and the sandbox.
@@ -595,11 +599,6 @@ export default defineConfig({
                     "gg/responses-as-code/sandbox",
                   ],
                 },
-                // A property of responses as code: the counted, disclosed
-                // repairs gg makes to a reply before running it as a program.
-                "gg/response-healing",
-                // Likewise: what gg keeps of the programs it has already run.
-                "gg/program-library",
                 // What a gg run emits while it runs. Its own group: the capture
                 // spans turn outcomes, turn timing, context spend, code
                 // execution, the agent surface and the console that reads them.
@@ -616,8 +615,6 @@ export default defineConfig({
                     "gg/telemetry/console",
                   ],
                 },
-                "gg/result-aggregation",
-                "gg/session-record",
               ],
             },
             // The axis responses as code is parameterised on. A sibling of
@@ -753,6 +750,7 @@ export default defineConfig({
                 "testing/asset-generation/particle-binaries",
                 "testing/asset-generation/audio-binaries",
                 "testing/asset-generation/rigging-walkers",
+                "testing/asset-generation/evaluation",
                 // The manifest format, one page per asset-kind family. The
                 // overview carries what every kind declares; each sibling
                 // carries only what its family adds.
@@ -771,7 +769,6 @@ export default defineConfig({
                     "testing/asset-generation/manifests/audio-cases",
                   ],
                 },
-                "testing/asset-generation/evaluation",
               ],
             },
             {
