@@ -81,7 +81,19 @@ export default function item() {
     },
 
     async assert(api, check) {
-      check.expectOk("the bound-pinned paddle strikes the ball", bound.hit);
+      // Each half reads the rebound itself — the ball turned back toward the far goal
+      // — beside its spin. `paddles.hit-center` and `hit-edge` grade that a paddle
+      // returns a ball; what these two need from it is that the ball did not pass
+      // THROUGH the paddle, which the pinned half's readings cannot tell on their own:
+      // it scores two zeroes, and a ball that sailed by an unmoved paddle reports both.
+      // A tunnelled ball crosses the goal line and is held for the pre-serve countdown
+      // (~120 ticks, `gameplay.countdown-length`), well past the sweep's 132-tick cap,
+      // so it never turns positive on a fresh serve instead.
+      check.expectGt(
+        "the ball rebounds off the bound-pinned paddle rather than passing through it (vx)",
+        bound.ball.vx,
+        0,
+      );
       check.expectClose(
         "a paddle pinned at the bound reports zero velocity (vy)",
         bound.paddle.vy,
@@ -94,7 +106,11 @@ export default function item() {
         0,
         0.5,
       );
-      check.expectOk("the free-paddle control strikes the ball", free.hit);
+      check.expectGt(
+        "the ball rebounds off the free paddle rather than passing through it (vx)",
+        free.ball.vx,
+        0,
+      );
       check.expectGt(
         "the same held key clear of the bound, where the paddle really moves, does impart spin (spin)",
         free.ball.spin,

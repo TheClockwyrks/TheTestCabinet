@@ -18,13 +18,21 @@ import {
 
 // How far the resumed ball is carried before it is read. The posed flight travels
 // 3.33 px per tick horizontally and 1 px vertically, so a single tick moves the ball
-// less than the 2 px tolerance the reading is compared within — a ball that never
-// resumed at all would sit inside it on the vertical axis, and only 1.33 px outside it
-// on the horizontal. Reading 12 ticks on instead puts a continued ball 40 px and 12 px
-// from where it was suspended, an order of magnitude clear of the tolerance either way,
-// while still landing well short of the obstacles (x 480-500 and 780-800) and the
-// walls, so the continuation stays the straight line the assertions predict.
+// less than the tolerances the readings are compared within — a ball that never
+// resumed at all would sit inside them on both axes. Reading 12 ticks on puts a
+// continued ball 40 px and 12 px from where it was suspended, an order of magnitude
+// clear of the tolerance either way, while still landing well short of the obstacles
+// (x 480-500 and 780-800) and the walls, so the continuation stays the straight line
+// the assertions predict.
 const RESUMED_TICKS = 12;
+
+// The horizontal tolerance, in px. Nothing pins whether the frame that reads the resume
+// key also integrates, so a build that drains its input after the update is one 3.33 px
+// tick behind one that drains before it, and both are conformant. 5 px covers that tick
+// and leaves the discriminations untouched: a ball that never resumed is 40 px adrift,
+// and a re-served one — which lands at x 640, all but exactly where a continued ball
+// does — is told apart on y and speed rather than here.
+const X_TOL = 5;
 
 export default function item() {
   let paused;
@@ -34,13 +42,13 @@ export default function item() {
   return {
     id: "pause.ball-continues",
 
-    // A live match with the ball posed mid-flight, clear of the obstacles so a single
-    // resumed step is a clean straight advance.
+    // A live match with the ball posed mid-flight, clear of the obstacles so the
+    // resumed stretch is a clean straight advance.
     async arrange(api) {
       await arrangeLiveBall(api, { x: 500, y: 360, vx: 400, vy: -120 });
     },
 
-    // Fly, pause, confirm frozen, resume, and take one live step. The whole sequence
+    // Fly, pause, confirm frozen, resume, and run on live. The whole sequence
     // IS the clip: the ball moves, freezes, then picks up exactly where it left off.
     async act(api) {
       await api.advance(30); // 0.25 s of visible flight
@@ -77,7 +85,7 @@ export default function item() {
         "the resumed ball continues from its paused position (x)",
         resumed.x,
         paused.x + (paused.vx * RESUMED_TICKS) / TICK_HZ,
-        2,
+        X_TOL,
       );
       check.expectClose(
         "the resumed ball continues from its paused position (y)",

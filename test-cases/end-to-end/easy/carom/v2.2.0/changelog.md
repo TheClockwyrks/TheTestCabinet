@@ -1,3 +1,19 @@
+## `spin.at-bound` reads the rebound, not a contact flag
+
+Both halves of the point's discrimination asserted that the paddle "strikes the ball",
+which is not this point's job — `paddles.hit-center` and `paddles.hit-edge` grade that
+a paddle returns a ball, and grading it a third time here says nothing new about spin.
+
+What the point does need from the contact is narrower: that the ball did not pass
+_through_ the paddle. The pinned half cannot see that in its own readings, because it
+scores two zeroes — a paddle that did not move, a ball that gained no spin — and a ball
+that sailed past an unmoved paddle reports both, taking the point without ever touching
+it. So each half now reads the rebound itself, as the physics fact it is: the ball's
+`vx` turned back toward the far goal, beside the spin it did or did not pick up. A
+tunnelled ball crosses the goal line and is held for the pre-serve countdown — ~120
+ticks, which `gameplay.countdown-length` pins — well past the sweep's 132-tick cap, so
+it cannot turn positive on a fresh serve and pass instead.
+
 ## Unpausing is specified, and graded
 
 Up to `v2.1.0` nothing said how a player gets out of a pause.
@@ -56,6 +72,15 @@ ball less than the 2 px tolerance the reading is compared within: a ball that ne
 resumed at all sat _inside_ the tolerance on the vertical axis, and 1.33 px outside
 it on the horizontal. Twelve ticks put a continued ball 40 px and 12 px on, an order
 of magnitude clear either way, and still well short of the obstacles and the walls.
+
+Its horizontal reading is now compared within 5 px rather than 2. Nothing specifies
+whether the frame that reads the resume key also integrates, so a build that drains
+its input after its update is one 3.33 px tick behind one that drains before it, and
+the old tolerance failed the second of two conformant readings. 5 px takes the tick
+and gives nothing up: a ball that never resumed is 40 px adrift of the reading, and a
+re-served one lands at x 640 — all but exactly where a continued ball does, so that
+was never the axis telling those apart. The vertical reading, where a tick is 1 px,
+stays at 2 px and keeps doing it, alongside the preserved-speed reading.
 
 The reference implementation resumed on `Esc` but not on `P`, so it gains the toggle
 too — the pause key now leaves the Paused screen the same way it enters it.
