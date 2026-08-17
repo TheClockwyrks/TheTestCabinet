@@ -212,10 +212,33 @@
   font-size: t.$font-sm;
 }
 
-// The plan editor's buffer override: the field over its own hint, which carries the
-// "use my default" escape hatch.
-.bufferField {
-  max-width: 42rem;
+// Widths for the controls that sit on the right of a setting row. The inputs
+// themselves stretch to their container (see `RunExec.module.scss`), so the row
+// sizes them through a wrapper rather than fighting the input's own width.
+.settingNumber {
+  flex: none;
+  width: 6rem;
+}
+
+.settingSelect {
+  flex: none;
+  width: 16rem;
+  max-width: 100%;
+}
+
+.settingUnit {
+  flex: none;
+  width: 13rem;
+  max-width: 100%;
+}
+
+// A pill group as a setting row's control: the same pills as elsewhere, without the
+// standalone block's bottom margin (the row supplies its own spacing).
+.settingPills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: t.$space-sm;
 }
 
 .matrix {

@@ -75,7 +75,9 @@ describe("BufferTargetField", () => {
 
   it("offers dropping the override without deleting digits", () => {
     const { onChange } = renderField(4);
-    fireEvent.click(screen.getByRole("button", { name: "Use my default" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reset Review buffer" }),
+    );
     expect(onChange).toHaveBeenCalledWith(null);
   });
 });
