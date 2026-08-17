@@ -20,6 +20,27 @@ if (typeof globalThis.ResizeObserver === "undefined") {
   };
 }
 
+// jsdom implements no media queries at all, so `window.matchMedia` is simply
+// absent — and the app's chrome calls it on mount (the backdrop honours
+// `prefers-reduced-motion`). Report "this query does not match" for everything,
+// which is the truthful answer for a headless DOM with no viewport and no user
+// preferences, and give back the EventTarget-shaped handle callers subscribe to.
+if (typeof window !== "undefined" && !window.matchMedia) {
+  window.matchMedia = (query: string): MediaQueryList => {
+    const list = {
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    };
+    return list as unknown as MediaQueryList;
+  };
+}
+
 // jsdom has no canvas backend, so HTMLCanvasElement.getContext throws a "Not
 // implemented" error — and jsdom logs that to its virtual console (→ test stderr)
 // even when the caller catches it (as `supportsWebGL` does). None of these tests

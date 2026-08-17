@@ -1,6 +1,7 @@
 import { Backdrop } from "./components/Backdrop";
 import { ConfirmDialogProvider } from "./components/ConfirmDialog";
 import { NotificationsLayer } from "./components/NotificationsLayer";
+import { PageErrorBoundary } from "./components/PageErrorBoundary";
 import { useGalleryData } from "./data/galleryContext";
 import { AppRoutes } from "./pages/router";
 
@@ -27,7 +28,12 @@ export function GalleryApp() {
     <ConfirmDialogProvider>
       {/* Neon grid + scanline atmosphere, painted behind the routed pages. */}
       <Backdrop />
-      <AppRoutes />
+      {/* Only the routed body is guarded, and deliberately so: a page that throws
+          loses itself, not the chrome around it and not the notification layer
+          above it, so there is still a nav to leave by. */}
+      <PageErrorBoundary>
+        <AppRoutes />
+      </PageErrorBoundary>
       {canExecute && <NotificationsLayer />}
     </ConfirmDialogProvider>
   );

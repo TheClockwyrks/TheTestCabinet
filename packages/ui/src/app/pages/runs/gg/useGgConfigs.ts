@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { GgCapabilitySet, GgConfig } from "@test-cabinet/run-record/gg";
 import { useAuth } from "../../../../client/auth";
-import { useBackend } from "../../../../client/context";
+import { useOptionalBackend } from "../../../../client/context";
 import { type GgConfigDraft, draftFromCapabilitySet } from "./ggConfigDraft";
 
 /**
@@ -38,7 +38,10 @@ export function savedKey(id: string): string {
  */
 export function useGgConfigs() {
   const { token } = useAuth();
-  const { client: backend } = useBackend();
+  // Optional, not asserted: the comparison detail page reads this and renders on
+  // the static site, which mounts no backend provider. "No backend" is already
+  // one of the two ways this resolves to no configurations at all.
+  const backend = useOptionalBackend()?.client ?? null;
   const [saved, setSaved] = useState<GgConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

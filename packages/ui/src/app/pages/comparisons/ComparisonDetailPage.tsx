@@ -9,7 +9,10 @@ import {
 import type { DistributionGroup } from "@test-cabinet/ui";
 import type { ComparisonPublishOutcome } from "../../../client/clients";
 import { useAuth } from "../../../client/auth";
-import { useBackend, useWorkers } from "../../../client/context";
+import {
+  useOptionalBackend,
+  useOptionalWorkers,
+} from "../../../client/context";
 import { LoadingState } from "../../components/LoadingState";
 import { BackChevron } from "../../components/BackChevron";
 import { PageLayout } from "../../components/PageLayout";
@@ -49,9 +52,14 @@ import styles from "./Comparisons.module.scss";
 export function ComparisonDetailPage() {
   const { id = "" } = useParams();
   const { token } = useAuth();
-  const { client: backend } = useBackend();
+  // A published comparison is public, so this page renders on the static site as
+  // well — and that host mounts neither client provider. Both are read
+  // optionally: the run/publish affordances below already gate on `canExecute`
+  // and on the client being able to do the thing, so their absence is a
+  // read-only page rather than a failed one.
+  const backend = useOptionalBackend()?.client ?? null;
   const { canExecute, readComparison } = useGalleryData();
-  const { active: worker } = useWorkers();
+  const worker = useOptionalWorkers()?.active ?? null;
   const runtime = useRunsRuntime();
   const testCaseName = useTestCaseName();
   // Both the shared built-ins and the account's own, since an arm may name

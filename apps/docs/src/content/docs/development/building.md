@@ -130,8 +130,10 @@ scripts/ci/specs-lint.sh      # markdownlint + cspell over the authored prose
 ```
 
 `scripts/setup-hooks.sh` installs the pre-commit hooks, which run the formatting,
-clippy, and doc gates plus the [frozen-version](/development/frozen-versions/)
-check on each commit.
+clippy, and doc gates, the front-end test suite, and the
+[frozen-version](/development/frozen-versions/) check on each commit. The
+front-end suite is a commit gate because it completes in seconds; the Rust test
+suite runs in CI.
 
 ### `gg` and its eleven toolchains
 
@@ -280,6 +282,28 @@ npm run build
 The other root scripts delegate to each workspace that defines them:
 `npm run dev`, `npm run lint`, `npm run test`, and `npm run typecheck`.
 `npm run lint` also runs `lint:specs` after the per-workspace linters.
+
+`npm run test` runs `vitest` in each workspace and is one of the pre-commit
+gates. Iterate on the gallery's own suite with `npm run test -w
+@test-cabinet/ui`. On a clean checkout, build the workspace runtime packages
+first with `npm run build:packages`, since the tests import them from a built
+`dist/`.
+
+### Every page loads
+
+`packages/ui/src/app/pages/routeSmoke.test.tsx` mounts the routed app at every
+path in `routePatterns` and asserts that each one renders, meaning the page error
+boundary caught nothing and the page put content on screen. It walks that table
+against three hosts: a console with a stocked catalog, a console holding nothing,
+and the read-only static gallery.
+
+This suite covers whether a page loads at all; the per-page suites cover whether
+it behaves correctly. Adding a route to `routePatterns` adds it to the walk.
+
+The page error boundary in `packages/ui/src/app/components/PageErrorBoundary.tsx`
+is the runtime counterpart. It wraps the routed body, so a page that throws is
+contained to itself: the chrome and section nav stay, the panel names the
+failure, and navigating to another page clears it.
 
 Lint the authored prose with:
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Comparison } from "@test-cabinet/run-record/comparison";
 import { useAuth } from "../../client/auth";
-import { useBackend } from "../../client/context";
+import { useOptionalBackend } from "../../client/context";
 import { useGalleryData } from "./galleryContext";
 
 export interface ComparisonsState {
@@ -23,7 +23,12 @@ export interface ComparisonsState {
 // simply reports none (the list page shows a sign-in prompt).
 export function useComparisons(): ComparisonsState {
   const { token } = useAuth();
-  const { client: backend } = useBackend();
+  // Optional, not asserted: this hook backs the Comparisons tab, which renders on
+  // the static site too — and that host mounts no backend provider at all. The
+  // load path below already treats a backend that cannot list comparisons as
+  // "read the published set instead", so demanding the provider only turned the
+  // supported case into a crash.
+  const backend = useOptionalBackend()?.client ?? null;
   const { comparisons: publishedComparisons } = useGalleryData();
   const [comparisons, setComparisons] = useState<Comparison[]>([]);
   const [loading, setLoading] = useState(true);
