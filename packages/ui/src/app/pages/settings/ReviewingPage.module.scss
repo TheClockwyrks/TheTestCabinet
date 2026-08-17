@@ -1,0 +1,101 @@
+@use "../../styles/tokens" as t;
+
+// The Reviewing settings surface: one panel stacking the account-wide reviewing
+// preferences, each a label block over its control (the Appearance tab's shape).
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xl;
+}
+
+.setting {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.label {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.title {
+  margin: 0;
+  font-size: t.$font-lg;
+  color: t.$color-text;
+}
+
+.description {
+  margin: 0;
+  max-width: 52ch;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.muted {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.errorPanel {
+  margin-bottom: t.$space-lg;
+  border-color: t.$color-negative;
+}
+
+.error {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-negative;
+}
+
+// The number field beside its save action, wrapping on narrow viewports.
+.form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+  align-items: center;
+}
+
+.input {
+  width: 8rem;
+  min-width: 0;
+  padding: t.$space-sm t.$space-md;
+  font: inherit;
+  color: t.$color-text;
+  background: t.$color-surface;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+  }
+}
+
+.primary {
+  padding: t.$space-sm t.$space-md;
+  font: inherit;
+  color: t.$color-accent;
+  background: t.$color-surface;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+
+  &:hover:not(:disabled) {
+    border-color: t.$color-accent;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+}
