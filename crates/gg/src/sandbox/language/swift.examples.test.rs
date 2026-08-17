@@ -48,7 +48,7 @@ use test_cabinet_core::gg::GgProgramLanguage;
 use super::compile::compile_program;
 use crate::prompts::{
     AssignedIssueView, AutoloadView, BoardView, CodeHeadingView, EndingView, MemoriesView,
-    ModuleView, ReadFileView, ShellView, SkillView, SpawnableAgentView, SystemContext, TasksView,
+    ModuleView, ReadFileView, SkillView, SpawnableAgentView, SystemContext, TasksView,
     render_code_nothing_shown_for, render_system,
 };
 use crate::sandbox::{
@@ -91,12 +91,6 @@ fn everything_on() -> SystemContext {
             capped: true,
             line_cap: 250,
             images: true,
-        },
-        shell: ShellView {
-            offered: true,
-            offloaded: true,
-            tail: "last 200 lines".to_string(),
-            directory: "/tmp/gg-shell".to_string(),
         },
         skills: vec![SkillView {
             name: "physics".to_string(),
@@ -185,11 +179,16 @@ fn every_swift_example_a_model_is_shown_compiles() {
 
     // The gate must not be able to go quiet. A floor, not a count: an example added is welcome, an
     // example that stopped being recognised as one is the failure this catches.
+    //
+    // Since the prompt stopped naming functions it writes no ```swift fence at all, so all three
+    // come from the **catalogue** — the `///` comments on the SDK, which are what a model is shown
+    // when it opens a documentation view. Three is exactly what it carries today, so deleting the
+    // last one fails the gate.
     assert!(
         snippets.len() >= 3,
         "only {} fenced Swift examples were found across the prompt, the notice and the catalogue. \
-         A ```swift fence lost its tag, or a template stopped rendering a section — either way \
-         this gate is no longer reading what a model is shown.",
+         A ```swift fence lost its tag, or an SDK documentation comment lost its example — either \
+         way this gate is no longer reading what a model is shown.",
         snippets.len()
     );
 

@@ -2193,9 +2193,8 @@ struct DisabledRuntimes {
     /// changes the surface with it — see [`with_profile`](Self::with_profile).
     granted_capabilities: Vec<String>,
     granted_operations: Vec<crate::sandbox::OperationId>,
-    /// The `shell` output policy the prompt describes — inline by default, so these tests render no
-    /// shell-output section. Owned here so `PromptInputs` can borrow it.
-    shell_offload: OffloadPolicy,
+    // No `shell` output policy: the prompt describes nothing about a command's output any more, in
+    // either mode, so `PromptInputs` has nothing to borrow one for.
 }
 
 impl DisabledRuntimes {
@@ -2212,7 +2211,6 @@ impl DisabledRuntimes {
             profile: GgAgentConfig::root(),
             granted_capabilities: Vec::new(),
             granted_operations: Vec::new(),
-            shell_offload: OffloadPolicy::Inline,
         }
         .with_profile(GgAgentConfig::root())
     }
@@ -2262,7 +2260,6 @@ impl DisabledRuntimes {
             tasks: self.tasks.as_ref().expect("built"),
             board: self.board.as_ref().expect("built"),
             read_policy: ReadPolicy::default(),
-            shell_offload: &self.shell_offload,
             vision: &self.vision,
             program_language: None,
             granted_capabilities: &self.granted_capabilities,

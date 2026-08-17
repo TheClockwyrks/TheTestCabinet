@@ -62,7 +62,7 @@ use test_cabinet_core::gg::GgProgramLanguage;
 use super::compile::compile_program;
 use crate::prompts::{
     AssignedIssueView, AutoloadView, BoardView, CodeHeadingView, EndingView, MemoriesView,
-    ModuleView, ReadFileView, ShellView, SkillView, SpawnableAgentView, SystemContext, TasksView,
+    ModuleView, ReadFileView, SkillView, SpawnableAgentView, SystemContext, TasksView,
     render_code_nothing_shown_for, render_system,
 };
 use crate::sandbox::{
@@ -245,12 +245,6 @@ fn everything_on() -> SystemContext {
             capped: true,
             line_cap: 250,
             images: true,
-        },
-        shell: ShellView {
-            offered: true,
-            offloaded: true,
-            tail: "last 200 lines".to_string(),
-            directory: "/tmp/gg-shell".to_string(),
         },
         skills: vec![SkillView {
             name: "physics".to_string(),

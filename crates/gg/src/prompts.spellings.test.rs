@@ -36,26 +36,31 @@
 //!
 //! That third one is kept rather than retired with the `{{api.…}}` rules, and it is worth saying
 //! why, because the plan this stage implements budgeted for two. It is the only thing that reads a
-//! *rendered* prompt, and two live classes of name reach a model only through one:
+//! *rendered* prompt, and one live class of name reaches a model only through one: the **ending**
+//! calls, which arrive through the context ([`EndingView`](super::EndingView)) rather than through a
+//! template. They are the one place a function name still reaches a model from the prompt, and they
+//! are there because an ending is bound to a role rather than to a capability — so the
+//! [discoverability gate](crate::docs) does not cover them, and an agent that could not find its own
+//! ending call would burn its whole budget failing to stop. That exception is deliberate, and this
+//! is what holds it honest: the call named must be one the arm binds.
 //!
-//! 1. the **ending** calls, which arrive through the context ([`EndingView`](super::EndingView))
-//!    rather than through a template. They are the one place a function name still reaches a model
-//!    from the prompt, and they are there because an ending is bound to a role rather than to a
-//!    capability — so the [discoverability gate](crate::docs) does not cover them, and an agent that
-//!    could not find its own ending call would burn its whole budget failing to stop. That exception
-//!    is deliberate, and this is what holds it honest: the call named must be one the arm binds;
-//! 2. the **type** names a template writes by hand to teach a language's own convention (Rust's
-//!    `files::FileRead`, TypeScript's `gg.files.FileRead`). Those are not calls, they are not
-//!    discoverable through search, and a template that explains "a type is written under its module"
-//!    without an example of one explains nothing.
+//! It used to hold a second class honest — the **type** names templates wrote by hand to teach a
+//! language's own qualification convention (`gg.files.FileRead` beside `gg.files.readFile`). No
+//! template writes one now: a documentation view of a function opens the error types its comment
+//! declares beside it, so a type name in the prompt is a second copy of something the model reads
+//! where it is declared. This rule still *admits* a published type, because a name written under a
+//! module is judged by whether that module carries it rather than by what kind of thing it is, and
+//! [`prompts::tests::a_rendered_prompt_names_no_type_the_documentation_would_open`](super::tests)
+//! is what refuses one outright.
 //!
 //! # What a prompt may still name, stated once
 //!
 //! The line this file draws is not "no identifiers". It is: **a prompt may name only what a model
-//! could not find for itself.** That is the module paths (the entry point into search), the failure
-//! type and the language-level helpers that no catalogue carries — Rust's failure constructor,
-//! PureScript's `Gg.Core.attempt` — and the ending calls above. It may never name a **catalogued**
-//! function, because that is precisely the set a search will hand over.
+//! could not find for itself.** That is the module paths (the entry point into search), the
+//! language-level helpers and types that no catalogue carries — Rust's `Failure` and the
+//! constructor that builds one live in the SDK's prelude rather than in a published module, so no
+//! search reaches them — and the ending calls above. It may never name a **catalogued** function or
+//! a **catalogued** type, because those are precisely the sets a search will hand over.
 
 use super::{TEMPLATES, render_code_nothing_shown, render_system};
 use crate::sandbox::{ProgramLanguage, all_languages, catalogue_functions};
@@ -271,22 +276,23 @@ fn no_code_reachable_template_names_a_bare_gg_tool() {
 /// **Every name a rendered prompt writes under one of gg's modules is one that module publishes.**
 ///
 /// The rendered half, and the one that covers what the source rule cannot: a name that arrived
-/// through the *context* rather than through the template. Two of those are live — the
-/// [ending](super::EndingView) calls and the hand-typed type names that teach a language's own
-/// qualification convention — and the module doc above says why each is allowed to exist at all.
-/// What they are not allowed to be is *wrong*.
+/// through the *context* rather than through the template. One of those is live — the
+/// [ending](super::EndingView) calls — and the module doc above says why it is allowed to exist at
+/// all. What it is not allowed to be is *wrong*.
 ///
 /// Only spans whose head is one of the [groupings](groupings_of) the language publishes are judged.
 /// That is deliberate: an example legitimately writes `source.replace(...)`, `console.log()` and
 /// `JSON.stringify(...)`, and none of those is gg's surface. A span that *does* begin with one of
 /// gg's groupings is a claim about that grouping, and the claim has to be true.
 ///
-/// A **type** the grouping declares satisfies it, because on every arm a module's own types are
-/// qualified by the same path its functions are — `gg.files.FileRead` beside `gg.files.readFile` —
-/// and a template naming one is quoting a real name rather than inventing a call. So is a **union
-/// arm** on a language that qualifies those by the module rather than by the type:
-/// `Gg.Delegation.Prompt` is a real, correct, reflected name in PureScript's prompt and is neither a
-/// function nor a type. What is refused either way is a name the arm does not carry at all.
+/// A **type** the grouping declares satisfies it, and a **union arm** on a language that qualifies
+/// those by the module rather than by the type does too, because on every arm a module's own types
+/// are qualified by the same path its functions are — `gg.files.FileRead` beside `gg.files.readFile`.
+/// Neither is written by any prompt today, and that is a stronger rule
+/// ([`prompts::tests::a_rendered_prompt_names_no_type_the_documentation_would_open`](super::tests))
+/// rather than this one's business: what is asked here is whether a name written under a module is
+/// one that module carries, and a name the arm does not carry at all is refused whatever it claims
+/// to be.
 ///
 /// The **registered** arms, and not the seam's fixture: a document is rendered for the language its
 /// context names, a language segment is gated on a wire id, and the fixture deliberately has none.

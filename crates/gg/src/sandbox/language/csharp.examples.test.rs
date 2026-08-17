@@ -55,7 +55,7 @@ use test_cabinet_core::gg::GgProgramLanguage;
 use super::compile::compile_program;
 use crate::prompts::{
     AssignedIssueView, AutoloadView, BoardView, CodeHeadingView, EndingView, MemoriesView,
-    ModuleView, ReadFileView, ShellView, SkillView, SpawnableAgentView, SystemContext, TasksView,
+    ModuleView, ReadFileView, SkillView, SpawnableAgentView, SystemContext, TasksView,
     render_code_nothing_shown_for, render_system,
 };
 use crate::sandbox::{
@@ -98,12 +98,6 @@ fn everything_on() -> SystemContext {
             capped: true,
             line_cap: 250,
             images: true,
-        },
-        shell: ShellView {
-            offered: true,
-            offloaded: true,
-            tail: "last 200 lines".to_string(),
-            directory: "/tmp/gg-shell".to_string(),
         },
         skills: vec![SkillView {
             name: "physics".to_string(),
@@ -193,17 +187,21 @@ fn every_csharp_example_a_model_is_shown_compiles() {
 
     // The gate must not be able to go quiet. A floor, not a count: an example added is welcome, an
     // example that stopped being recognised as one is the failure this catches.
+    //
     // The floor came DOWN from twelve when the prompt stopped naming functions: the template's two
-    // worked programs were exactly what that rewrite removed, and what is counted here is now
-    // essentially the **catalogue**, whose fences come from the SDK's own `<code>` elements and are
-    // the code a model is shown when it opens a documentation view. That half is untouched. Lowering
-    // a floor is the right move only when the examples were deliberately deleted in the same change,
-    // as they were here; read the templates before touching this number again.
+    // worked programs were exactly what that rewrite removed. The prompt now writes no ```csharp
+    // fence at all, so every example counted here comes from the **catalogue**, whose fences are the
+    // `<code>` elements on the SDK and are the code a model is shown when it opens a documentation
+    // view. That half is untouched by the rewrite, and it is what this number is a floor on: ten is
+    // exactly what the catalogue carries today, so deleting the last one fails the gate.
+    //
+    // Lowering a floor is the right move only when the examples were deliberately deleted in the
+    // same change, as they were here; read the templates before touching this number again.
     assert!(
-        snippets.len() >= 9,
+        snippets.len() >= 10,
         "only {} fenced C# examples were found across the prompt, the notice and the catalogue. A \
-         ```csharp fence lost its tag, or a template stopped rendering a section — either way this \
-         gate is no longer reading what a model is shown.",
+         ```csharp fence lost its tag, or an SDK `<code>` element lost its example — either way \
+         this gate is no longer reading what a model is shown.",
         snippets.len()
     );
 

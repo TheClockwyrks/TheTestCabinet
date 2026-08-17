@@ -189,8 +189,7 @@ use crate::persistence::{self, AgentPersistence, PersistenceSetup};
 use crate::prompts::{
     self, AssignedIssueView, AutoloadView, BoardView, CodeHeadingView, EndingView, FixBriefContext,
     MemoriesView, MergeBriefContext, ModuleView, NumberedItem, ReadFileView, ReviewBriefContext,
-    ReviewChangesView, ReviewRecordView, ShellView, SkillView, SpawnableAgentView, SystemContext,
-    TasksView,
+    ReviewChangesView, ReviewRecordView, SkillView, SpawnableAgentView, SystemContext, TasksView,
 };
 use crate::sandbox::{
     self, OperationId, PROGRAM_CALL_ID_PREFIX, ProgramResult, SandboxError, SandboxLimits,
@@ -6337,7 +6336,6 @@ impl Agent {
             tasks: caps.tasks(),
             board: caps.board(),
             read_policy,
-            shell_offload: &shell_offload,
             vision: &tool_ctx.vision,
             program_language: code.enabled.then_some(code.language),
             granted_capabilities: &granted_capabilities,
@@ -10170,10 +10168,11 @@ struct PromptInputs<'a> {
     /// The epic/issue board capability, for its ceilings.
     board: &'a BoardRuntime,
     /// How much of a file one `read_file` call returns, so a capped run says so up front.
+    ///
+    /// There is no `shell` counterpart: the [output policy](OffloadPolicy) states its own tail on
+    /// the output it truncates, and that a program may run a command at all is what `shell`'s brief
+    /// says on the opening turn.
     read_policy: ReadPolicy,
-    /// How much of a command's output one `shell` call returns, and where the rest of it is kept, so
-    /// an offloading run tells the model where to grep before it needs to.
-    shell_offload: &'a OffloadPolicy,
     /// This agent's model and the run's vision registry, so the prompt can state whether a
     /// reference image can actually be shown to it.
     vision: &'a VisionContext,
@@ -10667,7 +10666,6 @@ fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
         tasks,
         board,
         read_policy,
-        shell_offload,
         vision,
         program_language,
         granted_capabilities,
@@ -10707,29 +10705,11 @@ fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
         images: offers_read && !vision.declared_text_only(),
     };
 
-    // Two independent facts about `shell`, and they gate different prose.
-    //
-    // Whether the tool is offered at all is what the code prompt's one-line `system.shell` teaching
-    // hangs on: naming a call a run does not bind hands that run a `ReferenceError` on its first
-    // turn, which is the same rule the `view.openFile` line follows.
-    //
-    // Whether its output is *offloaded* is stated only when it is, and only when the tool is
-    // offered: under the default policy there is nothing to say that the tool's own description
-    // does not already say. Under offloading there is — the model has to know that what it is
-    // reading is a tail, and that the rest of it is a `grep` away rather than gone.
-    let offers_shell = registry.offers(SHELL_TOOL);
-    let shell = match shell_offload.limits().filter(|_| offers_shell) {
-        Some(limits) => ShellView {
-            offered: true,
-            offloaded: true,
-            tail: limits.describe(),
-            directory: limits.dir.display().to_string(),
-        },
-        None => ShellView {
-            offered: offers_shell,
-            ..ShellView::default()
-        },
-    };
+    // Nothing about `shell` is built here any more, and neither half of what used to be is missed.
+    // That its output may be a tail travels with the truncated output itself; that a program may run
+    // a command at all is the first line of `shell`'s own brief, which the opening turn puts in the
+    // window before the model's first real turn. A prompt describes no capability its functions'
+    // briefs describe, so there is no shell view on the rendering context to fill.
 
     // The message headings this run can put in front of a synthesized `user` message — only under
     // responses-as-code, where the transcript is plain text and the model needs the vocabulary named
@@ -10800,7 +10780,6 @@ fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
             spawnable_agents,
             fences_are_stripped,
             read_file,
-            shell,
             skills: skill_views(skills, program_language),
             // The strategy decides what the section says: what memory *is* on this run differs
             // enough between the three (all of it in the window, an index over it, or nothing

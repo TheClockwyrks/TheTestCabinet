@@ -167,7 +167,14 @@ A segment states the shape of a whole reply in that language: what the compiler
 or the runtime requires of a whole program, the import lines a program writes
 for itself, and where the model's work goes. The language itself defines how a
 failure is reported and how a call's arguments are passed, and a documentation
-view renders the whole signature, so a segment names no type.
+view renders the whole signature, so a segment names no catalogued type.
+
+Where a whole program's own shape is written in terms a catalogue does not carry,
+the segment names those terms, on the same rule that lets it name a
+language-level helper: a search cannot find them. Rust's entry point returns
+`Result<(), gg::Failure>`, which is what makes `?` compose against a call, and
+both that type and the constructor a program builds a failure of its own with
+live in the SDK's prelude rather than in a published module.
 
 A gate holds every arm's segment to two paragraphs and to a character bound.
 

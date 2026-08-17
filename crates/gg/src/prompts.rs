@@ -34,9 +34,10 @@
 //! drifted. Nine of them grew a library manifest, one claimed a compile step its arm does not have,
 //! and the two arms a study exists to compare differed in sentences nobody chose.
 //!
-//! What is genuinely a language's own is small, and it is bounded: how a reply is shaped, what a
-//! failed call does, and how a call's optional arguments are written. That is **one gated segment
-//! of at most three paragraphs**, and `prompts.test.rs` holds every arm to it.
+//! What is genuinely a language's own is smaller than that, and it is bounded: **the shape of a
+//! whole reply**, and nothing else. How a failure is reported and how a call's arguments are passed
+//! are the language's own semantics, which a model reading that language already holds. That is
+//! **one gated segment of at most two paragraphs**, and `prompts.test.rs` holds every arm to it.
 //!
 //! A language reaches the template through the [context](SystemContext::language) — `language.id`,
 //! `language.displayName` and `language.checker` — and a segment is written as
@@ -542,11 +543,15 @@ pub struct SystemContext {
     /// which contaminates the instruction-following signal this capability exists to measure. So the
     /// armed arm states the repair honestly and calls it a repair rather than the contract.
     pub fences_are_stripped: bool,
-    /// How much of a file one `read_file` call returns, so a capped run says so up front.
+    /// How much of a file one `read_file` call returns, so a capped run says so up front — and, in
+    /// either mode, whether this run's model can be shown an image.
+    ///
+    /// There is deliberately no counterpart for `shell`. A shell view carried the tail an offloading
+    /// run truncates to and the directory the whole output is kept in, and both of those travel with
+    /// the truncated output itself; when the code prompt stopped stating a call's contract at all,
+    /// the last reader of the field went with it, and a rendering context is exactly the list of what
+    /// a template may reference.
     pub read_file: ReadFileView,
-    /// How much of a command's output one `shell` call returns, so an offloading run says up front
-    /// that what comes back is a tail and where the rest of it lives.
-    pub shell: ShellView,
     /// The available [skills](crate::skills), each with its one-line description. Empty when the
     /// capability is off or the library holds none.
     pub skills: Vec<SkillView>,
@@ -642,34 +647,15 @@ pub struct ReadFileView {
     pub images: bool,
 }
 
-/// How much of a command's output one `shell` call returns — the
-/// [output policy](crate::tools::OffloadPolicy) as the prompt describes it.
-///
-/// The [inline](crate::tools::OffloadPolicy::Inline) policy renders **nothing**: an agent whose
-/// commands come back whole has no rule to learn. A truncating policy has something to say, and it
-/// has to be said up front — a model that discovers the ceiling from a truncated build log will
-/// assume the missing output is gone, and re-run the command with a narrower filter instead of
-/// grepping the file it was handed.
-#[derive(Debug, Default, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ShellView {
-    /// Whether `shell` is offered at all this run.
-    ///
-    /// Separate from [`offloaded`](Self::offloaded), which describes how much of a command's output
-    /// comes back: this one gates whether the prompt says a program can run commands *at all*. It is
-    /// worth its own line under responses-as-code for the reason `view.openFile` is: running a build
-    /// or a test is the most common thing a program does, and a model that has to search the call
-    /// out spends a turn on it.
-    pub offered: bool,
-    /// Whether `shell` output is offloaded this run. False when the tool is not offered, or when its
-    /// output comes back inline — in which case nothing else here is referenced by the template.
-    pub offloaded: bool,
-    /// How much of the output does come back, in the words the truncation note uses: "last 200
-    /// lines", "last 4000 characters", or both.
-    pub tail: String,
-    /// The directory the full stdout/stderr pair of every command is written to.
-    pub directory: String,
-}
+// The **shell view** is gone, and its absence is the design rather than an oversight. It carried
+// two things: that a program may run a command at all, and — under an offloading policy — the tail
+// one call returns and the directory the whole output is kept in. The second half was trimmed from
+// both templates first, because every one of those facts travels with the truncated output itself.
+// The first half went with the ruling that a prompt describes no capability whose functions' own
+// briefs describe it: the opening turn puts `shell`'s brief in the window before the model's first
+// real turn, so a sentence here was a second copy of it. No template in `crates/gg/templates/`
+// reads a `shell` variable, and a rendering context is exactly the list of what a template may
+// reference, so the struct is not kept against the day one might.
 
 /// One message [heading](crate::context::code_heading) the prompt documents: the exact word that
 /// precedes a synthesized `user` message (before its `\n----\n` rule) and a one-line description of

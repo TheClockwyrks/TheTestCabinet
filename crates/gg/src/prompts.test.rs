@@ -94,12 +94,6 @@ fn full_system() -> SystemContext {
             line_cap: 250,
             images: true,
         },
-        shell: ShellView {
-            offered: true,
-            offloaded: true,
-            tail: "last 200 lines".to_string(),
-            directory: "/tmp/gg-shell".to_string(),
-        },
         skills: vec![skill("physics", "How to tune the simulation.")],
         memories: Some(MemoriesView {
             scratchpad: true,
@@ -195,11 +189,19 @@ fn tidy_collapses_blank_runs() {
 /// inside the `readFile.offered` guard rather than above it, so a run that withholds `read_file`
 /// does not end on a section title with nothing underneath it — which is what a model reads as
 /// *there was supposed to be something here*.
+///
+/// The bare context is a **tool-calling** one, so the three headings the code arm owns outright —
+/// `## Responses as Code`, `## Views` and `## Language Rules` — are absent for a second reason: no
+/// tool-calling reader is told what a program is, how its data comes back, or how a reply of one is
+/// shaped. `## Tasks` is the one heading here that lives in the tool-calling template at all; the
+/// code arm lost its Tasks section entirely, since every sentence in it named a call.
 #[test]
 fn a_bare_run_renders_almost_nothing() {
     let prompt = render_system(&bare_system(), None);
     for absent in [
         "## Responses as Code",
+        "## Views",
+        "## Language Rules",
         "## Tasks",
         "## Subagents",
         "## Reading Files",
@@ -226,6 +228,11 @@ fn a_bare_run_renders_almost_nothing() {
 /// the prompt must contain — each module's path and a distinctive phrase from its brief, and the
 /// words the mechanism is described in — not the punctuation that separates them, so the prompt's
 /// wording can be revised without breaking a test that was only ever about its content.
+///
+/// The two words the mechanism is read for are the **documentation** it is searched and the **two
+/// keys** a search is made on: a keyword, or a module path off the list above. That second half is
+/// what makes the module list load-bearing rather than decorative, and a prompt that listed the
+/// modules and never said they were a lookup key would have listed them for nothing.
 #[test]
 fn code_mode_names_objects_and_teaches_discovery() {
     let context = SystemContext {
@@ -263,20 +270,22 @@ fn code_mode_names_objects_and_teaches_discovery() {
         "`harness`",
         // Discovery is taught as a mechanism rather than as two calls: the prompt names neither
         // the search nor the documentation view, because naming either would be naming a function.
-        "searching",
-        "documentation view",
+        "Search the documentation",
+        "by keyword",
+        "naming one of the modules",
     ] {
         assert!(flat.contains(keyword), "missing `{keyword}`:\n{prompt}");
     }
     // The signature dump is gone: no return types and no type declarations of any kind. A type's
-    // *name* is allowed — the type-check section names `ApiError`, because narrowing a caught error
-    // is the one thing a model has to spell to read a failure at all, and a prompt that withheld it
-    // would buy a strict-mode diagnostic every time a program caught something. What is banned is
-    // a block of declarations in the prompt, which the on-demand documentation lookup replaces.
+    // *name* is no longer allowed either — opening a function's documentation now opens the error
+    // types it declares beside it, so a name written here is a second copy of something the model
+    // reads where it is declared. That half is asserted, against the catalogue rather than against
+    // a list of spellings, by
+    // [`a_rendered_prompt_names_no_type_the_documentation_would_open`].
     //
-    // So the ban is on the declaration *shape* rather than on a list of spellings: any line that
-    // opens a declaration fails, whatever it goes on to declare. Naming three types would leave a
-    // reintroduced `interface ApiError { … }` — or a fourth type nobody thought of — passing.
+    // What is left to this test is the declaration *shape*: any line that opens a declaration
+    // fails, whatever it goes on to declare, which catches a block of declarations reintroduced
+    // under a name no catalogue carries and which the name scan would therefore never see.
     assert!(!prompt.contains("): FileRead"), "{prompt}");
     for line in prompt.lines() {
         let opener = line.trim_start();
@@ -292,33 +301,38 @@ fn code_mode_names_objects_and_teaches_discovery() {
 /// **The code prompt teaches views, not printing.**
 ///
 /// This is the one section of the system prompt the whole context-view feature rests on. A model
-/// that is still told to print values will print them, and its output will vanish into the
-/// operator's stream — so the prompt has to name the channel that carries and say plainly that
-/// printing is not one.
+/// that is still told to print values will print them, and its output will vanish — so the prompt
+/// has to name the channel that carries, say when what it carries arrives, and say plainly that
+/// printing is not a channel at all.
 ///
-/// The teaching is drawn from what the run actually binds: showing yourself a value you computed is
-/// ungated (a run with no tools at all must still be able to show its model something), while the
-/// sentence about reading a file appears only when this run offers `read_file`.
+/// The three halves are what the ruling holds every arm to under `## Views`, and they are asserted
+/// as three because a template can lose any one of them and still read as a complete section:
 ///
-/// **Neither is named as a call**, and that is the change this test now guards from the other side:
-/// what a model can *do* is stated, and which function does it is left to a search. So the gating
-/// is asserted over the sentence rather than over a spelling.
+/// 1. a view is the **only** way data comes out of a program;
+/// 2. what a view holds arrives on the **turn after** it was opened, so a program cannot read one
+///    it opened in the same turn, however it is written;
+/// 3. printing is **not shown**.
 ///
-/// It is taught in the opening paragraphs rather than under a section of its own — the rewrite in
-/// `b60d2798` folded the old *Showing yourself things* section into the intro, on the reasoning
-/// that the one fact a code-mode model has to hold from its first turn should not be four screens
-/// down. So these assertions pin the *content* — the channel, the gating, that printing is unread —
-/// and not the heading it happens to sit under.
+/// **No call is named**, which is why every assertion is over a sentence rather than a spelling:
+/// what a model can do is stated, and which function does it is left to a search.
 ///
-/// The **printing call itself** is no longer read here. One template serves eleven arms, so the word
-/// for a dead output channel (`println!`, `puts`, `Console.WriteLine`) is either one arm's segment
-/// or nothing at all; what every arm's model must be told is that whatever it printed did not reach
-/// it, which is the sentence asserted. The notice a program that showed itself nothing earns does
-/// name the arm's own call, and [`the_nothing_shown_notice_says_a_view_is_the_only_channel_back`]
-/// is where that is read.
+/// What this no longer reads is the **gating**. The section used to grow a sentence when the run
+/// offered `read_file` and another when it offered `shell`, and both are gone by the ruling that a
+/// prompt describes no capability whose functions' own briefs describe it — the opening turn puts
+/// those briefs in the window before the model's first real turn. The one fact under this heading
+/// that is still gated on `read_file` is whether the model can be shown an image, which no brief can
+/// answer, and [`code_mode_states_image_support_and_neither_capability_contract`] is where that is
+/// read.
+///
+/// The **printing call itself** is not read here. One template serves eleven arms, so the word for a
+/// dead output channel (`println!`, `puts`, `Console.WriteLine`) is either one arm's segment or
+/// nothing at all; what every arm's model must be told is that whatever it printed did not reach it,
+/// which is the sentence asserted. The notice a program that showed itself nothing earns does name
+/// the arm's own call, and [`the_nothing_shown_notice_says_a_view_is_the_only_channel_back`] is
+/// where that is read.
 #[test]
 fn code_mode_teaches_views_rather_than_logging() {
-    let with_reads = render_system(
+    let prompt = render_system(
         &SystemContext {
             responses_as_code: true,
             language: code_language(),
@@ -329,71 +343,51 @@ fn code_mode_teaches_views_rather_than_logging() {
                     .to_string(),
                 import: None,
             }],
-            read_file: ReadFileView {
-                offered: true,
-                ..ReadFileView::default()
-            },
             ..SystemContext::default()
         },
         None,
     );
-    let flat_reads = flat(&with_reads);
-    // The channel that carries: views are what the next turn is built from, and both things a view
-    // is opened *of* are stated where the model first meets them — the value it computed, and the
-    // file it reads. Neither is named as a call; the sentence is what is asserted.
-    assert!(flat_reads.contains("next turn"), "{with_reads}");
-    assert!(
-        flat_reads.contains("discarded unless you open a view of it"),
-        "{with_reads}"
-    );
-    assert!(
-        flat_reads.contains("You can read a workspace file"),
-        "{with_reads}"
-    );
-    // Printing is named, as the thing that does NOT reach the model — never as an instruction, and
-    // never with the channel it *does* reach named either. A prompt that says where the output goes
-    // gives a model a reason to aim at it, and most runs have only their result and metrics read.
-    assert!(flat_reads.contains("the only way"), "{with_reads}");
-    assert!(
-        flat_reads.contains("nothing your program prints is readable by you"),
-        "{with_reads}"
-    );
-    for aimed in ["the run's operator", "goes to the run"] {
+    let flat = flat(&prompt);
+    for (what, phrase) in [
+        (
+            "that a view is the only way data leaves a program",
+            "the only way to read data out of your code",
+        ),
+        (
+            "that what a view holds arrives on the turn after it was opened",
+            "the turn after",
+        ),
+        // Printing is named, as the thing that does NOT reach the model — never as an instruction,
+        // and never with the channel it *does* reach named either.
+        (
+            "that printing is not shown",
+            "Print statements are not shown",
+        ),
+    ] {
         assert!(
-            !flat_reads.contains(aimed),
-            "the prompt names a destination for output the model cannot read (`{aimed}`), which \
-             is a channel it will start writing to:\n{with_reads}"
+            flat.contains(phrase),
+            "the Views section no longer states {what} (`{phrase}`):\n{prompt}"
         );
     }
-    assert!(
-        !with_reads.contains("\n\n\n"),
-        "blank-line run:\n{with_reads}"
-    );
-
-    // A run that withholds `read_file` is not taught the file view — the same discipline
-    // every other section follows — but keeps the text view, which nothing gates.
-    let no_reads = render_system(
-        &SystemContext {
-            responses_as_code: true,
-            language: code_language(),
-            modules: vec![ModuleView {
-                path: "view".to_string(),
-                brief: "show yourself a file or a value".to_string(),
-                import: None,
-            }],
-            ..SystemContext::default()
-        },
-        None,
-    );
-    assert!(
-        no_reads.contains("discarded unless you open a view of it"),
-        "{no_reads}"
-    );
-    assert!(
-        !no_reads.contains("You can read a workspace file"),
-        "{no_reads}"
-    );
-    assert!(!no_reads.contains("\n\n\n"), "blank-line run:\n{no_reads}");
+    // A prompt that says where the unread output goes gives a model a reason to aim at it, and most
+    // runs have only their result and metrics read.
+    for aimed in ["the run's operator", "goes to the run"] {
+        assert!(
+            !flat.contains(aimed),
+            "the prompt names a destination for output the model cannot read (`{aimed}`), which \
+             is a channel it will start writing to:\n{prompt}"
+        );
+    }
+    // The two sentences the ruling removed from this section, pinned absent so that re-adding
+    // either is a deliberate edit: both describe a capability whose own brief describes it.
+    for brief_is_the_authority in ["You can read a workspace file", "shell command"] {
+        assert!(
+            !flat.contains(brief_is_the_authority),
+            "the Views section describes a capability its functions' briefs already describe \
+             (`{brief_is_the_authority}`):\n{prompt}"
+        );
+    }
+    assert!(!prompt.contains("\n\n\n"), "blank-line run:\n{prompt}");
 }
 
 // The four helpers that resolved one function's name, qualified name and signature out of a
@@ -403,24 +397,28 @@ fn code_mode_teaches_views_rather_than_logging() {
 // that will be used to write the rule back. What resolves per language here now is the ending call
 // and nothing else, and `crate::sandbox::spell` is the one call that does it.
 
-/// **The code prompt says a program can read a file and run a command — and states nothing else
-/// about either.**
+/// **The code prompt states whether an image can be shown, and neither capability's contract.**
 ///
-/// Two capabilities are named where the others are described, and they earn it for the same reason:
-/// reading a file and running a build are what a program is usually *for*, and an agent that does not
-/// know it may do them at all does not go looking. What it may *not* do is describe them, and this
-/// pins both halves of that.
+/// This used to be the gate that the prompt *named* two capabilities where it described the others —
+/// that a program may read a workspace file, and that it may run a command — on the argument that
+/// reading a file and running a build are what a program is usually for. Both sentences are gone,
+/// and the ruling that removed them is the one this now proves the other side of: the opening turn
+/// runs a search that puts every function the agent may call, one brief each, into the window, so a
+/// prompt that described either capability was writing a second copy of a brief the model already
+/// holds — with nothing keeping the copies equal.
 ///
-/// The **read cap** is the case worth writing down. The prompt used to state the line cap, that a
-/// window could be named to move it, and that a larger `limit` was honored — three sentences every
-/// agent paid for, in front of an error that states all three at the moment a read is actually
-/// windowed. That is the just-in-time rule's own worked example, so the cap is asserted **absent**
-/// here rather than left untested: re-adding it must be a deliberate edit.
+/// What survives is the one fact under the same heading that **no brief can answer**, because it is
+/// a fact about this run's model rather than about a function: whether reading an image shows the
+/// model a picture or only describes one. It is gated on `read_file` being offered at all, since a
+/// run with no read has nothing that could show or describe one.
 ///
-/// The gating is unchanged: a run that withholds the capability says nothing about it at all.
+/// So the three things asserted are: the image line is there and says which way this run falls; the
+/// **read window** is not (the cap, an offset, a limit — every one of them stated by the read that
+/// is actually windowed, at the moment it matters); and the **shell contract** is not (what a
+/// command hands back, which is the first line of that function's own documentation).
 #[test]
-fn code_mode_names_the_two_capabilities_a_program_starts_from() {
-    let code = |read_file: ReadFileView, shell: ShellView| {
+fn code_mode_states_image_support_and_neither_capability_contract() {
+    let code = |read_file: ReadFileView| {
         render_system(
             &SystemContext {
                 responses_as_code: true,
@@ -431,7 +429,6 @@ fn code_mode_names_the_two_capabilities_a_program_starts_from() {
                     import: None,
                 }],
                 read_file,
-                shell,
                 ..SystemContext::default()
             },
             None,
@@ -440,20 +437,13 @@ fn code_mode_names_the_two_capabilities_a_program_starts_from() {
 
     // A capped run and an uncapped one are told the same thing, which is the point: the cap is a
     // number the read's own result carries when it matters.
-    let capped = code(
-        ReadFileView {
-            offered: true,
-            capped: true,
-            line_cap: 250,
-            images: true,
-        },
-        ShellView::default(),
-    );
+    let capped = code(ReadFileView {
+        offered: true,
+        capped: true,
+        line_cap: 250,
+        images: true,
+    });
     let flat_capped = flat(&capped);
-    assert!(
-        flat_capped.contains("You can read a workspace file"),
-        "{capped}"
-    );
     assert!(
         flat_capped.contains("Reading images is supported"),
         "{capped}"
@@ -466,49 +456,36 @@ fn code_mode_names_the_two_capabilities_a_program_starts_from() {
         );
     }
 
-    let uncapped = code(
-        ReadFileView {
-            offered: true,
-            images: true,
-            ..ReadFileView::default()
-        },
-        ShellView::default(),
-    );
-    assert!(
-        uncapped.contains("You can read a workspace file"),
-        "{uncapped}"
-    );
+    // A text-only model is told so, in the same place and just as plainly: the alternative is a run
+    // that spends turns re-reading a mockup it will never see.
+    let blind = code(ReadFileView {
+        offered: true,
+        images: false,
+        ..ReadFileView::default()
+    });
+    assert!(blind.contains("Reading images is not supported"), "{blind}");
 
-    // Running a command is the most common thing a program does, and it is named exactly when the
-    // run offers it — independently of whether that run offloads the output.
-    let with_shell = code(
-        ReadFileView::default(),
-        ShellView {
-            offered: true,
-            ..ShellView::default()
-        },
-    );
-    // What the call hands back rather than what it is called: a model that does not know a command
-    // returns its output to the program will open a view it did not need, or go looking for a log.
-    assert!(
-        with_shell.contains("You can run a shell command in the workspace"),
-        "{with_shell}"
-    );
-    assert!(
-        flat(&with_shell).contains("exit code and its merged output"),
-        "{with_shell}"
-    );
-    assert!(
-        !with_shell.contains("\n\n\n"),
-        "blank-line run:\n{with_shell}"
-    );
+    // A run that withholds the read says nothing about images at all — there is no call left that
+    // could show or describe one.
+    let withheld = code(ReadFileView::default());
+    assert!(!withheld.contains("Reading images"), "{withheld}");
 
-    let without_shell = code(ReadFileView::default(), ShellView::default());
-    assert!(!without_shell.contains("shell command"), "{without_shell}");
-    assert!(
-        !without_shell.contains("\n\n\n"),
-        "blank-line run:\n{without_shell}"
-    );
+    // Neither capability's contract is stated, under any of the three configurations: what a read
+    // hands back and what a command hands back are what their own documentation is for.
+    for prompt in [&capped, &blind, &withheld] {
+        for brief_is_the_authority in [
+            "You can read a workspace file",
+            "You can run a shell command",
+            "exit code and its merged output",
+        ] {
+            assert!(
+                !flat(prompt).contains(brief_is_the_authority),
+                "the prompt describes a capability its functions' briefs already describe \
+                 (`{brief_is_the_authority}`):\n{prompt}"
+            );
+        }
+        assert!(!prompt.contains("\n\n\n"), "blank-line run:\n{prompt}");
+    }
 }
 
 /// A tool-calling run's non-code sections still render: the read-cap and image facts (when
@@ -527,26 +504,34 @@ fn a_full_run_renders_the_read_facts_and_tasks() {
     assert!(!prompt.contains("\n\n\n"), "prompt has a blank-line run");
 }
 
-/// No run describes shell offloading, whether it is in force or not.
+/// No run describes shell offloading, and **no run can**: there is no shell view on the rendering
+/// context to describe one from.
 ///
 /// The section that stated the tail, the directory the full output is kept in, and that the
-/// remainder is grep-able was trimmed from both templates (commit `97a7435c`): when offloading
-/// actually kicks in, every one of those facts travels with the truncated output itself, so
-/// stating them up front only spends window on a rule the model is told again at the moment it
-/// applies. This pins the absence in both execution modes and under both shell views.
+/// remainder is grep-able was trimmed from both templates first (commit `97a7435c`): when offloading
+/// actually kicks in, every one of those facts travels with the truncated output itself, so stating
+/// them up front only spends window on a rule the model is told again at the moment it applies. The
+/// `ShellView` the trimmed sections read then had one reader left — a one-line "you can run a
+/// command" teaching in the code arm — and the ruling that a prompt describes no capability whose
+/// functions' own briefs describe it took that too, so the struct and the `SystemContext` field went
+/// with it.
+///
+/// This is therefore a **weaker gate than it was**, and deliberately kept rather than deleted: a
+/// context field is a thing a future template could be written against, and re-adding one to say
+/// any of this again must be a decision rather than a fill-in-the-blank. What it still reads is the
+/// prose, in both execution modes, since a template could write the tail and the directory as
+/// literals without a variable to interpolate.
 #[test]
 fn no_run_describes_shell_offloading() {
     for responses_as_code in [false, true] {
-        for shell in [full_system().shell, ShellView::default()] {
-            let context = SystemContext {
-                responses_as_code,
-                language: code_language().filter(|_| responses_as_code),
-                shell,
-                ..full_system()
-            };
-            let prompt = render_system(&context, None);
-            assert!(!prompt.contains("## Shell output"), "{prompt}");
-            assert!(!prompt.contains("/tmp/gg-shell"), "{prompt}");
+        let context = SystemContext {
+            responses_as_code,
+            language: code_language().filter(|_| responses_as_code),
+            ..full_system()
+        };
+        let prompt = render_system(&context, None);
+        for absent in ["## Shell output", "last 200 lines", "/tmp/gg-shell"] {
+            assert!(!prompt.contains(absent), "leaked `{absent}`:\n{prompt}");
         }
     }
 }
@@ -826,18 +811,35 @@ fn the_two_modes_name_calls_in_their_own_form() {
             "code mode leaked free-standing tool `{tool}`:\n{code}"
         );
     }
-    // And what it says instead: each capability described, so a section that lost its calls did not
-    // lose its subject with them.
+    // And what it says instead. Two of the three sentences this used to read are gone with the
+    // ruling that the prompt describes no capability whose functions' own briefs describe it: the
+    // Tasks section said nothing a brief does not and went entirely, and the Subagents and
+    // project-management sections kept only their **rosters** and the behaviour no brief states.
+    // So the presence half is re-anchored on exactly that residue — the sentence that survives
+    // because nothing else says it, and the roster the run configured.
     for stated in [
-        "You have access to a task list",
-        "delegate work to another agent",
-        "access to a project board",
+        // Subagents: the roster line, which introduces names that exist only in this run's config.
+        "You may delegate work to any of the following agents",
+        "`helper`",
+        // Project management: what happens to an issue's work, which is gg's own process rather
+        // than any function's contract, so no brief carries it.
+        "Each issue is worked in its own isolated copy of the workspace",
+        "`builder`",
     ] {
         assert!(
             code.contains(stated),
-            "code mode no longer describes a capability it granted (`{stated}`):\n{code}"
+            "code mode no longer states what only the run's own configuration or gg's own process \
+             can say (`{stated}`):\n{code}"
         );
     }
+    // The tasks capability is granted in this context and contributes **nothing** to a code prompt,
+    // which is the ruling rather than an omission: every sentence the old section held named a call
+    // or restated one's brief.
+    assert!(
+        !code.contains("## Tasks"),
+        "code mode grew a Tasks section back; a task list is reached through functions whose own \
+         briefs describe it:\n{code}"
+    );
 }
 
 /// **A skill is described by what reading it will actually do, not by what reading *a* skill might
@@ -1772,16 +1774,25 @@ fn the_context_usage_signal_renders() {
 /// section swallowed by a `{{#if}}` that should not have been wrapped around it, and it is still
 /// rendered **for every arm**, because a language segment that forgot to close a block would take
 /// the rest of the document with it on that arm alone.
+/// Every heading is an `##`, and there is no longer a `###` anywhere: the document has one level
+/// because its sections are peers, and the two that used to be nested under the opening section
+/// (`### The program you are writing`, which stated the reply contract, and the ending) are read by
+/// a model as subordinate to it when they are not.
+///
+/// **`## Tasks` is absent, and its absence is the ruling.** Every sentence that section held either
+/// named a call or restated the brief of one, so it says nothing the opening turn has not already
+/// put in the window — see [`the_two_modes_name_calls_in_their_own_form`], which pins that a code
+/// prompt does not grow it back while the tool-calling prompt keeps its own.
 const REQUIRED_SECTIONS: &[&str] = &[
     "## Responses as Code",
-    "### The program you are writing",
-    "### Ending your session",
-    "### Your modules",
-    "### Reusing a program you already ran",
-    "### Messages you receive",
+    "## Views",
+    "## Language Rules",
+    "## Ending your session",
+    "## Your modules",
+    "## Reusing a program you already ran",
+    "## Messages you receive",
     "## Skills",
     "## Memory",
-    "## Tasks",
     "## Subagents",
     "## Project management",
     "## Your assigned issue",
@@ -1789,19 +1800,26 @@ const REQUIRED_SECTIONS: &[&str] = &[
 
 /// A context with every section a responses-as-code prompt renders turned on, in `language`.
 ///
-/// That includes the two capabilities that render a line rather than a heading — `read_file` and
-/// `shell` — because a context that left them off would render a prompt with two calls missing from
-/// it and no gate here could tell that apart from a template that dropped them. It also includes
+/// That includes `read_file`, which renders a line rather than a heading — the one fact about this
+/// run no function's brief can answer, whether the model can be shown an image — because a context
+/// that left it off would render a prompt with that line missing and no gate here could tell it
+/// apart from a template that dropped it. It also includes
 /// [`custom_instructions`](SystemContext::custom_instructions), whose text is deliberately inert:
 /// operator prose frames the prompt but must not be able to satisfy an assertion about what gg's
 /// own template says.
+///
+/// The [`tasks`](SystemContext::tasks) ceiling is set and contributes **nothing** to a code prompt.
+/// It is set anyway, and that is deliberate: a maximal context is the one that would expose a Tasks
+/// section written back into the code arm, which is the edit the ruling refuses.
 ///
 /// Three [`SystemContext`] fields are **not** set, and the omission is not an oversight:
 /// `autoload_specs`, `persistence` and `fences_are_stripped` are read by no template in
 /// `crates/gg/templates/` — the prompt rewrites that folded the old sections into the intro left
 /// them behind. Turning them on here would render nothing, so no gate below can cover them; they
 /// are either sections the templates should regain or fields that should go, and that is a decision
-/// rather than a test fix.
+/// rather than a test fix. It is the same decision it was: the rewrite that stripped the code arm
+/// down to what nothing else can say did not settle it either, and did not add a fourth to the list
+/// — the shell view it *did* leave unread was deleted outright.
 ///
 /// The **ending call is spelled the way `language` spells it**, because it is the one call in a code
 /// prompt that reaches the template as data rather than through the catalogue: the loop resolves it
@@ -1824,12 +1842,6 @@ pub(super) fn every_code_section_on(language: GgProgramLanguage) -> SystemContex
             capped: true,
             line_cap: 250,
             images: true,
-        },
-        shell: ShellView {
-            offered: true,
-            offloaded: false,
-            tail: String::new(),
-            directory: String::new(),
         },
         code_headings: vec![CodeHeadingView {
             heading: "Task".to_string(),
@@ -1917,20 +1929,33 @@ const NO_SUCH_LANGUAGE: &str = "no-such-language";
 
 /// The most paragraphs a language's own [segment](language_segment) may render.
 ///
-/// The design's number, and it is a ceiling on **prose a model reads about its own language**, not a
-/// budget to spend. Three is what is left when everything discoverable has been taken out of a
-/// segment: how a reply is shaped, what a failed call does, and how a call's optional arguments are
-/// written. A fourth paragraph is not a formatting choice — it is something the model could have
-/// found by searching, or something the error that reports it should be saying instead.
-const MAX_SEGMENT_PARAGRAPHS: usize = 3;
+/// The documented number, and it is a ceiling on **prose a model reads about its own language**, not
+/// a budget to spend. It was three while a segment also stated what a failed call does and how a
+/// call's optional arguments are written; both of those are the language's **own semantics**, which
+/// a model writing that language already holds and which no prompt improves by restating. What is
+/// left is the shape of a whole reply — what the compiler or the runtime requires of a whole
+/// program, the import lines a program writes for itself, and where the model's work goes — and two
+/// paragraphs is what that takes at its longest.
+///
+/// A third paragraph is not a formatting choice. It is either something the model could have found
+/// by searching, something the error that reports it should be saying instead, or something the
+/// language's own reference already says.
+const MAX_SEGMENT_PARAGRAPHS: usize = 2;
 
 /// The most characters a language's own [segment](language_segment) may render, which is the half of
-/// the ceiling that stops three paragraphs from becoming three pages.
+/// the ceiling that stops two paragraphs from becoming two pages.
 ///
 /// Both halves are needed. A paragraph count alone is satisfied by one enormous paragraph, and a
 /// character bound alone is satisfied by nine short ones — and the eleven templates this replaced
 /// failed in both directions at once, at 289–372 lines each.
-const MAX_SEGMENT_CHARS: usize = 1_400;
+///
+/// **700 rather than the longest segment there is.** A ceiling equal to today's worst case is not a
+/// ceiling, it is a snapshot: the next arm to be reworded fails a test that has nothing to say about
+/// it. The arm that says the most today (PureScript, which has a module header, an import
+/// convention and a `main` signature to state) spends under 400, so this leaves an arm room to grow
+/// the second paragraph the count allows and still refuses the page that count alone would let
+/// through.
+const MAX_SEGMENT_CHARS: usize = 700;
 
 /// Every paragraph of `rendered`, blank-line separated and trimmed.
 ///
@@ -1966,19 +1991,20 @@ fn language_segment(language: GgProgramLanguage) -> Vec<String> {
         .collect()
 }
 
-/// **No language's segment runs longer than three paragraphs.**
+/// **No language's segment runs longer than two paragraphs.**
 ///
 /// The gate the one-template design rests on, and the one that will actually be load-bearing over
 /// time: nothing stops a shared file from growing eleven private appendices except a test that
 /// refuses them. It fails with the offending paragraphs printed, because the fix is never "raise the
 /// ceiling" — it is deciding, for the paragraph that pushed the arm over, whether a model could have
-/// found it by searching or whether the error that reports the thing should be carrying it.
+/// found it by searching, whether the error that reports the thing should be carrying it, or whether
+/// it is a semantic of the language the model is already writing in.
 ///
 /// It also asserts each segment is **non-empty**, which is the failure the ceiling cannot see: a gate
 /// whose id is misspelled (`c#` for `csharp`) renders a document with no segment at all, and every
 /// other assertion in this file would pass over it.
 #[test]
-fn no_language_segment_runs_longer_than_three_paragraphs() {
+fn no_language_segment_runs_longer_than_two_paragraphs() {
     for &language in GgProgramLanguage::ALL {
         let segment = language_segment(language);
         assert!(
@@ -1991,9 +2017,9 @@ fn no_language_segment_runs_longer_than_three_paragraphs() {
         assert!(
             segment.len() <= MAX_SEGMENT_PARAGRAPHS,
             "{language}: the language segment is {} paragraphs, and the ceiling is \
-             {MAX_SEGMENT_PARAGRAPHS}. What a segment may say is how a reply is shaped, what a \
-             failed call does, and how optional arguments are written — everything else a model can \
-             search for, or the error should be saying:\n\n{}",
+             {MAX_SEGMENT_PARAGRAPHS}. What a segment may say is how a whole reply is shaped in \
+             this language — everything else a model can search for, or the error should be saying, \
+             or the language's own semantics already answer:\n\n{}",
             segment.len(),
             segment.join("\n\n")
         );
@@ -2267,35 +2293,55 @@ fn every_language_prompt_states_what_the_run_configured() {
 /// The rules a code turn runs under that a model cannot discover from a signature, each paired with
 /// the one word that carries it.
 ///
-/// These are the statements a program's author has to have read *before* writing the program: a
-/// call blocks rather than returning a promise, a returned value goes nowhere, an ending is taken
-/// back if the program then throws, and anything a view holds is read on the turn after the one that
-/// asked for it. None of them is visible in a catalogue, none of them can be recovered by trying it
-/// once — trying it once is a wasted turn — and a template that lost one would render a prompt that
-/// still looks complete.
+/// These are the statements a program's author has to have read *before* writing the program: that
+/// the reply is a whole program and nothing else, that a call blocks rather than returning a
+/// promise, that a view is the only channel out of one and printing is not, that anything a view
+/// holds is read on the turn after the one that asked for it, and that an ending is taken back if
+/// the program then throws. None of them is visible in a catalogue, none of them can be recovered by
+/// trying it once — trying it once is a wasted turn — and a template that lost one would render a
+/// prompt that still looks complete.
 ///
 /// Unlike [`REQUIRED_PHRASES`], whose every entry is a value the context carried, each phrase here is
 /// a word of the prompt's **own prose**. That is unavoidable — a rule is prose — so the discipline
 /// instead is that the phrase must be the term the rule cannot be stated without. A paragraph may be
 /// rewritten, re-wrapped or re-emphasized around it and still pass.
 ///
-/// All five are in the **shared body**, and that is where they belong: none of them is a fact about a
-/// language. A segment that restated one would be spending an arm's three paragraphs on something
+/// Every one of them is in the **shared body**, and that is where they belong: none is a fact about a
+/// language. A segment that restated one would be spending an arm's two paragraphs on something
 /// every arm is already told.
+///
+/// The word `discarded` is **not** here any more, and its going is the ruling rather than an
+/// editing accident. It carried "a returned value goes nowhere", which is a special case of the
+/// views rule directly above it — if a view is the only way data comes out of a program, then a
+/// returned value going nowhere follows, and a model that has read the first sentence cannot
+/// believe the second is false. Two sentences for one rule is two things to keep in step.
 const REQUIRED_RULES: &[(&str, &str)] = &[
+    // The reply contract. It is first because everything else is a rule about a program, and this
+    // is the sentence that says the reply *is* one: legal code in this run's language, whole, with
+    // no prose wrapped around it.
+    (
+        "that the whole reply is the program and nothing else",
+        "and nothing else",
+    ),
     // Every call blocks. The alternative reading — that a call returns something to be awaited — is
     // the one a model brings with it, and a program written under it does its work in a callback
     // that never runs.
     ("that every call is synchronous", "synchronous"),
-    // A view is the only channel out of a program. Both of the other two things a model would
-    // reach for — printing, and returning — silently do nothing.
-    ("that a view is the only way to read data", "the only way"),
-    ("that a returned value goes nowhere", "discarded"),
-    // A view is read on the next turn. A program that opens one and then tries to use it within the
-    // same turn is a program that cannot work, however it is written.
+    // A view is the only channel out of a program, stated in both directions: what does carry, and
+    // that the thing a model would otherwise reach for does not.
     (
-        "that what a view holds arrives on the next turn",
-        "next turn",
+        "that a view is the only way to read data out of a program",
+        "the only way to read data",
+    ),
+    (
+        "that printing is not shown",
+        "Print statements are not shown",
+    ),
+    // A view is read on the turn after the one that opened it. A program that opens one and then
+    // tries to use it within the same turn is a program that cannot work, however it is written.
+    (
+        "that what a view holds arrives on the turn after it was opened",
+        "the turn after",
     ),
     // An ending is not a checkpoint: a program that ends its session and then throws has not ended
     // it. Without this the model retries the *work*, having been told the run was over.
@@ -2445,6 +2491,96 @@ fn a_rendered_prompt_names_no_function_but_the_one_that_ends_the_session() {
     }
 }
 
+/// **A rendered prompt names no type of gg's surface at all** — and here there is no exception.
+///
+/// The other half of the rule
+/// [the call gate](a_rendered_prompt_names_no_function_but_the_one_that_ends_the_session) states for
+/// functions, and it arrived later because until recently it would have been false. Several arms'
+/// segments named a failure type, because catching one was how that arm's program read a failure and
+/// a model that could not spell the type could not write the `catch`. That stopped being true when a
+/// documentation view of a function began opening the error types its comment declares **beside**
+/// it: the model that looks up the call it is about to make is handed the type in the same view, in
+/// that arm's own spelling, with its members. A type name written into the prompt is now a second
+/// copy of something the model reads where it is declared, with nothing keeping the copies equal —
+/// which is the same argument that retired the call names, and it lands harder here, since a
+/// renamed type breaks a program at compile time on nine of the eleven arms.
+///
+/// What a prompt may still write is unchanged and is stated once in
+/// `prompts.spellings.test.rs`: the module paths, the ending calls, and the language-level helpers
+/// no catalogue carries — Rust's `Failure` and the constructor that builds one live in the SDK's
+/// own prelude rather than in a module the catalogue publishes, so a search cannot find them and
+/// naming them hands the model nothing it could have discovered instead.
+///
+/// # What it reads, and why the spelling is taken from the catalogue twice
+///
+/// Every [type declaration](crate::sandbox::TypeDeclaration) the arm's catalogue carries, in both
+/// forms a document could write one in: the **fully-qualified name** the declaration advertises,
+/// which is what a documentation view of it is opened by, and the type's name qualified by the
+/// **module path** this arm spells its module under, which is what a program writes at a use site.
+/// They are the same string on most arms and are not on all of them, and a gate that read only one
+/// would be blind on exactly the arms whose convention differs from the majority's.
+///
+/// A type's **bare** name is deliberately not read, for the reason
+/// [`prompts::spellings`](super::spellings) does not read bare call names: every arm's surface is
+/// qualified, so a bare `Brief` is not a name a model could copy into a program, while `Task`,
+/// `Notice` and `Summary` are message headings this very prompt is required to carry. Banning them
+/// would refuse the document in order to catch nothing.
+///
+/// It is rendered through the real projections for
+/// [the same reason the call gate is](a_rendered_prompt_names_no_function_but_the_one_that_ends_the_session):
+/// the module lines are the catalogue's own prose, so a type name reaching a model through one would
+/// be invisible to a scan run over the fixture's literals.
+#[test]
+fn a_rendered_prompt_names_no_type_the_documentation_would_open() {
+    let capabilities: Vec<String> = crate::sandbox::gating_capabilities()
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+    let operations = crate::sandbox::capability_operations(capabilities.iter().map(String::as_str));
+
+    for (what, held, granted) in [
+        ("granted", capabilities.as_slice(), operations.as_slice()),
+        ("withheld", &[][..], &[][..]),
+    ] {
+        for &id in GgProgramLanguage::ALL {
+            let language = crate::sandbox::language(id);
+            let name = language.display_name();
+            let mut context = every_code_section_on(id);
+            context.modules = crate::agent::module_views(held, granted, EndingRole::Standard, id);
+            context.code_headings = crate::agent::code_heading_views(true, true, true, true);
+            let rendered = render_system(&context, None);
+
+            let separator = language.member_separator();
+            // The scan's own coverage check, for the reason the call gate has one: an arm whose
+            // catalogue declared no types would read nothing here and pass in silence.
+            assert!(
+                !language.catalogue().types.is_empty(),
+                "{name}: this arm's catalogue declares no types, so this gate reads nothing"
+            );
+            for declaration in &language.catalogue().types {
+                let mut spellings = vec![declaration.fqn.clone()];
+                // The same type under this arm's own module path, which is what a use site writes
+                // and is not always what the catalogue advertises as the fully-qualified name.
+                if let Some(module) =
+                    crate::sandbox::module_of(language.catalogue(), &declaration.module)
+                {
+                    spellings.push(format!("{}{separator}{}", module.path, declaration.name));
+                }
+                spellings.sort();
+                spellings.dedup();
+                for spelling in spellings {
+                    assert!(
+                        !rendered.contains(&spelling),
+                        "{name} ({what}): the prompt names `{spelling}`. A documentation view of \
+                         the function that returns or throws it opens the type beside it, in this \
+                         arm's own spelling — so the prompt names none:\n{rendered}"
+                    );
+                }
+            }
+        }
+    }
+}
+
 /// **A read-only memory holder's section is written for a reader, not a curator.**
 ///
 /// A holder that may write is told to record what matters. A read-only holder is being told about
@@ -2546,8 +2682,11 @@ fn a_capability_the_run_withheld_is_absent_from_its_prompt() {
         crate::sandbox::SKILLS_READ_SKILL,
         crate::sandbox::MEMORIES_READ_MEMORY,
         crate::sandbox::PROGRAMS_RERUN,
-        // The two capabilities that render a line rather than a heading, and so are the two a
-        // heading check could never have covered.
+        // The two capabilities that render no heading of their own at all, and so are the two a
+        // heading check could never cover. Neither renders a line any more either — the prompt
+        // describes no capability whose functions' own briefs describe it — but they stay on this
+        // list, because what it asserts is that no *spelling* of theirs reaches a withheld run, and
+        // that is the claim whether or not a section exists to leak it.
         crate::sandbox::VIEWS_OPEN_FILE,
         crate::sandbox::SHELL_SHELL,
     ];
@@ -2577,7 +2716,20 @@ fn a_capability_the_run_withheld_is_absent_from_its_prompt() {
                 "{name}: the prompt advertises `{spelling}`, which this run withheld:\n{rendered}"
             );
         }
-        for section in ["## Skills", "## Memory", "## Tasks", "## Subagents"] {
+        // Every gated section of the code arm, and `## Tasks` — which is gated in the strongest
+        // possible way, by not existing: a code prompt has no Tasks section under any
+        // configuration, so a run that grew one would be a code arm that had started describing a
+        // capability out of the prompt again.
+        for section in [
+            "## Skills",
+            "## Memory",
+            "## Tasks",
+            "## Subagents",
+            "## Project management",
+            "## Reusing a program you already ran",
+            "## Messages you receive",
+            "## Your assigned issue",
+        ] {
             assert!(
                 !rendered.contains(section),
                 "{name}: the prompt carries `{section}` for a run that has none:\n{rendered}"
