@@ -147,12 +147,6 @@ bytes = { workspace = true }
 # instantiate one at all. gg links the whole surface, ambiently, with one exception the host
 # owns: stdout stays closed, because gg's telemetry stream is this process's stdout.
 wasmtime-wasi = { workspace = true }
-# In-process type-stripping for the sandbox's JavaScript program language
-# (`src/sandbox/language/javascript.prepare.rs`): that arm's guest evaluates a function body,
-# and oxc erases any annotations a reply carried in microseconds without a Node process
-# anywhere near the turn path. It strips types; it
-# does not check them — see the workspace pin for why the minor version is fixed.
-oxc = { workspace = true }
 # BPE tokenizer backing the default context-window token estimator (`src/context.rs`).
 # gg accounts every context contribution per source in estimated tokens; the estimator
 # is a trait so this is swappable, but the default counts with a fixed BPE base as a

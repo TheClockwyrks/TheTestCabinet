@@ -127,7 +127,7 @@ const HEADERS_DIR = path.join(PACKAGE_DIR, "dist", "headers", "gg");
 const LANGUAGES = ["typescript", "javascript"];
 
 /**
- * The line a TypeScript program writes to reach gg's SDK.
+ * The line a program on either ECMAScript arm writes to reach gg's SDK.
  *
  * One line for the whole surface, and the namespace form: it is what makes `gg.files.readFile` — the
  * name every documentation view is filed under and every quoted call is written with — an expression
@@ -812,18 +812,16 @@ async function build(language) {
       path,
       brief: prose.brief,
       detail: prose.detail,
-      // The one line a program writes to reach every module below, on the arm whose guest resolves
-      // modules. It is the NAMESPACE import rather than a named one, because `path` above is the
-      // name every documentation view, every search hit and every call gg quotes is written with —
-      // and `import * as gg from "gg";` is what makes that name an expression the program can write.
-      // A named import (`import { files } from "gg";`) is equally valid TypeScript and reaches the
-      // same module; it is not what gg teaches, because it would leave every quoted `gg.files.…`
-      // one edit away from compiling.
+      // The one line a program writes to reach every module below. It is the NAMESPACE import
+      // rather than a named one, because `path` above is the name every documentation view, every
+      // search hit and every call gg quotes is written with — and `import * as gg from "gg";` is
+      // what makes that name an expression the program can write. A named import
+      // (`import { files } from "gg";`) reaches the same module and is equally valid; it is not what
+      // gg teaches, because it would leave every quoted `gg.files.…` one edit away from compiling.
       //
-      // `null` on the JavaScript arm, honestly: its guest binds this SDK into a program's scope and
-      // refuses the word `import`, so a documented line would be one a model would be wrong to
-      // write.
-      import: language === "typescript" ? SURFACE_IMPORT : null,
+      // One line for both arms: they are one language on one guest, and the loader that resolves
+      // this specifier is the same loader.
+      import: SURFACE_IMPORT,
     });
     const byName = new Map();
     for (const statement of sourceFile.statements) {

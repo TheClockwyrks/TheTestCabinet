@@ -299,10 +299,11 @@ impl TurnErrorKind {
 /// sandbox enforced, which class the guest typed an uncaught throw with, and which of the two "no
 /// work declared" shapes the turn was. Nothing here needs new information to be computed.
 ///
-/// One-to-one with the contract's [`GgTurnErrorType`], and converted by hand
-/// ([`wire`](Self::wire)) for the reason [`TurnOutcome::wire`] gives: gg's vocabulary and the
+/// Every value here has a counterpart in the contract's [`GgTurnErrorType`], and is converted by
+/// hand ([`wire`](Self::wire)) for the reason [`TurnOutcome::wire`] gives: gg's vocabulary and the
 /// published one must not become interchangeable, so adding a type here is a decision to publish it
-/// there.
+/// there. The contract is the wider of the two, because it also has to read back a value some
+/// earlier gg recorded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TurnErrorType {
     /// The run's credential was refused — no key in the environment, or a `401`/`403`.
@@ -319,8 +320,6 @@ pub enum TurnErrorType {
     ModelParse,
     /// The program is not valid source in its language.
     TranspileSyntax,
-    /// The program parses but breaks an early error the language enforces.
-    TranspileSemantic,
     /// The language's compiler read the whole program and rejected it — a type error, a borrow
     /// error, a name that does not resolve.
     TranspileCompile,
@@ -360,10 +359,9 @@ impl TurnErrorType {
             | Self::ModelResponseLoop
             | Self::ModelVisionUnsupported
             | Self::ModelParse => TurnErrorKind::ModelApi,
-            Self::TranspileSyntax
-            | Self::TranspileSemantic
-            | Self::TranspileCompile
-            | Self::TranspileUnsupported => TurnErrorKind::Transpile,
+            Self::TranspileSyntax | Self::TranspileCompile | Self::TranspileUnsupported => {
+                TurnErrorKind::Transpile
+            }
             Self::ProgramToolError | Self::ProgramUnknownName | Self::ProgramThrow => {
                 TurnErrorKind::ProgramFault
             }
@@ -387,7 +385,6 @@ impl TurnErrorType {
             Self::ModelVisionUnsupported => GgTurnErrorType::ModelVisionUnsupported,
             Self::ModelParse => GgTurnErrorType::ModelParse,
             Self::TranspileSyntax => GgTurnErrorType::TranspileSyntax,
-            Self::TranspileSemantic => GgTurnErrorType::TranspileSemantic,
             Self::TranspileCompile => GgTurnErrorType::TranspileCompile,
             Self::TranspileUnsupported => GgTurnErrorType::TranspileUnsupported,
             Self::ProgramToolError => GgTurnErrorType::ProgramToolError,

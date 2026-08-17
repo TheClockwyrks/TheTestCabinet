@@ -165,7 +165,7 @@ fn an_unterminated_fence_runs_to_the_end_of_the_response() {
 /// **The malformed close that made a round-1 session unrecoverable.**
 ///
 /// A closing fence with a sentence on the same line does not close a block under CommonMark, so the
-/// old extractor swallowed the sentence into the program, `oxc` rejected it, and the model — shown a
+/// old extractor swallowed the sentence into the program, the compiler rejected it, and the model — shown a
 /// diagnostic it could not place — re-emitted the same reply the next turn. Healing ends the block
 /// there, keeps the four statements the model wrote, and tells it what happened.
 #[test]

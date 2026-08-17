@@ -27,8 +27,7 @@
 //! # None of these is a parser
 //!
 //! Not one predicate here parses, for the reason every other dialect gives: healing runs on text
-//! that is not yet known to be a program. Unlike [TypeScript](super::super::typescript::healing),
-//! which has `oxc` next door and declines to use it, gg has no Ruby parser on the host at all — the
+//! that is not yet known to be a program. gg has no Ruby parser on the host at all — the
 //! [compile step](super::compile) spawns Opal in another process, which is a great deal more than a
 //! predicate may cost. So every answer below is a lexical shape test, and each declines rather than
 //! guessing.

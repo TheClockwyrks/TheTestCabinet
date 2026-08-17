@@ -411,29 +411,6 @@ fn a_family_that_borrows_a_type_imports_it() {
     );
 }
 
-/// **What a compiled module offers is read off the compiler's own emit.**
-#[test]
-fn the_exports_of_a_module_are_read_off_what_the_compiler_emitted() {
-    let emitted = "export function parseCsv(text) {\n}\nexport const limit = 40;\n\
-                   export class Row {\n}\nlet hidden = 1;\nexport { hidden as visible };\n\
-                   export default parseCsv;\n";
-    assert_eq!(
-        exports(emitted),
-        vec![
-            "parseCsv".to_string(),
-            "limit".to_string(),
-            "Row".to_string(),
-            "visible".to_string(),
-        ],
-        "every named export, once, in the order the module declares them"
-    );
-    assert!(
-        exports("const a = 1;\nfunction b() {}\n").is_empty(),
-        "a module that exports nothing offers nothing: the loader hands a program the module's own \
-         namespace, and a name it did not export is not in it"
-    );
-}
-
 /// A finished `tsc` invocation that refused a program, carrying `stdout` verbatim.
 ///
 /// The compiler's own text is the input to everything the classifier decides, so these tests hand it

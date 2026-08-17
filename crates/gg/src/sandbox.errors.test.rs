@@ -525,10 +525,6 @@ fn every_prepare_failure_is_recorded_as_its_own_type() {
             TurnErrorType::TranspileSyntax,
         ),
         (
-            PrepareError::Semantic("`x` declared twice".into()),
-            TurnErrorType::TranspileSemantic,
-        ),
-        (
             PrepareError::Compile("`x` is not assignable to `Word`".into()),
             TurnErrorType::TranspileCompile,
         ),

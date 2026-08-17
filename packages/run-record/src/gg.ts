@@ -1924,7 +1924,6 @@ export type GgTurnErrorType =
   | "model_vision_unsupported"
   | "model_parse"
   | "transpile_syntax"
-  | "transpile_semantic"
   | "transpile_compile"
   | "transpile_unsupported"
   | "program_tool_error"
@@ -4760,7 +4759,6 @@ export const GG_TURN_ERROR_TYPE_LABELS: Readonly<
   model_vision_unsupported: "model cannot see images",
   model_parse: "unparseable model response",
   transpile_syntax: "syntax error",
-  transpile_semantic: "semantic error",
   transpile_compile: "compiler rejected the program",
   transpile_unsupported: "unsupported program feature",
   program_tool_error: "uncaught call failure",
@@ -4787,7 +4785,6 @@ export const GG_TURN_ERROR_TYPE_BASE: Readonly<
   model_vision_unsupported: "model_api",
   model_parse: "model_api",
   transpile_syntax: "transpile",
-  transpile_semantic: "transpile",
   transpile_compile: "transpile",
   transpile_unsupported: "transpile",
   program_tool_error: "program_fault",
@@ -4813,7 +4810,6 @@ export const GG_TURN_ERROR_TYPES: readonly GgTurnErrorType[] = [
   "model_vision_unsupported",
   "model_parse",
   "transpile_syntax",
-  "transpile_semantic",
   "transpile_compile",
   "transpile_unsupported",
   "program_tool_error",

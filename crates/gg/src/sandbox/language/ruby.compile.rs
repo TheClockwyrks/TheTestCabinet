@@ -1,11 +1,11 @@
 //! **The Opal compile** — how a model's Ruby becomes something the [Ruby guest](super) can
 //! evaluate.
 //!
-//! Ruby is the first arm whose program is neither evaluated as written (as
-//! [Python](super::super::python)'s is, by a CPython inside the artifact) nor lowered by a parse gg
-//! carries in-process (as [TypeScript](super::super::typescript)'s is, by `oxc`). It is **compiled**,
-//! by a real compiler, in a real process, on the turn path — and everything in this module follows
-//! from that.
+//! Ruby's program is neither evaluated as written (as [Python](super::super::python)'s is, by a
+//! CPython inside the artifact) nor compiled by something gg carries inside its own binary (as
+//! [TypeScript](super::super::typescript)'s is, by an embedded `tsc`). It is **compiled** by a real
+//! compiler, in a real process, on the turn path — and everything in this module follows from
+//! that.
 //!
 //! # Why the compiler is Opal, and why it runs here rather than in the guest
 //!

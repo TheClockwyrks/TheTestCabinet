@@ -145,8 +145,8 @@ mod javascript;
 
 /// The ECMAScript guest, which is a shared artifact rather than a language arm: quickjs-ng in a
 /// component that declares gg's own world, evaluating a program as a **module**.
-/// [TypeScript](typescript) is registered against it; [JavaScript](javascript) and
-/// [PureScript](purescript) still evaluate in the guest they are converting away from.
+/// [TypeScript](typescript) and [JavaScript](javascript) are registered against it;
+/// [PureScript](purescript) still evaluates in the guest it is converting away from.
 #[path = "language/ecmascript.rs"]
 pub(super) mod ecmascript;
 
@@ -218,8 +218,8 @@ mod isolation;
 // there be either described by a manifest or argued for by name.
 //
 // GG CARRIES NO COMMITTED BINARY ANY MORE, so it had no subject left. Ten crates under
-// `crates/gg-sandbox-artifacts/` serve the eleven arms — `typescript` serves JavaScript too, because
-// those two arms are one guest — each running its `build.sh` into a cargo `OUT_DIR`, and the arm
+// `crates/gg-sandbox-artifacts/` serve the eleven arms — `typescript` cuts the guests the JavaScript
+// and PureScript arms read too — each running its `build.sh` into a cargo `OUT_DIR`, and the arm
 // modules `include_bytes!` from there — so a source edited without a rebuild is not a
 // state the tree can reach, rather than a state a test reports. `guests/` no longer exists at all,
 // and `checkers/` holds five files that are gg's own hand-written Java and its two JVM pins.
@@ -512,9 +512,9 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// A list rather than a single extension because two languages may share a module runtime, and
     /// where they do, withholding a skill from one of them would be a difference between the arms
     /// far larger than the one a study of those two arms is measuring. [`TypeScript`](typescript)
-    /// and [`JavaScript`](javascript) are that pair: one strip serves both, so each accepts the
-    /// other's spelling and merely prefers its own. A language whose modules nothing else can
-    /// evaluate names one extension and no more.
+    /// and [`JavaScript`](javascript) are that pair: one guest evaluates both, so a module written
+    /// as plain JavaScript is a module either arm can load. A language whose modules nothing else
+    /// can evaluate names one extension and no more.
     ///
     /// The first entry is the spelling this language *writes* — what gg keys a generated on-use
     /// script under. The rest are spellings it will *read*.
@@ -549,7 +549,8 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     ///
     /// Usually a language's own. It need not be: two languages that differ in what gg does to a
     /// program *before* handing it over, and not in what evaluates it, are entitled to one component
-    /// — [`JavaScript`](javascript) serves [`TypeScript`](typescript)'s, and the seam's
+    /// — [`JavaScript`](javascript) and [`TypeScript`](typescript) reach the
+    /// [ECMAScript guest](ecmascript) through one constant, and the seam's
     /// "no language serves another's artifacts" gate names that pair so the sharing is declared
     /// rather than inferred from a passing test.
     ///
@@ -960,23 +961,17 @@ pub enum PrepareError {
     /// program's own coordinates so the model sees *where* rather than only *what*.
     #[error("{0}")]
     Syntax(String),
-    /// It parses, but breaks a rule the language enforces before any statement runs: a `const`
-    /// declared twice, a duplicate binding in a destructuring pattern. Carries the same located
-    /// rendering a syntax error does.
-    #[error("{0}")]
-    Semantic(String),
     /// A **compiler read the whole program and rejected it** on grounds that are neither a parse
     /// failure nor an early error the language enforces before any statement runs: a type error, a
     /// borrow error, a name that does not resolve, an interface a class does not satisfy. Carries
     /// the compiler's own diagnostics, located in the program's own coordinates.
     ///
-    /// Kept apart from [`Syntax`](Self::Syntax) and [`Semantic`](Self::Semantic) rather than folded
-    /// into either, because the three have different causes and want different answers. A syntax
-    /// error is a typo and a semantic error is almost always two programs in one reply; a compile
-    /// error is a program the model wrote *whole and coherently* and got wrong about the surface it
-    /// was writing against — which is the single most interesting thing a checked language's arm can
-    /// tell a study about the SDK it was handed. Folding it into one of the others would destroy a
-    /// distinction that already earns its keep.
+    /// Kept apart from [`Syntax`](Self::Syntax) rather than folded into it, because the two have
+    /// different causes and want different answers. A syntax error is a typo; a compile error is a
+    /// program the model wrote *whole and coherently* and got wrong about the surface it was writing
+    /// against — which is the single most interesting thing a checked language's arm can tell a
+    /// study about the SDK it was handed. Folding it into the other would destroy a distinction that
+    /// already earns its keep.
     ///
     /// It is **recoverable**, like every variant here: the model is handed the diagnostic and writes
     /// another program. A model's own type error must never reach
@@ -1008,7 +1003,7 @@ pub enum PrepareError {
 impl PrepareError {
     /// The [turn error type](TurnErrorType) this failure is recorded as.
     ///
-    /// It lives here, beside the enum, rather than in the turn loop's `match`: the four causes this
+    /// It lives here, beside the enum, rather than in the turn loop's `match`: the three causes this
     /// type exists to keep apart are this module's knowledge, and a caller re-deriving them would be
     /// a second place for them to be got wrong. Every one lands under
     /// [`Transpile`](crate::limits::TurnErrorKind::Transpile) at the base level, so the wire value
@@ -1022,7 +1017,6 @@ impl PrepareError {
     pub fn turn_error_type(&self) -> TurnErrorType {
         match self {
             Self::Syntax(_) => TurnErrorType::TranspileSyntax,
-            Self::Semantic(_) => TurnErrorType::TranspileSemantic,
             Self::Compile(_) => TurnErrorType::TranspileCompile,
             Self::Unsupported(_) => TurnErrorType::TranspileUnsupported,
         }

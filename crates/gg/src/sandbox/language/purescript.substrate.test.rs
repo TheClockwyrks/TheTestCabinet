@@ -43,7 +43,6 @@ use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 
 use super::super::g8::{self, Answered, Case, Located, Shape};
 
-use super::super::javascript;
 use super::compile::{compile_module, compile_program};
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::fake::{
@@ -60,18 +59,12 @@ use crate::tools::ToolOutcome;
 
 /// The guest this arm is evaluated by, compiled once per test process.
 ///
-/// It is [TypeScript](super::super::typescript)'s component, byte for byte, and that is the whole of
-/// this arm's guest decision: a compiled PureScript program is self-contained JavaScript, so there is
-/// nothing for a component of its own to carry. See [the arm's own documentation](super) for the
-/// comparison with Ruby, which needed one.
-///
 /// A plain `OnceLock` rather than the production per-language cache, because that cache belongs to a
 /// running sandbox and these tests drive the pieces underneath one.
 fn component() -> &'static Component {
     static COMPILED: OnceLock<Component> = OnceLock::new();
-    COMPILED.get_or_init(|| {
-        engine::compile_bytes(javascript::COMPONENT).expect("the shared ECMAScript guest compiles")
-    })
+    COMPILED
+        .get_or_init(|| engine::compile_bytes(super::COMPONENT).expect("this arm's guest compiles"))
 }
 
 /// This arm, resolved through the registry it is now in.
@@ -105,7 +98,7 @@ fn prepare(source: &str) -> String {
 /// calls. Host work done after that stamp and before the guest runs is neither, so nothing gives it
 /// back: it is charged in full to a program that has not started.
 ///
-/// [`component`] is exactly that work. It is a `Component::new` of the 14 MB shared ECMAScript
+/// [`component`] is exactly that work. It is a `Component::new` of the 14 MB `componentize-js`
 /// guest, paid once per **process** — which under `cargo nextest` means once per `#[test]` — and
 /// measured on this repository's dev container at 1.35 s alone but at a median of 10.6 s and a worst
 /// of 34.0 s across the processes that paid it during one `cargo nextest run --workspace`. Past
@@ -148,7 +141,7 @@ fn evaluate(
     let bound = match Sandbox::instantiate(&mut store, component, &linker) {
         Ok(bound) => bound,
         Err(error) => panic!(
-            "the shared ECMAScript guest instantiates against the real membrane: {}",
+            "the guest instantiates against the real membrane: {}",
             engine::classify(&store, limits, &error, SandboxError::Instantiate)
         ),
     };
@@ -611,17 +604,14 @@ fn evaluating_a_compiled_program_costs_a_turn_almost_nothing() {
     );
 }
 
+/// **A compiled PureScript program needs nothing of this guest that plain JavaScript does not.**
+///
+/// The property behind the arm's whole guest decision: `purs` compiles a program's own code and the
+/// library code it used into the bundle, and `esbuild` tree-shakes the rest away, so what arrives is
+/// self-contained JavaScript with no runtime to boot. Both halves below run on the SAME compiled
+/// `Component`, which is what says it rather than two artifacts that happen to behave alike.
 #[test]
-fn the_arm_shares_the_ecmascript_guest_rather_than_carrying_its_own() {
-    // Declared rather than inferred. This arm's guest IS TypeScript's artifact, and the reason is
-    // that a compiled PureScript program is self-contained JavaScript: there is no runtime for a
-    // component of its own to carry, so a second 20 MB artifact would differ from this one in
-    // nothing at all.
-    //
-    // What says so is that both halves below run on the SAME compiled `Component` — the one
-    // [`component`] built out of `javascript::COMPONENT` — rather than on two that happen to behave
-    // alike. When this arm is registered, the seam's "no language is served another's artifacts"
-    // gate is where the sharing gets named; this is what says it is already true.
+fn a_compiled_program_needs_nothing_of_the_guest_plain_javascript_does_not() {
     let program = prepare(
         "module Main where\n\
          import Prelude\n\

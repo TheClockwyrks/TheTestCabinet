@@ -41,10 +41,10 @@
 //! environment and run an arm's gate with `--no-capture` to read every cell it produces, which is
 //! how a row is written and how one is checked before it is deleted.
 //!
-//! A row pins what is **stable about the arm's own program**: a wrong line the strip computed from
-//! the model's six-line program is pinned to the number, because it is a function of that program;
-//! a line inside a bundle or a Mono assembly guid is not, because it moves with the SDK, and a
-//! table that failed for an SDK edit would be a table people delete rather than fix.
+//! A row pins what is **stable about the arm's own program**: a coordinate a preparation computed
+//! from the model's own text is pinned to the number, because it is a function of that program; a
+//! line inside a bundle or a Mono assembly guid is not, because it moves with the SDK, and a table
+//! that failed for an SDK edit would be a table people delete rather than fix.
 //!
 //! # What "the model-facing reading" means
 //!
@@ -243,50 +243,12 @@ const KNOWN_HOLES: &[Hole] = &[
         // is `exit`, which is shape (e), and that one this arm answers.
         instead: Instead::Nothing,
     },
-    // ---- javascript -------------------------------------------------------------------------
-    Hole {
-        arm: GgProgramLanguage::JavaScript,
-        shape: Shape::ToolError,
-        // The right words at the wrong line: the model wrote the call on line 3 and is sent to
-        // line 2. The column is right, so the number looks trustworthy and is not.
-        instead: Instead::Says("at line 2, column 17"),
-    },
-    Hole {
-        arm: GgProgramLanguage::JavaScript,
-        shape: Shape::NativeFault,
-        // Worse than off-by-one: line 7 of a six-line program. The offset is a function of the
-        // program's own shape, so it grows with the program rather than being a constant anyone
-        // could correct for.
-        instead: Instead::Says("at line 7, column 13"),
-    },
-    Hole {
-        arm: GgProgramLanguage::JavaScript,
-        shape: Shape::FailureValue,
-        // Nothing. A rejected promise nothing observes is a clean turn, and `async` is the first
-        // reflex a model brings to a runtime it has not met.
-        instead: Instead::Nothing,
-    },
-    Hole {
-        arm: GgProgramLanguage::JavaScript,
-        shape: Shape::ResourceFault,
-        // The engine's own words, at a line the model did not write.
-        instead: Instead::Says("too much recursion\n    at line 3, column 9"),
-    },
-    Hole {
-        arm: GgProgramLanguage::JavaScript,
-        shape: Shape::Abort,
-        // This arm has no way to stop its own process: `process` is not a name the guest binds, so
-        // the reach for it is answered as an unknown name — and mislocated, like every other
-        // location on this arm.
-        instead: Instead::Says("process is not defined"),
-    },
     // ---- purescript -------------------------------------------------------------------------
     //
     // Every located cell on this arm is located in the ESBUILD BUNDLE, hundreds of lines into a
     // file the model did not write and cannot open. The rows pin the WORDS rather than the wrong
     // line: a bundle coordinate moves whenever the SDK or the library set does, so pinning it
-    // would make this table fail for edits that have nothing to do with reporting — where the
-    // JavaScript arm's wrong lines are a function of the model's own program and are pinned.
+    // would make this table fail for edits that have nothing to do with reporting.
     Hole {
         arm: GgProgramLanguage::PureScript,
         shape: Shape::ToolError,

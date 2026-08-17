@@ -140,10 +140,9 @@ fn a_type_lookup_declares_the_type_and_explains_its_members() {
 /// hit is a key and a brief. A signature a model can read and cannot qualify is a call it cannot
 /// write.
 ///
-/// Both states of the access line are asserted here, because a renderer that carried only the line
-/// would say nothing at all on the arms whose SDK is in a program's scope before it compiles. The
-/// JavaScript arm is one of those, so its views say so; TypeScript and PureScript reach a module
-/// through a line the program writes, so their views quote it.
+/// Three arms are asserted, because the line is the arm's own and the shapes differ: TypeScript and
+/// JavaScript reach the whole surface with one namespace import, and PureScript imports each module
+/// under its own full name.
 #[test]
 fn a_view_names_the_module_and_says_how_to_reach_it() {
     let docs = runtime(ENABLED);
@@ -160,6 +159,17 @@ fn a_view_names_the_module_and_says_how_to_reach_it() {
             "\nDefined in `gg.files`, brought into scope with `import * as gg from \"gg\";`.\n"
         ),
         "{file_read}"
+    );
+
+    // The unchecked arm is the same language on the same guest, so it states the same line — and a
+    // model there reads it in the same sentence.
+    let unchecked = everything(GgProgramLanguage::JavaScript, EndingRole::Standard);
+    let read_file = unchecked.read("readFile").expect("readFile is bound");
+    assert!(
+        read_file.contains(
+            "\nDefined in `gg.files`, brought into scope with `import * as gg from \"gg\";`.\n"
+        ),
+        "{read_file}"
     );
 
     // The line an arm needs is quoted exactly as the model must write it, and it is read out of the

@@ -152,9 +152,9 @@ impl ProgramLanguage for TypeScript {
     /// `.ts` first, `.js` accepted.
     ///
     /// The second entry is not a courtesy: `tsc` compiles either spelling, and a module written as
-    /// plain JavaScript is a module this arm can load. It also keeps a skill readable by both
-    /// ECMAScript arms, which is what stops the pair differing in what their agents *have* rather
-    /// than in the one thing the pair exists to vary.
+    /// plain JavaScript is a module this arm can load. It is also the one spelling both ECMAScript
+    /// arms read, so a skill authored as `skill.js` reaches either agent — which is what stops the
+    /// pair differing in what their agents *have* rather than in the one thing it exists to vary.
     fn module_file_extensions(&self) -> &'static [&'static str] {
         &["ts", "js"]
     }
@@ -169,15 +169,12 @@ impl ProgramLanguage for TypeScript {
     /// the guest's loader resolves it under, on the same terms [`SURFACE_IMPORT`] is a namespace
     /// import.
     fn lib_import(&self, key: &str) -> Option<String> {
-        Some(format!(
-            "import * as {key} from \"{}{key}\";",
-            super::ecmascript::MODULE_SCHEME
-        ))
+        lib_import(key)
     }
 
     /// What that import makes callable.
     fn lib_access(&self, key: &str) -> String {
-        format!("{key}.<name>")
+        lib_access(key)
     }
 
     fn guest_component(&self) -> Option<&'static [u8]> {
@@ -229,7 +226,7 @@ impl ProgramLanguage for TypeScript {
     /// [An `import` and one call](self::open_file_statement), with the call's name resolved from
     /// this language's own catalogue rather than written out here.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
-        open_file_statement(&spell(self, VIEWS_OPEN_FILE), path, window)
+        open_file_statement(self, path, window)
     }
 
     /// [One `import` and one call per view](self::open_file_program).
@@ -238,34 +235,30 @@ impl ProgramLanguage for TypeScript {
     /// a program here opens with a line, and joining several would write that line several times
     /// into one module, which is a redeclaration the compiler refuses.
     fn open_file_program(&self, views: &[(&str, Option<FileWindow>)]) -> String {
-        open_file_program(&spell(self, VIEWS_OPEN_FILE), views)
+        open_file_program(self, views)
     }
 
     /// [An `import`, a `const` array of names and a `for…of` over
     /// it](self::open_docs_views_statement), each iteration opening one documentation view.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
-        open_docs_views_statement(&spell(self, VIEWS_OPEN_DOCS_VIEW), names)
+        open_docs_views_statement(self, names)
     }
 
     /// [One `import`, two `const` arrays and two `for…of` loops](self::bootstrap_program).
     fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String {
-        bootstrap_program(
-            &spell(self, DOCS_SEARCH),
-            &spell(self, VIEWS_OPEN_DOCS_VIEW),
-            modules,
-            docs,
-        )
+        bootstrap_program(self, modules, docs)
     }
 }
 
 // ---------------------------------------------------------------------------------------------
-// The syntax gg synthesizes for this arm
+// The syntax gg synthesizes for the two ECMAScript arms
 // ---------------------------------------------------------------------------------------------
 //
-// Free functions taking the **already-resolved** call, so the syntax around it is readable on its
-// own and the name inside it comes from this language's own catalogue. Every one of them opens with
-// [`SURFACE_IMPORT`], because a program here reaches gg through a line it wrote and these programs
-// are run.
+// Free functions taking the **arm**, so each call inside them is spelled from that arm's own
+// catalogue and the syntax around it is written once. [JavaScript](super::javascript) is this
+// language with the type check taken out and its programs are these programs: a second copy of them
+// would be the drift the pair exists to rule out. Every one of them opens with [`SURFACE_IMPORT`],
+// because a program here reaches gg through a line it wrote and these programs are run.
 
 /// **The line a program writes to reach gg's SDK**, and the one every synthesized program opens
 /// with.
@@ -314,6 +307,20 @@ pub(super) fn binding_name(name: &str) -> String {
     out
 }
 
+/// **The line a program writes to reach a code module**: a namespace import of the specifier the
+/// guest's loader resolves it under, on the same terms [`SURFACE_IMPORT`] is a namespace import.
+pub(super) fn lib_import(key: &str) -> Option<String> {
+    Some(format!(
+        "import * as {key} from \"{}{key}\";",
+        super::ecmascript::MODULE_SCHEME
+    ))
+}
+
+/// What that import makes callable.
+pub(super) fn lib_access(key: &str) -> String {
+    format!("{key}.<name>")
+}
+
 /// The import, then `gg.views.openFile("src/main.ts");` — or
 /// `gg.views.openFile("src/main.ts", { offset: 400, limit: 200 });` for a window.
 ///
@@ -324,7 +331,12 @@ pub(super) fn binding_name(name: &str) -> String {
 /// The window is a **trailing options object**, which is this syntax's idiom for optional arguments
 /// and the same shape the system prompt teaches; the path is rendered through [`serde_json`] so a
 /// quote or a backslash in one cannot produce a program that would not parse.
-fn open_file_statement(open_file: &str, path: &str, window: Option<FileWindow>) -> String {
+pub(super) fn open_file_statement(
+    language: &dyn ProgramLanguage,
+    path: &str,
+    window: Option<FileWindow>,
+) -> String {
+    let open_file = spell(language, VIEWS_OPEN_FILE);
     let path = serde_json::Value::String(path.to_string());
     match window {
         Some(window) => format!(
@@ -337,9 +349,13 @@ fn open_file_statement(open_file: &str, path: &str, window: Option<FileWindow>) 
 
 /// One import, then one call per view.
 ///
-/// Every synthesized program on this arm opens with [`SURFACE_IMPORT`] exactly once, because that is
-/// what a module may carry: `import * as gg` twice is a redeclaration.
-fn open_file_program(open_file: &str, views: &[(&str, Option<FileWindow>)]) -> String {
+/// Every synthesized program on these arms opens with [`SURFACE_IMPORT`] exactly once, because that
+/// is what a module may carry: `import * as gg` twice is a redeclaration.
+pub(super) fn open_file_program(
+    language: &dyn ProgramLanguage,
+    views: &[(&str, Option<FileWindow>)],
+) -> String {
+    let open_file = spell(language, VIEWS_OPEN_FILE);
     let calls: String = views
         .iter()
         .map(|(path, window)| {
@@ -363,7 +379,8 @@ fn open_file_program(open_file: &str, views: &[(&str, Option<FileWindow>)]) -> S
 /// calls written out would be a program a model reads as a style to copy. The names are rendered
 /// through [`serde_json`] for the reason a path is: a name carrying a quote would otherwise produce
 /// a program that does not parse.
-fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) -> String {
+pub(super) fn open_docs_views_statement(language: &dyn ProgramLanguage, names: &[&str]) -> String {
+    let open_docs_view = spell(language, VIEWS_OPEN_DOCS_VIEW);
     let entries = listed(names);
     format!(
         "{SURFACE_IMPORT}\nconst functions = [\n{entries}];\nfor (const name of functions) {{\n  \
@@ -381,12 +398,13 @@ fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) -> String {
 ///
 /// A failed call throws and is left to, which is this arm's failure model: a bootstrap that caught
 /// its own failure would be a worked example of swallowing one.
-fn bootstrap_program(
-    search: &str,
-    open_docs_view: &str,
+pub(super) fn bootstrap_program(
+    language: &dyn ProgramLanguage,
     modules: &[&str],
     docs: &[&str],
 ) -> String {
+    let search = spell(language, DOCS_SEARCH);
+    let open_docs_view = spell(language, VIEWS_OPEN_DOCS_VIEW);
     let paths = listed(modules);
     let functions = listed(docs);
     format!(

@@ -30,10 +30,10 @@
 //!
 //! # Why this guest is its own baked component
 //!
-//! It would be cheaper not to be. [JavaScript](super::javascript) serves
-//! [TypeScript](super::typescript)'s component byte for byte, and the obvious reading of "Ruby
-//! compiles to JavaScript" is that Ruby could serve it too, with Opal's 743 KB runtime prepended to
-//! each program. That was built and measured before this artifact was, and two things came back:
+//! It would be cheaper not to be. The [ECMAScript arms](super::ecmascript) share one component byte
+//! for byte, and the obvious reading of "Ruby compiles to JavaScript" is that Ruby could serve it
+//! too, with Opal's 743 KB runtime prepended to each program. That was built and measured before
+//! this artifact was, and two things came back:
 //!
 //! * **Per turn it costs 45.6–51.0 ms** to evaluate that runtime, against 2.1–2.6 ms when
 //!   `componentize-js` pre-initialises it into the artifact — and 1.2–1.4 ms is what a plain

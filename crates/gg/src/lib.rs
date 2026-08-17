@@ -134,7 +134,7 @@ enum Command {
     /// through rather than written a second time.
     ///
     /// It is a subcommand rather than a build script because the backend that serves it cannot
-    /// depend on this crate: `oxc` and `tiktoken-rs` are nowhere in that server's tree, and
+    /// depend on this crate: `tiktoken-rs` and `wasmtime` are nowhere in that server's tree, and
     /// *building* this crate reflects eleven SDKs' catalogues with eleven language toolchains,
     /// which would become a prerequisite for compiling the backend. With no `--out` it prints the
     /// index document, which is what makes

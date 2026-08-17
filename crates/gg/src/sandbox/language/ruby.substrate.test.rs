@@ -1550,20 +1550,20 @@ end
 
 #[test]
 fn the_embedded_guest_imports_the_membrane_and_the_wasi_it_was_baked_with() {
-    // This guest is the JavaScript arm's engine plus a Ruby runtime — both are `componentize-js`
+    // This guest is the PureScript arm's engine plus a Ruby runtime — both are `componentize-js`
     // builds of one base — so its imports must be that guest's exactly: a capability operations here
     // and not there would be a difference between two arms of a study that nobody chose.
     // `wasi:filesystem` and `wasi:sockets` are absent because the component is baked without them,
     // not because the host withholds them — gg's linker defines the whole surface for every guest.
     let mut imports = interface_imports(component());
-    let (javascript, _) =
-        engine::component(crate::sandbox::language(GgProgramLanguage::JavaScript))
-            .expect("the JavaScript arm's guest compiles");
-    let expected = interface_imports(javascript);
+    let (purescript, _) =
+        engine::component(crate::sandbox::language(GgProgramLanguage::PureScript))
+            .expect("the PureScript arm's guest compiles");
+    let expected = interface_imports(purescript);
     imports.sort_unstable();
     assert_eq!(
         imports, expected,
-        "the embedded Ruby guest reaches something the JavaScript arm's guest does not, or the \
+        "the embedded Ruby guest reaches something the PureScript arm's guest does not, or the \
          other way round; a capability on one side only is a difference between arms of a study \
          that nobody chose"
     );

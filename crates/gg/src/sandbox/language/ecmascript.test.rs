@@ -647,3 +647,26 @@ static MANIFEST_ENGINE: std::sync::LazyLock<String> = std::sync::LazyLock::new(|
         .expect("the guest manifest names an engine")
         .to_string()
 });
+
+/// **What a code module offers is read off its own top-level `export` lines.**
+#[test]
+fn the_exports_of_a_module_are_read_off_its_export_lines() {
+    let source = "export function parseCsv(text) {\n}\nexport const limit = 40;\n\
+                  export class Row {\n}\nlet hidden = 1;\nexport { hidden as visible };\n\
+                  export default parseCsv;\n";
+    assert_eq!(
+        super::exports(source),
+        vec![
+            "parseCsv".to_string(),
+            "limit".to_string(),
+            "Row".to_string(),
+            "visible".to_string(),
+        ],
+        "every named export, once, in the order the module declares them"
+    );
+    assert!(
+        super::exports("const a = 1;\nfunction b() {}\n").is_empty(),
+        "a module that exports nothing offers nothing: the loader hands a program the module's own \
+         namespace, and a name it did not export is not in it"
+    );
+}

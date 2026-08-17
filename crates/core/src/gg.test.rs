@@ -1799,7 +1799,7 @@ fn regrouping_the_per_type_breakdown_by_base_reproduces_the_per_kind_counters() 
         errors: GgTurnErrorType::ALL.len() as u64,
         max_consecutive: 3,
         model_api: 6,
-        transpile: 4,
+        transpile: 3,
         program_fault: 3,
         sandbox_limit: 3,
         missing_completion: 2,

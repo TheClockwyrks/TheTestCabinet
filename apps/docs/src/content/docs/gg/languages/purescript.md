@@ -7,8 +7,8 @@ title: "PureScript"
 An agent whose `responses-as-code` capability sets `language: "purescript"`
 answers each turn with a PureScript module. `purs` compiles that module to
 JavaScript on the host, `esbuild` flattens the module graph into one script, and
-the ECMAScript guest evaluates the script. What crosses the sandbox membrane is
-JavaScript.
+the `componentize-js` guest evaluates the script as a function body. What crosses
+the sandbox membrane is JavaScript.
 
 This arm keeps the [invariants](/gg/responses-as-code/invariants/) import rule: a
 program writes `import Gg.Files as Gg.Files` for every module it calls, and
@@ -18,13 +18,12 @@ module header a reply wrote to `Main`, supplies one where a reply wrote none and
 moves each diagnostic back by that line, and a guest backtrace is located in the
 bundle rather than in the model's PureScript.
 
-The arm evaluates programs in the JavaScript arm's guest component
-([`javascript`](/gg/languages/javascript/)), declared as a share in the seam's
-exemption table. `purs` compiles a program's own code together
-with the library code it reaches into ordinary JavaScript, so the bundle is
-self-contained and a component of this arm's own would carry the same bytes. The
-cost of the share is that a guest backtrace is located in the bundle's
-coordinates rather than in the model's PureScript.
+The arm evaluates programs in the `componentize-js` guest, which it has to
+itself. `purs` compiles a program's own code together with the library code it
+reaches into ordinary JavaScript, so the bundle is self-contained and carries no
+runtime the component has to hold for it. Moving the arm onto the
+[ECMAScript guest](/gg/languages/ecmascript-guest/) is what retires that
+component and what puts a backtrace back in the model's own PureScript.
 
 The preparation workspace, compiler isolation, the two failure bands and the
 diagnostic bound are shared with the other program languages and are described

@@ -27,32 +27,23 @@
 //! # The strategy, in one sentence
 //!
 //! **A PureScript program is compiled to JavaScript on the host by `purs`, flattened into one script
-//! by `esbuild`, and evaluated by the same ECMAScript guest the [TypeScript](super::typescript) and
-//! [JavaScript](super::javascript) arms use.**
+//! by `esbuild`, and evaluated as a function body by [this arm's `componentize-js` guest](COMPONENT).**
 //!
 //! Nothing about it is per-run: the tree a program is compiled against is a build-time artifact, the
 //! compiler is a binary in the gg toolchain image, and what crosses the membrane is JavaScript.
 //!
-//! # Why this arm has no component of its own
+//! # This arm does not keep the invariants
 //!
-//! It shares TypeScript's, which is the ECMAScript guest — the same sharing
-//! [JavaScript](super::javascript) has, declared in the seam's own exemption table rather than
-//! inferred from a passing test.
+//! `apps/docs/src/content/docs/gg/responses-as-code/invariants.md` requires that a location be
+//! resolved through a source map and that every SDK name come from a line the program wrote. The
+//! bundle `esbuild` produces is what the guest evaluates, so a frame is in the bundle's coordinates;
+//! the guest binds gg's surface into a program's scope as formal parameters, which is what
+//! `Gg.Internal.Wire`'s free identifiers resolve against. Converting this arm onto the
+//! [ECMAScript guest](super::ecmascript) — which the [TypeScript](super::typescript) and
+//! [JavaScript](super::javascript) arms run on, and which ruling D12 keeps this arm's JavaScript
+//! backend for — is its own step, and it is what retires the component above.
 //!
-//! The alternative was measured for [Ruby](super::ruby) and came out the other way there, so it is
-//! worth saying exactly why it comes out this way here. Ruby needs a component of its own because
-//! Opal has a 743 KB **runtime** every compiled program depends on: prepended to each program it
-//! costs 45.6–51.0 ms per turn, a code module could not see it at all, and baking it into the shared
-//! component would have put `globalThis.Opal` in front of the TypeScript and JavaScript arms too.
-//! PureScript has no runtime. `purs` compiles a program's own code, and the library code it uses,
-//! into ordinary JavaScript; `esbuild` tree-shakes the graph down to what the program actually
-//! reached; and what arrives at the guest is a self-contained script that defines nothing globally.
-//! A component of this arm's own would differ from the shared one in **nothing**, and a second 20 MB
-//! artifact that differs in nothing is a second artifact to keep in step with the WIT rather than an
-//! isolation boundary. Measured: **2.7 ms** per turn inside the guest for a representative program,
-//! against 2.1 ms for the equivalent plain JavaScript on the same artifact.
-//!
-//! # What that costs, stated rather than hidden
+//! # What that costs today, stated rather than hidden
 //!
 //! One thing: a guest backtrace is in the **bundle's** coordinates, not the model's PureScript,
 //! because owning `run` is what would let a guest map one to the other and this arm does not own
@@ -114,8 +105,8 @@
 //!   and "neither" are programs that do not compile rather than calls the host refuses.
 //!
 //! The bridge underneath it is `Gg.Internal.Wire`, one foreign module naming the namespaces the
-//! shared ECMAScript guest binds. Those are free identifiers in the bundle, resolved at call time
-//! against the scope the guest built, which is why a capability this run withheld is a `ToolError`
+//! guest binds. Those are free identifiers in the bundle, resolved at call time against the scope
+//! the guest built, which is why a capability this run withheld is a `ToolError`
 //! carrying `unavailable` rather than a `ReferenceError` — the SDK exposes the whole surface, as
 //! every arm's does, and the refusal is the host's. The guest's own spellings are the lowering and
 //! not the surface: they are written once, beside the function that uses them, and a model never
@@ -153,6 +144,25 @@ mod modules;
 #[path = "purescript.healing.rs"]
 pub(super) mod healing;
 
+/// **The interpreter component this arm evaluates a bundle in**: the `componentize-js` guest in
+/// `packages/gg-sandbox`, built by that package's `build.sh`.
+///
+/// It is ~13.4 MB because it embeds a JavaScript engine, and it is **embedded in the binary** rather
+/// than read from disk because gg is copied as a single file into an ephemeral run container and
+/// must carry everything it needs with it.
+///
+/// It is not committed. `gg-artifact-typescript` runs that `build.sh` as a step of building this
+/// crate and this line embeds what it wrote into that crate's `OUT_DIR`, so the guest a bundle is
+/// evaluated in is baked out of the SDK sources in this checkout, on the build that compiles the
+/// module describing it. A guest is exactly the artifact that most needs it: nothing about a 13 MB
+/// `.wasm` looks stale, and what a stale one costs is not a build error but every program on this
+/// arm being evaluated by last month's scope, refusals and argument handling while the catalogue and
+/// the prompt describe this checkout's.
+pub(super) const COMPONENT: &[u8] = include_bytes!(concat!(
+    env!("GG_ARTIFACTS_TYPESCRIPT"),
+    "/typescript.component.wasm"
+));
+
 /// This arm's catalogue, reflected out of the SDK's own doc comments by
 /// `packages/gg-sandbox-purescript/signatures.sh` with `purs compile --codegen docs`.
 ///
@@ -173,7 +183,7 @@ static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
 pub(super) static PURESCRIPT: PureScript = PureScript;
 
 /// PureScript: compiled to JavaScript on the host by `purs`, bundled by `esbuild`, and evaluated by
-/// the ECMAScript guest.
+/// this arm's `componentize-js` guest.
 pub(super) struct PureScript;
 
 impl ProgramLanguage for PureScript {
@@ -246,7 +256,7 @@ impl ProgramLanguage for PureScript {
     /// `.purs`, and nothing else.
     ///
     /// One extension, like [Python](super::python)'s and [Ruby](super::ruby)'s: nothing else in the
-    /// registry can evaluate a PureScript module — the ECMAScript guest could evaluate the *compiled*
+    /// registry can evaluate a PureScript module — this arm's guest could evaluate the *compiled*
     /// output, but a skills directory holds sources rather than artifacts — so a skill whose code is
     /// spelled `skill.rb` is a skill this arm's agents are not offered.
     fn module_file_extensions(&self) -> &'static [&'static str] {
@@ -259,13 +269,9 @@ impl ProgramLanguage for PureScript {
         binding_name(name)
     }
 
-    /// The ECMAScript guest, which is [TypeScript](super::typescript)'s.
-    ///
-    /// Declared sharing rather than an accident: see this module's documentation for the measurement
-    /// that settled it, and `SHARED_ARTIFACTS` in the seam's own tests for the pair being written
-    /// down.
+    /// [This arm's own `componentize-js` guest](COMPONENT).
     fn guest_component(&self) -> Option<&'static [u8]> {
-        Some(super::javascript::COMPONENT)
+        Some(COMPONENT)
     }
 
     /// This language's catalogue, parsed once and checked to be **this** language's.
@@ -328,7 +334,7 @@ impl ProgramLanguage for PureScript {
 /// that would not parse; a name that is nothing but separators becomes `module`, and a leading digit
 /// is prefixed, because the result has to be a valid identifier whatever the author wrote.
 ///
-/// The one thing this does that [the ECMAScript arms'](super::javascript::binding_name) does not is
+/// The one thing this does that [the ECMAScript arms'](super::typescript::binding_name) does not is
 /// **lower-case the leading run**, and it is a rule rather than a preference: `lib.<key>` is a record
 /// field access, and PureScript will not parse an upper-case label unquoted (`s.Foo` is
 /// `Unexpected token 'Foo'`). A skill called `CSV-tools` therefore binds at `lib.csvTools` rather

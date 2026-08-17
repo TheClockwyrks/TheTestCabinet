@@ -12,10 +12,10 @@ it, and the build that bakes both into the artifacts the Rust host embeds.
 axis of gg — it is what a cross-language A/B study compares arms on — so gg
 registers a *set* of program languages and most of them have a guest of their own.
 TypeScript is the first and the default; a further language is normally a **sibling
-directory**, not a change here. This one is the exception in one direction: it
-serves **two** registered arms, because `javascript` is this arm with the type
-check removed, and its component is also what the compiled PureScript arm is
-evaluated by. What every guest shares, and what a new one has to satisfy, is in
+directory**, not a change here. This one is the exception in one direction: it cuts
+the guests **three** registered arms are evaluated by. `javascript` is this arm with
+the type check removed and evaluates in the same `guest/`, and the compiled
+PureScript arm evaluates in the `componentize-js` component beside it. What every guest shares, and what a new one has to satisfy, is in
 [Another language](#another-language) below and in
 [Program languages](../../apps/docs/src/content/docs/gg/languages/registration.md).
 
@@ -30,7 +30,7 @@ checkout on the build that embeds them rather than out of copies somebody last r
 
 | Artifact | What it is |
 | --- | --- |
-| `typescript.component.wasm` (generated) | The `componentize-js` component the JavaScript and PureScript arms evaluate a program in, `include_bytes!`d by the host out of `crates/gg-sandbox-artifacts/typescript`'s `OUT_DIR`. **~13.4 MiB**. |
+| `typescript.component.wasm` (generated) | The `componentize-js` component the PureScript arm evaluates a program in, `include_bytes!`d by the host out of `crates/gg-sandbox-artifacts/typescript`'s `OUT_DIR`. **~13.4 MiB**. |
 | `typescript.signatures.json` (generated) | The signature catalogue, `include_str!`d out of `OUT_DIR`. It is what documentation search and every documentation view are answered out of; only its module paths and their one-line briefs reach the system prompt, which names no function at all. |
 | `javascript.signatures.json` (generated) | The same catalogue under a second language id, differing in the import line each arm's modules are reached by. gg registers `javascript` as `typescript` with the compiler removed — same SDK, same signatures, annotations included. |
 | `typescript.tsc.js` (generated) | The compiler gg type-checks a model's program with, cut from the pinned `typescript`. **6.2 MB**, `include_str!`d and written out once per process. |
@@ -53,7 +53,7 @@ checkout on the build that embeds them rather than out of copies somebody last r
 | `tools/signatures.mjs` | Reflects the catalogue out of the emitted `.d.ts` files under `dist/headers/gg/`. |
 | `tools/checker.mjs` | Cuts the `tsc` gg carries, and its standard library, out of the pinned `typescript`. |
 | `tools/program-globals.d.ts` | `console`, `performance`, `crypto`, the two UTF-8 codecs and `structuredClone` — declared for the TypeScript arm's compiler, beside the `guest/` that installs them. |
-| `guest/` | The **ECMAScript guest**: quickjs-ng inside a `wit-bindgen` component declaring gg's own `sandbox` world, with `src/gg/**` baked into it unchanged. The TypeScript arm evaluates programs in it; the JavaScript and PureScript arms are moving onto it. It lives here because it is cut from this package's SDK. `apps/docs/src/content/docs/gg/languages/ecmascript-guest.md` is the contract; `guest/src/lib.rs` is the argument. |
+| `guest/` | The **ECMAScript guest**: quickjs-ng inside a `wit-bindgen` component declaring gg's own `sandbox` world, with `src/gg/**` baked into it unchanged. The TypeScript and JavaScript arms evaluate programs in it; the PureScript arm is moving onto it. It lives here because it is cut from this package's SDK. `apps/docs/src/content/docs/gg/languages/ecmascript-guest.md` is the contract; `guest/src/lib.rs` is the argument. |
 | `guest.sh` | Builds `guest/` and writes `ecmascript.core.wasm`, `ecmascript.adapter.wasm` and `ecmascript.guest.json`. Called from `build.sh`, after the SDK emit it reads. |
 | `ecmascript-version.sh` | That guest's pins: the target, the adapter, the wasi-sdk it borrows, and the two compile flags that replace a fork of quickjs. |
 | `build.sh` | Writes every artifact this package produces except the catalogues — the two guests and the four checker files — into `$GG_ARTIFACTS_OUT_DIR`. `signatures.sh` writes the catalogues, and `crates/gg/build.rs` runs that. |

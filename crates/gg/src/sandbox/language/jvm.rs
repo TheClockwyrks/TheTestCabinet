@@ -39,8 +39,9 @@
 //! no exports. Without an equal minimum and maximum heap a program gets the *minimum* and not the
 //! difference, so a generous maximum reads as an allowance a program never has. A second copy of the
 //! code that sets them would be a standing chance for one arm to lose any one and for nobody to
-//! notice — which is the argument that has [JavaScript](super::javascript) serve TypeScript's
-//! prebuilt component rather than a byte-identical copy of it, one level down.
+//! notice — which is the argument that has [JavaScript](super::javascript) reach the
+//! [ECMAScript guest](super::ecmascript) through TypeScript's own constant rather than embed a
+//! byte-identical copy of it, one level down.
 //!
 //! The JDK's single-file source-code launcher compiles **one** file, so sharing here cannot mean
 //! `import`: it means gg builds the file. [`driver`] appends

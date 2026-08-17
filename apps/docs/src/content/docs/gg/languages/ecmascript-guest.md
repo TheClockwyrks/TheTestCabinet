@@ -3,10 +3,10 @@ title: "The ECMAScript guest"
 ---
 
 The ECMAScript guest is quickjs-ng inside a `wit-bindgen` component that
-declares gg's own sandbox world. The [TypeScript](/gg/languages/typescript/) arm
-is registered against it. The [JavaScript](/gg/languages/javascript/) and
-[PureScript](/gg/languages/purescript/) arms are being moved onto it and still
-evaluate their programs in the guest it replaces.
+declares gg's own sandbox world. The [TypeScript](/gg/languages/typescript/) and
+[JavaScript](/gg/languages/javascript/) arms are registered against it. The
+[PureScript](/gg/languages/purescript/) arm is being moved onto it and still
+evaluates its programs in the guest it replaces.
 
 It exists because a program must be able to reach its SDK through an `import`
 the program wrote, which the [invariants](/gg/responses-as-code/invariants/)

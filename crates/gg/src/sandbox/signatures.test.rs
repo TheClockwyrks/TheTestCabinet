@@ -749,18 +749,16 @@ fn reaches(line: &str, path: &str) -> bool {
     }
 }
 
-/// **Every module of every registered arm answers the question "how does a program reach this?" —
-/// with a line, or with the explicit statement that there is none.**
+/// **Every module of every registered arm states the line a program writes to reach it.**
 ///
-/// # Why a missing field is not one of the answers
+/// # Why a missing field is not an answer
 ///
-/// [`ModuleDoc::import`] has two states and both of them are an answer a documentation view renders:
-/// `Some(line)` is quoted verbatim for a model to copy, and `None` becomes *in scope already*.
-/// The arms that have not converted yet are in the second state, which is truthful — gg puts their
-/// SDK in a program's scope before the model's code is compiled — and it is also the state a
-/// reflector that simply **stopped emitting the field** would land in, silently, because serde fills
-/// an absent `Option` in with `None`. A truthful `None` and a dropped field are the same value, and
-/// only the raw document tells them apart. So this reads it.
+/// [`ModuleDoc::import`] has two states and both of them render: `Some(line)` is quoted verbatim for
+/// a model to copy, and `None` becomes *in scope already*. The second is what a reflector that
+/// simply **stopped emitting the field** lands in, silently, because serde fills an absent `Option`
+/// in with `None` — and it is the sentence the invariants forbid, since a name in a program's scope
+/// with no line the model wrote is what every arm's conversion deleted. Only the raw document tells
+/// a dropped field from a `null`, so this reads it.
 ///
 /// # What else is held here
 ///
@@ -784,11 +782,13 @@ fn reaches(line: &str, path: &str) -> bool {
 ///   that does not contain `Gg.Files`, and fails. What the ancestor form cannot see is an arm whose
 ///   line names its module in a spelling of its own, so `cpp.surface.test.rs` holds all thirteen of
 ///   this arm's lines to a written-out list and its reflector checks each header is a real file.
-/// * **Both states are live.** If no arm stated a line, every renderer's `Some` branch would be
-///   unexercised across the whole suite; if none stated `None`, its `None` branch would be. The
-///   count at the bottom fails rather than letting either half rot.
+/// * **Every module states one.** The [invariants](https://docs.testcabinet.ai/gg/responses-as-code/invariants/)
+///   require a documentation view to state the line a program writes to reach the symbol it
+///   describes, and every registered arm now does. The count at the bottom is what says so: an arm
+///   that stopped stating a line for one of its modules would leave every view of every symbol in it
+///   telling a model the module is in scope already, which is the one thing the rule forbids.
 #[test]
-fn every_arm_declares_an_import_line_or_says_why_not() {
+fn every_arm_states_the_line_a_program_writes_to_reach_a_module() {
     let mut with_a_line = 0usize;
     let mut in_scope_already = 0usize;
 
@@ -895,11 +895,16 @@ fn every_arm_declares_an_import_line_or_says_why_not() {
         }
     }
 
+    assert_eq!(
+        in_scope_already,
+        0,
+        "{in_scope_already} of the {} modules across the eleven arms state no import line, so \
+         every view of every symbol in them tells a model the module is in scope already",
+        with_a_line + in_scope_already
+    );
     assert!(
-        with_a_line > 0 && in_scope_already > 0,
-        "both states of an import line have to stay live for the renderers gated on them to be \
-         gated on both: {with_a_line} modules across the eleven arms state a line and \
-         {in_scope_already} state that there is none"
+        with_a_line > 0,
+        "no module stated a line, so every renderer's `Some` branch went unexercised"
     );
 }
 

@@ -85,7 +85,7 @@ it.
 
 A component is affected only by the imports it declares, and gg's
 `test-cabinet:gg/*` namespace does not overlap WASI's, so a guest pays nothing
-for what it leaves out. The JavaScript arm's guest imports seven interfaces:
+for what it leaves out. The `componentize-js` guest imports seven interfaces:
 `wasi:clocks`, `wasi:random` and `wasi:io`, which is how a program's `Date.now()`
 reads the host clock, and `wasi:cli/stderr`. The ECMAScript guest is a preview1
 module through the reactor adapter, so the adapter's whole surface is declared

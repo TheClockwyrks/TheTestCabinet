@@ -1244,11 +1244,6 @@
           "type": "string"
         },
         {
-          "const": "transpile_semantic",
-          "description": "The program parses but breaks a rule the language enforces before any statement runs: a\n`const` declared twice, a duplicate binding in a destructuring pattern.",
-          "type": "string"
-        },
-        {
           "const": "transpile_compile",
           "description": "The language's **compiler read the whole program and rejected it** — a type error, a borrow\nerror, a name that does not resolve, an interface a class does not satisfy. The model is\nhanded the compiler's own diagnostics and writes another program; nothing ran.\n\nKept apart from [`TranspileSyntax`](Self::TranspileSyntax) because the two say opposite\nthings about the model. A syntax error is a typo. A compile error is a program the model\nwrote whole and coherently and got *wrong about the surface it was writing against* — which\nis the most informative thing a checked language's arm can report about the SDK it was\nhanded, and is meaningless if it is pooled with typos.\n\nOnly a language whose preparation type-checks can produce it, so it is absent from every run\nof a language that does not — which is a fact about the arm, not a gap.",
           "type": "string"

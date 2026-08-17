@@ -638,16 +638,9 @@ fn every_model_facing_call_resolves_in_every_language() {
 /// source, a prompt edited on one side, a binding convention that changed on one. Each of those is
 /// pinned here rather than left to the fact that both are generated today.
 ///
-/// **The pair differs in more than the compiler until the JavaScript arm converts**, and that is
-/// recorded here rather than left implicit. The TypeScript arm keeps the
-/// [invariants](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) — the model's own file
-/// is what `tsc` reads, the SDK is reached by an import the program wrote, and the guest evaluates a
-/// module — and the JavaScript arm still evaluates a re-printed program as a function body against
-/// an injected scope. So the two run on different guests and prepare differently, and a study across
-/// them is comparing that as well.
-///
-/// The record fails in both directions: an arm that converts makes these assertions fail, and the
-/// gate says to delete them.
+/// **The pair differs in the compiler and in nothing else**, which is what makes the A/B readable.
+/// Both arms evaluate a module in the same guest, reach gg through the same import line, and are
+/// generated from one set of declarations.
 #[test]
 fn the_javascript_arm_differs_from_typescript_only_in_the_check() {
     let ts = typescript();
@@ -659,22 +652,17 @@ fn the_javascript_arm_differs_from_typescript_only_in_the_check() {
     assert!(ts.prepare_compiles());
     assert!(!js.prepare_compiles());
 
-    // What differs because one arm has converted and the other has not. DELETE THIS BLOCK when the
-    // JavaScript arm moves onto the ECMAScript guest.
-    assert_ne!(
+    // The guest, the import line and the module specifier: one artifact, one line, one scheme.
+    assert_eq!(
         ts.guest_component().map(<[u8]>::len),
         js.guest_component().map(<[u8]>::len),
-        "both arms are on one guest again; the pair differs in the compiler alone and this block \
-         should go"
+        "the pair runs on two guests, so a study across it measures the guest as well"
     );
-    assert!(
-        js.prepare_program(
-            "import { files } from \"gg\";\n",
-            &[],
-            &PrepareContext::new()
-        )
-        .is_err(),
-        "the JavaScript arm still refuses the word `import`; when it stops, this block should go"
+    assert_eq!(ts.lib_import("csvTools"), js.lib_import("csvTools"));
+    assert_eq!(
+        ts.bootstrap_program(&["gg.docs"], &["gg.docs.search"]),
+        js.bootstrap_program(&["gg.docs"], &["gg.docs.search"]),
+        "gg synthesizes one opening program for the pair"
     );
 
     // The surface. Compared entry by entry rather than as whole catalogues, because the catalogues
@@ -716,37 +704,23 @@ fn the_javascript_arm_differs_from_typescript_only_in_the_check() {
         js.healing().program_fence_tags(),
     );
 
-    // And a type annotation prepares on both, because "JavaScript" here is a program nothing
-    // checked rather than a narrower grammar.
-    for (language, program) in [
-        (
-            ts,
-            "import * as gg from \"gg\";\nconst total: number = 1;\ngg.session.finish(String(total));\n",
-        ),
-        (js, "const total: number = 1;\n"),
-    ] {
-        let prepared = language
-            .prepare_program(program, &[], &PrepareContext::new())
-            .unwrap_or_else(|err| panic!("{}: {err}", language.id()));
-        assert!(!prepared.source.contains(": number"), "{}", language.id());
-    }
     // The one program that separates them: a call the SDK does not have is a compile error on the
-    // checked arm and reaches the guest on the other.
+    // checked arm and reaches the guest on the other, where the same text is what the engine
+    // evaluates.
+    const WRONG: &str = "import * as gg from \"gg\";\ngg.views.openText(1, 2);\n";
     assert!(
         matches!(
-            ts.prepare_program(
-                "import * as gg from \"gg\";\ngg.views.openText(1, 2);\n",
-                &[],
-                &PrepareContext::new()
-            ),
+            ts.prepare_program(WRONG, &[], &PrepareContext::new()),
             Err(PrepareFailure::Program(PrepareError::Compile(_)))
         ),
         "TypeScript's compiler reads the program"
     );
-    assert!(
-        js.prepare_program("view.openText(1, 2);", &[], &PrepareContext::new())
-            .is_ok(),
-        "nothing on the JavaScript arm reads the program before it runs"
+    assert_eq!(
+        js.prepare_program(WRONG, &[], &PrepareContext::new())
+            .expect("nothing on the JavaScript arm reads the program before it runs")
+            .source,
+        WRONG,
+        "and what it hands the guest is the reply, byte for byte"
     );
 }
 
@@ -819,16 +793,13 @@ fn the_fixture_language_has_no_wire_id() {
 /// real (the same bytes, not two files that happen to agree today), and everything a language owns
 /// beyond the shared artifact must still be its own.
 const SHARED_ARTIFACTS: &[(GgProgramLanguage, GgProgramLanguage, &str)] = &[(
+    GgProgramLanguage::TypeScript,
     GgProgramLanguage::JavaScript,
-    GgProgramLanguage::PureScript,
-    "a PureScript program is compiled to JavaScript by `purs` and flattened by `esbuild` before \
-         it crosses, and what arrives is a self-contained script with no runtime to boot — `purs` \
-         compiles the library code a program used into the program and the bundler tree-shakes the \
-         rest away. So a component of its own would differ from the JavaScript arm's in nothing at \
-         all, where Ruby's differs in a 743 KB Opal runtime pre-initialised into it. Measured: 2.7 \
-         ms per turn against 2.1 ms for the equivalent plain JavaScript on the same artifact. Both \
-         arms leave this component when they convert onto the ECMAScript guest, and this row goes \
-         with the second of them",
+    "the pair is one language with the type check varied, so both arms evaluate a module in the \
+         ECMAScript guest and reach it through one constant. A second copy of that artifact is 1.2 \
+         MB in every released binary for bytes that must not differ: an arm whose guest resolved \
+         `gg` differently, or reported a frame differently, would make the pair's A/B measure the \
+         guest as well as the compiler",
 )];
 
 /// Why `a` and `b` are allowed to share a component, or `None` if they are not.

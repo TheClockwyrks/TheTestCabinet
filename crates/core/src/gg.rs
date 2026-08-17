@@ -3378,9 +3378,6 @@ pub enum GgTurnErrorType {
     /// The program is not valid source in its [language](GgProgramLanguage) — the parser's own
     /// diagnostics. Nothing ran.
     TranspileSyntax,
-    /// The program parses but breaks a rule the language enforces before any statement runs: a
-    /// `const` declared twice, a duplicate binding in a destructuring pattern.
-    TranspileSemantic,
     /// The language's **compiler read the whole program and rejected it** — a type error, a borrow
     /// error, a name that does not resolve, an interface a class does not satisfy. The model is
     /// handed the compiler's own diagnostics and writes another program; nothing ran.
@@ -3444,7 +3441,7 @@ impl GgTurnErrorType {
     ///
     /// The grouping is the reading order a console ranks and labels from, and it is what makes
     /// "every type has a base, and every base has at least one type" checkable rather than asserted.
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 17] = [
         Self::ModelAuth,
         Self::ModelRejected,
         Self::ModelRetryExhausted,
@@ -3452,7 +3449,6 @@ impl GgTurnErrorType {
         Self::ModelVisionUnsupported,
         Self::ModelParse,
         Self::TranspileSyntax,
-        Self::TranspileSemantic,
         Self::TranspileCompile,
         Self::TranspileUnsupported,
         Self::ProgramToolError,
@@ -3479,10 +3475,9 @@ impl GgTurnErrorType {
             | Self::ModelResponseLoop
             | Self::ModelVisionUnsupported
             | Self::ModelParse => GgTurnErrorKind::ModelApi,
-            Self::TranspileSyntax
-            | Self::TranspileSemantic
-            | Self::TranspileCompile
-            | Self::TranspileUnsupported => GgTurnErrorKind::Transpile,
+            Self::TranspileSyntax | Self::TranspileCompile | Self::TranspileUnsupported => {
+                GgTurnErrorKind::Transpile
+            }
             Self::ProgramToolError | Self::ProgramUnknownName | Self::ProgramThrow => {
                 GgTurnErrorKind::ProgramFault
             }
@@ -3510,7 +3505,6 @@ impl GgTurnErrorType {
             Self::ModelVisionUnsupported => "model_vision_unsupported",
             Self::ModelParse => "model_parse",
             Self::TranspileSyntax => "transpile_syntax",
-            Self::TranspileSemantic => "transpile_semantic",
             Self::TranspileCompile => "transpile_compile",
             Self::TranspileUnsupported => "transpile_unsupported",
             Self::ProgramToolError => "program_tool_error",
@@ -3538,7 +3532,6 @@ impl GgTurnErrorType {
             Self::ModelVisionUnsupported => "model cannot see images",
             Self::ModelParse => "unparseable model response",
             Self::TranspileSyntax => "syntax error",
-            Self::TranspileSemantic => "semantic error",
             Self::TranspileCompile => "compiler rejected the program",
             Self::TranspileUnsupported => "unsupported program feature",
             Self::ProgramToolError => "uncaught call failure",

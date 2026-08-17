@@ -236,25 +236,6 @@ struct Unconverted {
 /// not one that is *accepted*: see the module documentation for why the gate fails when a row
 /// becomes true as well as when it becomes false.
 const UNCONVERTED: &[Unconverted] = &[
-    // ---- javascript ---------------------------------------------------------------------------
-    //
-    // The strip re-prints: what a diagnostic from this arm's guest is reported against is a printed
-    // copy of the model's tree, on its own lines, with its own indentation, and no map reads it
-    // back.
-    Unconverted {
-        arm: GgProgramLanguage::JavaScript,
-        half: Half::Program,
-        did: Did::Rewritten,
-        adds: "\n\t\tmodule: path,",
-        instead: "prints the parsed program back out, joining its lines and re-indenting with tabs",
-    },
-    Unconverted {
-        arm: GgProgramLanguage::JavaScript,
-        half: Half::Module,
-        did: Did::Rewritten,
-        adds: "return { functions };",
-        instead: "prints the module back out and appends a `return` of its namespace",
-    },
     // ---- ruby -----------------------------------------------------------------------------------
     Unconverted {
         arm: GgProgramLanguage::Ruby,

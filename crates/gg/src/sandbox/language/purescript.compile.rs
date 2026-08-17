@@ -5,8 +5,7 @@
 //!
 //! A PureScript program is **compiled to JavaScript on the host** — by `purs`, against a library
 //! set that was compiled once and is shipped inside gg's binary, then flattened into one script by
-//! `esbuild` — and evaluated by the same ECMAScript guest the [TypeScript](super::super::typescript)
-//! and [JavaScript](super::super::javascript) arms use.
+//! `esbuild` — and evaluated by [this arm's own `componentize-js` guest](super::COMPONENT).
 //!
 //! Nothing about it is per-run: the tree a program is compiled against is a build-time artifact,
 //! the compiler is a binary in the run image, and what crosses the membrane is JavaScript.

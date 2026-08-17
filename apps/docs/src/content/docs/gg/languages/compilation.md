@@ -110,11 +110,10 @@ split exists to prevent. The model would read that its program did not compile
 over a program nothing read, and spend its next turn rewriting something that
 was never wrong.
 
-A rejected program arrives as one of four bands, each with its own error type:
-`transpile_syntax`, `transpile_semantic`, `transpile_compile` and
-`transpile_unsupported`. It is recoverable, and the next turn's program may
-compile. It is an error turn and counts against the run's
-[error ceilings](/gg/execution-limits/). It is not the prebuilt interpreter
+A rejected program arrives as one of three bands, each with its own error type:
+`transpile_syntax`, `transpile_compile` and `transpile_unsupported`. It is
+recoverable, and the next turn's program may compile. It is an error turn and
+counts against the run's [error ceilings](/gg/execution-limits/). It is not the prebuilt interpreter
 component failing to compile, which is an artifact defect that ends the session.
 
 A compiler that could not finish is gg's, so the model reads nothing, no ceiling

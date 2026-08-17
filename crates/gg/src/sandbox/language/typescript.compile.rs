@@ -251,14 +251,14 @@ pub(super) fn compile_program(
 ///
 /// It is an ordinary module of the language, compiled exactly as a program is and in its own
 /// coordinates. What it offers is what it exports, read back off the emitted JavaScript by
-/// [`exports`].
+/// [`ecmascript::exports`](crate::sandbox::language::ecmascript::exports).
 pub(super) fn compile_module(
     source: &str,
     context: &PrepareContext,
 ) -> Result<PreparedModule, PrepareFailure> {
     let emitted = compile(MODULE_SOURCE, MODULE_EMITTED, source, context)?;
     Ok(PreparedModule {
-        exports: exports(&emitted),
+        exports: crate::sandbox::language::ecmascript::exports(&emitted),
         source: emitted,
     })
 }
@@ -703,65 +703,6 @@ fn members(catalogue: &SignatureCatalogue, id: &str) -> Vec<String> {
         .flat_map(|function| function.signatures.iter())
         .map(|entry| entry.signature.clone())
         .collect()
-}
-
-/// **The names a compiled code module offers**, read off the JavaScript `tsc` emitted for it.
-///
-/// The emitted file rather than the author's own, and that is what makes the reading simple enough
-/// to be lexical: `tsc` prints one `export` per line, unindented, with the types already erased — so
-/// a type-only export contributes nothing here without anything having to know what a type is.
-///
-/// A module offers what it exports and nothing else. There is no arm that guesses at an unexported
-/// declaration, because a module is a module of the language: the loader hands a program the
-/// module's own namespace, and a name the module did not export is not in it.
-fn exports(emitted: &str) -> Vec<String> {
-    let mut names: Vec<String> = Vec::new();
-    let mut push = |name: &str| {
-        if !name.is_empty() && !names.iter().any(|seen| seen == name) {
-            names.push(name.to_string());
-        }
-    };
-    for line in emitted.lines() {
-        let Some(rest) = line.strip_prefix("export ") else {
-            continue;
-        };
-        let rest = rest.trim_start();
-        // `export { a, b as c };` — the list form, whose names are the ones after `as` where there
-        // is one, because that is what the namespace offers.
-        if let Some(list) = rest.strip_prefix('{')
-            && let Some((list, _)) = list.split_once('}')
-        {
-            for entry in list.split(',') {
-                let entry = entry.trim();
-                push(entry.rsplit(" as ").next().unwrap_or(entry).trim());
-            }
-            continue;
-        }
-        // `export function f(…)`, `export class C`, `export const x = …`, and the modifiers that
-        // may stand between the keyword and the name.
-        let mut words = rest.split_whitespace();
-        let Some(mut keyword) = words.next() else {
-            continue;
-        };
-        while ["async", "default"].contains(&keyword) {
-            let Some(next) = words.next() else {
-                break;
-            };
-            keyword = next;
-        }
-        if !["function", "class", "const", "let", "var"].contains(&keyword) {
-            continue;
-        }
-        let Some(name) = words.next() else {
-            continue;
-        };
-        let name = name.trim_start_matches('*');
-        let end = name
-            .find(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$'))
-            .unwrap_or(name.len());
-        push(&name[..end]);
-    }
-    names
 }
 
 #[cfg(test)]

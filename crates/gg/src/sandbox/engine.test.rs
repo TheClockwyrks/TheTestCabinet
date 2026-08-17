@@ -428,11 +428,12 @@ fn the_embedded_component_imports_the_membrane_and_the_wasi_it_was_baked_with() 
 
 /// The embedded artifacts are within their documented size bands.
 ///
-/// Two guests, an order of magnitude apart. TypeScript's is quickjs-ng in a `wit-bindgen` component,
-/// ~1.2 MB; the JavaScript arm's is a `componentize-js` build of StarlingMonkey, ~13.4 MB. A build
-/// that produced something far smaller dropped the engine; one far larger picked up something it
-/// should not have. Either way the number belongs in a test rather than only in prose, because the
-/// artifacts are embedded and nobody re-reads their size.
+/// Two guests, an order of magnitude apart. The ECMAScript guest the TypeScript and JavaScript arms
+/// share is quickjs-ng in a `wit-bindgen` component, ~1.2 MB; the PureScript arm's is a
+/// `componentize-js` build of StarlingMonkey, ~13.4 MB. A build that produced something far smaller
+/// dropped the engine; one far larger picked up something it should not have. Either way the number
+/// belongs in a test rather than only in prose, because the artifacts are embedded and nobody
+/// re-reads their size.
 #[test]
 fn the_embedded_component_is_within_the_documented_size_band() {
     let bytes = component_bytes(typescript()).len();
@@ -441,12 +442,12 @@ fn the_embedded_component_is_within_the_documented_size_band() {
         "the ECMAScript component is {bytes} bytes, outside the documented ~1.2 MB band"
     );
     let bytes = component_bytes(crate::sandbox::language(
-        test_cabinet_core::gg::GgProgramLanguage::JavaScript,
+        test_cabinet_core::gg::GgProgramLanguage::PureScript,
     ))
     .len();
     assert!(
         (12 * 1024 * 1024..=15 * 1024 * 1024).contains(&bytes),
-        "the JavaScript arm's component is {bytes} bytes, outside the documented 12–15 MiB band"
+        "the PureScript arm's component is {bytes} bytes, outside the documented 12–15 MiB band"
     );
 }
 

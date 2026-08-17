@@ -7,10 +7,10 @@
 //! host sent — so it writes its own `import` lines, declares whatever top-level names it likes, and
 //! reads its own line numbers back out of any failure.
 //!
-//! The TypeScript arm is registered against it. The JavaScript and PureScript arms
-//! still evaluate in `javascript::COMPONENT`, which is the guest
-//! this one replaces; converting each of them is a change to that arm's prepare step, its prompt and
-//! its page.
+//! The TypeScript and JavaScript arms are registered against it, which is what holds that pair to
+//! differing in the compiler and nothing else. The PureScript arm still evaluates in its own
+//! `componentize-js` guest, which is the guest this one replaces; converting it is a change to that
+//! arm's prepare step, its prompt and its page.
 //!
 //! # Why a second guest exists at all
 //!
@@ -25,10 +25,9 @@
 //! `gg-js-runtime-decision.md`.
 //!
 //! So a program there is a **function body**: `new Function(...names, program)` with sixteen reserved
-//! formal parameters (`const context = 1` is a `SyntaxError`), evaluated over a re-printed AST rather
-//! than the model's own bytes, with `import`, `export` and top-level `await` refused in writing, and
-//! every reported line arrived at by subtracting a calibration throw. Ruling D14 chose this engine;
-//! rulings D9, D10 and D11 delete that arrangement.
+//! formal parameters, against which the SDK's names resolve with no line the model wrote, and every
+//! reported line arrived at by subtracting a calibration throw. Ruling D14 chose this engine; rulings
+//! D9, D10 and D11 delete that arrangement.
 //!
 //! # What it costs, measured on this artifact
 //!
@@ -163,6 +162,67 @@ pub(crate) fn component() -> Result<&'static Component, SandboxError> {
     Ok(COMPILED
         .get()
         .expect("the component was just set, and a `OnceLock` never unsets"))
+}
+
+/// **The names a code module offers**, read off its top-level `export` lines.
+///
+/// One reader for both arms on this guest, because a module is one thing here: the loader hands a
+/// program the module's own namespace, and a name the module did not export is not in it. There is
+/// no arm that guesses at an unexported declaration.
+///
+/// The reading is lexical, which is what an `export` at the top level of a module makes it: the
+/// keyword opens a line and nothing indents it. [TypeScript](super::typescript) reads `tsc`'s
+/// emission, where the types are already erased, so a type-only export contributes nothing here
+/// without anything having to know what a type is; [JavaScript](super::javascript) reads the
+/// author's own file, which is the file the guest evaluates.
+pub(super) fn exports(source: &str) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    let mut push = |name: &str| {
+        if !name.is_empty() && !names.iter().any(|seen| seen == name) {
+            names.push(name.to_string());
+        }
+    };
+    for line in source.lines() {
+        let Some(rest) = line.strip_prefix("export ") else {
+            continue;
+        };
+        let rest = rest.trim_start();
+        // `export { a, b as c };` — the list form, whose names are the ones after `as` where there
+        // is one, because that is what the namespace offers.
+        if let Some(list) = rest.strip_prefix('{')
+            && let Some((list, _)) = list.split_once('}')
+        {
+            for entry in list.split(',') {
+                let entry = entry.trim();
+                push(entry.rsplit(" as ").next().unwrap_or(entry).trim());
+            }
+            continue;
+        }
+        // `export function f(…)`, `export class C`, `export const x = …`, and the modifiers that
+        // may stand between the keyword and the name.
+        let mut words = rest.split_whitespace();
+        let Some(mut keyword) = words.next() else {
+            continue;
+        };
+        while ["async", "default"].contains(&keyword) {
+            let Some(next) = words.next() else {
+                break;
+            };
+            keyword = next;
+        }
+        if !["function", "class", "const", "let", "var"].contains(&keyword) {
+            continue;
+        }
+        let Some(name) = words.next() else {
+            continue;
+        };
+        let name = name.trim_start_matches('*');
+        let end = name
+            .find(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$'))
+            .unwrap_or(name.len());
+        push(&name[..end]);
+    }
+    names
 }
 
 #[cfg(test)]

@@ -14,9 +14,9 @@
 //! after.
 //!
 //! A second language being registered did **not** retire it. [`JavaScript`](super::javascript) is
-//! TypeScript's arm with the type check removed: it shares that language's component, catalogue
-//! spellings, strip and dialect by design, so asking it any of the questions above gets
-//! TypeScript's answer back and proves nothing about who was asked. The fixture answers every one
+//! TypeScript's arm with the type check removed: it shares that language's guest, catalogue
+//! spellings, synthesized programs and dialect by design, so asking it any of the questions above
+//! gets TypeScript's answer back and proves nothing about who was asked. The fixture answers every one
 //! of them differently, which is the whole of what it is for.
 //!
 //! # What it is

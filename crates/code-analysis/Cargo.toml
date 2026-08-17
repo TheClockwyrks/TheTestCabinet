@@ -33,9 +33,8 @@ test-cabinet-core = { path = "../core" }
 # stays deterministic. `ignore` is the walker behind ripgrep and handles nested ignore
 # files, `.git/info/exclude` and the parent-directory rules for us.
 ignore = "0.4"
-# The TypeScript/JSX front end. Pinned to the same 0.141 line `crates/gg`'s sandbox
-# transpiler is written against so the workspace compiles one parser, not two; `ast_visit`
-# adds the generated `Visit` trait this crate walks the tree with.
+# The TypeScript/JSX front end, pinned by the workspace; `ast_visit` adds the generated
+# `Visit` trait this crate walks the tree with.
 oxc = { workspace = true, features = ["ast_visit"] }
 # The Rust front end. `full` is required to parse whole files (items, expressions and
 # statements, not just the derive-macro subset); `visit` supplies the generated read-only

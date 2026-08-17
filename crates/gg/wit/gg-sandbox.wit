@@ -1328,16 +1328,15 @@ world jvm-sandbox {
 world sandbox {
     use session.{ending-kind};
 
-    /// One code module bound into a program's scope, from a code skill or a code memory the agent
-    /// has read.
+    /// One code module a program may reach, from a code skill or a code memory the agent has read.
     ///
-    /// The host has already transpiled it and appended the `return { … }` that makes its exports the
-    /// value of evaluating it, so the guest does nothing to the source but evaluate it as a function
-    /// body against the same scope the program gets — which is what lets a module call gg tools.
+    /// The host has already prepared it for this guest, exactly as it prepares a program, so the
+    /// guest does nothing to the source but make it reachable under the name below — which is what
+    /// lets a module call gg tools.
     record code-module {
-        /// The binding key: the module is reached as `lib.<name>`. Already a valid identifier and
-        /// already unique across this list; the host deduplicated it and told the model which key it
-        /// really got.
+        /// The binding key the module is reached under, in whatever form this guest reaches one.
+        /// Already a valid identifier and already unique across this list; the host deduplicated it
+        /// and told the model which key it really got.
         name: string,
         /// The module's source, in whatever this guest evaluates.
         source: string,

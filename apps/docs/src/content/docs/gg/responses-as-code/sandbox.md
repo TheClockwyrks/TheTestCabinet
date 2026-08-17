@@ -58,11 +58,6 @@ membrane refuses every bridged call once the run's budget is spent.
   [ECMAScript guest](/gg/languages/ecmascript-guest/) sets, so that engine
   reports an overflow itself rather than the store dying, and below a thread's
   own stack, so the trap is a trap rather than a crash.
-- The ECMAScript arms' preparation step refuses a program whose brackets nest
-  more than 200 deep, checked before the parse. The parser is recursive descent
-  and a stack overflow would take the gg process down. A program's length is
-  unbounded: a reply is processed in full however long it is, and the parse runs
-  on a stack sized for that program.
 
 ### The run's wall-clock budget
 
@@ -165,8 +160,9 @@ Each arm's `build.sh` writes the files that arm needs into
 `crates/gg-sandbox-artifacts/<arm>/`. That crate's `links` key carries the
 output directory to `crates/gg`'s build script, which republishes it as an
 environment variable the arm's module reads with `include_bytes!`. Ten crates
-serve eleven arms: `typescript` (which serves the JavaScript arm too), `python`,
-`ruby`, `java`, `kotlin`, `rust`, `purescript`, `cpp`, `swift` and `csharp`.
+serve eleven arms: `typescript` (whose guests serve the JavaScript and PureScript
+arms too), `python`, `ruby`, `java`, `kotlin`, `rust`, `purescript`, `cpp`,
+`swift` and `csharp`.
 
 There is one crate per arm rather than more steps of one build script, because a
 build script has a single rerun set. Per-arm crates buy three things. Editing

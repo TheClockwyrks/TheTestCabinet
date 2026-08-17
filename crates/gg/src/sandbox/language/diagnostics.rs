@@ -41,7 +41,7 @@
 //! without inventing structure or throwing it away.
 //!
 //! * An arm whose compiler reports **machine-readable** diagnostics — `rustc`'s JSON, javac's and
-//!   `csc`'s and `purs`'s structured output, oxc's parse errors — already has a `Vec` of separately
+//!   `csc`'s and `purs`'s structured output — already has a `Vec` of separately
 //!   rendered strings, and knows where one ends. That is [`capped`].
 //! * An arm whose compiler reports **text** — `swiftc`, `tsc`'s pretty output — has one string in
 //!   which a diagnostic is a header line followed by a source excerpt, a caret, and sometimes notes.
@@ -78,9 +78,8 @@
 //! `SyntaxError` and reports it, so a rejection is structurally one diagnostic and there is no list
 //! to cap. [Python](super::python) runs no checker on the prepare path, so it raises no compile
 //! band at all — a syntax error arrives at run time as a located program error from the guest.
-//! [JavaScript](super::javascript) delegates its whole prepare step to
-//! [TypeScript's](super::typescript) parse path, so it is bounded by construction rather than by an
-//! edit of its own.
+//! [JavaScript](super::javascript) prepares nothing at all, so it raises no compile band either —
+//! everything a program on it gets wrong arrives from the guest.
 
 /// The line a model is shown in place of what it was not shown.
 ///

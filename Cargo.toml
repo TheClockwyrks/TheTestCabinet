@@ -451,11 +451,8 @@ tracing-opentelemetry = "0.33"
 # workspace's minimal-host stance. Only `crates/gg` pulls it in.
 tiktoken-rs = "0.7"
 
-# In-process type-stripping for the gg sandbox's JavaScript program language
-# (`crates/gg/src/sandbox/language/javascript.prepare.rs`): that arm's guest evaluates a
-# function body, the strip erases any annotations a reply carried, and it measures in
-# microseconds — so no Node and no `componentize-js` is ever on that arm's critical path.
-# Pinned to the 0.141 line the host is written against: oxc's parser/transformer
-# API moves between minor releases, and a silent bump would change how a model's
-# syntax error is reported.
-oxc = { version = "0.141", features = ["semantic", "transformer", "codegen"] }
+# The TypeScript/JSX front end `crates/code-analysis` parses a produced source tree with.
+# Pinned to the 0.141 line that crate is written against: oxc's parser and AST move between
+# minor releases, and a silent bump would change what the analyzer reports.
+oxc = { version = "0.141" }
+

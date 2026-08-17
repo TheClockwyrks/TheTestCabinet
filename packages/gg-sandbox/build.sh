@@ -13,10 +13,11 @@
 # — so a second guest, for a second language, is a sibling directory with its own build script
 # writing its own set, and touches nothing here.
 #
-# This guest serves TWO registered languages and bakes ONE component: `javascript` is `typescript`
-# with gg's type check removed, so the two arms differ in what gg does to a program before handing it
-# over and in nothing else. A second, byte-identical component would be a second copy of one
-# artifact.
+# This build cuts the guests THREE registered arms are evaluated by, and bakes ONE of each.
+# `javascript` is `typescript` with gg's type check removed, so both evaluate in the quickjs guest
+# `guest.sh` builds and the two arms differ in the compiler and in nothing else; `purescript`
+# compiles to self-contained JavaScript and evaluates in the `componentize-js` component below. A
+# second, byte-identical component per arm would be a second copy of one artifact.
 #
 # WHAT IS *NOT* HERE: the two signature catalogues. They are reflected out of the SDK's own emitted
 # declarations by `signatures.sh` beside this script, which `scripts/gg-signatures.sh` runs and
