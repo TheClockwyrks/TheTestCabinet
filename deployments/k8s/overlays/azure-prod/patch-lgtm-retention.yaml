@@ -1,4 +1,5 @@
-# Keep prod telemetry for 3 days instead of the component's 24h default.
+# Keep prod telemetry for 3 days instead of the component's 24h default — except
+# metrics, which are kept far longer. See the split below.
 #
 # Prod's value is different from staging's: staging telemetry is consumed within
 # hours (a validation campaign is watched as it runs), whereas a prod issue is often
@@ -9,7 +10,23 @@
 # collector held 829 head series against staging's 4,249 — so the longer window
 # costs proportionally little.
 #
-# Only the three duration values are patched. The *_EXTRA_ARGS in the component
+# WHY METRICS GET 30 DAYS AND LOGS/TRACES DO NOT:
+# logs and traces answer "what happened in this run", which is a question asked
+# within days. Metrics now also answer a *capacity* question — what is the largest
+# memory footprint any run pod has ever reached — and that one is only answerable
+# over a window wide enough to contain the rare heavy test case. A voxel-meshing or
+# arena run may appear a handful of times a month; sizing a memory limit off a 3-day
+# sample would set the ceiling from whatever happened to run that weekend, and a
+# ceiling set too low is a deterministic OOM kill rather than a near miss.
+#
+# The cost is small and bounded. The cAdvisor scrape keeps only nine whitelisted
+# series per container (see the component's prometheus.yaml), per-run pods live
+# ~30 minutes so their series stop accruing samples almost immediately, and the
+# component's `--storage.tsdb.retention.size=8GB` still caps the store regardless of
+# the time window — whichever limit is reached first wins. The prometheus volume is
+# 10Gi.
+#
+# Only the duration values are patched. The *_EXTRA_ARGS in the component
 # interpolate them via $(VAR) expansion, so they need no restating here; env entries
 # merge by name, leaving the rest of the container's environment untouched.
 apiVersion: apps/v1
@@ -27,5 +44,6 @@ spec:
               value: "72h"
             - name: TEMPO_BLOCK_RETENTION
               value: "72h"
+            # 30 days — the capacity window, not the debugging window.
             - name: PROMETHEUS_RETENTION
-              value: "72h"
+              value: "720h"

@@ -64,6 +64,25 @@ const RUN_CONTAINER: &str = "run";
 /// run's pod that shares the `managed-by: tcab-driver` label.
 const JOB_ID_LABEL: &str = "tcab.dev/job-id";
 
+/// The cluster-autoscaler annotation that pins a pod to its node.
+///
+/// A sandbox holds the single copy of a run's working tree — nothing replicates it
+/// and nothing replays it, so evicting a sandbox destroys the run. Today the
+/// autoscaler declines to drain a node hosting one anyway, but only incidentally:
+/// the sandbox is a *bare* pod (deliberately — see the ownership discussion in the
+/// dispatcher's `kubernetes` module) and the autoscaler's default policy spares pods
+/// with no controller behind them. That is a property of the cluster's configuration,
+/// not of this manifest, and it inverts the moment anything gives the sandbox an
+/// owner. State the requirement explicitly instead of inheriting it.
+///
+/// The dispatcher stamps the same annotation on the driver `Job` it creates; the two
+/// crates do not depend on each other, so the literal is duplicated exactly as
+/// [`JOB_ID_LABEL`] already is, and both sides are covered by tests asserting it.
+const SAFE_TO_EVICT_ANNOTATION: &str = "cluster-autoscaler.kubernetes.io/safe-to-evict";
+
+/// The annotation value that forbids the cluster autoscaler from evicting a pod.
+const SAFE_TO_EVICT_FALSE: &str = "false";
+
 /// The default [`pod_active_deadline`](KubernetesConfig::pod_active_deadline): 24
 /// hours.
 ///
@@ -924,6 +943,10 @@ fn build_run_pod(name: &str, spec: &ContainerSpec, config: &KubernetesConfig) ->
         metadata: ObjectMeta {
             name: Some(name.to_string()),
             labels: Some(labels),
+            annotations: Some(BTreeMap::from([(
+                SAFE_TO_EVICT_ANNOTATION.to_string(),
+                SAFE_TO_EVICT_FALSE.to_string(),
+            )])),
             ..Default::default()
         },
         spec: Some(pod_spec),
