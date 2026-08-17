@@ -61,16 +61,18 @@ of file-view calls, one per provided file in seeding order, followed by the file
 views that program opened:
 
 ```ts
+import * as gg from "gg";
+
 gg.views.openFile("specs/rules.md");
 gg.views.openFile("reference/board.png");
 ```
 
-The program holds that list of calls and no scaffolding around it, because an
-opening move is exactly that. Each statement is written by the agent's own
-program language, so a Python agent is shown Python. Paths are JSON-quoted, so a
-quote or a backslash in a path cannot break the parse. The views arrive as
-headed `File` items keyed by path, the same envelope a real file-view call
-produces.
+The program is a whole program of the agent's own language, on the terms the
+[invariants](/gg/responses-as-code/invariants/) set for every program: the line
+that reaches gg's surface, then one call per file, and nothing else. A Python
+agent is shown Python. Paths are JSON-quoted, so a quote or a backslash in a
+path cannot break the parse. The views arrive as headed `File` items keyed by
+path, the same envelope a real file-view call produces.
 
 The reads run first, and the program holds one call per file that was read.
 Every one of those views is present in the same opening context, since the run

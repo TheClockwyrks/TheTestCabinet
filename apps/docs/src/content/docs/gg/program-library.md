@@ -9,6 +9,8 @@ agent ran. A later program fetches one back, patches it with ordinary string
 work, and hands it over to be run in its own place.
 
 ```ts
+import * as gg from "gg";
+
 const source = gg.programs.get();
 gg.programs.rerun(source.replace("cosnt total", "const total"));
 ```

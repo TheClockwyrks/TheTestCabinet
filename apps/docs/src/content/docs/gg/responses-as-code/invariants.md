@@ -5,12 +5,16 @@ title: "Invariants"
 Everything on this page is required of every turn of every agent in this
 execution mode, whatever language that agent writes in. The pages under
 [program languages](/gg/languages/overview/) record how each arm spells what is
-required here, and an arm that does not keep it yet says so at the head of its
-own page. Two gates measure the gap, over every registered arm: `authorship.rs`
+required here. Two gates hold every registered arm to it: `authorship.rs`
 compares what a preparation produced with the bytes it was handed, and `g8.rs`
 drives five failure shapes through each arm and records what the model reads.
 Each gate pins the cells its arms do not satisfy, so closing one is a visible
 edit and losing one is a failure.
+
+A fenced program on these pages is a whole program of the arm its fence names,
+and `docs.rs` compiles every one of them through that arm's own preparation. A
+page teaching a program that would not run is a page teaching the model's own
+first mistake.
 
 ## The program is the model's
 

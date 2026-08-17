@@ -126,6 +126,8 @@ native tool schemas carry no code fields, so a tool-calling run sees a memory's
 description and body alone.
 
 ```ts
+import * as gg from "gg";
+
 gg.memories.writeMemory({
   name: "csv-tools",
   description: "Parsing the vendor CSV exports, which quote inconsistently.",

@@ -241,6 +241,15 @@ mod isolation;
 #[path = "language/authorship.rs"]
 mod authorship;
 
+/// The **documentation-example gate**: the assertion that every program gg's own documentation
+/// pages show a reader is compiled by the arm that page is about.
+///
+/// `#[cfg(test)]` for the reason [`authorship`] is — it runs real compilers over text that lives
+/// outside this crate. Its module documentation says why the pages are a subject at all.
+#[cfg(test)]
+#[path = "language/docs.rs"]
+mod docs;
+
 /// **Gate G8**: the assertion that a runtime failure reaches the model — on every arm, for all five
 /// shapes a failure takes.
 ///
