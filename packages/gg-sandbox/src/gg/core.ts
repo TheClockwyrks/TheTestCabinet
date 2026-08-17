@@ -78,7 +78,7 @@ export class ToolError extends Error {
   /** The failure class, so a catch site branches on a value rather than on prose. */
   readonly code: ToolErrorCode;
 
-  /** @internal Not model-facing: the shim and the SDK construct these; a program only catches them. */
+  /** @internal Not model-facing: the SDK constructs these; a program only catches them. */
   constructor(tool: string, code: ToolErrorCode, message: string) {
     super(message);
     this.name = "ToolError";

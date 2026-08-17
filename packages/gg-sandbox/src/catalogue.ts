@@ -75,98 +75,12 @@ export const MODULE_ORDER: readonly ModuleId[] = [
 export const SURFACE = "gg";
 
 /**
- * The **API object** names each module's functions are also reachable under, kept for one reader and
- * no second.
- *
- * That reader is the PureScript arm's compiled bundle, which this same component evaluates and which
- * resolves these as free identifiers. Its SDK is its own — `Gg.Files`, `Gg.Views` — and the names
- * below are the lowering it was written against, so removing one would break an arm this package
- * does not own.
- *
- * `session` has **two**, and that is the whole of what the static scope changed here. An ending group
- * used to be chosen per program from the agent's role, so a reviewer's scope carried `review` and no
- * `harness`; now both are bound, always, and which of them the host will accept is the host's
- * business. A reviewer that calls `harness.finish` therefore gets gg's own sentence — it ends its
- * session with a verdict, and here are the two calls that do — instead of a `ReferenceError` naming
- * an identifier.
- *
- * `docs` is its own object name, exactly as `tasks` and `context` are theirs, because gg files the
- * documentation calls under a `docs` object of its own rather than under `view`. Its entry is here
- * for the same one reader: a sibling arm's bundle reaches `docs.search` as a free identifier, and a
- * search is the call no arm can be without.
- */
-export const LEGACY_GROUPINGS: Readonly<
-  Partial<Record<ModuleId, readonly string[]>>
-> = {
-  files: ["fs"],
-  shell: ["system"],
-  board: ["project"],
-  tasks: ["tasks"],
-  memories: ["memory"],
-  docs: ["docs"],
-  views: ["view"],
-  context: ["context"],
-  delegation: ["agents"],
-  skills: ["skills"],
-  programs: ["programs"],
-  session: ["harness", "review"],
-};
-
-/**
- * Every gg tool, in `ALL_TOOL_NAMES` order.
- *
- * This is gg's tool vocabulary rather than this SDK's, and the guest carries it for exactly one
- * reason: `boundTools` answers the component's second export with it, and gg compares that answer
- * against its own `ALL_TOOL_NAMES` on the **committed artifact**. It is the one drift check that
- * catches a stale `.wasm` rather than a stale source file, so a tool added, renamed or removed in gg
- * fails against the binary that would otherwise silently not implement it.
- */
-export const GG_TOOLS: readonly string[] = [
-  "shell",
-  "read_file",
-  "write_file",
-  "edit_file",
-  "list_dir",
-  "read_skill",
-  "write_memory",
-  "update_memory",
-  "create_memory",
-  "read_memory",
-  "edit_memory",
-  "search_memories",
-  "delete_memory",
-  "add_task",
-  "update_task",
-  "set_blocked_by",
-  "complete_task",
-  "remove_task",
-  "create_epic",
-  "create_issue",
-  "update_issue",
-  "set_issue_blocked_by",
-  "remove_epic",
-  "remove_issue",
-  "wait_for_issue",
-  "evict_file_view",
-  "archive_thread",
-  "search_archive",
-  "compact",
-  "spawn_subagent",
-  "wait_for_subagents",
-  "send_message",
-  "transition_state",
-  "exec",
-  "fork",
-];
-
-/**
  * Every operation a gg **tool** buys, and which tool buys it.
  *
- * It no longer decides anything a program can see: the scope is static, so this table is read by
- * {@link "./shim.js".boundTools} alone — the export gg compares against its own tool vocabulary on
- * the committed artifact. What buys a call at *run time* is gg's own operations table, checked at
- * the membrane; what is here is only "which gg tool does this SDK implement a function for", which
- * is a claim about this package rather than about a run.
+ * Nothing on a turn path reads it: what buys a call at run time is gg's own operations table,
+ * checked at the membrane. What is here is "which gg tool does this SDK implement a function for",
+ * which is a claim about this package rather than about a run, and it is where {@link OPERATIONS}
+ * takes its tool-backed half from.
  *
  * Three of these are not one-to-one, and each says something real. `files.read_text_file` is a helper
  * rather than a tool of its own, so it is bought by the read it is built on; `views.open_file`
@@ -223,8 +137,7 @@ export const TOOL_BOUND: Readonly<Record<string, string>> = {
  * function, fails the reflector rather than reaching a model as an absence.
  *
  * What buys any of them at run time is gg's business and is written down in gg's own operations
- * table. Nothing here is read on a turn path: {@link buildScope} binds what the modules export, and
- * the membrane decides what happens when one is called.
+ * table.
  */
 export const OPERATIONS: readonly string[] = [
   ...Object.keys(TOOL_BOUND),
@@ -244,47 +157,11 @@ export const OPERATIONS: readonly string[] = [
 ];
 
 /**
- * Which group of ending functions the host will **accept** from this program, mirroring the WIT's
- * `ending-kind`.
- *
- * It no longer decides what is bound — every ending function is in every program's scope — and the
- * guest does nothing with it at all. It survives as a parameter of `run` because it is a fact about
- * the agent that gg states on the wire, and because removing a parameter from a WIT world means
- * rebuilding eleven committed guests for a value four of them never read.
- *
- * `"none"` is the arm an **on-use script** runs under — the code a skill or a memory runs when the
- * agent first reads it. That script is not the agent's turn, so it may not declare the session over,
- * and the host is what tells it so.
- */
-export type EndingKind = "standard" | "review" | "none";
-
-/**
- * The scope object a program reaches its loaded **code modules** through: the code of a skill or a
- * memory it has read, bound at `lib.<name>`.
- *
- * It is not a capability module: nothing there is a gg function, the members are whatever the skill
- * or memory exported, and the host already said which key each one got and
- * what it exports when it answered the read. It is bound only when at least one module was handed
- * over, so a run with none has no `lib` identifier at all.
- */
-export const LIB_OBJECT = "lib";
-
-/**
- * The name the shared `ToolError` class is bound under, beside its qualified `gg.core.ToolError`.
- *
- * Both, because `catch (error) { if (error instanceof ToolError) … }` is the shape the prompt teaches
- * and a qualified name in a `catch` reads as ceremony, while the qualified one is what a
- * documentation view is keyed by.
- */
-export const TOOL_ERROR = "ToolError";
-
-/**
  * The non-enumerable key every bound function carries the name gg knows it by under, so
  * `gg.views.openDocsView(gg.files.readFile)` can be spelled with the function rather than a string.
  *
- * A `Symbol` rather than a property name so it is invisible to a model iterating an object, and here
- * rather than in the shim because both the shim (which writes it) and `gg/views.ts` (which reads it)
- * need the identical symbol.
+ * A `Symbol` rather than a property name, so it is invisible to a model iterating an object, and in
+ * this module rather than beside its reader so that a writer and `gg/views.ts` share one symbol.
  */
 export const DOCS_NAME = Symbol("gg.docsName");
 

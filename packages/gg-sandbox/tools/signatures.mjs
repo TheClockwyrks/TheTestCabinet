@@ -39,7 +39,7 @@
 //     It is catalogued as an ALIAS of that operation — gated identically, counting toward no
 //     capability of its own — and both as an entry of its own and as a line on its type;
 //   * the fully-qualified name is `gg.<module>.<name>`, which is a path a program can really write:
-//     the shim binds `gg` with one object per module this run offers.
+//     the aggregate module `gg` re-exports one namespace per module.
 //
 // # What is enforced here rather than left to review
 //
@@ -51,7 +51,7 @@
 //     tables list is bound by exactly one function — the failure this catches in both directions is a
 //     capability quietly missing from a model's whole surface;
 //   * an operation's key names its function: `files.read_file` is `readFile` and nothing else, which
-//     is what lets the shim bind by derivation instead of by a second table;
+//     is what lets a catalogue entry name its function by derivation instead of by a second table;
 //   * a doc comment's FIRST LINE is the brief and everything after the blank line that follows it is
 //     the detail, so an opening paragraph that wraps onto a second line is refused AT THE DECLARATION
 //     rather than several steps later in a gate over the emitted JSON;
@@ -504,8 +504,7 @@ function armDoc(union, index, sourceFile) {
  *
  * The source file is transpiled in memory and imported as a data URL rather than read out of `dist/`,
  * so this script depends only on what `tsconfig.headers.json` emits — which is what lets a build of
- * gg reflect this arm's catalogues without ever building the JavaScript the component is made from,
- * and therefore without `componentize-js` on the machine doing the building.
+ * gg reflect this arm's catalogues without ever building the JavaScript the guest is baked from.
  */
 async function loadCatalogue() {
   const file = path.join(SRC_DIR, "catalogue.ts");
@@ -631,7 +630,7 @@ function methodMembers(statement, sourceFile) {
  *
  * A reference is recorded as the pair `{ spelled, fqn }` — what the signature writes, and the key a
  * documentation view is opened by. On this arm the spelling is the bare name, because that is what a
- * signature really writes and what the shim binds `ToolError` under; the fqn is
+ * signature really writes and what `gg` exports `ToolError` under; the fqn is
  * `gg.<module>.<name>`, which is where the declaration is filed.
  */
 class Resolver {
@@ -910,8 +909,8 @@ async function build(language) {
     if (derived !== entry.name) {
       throw new Error(
         `${where} binds \`${entry.operation}\`, whose key names \`${derived}\` rather than ` +
-          `\`${entry.name}\`. The shim binds an operation by deriving the export from its key, so ` +
-          "the two have to be one transformation apart.",
+          `\`${entry.name}\`. An operation names its export by derivation rather than by a second ` +
+          "table, so the two have to be one transformation apart.",
       );
     }
     const returned = entry.nodes[0].type ? print(entry.nodes[0].type, entry.sourceFile) : NO_RETURN;
@@ -930,9 +929,9 @@ async function build(language) {
       receiver: null,
       name: entry.name,
       fqn: entry.fqn,
-      // The fully-qualified name IS what a program writes: the shim binds `gg` with one object per
-      // module, and binds each module under its bare id as well, so there is no third spelling for a
-      // call site to need.
+      // The fully-qualified name IS what a program writes: `import * as gg from "gg"` puts one
+      // namespace per module under `gg`, and `gg:<module>` reaches the same module alone, so there
+      // is no third spelling for a call site to need.
       call: null,
       brief: prose.brief,
       detail: prose.detail,

@@ -3,13 +3,13 @@
 // gg type-checks a model's program before the guest evaluates it, against declarations assembled
 // from this language's generated signature catalogue plus this file. Everything the catalogue
 // describes is reflected out of the SDK; what is left over are the names a program can reach that no
-// SDK declaration covers, and they are written here — beside the shim that installs or shadows them
-// — rather than in the Rust that assembles the rest, so that changing one is visibly changing the
-// other.
+// SDK declaration covers, and they are written here rather than in the Rust that assembles the rest,
+// so that changing one is visibly changing the other.
 //
 // The rule for what belongs here is one rule: a name a program can CALL is declared, and a name it
-// cannot is not. `setTimeout` and `fetch` are deliberately absent, because the shim replaces them
-// with throwers — declaring them would make the checker certify a program that cannot work. The
+// cannot is not. `setTimeout` and `fetch` are deliberately absent, because this guest has neither an
+// event loop nor an HTTP client — declaring them would make the checker certify a program that
+// cannot work. The
 // clock and the entropy below are present for the opposite reason: gg's host linker supplies WASI
 // ambiently, so a program that asks what time it is gets the answer, and a checker that refused the
 // question would be refusing a program that runs.

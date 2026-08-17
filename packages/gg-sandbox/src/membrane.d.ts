@@ -2,19 +2,18 @@
  * The JavaScript view of `crates/gg/wit/gg-sandbox.wit` — the membrane between a model's program
  * and gg.
  *
- * This file emits **no code**. `componentize-js` injects the real bindings for these module
- * specifiers when it bakes the component; all this declaration does is teach `tsc` their shape so
- * the SDK in `src/tools/` type-checks against them. It is the one hand-maintained mirror in the
- * package, and it exists because there is no generator that produces TypeScript declarations from a
- * WIT world.
+ * This file emits **no code**. `guest/build.rs` generates the real bindings for these module
+ * specifiers out of the WIT itself; all this declaration does is teach `tsc` their shape so the SDK
+ * in `src/gg/` type-checks against them. It is the one hand-maintained mirror in the package, and it
+ * exists because there is no generator that produces TypeScript declarations from a WIT world.
  *
  * **Why it cannot silently drift.** Three independent gates sit under it:
  *
- * 1. If it disagrees with the WIT, `componentize-js` fails to link when `build.sh` refreshes the
- *    artifact — it resolves every static import against the target world.
- * 2. If the WIT changes and the component is *not* refreshed, the committed component's imports no
- *    longer match the host's `bindgen!`-generated linker and instantiation fails loudly in gg's
- *    first sandbox unit test.
+ * 1. If it declares a name the generated glue does not export, the SDK fails to evaluate in the
+ *    guest and the substrate tests say so.
+ * 2. If the WIT changes and the guest is not rebuilt, the component's imports no longer match the
+ *    host's `bindgen!`-generated linker and instantiation fails loudly in gg's first sandbox unit
+ *    test.
  * 3. Argument order and field names are gated by the per-tool crossing test in
  *    `crates/gg/src/sandbox.test.rs`, which drives one program per tool against the real component
  *    and asserts the JSON the host's tool invoker saw.
@@ -529,10 +528,10 @@ declare module "test-cabinet:gg/docs" {
  * Putting material into the agent's own context window — the third model-facing carve-out, beside
  * `session` and `docs`, and never a gg tool. `src/tools/views.ts` is its only importer.
  *
- * Four of the five functions are bound into every program's scope whatever a run enables, exactly
- * as `finish` is; `open-file-view` is a read, so the shim binds it only when `read_file` is enabled.
- * Cataloguing any of them as a tool would break the `boundTools() == ALL_TOOL_NAMES` bijection the
- * committed component is checked against, which is why they have their own interface.
+ * The SDK declares all five whatever a run enables, exactly as it declares `finish`; the host is
+ * what refuses one this agent was not granted. Cataloguing any of them as a tool would break the
+ * `bound-tools == ALL_TOOL_NAMES` bijection the guest is checked against, which is why they have
+ * their own interface.
  */
 declare module "test-cabinet:gg/views" {
   import type { FileReadRaw } from "test-cabinet:gg/files";
@@ -580,9 +579,8 @@ declare module "test-cabinet:gg/views" {
  * The library of programs this agent has already run — the fourth model-facing carve-out, beside
  * `session`, `docs` and `views`, and never a gg tool. `src/tools/programs.ts` is its only importer.
  *
- * Unlike the other three the shim binds it conditionally, from the `library` flag the host passes to
- * `run` rather than from the enabled tool set: the program library is gated by a capability, and no
- * gg tool answers to it.
+ * Unlike the other three it is bought by a capability rather than by a tool, which is why the host
+ * passes a `library` flag to `run` rather than naming a tool in the enabled set.
  */
 declare module "test-cabinet:gg/programs" {
   /** One program this agent ran, as `history` lists it — its shape, never its source. */
@@ -664,11 +662,11 @@ declare module "test-cabinet:gg/delegation" {
 }
 
 /**
- * The channel the interpreter **shim** reports back to gg through.
+ * The channel the **guest** reports back to gg through.
  *
  * Deliberately not part of the model-facing surface: it is absent from the signature catalogue,
- * absent from the system prompt, and never bound into a program's scope. A program reaches it only
- * indirectly — through `console.*`, by throwing, or by deferring work into a microtask.
+ * absent from the system prompt, and no program can import it. A program reaches it only
+ * indirectly, through `console.*`.
  */
 declare module "test-cabinet:gg/feedback" {
   import type { ErrorCode } from "test-cabinet:gg/types";

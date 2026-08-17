@@ -147,8 +147,8 @@ export function openDocsView(target: Function | string): void {
 }
 
 /**
- * The catalogue name behind an `openDocsView` argument: the string itself, or the name the shim
- * tagged onto the bound function.
+ * The catalogue name behind an `openDocsView` argument: the string itself, or the
+ * {@link DOCS_NAME} tag on the function.
  *
  * A bare `String(fn)` would give the source of the wrapper rather than the name gg knows it by,
  * which is why the tag exists at all. A function that carries no tag — something the program defined

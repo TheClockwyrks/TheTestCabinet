@@ -74,8 +74,8 @@ if (!OUT_DIR) {
 }
 
 /**
- * The TypeScript release the checker is cut from, pinned here the way the component's
- * `componentize-js` release is pinned in `build.sh`.
+ * The TypeScript release the checker is cut from, pinned here the way the guest's engine is pinned
+ * in `ecmascript-version.sh`.
  *
  * Pinned rather than floating because the checker is a variable in a cross-language study: a silent
  * minor bump would change what a model's program is judged against half way through a sweep. It
@@ -158,8 +158,8 @@ function main() {
   const declarations = libs.map(withoutReferences).join("\n");
   fs.writeFileSync(path.join(OUT_DIR, "typescript.lib.d.ts"), declarations);
 
-  // The names a program reaches that no SDK declaration covers. Authored beside the shim that
-  // installs them; copied rather than generated, because they are declarations already.
+  // The names a program reaches that no SDK declaration covers. Copied rather than generated,
+  // because they are declarations already.
   fs.copyFileSync(
     path.join(PACKAGE_DIR, "tools", "program-globals.d.ts"),
     path.join(OUT_DIR, "typescript.globals.d.ts"),

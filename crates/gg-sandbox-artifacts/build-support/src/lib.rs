@@ -367,13 +367,13 @@ fn build(root: &Path, row: &Row, artifacts: &Path) {
 /// packages would say so, while the JVM, PureScript and TypeScript-checker halves never read it.
 fn rerun_paths(root: &Path, id: &str) -> Vec<PathBuf> {
     let paths: Vec<&str> = match id {
-        // TypeScript and JavaScript: one guest, one component, four checker files. The declaration
-        // emit is decided by the repo-root tsconfig the package's own configs extend, so that file
-        // is an input here even though nothing in the package names it — measured, when changing
-        // `target` alone changed the JavaScript in eight emitted files, `shim.js` among them.
+        // The ECMAScript guest three arms evaluate in, and the four checker files one arm is judged
+        // by. The declaration emit is decided by the repo-root tsconfig the package's own configs
+        // extend, so that file is an input here even though nothing in the package names it —
+        // measured, when changing `target` alone changed the JavaScript in eight emitted files.
         // `package.json` pins the `typescript` the checker is cut from.
         //
-        // The `guest/` entries are the SECOND guest this package builds — quickjs-ng inside a
+        // The `guest/` entries are the guest itself — quickjs-ng inside a
         // `wit-bindgen` component — and they are named a file at a time rather than as a directory
         // for the reason [`rust_sdk_sources`] gives: `guest.sh` puts cargo's target directory at
         // `guest/.build/target`, and a directory in a rerun set is walked by cargo, so naming

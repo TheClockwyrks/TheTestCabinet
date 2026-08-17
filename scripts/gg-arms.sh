@@ -129,18 +129,17 @@ gg_arm() {
 # the order the packages sit on disk, which is the order a reader of this list will look for them in.
 # ------------------------------------------------------------------------------------------------
 
-# TypeScript and JavaScript: one guest, one set of declarations, two catalogues, and four checker
-# files cut out of the pinned `typescript` — the compiler bundle, the concatenated default library,
-# the globals no SDK declaration covers, and the manifest saying which compiler at which level.
-# The three `ecmascript.*` files are the SECOND guest this package builds — quickjs-ng inside a
-# `wit-bindgen` component (`packages/gg-sandbox/guest/`, built by `guest.sh`) — and they are named
-# for what they serve rather than for this row, because they serve three arms: TypeScript,
-# JavaScript and PureScript, all of which evaluate JavaScript. They are in THIS row because that
-# guest is cut from THIS package's SDK: the same `src/gg/**` the component above is built from is
-# baked into it unchanged, so a second row would need a second copy of the SDK.
+# TypeScript and JavaScript: one set of declarations, two catalogues, and four checker files cut out
+# of the pinned `typescript` — the compiler bundle, the concatenated default library, the globals no
+# SDK declaration covers, and the manifest saying which compiler at which level. The three
+# `ecmascript.*` files are the guest this package builds — quickjs-ng inside a `wit-bindgen`
+# component (`packages/gg-sandbox/guest/`, built by `guest.sh`) — and they are named for what they
+# serve rather than for this row, because they serve three arms: TypeScript, JavaScript and
+# PureScript, all of which evaluate JavaScript. They are in THIS row because that guest is cut from
+# THIS package's SDK, so a second row would need a second copy of it.
 gg_arm typescript packages/gg-sandbox "typescript + javascript" \
 	--catalogues typescript javascript \
-	--artifacts typescript.component.wasm typescript.tsc.js typescript.lib.d.ts \
+	--artifacts typescript.tsc.js typescript.lib.d.ts \
 	typescript.globals.d.ts typescript.checker.json \
 	ecmascript.core.wasm ecmascript.adapter.wasm ecmascript.guest.json
 
