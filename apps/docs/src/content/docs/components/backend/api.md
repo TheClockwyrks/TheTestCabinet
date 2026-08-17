@@ -416,12 +416,22 @@ List stored runs, newest first. A `state` query parameter selects which runs:
   "produced" worklist — every run that exists but is not yet public, so an
   infrastructure failure stays inspectable rather than appearing in no list.
   Disjoint from the default published listing.
+- `state=publishable` — the **publish worklist**: the subset of `unpublished`
+  that would publish *right now*, i.e. exactly what the
+  [publish gate](/components/core/results/#publish) accepts — a reviewed
+  completed run, or one of the publishable failure tiers (which need no review) —
+  and never an infrastructure failure, whatever reviews it carries. This backs the
+  console's **Unpublished** tab, where every listed run is meant to be selected and
+  published; listing the unreviewed and never-publishable runs there would offer
+  rows the publish endpoint is about to refuse.
 - `state=any` — the **union** of the published and unpublished slices: every
   stored run, whatever its terminal state. This is what the consoles' run
   listings draw from, so a produced (and therefore unreviewed) run sorts and
   pages in the *same* listing as the published ones instead of being merged in
-  ahead of them client-side. Offered only in the numbered-offset mode below (the
-  cursor listings walk one lifecycle slice at a time).
+  ahead of them client-side.
+
+`any` and `publishable` are offered only in the numbered-offset mode below (the
+cursor listings walk one lifecycle slice at a time).
 
 #### Two projections
 

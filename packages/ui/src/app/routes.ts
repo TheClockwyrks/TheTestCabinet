@@ -137,6 +137,11 @@ export const routes = {
   // reviewer surface the static site never links to. Static segment beside
   // `/runs/:runId`, like `/runs/new`.
   runUnreviewed: (): string => "/runs/unreviewed",
+  // The publish worklist (consoles only): runs that have cleared the publish gate
+  // but have not been released yet, so a reviewer can find and batch-publish them
+  // instead of hunting through the all-runs listing. Nothing on the public gallery
+  // could appear here by definition.
+  runUnpublished: (): string => "/runs/unpublished",
   // Run-execution routes (consoles only; the static site never links to them).
   // `runNew` optionally carries a test case to pre-select, so the Run button on
   // a test case lands on the new-run form with that case already chosen.
@@ -270,6 +275,7 @@ export const routePatterns = {
   runs: "/runs",
   runFailures: "/runs/failures",
   runUnreviewed: "/runs/unreviewed",
+  runUnpublished: "/runs/unpublished",
   runNew: "/runs/new",
   runMonitor: "/runs/:runId/live",
   runDetail: "/runs/:runId",

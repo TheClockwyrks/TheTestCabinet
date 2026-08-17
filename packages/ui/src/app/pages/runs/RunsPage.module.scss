@@ -23,6 +23,16 @@
   margin-bottom: t.$space-xl;
 }
 
+// The Unpublished worklist's one-line instruction above the log. Selection and
+// its batch actions are a right-click gesture with no visible affordance, so the
+// tab whose whole purpose is batch-publishing says so rather than leaving the
+// user to discover it.
+.hint {
+  margin: 0 0 t.$space-sm;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
 .empty {
   color: t.$color-text-muted;
   @include h.halo;

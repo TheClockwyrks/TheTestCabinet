@@ -15,14 +15,15 @@ import { routes } from "../../routes";
 import styles from "./RunsTabs.module.scss";
 
 // Which runs surface the rendering page represents, so its tab reads as active.
-export type RunsTab = "runs" | "failures" | "unreviewed";
+export type RunsTab = "runs" | "failures" | "unreviewed" | "unpublished";
 
 // The shared control bar across the runs section's index surfaces: the tab strip
 // on the leading edge, the global stop controls on the trailing one. Each tab is
 // its own route (so a surface is linkable), mirroring the Settings section's tab
-// bar. Failures and Unreviewed are console-only reviewer tooling — their routes
-// aren't mounted on the static site — so the public gallery sees only the lone
-// Runs tab, where a tab bar is redundant and is dropped entirely. (The coverage
+// bar. Failures, Unreviewed, and Unpublished are console-only reviewer tooling —
+// their routes aren't mounted on the static site, and the public gallery holds
+// nothing unreviewed or unpublished by definition — so it sees only the lone Runs
+// tab, where a tab bar is redundant and is dropped entirely. (The coverage
 // dashboard moved to the account section's Coverage tab.)
 //
 // The whole bar is one `<nav>` rather than a wrapper around one: the runs index's
@@ -47,6 +48,11 @@ export function RunsTabs({ active }: { active: RunsTab }) {
             key: "unreviewed" as const,
             label: "Unreviewed",
             to: routes.runUnreviewed(),
+          },
+          {
+            key: "unpublished" as const,
+            label: "Unpublished",
+            to: routes.runUnpublished(),
           },
         ]
       : []),

@@ -657,6 +657,17 @@ export interface PublishResult {
   playableBuild: string | null;
 }
 
+// The acknowledgement of an **enqueued** publish (`202` from
+// `POST /runs/{id}/publish`): the queued publish job and where its release can be
+// watched. This is the whole of a publish the caller is guaranteed to see
+// synchronously — the release itself runs minutes later in its own Job. Watching
+// it is optional (see `WorkerClient.publish`); a caller that does not raises no
+// alert of its own and relies on the backend's `publish-failed` notification.
+export interface PublishEnqueued {
+  publishJobId: string;
+  liveUrl: string;
+}
+
 // A human-readable progress line streamed while a publish runs, surfaced so a
 // console can show "Publishing…" advance (creating repo → pushing → deploying)
 // rather than a frozen spinner. Mirrors the Rust `PublishProgress`
