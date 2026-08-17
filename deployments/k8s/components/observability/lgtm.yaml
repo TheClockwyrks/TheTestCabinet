@@ -12,9 +12,13 @@
 # It is a DATA SINK, not a service of the run topology: it emits no telemetry of its
 # own and is deliberately NOT labelled `app.kubernetes.io/part-of: test-cabinet`, so
 # the overlays' OTEL-endpoint env patches (which set the exporter on the test-cabinet
-# workloads) never point the collector at itself. It needs NO Kubernetes API access —
-# it only receives OTLP and serves Grafana — so it runs under its own
-# zero-permission ServiceAccount.
+# workloads) never point the collector at itself.
+#
+# It runs under its own ServiceAccount, which holds exactly one read-only
+# cluster-scoped grant: `nodes` list/watch + `nodes/metrics` get, so its Prometheus
+# can scrape each kubelet's cAdvisor endpoint for per-container CPU and memory (see
+# rbac-lgtm.yaml and prometheus.yaml). Everything else it does — receiving OTLP,
+# serving Grafana — needs no API access at all, and it is granted none.
 #
 # Telemetry is still OPT-IN: standing this stack up does nothing until a workload's
 # OTEL_EXPORTER_OTLP_ENDPOINT points at it, which the overlays do when they include
@@ -147,6 +151,12 @@ spec:
             - name: lgtm-config
               mountPath: /otel-lgtm/loki-config.yaml
               subPath: loki-config.yaml
+            # Likewise for Prometheus, which the image ships as a pure OTLP sink with
+            # no scrape jobs at all; ours adds the kubelet cAdvisor scrape that gives
+            # the cluster per-container CPU/memory history. See prometheus.yaml.
+            - name: lgtm-config
+              mountPath: /otel-lgtm/prometheus.yaml
+              subPath: prometheus.yaml
           readinessProbe:
             httpGet:
               path: /api/health
