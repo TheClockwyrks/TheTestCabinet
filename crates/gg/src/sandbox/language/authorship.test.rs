@@ -7,7 +7,7 @@
 
 use test_cabinet_core::gg::GgProgramLanguage;
 
-use super::{Did, Half, UNCONVERTED, audit, classify};
+use super::{Did, Half, UNCONVERTED, audit, classify, maps_back};
 
 /// **Every registered arm compiles the bytes it was handed, or says in [`UNCONVERTED`] what it does
 /// instead.**
@@ -179,4 +179,65 @@ fn every_row_records_a_cell_the_gate_drives() {
             row.half.label()
         );
     }
+}
+
+/// **A rewrite is excused by a source map only when the map really names the bytes it was handed.**
+///
+/// [`Did::Mapped`] is the one verdict that needs no row, so it is the one an arm could claim its way
+/// out of the table with. [`maps_back`] is what stops that, and each of these is a map that must not
+/// buy it: none at all, one whose embedded source is some other text, and one with no mappings in it.
+///
+/// The positive case is the arm itself — `typescript.compile.test.rs` asserts that `tsc`'s emission
+/// carries the reply byte for byte — so what is driven here is every way the check has to say no.
+#[test]
+fn only_a_map_that_names_the_handed_bytes_excuses_a_rewrite() {
+    let handed = "const answer = 1;\nconsole.log(answer);\n";
+    let rewritten = "const answer = 1;\nconsole.log(answer);\n";
+
+    /// The emitted text with an inline map of `source_content` and `mappings`.
+    fn emitted(text: &str, source_content: serde_json::Value, mappings: &str) -> String {
+        use base64::Engine as _;
+        let map = serde_json::json!({
+            "version": 3,
+            "file": "program.js",
+            "sources": ["program.ts"],
+            "sourcesContent": [source_content],
+            "names": [],
+            "mappings": mappings,
+        });
+        let encoded = base64::engine::general_purpose::STANDARD
+            .encode(serde_json::to_string(&map).expect("the map serialises"));
+        format!("{text}//# sourceMappingURL=data:application/json;base64,{encoded}")
+    }
+
+    assert!(
+        !maps_back(handed, rewritten),
+        "a text with no map at all names nothing"
+    );
+    assert!(
+        !maps_back(
+            handed,
+            &emitted(
+                rewritten,
+                serde_json::json!("something else entirely\n"),
+                "AAAA"
+            )
+        ),
+        "a map of some other text is a map of some other program"
+    );
+    assert!(
+        !maps_back(handed, &emitted(rewritten, serde_json::json!(handed), "")),
+        "a map with no mappings resolves nothing, so it locates nothing"
+    );
+    assert!(
+        !maps_back(handed, &emitted(rewritten, serde_json::Value::Null, "AAAA")),
+        "a map that does not carry its source cannot be held to it"
+    );
+    assert!(
+        maps_back(
+            handed,
+            &emitted(rewritten, serde_json::json!(handed), "AAAA")
+        ),
+        "and a map that names the handed bytes and resolves into them does excuse the rewrite"
+    );
 }

@@ -47,7 +47,7 @@ fn a_loaded_module_is_bound_at_a_camel_cased_key() {
     let bound = modules.code_modules();
     assert_eq!(bound.len(), 1);
     assert_eq!(bound[0].name, "csvTools");
-    assert!(bound[0].source.contains("return { parse };"));
+    assert!(bound[0].source.contains("export function parse(text)"));
 }
 
 #[test]
@@ -57,7 +57,8 @@ fn the_note_states_the_binding_path_and_what_it_exports() {
         .note(KnowledgeOrigin::Skill, ts())
         .expect("a loaded module produces a note");
     // The model must never have to guess where its code went.
-    assert!(note.contains("lib.csvTools"), "{note}");
+    assert!(note.contains("lib:csvTools"), "{note}");
+    assert!(note.contains("csvTools.<name>"), "{note}");
     assert!(note.contains("parse"), "{note}");
     assert!(note.contains("skill"), "{note}");
 }
@@ -77,14 +78,13 @@ fn the_note_writes_the_binding_path_in_the_readers_own_syntax() {
     assert!(note.contains("lib::csvTools::<name>"), "{note}");
 }
 
-/// **The note states the line that brings `lib` into scope, on an arm that needs one.**
+/// **The note states the line that brings the module into scope, on an arm that needs one.**
 ///
 /// The binding path is only half an answer where a code module is a module of the language's own
 /// module system: `lib.csvTools.parse` resolves in a Python program that wrote `import lib` and
 /// raises a `NameError` in one that did not. The read that bound the module is the only place a
-/// model is told either half, so both are asserted, and the arms that need no line are asserted to
-/// carry none — a note that told a TypeScript agent to write an import would be teaching it a
-/// statement its guest refuses.
+/// model is told either half, so both are asserted — on Python, whose line is key-independent, and
+/// on TypeScript, whose line names the specifier the guest's loader resolves the module under.
 #[test]
 fn the_note_states_the_line_that_brings_lib_into_scope() {
     let (_, loaded) = with_csv_tools();
@@ -92,16 +92,18 @@ fn the_note_states_the_line_that_brings_lib_into_scope() {
         .note(KnowledgeOrigin::Skill, python())
         .expect("a loaded module produces a note");
     let line = python()
-        .lib_import()
+        .lib_import("csvTools")
         .expect("this arm reaches `lib` through a line a program writes");
-    assert!(note.contains(line), "{note}");
+    assert!(note.contains(&line), "{note}");
     assert!(note.contains("lib.csvTools.<name>"), "{note}");
 
-    assert_eq!(ts().lib_import(), None);
     let note = loaded
         .note(KnowledgeOrigin::Skill, ts())
         .expect("a loaded module produces a note");
-    assert!(!note.contains("import"), "{note}");
+    assert!(
+        note.contains("import * as csvTools from \"lib:csvTools\";"),
+        "{note}"
+    );
 }
 
 #[test]
@@ -158,7 +160,7 @@ fn an_on_use_script_is_queued_once_per_agent() {
             KnowledgeOrigin::Skill,
             "guide",
             None,
-            Some("view.openText(\"guide\", \"hello\");\n"),
+            Some("import * as gg from \"gg\";\ngg.views.openText(\"guide\", \"hello\");\n"),
         )
         .expect("an on-use script loads");
     assert!(first.on_use);
@@ -171,7 +173,7 @@ fn an_on_use_script_is_queued_once_per_agent() {
             KnowledgeOrigin::Skill,
             "guide",
             None,
-            Some("view.openText(\"guide\", \"hello\");\n"),
+            Some("import * as gg from \"gg\";\ngg.views.openText(\"guide\", \"hello\");\n"),
         )
         .expect("a repeat read loads");
     assert!(!again.on_use);
@@ -192,7 +194,7 @@ fn a_thing_used_without_a_script_does_not_run_one_added_later() {
             KnowledgeOrigin::Memory,
             "notes",
             None,
-            Some("view.openText(\"notes\", \"hi\");\n"),
+            Some("import * as gg from \"gg\";\ngg.views.openText(\"notes\", \"hi\");\n"),
         )
         .expect("the revised memory loads");
     assert!(!later.on_use);
@@ -208,7 +210,10 @@ fn an_on_use_script_is_given_its_own_module_and_nothing_else() {
             KnowledgeOrigin::Skill,
             "guide",
             Some("export const n = 1;\n"),
-            Some("view.openText(\"guide\", String(lib.guide.n));\n"),
+            Some(
+                "import * as gg from \"gg\";\nimport * as guide from \"lib:guide\";\n\
+                 gg.views.openText(\"guide\", String(guide.n));\n",
+            ),
         )
         .expect("a code skill with a script loads");
     let pending = modules.take_pending();
@@ -217,7 +222,7 @@ fn an_on_use_script_is_given_its_own_module_and_nothing_else() {
     assert_eq!(module.name, "guide");
     // Not `csvTools`: what a script can see must not depend on what the agent happened to read
     // before it.
-    assert!(module.source.contains("return { n };"));
+    assert!(module.source.contains("export const n = 1;"));
 }
 
 #[test]

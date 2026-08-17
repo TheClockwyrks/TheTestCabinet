@@ -120,6 +120,7 @@ use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgProgr
 use crate::limits::TurnErrorType;
 
 use super::CodeModule;
+use super::locate::Locations;
 use super::operations::OperationId;
 use super::signatures::SignatureCatalogue;
 
@@ -142,17 +143,10 @@ mod typescript;
 #[path = "language/javascript.rs"]
 mod javascript;
 
-/// The ECMAScript guest the TypeScript, JavaScript and PureScript arms are moving to. Not a language
-/// arm and not registered as one: it is the artifact those three will stand on, landed on its own so
-/// that the engine is proved before three arms are moved onto it.
-///
-/// **`cfg(test)` until an arm is registered against it**, and deliberately: the module's whole body
-/// is an `include_bytes!` of a 1.2 MB artifact and the two functions that encode and compile it, so
-/// compiling it into a released binary that cannot reach it would put 1.2 MB into every `tcab` for
-/// nothing. The artifact is built either way — it is in the `typescript` row of
-/// `scripts/gg-arms.sh`, because the tests beside it are what prove the engine — and this attribute
-/// is the one line that goes when the three arms move.
-#[cfg(test)]
+/// The ECMAScript guest, which is a shared artifact rather than a language arm: quickjs-ng in a
+/// component that declares gg's own world, evaluating a program as a **module**.
+/// [TypeScript](typescript) is registered against it; [JavaScript](javascript) and
+/// [PureScript](purescript) still evaluate in the guest they are converting away from.
 #[path = "language/ecmascript.rs"]
 pub(super) mod ecmascript;
 
@@ -321,7 +315,7 @@ pub trait ProgramLanguage: Send + Sync + 'static {
         format!("lib{step}{key}{step}<name>")
     }
 
-    /// The line a program writes to bring `lib` into scope, on an arm that needs one.
+    /// The line a program writes to reach the module bound at `key`, on an arm that needs one.
     ///
     /// `None` on the arms where a code module lands somewhere a program can already name: a
     /// namespace of the compiled program, a value the guest hands the evaluator, a lookup by string.
@@ -329,7 +323,10 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// the way it reaches any other, and the read that binds it
     /// ([`Loaded::note`](crate::knowledge::Loaded::note)) is the one place a model is told the line
     /// — the same place it is told the [access](Self::lib_access) that line makes resolve.
-    fn lib_import(&self) -> Option<&'static str> {
+    ///
+    /// It takes the key because on an arm whose module system resolves a *specifier*, the line names
+    /// the module it brings in and there is no key-independent line to write.
+    fn lib_import(&self, _key: &str) -> Option<String> {
         None
     }
 
@@ -366,6 +363,12 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// resolved through a source map** — never a line arrived at by arithmetic over a wrapper,
     /// because that is a coordinate in a program the model cannot see. The rule, and the gate that
     /// measures who keeps it, are in this module's own documentation.
+    ///
+    /// **A compiler's own emission is not a wrapper.** An arm whose compiler emits *source* rather
+    /// than an object file hands the guest that emission, exactly as a compiled arm hands it a wasm
+    /// module — [TypeScript](typescript) does, because types have to be erased. What that arm owes
+    /// is the map: it answers [`locations`](Self::locations) with the compiler's own source map, so
+    /// a frame the guest reports is read back into the file the model wrote.
     ///
     /// # Why the modules are here
     ///
@@ -590,6 +593,26 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// and by no other means.
     fn wasm_frames_are_located(&self) -> bool {
         true
+    }
+
+    /// **How a frame this arm's guest reports is read back into the text the model wrote**, for an
+    /// arm whose compiler emits source.
+    ///
+    /// `None` on every arm that hands the guest the model's own bytes, because a frame there is
+    /// already in the model's coordinates and there is nothing to resolve. An arm whose compiler
+    /// *re-prints* the program — [TypeScript](typescript), whose types `tsc` erases by emitting new
+    /// text — answers with the [locations](crate::sandbox::locate::Locations) its compiler's own
+    /// source map resolves, and gg applies them to everything the guest wrote to standard error.
+    ///
+    /// It takes the texts rather than a map because that is where an arm puts one: the map is
+    /// inlined in the emitted source, so it reaches every caller the source reaches, including a
+    /// script prepared at a skill's read and run several turns later.
+    ///
+    /// This is the only mechanism by which a location may be corrected. An arm that arrives at a
+    /// line number by arithmetic of its own is reporting a program other than the one the model
+    /// sees.
+    fn locations(&self, _program: &str, _modules: &[CodeModule]) -> Option<Locations> {
+        None
     }
 
     /// This language's signature catalogue, parsed once per process.
@@ -861,7 +884,8 @@ pub fn all_languages() -> impl Iterator<Item = &'static dyn ProgramLanguage> {
 /// of a program in front of the language's own.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreparedProgram {
-    /// The source the guest evaluates. For TypeScript, the type-stripped JavaScript.
+    /// The source the guest evaluates — for an arm whose compiler emits source, what that
+    /// compiler emitted.
     ///
     /// Empty for a language that [compiled its own component](Self::component): there is no source
     /// left to evaluate, because the program *is* the artifact. The `program` parameter of the

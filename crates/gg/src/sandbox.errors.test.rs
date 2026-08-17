@@ -57,13 +57,14 @@ fn a_prepare_error_never_touches_the_engine() {
     assert!(log.calls().is_empty());
 }
 
-/// A module-syntax refusal is the same shape of failure, carrying the guidance the model acts on.
+/// A specifier this sandbox has no module for is the same shape of failure, carrying the compiler's
+/// own guidance.
 #[test]
 fn an_unsupported_feature_is_a_prepare_error_with_guidance() {
     let log = CallLog::default();
     let (outcome, _api) = run_program(
         typescript(),
-        "import fs from 'node:fs';\nreturn 1;",
+        "import fs from 'node:fs';\nconsole.log(fs);\n",
         ProgramScope {
             capabilities: &[],
             operations: &[],
@@ -75,9 +76,11 @@ fn an_unsupported_feature_is_a_prepare_error_with_guidance() {
         FakeToolApi::new(&log),
     );
 
-    let error = outcome.result.expect_err("an import cannot run");
+    let error = outcome
+        .result
+        .expect_err("a module this sandbox has not got cannot run");
     assert!(matches!(error, SandboxError::Prepare(_)), "{error:?}");
-    assert!(error.to_string().contains("`import`"), "{error}");
+    assert!(error.to_string().contains("'node:fs'"), "{error}");
     // Exact only under process isolation; see [`process_isolated`].
     if process_isolated() {
         assert_eq!(crate::sandbox::engine::compiles(), 0);
@@ -294,7 +297,7 @@ fn typescript_reports_what_checking_a_program_cost() {
     let log = CallLog::default();
     let (outcome, _api) = run_program(
         typescript(),
-        "view.openText(\"x\", 42);\n",
+        "import * as gg from \"gg\";\ngg.views.openText(\"x\", 42);\n",
         ProgramScope {
             capabilities: &[],
             operations: &[],
@@ -310,7 +313,7 @@ fn typescript_reports_what_checking_a_program_cost() {
         panic!("a number is not a string: {:?}", outcome.result);
     };
     assert!(
-        diagnostics.starts_with("program.ts(1,20): error TS2345:"),
+        diagnostics.starts_with("program.ts(2,24): error TS2345:"),
         "the model is handed tsc's own diagnostic at its own coordinates: {diagnostics}"
     );
     assert!(

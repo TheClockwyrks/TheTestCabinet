@@ -374,7 +374,7 @@ pub(crate) fn classify<A: ToolApi>(
     fallback: fn(String) -> SandboxError,
 ) -> SandboxError {
     let said = store.data().stderr_tail();
-    if store.data().timed_out() {
+    if store.data().timed_out() || spent_its_budget(store, limits) {
         return SandboxError::Timeout {
             limit: limits.timeout,
             said,
@@ -395,6 +395,22 @@ pub(crate) fn classify<A: ToolApi>(
         false => without_frame_locations(&reason),
     };
     fallback(with_guest_stderr(reason, &said))
+}
+
+/// **Whether the guest stopped itself because it reached the budget gg gave it.**
+///
+/// gg states its execution ceiling to a guest that can stop itself
+/// ([`GUEST_DEADLINE`](super::membrane::GUEST_DEADLINE)), one epoch tick short of its own, so that a
+/// runaway program is answered by the engine — in the engine's words, at the model's own line —
+/// rather than by an epoch trap that names nothing. What that costs is the flag: gg's own deadline
+/// callback never fires, because the store is already dead when it would have.
+///
+/// So the ceiling is recognised here instead, on the same terms the memory cap is: a guest that
+/// spent at least the budget gg handed it and then stopped, stopped for the reason gg set. The time
+/// is [`guest_elapsed`](MembraneState::guest_elapsed) — the guest's own execution, with the time
+/// parked in bridged calls subtracted — which is the same clock the budget was written from.
+fn spent_its_budget<A: ToolApi>(store: &Store<MembraneState<A>>, limits: SandboxLimits) -> bool {
+    store.data().guest_elapsed() >= super::membrane::guest_deadline(limits)
 }
 
 /// The same failure with every frame's **file and line struck out**, for an arm whose DWARF is

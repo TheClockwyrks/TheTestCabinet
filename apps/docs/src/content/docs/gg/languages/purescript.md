@@ -18,8 +18,9 @@ module header a reply wrote to `Main`, supplies one where a reply wrote none and
 moves each diagnostic back by that line, and a guest backtrace is located in the
 bundle rather than in the model's PureScript.
 
-The arm evaluates programs in TypeScript's guest component, declared as a share
-in the seam's exemption table. `purs` compiles a program's own code together
+The arm evaluates programs in the JavaScript arm's guest component
+([`javascript`](/gg/languages/javascript/)), declared as a share in the seam's
+exemption table. `purs` compiles a program's own code together
 with the library code it reaches into ordinary JavaScript, so the bundle is
 self-contained and a component of this arm's own would carry the same bytes. The
 cost of the share is that a guest backtrace is located in the bundle's

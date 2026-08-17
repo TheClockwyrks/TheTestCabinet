@@ -1,20 +1,11 @@
 //! **The TypeScript arm's execution substrate**, held to
 //! [gate G8](super::super::g8) — a runtime failure reaches the model.
 //!
-//! # Why this file exists, and why it is only this
-//!
-//! Because until it did, this arm had no substrate test of its own. Its end-to-end coverage rode on
-//! [`javascript`](super::super::javascript)'s, on the grounds that the two arms share a component, a
-//! strip and a catalogue — which is true, and which leaves out the one thing that is not shared.
-//! [`check`](super::check) is the whole difference between the pair, and it sits *before* the run:
-//! a program TypeScript refuses never reaches the guest at all, so a failure this arm answers at
-//! compile time is a failure the JavaScript arm answers at runtime, in a different band, with a
-//! different location, and neither arm's coverage says anything about the other's.
-//!
-//! G8 is where that shows up first. A model reaching for a name this runtime does not have is told
-//! so by `tsc`, in the model's own coordinates, before anything runs — and the same program on the
-//! JavaScript arm is a runtime unknown-name at a line the strip moved. Those are two different
-//! answers to one question, and an arm with no file of its own could not record either.
+//! Every program below is compiled by the real `tsc` and evaluated by the real
+//! [ECMAScript guest](super::super::ecmascript), through
+//! [`run_program`](crate::sandbox::run_program), and read back through the loop's own renderer. What
+//! the locations assert is the property the arm was converted for: the file is `program.ts` and the
+//! line is the model's own, reached through `tsc`'s source map and by no arithmetic.
 
 use test_cabinet_core::gg::GgProgramLanguage;
 
@@ -31,13 +22,15 @@ fn g8_a_runtime_failure_reaches_the_model() {
                 shape: Shape::ToolError,
                 program: r#"// G8 (a): a gg call the host answers `not-found`, uncaught.
 
-const text: string = fs.readTextFile(
+import { files } from "gg";
+
+const text: string = files.readTextFile(
   "missing.md",
 );
 console.log(text);
 "#,
                 names: &["read_text_file", "not-found", "missing.md"],
-                located: Located::At("line 3, column 17"),
+                located: Located::At("program.ts:5:28"),
                 answered: Answered::AtRuntime,
             },
             Case {
@@ -49,8 +42,8 @@ console.log(
   values[7].toString(),
 );
 "#,
-                names: &["TypeError", "values[7] is undefined"],
-                located: Located::At("line 5, column 13"),
+                names: &["TypeError"],
+                located: Located::At("program.ts:5:3"),
                 answered: Answered::AtRuntime,
             },
             Case {
@@ -64,7 +57,7 @@ async function step(): Promise<void> {
 step();
 "#,
                 names: &["the third step did not finish"],
-                located: Located::Nowhere,
+                located: Located::At("program.ts:4:13"),
                 answered: Answered::AtRuntime,
             },
             Case {
@@ -77,8 +70,8 @@ function deeper(n: number): number {
 
 deeper(0);
 "#,
-                names: &["too much recursion"],
-                located: Located::At("line 4, column 10"),
+                names: &["Maximum call stack size exceeded"],
+                located: Located::At("program.ts:4:21"),
                 answered: Answered::AtRuntime,
             },
             Case {
@@ -93,9 +86,9 @@ console.log("after the exit");
 "#,
                 names: &["Cannot find name 'process'"],
                 located: Located::At("program.ts(4,1)"),
-                // Nothing runs: this arm's guest is not Node, so `tsc` has no declaration for the
-                // one name a model reaches for to stop a program. It cannot abort at all, and the
-                // refusal is what it reads instead, at its own line and column.
+                // Nothing runs: this guest is not Node, so `tsc` has no declaration for the one name
+                // a model reaches for to stop a program. It cannot abort at all, and the refusal is
+                // what it reads instead, at its own line and column.
                 answered: Answered::ByRefusingToCompile,
             },
         ],

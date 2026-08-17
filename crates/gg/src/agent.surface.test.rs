@@ -513,12 +513,14 @@ fn the_prompt_projection_is_the_surface_without_its_functions() {
             .any(|(api, view)| api.description.len() > view.brief.len()),
         "a module with a detail is in this surface, or the prefix rule above proves nothing"
     );
-    // The TypeScript arm imports nothing — its SDK is in a program's scope already — so every
-    // import here is `None`. It is asserted rather than left unsaid because a projection that
-    // invented one would be gg telling a model to write a line its arm does not accept.
+    // The TypeScript arm reaches its whole surface through one line, so every module here states
+    // that line. It is asserted rather than left unsaid because a projection that dropped it would
+    // leave a model hunting for the import its compiler requires.
     assert!(
-        views.iter().all(|view| view.import.is_none()),
-        "an arm whose catalogue declares no import line is given none"
+        views
+            .iter()
+            .all(|view| view.import.as_deref() == Some("import * as gg from \"gg\";")),
+        "an arm whose catalogue declares an import line states it on every module"
     );
     // The library is the one family a capability gates rather than a role, so it is the one whose
     // presence proves the grant is threaded through both consumers.

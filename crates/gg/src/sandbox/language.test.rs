@@ -267,7 +267,9 @@ fn every_language_writes_the_program_that_opens_the_session() {
     assert_eq!(
         typescript().bootstrap_program(&MODULES, &DOCS),
         format!(
-            "const modules = [\n  \"gg.files\",\n  \"gg.views\",\n];\n\
+            "import * as gg from \"gg\";\n\
+             \n\
+             const modules = [\n  \"gg.files\",\n  \"gg.views\",\n];\n\
              for (const path of modules) {{\n  \
              gg.docs.search(\"\", {{ module: path, limit: {MAX_SEARCH_LIMIT} }});\n}}\n\
              \n\
@@ -444,10 +446,18 @@ fn an_arms_import_line_is_the_one_its_own_opening_program_writes() {
 fn every_language_says_how_a_bound_module_is_reached() {
     for language in all_languages().chain(crate::sandbox::fixture_languages()) {
         let access = language.lib_access("csvTools");
+        // Both halves of the note, because both are what the model reads: on an arm whose module
+        // system resolves a specifier, `lib` is the scheme in the import line and the access is the
+        // namespace that line bound. Asserting the access alone would have made such an arm state
+        // its scheme nowhere.
+        let quoted = format!(
+            "{} {access}",
+            language.lib_import("csvTools").unwrap_or_default()
+        );
         for part in ["lib", "csvTools", "<name>"] {
             assert!(
-                access.to_lowercase().contains(&part.to_lowercase()),
-                "{}: `{access}` does not name `{part}`",
+                quoted.to_lowercase().contains(&part.to_lowercase()),
+                "{}: `{quoted}` does not name `{part}`",
                 language.display_name()
             );
         }
@@ -621,29 +631,51 @@ fn every_model_facing_call_resolves_in_every_language() {
     }
 }
 
-/// **The JavaScript arm is the TypeScript arm with the check taken out, and with nothing else
-/// taken out.**
+/// **What the two ECMAScript arms share, and what they differ in today.**
 ///
-/// This is the assertion that keeps the pair worth running. An A/B across two arms measures the
-/// check only while the check is the *only* thing that differs, and every other axis they could
-/// drift on is cheap to drift on: a catalogue regenerated from a pruned source, a prompt edited on
-/// one side, a strip that gained a refusal on one arm. So each is pinned here rather than left to
-/// the fact that both are generated today.
+/// An A/B across the pair measures the compiler only while the compiler is what differs, and every
+/// other axis they could drift on is cheap to drift on: a catalogue regenerated from a pruned
+/// source, a prompt edited on one side, a binding convention that changed on one. Each of those is
+/// pinned here rather than left to the fact that both are generated today.
 ///
-/// Four things must be equal — the surface a model is shown, down to its type annotations; the
-/// evaluator; the binding convention; and the lexical reading healing does — and exactly two must
-/// differ: the name the one system prompt tells the model it is writing, and whether a compiler is
-/// named.
+/// **The pair differs in more than the compiler until the JavaScript arm converts**, and that is
+/// recorded here rather than left implicit. The TypeScript arm keeps the
+/// [invariants](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) — the model's own file
+/// is what `tsc` reads, the SDK is reached by an import the program wrote, and the guest evaluates a
+/// module — and the JavaScript arm still evaluates a re-printed program as a function body against
+/// an injected scope. So the two run on different guests and prepare differently, and a study across
+/// them is comparing that as well.
+///
+/// The record fails in both directions: an arm that converts makes these assertions fail, and the
+/// gate says to delete them.
 #[test]
 fn the_javascript_arm_differs_from_typescript_only_in_the_check() {
     let ts = typescript();
     let js = language(GgProgramLanguage::JavaScript);
 
-    // What differs, and it is the whole of the arm.
+    // What differs by design, and is the whole reason for the pair.
     assert_eq!(ts.checker(), Some("tsc"));
     assert_eq!(js.checker(), None, "nothing judges a JavaScript program");
     assert!(ts.prepare_compiles());
     assert!(!js.prepare_compiles());
+
+    // What differs because one arm has converted and the other has not. DELETE THIS BLOCK when the
+    // JavaScript arm moves onto the ECMAScript guest.
+    assert_ne!(
+        ts.guest_component().map(<[u8]>::len),
+        js.guest_component().map(<[u8]>::len),
+        "both arms are on one guest again; the pair differs in the compiler alone and this block \
+         should go"
+    );
+    assert!(
+        js.prepare_program(
+            "import { files } from \"gg\";\n",
+            &[],
+            &PrepareContext::new()
+        )
+        .is_err(),
+        "the JavaScript arm still refuses the word `import`; when it stops, this block should go"
+    );
 
     // The surface. Compared entry by entry rather than as whole catalogues, because the catalogues
     // differ in the one field that says whose they are — and rendered to text so that a signature,
@@ -677,9 +709,8 @@ fn the_javascript_arm_differs_from_typescript_only_in_the_check() {
         "the JavaScript catalogue dropped its type annotations"
     );
 
-    // The evaluator, the binding convention, and the reading healing does.
-    assert_eq!(ts.guest_component(), js.guest_component());
-    assert_eq!(js.binding_name("csv-tools"), "csvTools");
+    // The binding convention and the reading healing does.
+    assert_eq!(ts.binding_name("csv-tools"), js.binding_name("csv-tools"));
     assert_eq!(
         ts.healing().program_fence_tags(),
         js.healing().program_fence_tags(),
@@ -687,24 +718,33 @@ fn the_javascript_arm_differs_from_typescript_only_in_the_check() {
 
     // And a type annotation prepares on both, because "JavaScript" here is a program nothing
     // checked rather than a narrower grammar.
-    for language in [ts, js] {
+    for (language, program) in [
+        (
+            ts,
+            "import * as gg from \"gg\";\nconst total: number = 1;\ngg.session.finish(String(total));\n",
+        ),
+        (js, "const total: number = 1;\n"),
+    ] {
         let prepared = language
-            .prepare_program("const total: number = 1;", &[], &PrepareContext::new())
+            .prepare_program(program, &[], &PrepareContext::new())
             .unwrap_or_else(|err| panic!("{}: {err}", language.id()));
         assert!(!prepared.source.contains(": number"), "{}", language.id());
     }
     // The one program that separates them: a call the SDK does not have is a compile error on the
     // checked arm and reaches the guest on the other.
-    let mistyped = "view.openText(1, 2);";
     assert!(
         matches!(
-            ts.prepare_program(mistyped, &[], &PrepareContext::new()),
+            ts.prepare_program(
+                "import * as gg from \"gg\";\ngg.views.openText(1, 2);\n",
+                &[],
+                &PrepareContext::new()
+            ),
             Err(PrepareFailure::Program(PrepareError::Compile(_)))
         ),
-        "TypeScript's checker reads the program"
+        "TypeScript's compiler reads the program"
     );
     assert!(
-        js.prepare_program(mistyped, &[], &PrepareContext::new())
+        js.prepare_program("view.openText(1, 2);", &[], &PrepareContext::new())
             .is_ok(),
         "nothing on the JavaScript arm reads the program before it runs"
     );
@@ -778,33 +818,18 @@ fn the_fixture_language_has_no_wire_id() {
 /// A pair listed here is held to something *stronger* than the rule, not weaker: the sharing must be
 /// real (the same bytes, not two files that happen to agree today), and everything a language owns
 /// beyond the shared artifact must still be its own.
-const SHARED_ARTIFACTS: &[(GgProgramLanguage, GgProgramLanguage, &str)] = &[
-    (
-        GgProgramLanguage::TypeScript,
-        GgProgramLanguage::JavaScript,
-        "the two arms differ in whether gg type-checks a program before handing it over, and in \
-         nothing else — the same SDK, the same signatures, the same strip, one evaluator. A second, \
-         byte-identical 13.4 MB component in the repository would be a second copy of one artifact, \
-         with nothing to observe between them and a standing chance for the one thing the arms must \
-         share to diverge",
-    ),
-    (
-        GgProgramLanguage::TypeScript,
-        GgProgramLanguage::PureScript,
-        "a PureScript program is compiled to JavaScript by `purs` and flattened by `esbuild` before \
+const SHARED_ARTIFACTS: &[(GgProgramLanguage, GgProgramLanguage, &str)] = &[(
+    GgProgramLanguage::JavaScript,
+    GgProgramLanguage::PureScript,
+    "a PureScript program is compiled to JavaScript by `purs` and flattened by `esbuild` before \
          it crosses, and what arrives is a self-contained script with no runtime to boot — `purs` \
          compiles the library code a program used into the program and the bundler tree-shakes the \
-         rest away. So a component of its own would differ from this one in nothing at all, where \
-         Ruby's differs in a 743 KB Opal runtime pre-initialised into it. Measured: 2.7 ms per turn \
-         against 2.1 ms for the equivalent plain JavaScript on the same artifact",
-    ),
-    (
-        GgProgramLanguage::JavaScript,
-        GgProgramLanguage::PureScript,
-        "the transitive half of the two entries above: JavaScript serves TypeScript's component and \
-         so does PureScript, so this pair shares one by consequence rather than by a third decision",
-    ),
-];
+         rest away. So a component of its own would differ from the JavaScript arm's in nothing at \
+         all, where Ruby's differs in a 743 KB Opal runtime pre-initialised into it. Measured: 2.7 \
+         ms per turn against 2.1 ms for the equivalent plain JavaScript on the same artifact. Both \
+         arms leave this component when they convert onto the ECMAScript guest, and this row goes \
+         with the second of them",
+)];
 
 /// Why `a` and `b` are allowed to share a component, or `None` if they are not.
 fn shared_artifacts(a: GgProgramLanguage, b: GgProgramLanguage) -> Option<&'static str> {
@@ -970,11 +995,12 @@ fn the_synthesized_file_view_statement_is_the_languages_own() {
 
     assert_eq!(
         typescript().open_file_statement("src/main.ts", None),
-        r#"gg.views.openFile("src/main.ts");"#
+        "import * as gg from \"gg\";\n\ngg.views.openFile(\"src/main.ts\");\n"
     );
     assert_eq!(
         typescript().open_file_statement("src/main.ts", Some(window)),
-        r#"gg.views.openFile("src/main.ts", { offset: 400, limit: 200 });"#
+        "import * as gg from \"gg\";\n\ngg.views.openFile(\"src/main.ts\", { offset: 400, limit: \
+         200 });\n"
     );
 
     let fixture = fixture_language();
@@ -1053,7 +1079,7 @@ fn preparing_a_program_is_the_languages_own() {
     assert!(
         matches!(
             typescript().prepare_program(commented, &[], &PrepareContext::new()),
-            Err(PrepareFailure::Program(PrepareError::Syntax(_)))
+            Err(PrepareFailure::Program(PrepareError::Compile(_)))
         ),
         "`#` is not TypeScript"
     );
@@ -1065,10 +1091,11 @@ fn preparing_a_program_is_the_languages_own() {
         "total = 1\n"
     );
 
-    // And each refuses what its own guest cannot resolve, in its own syntax.
+    // And each refuses what its own guest cannot resolve, in its own syntax. TypeScript's refusal is
+    // the compiler's, because a specifier is something a compiler resolves.
     assert!(matches!(
         typescript().prepare_program("import fs from \"fs\";\n", &[], &PrepareContext::new()),
-        Err(PrepareFailure::Program(PrepareError::Unsupported(_)))
+        Err(PrepareFailure::Program(PrepareError::Compile(_)))
     ));
     assert!(matches!(
         fixture_language().prepare_program("use tools\n", &[], &PrepareContext::new()),

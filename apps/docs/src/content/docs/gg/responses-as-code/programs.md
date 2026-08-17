@@ -22,17 +22,23 @@ that runs. gg compiles it as it stands, on the terms in
 A program, written in TypeScript:
 
 ```ts
-import { files, session, views } from "gg";
+import * as gg from "gg";
 
-const specs = files.listDir("specs").filter((e) => e.kind === "file");
+const specs = gg.files.listDir("specs").filter((e) => e.kind === "file");
 const missing = specs.filter(
-  (e) => !files.readTextFile(`specs/${e.name}`).includes("## Rules"),
+  (e) => !gg.files.readTextFile(`specs/${e.name}`).includes("## Rules"),
 );
-views.openText("missing-rules", missing.map((e) => e.name).join("\n"));
+gg.views.openText("missing-rules", missing.map((e) => e.name).join("\n"));
 if (missing.length === 0) {
-  session.finish(`Checked ${specs.length} spec files; each has rules.`);
+  gg.session.finish(`Checked ${specs.length} spec files; each has rules.`);
 }
 ```
+
+The import is the namespace form because `gg.files.readFile` is the name every
+documentation view is filed under and every quoted call is written with, and that
+line is what makes the printed name an expression the program can write. A named
+import (`import { files } from "gg";`) reaches the same module and is equally
+valid.
 
 Four rules govern what such a program can do with what it computed.
 

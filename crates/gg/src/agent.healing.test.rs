@@ -96,7 +96,7 @@ async fn a_healed_turn_reports_what_was_healed_on_its_code_execution() {
             // A real fenced reply, with prose either side of the block.
             code_reply(FENCED_PROGRAM),
             // The same shape, sent the way the prompt asks for it.
-            code_reply("return fs.listDir(\"src\").length;"),
+            code_reply("import * as gg from \"gg\";\ngg.files.listDir(\"src\").length;"),
             code_reply(FINISHING_PROGRAM),
         ],
     );
@@ -159,7 +159,7 @@ async fn healing_is_never_disclosed_to_the_model() {
         &dir,
         healing_set(json!({})),
         vec![
-            code_reply("```ts\nreturn 1;\n```"),
+            code_reply("```ts\n1;\n```"),
             code_reply("```ts\nconst x = ;\n```"),
             code_reply("```ts\n// nothing but a note to myself\n```"),
             code_reply(FINISHING_PROGRAM),
@@ -187,7 +187,7 @@ async fn healing_is_never_disclosed_to_the_model() {
         &dir,
         healing_set(json!({ "timeoutSecs": RUNAWAY_TIMEOUT_SECS })),
         vec![
-            code_reply("```ts\nlet x = 0;\nwhile (true) {\n  x += 1;\n}\nreturn x;\n```"),
+            code_reply("```ts\nlet x = 0;\nwhile (true) {\n  x += 1;\n}\nx;\n```"),
             code_reply(FINISHING_PROGRAM),
         ],
     )
@@ -221,12 +221,12 @@ async fn every_reply_is_compiled_rather_than_judged() {
             // Comments only: a program that does nothing, which is what it is.
             code_reply("// I will write the manifest next turn."),
             // Several candidate blocks: healing declines and the whole reply is compiled.
-            code_reply("```ts\nreturn 1;\n```\n\nor perhaps\n\n```ts\nreturn 2;\n```"),
+            code_reply("```ts\n1;\n```\n\nor perhaps\n\n```ts\n2;\n```"),
             // Two programs pasted together with no fence anywhere: a redeclaration, which the
             // type-strip reports as one.
             code_reply(
-                "const files = fs.listDir(\"src\");\nreturn files.length;\n\n\
-                 const files = fs.listDir(\".\");\nreturn files.map((e) => e.name);",
+                "import * as gg from \"gg\";\nconst files = gg.files.listDir(\"src\");\nfiles.length;\n\n\
+                 const files = gg.files.listDir(\".\");\nfiles.map((e) => e.name);",
             ),
         ],
     );
@@ -329,7 +329,7 @@ async fn disarming_a_strategy_changes_only_what_healing_returns() {
     // wrapper comes off and this runs; with it disarmed the whole reply goes to the compiler.
     let client = MockClient::new(
         "mock/primary",
-        vec![code_reply("Here is the program:\n\n```ts\nreturn 1;\n```")],
+        vec![code_reply("Here is the program:\n\n```ts\n1;\n```")],
     );
 
     let end = drive_root(
@@ -496,7 +496,7 @@ async fn a_code_run_heads_the_task_and_gg_s_reply() {
     let (_, _, requests) = drive_recorded_code_run(
         &dir,
         healing_set(json!({})),
-        vec![code_reply("return 1;"), code_reply(FINISHING_PROGRAM)],
+        vec![code_reply("1;"), code_reply(FINISHING_PROGRAM)],
     )
     .await;
 

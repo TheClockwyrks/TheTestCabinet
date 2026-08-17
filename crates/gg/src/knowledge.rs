@@ -186,7 +186,7 @@ impl Loaded {
             note.push_str(&format!(
                 "\n\n---\nThe code this {} carries is loaded: {}call it as `{}`",
                 origin.noun(),
-                match language.lib_import() {
+                match language.lib_import(key) {
                     Some(line) => format!("write `{line}` and "),
                     None => String::new(),
                 },

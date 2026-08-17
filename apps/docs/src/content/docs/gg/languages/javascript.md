@@ -4,14 +4,18 @@ title: "JavaScript"
 
 An agent on the JavaScript arm answers a turn by writing one JavaScript program.
 gg parses the reply, erases any type annotations in it, and hands the stripped
-source to the embedded ECMAScript guest, which evaluates it. Nothing reads the
-program between the strip and the guest.
+source to the embedded `componentize-js` guest, which evaluates it. Nothing reads
+the program between the strip and the guest.
 
 This arm does not keep the [invariants](/gg/responses-as-code/invariants/) yet,
-and this page states what it does today. It shares the TypeScript arm's strip,
-so it shares that arm's two departures: the strip prints the parsed program back
-out and the guest evaluates that copy as the body of a function whose parameters
-carry `gg`, `ToolError` and `lib` into scope with no line the model wrote.
+and this page states what it does today. The strip prints the parsed program back
+out, the guest evaluates that copy as the body of a function whose parameters
+carry `gg`, `ToolError` and `lib` into scope with no line the model wrote,
+`import` is refused in writing, and a reported line is reached by arithmetic over
+a calibration throw. Moving the arm onto the
+[ECMAScript guest](/gg/languages/ecmascript-guest/), which the
+[TypeScript arm](/gg/languages/typescript/) already runs on, is what closes all
+four.
 
 ## Preparation
 
@@ -29,32 +33,35 @@ declarations are the function's locals.
 Code modules on this arm are `.js` or `.ts` files. A module is prepared by the
 same strip, under its own coordinates.
 
-## Shared with the TypeScript arm
+## The pair with the TypeScript arm
 
-The two arms differ in whether gg type-checks a program before handing it over.
-Everything else is required to be identical, and the seam's own gate holds the
-arms to it:
+The pair exists to measure what compiling a program before running it is worth,
+so what the two arms share is pinned by the seam's own gate:
 
-- the evaluator is TypeScript's component bytes, reached through that arm's
-  constant. This arm embeds no guest artifact of its own, and the two arms must
-  serve the same bytes rather than two copies of one file;
 - the signature catalogue carries the same declarations, entry for entry,
   including the type annotations;
-- the preparation is TypeScript's, with the check absent;
 - the healing dialect and the camelCase binding convention are the ECMAScript
   ones.
 
-What this arm owns is its id, its display name, its own catalogue file, and its
-own segment of the shared prompt templates.
+They differ in more than the compiler until this arm converts, and a study across
+them has to say so: the TypeScript arm compiles the model's own file and
+evaluates a module in the ECMAScript guest, and this arm re-prints the program
+and evaluates it as a function body in the guest below. The seam's gate records
+that difference and fails when it closes.
+
+What this arm owns is its id, its display name, its own catalogue file, its guest
+component, and its own segment of the shared prompt templates.
 
 ## Toolchain and build outputs
 
 There is no toolchain on the turn path. No compiler runs, and the run image
 installs nothing for this arm.
 
-The guest artifact it serves, `typescript.component.wasm`, is built by
-`crates/gg-sandbox-artifacts/typescript` with `componentize-js` over
-`packages/gg-sandbox` and embedded in the gg binary.
+The guest artifact, `typescript.component.wasm`, is ~13.4 MB because it embeds a
+JavaScript engine. It is built by `crates/gg-sandbox-artifacts/typescript` with
+`componentize-js` over `packages/gg-sandbox` and embedded in the gg binary. The
+[PureScript arm](/gg/languages/purescript/) serves these same bytes, declared as
+a share in the seam's exemption table.
 
 Its signature catalogue is `javascript.signatures.json`, emitted into the
 build's `OUT_DIR` by `packages/gg-sandbox/signatures.sh` and embedded from
@@ -129,6 +136,6 @@ The arm names no [checker](/gg/languages/compilation/), so nothing in the
 prompt describes a compile step and nothing describes a call that compiles and
 then fails on a capability the run withheld.
 
-Source gg synthesizes for this arm is written by TypeScript's syntax functions
-with the names resolved from this arm's own catalogue, since the two arms share
-a guest and TypeScript's synthesized forms carry no annotation.
+Source gg synthesizes for this arm is a bare qualified call and no import line,
+because that is what this guest evaluates: gg's surface is bound into a program's
+scope here, and an import would be refused.

@@ -469,9 +469,9 @@ async fn a_persistent_code_mode_instance_hands_its_views_to_the_next_one() {
         Arc::clone(&store),
         code_on(),
         vec![code_reply(
-            "view.openFile(\"game.js\");\n\
-             view.openText(\"plan\", \"1. read the game\\n2. fix the bug\");\n\
-             harness.finish(\"looked at the game\");",
+            "import * as gg from \"gg\";\ngg.views.openFile(\"game.js\");\n\
+             gg.views.openText(\"plan\", \"1. read the game\\n2. fix the bug\");\n\
+             gg.session.finish(\"looked at the game\");",
         )],
     )
     .await;
@@ -504,7 +504,9 @@ async fn a_persistent_code_mode_instance_hands_its_views_to_the_next_one() {
         &profile,
         Arc::clone(&store),
         code_on(),
-        vec![code_reply("harness.finish(\"done\");")],
+        vec![code_reply(
+            "import * as gg from \"gg\";\ngg.session.finish(\"done\");",
+        )],
     )
     .await;
     assert_eq!(second.status, "completed");

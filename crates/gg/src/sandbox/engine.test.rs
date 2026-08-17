@@ -299,7 +299,7 @@ fn the_component_compiles_once_per_process() {
     let log = CallLog::default();
     run_program(
         typescript(),
-        "return 1;",
+        "export const answer = 1;\n",
         ProgramScope {
             capabilities: &[],
             operations: &[],
@@ -314,7 +314,7 @@ fn the_component_compiles_once_per_process() {
 
     run_program(
         typescript(),
-        "return 2;",
+        "export const answer = 2;\n",
         ProgramScope {
             capabilities: &[],
             operations: &[],
@@ -354,7 +354,7 @@ fn bad_component_bytes_are_a_compile_error() {
 /// **What the embedded artifact actually imports**, named rather than assumed.
 ///
 /// A component is only affected by the imports it *declares*, so this list is the whole of what the
-/// TypeScript guest can reach — and several pages of prose describe the sandbox in terms of it. It
+/// ECMAScript guest can reach — and several pages of prose describe the sandbox in terms of it. It
 /// is not stable under a rebuild: the `--disable` set in `packages/gg-sandbox/build.sh` decides it,
 /// and a flag added or dropped there silently changes what a program can do. That already happened
 /// once — dropping `random clocks` is what made `Date.now()` and `crypto.randomUUID()` read the
@@ -365,12 +365,13 @@ fn bad_component_bytes_are_a_compile_error() {
 ///
 /// - **gg's own membrane**, one import per capability family. A family missing here is a family the
 ///   guest could not call however well the host implements it.
-/// - **The WASI it was baked with**: clocks, randomness, `io` (which `wasi:clocks`' pollables and
-///   the engine's own plumbing need) and `cli/stderr`. Notably *absent* are `wasi:filesystem`,
-///   `wasi:sockets` and `wasi:http` — the linker
-///   [defines all three for every guest](super::linker), and this guest simply does not ask for
-///   them. That is the difference between a capability withheld and a capability unused, and it is
-///   why this component is unaffected by the ambient half while a `componentize-py` guest is not.
+/// - **The WASI it was baked with**. This guest is a `wasm32-wasip1` module through the reactor
+///   adapter, so the adapter's whole preview1 surface is declared whether or not the engine inside
+///   reaches it: clocks, randomness, `io`, the `cli` streams and terminals, `cli/environment` (which
+///   is how gg states this run's budget in `GG_SANDBOX_DEADLINE_MS`), `cli/exit`, and
+///   `wasi:filesystem`. Notably *absent* are `wasi:sockets` and `wasi:http`, which the linker
+///   [defines for every guest](super::linker) and this one does not ask for. That is the difference
+///   between a capability withheld and a capability unused.
 ///
 /// Versions are stripped: a WASI point release is not the change this guards against.
 #[test]
@@ -401,11 +402,21 @@ fn the_embedded_component_imports_the_membrane_and_the_wasi_it_was_baked_with() 
             "test-cabinet:gg/tasks",
             "test-cabinet:gg/types",
             "test-cabinet:gg/views",
+            "wasi:cli/environment",
+            "wasi:cli/exit",
             "wasi:cli/stderr",
+            "wasi:cli/stdin",
+            "wasi:cli/stdout",
+            "wasi:cli/terminal-input",
+            "wasi:cli/terminal-output",
+            "wasi:cli/terminal-stderr",
+            "wasi:cli/terminal-stdin",
+            "wasi:cli/terminal-stdout",
             "wasi:clocks/monotonic-clock",
             "wasi:clocks/wall-clock",
+            "wasi:filesystem/preopens",
+            "wasi:filesystem/types",
             "wasi:io/error",
-            "wasi:io/poll",
             "wasi:io/streams",
             "wasi:random/random",
         ],
@@ -415,18 +426,27 @@ fn the_embedded_component_imports_the_membrane_and_the_wasi_it_was_baked_with() 
     );
 }
 
-/// The embedded artifact is within the documented size band.
+/// The embedded artifacts are within their documented size bands.
 ///
-/// It is ~13.4 MB because it embeds a JavaScript engine. A build that produced something far
-/// smaller dropped the engine; one far larger picked up something it should not have. Either way
-/// the number belongs in a test rather than only in prose, because the artifact is embedded and
-/// nobody re-reads its size.
+/// Two guests, an order of magnitude apart. TypeScript's is quickjs-ng in a `wit-bindgen` component,
+/// ~1.2 MB; the JavaScript arm's is a `componentize-js` build of StarlingMonkey, ~13.4 MB. A build
+/// that produced something far smaller dropped the engine; one far larger picked up something it
+/// should not have. Either way the number belongs in a test rather than only in prose, because the
+/// artifacts are embedded and nobody re-reads their size.
 #[test]
 fn the_embedded_component_is_within_the_documented_size_band() {
     let bytes = component_bytes(typescript()).len();
     assert!(
+        (600_000..=3 * 1024 * 1024).contains(&bytes),
+        "the ECMAScript component is {bytes} bytes, outside the documented ~1.2 MB band"
+    );
+    let bytes = component_bytes(crate::sandbox::language(
+        test_cabinet_core::gg::GgProgramLanguage::JavaScript,
+    ))
+    .len();
+    assert!(
         (12 * 1024 * 1024..=15 * 1024 * 1024).contains(&bytes),
-        "the embedded component is {bytes} bytes, outside the documented 12–15 MiB band"
+        "the JavaScript arm's component is {bytes} bytes, outside the documented 12–15 MiB band"
     );
 }
 
@@ -453,7 +473,7 @@ fn the_program_that_pays_the_compile_reports_what_it_cost() {
     let log = CallLog::default();
     let (cold, _api) = run_program(
         typescript(),
-        "return 1;",
+        "export const answer = 1;\n",
         ProgramScope {
             capabilities: &[],
             operations: &[],
@@ -474,7 +494,7 @@ fn the_program_that_pays_the_compile_reports_what_it_cost() {
 
     let (warm, _api) = run_program(
         typescript(),
-        "return 2;",
+        "export const answer = 2;\n",
         ProgramScope {
             capabilities: &[],
             operations: &[],

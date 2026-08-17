@@ -369,16 +369,20 @@ fn evaluate<'js>(ctx: &Ctx<'js>, program: &str) {
 /// rather than to standard error: standard error is where a *failure* is read from, and mixing a
 /// program's own output into it would make the two indistinguishable.
 ///
-/// `TextEncoder`, `TextDecoder` and `structuredClone` are here because the incumbent engine had them
-/// and quickjs does not, and a guest change that quietly removed a global a model's program may
-/// already be writing would be a regression in exactly the direction this work exists to remove. The
-/// two codecs are Rust's own UTF-8, so they are correct about surrogate pairs and replacement
-/// characters rather than approximately correct.
+/// `TextEncoder`, `TextDecoder`, `structuredClone` and `crypto` are here because the incumbent
+/// engine had them and quickjs does not, and a guest change that quietly removed a global a model's
+/// program may already be writing would be a regression in exactly the direction this work exists to
+/// remove. The two codecs are Rust's own UTF-8, so they are correct about surrogate pairs and
+/// replacement characters rather than approximately correct.
+///
+/// What is installed here is exactly what `packages/gg-sandbox/tools/program-globals.d.ts` declares
+/// to the TypeScript arm's checker, which is the one place a name a program may call and a name its
+/// checker admits are held to each other.
 fn install_globals(ctx: &Ctx<'_>) {
     let globals = ctx.globals();
 
     let console = rquickjs::Object::new(ctx.clone()).expect("a console object");
-    for level in ["log", "error", "warn", "info", "debug", "trace"] {
+    for level in ["log", "error", "warn", "info", "debug", "trace", "dir"] {
         let line = Function::new(ctx.clone(), |rest: Rest<Value<'_>>| {
             let parts: Vec<String> = rest.0.iter().map(text_of).collect();
             bindings::feedback::log(&parts.join(" "));
@@ -402,7 +406,30 @@ fn install_globals(ctx: &Ctx<'_>) {
     globals
         .set("__ggUtf8Decode", decode)
         .expect("globals are settable");
+    let entropy = Function::new(ctx.clone(), |count: usize| entropy(count))
+        .expect("the entropy source");
+    globals
+        .set("__ggEntropy", entropy)
+        .expect("globals are settable");
     ctx.eval::<(), _>(PRELUDE).expect("the prelude evaluates");
+}
+
+/// `count` bytes from the host's own entropy.
+///
+/// `random_get` is preview 1's name for it, which the reactor adapter this core module is linked
+/// through answers from `wasi:random` — the same source gg's other guests read and the same source
+/// this guest's own `std` reads. Declared here rather than taken from a crate because the crate that
+/// would provide it makes exactly this call on this target.
+fn entropy(count: usize) -> Vec<u8> {
+    #[link(wasm_import_module = "wasi_snapshot_preview1")]
+    unsafe extern "C" {
+        fn random_get(buffer: *mut u8, length: usize) -> u16;
+    }
+    let mut bytes = vec![0u8; count];
+    // A non-zero errno leaves the buffer as it was, which is a buffer of zeros. There is no way to
+    // report it from here that a program could act on, and the host does not fail this call.
+    let _ = unsafe { random_get(bytes.as_mut_ptr(), bytes.len()) };
+    bytes
 }
 
 /// The small part of the standard library quickjs leaves to its embedder, written on top of the two
@@ -411,7 +438,7 @@ fn install_globals(ctx: &Ctx<'_>) {
 /// It is evaluated as a **script**, not a module, and it defines globals — which is what these are.
 /// Nothing a model writes reaches this file: it is the engine's own surface, the way `Array` is.
 const PRELUDE: &str = r#"
-(function (encodeUtf8, decodeUtf8) {
+(function (encodeUtf8, decodeUtf8, entropy) {
   // Closed over rather than read off `globalThis`, and the two natives are deleted below, so a
   // program cannot reach the raw codecs and cannot break these two classes by shadowing them.
   globalThis.TextEncoder = class TextEncoder {
@@ -459,9 +486,51 @@ const PRELUDE: &str = r#"
     return copy;
   };
   globalThis.structuredClone = clone;
-})(globalThis.__ggUtf8Encode, globalThis.__ggUtf8Decode);
+  const hex = [];
+  for (let i = 0; i < 256; i += 1) hex.push(i.toString(16).padStart(2, "0"));
+  // The globals a program reaches for out of habit and this runtime does not have. Each is a named
+  // thrower rather than an absence, because `undefined is not a function` names nothing a model can
+  // act on: the engine's message for calling a missing global carries neither the name nor a reason.
+  //
+  // `queueMicrotask` is deliberately NOT among them. It works: the job queue is drained before this
+  // guest returns, which is the same mechanism a top-level `await` finishes on.
+  for (const [name, why] of [
+    ["setTimeout", "there is no event loop, so a scheduled callback would never run"],
+    ["setInterval", "there is no event loop, so a scheduled callback would never run"],
+    ["clearTimeout", "there is no event loop, so a scheduled callback would never run"],
+    ["clearInterval", "there is no event loop, so a scheduled callback would never run"],
+    ["requestAnimationFrame", "there is no event loop, so a scheduled callback would never run"],
+    ["fetch", "this program's runtime is built without an HTTP client"],
+  ]) {
+    globalThis[name] = function () {
+      throw new Error(`${name} is not available in the sandbox: ${why}`);
+    };
+  }
+  globalThis.crypto = {
+    getRandomValues(array) {
+      if (!ArrayBuffer.isView(array)) {
+        throw new TypeError("getRandomValues takes a typed array");
+      }
+      const bytes = entropy(array.byteLength);
+      new Uint8Array(array.buffer, array.byteOffset, array.byteLength).set(bytes);
+      return array;
+    },
+    randomUUID() {
+      const b = entropy(16);
+      b[6] = (b[6] & 0x0f) | 0x40;
+      b[8] = (b[8] & 0x3f) | 0x80;
+      const s = Array.from(b, (byte) => hex[byte]);
+      return (
+        s.slice(0, 4).join("") + "-" + s.slice(4, 6).join("") + "-" +
+        s.slice(6, 8).join("") + "-" + s.slice(8, 10).join("") + "-" +
+        s.slice(10, 16).join("")
+      );
+    },
+  };
+})(globalThis.__ggUtf8Encode, globalThis.__ggUtf8Decode, globalThis.__ggEntropy);
 delete globalThis.__ggUtf8Encode;
 delete globalThis.__ggUtf8Decode;
+delete globalThis.__ggEntropy;
 "#;
 
 /// One `console` argument, rendered the way a JavaScript host renders it.
@@ -479,20 +548,11 @@ fn text_of(value: &Value<'_>) -> String {
     }
 }
 
-/// The engine's own words for a value that was thrown: its `name`, its `message` and its stack,
-/// unedited and in the model's own coordinates.
+/// The engine's own words for a value that was thrown: its `name`, its `message`, its stack and
+/// whatever else it carries, unedited and in the model's own coordinates.
 fn describe<'js>(ctx: &Ctx<'js>, value: Value<'js>) -> String {
     if let Some(exception) = value.clone().into_exception() {
-        return format!(
-            "{}: {}\n{}",
-            exception
-                .get::<_, Value<'js>>("name")
-                .ok()
-                .and_then(|name| name.as_string().and_then(|text| text.to_string().ok()))
-                .unwrap_or_else(|| "Error".to_string()),
-            exception.message().unwrap_or_default(),
-            exception.stack().unwrap_or_default(),
-        );
+        return thrown_error(&exception);
     }
     // A refused gg call arrives as the membrane's own record — `{ code, tool, message }` — which is
     // an ordinary object rather than an `Error`, exactly as it is on every other guest.
@@ -504,25 +564,100 @@ fn describe<'js>(ctx: &Ctx<'js>, value: Value<'js>) -> String {
             return format!("{name}: {message}\n{stack}");
         }
     }
-    match ctx.json_stringify(value.clone()) {
-        Ok(Some(text)) => text.to_string().unwrap_or_default(),
-        _ => format!("{value:?}"),
+    thrown_value(ctx, &value)
+}
+
+/// A thrown value that is **not** an error, as a line of text that says something.
+///
+/// `JSON.stringify` alone is not enough: a `Map`, a `Set`, a class instance with only accessor
+/// properties and an `Error` from another realm all serialise to `{}`, which tells the model
+/// precisely nothing. When that happens the value is described instead — what it coerces to, and
+/// which own properties it carries — so the model can at least recognise what it threw.
+fn thrown_value<'js>(ctx: &Ctx<'js>, value: &Value<'js>) -> String {
+    if let Ok(Some(text)) = ctx.json_stringify(value.clone())
+        && let Ok(text) = text.to_string()
+        && text != "{}"
+    {
+        return text;
     }
+    let coerced = value
+        .as_object()
+        .and_then(|object| object.get::<_, rquickjs::Function<'js>>("toString").ok())
+        .and_then(|to_string| {
+            to_string
+                .call::<_, String>((rquickjs::function::This(value.clone()),))
+                .ok()
+        })
+        .unwrap_or_else(|| text_of(value));
+    let Some(object) = value.as_object() else {
+        return coerced;
+    };
+    let names: Vec<String> = object
+        .keys::<String>()
+        .filter_map(std::result::Result::ok)
+        .collect();
+    match names.is_empty() {
+        true => format!("the program threw a value that is not an Error: {coerced}"),
+        false => format!(
+            "the program threw a value that is not an Error: {coerced}, own properties: {}",
+            names.join(", ")
+        ),
+    }
+}
+
+/// One thrown `Error` object, rendered the way a JavaScript host renders an uncaught one: the name,
+/// the message, the stack, and then **the properties the error carries of its own**.
+///
+/// That last part is not decoration and not gg's account of the failure. A `ToolError` says which
+/// call failed and why in `tool` and `code`, which are ordinary own properties of the thrown object
+/// — so an uncaught one that printed only `name` and `message` would tell a model a file was missing
+/// without telling it which call went looking. Node prints an error's extra own properties for the
+/// same reason, and this prints whatever the thrown object carries rather than the two gg happens to
+/// know about.
+fn thrown_error(exception: &rquickjs::Exception<'_>) -> String {
+    let head = format!(
+        "{}: {}\n{}",
+        exception
+            .get::<_, Value<'_>>("name")
+            .ok()
+            .and_then(|name| name.as_string().and_then(|text| text.to_string().ok()))
+            .unwrap_or_else(|| "Error".to_string()),
+        exception.message().unwrap_or_default(),
+        exception.stack().unwrap_or_default(),
+    );
+    let carried = carried(exception);
+    match carried.is_empty() {
+        true => head,
+        false => format!("{head}  {{ {} }}\n", carried.join(", ")),
+    }
+}
+
+/// Every own enumerable property a thrown error carries beyond the three every error has.
+fn carried(exception: &rquickjs::Exception<'_>) -> Vec<String> {
+    let mut carried = Vec::new();
+    for entry in exception.own_props::<String, Value<'_>>(rquickjs::object::Filter::default()) {
+        let Ok((key, value)) = entry else { continue };
+        if matches!(key.as_str(), "name" | "message" | "stack") {
+            continue;
+        }
+        // JSON rather than `text_of`, because these are read beside one another: a quoted string is
+        // what tells a reader where one value ends and the next begins.
+        let rendered = value
+            .ctx()
+            .json_stringify(value.clone())
+            .ok()
+            .flatten()
+            .and_then(|text| text.to_string().ok())
+            .unwrap_or_else(|| text_of(&value));
+        carried.push(format!("{key}: {rendered}"));
+    }
+    carried
 }
 
 /// A caught failure, rendered.
 fn render<'js>(ctx: &Ctx<'js>, caught: CaughtError<'js>) -> String {
     match caught {
-        CaughtError::Exception(exception) => format!(
-            "{}: {}\n{}",
-            exception
-                .get::<_, Value<'js>>("name")
-                .ok()
-                .and_then(|name| name.as_string().and_then(|text| text.to_string().ok()))
-                .unwrap_or_else(|| "Error".to_string()),
-            exception.message().unwrap_or_default(),
-            exception.stack().unwrap_or_default(),
-        ),
+        CaughtError::Exception(exception) => thrown_error(&exception),
         CaughtError::Value(value) => format!("Uncaught {}", describe(ctx, value)),
         CaughtError::Error(error) => error.to_string(),
     }

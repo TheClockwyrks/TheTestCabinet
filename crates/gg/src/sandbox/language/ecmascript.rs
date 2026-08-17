@@ -1,15 +1,16 @@
-//! **The ECMAScript guest the three JavaScript-evaluating arms are moving to**: quickjs-ng inside a
-//! `wit-bindgen` component that declares this crate's own `sandbox` world.
+//! **The ECMAScript guest**: quickjs-ng inside a `wit-bindgen` component that declares this crate's
+//! own `sandbox` world.
 //!
-//! # What it is, and what it is not yet
+//! # What it is, and which arms are on it
 //!
-//! It is a built, embedded, instantiable artifact with gg's whole membrane behind it. It is **not**
-//! registered as any language's guest: [`typescript`](super::typescript),
-//! [`javascript`](super::javascript) and [`purescript`](super::purescript) still evaluate in
-//! `typescript::COMPONENT`, and nothing on a turn path reaches this module. Converting those three
-//! arms is a change to each arm's prepare step, each arm's prompt and each arm's page; this is the
-//! floor those changes stand on, landed on its own so that the engine is proved before three arms
-//! are moved onto it.
+//! A program is a **module** here — `Module::declare(ctx, "program.js", program)` over the bytes the
+//! host sent — so it writes its own `import` lines, declares whatever top-level names it likes, and
+//! reads its own line numbers back out of any failure.
+//!
+//! The TypeScript arm is registered against it. The JavaScript and PureScript arms
+//! still evaluate in `javascript::COMPONENT`, which is the guest
+//! this one replaces; converting each of them is a change to that arm's prepare step, its prompt and
+//! its page.
 //!
 //! # Why a second guest exists at all
 //!
@@ -36,12 +37,13 @@
 //! | artifact | 14,123,934 B | ~1.2 MB core + 52 KB adapter |
 //! | `Component::new`, gg's own `Config` | 11.7–24.3 s | 0.85–2.04 s |
 //!
-//! Both are paid once per process, behind a [`OnceLock`]; for the CLI a run is a process, so it is
+//! Both are paid once per process, behind a `OnceLock`; for the CLI a run is a process, so it is
 //! once per run. The figures were taken minutes apart on one machine under a load average of ~30 on
 //! 18 cores, so the absolutes are inflated and the ratio is the number to read.
 
 use std::sync::OnceLock;
 
+#[cfg(test)]
 use wasmtime::component::Component;
 
 use crate::sandbox::SandboxError;
@@ -70,6 +72,10 @@ const ADAPTER: &[u8] = include_bytes!(concat!(
 ));
 
 /// What built the two above, for the arm's own documentation to quote rather than restate.
+///
+/// `#[cfg(test)]` because the one reader is the gate that holds the arm's page to it: a released
+/// binary has no use for the JSON, and embedding it there would be bytes nothing reads.
+#[cfg(test)]
 pub(crate) const MANIFEST: &str = include_str!(concat!(
     env!("GG_ARTIFACTS_TYPESCRIPT"),
     "/ecmascript.guest.json"
@@ -78,11 +84,38 @@ pub(crate) const MANIFEST: &str = include_str!(concat!(
 /// The import namespace the adapter satisfies, which is the preview1 snapshot's own module name.
 const ADAPTER_NAME: &str = "wasi_snapshot_preview1";
 
+/// **The scheme a code module is reached under**, which is `packages/gg-sandbox/guest/src/loader.rs`'s
+/// own `LIB` constant.
+///
+/// It is a fact about this guest that the host has to know twice over: it is the line an arm tells a
+/// model to write to reach a module it loaded, and it is the name a frame inside that module carries,
+/// which is how [`locate`](crate::sandbox::locate) finds the module's own source map.
+pub(super) const MODULE_SCHEME: &str = "lib:";
+
 /// The encoded component, encoded once per process.
 static COMPONENT: OnceLock<Vec<u8>> = OnceLock::new();
 
 /// The compiled component, compiled once per process.
+///
+/// `#[cfg(test)]`, with [`component`] beside it: production compiles this guest through
+/// [`engine::component`](crate::sandbox::engine::component), which caches one [`Component`] per
+/// registered language, and a second cache in a released binary would be a second compile of the
+/// same bytes.
+#[cfg(test)]
 static COMPILED: OnceLock<Component> = OnceLock::new();
+
+/// **The component bytes an arm hands the seam**, for
+/// [`guest_component`](super::ProgramLanguage::guest_component), which has no channel for a failure.
+///
+/// It panics rather than degrading, on the same terms
+/// [`catalogue`](super::ProgramLanguage::catalogue) does: what could fail here is the encoding of an
+/// artifact this build baked, which is a build defect rather than a runtime condition, and the tests
+/// beside this module encode it on every run.
+pub(super) fn embedded() -> &'static [u8] {
+    component_bytes().unwrap_or_else(|error| {
+        panic!("gg's embedded ECMAScript guest could not be encoded as a component: {error}")
+    })
+}
 
 /// **The component bytes**, encoded from [`CORE`] and [`ADAPTER`] on first use.
 ///
@@ -120,6 +153,7 @@ pub(crate) fn component_bytes() -> Result<&'static [u8], SandboxError> {
 /// [`engine::component`](crate::sandbox::engine) is: two threads arriving together may both compile,
 /// the first `set` wins, and the loser's is dropped — which costs one wasted compile in a window a
 /// real run never enters and avoids holding a lock across a multi-second compile.
+#[cfg(test)]
 pub(crate) fn component() -> Result<&'static Component, SandboxError> {
     if let Some(component) = COMPILED.get() {
         return Ok(component);

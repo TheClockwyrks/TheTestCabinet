@@ -120,24 +120,27 @@ the host cannot open `/` at all. The failure is ignored: a guest that never
 touches the filesystem is unaffected, and one that does gets an ordinary WASI
 error from its own runtime.
 
-### Globals the ECMAScript guest shadows
+### Globals an ECMAScript guest shadows
 
-Seven globals this engine defines cannot be honoured, and each is replaced with
-a thrower so it raises an ordinary, located, catchable program error naming what
-is missing and why.
+Six globals cannot be honoured, and each is replaced with a thrower so it raises
+an ordinary, catchable program error naming what is missing and why.
 
 | Global | Reason given |
 | --- | --- |
 | `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, `requestAnimationFrame` | there is no event loop, so a scheduled callback would never run |
-| `queueMicrotask` | deferred work is not part of your program's result |
 | `fetch` | this program's runtime is built without an HTTP client |
 
 Both underlying failures are silent without a thrower. gg's `run` export is
 synchronous, so an unshadowed `setTimeout(() => { hit = 1 }, 0)` leaves `hit` at
-`0` and reports no error at all. Baking the component without the HTTP
-capability removes the WASI import but leaves the builtin defined, so an
-unshadowed `fetch` reaches a missing import and traps the whole store, which is
-uncatchable and unreportable.
+`0` and reports no error at all. Baking a component without the HTTP capability
+removes the WASI import but leaves the builtin defined, so an unshadowed `fetch`
+reaches a missing import and traps the whole store, which is uncatchable and
+unreportable.
+
+`queueMicrotask` is a thrower on the `componentize-js` guest, whose `run` export
+never drains a job queue, and is real on the
+[ECMAScript guest](/gg/languages/ecmascript-guest/), which drains one before it
+returns.
 
 Nothing here denies a capability the component has. The clock, `Math.random` and
 `crypto` are real and reachable. `fetch`'s reason is a fact about this artifact:

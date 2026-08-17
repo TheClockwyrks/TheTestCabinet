@@ -1,16 +1,20 @@
-//! TypeScript in, JavaScript out — in process, in microseconds. TypeScript's answer to
-//! [`prepare_program`](super::ProgramLanguage::prepare_program).
+//! The JavaScript arm's preparation: a parse, a type-strip and a print, in process, in
+//! microseconds. JavaScript's answer to [`prepare_program`](super::ProgramLanguage::prepare_program).
 //!
-//! A model writes TypeScript because that is the language its tools are declared in and the
-//! language it writes best; this language's guest evaluates JavaScript. Something has to erase the
-//! types, and the only acceptable something is a library call: a `tsc` or `esbuild` subprocess on
-//! the turn path would cost more than the whole rest of a program's execution and would drag Node
-//! into a run container that has no reason to contain one. `oxc` strips a representative program in
-//! ~0.2 ms.
+//! # This arm does not keep the invariants, and this module is why
 //!
-//! This step is shared with [gg's JavaScript arm](super::super::javascript), which is why it is
-//! visible to the whole [`language`](super::super) module rather than only to
-//! [TypeScript's](super): that arm is this step with the [check](super::check) removed.
+//! It re-prints the model's program, and the guest it hands the result to evaluates that print as
+//! the **body of a function** against a scope of injected names. So a runtime diagnostic is located
+//! in gg's copy rather than in the text the model sent, `import` is refused in writing, and sixteen
+//! ordinary identifiers are reserved. `apps/docs/src/content/docs/gg/responses-as-code/invariants.md`
+//! requires none of that, and the [TypeScript arm](super::super::typescript) no longer does it: that
+//! arm compiles the model's own file with `tsc` and evaluates the result in the module-evaluating
+//! guest ([`ecmascript`](super::super::ecmascript)). This arm is what is left on the old
+//! arrangement, and converting it is its own step.
+//!
+//! The type-strip is kept even though nothing here checks a type, and that is what "JavaScript"
+//! means on this arm: not a narrower grammar, but a program nothing checked. A model that annotates
+//! its own bindings runs here too, because the annotations are erased rather than rejected.
 //!
 //! # Stripped, not checked — but early errors are still caught here
 //!
@@ -31,7 +35,7 @@
 //! costs one extra pass over a tree that is already built (the transformer needs the same scope
 //! analysis) and hands the model the same located diagnostic every other failure here carries.
 //!
-//! # How TypeScript's failures map onto [`PrepareFailure`]
+//! # How this arm's failures map onto [`PrepareFailure`]
 //!
 //! The seam's kinds are not several names for "it did not compile" — they are distinct *causes*, and
 //! every one of them is produced here by a different pass:
@@ -55,7 +59,7 @@
 //!   recursive descent from overflowing the stack. Nothing is refused for its *length*. In both
 //!   cases the program is syntactically fine and the model is told precisely what to change.
 //!
-//! # Why some perfectly valid TypeScript is refused here
+//! # Why some perfectly valid source is refused here
 //!
 //! A program is evaluated as the *body of a function*, against a scope of injected tool functions.
 //! Module syntax has no meaning in that setting, and finding that out inside the guest is far worse
@@ -175,7 +179,7 @@ fn parser_stack_bytes(src_len: usize) -> usize {
     PARSER_STACK_FLOOR_BYTES.max(src_len.saturating_mul(PARSER_STACK_BYTES_PER_SOURCE_BYTE))
 }
 
-/// Type-strip `src` from TypeScript into the JavaScript this language's guest evaluates.
+/// Type-strip `src` into the JavaScript this language's guest evaluates.
 ///
 /// Parsed with `allow_return_outside_function` because the guest evaluates a program as the BODY of
 /// `new Function(...names, source)`, whose body legally contains a top-level `return`. Parsed as an
@@ -184,17 +188,13 @@ fn parser_stack_bytes(src_len: usize) -> usize {
 ///
 /// [`TransformOptions::default`] strips types with no `env` target, so nothing is downlevelled: the
 /// target is a modern embedded engine, and downlevelling would only cost time and bloat what that
-/// engine has to parse. Plain JavaScript therefore passes through essentially unchanged, so a model
-/// that ignores the word "TypeScript" in the prompt still runs.
+/// engine has to parse. A model that annotates a binding on this arm therefore runs, because the
+/// annotation is erased rather than rejected.
 ///
 /// A program of any length transpiles: what its length changes is the size of the stack the parse
 /// is given, not whether it is accepted (see the [module docs](self)). The one guard that runs first
 /// costs a single pass over the text and refuses only degenerate bracket nesting, because the parser
 /// below it recurses without a depth guard.
-///
-/// Visible to the whole [language module](super::super) rather than to TypeScript's alone, because
-/// this *is* gg's [JavaScript](super::super::javascript) arm: that language is this step and nothing
-/// after it, which is what makes the two arms differ in one variable.
 pub(in crate::sandbox::language) fn prepare_program(
     src: &str,
 ) -> Result<PreparedProgram, PrepareFailure> {
@@ -446,9 +446,8 @@ const SHOWN: usize = 8;
 /// [`Syntax`](PrepareError::Syntax), the semantic pass's [`Semantic`](PrepareError::Semantic), the
 /// transformer's [`Lowering`](PrepareFailure::Lowering) — so it is one bound for all three, and it
 /// bounds the last of them for the operator who is the only reader of it. It is also
-/// the [JavaScript arm's](super::super::javascript) only bound: that arm's whole preparation is this
-/// module's [`prepare_program`] and [`prepare_module`], so what is decided here is what a JavaScript
-/// program is told too.
+/// this arm's only bound: its whole preparation is this module's [`prepare_program`] and
+/// [`prepare_module`], so what is decided here is everything a program on it is told.
 ///
 /// # Why not `Display`
 ///
@@ -591,11 +590,11 @@ fn excerpt(line: &str) -> String {
     format!("{kept}…")
 }
 
-#[path = "typescript.modules.rs"]
+#[path = "javascript.modules.rs"]
 pub(super) mod modules;
 
 pub(in crate::sandbox::language) use modules::prepare_module;
 
 #[cfg(test)]
-#[path = "typescript.prepare.test.rs"]
+#[path = "javascript.prepare.test.rs"]
 mod tests;

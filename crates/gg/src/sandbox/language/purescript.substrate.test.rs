@@ -43,7 +43,7 @@ use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 
 use super::super::g8::{self, Answered, Case, Located, Shape};
 
-use super::super::typescript;
+use super::super::javascript;
 use super::compile::{compile_module, compile_program};
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::fake::{
@@ -70,7 +70,7 @@ use crate::tools::ToolOutcome;
 fn component() -> &'static Component {
     static COMPILED: OnceLock<Component> = OnceLock::new();
     COMPILED.get_or_init(|| {
-        engine::compile_bytes(typescript::COMPONENT).expect("the shared ECMAScript guest compiles")
+        engine::compile_bytes(javascript::COMPONENT).expect("the shared ECMAScript guest compiles")
     })
 }
 
@@ -619,7 +619,7 @@ fn the_arm_shares_the_ecmascript_guest_rather_than_carrying_its_own() {
     // nothing at all.
     //
     // What says so is that both halves below run on the SAME compiled `Component` — the one
-    // [`component`] built out of `typescript::COMPONENT` — rather than on two that happen to behave
+    // [`component`] built out of `javascript::COMPONENT` — rather than on two that happen to behave
     // alike. When this arm is registered, the seam's "no language is served another's artifacts"
     // gate is where the sharing gets named; this is what says it is already true.
     let program = prepare(

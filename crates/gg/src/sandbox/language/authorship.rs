@@ -30,6 +30,11 @@
 //! arm that hands its compiler the model's own file and its guest a re-print of it has rewritten the
 //! program the model reads its failures against.
 //!
+//! A rewrite the arm hands back a **source map** for is [`Mapped`](Did::Mapped) instead, and needs no
+//! row. That is the invariants' own rule rather than an exemption: where types must be erased the
+//! compiler emits new text, and what makes the location a failure reports the model's own is the map
+//! the compiler emitted with it. [`maps_back`] is what holds a map to that claim.
+//!
 //! # What a byte comparison cannot see
 //!
 //! Three injection shapes leave the model's bytes untouched and are invisible here. They are named
@@ -43,7 +48,8 @@
 //!   re-exported import, a prelude glob, a scope of names handed to an evaluator. Nothing is added
 //!   to the source; the compiler is simply told the names already exist.
 //!
-//!   The ECMAScript arms deliver that scope by evaluating the program as the body of a function,
+//!   The unconverted ECMAScript arms deliver that scope by evaluating the program as the body of a
+//!   function,
 //!   which costs the model one thing beyond the names: a top-level `return` ends the program, and
 //!   every statement after it is dead. It is legal JavaScript, so nothing refuses it and the turn is
 //!   recorded as a success — the shape a model drafting two programs and pasting the second after
@@ -148,8 +154,20 @@ pub(super) enum Did {
     /// **Wrapped them.** The bytes are all there, whole and in order, inside something larger: a
     /// prologue, an entry point, a class, a module header.
     Wrapped,
-    /// **Rewrote them.** Nothing the preparation produced carries the bytes whole. A re-print, an
-    /// indent, a hoisted line, a renamed declaration.
+    /// **Rewrote them, and handed back a map from the rewrite to them.**
+    ///
+    /// The one relation an arm may have to the model's bytes without a row, other than keeping them,
+    /// and the invariants say why: a compiler that emits source is in the same position as one that
+    /// emits an object file, and what makes the position legitimate is that the location a failure
+    /// reports is resolved **through a source map**. TypeScript is the arm — `tsc` erases types by
+    /// re-printing — and the map is `tsc`'s own, carried inline in the emission.
+    ///
+    /// It is not a weaker `Rewritten`: [`maps_back`] holds the map to naming the handed bytes as its
+    /// source, byte for byte, and to resolving into them, so an arm cannot reach this verdict by
+    /// emitting a map of something else.
+    Mapped,
+    /// **Rewrote them.** Nothing the preparation produced carries the bytes whole, and nothing maps
+    /// back to them. A re-print, an indent, a hoisted line, a renamed declaration.
     Rewritten,
 }
 
@@ -159,9 +177,39 @@ impl Did {
         match self {
             Self::Kept => "kept the bytes it was handed",
             Self::Wrapped => "wrapped the bytes it was handed",
+            Self::Mapped => {
+                "rewrote the bytes it was handed and handed back a source map naming them"
+            }
             Self::Rewritten => "rewrote the bytes it was handed",
         }
     }
+
+    /// Whether this relation satisfies the invariant on its own, with no row to record it.
+    fn keeps_the_invariant(self) -> bool {
+        matches!(self, Self::Kept | Self::Mapped)
+    }
+}
+
+/// **Whether `produced` carries a source map that reads back into `handed`.**
+///
+/// Three things, and each of them is what stops this from being a rubber stamp:
+///
+/// * the map is the one the emission carries inline, read by [`locate`](crate::sandbox::locate) —
+///   the same reader a run resolves a frame through, so a map this accepts is a map that works;
+/// * it names exactly one source and carries that source's text, and that text is the bytes the arm
+///   was handed, **byte for byte**;
+/// * it has mappings, and every one of them lands inside those bytes.
+///
+/// An arm that emitted a map of some other text, or an empty one, fails all three.
+fn maps_back(handed: &str, produced: &str) -> bool {
+    let Some(map) = crate::sandbox::locate::embedded(produced) else {
+        return false;
+    };
+    if map.get_source_count() != 1 || map.get_source_contents(0) != Some(handed) {
+        return false;
+    }
+    let lines = handed.lines().count() as u32;
+    map.get_token_count() > 0 && map.tokens().all(|token| token.get_src_line() < lines)
 }
 
 /// One arm and half that does not compile the bytes it was handed, and what it does instead.
@@ -188,29 +236,11 @@ struct Unconverted {
 /// not one that is *accepted*: see the module documentation for why the gate fails when a row
 /// becomes true as well as when it becomes false.
 const UNCONVERTED: &[Unconverted] = &[
-    // ---- typescript ---------------------------------------------------------------------------
-    //
-    // Both halves are the strip's, and the strip re-prints: what a diagnostic from the guest is
-    // reported against is a printed copy of the model's tree, on its own lines, with its own
-    // indentation. `tsc` reads the model's own file, so the arm's compiler diagnostics are located
-    // in the model's coordinates and its runtime ones are not.
-    Unconverted {
-        arm: GgProgramLanguage::TypeScript,
-        half: Half::Program,
-        did: Did::Rewritten,
-        adds: "\n\t\tmodule: path,",
-        instead: "prints the parsed program back out, joining its lines and re-indenting with tabs",
-    },
-    Unconverted {
-        arm: GgProgramLanguage::TypeScript,
-        half: Half::Module,
-        did: Did::Rewritten,
-        adds: "return { functions };",
-        instead: "prints the module back out and appends a `return` of its namespace",
-    },
     // ---- javascript ---------------------------------------------------------------------------
     //
-    // The same strip serves this arm, so it produces the same two texts from the same two sources.
+    // The strip re-prints: what a diagnostic from this arm's guest is reported against is a printed
+    // copy of the model's tree, on its own lines, with its own indentation, and no map reads it
+    // back.
     Unconverted {
         arm: GgProgramLanguage::JavaScript,
         half: Half::Program,
@@ -372,8 +402,8 @@ impl std::fmt::Display for Failure {
             ),
             Self::Converted { subject, records } => write!(
                 formatter,
-                "{subject}: it keeps the bytes it was handed, and its row still records that it \
-                 {records}; delete the row"
+                "{subject}: it keeps the invariant, and its row still records that it {records}; \
+                 delete the row"
             ),
             Self::Unrecorded {
                 subject,
@@ -436,12 +466,19 @@ fn measure(language: &'static dyn ProgramLanguage, half: Half) -> Vec<Failure> {
         Ok(produced) => produced,
         Err(error) => return vec![Failure::Baseline { subject, error }],
     };
-    let Some(verdict) = classify(&handed, &produced) else {
+    let Some(mut verdict) = classify(&handed, &produced) else {
         return vec![Failure::Vanished {
             subject,
             produced: excerpt(&produced.join("\n---\n")),
         }];
     };
+    // A rewrite the arm can read back is a different relation from one it cannot, and the invariants
+    // say so: a location may be resolved through a source map and by no other means. Asked here
+    // rather than inside `classify`, because it is a question about the artifact the guest is handed
+    // rather than about how any one text relates to the source.
+    if verdict.did == Did::Rewritten && maps_back(&handed, &verdict.text) {
+        verdict.did = Did::Mapped;
+    }
     if std::env::var_os("GG_AUTHORSHIP_SHOW").is_some() {
         eprintln!(
             "=== {subject}: {} ===\nhanded:\n{}\nproduced:\n{}",
@@ -456,8 +493,8 @@ fn measure(language: &'static dyn ProgramLanguage, half: Half) -> Vec<Failure> {
         .find(|row| row.arm == language.id() && row.half == half);
     let mut failures = Vec::new();
     match (row, verdict.did) {
-        (None, Did::Kept) => {}
-        (Some(row), Did::Kept) => failures.push(Failure::Converted {
+        (None, did) if did.keeps_the_invariant() => {}
+        (Some(row), did) if did.keeps_the_invariant() => failures.push(Failure::Converted {
             subject,
             records: row.instead,
         }),

@@ -141,20 +141,24 @@ fn a_type_lookup_declares_the_type_and_explains_its_members() {
 /// write.
 ///
 /// Both states of the access line are asserted here, because a renderer that carried only the line
-/// would say nothing at all on the arms that have not converted. TypeScript's SDK is in a program's
-/// scope before it compiles, so the view says so; PureScript resolves a qualified name only under a
-/// qualified import, so the view quotes the import.
+/// would say nothing at all on the arms whose SDK is in a program's scope before it compiles. The
+/// JavaScript arm is one of those, so its views say so; TypeScript and PureScript reach a module
+/// through a line the program writes, so their views quote it.
 #[test]
 fn a_view_names_the_module_and_says_how_to_reach_it() {
     let docs = runtime(ENABLED);
     let read_file = docs.read("readFile").expect("readFile is bound");
     assert!(
-        read_file.contains("\nDefined in `gg.files`, in scope already.\n"),
+        read_file.contains(
+            "\nDefined in `gg.files`, brought into scope with `import * as gg from \"gg\";`.\n"
+        ),
         "{read_file}"
     );
     let file_read = docs.read_type("FileRead").expect("FileRead is reachable");
     assert!(
-        file_read.contains("\nDefined in `gg.files`, in scope already.\n"),
+        file_read.contains(
+            "\nDefined in `gg.files`, brought into scope with `import * as gg from \"gg\";`.\n"
+        ),
         "{file_read}"
     );
 

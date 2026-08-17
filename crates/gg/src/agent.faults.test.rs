@@ -62,7 +62,10 @@ async fn drive_into(fault: SandboxError) -> (LoopEnd, Vec<String>) {
     let end = drive_root(
         &MockClient::new(
             "mock/primary",
-            vec![code_reply("fs.writeFile(\"a.txt\", \"hi\");"); 3],
+            vec![
+                code_reply("import * as gg from \"gg\";\ngg.files.writeFile(\"a.txt\", \"hi\");");
+                3
+            ],
         ),
         dir.path(),
         &registry,
@@ -191,7 +194,10 @@ async fn a_lowering_defect_records_no_error_type_against_the_model() {
     drive_root(
         &MockClient::new(
             "mock/primary",
-            vec![code_reply("fs.writeFile(\"a.txt\", \"hi\");"); 3],
+            vec![
+                code_reply("import * as gg from \"gg\";\ngg.files.writeFile(\"a.txt\", \"hi\");");
+                3
+            ],
         ),
         dir.path(),
         &registry,
@@ -291,7 +297,7 @@ async fn a_spawned_childs_host_fault_ends_the_run() {
         .slot("subagent", |b| {
             Box::new(MockClient::new(
                 &b.model_id,
-                vec![code_reply("fs.writeFile(\"a.txt\", \"hi\");"); 2],
+                vec![code_reply("import * as gg from \"gg\";\ngg.files.writeFile(\"a.txt\", \"hi\");"); 2],
             ))
         });
 
@@ -370,7 +376,12 @@ async fn the_root_winds_down_at_its_next_boundary_after_a_childs_fault() {
         .slot("subagent", |b| {
             Box::new(MockClient::new(
                 &b.model_id,
-                vec![code_reply("fs.writeFile(\"a.txt\", \"hi\");"); 2],
+                vec![
+                    code_reply(
+                        "import * as gg from \"gg\";\ngg.files.writeFile(\"a.txt\", \"hi\");"
+                    );
+                    2
+                ],
             ))
         });
 
@@ -423,7 +434,12 @@ async fn an_issue_agents_host_fault_ends_the_run() {
         .slot(CODER_AGENT, |b| {
             Box::new(MockClient::new(
                 &b.model_id,
-                vec![code_reply("fs.writeFile(\"a.txt\", \"hi\");"); 2],
+                vec![
+                    code_reply(
+                        "import * as gg from \"gg\";\ngg.files.writeFile(\"a.txt\", \"hi\");"
+                    );
+                    2
+                ],
             ))
         });
 
@@ -489,7 +505,7 @@ async fn a_faulted_run_does_not_re_dispatch_the_issue_it_stopped() {
         .slot(CODER_AGENT, |b| {
             Box::new(MockClient::new(
                 &b.model_id,
-                vec![code_reply("fs.writeFile(\"a.txt\", \"hi\");"); 4],
+                vec![code_reply("import * as gg from \"gg\";\ngg.files.writeFile(\"a.txt\", \"hi\");"); 4],
             ))
         });
 
@@ -1448,7 +1464,7 @@ impl ClientFactory for RefusingFactory {
                 // Uncaught on purpose: a program is expected to anticipate a call failing, and the
                 // point of this test is the turn where one does not.
                 code_reply(
-                    "agents.spawnSubagent({ agent: \"subagent\", prompt: \"Do the work.\" });",
+                    "import * as gg from \"gg\";\ngg.delegation.spawnSubagent({ agent: \"subagent\", prompt: \"Do the work.\" });",
                 ),
                 code_reply(FINISHING_PROGRAM),
             ],

@@ -39,7 +39,7 @@ use test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE;
 
 use crate::sandbox::fake::{
     CallLog, FakeToolApi, all_capabilities, all_operations, all_operations_without, canned_outcome,
-    granted_operations, typescript,
+    granted_operations,
 };
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{ProgramError, ProgramErrorKind, SandboxError, SandboxOutcome};
@@ -1550,20 +1550,22 @@ end
 
 #[test]
 fn the_embedded_guest_imports_the_membrane_and_the_wasi_it_was_baked_with() {
-    // This guest is the ECMAScript guest's engine plus a Ruby runtime, so its imports must be that
-    // guest's exactly: a capability operations here and not there would be a difference between two
-    // arms of a study that nobody chose. `wasi:filesystem` and `wasi:sockets` are absent because the
-    // component is baked without them, not because the host withholds them — gg's linker defines the
-    // whole surface for every guest.
+    // This guest is the JavaScript arm's engine plus a Ruby runtime — both are `componentize-js`
+    // builds of one base — so its imports must be that guest's exactly: a capability operations here
+    // and not there would be a difference between two arms of a study that nobody chose.
+    // `wasi:filesystem` and `wasi:sockets` are absent because the component is baked without them,
+    // not because the host withholds them — gg's linker defines the whole surface for every guest.
     let mut imports = interface_imports(component());
-    let (ecmascript, _) = engine::component(typescript()).expect("the ECMAScript guest compiles");
-    let expected = interface_imports(ecmascript);
+    let (javascript, _) =
+        engine::component(crate::sandbox::language(GgProgramLanguage::JavaScript))
+            .expect("the JavaScript arm's guest compiles");
+    let expected = interface_imports(javascript);
     imports.sort_unstable();
     assert_eq!(
         imports, expected,
-        "the embedded Ruby guest reaches something the ECMAScript guest does not, or the other \
-         way round; a capability on one side only is a difference between arms of a study that \
-         nobody chose"
+        "the embedded Ruby guest reaches something the JavaScript arm's guest does not, or the \
+         other way round; a capability on one side only is a difference between arms of a study \
+         that nobody chose"
     );
 
     // Every gg interface the world declares is present, because this guest's entry module imports
@@ -1638,7 +1640,10 @@ fn the_generated_catalogue_agrees_with_the_arms_it_will_be_compared_against() {
         "the catalogue says whose spellings it carries"
     );
 
-    let found = super::super::agreement::disagreements(&[typescript(), ruby()]);
+    let found = super::super::agreement::disagreements(&[
+        crate::sandbox::language(GgProgramLanguage::TypeScript),
+        ruby(),
+    ]);
     assert!(
         found.is_empty(),
         "the Ruby catalogue does not offer gg's capability surface:\n{}",

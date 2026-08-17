@@ -588,7 +588,10 @@ async fn a_host_fault_ends_the_session_without_charging_the_model() {
     let end = drive_root(
         &MockClient::new(
             "mock/primary",
-            vec![code_reply("fs.writeFile(\"a.txt\", \"hi\");"); 3],
+            vec![
+                code_reply("import * as gg from \"gg\";\ngg.files.writeFile(\"a.txt\", \"hi\");");
+                3
+            ],
         ),
         dir.path(),
         &registry,
@@ -688,7 +691,7 @@ async fn a_compiler_that_could_not_finish_ends_the_run_and_is_charged_to_nobody(
     let client = MockClient::new(
         "mock/primary",
         vec![
-            code_reply("fs.writeFile(\"a.txt\", \"hi\");"),
+            code_reply("import * as gg from \"gg\";\ngg.files.writeFile(\"a.txt\", \"hi\");"),
             code_reply(FINISHING_PROGRAM),
         ],
     );
@@ -950,8 +953,8 @@ async fn a_subagents_error_ceiling_ends_it_alone() {
                 &b.model_id,
                 vec![
                     code_reply(
-                        "const child = agents.spawnSubagent({ agent: \"subagent\", prompt: \
-                         \"Do the work.\" });\nreturn agents.waitForSubagents([child.id]);",
+                        "import * as gg from \"gg\";\nconst child = gg.delegation.spawnSubagent({ agent: \"subagent\", prompt: \
+                         \"Do the work.\" });\ngg.delegation.waitForSubagents([child.id]);",
                     ),
                     code_reply(FINISHING_PROGRAM),
                 ],
@@ -962,7 +965,7 @@ async fn a_subagents_error_ceiling_ends_it_alone() {
                 &b.model_id,
                 vec![
                     // The child's first turn does real work...
-                    code_reply("fs.writeFile(\"child-work.txt\", \"work\\n\");\nreturn 1;"),
+                    code_reply("import * as gg from \"gg\";\ngg.files.writeFile(\"child-work.txt\", \"work\\n\");\n1;"),
                     // ...and then it stops being able to write a program at all.
                     code_reply(PROSE),
                     code_reply(PROSE),
@@ -1320,14 +1323,15 @@ async fn an_error_turn_publishes_its_kind_and_the_streak_it_is_part_of() {
         ],
     );
 
-    // ...and each of those three carries the **specific** reason under that base kind. Prose is not
-    // valid source, so it is a syntax error rather than one of the other three prepare failures.
+    // ...and each of those three carries the **specific** reason under that base kind. On this arm
+    // the compiler is the whole preparation, so what a model reads is one band: `tsc` read the reply
+    // and rejected it, and prose is rejected exactly as a mistyped program is.
     assert_eq!(
         turn_error_types(&sink.events()),
         vec![
-            GgTurnErrorType::TranspileSyntax,
-            GgTurnErrorType::TranspileSyntax,
-            GgTurnErrorType::TranspileSyntax,
+            GgTurnErrorType::TranspileCompile,
+            GgTurnErrorType::TranspileCompile,
+            GgTurnErrorType::TranspileCompile,
         ],
     );
 }

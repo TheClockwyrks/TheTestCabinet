@@ -23,17 +23,17 @@
 //!
 //! ## The latency property
 //!
-//! The interpreter component embeds a JavaScript engine, is ~13.4 MB, and takes ~660 ms to compile
-//! on a many-core machine (~4.8 s on one core). That compile happens **once per process and
-//! language**: the [`Engine`](wasmtime::Engine) and each compiled
+//! An interpreted arm's component embeds a whole language runtime and takes hundreds of
+//! milliseconds to seconds to compile. That compile happens **once per process and language**: the
+//! [`Engine`](wasmtime::Engine) and each compiled
 //! [`Component`](wasmtime::component::Component) live behind a `OnceLock`, and every program pays
 //! only instantiate (24–124 µs) and invoke (0.7–3 ms). [`precompile`] moves even that one compile
 //! off the first turn's critical path.
 //!
-//! What a turn *does* pay is its own language's prepare step. TypeScript's is two passes: the `oxc`
-//! type-strip, in-process at ~0.2 ms, and a `tsc` type check that spawns `node` against the
-//! embedded checker at ~90 ms. That is a real per-turn cost on the hot path, which is why it is
-//! measured rather than assumed — see [`SandboxOutcome::compile`].
+//! What a turn *does* pay is its own language's prepare step. TypeScript's is one `tsc` over the
+//! model's own file, spawning `node` against the embedded compiler at ~90 ms. That is a real
+//! per-turn cost on the hot path, which is why it is measured rather than assumed — see
+//! [`SandboxOutcome::compile`].
 //!
 //! ## What a program costs, and what bounds it
 //!
@@ -52,13 +52,14 @@
 //! [view](crate::context::ViewKind) — `view.openText` for a value it computed, `view.openFile` for a
 //! file. `console.log` still works and is still captured, but it writes to the **operator**: the
 //! turn's [`CodeExecution`](test_cabinet_core::gg::GgTelemetryKind::CodeExecution) event carries
-//! every line, which puts them on the run's stream, in the run record and on the console. A top-level `return` ends the
-//! program the way it ends any function body, and a value handed to it is **discarded** — the model
-//! is told so, once, rather than left to infer the rule from an absence. That is a deliberate
-//! subtraction. A returned value bought nothing an opened view does not, and it cost a whole family
-//! of rules the model had to learn and gg had to enforce: what happens to a cycle, to a function, to
-//! a structure nested past what the host's parser accepts, to a `Promise`. One rule — open a view of
-//! what you want to see — replaces all of them.
+//! every line, which puts them on the run's stream, in the run record and on the console. A value a
+//! program hands back reaches nobody: on an arm whose program is a module the language itself has
+//! nowhere to hand one, and on an arm that still evaluates a function body the value is discarded
+//! and the model is told so once. That is a deliberate subtraction. A returned value bought nothing
+//! an opened view does not, and it cost a whole family of rules the model had to learn and gg had to
+//! enforce: what happens to a cycle, to a function, to a structure nested past what the host's
+//! parser accepts, to a `Promise`. One rule — open a view of what you want to see — replaces all of
+//! them.
 //!
 //! ## What a run yields
 //!
@@ -98,6 +99,7 @@ mod engine;
 mod invoker;
 mod language;
 mod limits;
+mod locate;
 mod membrane;
 mod operations;
 mod outcome;
@@ -460,8 +462,12 @@ fn evaluate<A: ToolApi>(
         Ok(linker) => linker,
         Err(error) => return (SandboxOutcome::before_start(error, compile), api),
     };
+    // How a frame the guest reports is read back into the text the model wrote. `None` on every arm
+    // that hands the guest the model's own bytes; on an arm whose compiler emits source, the
+    // compiler's own map, read out of the source it is inlined in.
+    let locations = language.locations(&prepared.source, modules);
     let mut store = bounded_store(
-        MembraneState::new(api, language, scope, limits, deadline),
+        MembraneState::new(api, language, scope, limits, deadline).locating(locations),
         limits,
     );
 
@@ -549,14 +555,14 @@ fn keep_reported_error<A: ToolApi>(
 /// every configuration, so withholding the guest's own filesystem would deny nothing.
 ///
 /// A component is only affected by the imports it *declares*, and the two namespaces do not
-/// overlap, so what a guest does not ask for costs it nothing. The TypeScript guest asks for part of
-/// this surface and not the rest: it imports `wasi:clocks`, `wasi:random` and `wasi:io` — which is
-/// how a program's `Date.now()` and `crypto.randomUUID()` read the host's own clock and entropy —
-/// and imports neither `wasi:filesystem` nor `wasi:sockets`, because its component is baked without
-/// them. Those two are therefore *unused* by it rather than withheld from it, a distinction that
-/// stopped being hypothetical with the embedded `componentize-py` guest, which imports the whole
-/// surface — twenty WASI interfaces to TypeScript's seven — and would not instantiate against a
-/// linker built to that guest's appetite. The exact lists are asserted by
+/// overlap, so what a guest does not ask for costs it nothing. The JavaScript arm's guest asks for
+/// part of this surface and not the rest: it imports `wasi:clocks`, `wasi:random` and `wasi:io` —
+/// which is how a program's `Date.now()` and `crypto.randomUUID()` read the host's own clock and
+/// entropy — and imports neither `wasi:filesystem` nor `wasi:sockets`, because its component is baked
+/// without them. Those two are therefore *unused* by it rather than withheld from it, a distinction
+/// that stopped being hypothetical with the embedded `componentize-py` guest, which imports the whole
+/// surface — twenty WASI interfaces to that guest's seven — and would not instantiate against a
+/// linker built to its appetite. The exact lists are asserted by
 /// `the_embedded_component_imports_the_membrane_and_the_wasi_it_was_baked_with` and by
 /// `the_embedded_guest_imports_the_whole_membrane_and_the_whole_wasi_surface`.
 ///

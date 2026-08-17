@@ -2,97 +2,96 @@
 title: "TypeScript"
 ---
 
-TypeScript is gg's default program language and a checked arm. A model's reply
-is type-stripped to JavaScript in process, type-checked with `tsc`, and
-evaluated by an embedded `componentize-js` guest. A program that does not
-type-check is not executed.
-
-This arm does not keep the [invariants](/gg/responses-as-code/invariants/) yet,
-and this page states what it does today. The strip prints the parsed program
-back out, so a runtime diagnostic is located in gg's copy rather than in the
-text the model sent, and the guest evaluates that copy as the body of a function
-whose parameters carry `gg`, `ToolError` and `lib` into scope with no line the
-model wrote.
+TypeScript is gg's default program language and a checked arm. A model's reply is
+a whole TypeScript module. `tsc` reads it against the SDK's own declarations and
+either rejects it, in which case nothing runs, or emits the JavaScript the
+[ECMAScript guest](/gg/languages/ecmascript-guest/) evaluates.
 
 ## Preparation
 
-Preparation is two passes over the reply, in this order.
+One `tsc` invocation does both halves. It compiles `program.ts`, which carries
+the reply and nothing else, and emits `program.js` beside it with `tsc`'s own
+source map inlined and the reply embedded in that map.
 
-The strip parses the reply with `oxc` and erases the types, in process, in ~0.2
-ms. Its output is the JavaScript the guest evaluates. This pass also produces
-the located syntax errors, the ECMAScript early errors and the refusals below.
+A program the compiler rejects never reaches the guest. The model is handed the
+compiler's diagnostics at the coordinates of the text it sent, with nothing
+renumbered.
 
-The check runs `tsc` over the model's *unstripped* source, against the
-declarations described below. A program it rejects is not evaluated. The model
-is handed the compiler's diagnostics at the coordinates of the text it wrote.
+This arm declares that its preparation compiles, so the compile is timed on the
+failing path as well as the succeeding one and reaches the run as `compileMs`. A
+representative program measures ~91 ms in a warm process; the first compile of a
+process pays ~450 ms materialising the compiler and filling Node's compile cache.
 
-The cheap pass runs first, so a program with a syntax error costs a parse rather
-than a compiler. The two together take ~91 ms against a representative program
-in a warm process, and the first check of a process pays ~450 ms. This arm
-declares that its preparation compiles, so both passes are timed on the failing
-path as well as the succeeding one and reach the run as `compileMs`.
+## The program is the model's, and so are its locations
 
-The guest evaluates a program as the body of a function, so a top-level `return`
-ends it and every statement after it is dead. That is legal JavaScript, nothing
-refuses it, and the turn is recorded as one that worked. The reply that lands in
-it is a model that drafted a second program and pasted it after the first.
+The bytes gg compiles are the bytes the model sent: no prologue, no wrapper, no
+appended line. Every SDK name a program uses comes from an `import` the program
+wrote, and every top-level name is the program's own.
 
-## Refusals in the strip
+The bytes that *execute* are `tsc`'s emission, because types have to be erased
+and `tsc` erases them by re-printing. That is the position every compiled arm is
+in. What makes it legitimate is the source map: a frame the engine reports
+against `program.js` is read back through `tsc`'s own map into the line and
+column of `program.ts`, and gg computes no line number of its own. See
+[invariants](/gg/responses-as-code/invariants/).
 
-Module syntax (`import`, `export`, `export … from`, a dynamic `import()`) and
-top-level `await` are refused with a sentence naming what to change, because the
-guest has no loader and no event loop. Nesting deeper than 200 bracket levels is
-refused, which keeps an unguarded recursive-descent parser inside its stack. A
-program is never refused for its length: the parse runs on a stack sized from
-the length of the source, so an arbitrarily long reply is transpiled in full.
+The map travels inside the emitted source rather than beside it, so it reaches
+every consumer the source reaches, including a script prepared at a skill's read
+and run several turns later.
+
+## The import a program writes
+
+`import * as gg from "gg";` reaches the whole surface, and every call is then
+written out in full: `gg.files.readFile(path)`. That is the name a documentation
+view is filed under, the name a search hit carries, and the name the system
+prompt quotes, so nothing a model reads has to be translated before it compiles.
+Every module's catalogue entry states that line.
+
+Two other specifiers resolve, and a program may write either. `import { files }
+from "gg";` reaches one family; `import * as csvTools from "lib:csvTools";`
+reaches a [code module](/gg/modules/) the agent loaded. The full set is on
+[the ECMAScript guest](/gg/languages/ecmascript-guest/).
 
 ## The guest
 
-`typescript.component.wasm` is a componentized JavaScript engine, ~13.4 MB,
-built from `packages/gg-sandbox` with a pinned `componentize-js` and embedded in
-the gg binary so that a single copied file carries everything a run container
-needs. The component is compiled at most once per process. The trust boundary
-above it is the typed WIT membrane, and the component is built with no network
-and no module system, so a program reaches gg through that membrane alone.
-
-The JavaScript and PureScript arms evaluate their prepared JavaScript in these
-same bytes, reached through this arm's constant rather than through a second
-embedding, and that sharing is declared in the seam's exemption table.
+The arm evaluates programs in the ECMAScript guest, ~1.2 MB, embedded in the gg
+binary. The component is encoded and compiled at most once per process.
 
 ## The toolchain
 
-The check runs `node` over the embedded `typescript.tsc.js`, taking the
+The compile runs `node` over the embedded `typescript.tsc.js`, taking the
 interpreter from `TCAB_GG_NODE` and otherwise from `PATH`. The base run image
 ships Node, so this arm installs nothing into any image.
 
-Warm-up writes the ~6.7 MB of checker inputs once per process into a
+Warm-up writes the ~6.7 MB of compiler inputs once per process into a
 content-keyed shared directory, by rename, read-only from then on. It is
-idempotent and best effort: a failure there is dropped, because the first check
+idempotent and best effort: a failure there is dropped, because the first compile
 makes the same attempt and reports a toolchain failure properly.
 
-Each check runs in its own preparation workspace, holding that check's own
-`tsconfig.json` and `program.ts`, and exceeding 60 seconds is a toolchain
-failure. Concurrent checks share one `NODE_COMPILE_CACHE` directory, which holds
-Node's bytecode for the compiler and can change no verdict.
+Each compile runs in its own preparation workspace, holding that compile's own
+`tsconfig.json`, `program.ts` and the `program.js` written beside it, and
+exceeding 60 seconds is a toolchain failure. Concurrent compiles share one
+`NODE_COMPILE_CACHE` directory, which holds Node's bytecode for the compiler and
+can change no verdict.
 
 ## Build outputs
 
-Nothing below is committed. Every file is cut on the build that embeds it, so
-the pinned `typescript` a program is judged by and the pinned `typescript` its
+Nothing below is committed. Every file is cut on the build that embeds it, so the
+pinned `typescript` a program is judged by and the pinned `typescript` its
 catalogue was emitted with are one release by construction.
 
 | Artifact | What it is | Built by |
 | --- | --- | --- |
-| `typescript.component.wasm` | The guest, embedded in the binary. | `crates/gg-sandbox-artifacts/typescript`, running `packages/gg-sandbox/build.sh` |
-| `typescript.tsc.js` | The compiler the check runs. | the same `build.sh` |
+| `ecmascript.core.wasm` | The guest's core module, encoded into a component in gg's own process. | `crates/gg-sandbox-artifacts/typescript`, running `packages/gg-sandbox/build.sh` |
+| `typescript.tsc.js` | The compiler the arm runs. | the same `build.sh` |
 | `typescript.lib.d.ts` | The ES2022 standard library, 57 `lib.*.d.ts` files concatenated so one open replaces 57. | the same `build.sh` |
-| `typescript.globals.d.ts` | `console`, `lib`, `performance` and `crypto`. | the same `build.sh` |
+| `typescript.globals.d.ts` | The globals no SDK declaration covers. | the same `build.sh` |
 | `typescript.checker.json` | Which release the above are. | the same `build.sh` |
 | `typescript.signatures.json` | This arm's signature catalogue. | `crates/gg/build.rs`, running `packages/gg-sandbox/signatures.sh` |
 
 The catalogue is parsed once per process and asserted to carry this arm's own
-language id. One generated under another stem panics rather than reaching a
-model as a prompt describing a sandbox nobody has. The same package emits the
+language id. One generated under another stem panics rather than reaching a model
+as a prompt describing a sandbox nobody has. The same package emits the
 JavaScript arm's catalogue from the same declarations under a second id.
 
 ## The SDK and the catalogue
@@ -109,102 +108,102 @@ The catalogue is reflected out of those same declarations by `tsc`'s declaration
 emit, so the briefs the
 [opening turn](/gg/responses-as-code/views/#the-opening-turn)'s search listings
 carry, the signatures a documentation view answers with, and the signatures the
-check enforces all come off one set of declarations.
+compiler enforces all come off one set of declarations.
 
-## The type check
+## What a program is compiled against
 
-`tsc` runs in strict mode with `noLib`, against three declaration files
-assembled once per process:
+`tsc` runs in strict mode with `noLib`, against three declaration files assembled
+once per process:
 
 - `typescript.lib.d.ts`, named explicitly. The standard library is ES2022 and
   nothing else, so `document`, `fetch` and the timers are compile errors rather
   than surprises at run time.
-- `gg.d.ts`, generated from this arm's catalogue: one ambient namespace per
-  capability module carrying that module's types and functions, plus the bare
-  aliases the shim binds. Nothing in it is hand-written.
+- `gg.d.ts`, generated from this arm's catalogue: one ambient module per
+  specifier the guest's loader resolves, in the shape the loader resolves it.
+  Nothing in it is hand-written.
 - `typescript.globals.d.ts`, the names a program reaches that no SDK declaration
-  covers.
+  covers, authored beside the guest that installs them.
 
 `gg.d.ts` declares the whole surface, including the functions this agent was not
-granted. The SDK is static, so those functions are bound and fail as
-themselves at run time, and a checker that refused them would refuse programs
-that run. A verdict must also depend on the program alone, because the same text
-is checked as a turn's program, as a skill's on-use script and as the code half
-of a memory. A code module is checked as a module, in its own coordinates.
-
-`tsc` has no notion of a program that is a function body, so the source is
-wrapped in a function declaration before it is checked. Every diagnostic
-therefore arrives exactly one line low and is renumbered back by one, leaving
-the message, the column and the indented continuation lines untouched.
+granted. The SDK is static, so those functions are bound and fail as themselves
+at run time, and a compiler that refused them would refuse programs that run. A
+verdict must also depend on the program alone, because the same text is compiled
+as a turn's program, as a skill's on-use script and as the code half of a memory.
+That is why a code module is declared as the wildcard `lib:*`, which types every
+import from a `lib:` specifier as `any`: gg has no declaration for what a skill
+author's module exports, and what an agent happened to load must not change a
+verdict.
 
 ## Failures
 
-The strip's failures are the model's own text: syntax errors from the parser,
-early errors as a semantic failure, a refused feature or an over-nested program
-as unsupported. The first two are rendered in gg's located form against the
-reply's own coordinates, with the offending source line quoted; a refusal is a
-sentence naming what to change and carries no coordinates.
+A program that does not compile is a compile failure carrying `tsc`'s own
+diagnostics. There is no separate syntax band on this arm: the compiler is the
+whole preparation, and prose is rejected exactly as a mistyped program is.
 
-The check's verdict is decided on whether `tsc` produced a diagnostic about the
-file gg gave it. A diagnostic located in the program is a compile failure.
 Diagnostics located only in gg's generated declarations are a lowering failure,
 which is gg's own defect: it reaches the operator rather than the model and ends
-the run. A non-zero exit with no diagnostic at all is a toolchain failure,
-as is a missing `node`, a `node` killed by a signal, and the 60 second timeout.
-A toolchain failure tells the model its program was not run and carries no
+the run. A non-zero exit with no diagnostic at all is a toolchain failure, as is
+a missing `node`, a `node` killed by a signal, and the 60 second timeout. A
+toolchain failure tells the model its program was not run and carries no
 diagnostic, while the operator gets the exit status and the stderr tail.
 
 Both diagnostic bands are bounded at 8 diagnostics. A diagnostic is a group here
 rather than a line: `tsc` runs with `--pretty false`, which writes the message
-unindented and indents whatever elaborates it. Renumbering happens before the
-bound, so what the bound keeps is byte-for-byte what the compiler wrote. The
-shared taxonomy these bands belong to is on
-[compilation](/gg/languages/compilation/).
+unindented and indents whatever elaborates it. Below the bound what reaches the
+model is the string `tsc` printed and nothing else. The shared taxonomy these
+bands belong to is on [compilation](/gg/languages/compilation/).
+
+A program that fails at run time fails by capture: nothing catches its throw to
+describe it, the engine writes its own rendering to standard error, and gg puts
+that in front of the trap that follows. What the model reads is its own
+language's account of its own failure, with the frames read back into
+`program.ts`.
 
 ## Code modules
 
-A code module is an ordinary TypeScript file with `export`s, accepted as `.ts`
-or `.js`. Preparation parses it as a module, collects the exported names, blanks
-the `export` keywords with spaces so every later byte keeps its offset, runs the
-ordinary program pipeline, and appends one `return` of the namespace. A module
-that exports nothing exports everything it declares. Type-only declarations are
-not exported.
+A code module is an ordinary TypeScript file with `export`s, accepted as `.ts` or
+`.js`, compiled exactly as a program is and in its own coordinates. A program
+reaches one by importing `lib:<key>`; what the module offers is what it exports,
+read off the JavaScript `tsc` emitted for it.
 
-A module binds at `lib.<key>` under a `camelCase` name, so `csv-tools` becomes
-`lib.csvTools`. Every separator joins the next word, a name of nothing but
-separators becomes `module`, and a leading digit is prefixed, so the binding
-always parses as an identifier.
+A module binds under a `camelCase` key, so `csv-tools` is imported as
+`lib:csvTools`. Every separator joins the next word, a name of nothing but
+separators becomes `module`, and a leading digit is prefixed, so the key is
+always a name a program can bind an import to.
+
+A module is evaluated by the program that imports it and by nothing else, so a
+broken module another skill loaded cannot fail this turn.
 
 ## Prompt segment
 
 [`system-code.hbs`](/gg/prompts/) reaches this arm through a segment gated on
-`typescript`, and `code-nothing-shown.hbs` through a clause naming
-`console.log`. Neither names a catalogued function. The segment states:
+`typescript`, and `code-nothing-shown.hbs` through a clause naming `console.log`.
+Neither names a catalogued function. The segment states:
 
-- the reply is a sequence of top-level statements, and a `return` at that level
-  ends the program;
+- the reply is compiled verbatim as a whole TypeScript module, and top-level
+  statements run in the order they were written;
 - a failed call throws a `ToolError`, which a `catch` narrows to before reading
   it, since a caught error is `unknown`;
-- optional arguments are the fields of a trailing options object, and every
-  module is already in scope under `gg`.
+- optional arguments are the fields of a trailing options object, and
+  `import * as gg from "gg";` is the line that reaches every module.
 
 The arm names `tsc` as its [checker](/gg/languages/compilation/), so the shared
-body states that a program is compiled in strict mode before it runs and one
-that fails to type-check is not executed.
+body states that a program is compiled in strict mode before it runs and one that
+fails to compile is not executed.
 
-Source gg synthesizes for this arm is written in the same idiom, in the plainest
-form that does the job, since a model reads it as an example of its own output.
-A file view is one call with an optional trailing options object carrying
-`offset` and `limit`; a set of documentation views is a `const` array of names
-with a `for…of` over it; the bootstrap program is a sequence of top-level
-statements. Paths and names are rendered through JSON so a quote or a backslash
-cannot produce a program that will not parse.
+Source gg synthesizes for this arm is written in the same idiom and opens with
+that same import line, since a model reads it as an example of its own output. A
+file view is one call with an optional trailing options object carrying `offset`
+and `limit`; a set of documentation views is a `const` array of names with a
+`for…of` over it; the bootstrap program is one import and two loops. Paths and
+names are rendered through JSON so a quote or a backslash cannot produce a
+program that will not parse.
 
 ## Healing dialect
 
-Response healing reads a reply lexically, never with a parser, because it runs
-on text that is not yet known to be a program. This arm's dialect answers which
+Response healing reads a reply lexically, never with a parser, because it runs on
+text that is not yet known to be a program. This arm's dialect answers which
 fence tags mark the program, which lines are code, which are prose, and which
 bytes are string or comment text. The JavaScript spellings of the fence tags are
-recognised alongside the TypeScript ones, since the strip accepts either, and
-the JavaScript arm reads its replies with this same dialect.
+recognised alongside the TypeScript ones, and the JavaScript arm reads its
+replies with this same dialect.

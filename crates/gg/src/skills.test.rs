@@ -392,7 +392,10 @@ fn the_two_ecmascript_arms_read_each_others_spellings_but_prefer_their_own() {
 #[test]
 fn an_on_use_script_is_resolved_per_language_too() {
     let (_root, library) = library_with(&[
-        ("on-use.ts", "view.openText(\"hi\", \"there\");"),
+        (
+            "on-use.ts",
+            "import * as gg from \"gg\";\ngg.views.openText(\"hi\", \"there\");",
+        ),
         ("skill.fixture", "def helper(): return 1"),
     ]);
     let skill = library.get("helpers").unwrap();
@@ -400,7 +403,7 @@ fn an_on_use_script_is_resolved_per_language_too() {
     let typescript = lang(GgProgramLanguage::TypeScript);
     assert_eq!(
         skill.on_use(typescript),
-        Some("view.openText(\"hi\", \"there\");")
+        Some("import * as gg from \"gg\";\ngg.views.openText(\"hi\", \"there\");")
     );
     assert_eq!(skill.code(typescript), None);
 

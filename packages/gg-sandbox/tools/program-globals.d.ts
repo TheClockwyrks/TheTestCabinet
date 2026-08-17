@@ -14,20 +14,23 @@
 // ambiently, so a program that asks what time it is gets the answer, and a checker that refused the
 // question would be refusing a program that runs.
 //
+// The guest it describes is `guest/`, the quickjs-ng component the TypeScript arm evaluates a
+// program in, and `install_globals` in `guest/src/lib.rs` is what installs every name below.
+//
 // This file is COPIED VERBATIM by `tools/checker.mjs` into the `typescript.globals.d.ts` it writes
 // into `$GG_ARTIFACTS_OUT_DIR` — the `OUT_DIR` of `crates/gg-sandbox-artifacts/typescript`, which
-// `typescript.check.rs` `include_str!`s it from. It is deliberately outside `src/`, so the guest
+// `typescript.compile.rs` `include_str!`s it from. It is deliberately outside `src/`, so the guest
 // build never compiles it and it never reaches the component.
 
 /**
- * The console the shim installs over the engine's (see `installConsole` in `src/shim.ts`).
+ * The console the guest installs over the engine's (see `install_globals` in `guest/src/lib.rs`).
  *
  * Every method routes to gg's operator log rather than to the model's context window: a program's
  * `console.log` is readable by whoever is watching the run and by nothing else, which is why the
  * system prompt tells a model to open a view instead. It is declared anyway, because it is callable
  * — a checker that rejected `console.log` would reject a program that runs.
  *
- * The method list mirrors `installConsole`'s sink exactly. Anything not on it is genuinely absent.
+ * The method list mirrors what the guest installs exactly. Anything not on it is genuinely absent.
  */
 declare const console: {
   log(...args: unknown[]): void;
@@ -38,24 +41,6 @@ declare const console: {
   trace(...args: unknown[]): void;
   dir(...args: unknown[]): void;
 };
-
-/**
- * The namespace every code skill and code memory this agent has loaded is bound under (see
- * `buildLib` in `src/shim.ts`): `lib.<key>.<export>`.
- *
- * Typed as an index of `any` rather than as anything specific, and that is not laziness — it is the
- * truth. A module's exports are whatever the code a model wrote happens to export, discovered by
- * evaluating it inside the guest, and gg has no declaration for any of them. So a call through `lib`
- * is checked for nothing at all, and a wrong one fails at run time exactly as it does in a language
- * that checks nothing. `unknown` would have been the stricter spelling and the wrong one: it makes
- * every `lib.<key>.<export>(…)` a compile error, which would refuse every correct program too.
- *
- * `lib` is absent from a program's scope entirely when the agent has loaded nothing. Declaring it
- * unconditionally is deliberate: the alternative is a checker whose verdict depends on which
- * memories an agent happened to read, so a program would type-check on one turn and not the next
- * without its text changing.
- */
-declare const lib: Record<string, any>;
 
 /**
  * The engine's monotonic clock, reading the host's through `wasi:clocks`.
@@ -69,13 +54,40 @@ declare const performance: {
 };
 
 /**
- * The engine's entropy, reading the host's through `wasi:random`.
+ * The entropy the guest installs, reading the host's through `wasi:random`.
  *
- * The two members a program has any use for. `subtle` is deliberately absent — this engine's
- * `SubtleCrypto` is not implemented, so a program that reached for it would be a program the checker
- * had waved through into a run-time failure.
+ * The two members a program has any use for. `subtle` is deliberately absent — nothing implements it
+ * here, so a program that reached for it would be a program the compiler had waved through into a
+ * run-time failure.
  */
 declare const crypto: {
   randomUUID(): string;
   getRandomValues<T extends ArrayBufferView>(array: T): T;
 };
+
+/**
+ * UTF-8, as the platform spells it. The guest implements both classes over Rust's own encoder and
+ * decoder, so surrogate pairs and replacement characters are handled exactly rather than
+ * approximately.
+ *
+ * Only UTF-8: a `TextDecoder` constructed for any other label throws, so no other label is declared.
+ */
+declare class TextEncoder {
+  readonly encoding: string;
+  encode(input?: string): Uint8Array;
+}
+
+/** See `TextEncoder`. */
+declare class TextDecoder {
+  constructor(label?: string);
+  readonly encoding: string;
+  decode(input?: ArrayBuffer | ArrayBufferView): string;
+}
+
+/**
+ * A deep copy, over the structured-clone graph the guest implements: plain objects and arrays,
+ * `Date`, `RegExp`, `Map`, `Set`, typed arrays and `ArrayBuffer`, with cycles preserved.
+ *
+ * A function has no structured-clone representation and throws, which is what the platform does.
+ */
+declare function structuredClone<T>(value: T): T;

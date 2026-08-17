@@ -126,6 +126,15 @@ const HEADERS_DIR = path.join(PACKAGE_DIR, "dist", "headers", "gg");
  */
 const LANGUAGES = ["typescript", "javascript"];
 
+/**
+ * The line a TypeScript program writes to reach gg's SDK.
+ *
+ * One line for the whole surface, and the namespace form: it is what makes `gg.files.readFile` — the
+ * name every documentation view is filed under and every quoted call is written with — an expression
+ * the program can write.
+ */
+const SURFACE_IMPORT = 'import * as gg from "gg";';
+
 /** The doc model this catalogue is written in. See the header. */
 const SCHEMA = 1;
 
@@ -803,9 +812,18 @@ async function build(language) {
       path,
       brief: prose.brief,
       detail: prose.detail,
-      // `null`, and honestly: gg binds this SDK into a program's scope, so a documented import would
-      // be a line a model would be wrong to think it had to write.
-      import: null,
+      // The one line a program writes to reach every module below, on the arm whose guest resolves
+      // modules. It is the NAMESPACE import rather than a named one, because `path` above is the
+      // name every documentation view, every search hit and every call gg quotes is written with —
+      // and `import * as gg from "gg";` is what makes that name an expression the program can write.
+      // A named import (`import { files } from "gg";`) is equally valid TypeScript and reaches the
+      // same module; it is not what gg teaches, because it would leave every quoted `gg.files.…`
+      // one edit away from compiling.
+      //
+      // `null` on the JavaScript arm, honestly: its guest binds this SDK into a program's scope and
+      // refuses the word `import`, so a documented line would be one a model would be wrong to
+      // write.
+      import: language === "typescript" ? SURFACE_IMPORT : null,
     });
     const byName = new Map();
     for (const statement of sourceFile.statements) {

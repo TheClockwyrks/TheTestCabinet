@@ -54,10 +54,11 @@ test-cabinet-core = { path = "../core" }
 # is said in a way cargo enforces — see that crate's `src/lib.rs`.
 #
 # TEN EDGES, ELEVEN ARMS, AND THE ARITHMETIC IS NOT A MISTAKE. `gg-artifact-typescript` serves the
-# JavaScript arm too: those two arms are ONE guest and one set of declarations, differing only in
-# whether gg type-checks the program on the way in, so `packages/gg-sandbox` builds one component for
-# both and `scripts/gg-arms.sh` carries one row for both. There is no `gg-artifact-javascript` and
-# there never will be.
+# JavaScript arm too: those two arms are one SDK and one set of declarations, and
+# `packages/gg-sandbox` builds BOTH ECMAScript guests — the `componentize-js` one the JavaScript and
+# PureScript arms evaluate a function body in, and the quickjs-ng one the TypeScript arm evaluates a
+# module in — so `scripts/gg-arms.sh` carries one row for both. There is no `gg-artifact-javascript`
+# and there never will be.
 #
 # ONE OF THESE COSTS SOMETHING A DEVELOPER WILL NOTICE. `gg-artifact-csharp` is the only arm whose
 # build needs toolchains no gg RUN needs — a whole .NET SDK and an unpruned wasi-sdk, ~1.4 GB —
@@ -146,9 +147,9 @@ bytes = { workspace = true }
 # instantiate one at all. gg links the whole surface, ambiently, with one exception the host
 # owns: stdout stays closed, because gg's telemetry stream is this process's stdout.
 wasmtime-wasi = { workspace = true }
-# In-process TypeScript type-stripping for the sandbox's TypeScript program language
-# (`src/sandbox/language/typescript.prepare.rs`): the model writes TypeScript, the guest
-# evaluates JavaScript, and oxc strips the types in microseconds without a Node process
+# In-process type-stripping for the sandbox's JavaScript program language
+# (`src/sandbox/language/javascript.prepare.rs`): that arm's guest evaluates a function body,
+# and oxc erases any annotations a reply carried in microseconds without a Node process
 # anywhere near the turn path. It strips types; it
 # does not check them — see the workspace pin for why the minor version is fixed.
 oxc = { workspace = true }
@@ -181,6 +182,12 @@ tar = "0.4"
 # workspace pin for why its version tracks wasmtime's wasmparser line.
 wit-component = { workspace = true }
 wit-parser = { workspace = true }
+# Reading the source map an arm's compiler emitted, so a frame the guest reports against the text
+# it evaluated is read back to the model against the text the model wrote
+# (`src/sandbox/locate.rs`). The TypeScript arm is what needs it: `tsc` erases the types by
+# re-printing the program, and the invariants allow the resulting location to be recovered through a
+# source map and by no other means.
+sourcemap = { workspace = true }
 # The operating system's entropy, for the one function of `test-cabinet:gg/math` that is not
 # arithmetic (`src/sandbox/membrane/math.rs`). TeaVM's WebAssembly backend leaves `java.lang.Math`
 # to a host and gg answers it, `Math.random()` included. It is already in this crate's graph —

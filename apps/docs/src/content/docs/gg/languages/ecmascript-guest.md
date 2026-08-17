@@ -3,17 +3,16 @@ title: "The ECMAScript guest"
 ---
 
 The ECMAScript guest is quickjs-ng inside a `wit-bindgen` component that
-declares gg's own sandbox world. It is the guest the
-[TypeScript](/gg/languages/typescript/), [JavaScript](/gg/languages/javascript/)
-and [PureScript](/gg/languages/purescript/) arms are being moved onto, and it is
-built and tested as its own artifact ahead of that move. No arm is registered
-against it yet.
+declares gg's own sandbox world. The [TypeScript](/gg/languages/typescript/) arm
+is registered against it. The [JavaScript](/gg/languages/javascript/) and
+[PureScript](/gg/languages/purescript/) arms are being moved onto it and still
+evaluate their programs in the guest it replaces.
 
 It exists because a program must be able to reach its SDK through an `import`
 the program wrote, which the [invariants](/gg/responses-as-code/invariants/)
-require of every arm. The incumbent engine offers no way to evaluate module
-source at run time, so the three arms above evaluate a program as the body of a
-function instead.
+require of every arm. The guest it replaces offers no way to evaluate module
+source at run time, so an arm still on that one evaluates a program as the body
+of a function instead.
 
 ## What the guest guarantees
 
@@ -60,7 +59,9 @@ A failure reaches the model as the engine's own words on standard error, which
 gg's membrane already routes into the model's feedback. The guest reports and
 then dies, so gg records a failed turn. Five shapes are covered:
 
-- an uncaught throw, including a `ToolError` from a refused call;
+- an uncaught throw, including a `ToolError` from a refused call. An error's own
+  properties are rendered beside its message, which is how a `ToolError` names
+  the call that failed and the class it failed under;
 - a syntax error, at the model's own line;
 - a floating rejection, through the engine's rejection tracker;
 - a stack overflow, as `RangeError: Maximum call stack size exceeded` with the
@@ -94,8 +95,15 @@ ceiling.
 
 ## Globals
 
-The guest installs `TextEncoder`, `TextDecoder` and `structuredClone`, because
-the incumbent engine has them and quickjs does not. `Intl` is absent from both.
+The guest installs `TextEncoder`, `TextDecoder`, `structuredClone` and `crypto`,
+because the guest it replaces has them and quickjs does not. `Intl` is absent
+from both.
+
+`setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`,
+`requestAnimationFrame` and `fetch` are installed as named throwers, so a program
+that reaches for one is told which name is absent and why. `queueMicrotask` is
+real: the job queue is drained before the guest returns, which is the same
+mechanism a top-level `await` finishes on.
 
 ## Build outputs
 

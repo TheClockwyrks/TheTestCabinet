@@ -25,8 +25,8 @@
 //!
 //! # None of these is a parser
 //!
-//! Not one predicate here parses. `oxc` is sitting right next door in
-//! [`prepare`](super::prepare) and is deliberately not used: healing runs on text that is **not yet
+//! Not one predicate here parses. `tsc` is sitting right next door in
+//! [`compile`](super::compile) and is deliberately not used: healing runs on text that is **not yet
 //! known to be a program** — it may be Markdown or English as easily as source — so a parser would
 //! fail on precisely the inputs healing exists to repair. Every predicate is therefore a lexical
 //! shape test with its errors pointed in the safe direction, and every one of them **declines**

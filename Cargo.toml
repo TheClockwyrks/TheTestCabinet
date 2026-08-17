@@ -330,6 +330,12 @@ wit-component = "0.248"
 # which needs a `Resolve` and a `WorldId` — types that must come from the very crate the encoder
 # reads them with.
 wit-parser = "0.248"
+# The source-map reader gg resolves a guest frame through
+# (`crates/gg/src/sandbox/locate.rs`). The invariants allow a location to be reached through a
+# source map and by no other means, so the arms whose compilers emit JavaScript hand the guest a
+# source carrying its own map and gg reads the map with the library the ecosystem reads them with
+# rather than with a VLQ decoder of its own.
+sourcemap = "9"
 
 # Desktop shell. Pinned to Tauri v2 so the desktop crate can inherit them.
 tauri = { version = "2", features = [] }
@@ -445,10 +451,10 @@ tracing-opentelemetry = "0.33"
 # workspace's minimal-host stance. Only `crates/gg` pulls it in.
 tiktoken-rs = "0.7"
 
-# In-process TypeScript type-stripping for the gg sandbox's TypeScript program
-# language (`crates/gg/src/sandbox/language/typescript.prepare.rs`): a TypeScript
-# program's guest runs JavaScript, and the strip measures in microseconds — so no
-# Node, no `tsc`, and no `componentize-js` is ever on a turn's critical path.
+# In-process type-stripping for the gg sandbox's JavaScript program language
+# (`crates/gg/src/sandbox/language/javascript.prepare.rs`): that arm's guest evaluates a
+# function body, the strip erases any annotations a reply carried, and it measures in
+# microseconds — so no Node and no `componentize-js` is ever on that arm's critical path.
 # Pinned to the 0.141 line the host is written against: oxc's parser/transformer
 # API moves between minor releases, and a silent bump would change how a model's
 # syntax error is reported.

@@ -414,7 +414,7 @@ fn code_set(model_id: &str, params: serde_json::Value) -> GgCapabilitySet {
 ///
 /// There is no prose turn that could end one and there cannot be: under this protocol every reply is
 /// a program, so a reply that is not code is a failed turn rather than a conclusion.
-const FINISHING_PROGRAM: &str = "harness.finish(\"done\");";
+const FINISHING_PROGRAM: &str = "import * as gg from \"gg\";\ngg.session.finish(\"done\");";
 const FINISHING_SUMMARY: &str = "done";
 
 /// An execution timeout short enough that a runaway loop trips it in a couple of seconds — so a
@@ -1875,7 +1875,7 @@ async fn autoload_seeds_a_code_agent_with_a_program_not_a_tool_call() {
     assert_eq!(
         assistant,
         vec![
-            "gg.views.openFile(\"SPEC.md\");\ngg.views.openFile(\"reference/title.png\");"
+            "import * as gg from \"gg\";\n\ngg.views.openFile(\"SPEC.md\");\ngg.views.openFile(\"reference/title.png\");\n"
                 .to_string()
         ],
         "one program opens every spec, in order"
@@ -6712,16 +6712,16 @@ async fn a_code_program_waits_for_an_issue_after_it_ends() {
                 // The wait names the id `createIssue` **returned** — the program cannot invent one,
                 // which is exactly why the call hands it back.
                 code_reply(
-                    "const issue = project.createIssue({ title: \"Add the widget\", \
+                    "import * as gg from \"gg\";\nconst issue = gg.board.createIssue({ title: \"Add the widget\", \
                      inScope: \"Implement the widget.\", outOfScope: \"Nothing else.\", \
                      completionCriteria: \"The widget works.\", agent: \"Root\" });\n\
-                     project.waitForIssue(issue.id);",
+                     gg.board.waitForIssue(issue.id);",
                 ),
                 code_reply(FINISHING_PROGRAM),
             ]
         } else {
             // The auto-dispatched issue agent finishes, which is what completes the issue.
-            vec![code_reply("harness.finish(\"issue done\");")]
+            vec![code_reply("import * as gg from \"gg\";\ngg.session.finish(\"issue done\");")]
         };
         Box::new(MockClient::new(&b.model_id, responses))
     });

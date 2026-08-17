@@ -265,7 +265,7 @@ impl ProgramLanguage for PureScript {
     /// that settled it, and `SHARED_ARTIFACTS` in the seam's own tests for the pair being written
     /// down.
     fn guest_component(&self) -> Option<&'static [u8]> {
-        Some(super::typescript::COMPONENT)
+        Some(super::javascript::COMPONENT)
     }
 
     /// This language's catalogue, parsed once and checked to be **this** language's.
@@ -328,7 +328,7 @@ impl ProgramLanguage for PureScript {
 /// that would not parse; a name that is nothing but separators becomes `module`, and a leading digit
 /// is prefixed, because the result has to be a valid identifier whatever the author wrote.
 ///
-/// The one thing this does that [TypeScript's](super::typescript::binding_name) does not is
+/// The one thing this does that [the ECMAScript arms'](super::javascript::binding_name) does not is
 /// **lower-case the leading run**, and it is a rule rather than a preference: `lib.<key>` is a record
 /// field access, and PureScript will not parse an upper-case label unquoted (`s.Foo` is
 /// `Unexpected token 'Foo'`). A skill called `CSV-tools` therefore binds at `lib.csvTools` rather

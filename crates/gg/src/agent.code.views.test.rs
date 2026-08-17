@@ -469,6 +469,6 @@ fn closing_documentation_has_exactly_one_producer() {
         closes,
         ["let closed = self.context.close_docviews(key.as_deref());"],
         "`close_docviews` is the only call that may take a documentation view out of the window; \
-         a second one here is `view.close` reaching a band it does not name and cannot refuse from"
+         a second one here is `gg.views.close` reaching a band it does not name and cannot refuse from"
     );
 }

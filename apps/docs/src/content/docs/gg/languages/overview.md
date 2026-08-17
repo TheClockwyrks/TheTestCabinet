@@ -28,10 +28,10 @@ SDK, its own segment of the shared prompt templates and its own healing dialect.
 | Language | `language` | How a program runs |
 | --- | --- | --- |
 | [TypeScript](/gg/languages/typescript/) | `typescript` | The default. Type-checked by `tsc`, erased to JavaScript, evaluated as an ES module by the ECMAScript guest. |
-| [JavaScript](/gg/languages/javascript/) | `javascript` | TypeScript's guest, SDK and signatures with the type check removed. |
+| [JavaScript](/gg/languages/javascript/) | `javascript` | TypeScript's SDK and signatures with the compiler removed, evaluated as a function body by the `componentize-js` guest. |
 | [Python](/gg/languages/python/) | `python` | Evaluated as written by a guest carrying CPython 3.14, with no compiler on the turn path. |
 | [Ruby](/gg/languages/ruby/) | `ruby` | Compiled to JavaScript on the host by an embedded Opal, evaluated by a guest carrying Opal's runtime. |
-| [PureScript](/gg/languages/purescript/) | `purescript` | Type-checked and compiled to JavaScript by the run image's `purs`, bundled, evaluated by the ECMAScript guest. |
+| [PureScript](/gg/languages/purescript/) | `purescript` | Type-checked and compiled to JavaScript by the run image's `purs`, bundled, evaluated by the JavaScript arm's guest. |
 | [Java](/gg/languages/java/) | `java` | Compiled by `javac` and then TeaVM inside a warm JVM, into the wasm component that turn is evaluated by. |
 | [Kotlin](/gg/languages/kotlin/) | `kotlin` | Compiled by the Kotlin compiler and then TeaVM inside the same warm JVM, into the wasm component that turn is evaluated by. |
 | [Rust](/gg/languages/rust/) | `rust` | `rustc` compiles the program into the wasm component that turn is evaluated by. |
@@ -61,11 +61,12 @@ sees only the SDK. The rules the surface keeps in every language are on
 
 An arm owns its catalogue, its prompt segment and its healing dialect. A
 guest component is shared only between arms a declared table names, and a
-declared pair must hand back identical bytes. TypeScript, JavaScript and
-PureScript all declare the ECMAScript guest; Ruby compiles to JavaScript on
-the host as well and still has its own, because that component carries Opal's
-runtime. Rust, Swift, C++, Java and Kotlin have no guest to share, each program
-being its own component.
+declared pair must hand back identical bytes. JavaScript and PureScript declare
+the `componentize-js` guest between them; TypeScript is on the
+[ECMAScript guest](/gg/languages/ecmascript-guest/), which those two are moving
+onto. Ruby compiles to JavaScript on the host as well and still has its own guest,
+because that component carries Opal's runtime. Rust, Swift, C++, Java and Kotlin
+have no guest to share, each program being its own component.
 
 Java and Kotlin compile to TeaVM's WebAssembly target. TeaVM emits per program
 only the classlib that program's own call graph reached, so there is no runtime

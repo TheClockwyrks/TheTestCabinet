@@ -280,32 +280,6 @@ const KNOWN_HOLES: &[Hole] = &[
         // location on this arm.
         instead: Instead::Says("process is not defined"),
     },
-    // ---- typescript -------------------------------------------------------------------------
-    Hole {
-        arm: GgProgramLanguage::TypeScript,
-        shape: Shape::ToolError,
-        // The strip's coordinates, not the model's: the call is on line 3 and the model is sent to
-        // line 2. Shared with the JavaScript arm, which shares the strip.
-        instead: Instead::Says("at line 2, column 17"),
-    },
-    Hole {
-        arm: GgProgramLanguage::TypeScript,
-        shape: Shape::NativeFault,
-        // Line 7 of a six-line program.
-        instead: Instead::Says("at line 7, column 13"),
-    },
-    Hole {
-        arm: GgProgramLanguage::TypeScript,
-        shape: Shape::FailureValue,
-        // Nothing: a rejected promise nothing observes is a clean turn.
-        instead: Instead::Nothing,
-    },
-    Hole {
-        arm: GgProgramLanguage::TypeScript,
-        shape: Shape::ResourceFault,
-        // The engine's own words, at a line the model did not write.
-        instead: Instead::Says("too much recursion\n    at line 3, column 9"),
-    },
     // ---- purescript -------------------------------------------------------------------------
     //
     // Every located cell on this arm is located in the ESBUILD BUNDLE, hundreds of lines into a

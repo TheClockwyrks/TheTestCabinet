@@ -307,8 +307,8 @@ impl ProgramLanguage for Ruby {
     }
 
     /// [`lib.<key>.<name>`](super::ProgramLanguage::lib_access), under [`LIB_IMPORT`].
-    fn lib_import(&self) -> Option<&'static str> {
-        Some(LIB_IMPORT)
+    fn lib_import(&self, _key: &str) -> Option<String> {
+        Some(LIB_IMPORT.to_string())
     }
 
     /// [Two arrays and two `each` blocks](self::bootstrap_program), with both calls resolved from

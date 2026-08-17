@@ -82,6 +82,7 @@ use wasmtime_wasi::{DirPerms, FilePerms, WasiCtx, WasiCtxBuilder, WasiCtxView, W
 use super::invoker::{SandboxRefusal, SandboxToolCall, SandboxViewOpened, ToolApi};
 use super::language::{ProgramLanguage, spell};
 use super::limits::{MemoryLimiter, SandboxLimits};
+use super::locate::Locations;
 use super::operations::{
     Binding, Grants, OperationId, SESSION_APPROVE, SESSION_FINISH, SESSION_REQUEST_CHANGES,
     operation,
@@ -296,6 +297,9 @@ pub(crate) struct MembraneState<A: ToolApi> {
     wasi_table: ResourceTable,
     /// Everything the guest wrote to **stderr**, bounded — see [`GuestStderr`].
     stderr: GuestStderr,
+    /// How a frame in what the guest wrote is read back into the text the model wrote, for an arm
+    /// whose compiler emits source — see [`ProgramLanguage::locations`].
+    locations: Option<Locations>,
     /// The encoded answer [the JVM wire](wire)'s `call` produced and its `take` has not yet handed
     /// over. Empty for every other guest on this membrane, which never imports that interface.
     ///
@@ -484,7 +488,7 @@ pub(crate) const GUEST_DEADLINE: &str = "GG_SANDBOX_DEADLINE_MS";
 /// Never zero and never longer than gg's own — `saturating_sub` on a ceiling shorter than a tick
 /// leaves nothing, and a budget of nothing would interrupt a program before its first statement, so
 /// the floor is half the ceiling.
-fn guest_deadline(limits: SandboxLimits) -> Duration {
+pub(crate) fn guest_deadline(limits: SandboxLimits) -> Duration {
     limits
         .timeout
         .saturating_sub(super::engine::EPOCH_TICK)
@@ -659,8 +663,20 @@ impl<A: ToolApi> MembraneState<A> {
             wasi: wasi_context(stderr.clone(), limits),
             wasi_table: ResourceTable::new(),
             stderr,
+            locations: None,
             wire_held: Vec::new(),
         }
+    }
+
+    /// Read every frame the guest reports through `locations` before gg shows it to anyone.
+    ///
+    /// Set once, by [`evaluate`](super::evaluate), out of the arm's own answer for the texts this
+    /// program is made of. It is a builder rather than a sixth constructor parameter because it is
+    /// a property of the *prepared* program, which the state's other four arguments know nothing
+    /// about.
+    pub(crate) fn locating(mut self, locations: Option<Locations>) -> Self {
+        self.locations = locations;
+        self
     }
 
     /// The language this program is written in, for the one question
@@ -676,8 +692,14 @@ impl<A: ToolApi> MembraneState<A> {
     /// Read by [`classify`](super::engine::classify) when a program failed, because on a guest
     /// without an exception mechanism this is the only account of the failure that exists. See
     /// [`GuestStderr`].
+    /// Frames are read back through this program's own [locations](Self::locating) on the way out,
+    /// so what gg reports is what the model wrote rather than what its compiler emitted.
     pub(crate) fn stderr_tail(&self) -> String {
-        self.stderr.tail()
+        let said = self.stderr.tail();
+        match &self.locations {
+            Some(locations) => locations.rewrite(&said),
+            None => said,
+        }
     }
 
     /// Put `text` on the guest's stderr, exactly as a language runtime writing to fd 2 does.

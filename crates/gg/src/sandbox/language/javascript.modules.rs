@@ -1,10 +1,11 @@
 //! Turning a **code module** — the code half of a [skill](crate::skills) or a
 //! [memory](crate::memories) — into the JavaScript the guest binds at `lib.<key>`.
 //!
-//! A module is authored, or written by a model, as an ordinary TypeScript file with `export`s. The
-//! guest has no module system and never will: it evaluates a program as the body of a `new
-//! Function`, and it evaluates a module exactly the same way. So something has to turn *"a file with
-//! exports"* into *"a function body that returns its namespace"*, and this is it.
+//! A module is authored, or written by a model, as an ordinary file with `export`s. This arm's guest
+//! has no module system: it evaluates a program as the body of a `new Function`, and it evaluates a
+//! module exactly the same way. So something has to turn *"a file with exports"* into *"a function
+//! body that returns its namespace"*, and this is it. Converting the arm onto the
+//! [ECMAScript guest](crate::sandbox::language::ecmascript) is what deletes this file.
 //!
 //! # The rewrite, and why it is textual
 //!
@@ -352,5 +353,5 @@ fn statement_awaits(statement: &Statement<'_>) -> bool {
 }
 
 #[cfg(test)]
-#[path = "typescript.modules.test.rs"]
+#[path = "javascript.modules.test.rs"]
 mod tests;
