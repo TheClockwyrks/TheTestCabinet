@@ -310,7 +310,7 @@ async fn responses_as_code_routes_the_turn_through_the_sandbox() {
     // The documentation A/B's arm, reported by an agent that configured nothing: the default is a
     // arm of the comparison like any other, and a record that omitted it would leave this run
     // unattributable rather than obviously default.
-    assert_eq!(doc_view_types.as_deref(), Some("return"));
+    assert_eq!(doc_view_types.as_deref(), Some("return+errors"));
     // Per instance, because the capability is per agent: the surface is where a reader learns which
     // arm *this* agent was in, and the spellings under `apis` are that language's.
     assert_eq!(
@@ -809,7 +809,7 @@ async fn the_synthetic_call_ids_are_unique_within_a_turn() {
 /// tree records the spawn — exactly as a tool-calling delegation would.
 ///
 /// It carries the **within-run A/B** too, because it is the one scenario here that drives two agents
-/// under two profiles: the parent opens documentation with `return-and-parameters` and the child
+/// under two profiles: the parent opens documentation with every type flag on and the child
 /// with `off`, and each reports its own arm on its own surface event. That is what makes the knob
 /// observable rather than merely configurable — a study reads an agent's arm off the stream and
 /// joins it to that agent's own documentation band, with the task, the workspace and the wall clock
@@ -823,16 +823,17 @@ async fn a_program_subagent_still_honours_the_scheduler() {
     // the waiting parent frees its slot — the scheduler's blocked-frees-slot rule).
     let mut set = subagent_set(1, 3, &["subagent"]);
     for agent in &mut set.agents {
-        // The documentation mode is per agent, so the two profiles take opposite arms of it.
-        let mode = if agent.name == ROOT_AGENT {
-            "return-and-parameters"
+        // The documentation-view type flags are per agent, so the two profiles take opposite
+        // arms of them: every type against none at all.
+        let types = if agent.name == ROOT_AGENT {
+            json!({ "parameters": true })
         } else {
-            "off"
+            json!(false)
         };
         crate::tools::grant_configured(
             agent,
             GgCapabilityConfig {
-                params: json!({ "docViewTypes": mode }),
+                params: json!({ "docViewTypes": types }),
                 ..GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE)
             },
         );
@@ -915,7 +916,7 @@ async fn a_program_subagent_still_honours_the_scheduler() {
             .iter()
             .map(|(_, mode)| mode.as_deref())
             .collect::<Vec<_>>(),
-        vec![Some("return-and-parameters"), Some("off")],
+        vec![Some("return+parameters+errors"), Some("none")],
         "each instance reports the arm its own profile put it on: {modes:?}"
     );
     assert_ne!(

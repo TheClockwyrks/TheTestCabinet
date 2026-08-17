@@ -316,6 +316,28 @@ pub struct FunctionSignature {
     /// to guess, and guessing it wrong shows a model the wrong types beside a function it opened.
     #[serde(default)]
     pub returns: Vec<TypeReference>,
+    /// The SDK types this call's own documentation comment **declares it throws**, resolved. See
+    /// [`TypeReference`].
+    ///
+    /// Like [`returns`](Self::returns) it is **stated by the reflector rather than inferred**, and
+    /// for the sharper version of the same reason: a failure is declared in the arm's own tag for
+    /// declaring one — `@throws`, `<exception cref="…">`, `\throws`, `# Errors`, `Raises:`,
+    /// `@raise`, `- Throws:` — and nothing in a signature says which types those name. Every one of
+    /// those blocks was already being read into the entry's [detail](Self::detail) prose, so this is
+    /// the structured list beside a sentence that goes on saying exactly what it said; it adds a
+    /// field and moves no text.
+    ///
+    /// **Only an explicitly declared error counts.** A call whose comment declares none carries an
+    /// empty list, and that is a truthful record of what the author wrote rather than a claim the
+    /// call cannot fail. Nothing is inferred from a body, from a `throws` clause the language
+    /// happens to require, or from what some other arm declared for the same operation.
+    ///
+    /// Each entry names a type this same catalogue declares, which the name rule (`signatures.fqn.rs`)
+    /// checks — because the one reader it exists for is the `errors` flag of an agent's
+    /// `docViewTypes`, which opens a documentation view of each, and a name that resolves to nothing
+    /// is a view that cannot be opened.
+    #[serde(default)]
+    pub throws: Vec<TypeReference>,
     /// Every SDK type this call's own shapes name, return position and arguments alike, resolved.
     #[serde(default)]
     pub types: Vec<TypeReference>,
@@ -744,6 +766,23 @@ pub struct CatalogueFunction {
     /// The SDK types in the **return** position, resolved. Empty where the call returns nothing an
     /// SDK type names.
     pub returns: &'static [TypeReference],
+    /// The SDK types this call's own documentation comment **declares it throws**, resolved. Empty
+    /// where the comment declares no failure — which is most calls, and is the author's silence
+    /// rather than a claim the call cannot fail. See [`FunctionSignature::throws`].
+    ///
+    /// What reads it is the `errors` flag of an agent's `docViewTypes`, which places a documentation
+    /// view of each of these beside the function's own — the counterpart of what the `return` flag
+    /// does with [`returns`](Self::returns).
+    #[allow(
+        dead_code,
+        reason = "carried on the projection ahead of the runtime that opens what it names, so that \
+                  the schema, the ten reflectors and the gate over them land on one shape before \
+                  anything renders it. What reads it today is that gate, which is `#[cfg(test)]` — \
+                  so it is genuinely unread in a build, exactly as `receiver` and `kind` beside it \
+                  are, and for the same reason: a reader moving onto it should not first have to \
+                  change the projection."
+    )]
+    pub throws: &'static [TypeReference],
     /// The types this function's signature reaches, **transitively closed** — every declaration a
     /// program holding this call's arguments and result can end up looking at, which is the question the
     /// documentation runtime asks of it before it will open a type at all.
@@ -864,6 +903,7 @@ pub(crate) fn functions_of(catalogue: &'static SignatureCatalogue) -> Vec<Catalo
                 prose: Prose::authored(function.brief.as_str(), function.detail.as_deref()),
                 signatures: function.signatures.as_slice(),
                 returns: function.returns.as_slice(),
+                throws: function.throws.as_slice(),
                 types: function.types.as_slice(),
             }
         })
@@ -1012,11 +1052,24 @@ pub(crate) fn declaration_of(
 
 /// Every **type reference** `catalogue` writes anywhere a model can read it — one entry per
 /// (spelling, resolution) pair some signature on this arm carries.
+///
+/// [`throws`](FunctionSignature::throws) is walked beside
+/// [`returns`](FunctionSignature::returns) and [`types`](FunctionSignature::types) for the reason
+/// the whole function exists: a model reads a thrown type's *spelling* in the documentation comment
+/// it was declared in, and the lookup that accepts what a model typed
+/// ([`declaration_of`]) has to accept the string it just read. A declared failure a model can see
+/// and cannot open would be the one name in a view that answers nothing.
 fn spellings_of(catalogue: &'static SignatureCatalogue) -> Vec<&'static TypeReference> {
     catalogue
         .functions
         .iter()
-        .flat_map(|function| function.returns.iter().chain(&function.types))
+        .flat_map(|function| {
+            function
+                .returns
+                .iter()
+                .chain(&function.throws)
+                .chain(&function.types)
+        })
         .collect()
 }
 

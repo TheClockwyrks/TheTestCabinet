@@ -689,8 +689,8 @@ fn every_class_of_defect_appears_in_one_refusal() {
                 ..GgAgentConfig::root()
             },
             // A profile whose responses-as-code, tool and skills configuration is spelled on keys
-            // gg knows and carries values it cannot honour: an arm it cannot drive, two modes it
-            // does not have, a strategy toggle that is not a toggle, two sandbox ceilings that
+            // gg knows and carries values it cannot honour: an arm it cannot drive, a mode it
+            // does not have, two toggle keys that toggle nothing, two sandbox ceilings that
             // bound nothing, a read mode that would have handed the agent *uncapped* reads, and a
             // built-in skill id that switches nothing off.
             GgAgentConfig {
@@ -702,7 +702,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
                             crate::sandbox::PARAM_LANGUAGE: "pythn",
                             crate::sandbox::PARAM_TIMEOUT_SECS: 0,
                             crate::sandbox::PARAM_MAX_MEMORY_BYTES: "lots",
-                            crate::docs::PARAM_DOC_VIEW_TYPES: "returns",
+                            crate::docs::PARAM_DOC_VIEW_TYPES: { "returns": true },
                             crate::healing::PARAM_ASSISTANT_MESSAGES: "healed",
                             crate::healing::PARAM_HEALING: { "stripFences": false },
                         }),
@@ -752,7 +752,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
                             crate::sandbox::PARAM_LANGUAGE: "python",
                             crate::sandbox::PARAM_TIMEOUT_SECS: 0.5,
                             crate::sandbox::PARAM_MAX_MEMORY_BYTES: 5e8,
-                            crate::docs::PARAM_DOC_VIEW_TYPES: "return-and-parameters",
+                            crate::docs::PARAM_DOC_VIEW_TYPES: { "parameters": true },
                             crate::healing::PARAM_ASSISTANT_MESSAGES: "response-healing",
                             crate::healing::PARAM_HEALING: { "strip-fences": false },
                         }),
@@ -920,7 +920,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
         crate::sandbox::PARAM_TIMEOUT_SECS,
         // a memory cap gg cannot read
         crate::sandbox::PARAM_MAX_MEMORY_BYTES,
-        // a documentation-view mode gg does not have
+        // a documentation-view type key gg does not have
         "returns",
         // an assistant-message mode gg does not have
         "healed",

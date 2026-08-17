@@ -3643,10 +3643,10 @@ async fn drive_agent(
             // The arm of the documentation A/B this instance is on — reported here, beside the
             // language, because both are per-agent knobs a single run may hold two of, and a study
             // that cannot read an agent's arm off its own surface event cannot attribute the
-            // documentation band's tokens to anything. The resolved mode, never the configured
-            // string: an unreadable value is warned about at launch and runs as the default, and
+            // documentation band's tokens to anything. The resolved flags, never the configured
+            // object: an unreadable value is warned about at launch and runs as the default, and
             // recording what was written would file the run under an arm it was never on.
-            doc_view_types: code.enabled.then(|| code.doc_view_types.id().to_string()),
+            doc_view_types: code.enabled.then(|| code.doc_view_types.id()),
             tools: if code.enabled {
                 Vec::new()
             } else {

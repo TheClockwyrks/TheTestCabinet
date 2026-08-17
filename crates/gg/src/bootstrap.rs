@@ -580,7 +580,7 @@ impl OperationApi for BootstrapApi {
     }
 
     /// Open the documentation view for `name`, plus the SDK types this agent's
-    /// [type mode](DocViewTypes) selects — the loop's own algorithm, on the loop's own terms.
+    /// [type flags](DocViewTypes) select — the loop's own algorithm, on the loop's own terms.
     ///
     /// It mirrors [`LoopOperationApi::open_docs_view`](crate::agent) deliberately rather than doing
     /// something simpler: these are the views the session opens holding, and a model that closed one

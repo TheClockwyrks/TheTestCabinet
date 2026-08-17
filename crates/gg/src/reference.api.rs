@@ -42,7 +42,7 @@ use test_cabinet_core::gg_reference::{
     GgReferenceApi, GgReferenceEntry, GgReferenceEntryKind, GgReferenceModule,
 };
 
-use crate::docs::{DocViewTypes, DocsRuntime};
+use crate::docs::{DocViewType, DocViewTypes, DocsRuntime};
 use crate::ending::EndingRole;
 use crate::sandbox::{
     CatalogueFunction, ProgramLanguage, TypeDeclaration, capability_operations,
@@ -163,8 +163,9 @@ fn documented_function(
         capability: function.capability.map(str::to_string),
         types: declared(arm, function.types.iter().map(|kind| kind.fqn())),
         returns: declared(arm, function.returns.iter().map(|kind| kind.fqn())),
-        opens_under_return: opened(view, key, DocViewTypes::ReturnOnly),
-        opens_under_return_and_parameters: opened(view, key, DocViewTypes::ReturnAndParameters),
+        opens_under_return: opened(view, key, DocViewType::Return),
+        opens_under_parameters: opened(view, key, DocViewType::Parameters),
+        opens_under_errors: opened(view, key, DocViewType::Errors),
     })
 }
 
@@ -200,7 +201,8 @@ fn documented_type(
         types: Vec::new(),
         returns: Vec::new(),
         opens_under_return: Vec::new(),
-        opens_under_return_and_parameters: Vec::new(),
+        opens_under_parameters: Vec::new(),
+        opens_under_errors: Vec::new(),
     })
 }
 
@@ -217,14 +219,19 @@ fn category_of(function: &CatalogueFunction) -> Option<String> {
         .or_else(|| family_of_module(function.module).map(str::to_string))
 }
 
-/// The type views gg would open beside `key`'s own under `mode`, as the run itself computes them.
+/// The type views gg would open beside `key`'s own under `flag` **alone**, as the run itself
+/// computes them.
 ///
 /// Projected rather than described because the page would otherwise have to explain, in prose, why
 /// the transitive [`types`](GgReferenceEntry::types) list beside it is not what a lookup opens. The
 /// two really do differ — the closure is not a depth — and stating the depth-one answer is both
 /// shorter and checkable.
-fn opened(view: &DocsRuntime, key: &str, mode: DocViewTypes) -> Vec<String> {
-    view.types_to_open(key, mode)
+///
+/// One flag at a time, through [`DocViewTypes::only`], because the flags are independent: a reader
+/// that has each of the three columns can assemble any of the eight configurations, and one that
+/// had only their union could not take it apart again.
+fn opened(view: &DocsRuntime, key: &str, flag: DocViewType) -> Vec<String> {
+    view.types_to_open(key, DocViewTypes::only(flag))
         .into_iter()
         .map(str::to_string)
         .collect()

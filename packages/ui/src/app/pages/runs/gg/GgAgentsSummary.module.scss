@@ -237,7 +237,7 @@
 
 // The documentation arm this profile's instances ran under, sitting on the surface card's
 // own label row. Lower-case against the label's uppercase and un-tracked, because it is a
-// configured VALUE (`return-and-parameters`) rather than a heading, and reading it as one
+// configured VALUE (`return+parameters+errors`) rather than a heading, and reading it as one
 // would make it look like a second section rather than a qualifier on the first.
 .surfaceMode {
   margin-left: t.$space-xs;

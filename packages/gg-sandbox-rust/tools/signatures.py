@@ -297,6 +297,23 @@ def documented(item, what):
     return brief, ("\n\n".join(part for part in parts if part) or None)
 
 
+def declares_failure(item):
+    """Whether a declaration's own doc comment declares a failure, in this arm's tag for it.
+
+    Rust's tag is the ``# Errors`` section, and it is the whole of what counts. Nothing is read out
+    of the body, out of the return type, or out of what some other arm declared for the same
+    operation: a call whose author wrote no ``# Errors`` declares no failure, which is a truthful
+    record of what was written rather than a claim the call cannot fail.
+
+    The section's own body is left exactly where :func:`documented` puts it — folded into the
+    detail prose — because it names the ``ApiErrorCode`` VARIANTS to expect, which is a different
+    thing from the error TYPE that :meth:`Reflector.thrown` reads out of the return position. This
+    only asks whether the author declared one at all.
+    """
+    _, found = sections(item.get("docs") or "")
+    return "Errors" in found
+
+
 def documented_arguments(item, what):
     """The ``# Arguments`` list of a doc comment, as ``[(name, description)]``."""
     _, found = sections(item.get("docs") or "")
@@ -478,6 +495,36 @@ class Reflector:
                 self.returned(args[0]["type"], out)
             return
         self.referenced(node, out)
+
+    def thrown(self, node, out):
+        """The declared types a return position **fails with**, by rustdoc id.
+
+        The other half of :meth:`returned`, and it reads the arm the other one drops. Rust declares
+        no failure in its signature the way `throws` clauses do: a fallible call writes
+        `Result<T, E>`, and `E` — `ApiError` throughout this SDK — is the type a documentation view
+        of the failure would open. `# Errors` says WHICH `ApiErrorCode` variants to expect and the
+        return position says which type carries them, so the declaration and the type come from two
+        different places and both are needed. The caller pairs them.
+
+        Only the outermost `Result` is read. A `Result` nested inside the success arm is a value the
+        program receives rather than this call's failure channel, and walking into it would credit a
+        function with failing in a way its own signature does not say it fails.
+        """
+        if node is None:
+            return
+        path = node.get("resolved_path") if isinstance(node, dict) else None
+        if not (
+            path
+            and path.get("id") not in self.declared
+            and path["path"].rsplit("::", 1)[-1] == "Result"
+        ):
+            # Not a `Result` at all, so there is no error position to read. A call whose comment
+            # declares a failure while its signature offers nowhere to declare it with is a
+            # contradiction the author should see rather than a quietly empty list.
+            return
+        args = (path.get("args") or {}).get("angle_bracketed", {}).get("args", [])
+        if len(args) > 1 and "type" in args[1]:
+            self.referenced(args[1]["type"], out)
 
     def declare(self, identifier):
         """Record one type's declaration, once, and hand back the ids its members mention."""
@@ -674,6 +721,20 @@ class Reflector:
                 self.referenced(node, argument_ids)
         returned_ids = []
         self.returned(sig.get("output"), returned_ids)
+        # ONLY where the author declared one. `# Errors` is this arm's tag for declaring a failure,
+        # and its presence is the whole gate: a comment that carries one gets the error position of
+        # its own return type, and a comment that carries none gets an empty list even though every
+        # signature in this SDK writes a `Result`. The declaration is what is being recorded, not
+        # the type system's opinion of what could go wrong.
+        thrown_ids = []
+        if declares_failure(item):
+            self.thrown(sig.get("output"), thrown_ids)
+            if not thrown_ids:
+                raise Failure(
+                    f"{what} declares a failure in `# Errors` and its return position names no "
+                    "error type this catalogue declares, so the failure it documents resolves to "
+                    "nothing a model could open"
+                )
         brief, detail = documented(item, what)
         return {
             "operation": operation,
@@ -694,9 +755,14 @@ class Reflector:
             # name; `returns` itself is the DIRECT return position and nothing beyond it, since what
             # it feeds is a one-level rule.
             "types": self.references(
-                self.close_over(argument_ids + returned_ids + self.always_referenced())
+                self.close_over(
+                    argument_ids + returned_ids + thrown_ids + self.always_referenced()
+                )
             ),
             "returns": self.references(deduped(returned_ids)),
+            # Beside `returns`, and read the same one level deep: what the `errors` flag of an
+            # agent's `docViewTypes` opens beside this function.
+            "throws": self.references(deduped(thrown_ids)),
         }
 
     def functions_and_members(self):

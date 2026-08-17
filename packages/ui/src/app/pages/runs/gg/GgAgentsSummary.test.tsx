@@ -257,7 +257,7 @@ const API_SURFACE_EVENTS: HarnessEvent[] = [
           ],
         },
       ] as GgAgentApi[],
-      "return-and-parameters",
+      "return+parameters+errors",
     ),
     apiCall(id, "files.read_file"),
   ]),
@@ -474,11 +474,11 @@ describe("GgAgentsSummary offered surface", () => {
     // aggregate has always folded the mode; nothing rendered it, so the card showed the cost
     // with no arm on it.
     const { detail } = openReviewer(stubNav(), API_SURFACE_EVENTS);
-    const mode = within(detail).getByText("docs: return-and-parameters");
+    const mode = within(detail).getByText("docs: return+parameters+errors");
     expect(mode).toBeInTheDocument();
     expect(mode).toHaveAttribute(
       "title",
-      expect.stringContaining("every type a function's signature names"),
+      expect.stringContaining("the types its arguments declare"),
     );
   });
 

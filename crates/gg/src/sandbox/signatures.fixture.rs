@@ -18,6 +18,18 @@
 //! **static method** whose owning class is the module itself — which is how a language with no
 //! standalone functions spells what every other arm spells as one. That is the axis
 //! [the name rule](super::fqn) has to survive, so it is in the fixture rather than only in prose.
+//!
+//! # Declared failures, on two of the four
+//!
+//! Two entries [declare a failure](super::FunctionSignature::throws) and two declare none, so a
+//! reader can tell the two states apart — an empty list is an author who wrote no `@throws`, not a
+//! claim the call cannot fail, and a fixture where every entry looked the same would prove neither.
+//!
+//! The two error types are reached **only** through `throws`: nothing returns one and no signature
+//! names one. That is the shape the name rule has to accept, since a type reachable by that one
+//! route is a type a model can open and would otherwise read as unreferenced. They are written one
+//! per [form](super::TypeReference) — a resolved pair and a bare name — because the arms disagree
+//! about how much they resolve and both answers arrive here.
 
 use std::sync::OnceLock;
 
@@ -68,6 +80,7 @@ pub(crate) const CATALOGUE: &str = r#"{
         }
       ],
       "returns": [],
+      "throws": [],
       "types": []
     },
     {
@@ -91,6 +104,7 @@ pub(crate) const CATALOGUE: &str = r#"{
         }
       ],
       "returns": [],
+      "throws": ["gg::views::ViewError"],
       "types": ["gg::views::OpenView"]
     },
     {
@@ -114,6 +128,7 @@ pub(crate) const CATALOGUE: &str = r#"{
         }
       ],
       "returns": [],
+      "throws": [],
       "types": []
     },
     {
@@ -137,6 +152,7 @@ pub(crate) const CATALOGUE: &str = r#"{
         }
       ],
       "returns": ["gg::files::FileRead"],
+      "throws": [{ "spelled": "ReadError", "fqn": "gg::files::ReadError" }],
       "types": [{ "spelled": "FileRead", "fqn": "gg::files::FileRead" }]
     }
   ],
@@ -175,6 +191,34 @@ pub(crate) const CATALOGUE: &str = r#"{
           "brief": "Take a view back out of the context window."
         }
       ]
+    },
+    {
+      "name": "ReadError",
+      "fqn": "gg::files::ReadError",
+      "module": "files",
+      "declaration": "enum ReadError { NotFound, TooLarge }",
+      "brief": "Why a file read failed.",
+      "detail": "Nothing returns one and no signature names one: the read's declared failure is the only route to this declaration.",
+      "members": [
+        { "name": "NotFound", "type": null, "kind": "variant", "brief": "No file sits at that path.",
+          "detail": null },
+        { "name": "TooLarge", "type": null, "kind": "variant",
+          "brief": "The file is past the cap a single read may return.", "detail": null }
+      ],
+      "memberFunctions": []
+    },
+    {
+      "name": "ViewError",
+      "fqn": "gg::views::ViewError",
+      "module": "views",
+      "declaration": "struct ViewError { code: String }",
+      "brief": "Why a view call was refused.",
+      "detail": null,
+      "members": [
+        { "name": "code", "type": "String", "kind": "field", "brief": "Which refusal this is.",
+          "detail": null }
+      ],
+      "memberFunctions": []
     }
   ]
 }"#;

@@ -782,6 +782,84 @@ function section(parsed, heading) {
 }
 
 /**
+ * Every failure name a `# Throws` section may write, by the fully-qualified type that declares it.
+ *
+ * A section names its failure the way a program branches on one — `NotFound`, `LimitExceeded` — and
+ * on this arm those are **data constructors of `Gg.Core.ApiErrorCode`** rather than types in their
+ * own right, because there is one thrown value here and a closed set of codes on it. So this arm has
+ * a real resolution to do where a language with an exception class per failure has none, and it is
+ * why the references it emits below are the `{ spelled, fqn }` form rather than the one string
+ * {@link references} emits everywhere else: the spelling is the word a model reads in the sentence
+ * beside the signature, and the name it resolves to is the declaration a documentation view can
+ * actually be opened by.
+ *
+ * It is built over every catalogued `data` type rather than over `ApiErrorCode` by name, so a second
+ * failure vocabulary would resolve here without this map being told about it. A name two types both
+ * declared would make the resolution a coin toss and is refused rather than resolved to whichever
+ * was walked first.
+ */
+const FAILURE_NAMES = (() => {
+  const named = new Map();
+  for (const [fqn, { declaration }] of DECLARED) {
+    for (const child of declaration.children ?? []) {
+      if (child.info.declType !== "dataConstructor") continue;
+      const claimed = named.get(child.title);
+      if (claimed !== undefined) {
+        throw new Error(
+          `both \`${claimed}\` and \`${fqn}\` declare \`${child.title}\`; a failure named in a ` +
+            "`# Throws` section has to name one type, or the view opened beside it is whichever " +
+            "this walk reached first",
+        );
+      }
+      named.set(child.title, fqn);
+    }
+  }
+  return named;
+})();
+
+/**
+ * The failure type a declaration's `# Throws` section declares, as a resolved type reference, or an
+ * empty list where the declaration writes no such section.
+ *
+ * **Only what is written counts.** A declaration with no `# Throws` section hands back an empty
+ * list, which records that its author declared no failure rather than claiming the call cannot fail
+ * — every call in this SDK can, and `Gg.Core.ApiError` is in every entry's {@link ALWAYS_REFERENCED}
+ * reach for exactly that reason. What this field adds is the failure the *author singled out*, and
+ * nothing is inferred from a type, from `attempt`, or from what a sibling arm declared for the same
+ * operation.
+ *
+ * **The first backticked name is the answer, and one entry is the whole of it.** The section is
+ * written failure-first — "`NotFound`, naming the turns that are held, for a turn that ran no
+ * program" — so the name it opens with is the failure it declares. A section naming several codes is
+ * naming several *arms of one type*, so the resolved list is the same one entry whichever arm it
+ * opened with; the sentence carrying all of them goes on saying so, untouched, in the detail
+ * {@link documented} folds. A section opening with a name no catalogued type declares is refused
+ * here rather than emitted, because the one reader this list has opens a documentation view of every
+ * name in it and a name that resolves to nothing is a view that cannot be opened.
+ */
+function declaredFailures(parsed) {
+  const text = section(parsed, "Throws");
+  if (text === undefined) return [];
+  const written = /`([^`]+)`/u.exec(text);
+  if (written === null) {
+    throw new Error(
+      `${parsed.what}'s \`# Throws\` section names no failure; a section is written to say which ` +
+        "failure a caller branches on, and the name is written in backticks",
+    );
+  }
+  const spelled = written[1];
+  const fqn = FAILURE_NAMES.get(spelled);
+  if (fqn === undefined) {
+    throw new Error(
+      `${parsed.what}'s \`# Throws\` section opens with \`${spelled}\`, which no catalogued type ` +
+        "declares; a section opens with the failure it declares, as the `Gg.Core.ApiErrorCode` arm " +
+        "a caller branches on",
+    );
+  }
+  return [{ spelled, fqn }];
+}
+
+/**
  * A declaration's brief and detail, with what it hands back and what it throws folded onto the end
  * of the detail under their own headings.
  *
@@ -1075,6 +1153,10 @@ function describe(module_, name) {
       closure([...reached, ...returnMentions, ...ALWAYS_REFERENCED]),
     ),
     returns: references(returnMentions),
+    // The failure this declaration's own `# Throws` section declares, beside the sentence that
+    // declares it rather than instead of it: the section goes on being folded into the detail
+    // verbatim, and this is the structured list a `docViewTypes` `errors` flag opens a view from.
+    throws: declaredFailures(parsed),
   };
 }
 

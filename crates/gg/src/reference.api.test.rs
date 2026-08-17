@@ -381,7 +381,8 @@ fn every_referenced_type_resolves_to_a_declaration() {
                 .iter()
                 .chain(&entry.returns)
                 .chain(&entry.opens_under_return)
-                .chain(&entry.opens_under_return_and_parameters)
+                .chain(&entry.opens_under_parameters)
+                .chain(&entry.opens_under_errors)
             {
                 assert!(
                     emitted.contains(key.as_str()),
@@ -399,19 +400,32 @@ fn every_referenced_type_resolves_to_a_declaration() {
 ///
 /// If the two were ever the same the page could carry one. On at least one arm they differ, and
 /// the difference is a function's own signature against the closure under it.
+///
+/// The two **signature** columns are what this compares. `opensUnderErrors` is deliberately left
+/// out: its source is the comment's declared failures rather than the signature, so it is not a
+/// narrowing of the closure at all and asserting that it were would be asserting the wrong rule.
+/// That it links to a real entry on the page is
+/// `every_reference_links_to_an_entry_on_the_page` above.
 #[test]
 fn what_a_lookup_opens_is_narrower_than_the_closure_beside_it() {
     let mut narrower = 0;
     for (_, document) in documents() {
         for entry in of_kind(&document, GgReferenceEntryKind::Function) {
-            for opened in &entry.opens_under_return_and_parameters {
+            let mut from_the_signature: Vec<&String> = entry
+                .opens_under_return
+                .iter()
+                .chain(&entry.opens_under_parameters)
+                .collect();
+            from_the_signature.sort_unstable();
+            from_the_signature.dedup();
+            for opened in &from_the_signature {
                 assert!(
                     entry.types.contains(opened),
                     "`{}` opens `{opened}`, which its own closure does not contain",
                     entry.fqn
                 );
             }
-            if entry.opens_under_return_and_parameters.len() < entry.types.len() {
+            if from_the_signature.len() < entry.types.len() {
                 narrower += 1;
             }
         }
@@ -421,6 +435,35 @@ fn what_a_lookup_opens_is_narrower_than_the_closure_beside_it() {
         "no entry on any arm opens fewer types than its closure holds — the two lists have \
          collapsed into one, and the page is carrying the same thing twice"
     );
+}
+
+/// **Each flag's column is that flag alone**, and the `errors` column is the one that is not read
+/// out of the signature.
+///
+/// The page carries three lists so a reader can assemble any of the eight `docViewTypes`
+/// configurations. That only works if each column is genuinely independent — a column that had
+/// quietly been computed as a union would make every configuration a reader assembled from it
+/// wrong — so at least one entry on every arm has to carry an `errors` column that neither of the
+/// signature columns contains.
+#[test]
+fn the_errors_column_carries_what_no_signature_column_does() {
+    for (id, document) in documents() {
+        let distinct = of_kind(&document, GgReferenceEntryKind::Function)
+            .into_iter()
+            .filter(|entry| {
+                entry.opens_under_errors.iter().any(|failure| {
+                    !entry.opens_under_return.contains(failure)
+                        && !entry.opens_under_parameters.contains(failure)
+                })
+            })
+            .count();
+        assert!(
+            distinct > 0,
+            "{}: not one entry's `errors` column names a type its signature columns do not, so a \
+             reader cannot tell the flag's effect from the page",
+            id.id()
+        );
+    }
 }
 
 /// Every arm is registered, and the projection reaches all of them by asking the registry rather

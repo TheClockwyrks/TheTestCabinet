@@ -685,17 +685,37 @@ export const ASSISTANT_MESSAGE_OPTIONS = [
 export const ASSISTANT_MESSAGE_HINT =
   "Post-response healing records the healed program gg actually ran whenever healing changed the reply, and the reply verbatim when it did not — so the model re-reads a program that compiled, and every line number it is given counts lines of a text it has seen. No post-processing records the reply exactly as the model sent it, which is what a study of a model's code-only compliance reads; it is knowingly inconsistent, because the locations gg reports still count lines of the healed text. Either way the reply as sent is kept on the turn's healing record for the run's operator.";
 
-// Which SDK types a documentation lookup opens beside the function it was asked for. Three
-// arms, none of them obviously right, which is why it is a knob rather than a decision —
-// see the option hint for what each one costs.
-export const DOC_VIEW_TYPES_OPTIONS = [
-  { value: "", label: "Return position (default)" },
-  { value: "return-and-parameters", label: "Return position and arguments" },
-  { value: "off", label: "None" },
-] as const;
+// Which SDK types a documentation lookup opens beside the function it was asked for —
+// three INDEPENDENT toggles rather than one three-way arm, because what a return type
+// costs and what a declared failure buys are separate questions and a study slices on
+// each of them. `parameters` carries its own [defaultOff](ParamSpec.options) flag, since
+// it is the one gg leaves off unless a configuration asks for it.
+export const DOC_VIEW_TYPES_OPTIONS: ReadonlyArray<{
+  value: string;
+  label: string;
+  defaultOff?: boolean;
+  hint?: string;
+}> = [
+  {
+    value: "return",
+    label: "return — the types the signature hands back",
+    hint: "Lands the agent on what it can do with the value it is about to get. On unless you switch it off.",
+  },
+  {
+    value: "parameters",
+    label: "parameters — the types its arguments declare (off by default)",
+    defaultOff: true,
+    hint: "Off unless you ask for it, and the only one of the three that is: an argument's type is already written into the signature the agent is reading, so opening it is more context up front against fewer follow-up lookups.",
+  },
+  {
+    value: "errors",
+    label: "errors — the failures its documentation declares it throws",
+    hint: "The error types the function's own documentation comment names, in whatever tag its language declares one with. It is the one source that is not in the signature at all, so nothing else in this list can reach it. On unless you switch it off.",
+  },
+];
 
 export const DOC_VIEW_TYPES_HINT =
-  "Opening a function's documentation also opens the SDK types its signature mentions, as views of their own. Return position lands the agent on what it can do with the value it is about to get. Return position and arguments opens everything the signature names, which is more up front and fewer follow-up lookups. None opens nothing and leaves the agent to ask for a type by name. Always exactly one level: a type's own view never drags in a further type.";
+  `Opening a function's documentation also opens SDK types beside it, as views of their own — each source switched on its own, and what one open places is the union of them. Always exactly one level: a type's own view never drags in a further type. ${TOGGLES_HINT}`;
 
 // --- Loop detection ---------------------------------------------------------------
 //
@@ -1306,7 +1326,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       {
         key: "docViewTypes",
         label: "Documentation types",
-        kind: "select",
+        kind: "toggles",
         options: DOC_VIEW_TYPES_OPTIONS,
         hint: DOC_VIEW_TYPES_HINT,
       },

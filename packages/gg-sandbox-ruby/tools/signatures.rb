@@ -545,6 +545,24 @@ def returned(method)
   method.tags(:return).flat_map { |tag| tag.types.to_a }.flat_map { |text| named_types(text) }
 end
 
+# The types a declaration's own `@raise` tags declare it fails with, in first-mention order.
+#
+# Ruby's tag for declaring a failure is `@raise`, and YARD hands back its type list already parsed —
+# so this arm states what it declares rather than reading a sentence back. Only what the author
+# wrote on THIS declaration counts: nothing is taken from a body, from the `raise` statements under
+# it, or from what another declaration says about the same operation, so a call carrying no `@raise`
+# hands back an empty list and that is a truthful record of what was written rather than a claim it
+# cannot fail.
+#
+# It is filtered through `named_types` for the same reason `returned` is: the one reader of the list
+# opens a documentation view of every name in it, and only a type this catalogue declares can be
+# opened. That drops Ruby's own `ArgumentError` and `NoMethodError` where a declaration raises one —
+# they stay in the folded-in `Raises` prose, which is where a program that has to `rescue` one reads
+# them, and they are not names the catalogue could resolve.
+def raised(method)
+  method.tags(:raise).flat_map { |tag| tag.types.to_a }.flat_map { |text| named_types(text) }
+end
+
 # The catalogued types a signature mentions, transitively closed, in first-mention order.
 #
 # Transitive because the list answers *which declarations does this run's surface reach*, which is
@@ -603,10 +621,11 @@ def function_entry(entry)
     "detail" => detail,
     "signatures" => signatures(method, what).map { |s| s.transform_keys(&:to_s) },
     # The closure runs over everything the shapes name plus the failure every call can raise;
-    # `returns` is the DIRECT return position and nothing beyond it, since what it feeds is a
-    # one-level rule.
+    # `returns` and `throws` are the DIRECT return position and the declared failures and nothing
+    # beyond either, since what they feed is a one-level rule.
     "types" => close_over(deduped(mentioned(method) + ALWAYS_REFERENCED)),
-    "returns" => deduped(returned(method))
+    "returns" => deduped(returned(method)),
+    "throws" => deduped(raised(method))
   }
 end
 

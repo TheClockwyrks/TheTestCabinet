@@ -149,9 +149,10 @@ export interface GgAgentSurfaceSummary {
   executionMode: string | null;
   /**
    * Which SDK types an `openDocsView` opened beside a function for this profile's instances —
-   * `off`, `return` or `return-and-parameters`, as gg resolved it. Null for a tool-calling
-   * profile, which opens no documentation, and — like {@link executionMode} — where instances
-   * somehow disagree.
+   * the enabled `docViewTypes` flags joined with `+` in gg's own order (`return+errors`), or
+   * `none` where every flag is off, as gg resolved it. Null for a tool-calling profile, which
+   * opens no documentation, and — like {@link executionMode} — where instances somehow
+   * disagree.
    *
    * It is here because the mode is an arm of a comparison a single run can hold both sides
    * of: what it cost is read off the documentation band of the very agents this summary is

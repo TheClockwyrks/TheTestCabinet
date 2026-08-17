@@ -2237,7 +2237,7 @@ fn agent_surface_populates_exactly_the_one_surface_its_mode_uses() {
     let kind = GgTelemetryKind::AgentSurface {
         execution_mode: "responses_as_code".to_string(),
         program_language: Some(GgProgramLanguage::TypeScript),
-        doc_view_types: Some("return-and-parameters".to_string()),
+        doc_view_types: Some("return+parameters+errors".to_string()),
         // Offered no tools: this agent answers with programs, and the tool vocabulary is not one it
         // can reach.
         tools: Vec::new(),
@@ -2268,7 +2268,7 @@ fn agent_surface_populates_exactly_the_one_surface_its_mode_uses() {
     assert_eq!(value["type"], json!("agent_surface"));
     assert_eq!(value["executionMode"], json!("responses_as_code"));
     assert_eq!(value["programLanguage"], json!("typescript"));
-    assert_eq!(value["docViewTypes"], json!("return-and-parameters"));
+    assert_eq!(value["docViewTypes"], json!("return+parameters+errors"));
     assert_eq!(value["tools"], json!([]));
     // A module is named twice: once as gg knows it, and once as this arm spells it. A study
     // grouping eleven arms reads the first; a reader quoting the model reads the second.

@@ -650,6 +650,7 @@ private class Entry(
     val signature: String,
     val parameters: List<Parameter>,
     val returns: List<String>,
+    val throws: List<String>,
     val types: List<String>,
 )
 
@@ -945,6 +946,11 @@ private class Catalogue(val index: Index, val libraries: Libraries) {
         // here — Rust writes `# Errors` because its own API guidelines mandate that heading, Python
         // writes `Raises` because that is Python's verb and its docstring section — and each is right
         // for the same reason this one is.)
+        //
+        // The same loop also builds the structured list beside that prose. The sentence is unchanged
+        // — this reads the declaration once and writes it twice, as a line an author reads and as a
+        // key a documentation view can be opened by.
+        val thrownTypes = LinkedHashSet<String>()
         for ((thrown, prose) in doc.thrown) {
             val resolved = names.resolve(thrown)
             if (detail.isNotEmpty()) {
@@ -955,7 +961,17 @@ private class Catalogue(val index: Index, val libraries: Libraries) {
                 .append(resolved?.qualified() ?: thrown)
                 .append("`: ")
                 .append(links(prose, names))
-            resolved?.let { reachedHere.add(it.declared.fqn) }
+            // The declaration's own fully-qualified name and not `qualified()`: a `@throws` naming a
+            // member of a type — `ApiError.code` — declares the type as the failure, and the key the
+            // catalogue declares is the type's. Only a name that resolves to a type this SDK declares
+            // is recorded, on the same rule the return position follows: a `@throws
+            // IllegalStateException` names a JDK type no catalogue entry declares, so it stays in the
+            // prose, where it reads correctly, and out of a list every entry of which is resolved by
+            // a gate.
+            resolved?.let {
+                reachedHere.add(it.declared.fqn)
+                thrownTypes.add(it.declared.fqn)
+            }
         }
 
         reachedHere.addAll(ALWAYS_REFERENCED)
@@ -975,6 +991,11 @@ private class Catalogue(val index: Index, val libraries: Libraries) {
             // rule about which types a documentation view opens beside a function. The transitive
             // half is `types`, and the closure below is what records both.
             returns = returned.toList(),
+            // What the comment declares and nothing more: a call that declares no failure carries an
+            // empty list, which records what the author wrote rather than claiming the call cannot
+            // fail. Kotlin's own `throws` are unchecked and appear in no signature, so there is
+            // nothing here to infer from and nothing is.
+            throws = thrownTypes.toList(),
             types = closure(reachedHere).toList(),
         )
     }
@@ -1002,6 +1023,8 @@ private class Catalogue(val index: Index, val libraries: Libraries) {
         }
         key("returns")
         array { for (fqn in entry.returns) obj { reference(fqn) } }
+        key("throws")
+        array { for (fqn in entry.throws) obj { reference(fqn) } }
         key("types")
         array { for (fqn in entry.types) obj { reference(fqn) } }
     }

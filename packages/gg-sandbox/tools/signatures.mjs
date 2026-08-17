@@ -63,7 +63,8 @@
 //     nothing about what it holds, while "returns nothing" is a line that displaces the brief
 //     without replacing it;
 //   * a `@throws` opens by naming `ApiError`, so the one sentence that tells a model what a `catch`
-//     will hold cannot render as a verb with no subject;
+//     will hold cannot render as a verb with no subject — and that name is also what the entry's
+//     `throws` list carries, resolved to the declaration a documentation view of it opens;
 //   * every TYPE and every one of its members is documented, and a type nothing refers to is refused,
 //     because a declaration nothing reaches is a documentation view nothing can open;
 //   * no two types share a name, since the bare name is a key a model may reasonably type.
@@ -208,6 +209,16 @@ const ALWAYS_REFERENCED = "ApiError";
  * subject.
  */
 const THROWS_SUBJECT = `\`${ALWAYS_REFERENCED}\``;
+
+/**
+ * The subject of a `@throws`, read back out of the tag: the backticked name it opens with.
+ *
+ * It is read rather than assumed to be {@link ALWAYS_REFERENCED}, because the tag is where the
+ * declaration lives and {@link THROWS_SUBJECT} is only the rule that a declaration be there. What an
+ * entry's `throws` list carries is therefore the name the author wrote, in the sentence a model
+ * reads, rather than a constant restated one file away from it.
+ */
+const THROWS_SUBJECT_PATTERN = /^`([^`]+)`/;
 
 /**
  * Print a node without its comments and on one line.
@@ -386,9 +397,22 @@ function ownTags(node, sourceFile, name) {
  * but `gg.views.current` reads gg's own live view set behind a binding no run withholds, so it has
  * no failure to describe — and a rule that made it invent one would be a rule for producing
  * sentences rather than for producing documentation.
+ *
+ * # Two readings of one tag
+ *
+ * A `@throws` is read twice and written down twice: as the sentence it is, appended to the detail
+ * under {@link THROWS_LEAD} exactly as before, and as the NAME it opens with, handed back as
+ * `thrown` for the entry's structured `throws` list. Both readings happen here, in the one place
+ * this tag is parsed, so the list and the sentence cannot come to disagree about what a call
+ * declares — and so the rule that a tag name its subject is enforced where it already was, rather
+ * than a second time beside a second parse.
+ *
+ * @returns the rendered `lines` of the detail's structured tail, and the type names `thrown` — in
+ *   written order, without repeats — that this call's `@throws` tags declare.
  */
 function sections(node, sourceFile, where, returnType) {
   const out = [];
+  const thrown = [];
   const returns = ownTags(node, sourceFile, RETURNS_TAG);
   if (returns.length > 1) {
     throw new Error(
@@ -412,17 +436,22 @@ function sections(node, sourceFile, where, returnType) {
   } else {
     out.push(`${RETURNS_LEAD} ${returned}`);
   }
-  for (const thrown of ownTags(node, sourceFile, THROWS_TAG)) {
-    if (!thrown.startsWith(THROWS_SUBJECT)) {
+  for (const failure of ownTags(node, sourceFile, THROWS_TAG)) {
+    if (!failure.startsWith(THROWS_SUBJECT)) {
       throw new Error(
         `${where}'s \`@${THROWS_TAG}\` does not open with ${THROWS_SUBJECT}, so the rendered ` +
           `sentence would say what happens without naming what a \`catch\` holds: ` +
-          `${JSON.stringify(thrown)}`,
+          `${JSON.stringify(failure)}`,
       );
     }
-    out.push(`${THROWS_LEAD} ${thrown}`);
+    // The name the tag opens with is the type it DECLARES; the codes the rest of the sentence goes
+    // on to name are values of that type, and a type mentioned mid-clause is being referred to
+    // rather than declared. The check above is what guarantees there is a name here to read.
+    const [, subject] = THROWS_SUBJECT_PATTERN.exec(failure);
+    if (!thrown.includes(subject)) thrown.push(subject);
+    out.push(`${THROWS_LEAD} ${failure}`);
   }
-  return out;
+  return { lines: out, thrown };
 }
 
 /**
@@ -431,13 +460,17 @@ function sections(node, sourceFile, where, returnType) {
  * The brief and the detailed description are read exactly as every other declaration's are; the
  * structured sections are appended to the detail, so a call with nothing more to say than its brief
  * and its return still has a detail, and one with neither still has none.
+ *
+ * The failure types the `@throws` tags name come back BESIDE the prose rather than instead of any of
+ * it: the sentences stay in the detail, word for word, and `thrown` is the list of what they
+ * declare. A call that declares no failure carries an empty one.
  */
 function callProse(node, sourceFile, where, returnType) {
   const prose = documentation(node, sourceFile, where);
-  const extra = sections(node, sourceFile, where, returnType);
-  if (extra.length === 0) return prose;
-  const detail = [prose.detail, ...extra].filter((part) => part).join("\n\n");
-  return { brief: prose.brief, detail };
+  const { lines, thrown } = sections(node, sourceFile, where, returnType);
+  if (lines.length === 0) return { ...prose, thrown };
+  const detail = [prose.detail, ...lines].filter((part) => part).join("\n\n");
+  return { brief: prose.brief, detail, thrown };
 }
 
 /** The text of one JSDoc tag on `node`, or `undefined` when it carries none. */
@@ -653,6 +686,28 @@ class Resolver {
     return [...this.byName.keys()]
       .filter((name) => new RegExp(`\\b${name}\\b`).test(text))
       .map((name) => ({ spelled: name, fqn: this.byName.get(name).fqn }));
+  }
+
+  /**
+   * The references `names` name — one per name, in the order they were written.
+   *
+   * Unlike {@link direct} these are names a declaration STATED rather than names scanned out of a
+   * piece of declaration text, so one reaching no declaration is an error rather than an absence: a
+   * `@throws` naming a type this SDK does not declare is a failure a model is told to catch and then
+   * cannot open a documentation view of.
+   */
+  references(names, where) {
+    return names.map((name) => {
+      const type = this.byName.get(name);
+      if (!type) {
+        throw new Error(
+          `${where} declares that it throws \`${name}\`, which this SDK declares no type called. ` +
+            "A declared failure is a documentation view a model opens by name, so the name has to " +
+            "reach a declaration.",
+        );
+      }
+      return { spelled: name, fqn: type.fqn };
+    });
   }
 
   /** The transitive closure of what every one of `written` refers to, in declaration order. */
@@ -937,6 +992,11 @@ async function build(language) {
       detail: prose.detail,
       signatures,
       returns: resolver.direct(returned),
+      // What its own `@throws` tags DECLARE, and nothing else: not what the body can raise, not
+      // what the sandbox reaches for on its behalf, and not `ApiError` folded in because every call
+      // on this surface can throw one. An entry with an empty list is one whose author documented
+      // no failure, which is what `gg.views.current` truthfully is.
+      throws: resolver.references(prose.thrown, where),
       types,
     });
   }
@@ -994,6 +1054,9 @@ async function build(language) {
       detail: prose.detail,
       signatures,
       returns: resolver.direct(returned),
+      // An alias documents its own failures: it is the same operation reached the short way, and
+      // the sentence a model reads is the one written on the method it is holding.
+      throws: resolver.references(prose.thrown, where),
       types,
     });
   }

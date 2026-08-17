@@ -754,26 +754,74 @@ describe("gg built-in skill toggles", () => {
 });
 
 // The `responses-as-code` capability's `docViewTypes` param: which SDK types a
-// documentation lookup opens beside the function it was asked for. A select, but one whose
-// per-agent scoping is the point — a root that opens everything a signature names and a
-// reviewer that opens nothing are the same configuration.
+// documentation lookup opens beside the function it was asked for. Three INDEPENDENT
+// toggles reading exactly like `healing` above — `return` and `errors` on unless moved,
+// `parameters` off unless asked for — and whose per-agent scoping is the point: a root
+// that opens everything a signature names and a reviewer that opens nothing are the same
+// configuration.
 
-describe("gg documentation type mode", () => {
-  it("round-trips a configured mode", () => {
-    const configured = capSet([
-      { id: CODE, enabled: true, params: { docViewTypes: "off" } },
-    ]);
-    const draft = draftFromCapabilitySet(configured);
-    expect(draftCaps(draft)[CODE]?.params?.docViewTypes).toBe("off");
-    expect(draftCaps(draft)[CODE]?.extraParams).toEqual({});
+function docViewTypesOf(s: GgCapabilitySet): unknown {
+  return setCaps(s).find((cap) => cap.id === CODE)?.params?.docViewTypes;
+}
 
-    const back = setCaps(capabilitySetFromDraft(draft, null)).find(
-      (cap) => cap.id === CODE,
-    );
-    expect(back?.params).toEqual({ docViewTypes: "off" });
+describe("gg documentation type toggles", () => {
+  it("writes nothing when every type is left at its own default", () => {
+    const draft = emptyDraft();
+    draft.agents[0]!.capabilities[CODE] = {
+      ...draft.agents[0]!.capabilities[CODE]!,
+      enabled: true,
+    };
+    expect(docViewTypesOf(capabilitySetFromDraft(draft, null))).toBeUndefined();
   });
 
-  it("is per agent, so two profiles can carry different modes", () => {
+  it("round-trips a default-on type a configuration switches off", () => {
+    const configured = capSet([
+      { id: CODE, enabled: true, params: { docViewTypes: { errors: false } } },
+    ]);
+    const draft = draftFromCapabilitySet(configured);
+    expect(draftCaps(draft)[CODE]?.params?.docViewTypes).toBe("errors");
+    expect(draftCaps(draft)[CODE]?.extraParams).toEqual({});
+    expect(docViewTypesOf(capabilitySetFromDraft(draft, null))).toEqual({
+      errors: false,
+    });
+  });
+
+  it("round-trips the one type gg leaves off, which no subtractive rule could express", () => {
+    const configured = capSet([
+      {
+        id: CODE,
+        enabled: true,
+        params: { docViewTypes: { parameters: true } },
+      },
+    ]);
+    const draft = draftFromCapabilitySet(configured);
+    expect(draftCaps(draft)[CODE]?.params?.docViewTypes).toBe("parameters");
+    expect(docViewTypesOf(capabilitySetFromDraft(draft, null))).toEqual({
+      parameters: true,
+    });
+  });
+
+  it("reads the `false` master switch as every type withheld", () => {
+    const configured = capSet([
+      { id: CODE, enabled: true, params: { docViewTypes: false } },
+    ]);
+    const draft = draftFromCapabilitySet(configured);
+    expect(docViewTypesOf(capabilitySetFromDraft(draft, null))).toEqual({
+      return: false,
+      errors: false,
+    });
+  });
+
+  it("reads the `true` shorthand as the defaults, not as every type on", () => {
+    const configured = capSet([
+      { id: CODE, enabled: true, params: { docViewTypes: true } },
+    ]);
+    const draft = draftFromCapabilitySet(configured);
+    expect(draftCaps(draft)[CODE]?.params?.docViewTypes).toBe("");
+    expect(docViewTypesOf(capabilitySetFromDraft(draft, null))).toBeUndefined();
+  });
+
+  it("is per agent, so two profiles can carry different types", () => {
     const configured: GgCapabilitySet = {
       agents: [
         agent({
@@ -782,14 +830,14 @@ describe("gg documentation type mode", () => {
             {
               id: CODE,
               enabled: true,
-              params: { docViewTypes: "return-and-parameters" },
+              params: { docViewTypes: { parameters: true } },
             },
           ],
         }),
         agent({
           name: "Reviewer",
           capabilities: [
-            { id: CODE, enabled: true, params: { docViewTypes: "off" } },
+            { id: CODE, enabled: true, params: { docViewTypes: false } },
           ],
         }),
       ],
@@ -797,7 +845,7 @@ describe("gg documentation type mode", () => {
     const draft = draftFromCapabilitySet(configured);
     expect(
       draft.agents.map((a) => a.capabilities[CODE]?.params?.docViewTypes),
-    ).toEqual(["return-and-parameters", "off"]);
+    ).toEqual(["parameters", "return,errors"]);
 
     const back = capabilitySetFromDraft(draft, null);
     expect(
@@ -805,8 +853,8 @@ describe("gg documentation type mode", () => {
         (a) => a.capabilities.find((cap) => cap.id === CODE)?.params,
       ),
     ).toEqual([
-      { docViewTypes: "return-and-parameters" },
-      { docViewTypes: "off" },
+      { docViewTypes: { parameters: true } },
+      { docViewTypes: { return: false, errors: false } },
     ]);
   });
 });
@@ -1229,9 +1277,10 @@ describe("params gated on the selected implementation", () => {
     );
   });
 
-  // gg's own default is the return position, which the picker's empty option already reads
-  // as — so seeding a value would only make the default arm look configured.
-  it("seeds no documentation type mode", () => {
+  // gg's own defaults are `return` and `errors` on and `parameters` off, which an empty
+  // toggles draft already reads as — so seeding a value would only make the default arm
+  // look configured.
+  it("seeds no documentation type toggles", () => {
     expect(paramOf("responses-as-code", "docViewTypes").defaultValue).toBe(
       undefined,
     );

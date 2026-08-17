@@ -151,6 +151,18 @@ _PARAMETER_ENTRY = re.compile(r"^\s*-\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)$")
 #: ``# Errors`` heading does.
 _KEPT_CALLOUT = re.compile(r"^\s*-\s*(Returns|Throws)\s*:")
 
+#: Swift's own tag for **declaring** a failure, which is the one of those two callouts this arm reads
+#: a structured list out of as well as leaving in the prose. DocC honours one per declaration.
+_THROWS_CALLOUT = re.compile(r"^\s*-\s*Throws\s*:")
+
+#: A code span inside a doc comment. The callout is a sentence rather than a type list — Swift has no
+#: `@throws Type` slot and DocC invents none — so the type it declares is named the only way a Swift
+#: author names one in prose: backticked, in the module-qualified spelling a program writes. Which of
+#: a block's spans is a type is not guessed from its shape; it is answered by looking each up in the
+#: catalogue's own declarations, which is why `.notFound`, `limit` and `files.readFile` — all
+#: backticked in these same sentences — resolve to nothing and are not thrown types.
+_CODE_SPAN = re.compile(r"`([^`]+)`")
+
 #: Any list item at all, which is what ENDS the wrapped description of the item above it: a doc
 #: comment's callouts are one Markdown list, so the next ``- `` starts a new subject whatever that
 #: subject turns out to be — another argument, a ``- Returns:``, or one of gg's own tags.
@@ -255,6 +267,40 @@ def read(symbol, what):
                 "of the doc comment rather than one an author finished"
             )
     return description, documented, tags
+
+
+def throws_callout(description, what):
+    """The ``- Throws:`` callout's own lines, joined, or ``None`` when there is no such callout.
+
+    Read out of the description :func:`read` returns rather than out of the raw comment, so it sees
+    exactly the text that also reaches the model — this is a structured list beside a sentence, not
+    a second reading of a different sentence.
+
+    The extent is the callout line and the lines that WRAP it, which end where any list item's
+    description ends: at a blank line or at the next ``- `` item. Wrapping matters here rather than
+    being tidiness — a block whose second line carries the second error type would otherwise declare
+    half of what its author wrote.
+    """
+    lines = None
+    open_ = False
+    for line in description:
+        if _THROWS_CALLOUT.match(line):
+            if lines is not None:
+                raise Failure(
+                    f"{what} carries two `- Throws:` callouts, and DocC renders one — the second is "
+                    "documentation no reader is shown, and failures gg would record from nowhere"
+                )
+            lines, open_ = [line], True
+            continue
+        if open_:
+            if line.strip() and not _ITEM.match(line):
+                lines.append(line)
+                continue
+            # A blank line and the next list item are both a new subject, so the callout ends here.
+            # The scan carries on rather than returning, so a second callout further down still
+            # fails by name instead of being quietly ignored.
+            open_ = False
+    return None if lines is None else " ".join(line.strip() for line in lines)
 
 
 def prose(lines):
@@ -429,6 +475,7 @@ class Reflector:
         self.modules = {}
         self.module_precise = set()
         self.declared = {}
+        self.by_spelled = {}
         self.types = {}
         self.member_functions = {}
         self.collect()
@@ -473,6 +520,12 @@ class Reflector:
                 for symbol in self.graph.children((module.name,), kind):
                     declared = Declared(module, symbol)
                     self.declared[symbol["identifier"]["precise"]] = declared
+                    # The spelling a signature writes, indexed — because it is also the spelling a
+                    # `- Throws:` sentence writes, and that callout is prose, so the name itself is
+                    # the only handle on the type it declares. This is what makes reading one a
+                    # lookup rather than a guess. Unique by construction: `module.name` names one
+                    # namespace, and a namespace declares each type once.
+                    self.by_spelled[declared.spelled] = symbol["identifier"]["precise"]
 
     # -- rendering -------------------------------------------------------------------------------
 
@@ -601,6 +654,38 @@ class Reflector:
             out.append({"spelled": declared.spelled, "fqn": declared.fqn})
         return out
 
+    def failures(self, description, what):
+        """The types a declaration's own ``- Throws:`` callout declares it throws, resolved.
+
+        **Only what the author declared.** A declaration with no callout gets an empty list, which
+        records that nothing was written rather than claiming the call cannot fail; nothing is read
+        off the `throws` keyword, off the body, or off what another arm says about the same
+        operation. As it happens the two agree across this whole SDK today — the one call with no
+        callout is the one declaration that is not `throws` — but they are answering different
+        questions, and it is the author's sentence this records.
+
+        Every name is resolved against :attr:`by_spelled`, so what comes back is the same
+        `{spelled, fqn}` reference `returns` and `types` carry, opened by the same key. A callout
+        that names no declared type at all fails rather than emitting nothing: a sentence about
+        failure whose type gg cannot open is either a spelling this SDK does not declare or a name
+        that moved, and both are exactly the silence this reflector exists to make impossible.
+        """
+        callout = throws_callout(description, what)
+        if callout is None:
+            return []
+        identifiers = []
+        for spelling in _CODE_SPAN.findall(callout):
+            precise = self.by_spelled.get(spelling)
+            if precise is not None and precise not in identifiers:
+                identifiers.append(precise)
+        if not identifiers:
+            raise Failure(
+                f"{what} declares a failure and names no type this catalogue declares: "
+                f"`{callout}` — write the thrown type in the module-qualified spelling a program "
+                "reads, as `core.ApiError` is written, so a model can open its documentation"
+            )
+        return self.references(identifiers)
+
     def always_referenced(self):
         """The identifiers of the types every failure arm names, looked up rather than written down."""
         found = []
@@ -710,7 +795,11 @@ class Reflector:
             self.referenced(parameter["declarationFragments"], argument_ids)
         returned_ids = []
         self.referenced(signature.get("returns", []), returned_ids)
-        brief, detail = documented(symbol, what)
+        # `read` rather than `documented`, because the description is wanted twice: once settled into
+        # the brief and detail a model reads, and once as the lines a `- Throws:` callout is picked
+        # out of. Both readings see the same text and neither takes anything out of the other.
+        description, _, _ = read(symbol, what)
+        brief, detail = split(prose(description), what)
         return {
             "operation": operation,
             "aliasOf": alias_of,
@@ -733,6 +822,11 @@ class Reflector:
                 self.close_over(argument_ids + returned_ids + self.always_referenced())
             ),
             "returns": self.references(deduped(returned_ids)),
+            # Declared rather than inferred, and read from the doc comment rather than from the
+            # signature: `throws` on a Swift declaration says only THAT it can fail, and every
+            # fallible call in this SDK is `throws`, so a list built from the keyword would say the
+            # same thing about all of them. What the author wrote is in the callout.
+            "throws": self.failures(description, what),
         }
 
     def functions_and_members(self):

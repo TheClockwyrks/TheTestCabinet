@@ -170,13 +170,13 @@ describe("agent surface reduction", () => {
             functions: [{ name: "readFile", operation: "files.read_file" }],
           },
         ],
-        "return-and-parameters",
+        "return+parameters+errors",
       ),
       spawn("agent-1", "reviewer", "root"),
       surface("agent-1", ["read_file"]),
     ]);
     expect(state.agents.get("root")?.surface?.docViewTypes).toBe(
-      "return-and-parameters",
+      "return+parameters+errors",
     );
     // A tool-calling instance opens no documentation and reports no mode; the reducer settles
     // that to null rather than leaving every consumer to tell absent from empty.

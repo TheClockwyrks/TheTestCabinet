@@ -473,15 +473,33 @@ pub struct GgReferenceEntry {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub returns: Vec<String>,
     /// The type views gg opens **beside** this function's own when a model opens it, under the
-    /// `return` documentation-view mode — the default.
+    /// `return` documentation-view flag **alone** — the types the signature writes in its return
+    /// position.
     ///
     /// This is the real answer, computed by the same function the run uses, rather than the
     /// transitive [`types`](Self::types) list a reader would otherwise mistake for it: the two
     /// differ, because opening is exactly one level deep and the closure is not.
+    ///
+    /// # One field per flag, each of them that flag *alone*
+    ///
+    /// An agent's `docViewTypes` is three independent toggles, so what one open places is the union
+    /// of whichever are on. Recording the union of one particular setting would describe one of
+    /// eight configurations; recording each flag on its own lets a reader assemble any of them,
+    /// which is what the page's per-type rows do — they say, for one referenced type, which flags
+    /// would place it, and say plainly when none would.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub opens_under_return: Vec<String>,
-    /// The type views gg opens beside this function's own under the `return-and-parameters` mode —
-    /// every catalogued type the signature itself names, still one level deep.
+    /// The type views gg opens beside this function's own under the `parameters` flag **alone** —
+    /// the types its arguments declare, still one level deep.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub opens_under_return_and_parameters: Vec<String>,
+    pub opens_under_parameters: Vec<String>,
+    /// The type views gg opens beside this function's own under the `errors` flag **alone** — the
+    /// error types this function's own documentation comment declares it throws.
+    ///
+    /// Its source is the catalogue's `throws` list rather than the signature: a failure is declared
+    /// in a documentation comment, in each arm's own tag for declaring one, and a signature need not
+    /// mention it at all. So this is the one of the three that is not a narrowing of
+    /// [`types`](Self::types).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub opens_under_errors: Vec<String>,
 }

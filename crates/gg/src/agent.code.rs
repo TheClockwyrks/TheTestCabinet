@@ -3282,7 +3282,7 @@ impl OperationApi for LoopOperationApi {
         })
     }
     /// Open the documentation for `name`, plus — under this agent's [type
-    /// mode](crate::docs::DocViewTypes) — the SDK types its signature mentions.
+    /// flags](crate::docs::DocViewTypes) — the SDK types it names.
     ///
     /// # The whole algorithm, and what it deliberately does not do
     ///

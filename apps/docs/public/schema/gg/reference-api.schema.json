@@ -43,15 +43,22 @@
           "description": "The name a program writes at the call site (`readFile`), or the type's own name.",
           "type": "string"
         },
-        "opensUnderReturn": {
-          "description": "The type views gg opens **beside** this function's own when a model opens it, under the\n`return` documentation-view mode — the default.\n\nThis is the real answer, computed by the same function the run uses, rather than the\ntransitive [`types`](Self::types) list a reader would otherwise mistake for it: the two\ndiffer, because opening is exactly one level deep and the closure is not.",
+        "opensUnderErrors": {
+          "description": "The type views gg opens beside this function's own under the `errors` flag **alone** — the\nerror types this function's own documentation comment declares it throws.\n\nIts source is the catalogue's `throws` list rather than the signature: a failure is declared\nin a documentation comment, in each arm's own tag for declaring one, and a signature need not\nmention it at all. So this is the one of the three that is not a narrowing of\n[`types`](Self::types).",
           "items": {
             "type": "string"
           },
           "type": "array"
         },
-        "opensUnderReturnAndParameters": {
-          "description": "The type views gg opens beside this function's own under the `return-and-parameters` mode —\nevery catalogued type the signature itself names, still one level deep.",
+        "opensUnderParameters": {
+          "description": "The type views gg opens beside this function's own under the `parameters` flag **alone** —\nthe types its arguments declare, still one level deep.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "opensUnderReturn": {
+          "description": "The type views gg opens **beside** this function's own when a model opens it, under the\n`return` documentation-view flag **alone** — the types the signature writes in its return\nposition.\n\nThis is the real answer, computed by the same function the run uses, rather than the\ntransitive [`types`](Self::types) list a reader would otherwise mistake for it: the two\ndiffer, because opening is exactly one level deep and the closure is not.\n\n# One field per flag, each of them that flag *alone*\n\nAn agent's `docViewTypes` is three independent toggles, so what one open places is the union\nof whichever are on. Recording the union of one particular setting would describe one of\neight configurations; recording each flag on its own lets a reader assemble any of them,\nwhich is what the page's per-type rows do — they say, for one referenced type, which flags\nwould place it, and say plainly when none would.",
           "items": {
             "type": "string"
           },

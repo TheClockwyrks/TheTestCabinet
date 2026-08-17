@@ -67,38 +67,59 @@ export function apiCallSpellings(
 }
 
 /**
- * What one documentation mode did, said plainly — the hover behind every place the mode is
- * named.
+ * What one documentation-type setting did, said plainly — the hover behind every place the
+ * setting is named.
  *
  * It lives beside the surface wording rather than in a component because two views show the
- * mode and they must say the same thing about it: an instance's chip in the explorer, and the
- * profile-level surface card a reader compares two arms of a within-run A/B on. The mode is
- * the *cause* whose effect that card's documentation figures are, and a card that showed the
- * cost without the arm would be showing an effect with nothing on it.
+ * setting and they must say the same thing about it: an instance's chip in the explorer, and
+ * the profile-level surface card a reader compares two arms of a within-run A/B on. The
+ * setting is the *cause* whose effect that card's documentation figures are, and a card that
+ * showed the cost without the arm would be showing an effect with nothing on it.
  *
  * `subject` is who the sentence is about, because the two callers are at different grains: one
  * instance, or every instance of a profile.
  *
- * The unknown case is a mode from a newer gg than this console: it is named rather than
+ * The recorded id is the enabled flags joined with `+`, in gg's own fixed order, and `none`
+ * when every flag is off — so the sentence is assembled a clause per flag rather than matched
+ * against a closed list of arms. A flag from a newer gg than this console is named rather than
  * explained, because a wrong explanation of a real setting is worse than none.
  */
 export function docViewTypesPhrase(
-  mode: string,
+  types: string,
   subject: "instance" | "profile" = "instance",
 ): string {
+  const CLAUSES: Readonly<Record<string, string>> = {
+    return: "a function's return type",
+    parameters: "the types its arguments declare",
+    errors: "the failures its documentation declares it throws",
+  };
+  const flags = types
+    .split("+")
+    .map((flag) => flag.trim())
+    .filter((flag) => flag.length > 0);
+  const unknown = flags.filter((flag) => !(flag in CLAUSES));
+  const known = flags
+    .filter((flag) => flag in CLAUSES)
+    .map((flag) => CLAUSES[flag] as string);
   const what =
-    mode === "off"
+    types.trim() === "none"
       ? "opened no type documentation beside a function it looked up"
-      : mode === "return"
-        ? "opened the documentation of a function's return type beside it"
-        : mode === "return-and-parameters"
-          ? "opened the documentation of every type a function's signature names — its return and its arguments"
-          : "ran under a documentation mode this console does not know";
+      : unknown.length > 0
+        ? `ran with the documentation types \`${types}\`, some of which this console does not know`
+        : known.length > 0
+          ? `opened, beside a function it looked up, the documentation of ${list(known)}`
+          : "ran under a documentation-type setting this console does not know";
   const who =
     subject === "profile" ? "Every instance of this agent" : "This instance";
   const whose =
     subject === "profile"
       ? "these agents' own documentation band"
       : "this agent's own documentation band";
-  return `${who} ${what}. It is a per-agent setting, so another agent of the same run may have been on another mode; what it cost is ${whose}.`;
+  return `${who} ${what}. It is a per-agent setting, so another agent of the same run may have had other types switched on; what it cost is ${whose}.`;
+}
+
+/** `a`, `a and b`, `a, b and c` — the clause list [docViewTypesPhrase] reads out. */
+function list(parts: ReadonlyArray<string>): string {
+  if (parts.length <= 1) return parts[0] ?? "";
+  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
 }

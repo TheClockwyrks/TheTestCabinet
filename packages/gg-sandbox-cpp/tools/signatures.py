@@ -82,6 +82,16 @@ ALIAS_TAG = re.compile(r"^<ggop-alias>([a-z_]+\.[a-z_]+)</ggop-alias>$")
 #: The line a module's namespace carries to name which of gg's cross-arm modules it is.
 MODULE_TAG = re.compile(r"^<ggmodule>([a-z_]+)</ggmodule>$")
 
+#: The leading name of a ``\throws`` block's prose — the fallback for reading which type a failure
+#: was declared as.
+#:
+#: clang fills a ``BlockCommandComment``'s ``args`` for only the handful of commands its
+#: ``CommandTraits`` table gives arguments to, and ``\throws`` is one of them *today*. When it is
+#: not — an older clang, or ``\throw``/``\exception`` reaching a different row of that table — the
+#: type is simply the first token of the prose, because that is where the author wrote it. Matching
+#: it is the difference between reading what the author declared and reading nothing.
+THROWN_NAME = re.compile(r"[A-Za-z_]\w*(?:::[A-Za-z_]\w*)*")
+
 #: The longest a brief may be, in characters.
 #:
 #: The same cap ``crates/gg/src/sandbox/language/register.rs`` holds every arm's catalogue to, and it
@@ -388,6 +398,37 @@ def with_tail(detail, comment):
     return f"{detail}\n\n{written}" if detail else written
 
 
+def thrown_names(comment):
+    """The type each ``\\throws`` block in one comment **declares**, in the order they were written.
+
+    The structured half of what :func:`with_tail` renders as prose, and the same blocks read a
+    second time rather than a second place for an author to say it: the sentence goes on saying
+    exactly what it said, and this is the list beside it.
+
+    Two ways of getting at the name, because clang gives the type in two places depending on which
+    row of its command table ``\\throws`` lands on. The **parsed argument** is preferred where there
+    is one — clang split it off the prose itself, so it is the type and nothing else — and where
+    ``args`` is empty the type is the leading name of the prose, which is where the author wrote it
+    either way. Only an explicitly declared failure counts: a comment with no ``\\throws`` block
+    yields nothing, which is a record of what the author wrote rather than a claim the call cannot
+    fail.
+    """
+    out = []
+    for arguments, prose in commands(comment, "throws"):
+        written = next((argument for argument in arguments if argument), None)
+        if written is None:
+            found = THROWN_NAME.match(prose.lstrip())
+            if found is None:
+                raise Failure(
+                    "a `\\throws` block names no type — clang parsed no argument off it and its "
+                    f"prose does not open with a name: {prose!r}"
+                )
+            written = found.group(0)
+        if written not in out:
+            out.append(written)
+    return out
+
+
 # ------------------------------------------------------------------------------------------------
 # Types
 # ------------------------------------------------------------------------------------------------
@@ -677,6 +718,18 @@ class Reflector:
                     raise Failure(f"two types are written `{declared.spelled}`")
                 self.declared[declared.spelled] = declared
 
+        # Both names every declaration answers to, back to the key `self.declared` holds it under.
+        # A `\throws` block is prose rather than a signature, and this SDK's comments write the
+        # fully-qualified `gg::core::api_error` there — which is the right spelling for a model to
+        # read and the one string `self._spellings` deliberately cannot match, since the `core::`
+        # inside it is preceded by a `:`. Both forms resolve here so that a declared failure is
+        # read the same whichever way its author qualified it, and a name that is neither is
+        # refused rather than guessed at.
+        self.by_written = {}
+        for spelled, declared in self.declared.items():
+            self.by_written[spelled] = spelled
+            self.by_written[declared.fqn] = spelled
+
         self._spellings = re.compile(
             r"(?<![\w:])("
             + "|".join(re.escape(spelled) for spelled in sorted(self.declared, reverse=True))
@@ -819,6 +872,27 @@ class Reflector:
             for spelled in spellings
         ]
 
+    def thrown(self, comment, what):
+        """The declared types one function's own comment says it throws, as `self.declared` keys.
+
+        Every one of them has to be a type this catalogue declares, because the one reader the list
+        exists for opens a documentation view of each: a name that resolves to nothing is a view
+        that cannot be opened, and gg's own name rule checks exactly that a step later. So an
+        undeclared name is refused HERE, naming the function it was written on, rather than reaching
+        a gate that would name it three steps away.
+        """
+        out = []
+        for written in thrown_names(comment):
+            spelled = self.by_written.get(written)
+            if spelled is None:
+                raise Failure(
+                    f"{what} declares it throws `{written}`, which is not a type this catalogue "
+                    "declares — a declared failure has to name something a model can open"
+                )
+            if spelled not in out:
+                out.append(spelled)
+        return out
+
     # -- functions -------------------------------------------------------------------------------
 
     def shape(self, node, name, what):
@@ -905,6 +979,9 @@ class Reflector:
                 self.referenced(kind, arguments, what)
             self.referenced(returns_of(node), returned, what)
         brief, detail = described(documented, what)
+        # Read off the SAME declaration the prose came from, for the same reason the tail is: a
+        # `\throws` block describes the shape whose arguments the description covers.
+        thrown = self.thrown(comment_of(documented), what)
         return {
             "operation": operation,
             "aliasOf": alias_of,
@@ -922,13 +999,17 @@ class Reflector:
             # fullest overload — because `\returns` and `\throws` describe that shape's arguments.
             "detail": with_tail(detail, comment_of(documented)),
             "signatures": shapes,
-            # The closure runs first, because it is what records the declarations both lists then
-            # name; `returns` itself is the DIRECT return position and nothing beyond it, since
-            # what it feeds is a one-level rule.
+            # The closure runs first, because it is what records the declarations the three lists
+            # then name; `returns` itself is the DIRECT return position and nothing beyond it, and
+            # `throws` exactly what a `\throws` block declared, since what they feed is a one-level
+            # rule. Closing over the thrown types adds nothing today — every failure in this SDK is
+            # a `core::api_error`, which `ALWAYS_REFERENCED` already reaches — and it is what keeps
+            # a declared failure a declaration this catalogue carries when someone declares another.
             "types": self.references(
-                self.close_over(arguments + returned + list(ALWAYS_REFERENCED))
+                self.close_over(arguments + returned + list(ALWAYS_REFERENCED) + thrown)
             ),
             "returns": self.references(returned),
+            "throws": self.references(thrown),
         }
 
     def functions_and_members(self):

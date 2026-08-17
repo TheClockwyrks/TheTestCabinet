@@ -3131,18 +3131,27 @@ export type GgTelemetryKind =
        */
       programLanguage?: GgProgramLanguage;
       /**
-       * Which SDK types an `openDocsView` of a function opens **beside** it for this instance —
-       * `off` (none), `return` (the return position, the default), or `return-and-parameters`
-       * (everything the signature names). `None` for a tool-calling instance, which opens no
-       * documentation views.
+       * Which SDK types an `openDocsView` of a function opens **beside** it for this instance:
+       * the enabled `docViewTypes` flags joined with `+` in gg's own fixed order — `return`
+       * (what the signature hands back), `parameters` (what its arguments declare), `errors`
+       * (the failures its documentation comment declares) — so the value is one of `none`,
+       * `return`, `parameters`, `errors`, `return+parameters`, `return+errors`,
+       * `parameters+errors` or `return+parameters+errors`. `None` for a tool-calling instance,
+       * which opens no documentation views.
        *
-       * The value is the mode gg **resolved**, which since an unreadable one is refused at
-       * launch is always the mode the profile wrote. It is reported as the resolved value rather
-       * than the raw text so a profile that named none reports the default it actually ran on
+       * **A joined string rather than three fields**, because what a reader of the stream needs
+       * is the *arm*: a configuration is one thing an agent ran under, and joining it here means
+       * a group-by on this field is a group-by on the arm rather than on a tuple every consumer
+       * has to reassemble. `none` rather than the empty string for the same reason, since an
+       * empty string is what a reader could not tell from a record carrying nothing.
+       *
+       * The value is the set gg **resolved**, which since an unreadable one is refused at
+       * launch is always the set the profile wrote. It is reported as the resolved value rather
+       * than the raw object so a profile that named none reports the defaults it actually ran on
        * instead of an absence.
        *
        * It is reported for one reason, and the reason decides the field rather than decorating
-       * it. The three modes are meant to be compared against each other — opening the return
+       * it. The flags are meant to be compared against each other — opening the return
        * type is not obviously cheaper than opening nothing, since a returned record's own fields
        * may send the agent back for two more lookups — and the comparison is only worth anything
        * if a reader of the events can tell which arm an agent was on. Joined by
@@ -3150,8 +3159,8 @@ export type GgTelemetryKind =
        * [context breakdown](Self::ContextBreakdown) — the
        * [documentation band](GgContextSource::DocsView) and the
        * [search band](GgContextSource::SearchResults) beside it — and to its
-       * `views.open_docs_view` [calls](Self::ApiCall), it is what makes *"which mode was this
-       * agent on, and what did it cost"* answerable from the stream alone.
+       * `views.open_docs_view` [calls](Self::ApiCall), it is what makes *"which types was this
+       * agent shown, and what did it cost"* answerable from the stream alone.
        */
       docViewTypes?: string;
       /**
@@ -4224,18 +4233,27 @@ export type GgTelemetryEvent = {
        */
       programLanguage?: GgProgramLanguage;
       /**
-       * Which SDK types an `openDocsView` of a function opens **beside** it for this instance —
-       * `off` (none), `return` (the return position, the default), or `return-and-parameters`
-       * (everything the signature names). `None` for a tool-calling instance, which opens no
-       * documentation views.
+       * Which SDK types an `openDocsView` of a function opens **beside** it for this instance:
+       * the enabled `docViewTypes` flags joined with `+` in gg's own fixed order — `return`
+       * (what the signature hands back), `parameters` (what its arguments declare), `errors`
+       * (the failures its documentation comment declares) — so the value is one of `none`,
+       * `return`, `parameters`, `errors`, `return+parameters`, `return+errors`,
+       * `parameters+errors` or `return+parameters+errors`. `None` for a tool-calling instance,
+       * which opens no documentation views.
        *
-       * The value is the mode gg **resolved**, which since an unreadable one is refused at
-       * launch is always the mode the profile wrote. It is reported as the resolved value rather
-       * than the raw text so a profile that named none reports the default it actually ran on
+       * **A joined string rather than three fields**, because what a reader of the stream needs
+       * is the *arm*: a configuration is one thing an agent ran under, and joining it here means
+       * a group-by on this field is a group-by on the arm rather than on a tuple every consumer
+       * has to reassemble. `none` rather than the empty string for the same reason, since an
+       * empty string is what a reader could not tell from a record carrying nothing.
+       *
+       * The value is the set gg **resolved**, which since an unreadable one is refused at
+       * launch is always the set the profile wrote. It is reported as the resolved value rather
+       * than the raw object so a profile that named none reports the defaults it actually ran on
        * instead of an absence.
        *
        * It is reported for one reason, and the reason decides the field rather than decorating
-       * it. The three modes are meant to be compared against each other — opening the return
+       * it. The flags are meant to be compared against each other — opening the return
        * type is not obviously cheaper than opening nothing, since a returned record's own fields
        * may send the agent back for two more lookups — and the comparison is only worth anything
        * if a reader of the events can tell which arm an agent was on. Joined by
@@ -4243,8 +4261,8 @@ export type GgTelemetryEvent = {
        * [context breakdown](Self::ContextBreakdown) — the
        * [documentation band](GgContextSource::DocsView) and the
        * [search band](GgContextSource::SearchResults) beside it — and to its
-       * `views.open_docs_view` [calls](Self::ApiCall), it is what makes *"which mode was this
-       * agent on, and what did it cost"* answerable from the stream alone.
+       * `views.open_docs_view` [calls](Self::ApiCall), it is what makes *"which types was this
+       * agent shown, and what did it cost"* answerable from the stream alone.
        */
       docViewTypes?: string;
       /**

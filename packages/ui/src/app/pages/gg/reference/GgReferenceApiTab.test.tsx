@@ -143,15 +143,14 @@ const TYPESCRIPT: GgReferenceApi = {
       brief: "Read a file, as either text or a picture.",
       body: TS_READ_FILE_BODY,
       operation: "files.read_file",
-      // The transitive closure, of which the two "opens" sets are one-level subsets — the
-      // discrepancy the page used to explain in a paragraph and now marks per row.
+      // The transitive closure, of which the two signature "opens" sets are one-level
+      // subsets — the discrepancy the page used to explain in a paragraph and now marks
+      // per row. `opensUnderErrors` is the column that is NOT read out of the signature.
       types: ["gg.files.ReadOptions", "gg.files.FileRead", "gg.core.ApiError"],
       returns: ["gg.files.FileRead"],
       opensUnderReturn: ["gg.files.FileRead"],
-      opensUnderReturnAndParameters: [
-        "gg.files.ReadOptions",
-        "gg.files.FileRead",
-      ],
+      opensUnderParameters: ["gg.files.ReadOptions"],
+      opensUnderErrors: ["gg.core.ApiError"],
     },
     {
       kind: "type",
@@ -225,7 +224,6 @@ const RUST: GgReferenceApi = {
       types: ["gg::files::FileRead"],
       returns: ["gg::files::FileRead"],
       opensUnderReturn: ["gg::files::FileRead"],
-      opensUnderReturnAndParameters: ["gg::files::FileRead"],
     },
     {
       kind: "function",
@@ -379,15 +377,28 @@ describe("GgReferenceApiTab", () => {
       within(returned).getByText("opens under return"),
     ).toBeInTheDocument();
 
-    // The declaration that opens only in the wider mode is marked as such and NOT as one
-    // the default mode appends — a reader sizing a lookup's context cost reads exactly
-    // this distinction, and it is the one the page used to explain in a paragraph.
+    // The declaration only the `parameters` flag places is marked as such and NOT as one
+    // `return` appends — a reader sizing a lookup's context cost reads exactly this
+    // distinction, and it is the one the page used to explain in a paragraph. Each chip
+    // is one flag ALONE, so the reader can union the columns their own run has on.
     const wider = screen.getByText("gg.files.ReadOptions").closest("li")!;
     expect(
-      within(wider).getByText("opens under return-and-parameters"),
+      within(wider).getByText("opens under parameters"),
     ).toBeInTheDocument();
     expect(
       within(wider).queryByText("opens under return"),
+    ).not.toBeInTheDocument();
+
+    // The declared failure is placed by `errors` and by neither of the signature flags —
+    // it is not written into the signature at all, which is the whole reason the flag
+    // exists.
+    const failure = screen.getByText("gg.core.ApiError").closest("li")!;
+    expect(within(failure).getByText("opens under errors")).toBeInTheDocument();
+    expect(
+      within(failure).queryByText("opens under return"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(failure).queryByText("opens under parameters"),
     ).not.toBeInTheDocument();
     // And it is plain text, not a link: this fixture's document carries no entry for it,
     // and a page that linked anyway would promise a lookup it can see it cannot serve.

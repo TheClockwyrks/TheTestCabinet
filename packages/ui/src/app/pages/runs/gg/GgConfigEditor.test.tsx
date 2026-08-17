@@ -247,7 +247,9 @@ describe("an agent's type", () => {
     openTab("APIs");
     const panel = screen.getByRole("group", { name: "Responses as code" });
     // Its params are the same controls a capability's are…
-    expect(within(panel).getByLabelText(/Documentation types/)).toBeDefined();
+    expect(
+      within(panel).getByRole("group", { name: "Documentation types" }),
+    ).toBeDefined();
     // …but it has no switch of its own: the type selector is the switch.
     expect(
       screen.queryByText("responses-as-code", { selector: "span" }),
@@ -324,7 +326,9 @@ describe("an agent's type", () => {
     fireEvent.click(typeSegment("RaC"));
     openTab("APIs");
     const panel = screen.getByRole("group", { name: "Responses as code" });
-    select(within(panel).getByLabelText(/Documentation types/), "off");
+    const errors = docViewTypeBox(panel, "errors");
+    expect(errors.checked).toBe(true);
+    fireEvent.click(errors);
 
     openTab("Agent");
     fireEvent.click(typeSegment("Tools"));
@@ -341,42 +345,57 @@ describe("an agent's type", () => {
     fireEvent.click(typeSegment("RaC"));
     openTab("APIs");
     expect(
-      (
-        within(
-          screen.getByRole("group", { name: "Responses as code" }),
-        ).getByLabelText(/Documentation types/) as HTMLSelectElement
-      ).value,
-    ).toBe("off");
+      docViewTypeBox(
+        screen.getByRole("group", { name: "Responses as code" }),
+        "errors",
+      ).checked,
+    ).toBe(false);
   });
 });
 
-// The responses-as-code documentation-type mode is an ungated picker — the type has no
+/** One `docViewTypes` checkbox by the flag id its label opens with. */
+function docViewTypeBox(panel: HTMLElement, flag: string): HTMLInputElement {
+  const group = within(panel).getByRole("group", {
+    name: "Documentation types",
+  });
+  return (within(group).getAllByRole("checkbox") as HTMLInputElement[]).find(
+    (box) => box.parentElement?.textContent?.startsWith(flag),
+  )!;
+}
+
+// The responses-as-code documentation types are three ungated toggles — the type has no
 // implementations, so the control is offered whenever the agent is a code agent. The
 // catalog entry is the whole of this feature's UI, so rendering the form is the only
-// thing that says the generic param grid picked it up: an option that never appears is an
+// thing that says the generic param grid picked it up: a flag that never appears is an
 // arm of the study an operator can only reach by hand-editing the configuration's JSON.
-describe("the responses-as-code documentation-type mode", () => {
-  it("is offered whenever the agent is a code agent, and holds what is chosen in it", () => {
+//
+// Each flag sits at its own default — `return` and `errors` on, `parameters` off — and a
+// subtractive control could not express asking for `parameters` at all, so what a checkbox
+// does is only visible by rendering it and clicking.
+describe("the responses-as-code documentation types", () => {
+  it("opens with `parameters` off and the other two on", () => {
+    renderCaps(draftWith("responses-as-code", "", {}, "rac"));
+    const panel = screen.getByRole("group", { name: "Responses as code" });
+    expect(docViewTypeBox(panel, "return").checked).toBe(true);
+    expect(docViewTypeBox(panel, "errors").checked).toBe(true);
+    const parameters = docViewTypeBox(panel, "parameters");
+    expect(parameters.checked).toBe(false);
+    // The label carries the asymmetry, since the other two default the opposite way.
+    expect(parameters.parentElement?.textContent).toContain("off by default");
+  });
+
+  it("holds a stored configuration and moves one flag without moving the rest", () => {
     renderCaps(
-      draftWith(
-        "responses-as-code",
-        "",
-        { docViewTypes: "return-and-parameters" },
-        "rac",
-      ),
+      draftWith("responses-as-code", "", { docViewTypes: "parameters" }, "rac"),
     );
     const panel = screen.getByRole("group", { name: "Responses as code" });
+    expect(docViewTypeBox(panel, "parameters").checked).toBe(true);
 
-    const field = within(panel).getByLabelText(
-      /Documentation types/,
-    ) as HTMLSelectElement;
-    expect(field.value).toBe("return-and-parameters");
-
-    select(field, "off");
-    expect(
-      (within(panel).getByLabelText(/Documentation types/) as HTMLSelectElement)
-        .value,
-    ).toBe("off");
+    const errors = docViewTypeBox(panel, "errors");
+    fireEvent.click(errors);
+    expect(docViewTypeBox(panel, "errors").checked).toBe(false);
+    expect(docViewTypeBox(panel, "return").checked).toBe(true);
+    expect(docViewTypeBox(panel, "parameters").checked).toBe(true);
   });
 });
 

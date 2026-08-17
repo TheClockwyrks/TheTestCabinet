@@ -592,19 +592,25 @@ function EntryDetail({
 }
 
 /**
- * The declarations a function's signature reaches, each linked to its own entry — and,
- * for each, whether opening this function opens it too.
+ * The declarations one entry reaches, each linked to its own entry — and, for each, which
+ * of the agent's three `docViewTypes` flags would open it beside this function.
  *
  * Names rather than declarations. The old single-arm document expanded every referenced
  * declaration into every function that mentioned it, which is what made one arm's document
  * four times the size of all eleven of these; the type's own entry is in this same
  * document, so the page links to it instead.
  *
- * The two "opens" columns are gg's own answer, computed by the function a run calls,
- * rather than the guess a reader would otherwise make from the list: opening a function
- * appends type views exactly **one** level deep and only for the mode the agent's
- * documentation view is configured in, while this list is the transitive closure. The
- * page shows both sets, so there is no discrepancy to explain in prose.
+ * The three "opens under" columns are gg's own answer, computed by the function a run
+ * calls, rather than the guess a reader would otherwise make from the list: opening a
+ * function appends type views exactly **one** level deep and only for the flags the
+ * agent's `docViewTypes` has on, while this list is the transitive closure. Each column is
+ * that flag ALONE, and the flags are independent, so a reader can read off any of the
+ * eight configurations by unioning the columns it has on — which is why a row carrying no
+ * chip at all says so out loud rather than leaving the reader to infer it from silence.
+ *
+ * The `errors` column is the one that is not a subset of the closure beside it: a declared
+ * failure is written in a documentation comment rather than in a signature, so it can name
+ * a type nothing in the signature does.
  */
 function TypeReferences({
   entry,
@@ -616,16 +622,20 @@ function TypeReferences({
   onSelect: (fqn: string) => void;
 }) {
   const rows = useMemo(() => {
-    const opensDefault = new Set(entry.opensUnderReturn ?? []);
-    const opensAll = new Set(entry.opensUnderReturnAndParameters ?? []);
+    // One entry per flag, in gg's own fixed order, so the chips on a row read in the same
+    // order the recorded `docViewTypes` id joins them in.
+    const flags: ReadonlyArray<{ id: string; opens: ReadonlySet<string> }> = [
+      { id: "return", opens: new Set(entry.opensUnderReturn ?? []) },
+      { id: "parameters", opens: new Set(entry.opensUnderParameters ?? []) },
+      { id: "errors", opens: new Set(entry.opensUnderErrors ?? []) },
+    ];
     const returned = new Set(entry.returns ?? []);
     // The closure first, in the document's own order, then anything the opens/returns
-    // sets name that it does not — which is nothing today on any of the eleven arms, and
-    // is here so that if it ever happens the page under-reports nothing rather than
-    // silently dropping a name gg computed.
+    // sets name that it does not — which the `errors` column genuinely can, since a
+    // declared failure is not read out of the signature the closure is built from.
     const ordered = [
       ...(entry.types ?? []),
-      ...[...returned, ...opensAll, ...opensDefault].filter(
+      ...[...returned, ...flags.flatMap((flag) => [...flag.opens])].filter(
         (fqn) => !(entry.types ?? []).includes(fqn),
       ),
     ];
@@ -639,8 +649,9 @@ function TypeReferences({
         // lying about a document it can see it does not have.
         known: arm.entries.some((other) => other.fqn === fqn),
         returned: returned.has(fqn),
-        opensDefault: opensDefault.has(fqn),
-        opensAll: opensAll.has(fqn),
+        opensUnder: flags
+          .filter((flag) => flag.opens.has(fqn))
+          .map((flag) => flag.id),
       }));
   }, [arm.entries, entry]);
 
@@ -649,11 +660,12 @@ function TypeReferences({
   return (
     <Section label="Types this signature reaches">
       <p className={styles.note}>
-        Every declaration the signature reaches, <em>transitively closed</em>.
-        Opening this function mid-session appends type views exactly{" "}
-        <em>one</em> level deep, and only those the agent&rsquo;s
-        documentation-view mode selects — which of these those are is marked on
-        each row.
+        Every declaration the signature reaches, <em>transitively closed</em>,
+        plus the failures this entry&rsquo;s own documentation declares. Opening
+        this function mid-session appends type views exactly <em>one</em> level
+        deep, and only those the agent&rsquo;s <code>docViewTypes</code> flags
+        select — each row is marked with the flags that would place it, and each
+        chip is that flag on its own.
       </p>
       <ul className={styles.typeRefs}>
         {rows.map((row) => (
@@ -670,15 +682,16 @@ function TypeReferences({
               <span className={styles.typeRefName}>{row.fqn}</span>
             )}
             {row.returned && <span className={styles.chip}>returned</span>}
-            {row.opensDefault && (
-              <span className={`${styles.chip} ${styles.chipKey}`}>
-                opens under return
+            {row.opensUnder.map((flag) => (
+              <span
+                key={flag}
+                className={`${styles.chip} ${flag === "return" ? styles.chipKey : ""}`}
+              >
+                opens under {flag}
               </span>
-            )}
-            {row.opensAll && (
-              <span className={styles.chip}>
-                opens under return-and-parameters
-              </span>
+            ))}
+            {row.opensUnder.length === 0 && (
+              <span className={styles.chip}>opened by no flag</span>
             )}
           </li>
         ))}

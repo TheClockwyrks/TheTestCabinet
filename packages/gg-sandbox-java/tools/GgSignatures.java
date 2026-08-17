@@ -7,11 +7,14 @@ import com.sun.source.doctree.EntityTree;
 import com.sun.source.doctree.LinkTree;
 import com.sun.source.doctree.LiteralTree;
 import com.sun.source.doctree.ParamTree;
+import com.sun.source.doctree.ReferenceTree;
 import com.sun.source.doctree.ReturnTree;
 import com.sun.source.doctree.StartElementTree;
 import com.sun.source.doctree.TextTree;
 import com.sun.source.doctree.ThrowsTree;
 import com.sun.source.doctree.UnknownBlockTagTree;
+import com.sun.source.util.DocTreePath;
+import com.sun.source.util.TreePath;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -485,6 +488,13 @@ public final class GgSignatures implements Doclet {
         for (ExecutableElement overload : group) {
             gather(overload.getReturnType(), returns);
         }
+        // Every overload's `@throws`, unioned, for the reason {@link #merged} unions their prose:
+        // a failure is declared per declaration and an overload group is one function, so an error
+        // only the two-argument form documents is still an error this function can fail with.
+        Set<String> thrown = new LinkedHashSet<>();
+        for (ExecutableElement overload : group) {
+            thrown.addAll(declaredFailures(overload, what));
+        }
 
         Prose prose = merged(group, overloads, what);
         Json entry = Json.object();
@@ -505,6 +515,10 @@ public final class GgSignatures implements Doclet {
         entry.put("detail", prose.detail() == null ? Json.NULL : Json.of(prose.detail()));
         entry.put("signatures", Json.array(signatures));
         entry.put("returns", references(closure(returns)));
+        // Exactly what the comment declared, with no closure taken over it: what the `errors` flag
+        // of an agent's `docViewTypes` opens is the failures this author wrote down, and a type
+        // reached only from one of them is reached by `types` beside it rather than by this.
+        entry.put("throws", references(thrown));
         entry.put("types", references(closure(referenced)));
         return entry;
     }
@@ -967,6 +981,60 @@ public final class GgSignatures implements Doclet {
             }
         }
         return out;
+    }
+
+    /**
+     * The <b>failures a declaration's own doc comment declares</b>, as the catalogue keys that open
+     * them.
+     *
+     * <p>Only a written {@code @throws} counts. Nothing is read out of the method's {@code throws}
+     * clause, out of its body, or out of what some other arm declared for the same operation: an
+     * empty answer here is a truthful record that the author wrote no failure down, rather than a
+     * claim the call cannot fail. It is the structured half of a sentence {@link #documented}
+     * already carries into the entry's detail, and that sentence is untouched.
+     *
+     * <p>Each name is <b>resolved by javac</b> rather than matched as a string — see
+     * {@link #resolved} — and one that resolves to nothing this catalogue declares is an error on
+     * the author: the one reader this field has opens a documentation view of every name in it, and
+     * a name that opens nothing is the one line of a view that answers a model with silence.
+     */
+    private Set<String> declaredFailures(Element element, String what) {
+        Set<String> out = new LinkedHashSet<>();
+        for (ThrowsTree thrown : throwsTags(element)) {
+            ReferenceTree named = thrown.getExceptionName();
+            String fqn = resolved(element, named);
+            if (fqn == null) {
+                complain(what + " declares `@throws " + named.getSignature() + "`, and that names "
+                        + "no type this catalogue declares — a declared failure a model is shown "
+                        + "and cannot open is a name that answers nothing");
+                continue;
+            }
+            out.add(fqn);
+        }
+        return out;
+    }
+
+    /**
+     * The catalogued type one {@code @throws} names, or {@code null} where it names none.
+     *
+     * <p>The name is put back to <b>javac</b>, through the doc-tree path the tag was read on, so
+     * what is emitted is the type the compiler resolved the reference to under that file's imports
+     * rather than the spelling the author happened to write. A simple name written in one package
+     * and a qualified one written in another are the same type to this and would not be to a string
+     * match — and a string match is exactly how a catalogue comes to carry a key that opens nothing.
+     */
+    private String resolved(Element element, ReferenceTree reference) {
+        TreePath path = environment.getDocTrees().getPath(element);
+        DocCommentTree comment = environment.getDocTrees().getDocCommentTree(element);
+        if (path == null || comment == null) {
+            return null;
+        }
+        Element named = environment.getDocTrees()
+                .getElement(new DocTreePath(new DocTreePath(path, comment), reference));
+        if (named instanceof TypeElement type && catalogued.containsKey(fqn(type))) {
+            return fqn(type);
+        }
+        return null;
     }
 
     /**

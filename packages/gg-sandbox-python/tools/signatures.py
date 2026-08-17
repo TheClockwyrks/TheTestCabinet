@@ -40,6 +40,9 @@ reflector's whole job is to fail the build rather than emit a gap. Concretely:
   * every **parameter** a signature declares carries an `Args:` entry, and an `Args:` entry naming
     something the signature does not declare is an error too, so a renamed argument cannot leave its
     description behind under the old name;
+  * every **failure** an entry declares is the `Raises:` section's own type, emitted as a resolved
+    reference beside the sentence it was declared in — the prose is unchanged, and a `Raises:` naming
+    a type this SDK does not declare is an error rather than a name a model cannot open;
   * every **type** the catalogue carries is documented, and so is each of its members;
   * every type a signature refers to is **resolved** to the fully-qualified name it is declared
     under, and the reference closure is **transitive**, so a type reachable only through another
@@ -358,6 +361,41 @@ def documentation(function: griffe.Function, where: str) -> Prose:
         return prose
     detail = "\n\n".join(part for part in [prose.detail, *folded] if part)
     return Prose(brief=prose.brief, detail=detail)
+
+
+def raised(function: griffe.Function, where: str) -> list[str]:
+    """The exception types the docstring's `Raises:` section declares, as it writes them.
+
+    This is the *structured* half of the `Raises:` block, and it sits beside the sentence
+    `documentation` folds into the detail rather than replacing it: the prose says what each failure
+    means, and this says which type it is, so the `errors` flag of an agent's `docViewTypes` has a
+    name it can open a documentation view of.
+
+    **Only what the author declared counts.** Nothing is read out of a body, out of what some other
+    arm declared for the same operation, or out of the fact that every call in this SDK can fail — a
+    function whose docstring has no `Raises:` section carries an empty list, and that is a truthful
+    record of what was written rather than a claim the call cannot fail.
+
+    griffe parses a Google-style `Raises:` into its own section and hands the name before the colon
+    back as a structured `annotation`, so the type is *read* rather than scraped back out of the
+    sentence. An entry with nothing before the colon is refused where the author is standing: it is a
+    description filed under no type, which reaches a model as a failure it cannot look up. The same
+    type declared twice — two `ApiError:` lines, one per error code — is one type, so it is listed
+    once here while both sentences go on reaching the detail.
+    """
+    names: list[str] = []
+    for section in sections(function, griffe.DocstringSectionKind.raises):
+        for entry in section.value:
+            written = annotation_of(entry.annotation)
+            if not written:
+                raise SystemExit(
+                    f"{where} documents a `Raises:` entry with no exception type before the colon. "
+                    "A failure is declared as `<Type>: <what it means>`, and a description filed "
+                    "under no type is one a model cannot open."
+                )
+            if written not in names:
+                names.append(written)
+    return names
 
 
 def parameter_docs(function: griffe.Function, where: str) -> dict[str, str]:
@@ -710,6 +748,29 @@ class Resolver:
             for declaration in self.closure(*written)
         ]
 
+    def thrown(self, written: Iterable[str], where: str) -> list[dict[str, str]]:
+        """The declared types a `Raises:` section names, as resolved references, in its own order.
+
+        A resolution rather than a filter, and that is what separates it from `direct` beside it: a
+        name this SDK does not declare is a **build error** rather than a reference quietly dropped.
+        The one reader of this list opens a documentation view of each name in it, so a name that
+        resolves to nothing would be the single entry in a view that answers nothing — and the
+        fully-qualified-name rule on the host side (`signatures.fqn.rs`) resolves every one of them
+        against this same catalogue's declarations anyway, so dropping one here would only move the
+        failure somewhere the author is not standing.
+        """
+        references: list[dict[str, str]] = []
+        for name in written:
+            declaration = self.by_name.get(name)
+            if declaration is None:
+                raise SystemExit(
+                    f"{where} declares that it raises `{name}`, which this SDK does not declare as "
+                    "a type. A declared failure is opened as a documentation view of the type it "
+                    "names, so one naming nothing is a name a model can read and cannot look up."
+                )
+            references.append({"spelled": declaration.name, "fqn": declaration.fqn})
+        return references
+
     def direct(self, written: str) -> list[dict[str, str]]:
         """Only the declarations `written` itself names, as resolved references.
 
@@ -919,7 +980,12 @@ def build() -> str:
         returned = annotation_of(function.returns)
         written = [parameter["type"] for parameter in signature["parameters"]]
         types = resolver.references(returned, *written, *ALWAYS_REFERENCED)
+        throws = resolver.thrown(raised(function, where), where)
         reached.update(reference["fqn"] for reference in types)
+        # A declared failure is a type a documentation view can be opened of — that is what the
+        # `errors` flag of an agent's `docViewTypes` does with this list — so a type nothing else
+        # refers to is still reachable once some function declares it thrown.
+        reached.update(reference["fqn"] for reference in throws)
         emitted.append(
             {
                 "operation": operation,
@@ -940,6 +1006,10 @@ def build() -> str:
                 "detail": prose.detail,
                 "signatures": [signature],
                 "returns": resolver.direct(returned),
+                # What this function's own docstring declares it raises, resolved. The sentence it
+                # was read out of goes on reaching the detail exactly as it did: this is the
+                # structured list beside the prose rather than the prose moved.
+                "throws": throws,
                 "types": types,
             }
         )
@@ -966,7 +1036,9 @@ def build() -> str:
             method_returns = annotation_of(method.returns)
             written = [parameter["type"] for parameter in signature["parameters"]]
             types = resolver.references(method_returns, *written, *ALWAYS_REFERENCED)
+            throws = resolver.thrown(raised(method, where), where)
             reached.update(reference["fqn"] for reference in types)
+            reached.update(reference["fqn"] for reference in throws)
             emitted.append(
                 {
                     "operation": operation,
@@ -981,6 +1053,7 @@ def build() -> str:
                     "detail": prose.detail,
                     "signatures": [signature],
                     "returns": resolver.direct(method_returns),
+                    "throws": throws,
                     "types": types,
                 }
             )

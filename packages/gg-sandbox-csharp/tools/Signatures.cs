@@ -454,6 +454,7 @@ internal static class Signatures
             WriteProse(writer, call.Overloads, $"`{qualified}`");
             WriteSignatures(writer, call.Overloads);
             WriteTypeReferences(writer, "returns", ReturnTypesOf(call.Overloads));
+            WriteTypeReferences(writer, "throws", ThrownTypesOf(call.Overloads));
             WriteTypeReferences(writer, "types", ClosureOf(call.Overloads));
             writer.WriteEndObject();
         }
@@ -577,6 +578,81 @@ internal static class Signatures
             Gather(method.ReturnType, found);
         }
         return found;
+    }
+
+    /// The SDK types `overloads`' own documentation comments **declare they throw**: the type each
+    /// `<exception cref="…"/>` element names, resolved.
+    ///
+    /// **Only what an author declared counts.** Nothing here is inferred from a body, and nothing from
+    /// the fact that every gg call on this arm can raise `ApiException` — a shape whose comment
+    /// carries no `<exception>` contributes nothing, and the empty array that results is a truthful
+    /// record of the author's silence rather than a claim the call cannot fail. The sentence beside it
+    /// is unaffected: `Documentation` goes on folding these same elements' text into the entry's
+    /// detail, and this is the structured list next to it rather than a move of it.
+    ///
+    /// Unioned across an overload group for the reason the detail's tag lines are: two overloads are
+    /// one capability written twice, and the shape with the extra argument fails the way the shape
+    /// beside it does.
+    private static SortedDictionary<string, INamedTypeSymbol> ThrownTypesOf(IMethodSymbol[] overloads)
+    {
+        var found = new SortedDictionary<string, INamedTypeSymbol>(StringComparer.Ordinal);
+        foreach (var method in overloads)
+        {
+            foreach (var declared in DeclaredExceptionsOf(method))
+            {
+                found[Fqn(declared)] = declared;
+            }
+        }
+        return found;
+    }
+
+    /// The type each `<exception>` on `symbol`'s comment names, read through `<inheritdoc>` exactly as
+    /// the prose beside it is — so a declaration that inherits its documentation inherits the failures
+    /// that documentation declares, rather than declaring none.
+    private static IEnumerable<INamedTypeSymbol> DeclaredExceptionsOf(ISymbol symbol)
+    {
+        var target = InheritDocTarget(symbol) ?? symbol;
+        var comment = Comment(target);
+        if (comment is null)
+        {
+            yield break;
+        }
+        foreach (var element in comment.Elements("exception"))
+        {
+            yield return DeclaredException(element, target);
+        }
+    }
+
+    /// The type one `<exception>` element declares, resolved through Roslyn from the declaration id
+    /// its `cref` was expanded to (`T:Gg.ApiException`) — the attribute rather than a name written out
+    /// here, so that what is emitted is the type the author pointed at.
+    ///
+    /// A `cref` naming something this catalogue does not declare is refused rather than dropped or
+    /// emitted. The one reader of a declared failure is the `errors` flag of an agent's
+    /// `docViewTypes`, which opens a documentation view of each name — so a name outside the surface
+    /// is a view that cannot be opened, and dropping it silently would leave a model reading a failure
+    /// in the detail with nothing to open beside it. Roslyn has already refused an *unresolvable*
+    /// `cref` by this point, since `CS1574` is fatal here; what this catches is a resolvable one that
+    /// is not part of the surface.
+    private static INamedTypeSymbol DeclaredException(XElement element, ISymbol where)
+    {
+        var written = element.Attribute("cref")?.Value;
+        if (written is null)
+        {
+            throw new InvalidOperationException(
+                $"`{where.ContainingType?.Name}.{where.Name}` declares a failure with no `cref` — an "
+                    + "`<exception>` names the type it throws, and a failure with no type is one a "
+                    + "model can neither open nor catch");
+        }
+        var resolved = DocumentationCommentId.GetFirstSymbolForDeclarationId(written, compilation);
+        if (resolved is not INamedTypeSymbol type || !IsCatalogued(type))
+        {
+            throw new InvalidOperationException(
+                $"`{where.ContainingType?.Name}.{where.Name}` declares that it throws `{written}`, "
+                    + "which is not a type this catalogue declares — a declared failure is a name a "
+                    + "model is offered a documentation view of, so it has to be part of the surface");
+        }
+        return type;
     }
 
     /// Every SDK type any of `overloads` names, return position and arguments alike — plus the

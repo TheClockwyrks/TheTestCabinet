@@ -59,7 +59,23 @@
 use std::collections::BTreeSet;
 use std::fmt;
 
-use super::{EntryKind, SignatureCatalogue};
+use super::{EntryKind, FunctionSignature, SignatureCatalogue, TypeReference};
+
+/// Every **type reference** one entry writes: what it returns, what its comment declares it throws,
+/// and every type its shapes name.
+///
+/// One walk rather than three chains written out at each of the places below, because the three
+/// questions [`faults`] asks of a reference — does it resolve, is its spelling unambiguous, and is
+/// the declaration it names reached by anything — are one question asked of one set, and a set that
+/// differed between them would let a type reachable only through `throws` fail the unreferenced rule
+/// while the reference that reaches it passed the resolution one.
+fn references(function: &FunctionSignature) -> impl Iterator<Item = &TypeReference> {
+    function
+        .returns
+        .iter()
+        .chain(&function.throws)
+        .chain(&function.types)
+}
 
 /// Which of the three shapes a name is expected to have.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -269,14 +285,21 @@ fn segments(tail: &str) -> Vec<&str> {
 ///   documented is a name whose prefix means nothing;
 /// * no two entries share a name, because a name is a documentation view's key;
 /// * every [type reference](super::TypeReference) resolves to a type this catalogue declares, which
-///   is what makes "open the types this function returns" a lookup rather than a guess;
+///   is what makes "open the types this function returns" a lookup rather than a guess. A reference
+///   is one an entry writes in **any** of its three positions — its
+///   [return](super::FunctionSignature::returns), the failures its comment
+///   [declares](super::FunctionSignature::throws), and the
+///   [types its shapes name](super::FunctionSignature::types) — since each of the three is a name a
+///   `docViewTypes` flag will try to open;
 /// * no **written spelling** — `Files.FileRead`, `files::FileRead` — names two types. The spelling
 ///   is the string a model reads inside a signature and copies out of it, and it is a second key the
 ///   lookup accepts; two declarations answering to one would make that lookup a coin toss;
 /// * every declared type is **referred to by something**. A type nothing reaches is a documentation
 ///   view nothing can open: reachability from a bound call is what gates a type view, so an
 ///   unreferenced declaration is dead weight in the catalogue and an unanswerable name to the one
-///   reader it exists for;
+///   reader it exists for. An error type that appears only in some entry's
+///   [`throws`](super::FunctionSignature::throws) is referred to, and satisfies this: it is a name a
+///   model reads and can open, which is the whole of what the rule asks;
 /// * every [member function](super::MemberFunction) a type lists is itself catalogued under that
 ///   name, so the menu a type view shows is a menu of things that can actually be opened.
 pub(crate) fn faults(catalogue: &SignatureCatalogue) -> Vec<String> {
@@ -304,7 +327,7 @@ pub(crate) fn faults(catalogue: &SignatureCatalogue) -> Vec<String> {
         // the reference, and a function whose module is misnamed still puts the types it names
         // within a program's reach. Folding this in after a `continue` would make one fault
         // manufacture a second, unrelated one.
-        for reference in function.returns.iter().chain(&function.types) {
+        for reference in references(function) {
             reached.insert(reference.fqn());
             spelled.insert(reference.spelled());
         }
@@ -347,7 +370,7 @@ pub(crate) fn faults(catalogue: &SignatureCatalogue) -> Vec<String> {
                 function.fqn
             ));
         }
-        for reference in function.returns.iter().chain(&function.types) {
+        for reference in references(function) {
             if !declared.contains(reference.fqn()) {
                 out.push(format!(
                     "`{}` refers to the type `{}`, which this catalogue does not declare — a \
@@ -407,11 +430,7 @@ pub(crate) fn faults(catalogue: &SignatureCatalogue) -> Vec<String> {
     // lives in `docs.test.rs` where the reachability half can be asked as well.
     for spelling in spelled {
         let mut resolutions: BTreeSet<&str> = BTreeSet::new();
-        for reference in catalogue
-            .functions
-            .iter()
-            .flat_map(|function| function.returns.iter().chain(&function.types))
-        {
+        for reference in catalogue.functions.iter().flat_map(references) {
             if reference.spelled() == spelling {
                 resolutions.insert(reference.fqn());
             }

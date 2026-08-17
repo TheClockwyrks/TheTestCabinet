@@ -57,14 +57,15 @@
 //! description. It does **not** carry the declarations of the types the signature mentions. Those are
 //! [views of their own](DocsRuntime::read_type), addressed by the type's name, and one open of a
 //! function [places](crate::context::ContextModel::open_docview) them beside it according to the
-//! agent's [`DocViewTypes`] mode.
+//! agent's [`DocViewTypes`] flags.
 //!
 //! Folding them in was the older shape, and it made two things impossible. The declarations were
 //! repeated in full in every function view that mentioned the type, so an agent reading five
 //! functions over one record read the record five times and could reclaim none of the copies. And
 //! there was nothing to *measure*: whether a model does better shown a return type up front, shown
-//! every type in the signature, or shown none until it asks, is a question with three arms, and a
-//! block that always carries all of them answers it with one.
+//! the types its arguments declare, shown the failures it may have to catch, or shown none until it
+//! asks, is a question with a knob per source, and a block that always carries all of them answers
+//! it with one.
 //!
 //! Each view still reads correctly on its own, which is the property the older shape was protecting.
 //! A function view names its types in its signature; a type view declares one type with a line per
@@ -102,137 +103,300 @@ mod search;
 #[allow(unused_imports)]
 pub use search::{DEFAULT_SEARCH_LIMIT, DocHit, DocKind, DocQuery, DocSearch, MAX_SEARCH_LIMIT};
 
-/// Which of the SDK types a function's signature mentions are opened as
+/// **One flag** of an agent's [`docViewTypes`](DocViewTypes): one source of types a documentation
+/// view may place beside the function it opens.
+///
+/// The three are independent of each other, which is what makes them flags rather than the arms of
+/// a mode. What each of them places is written on its own variant, and the whole of what an open
+/// places is the union of the enabled ones.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocViewType {
+    /// The types the signature writes in the **return** position. On by default.
+    Return,
+    /// The types the function's **arguments** declare. Off by default.
+    Parameters,
+    /// The **error** types the function's own documentation comment declares it throws, from the
+    /// catalogue's [`throws`](crate::sandbox::CatalogueFunction::throws) list. On by default.
+    Errors,
+}
+
+/// The `docViewTypes` key naming [`DocViewType::Return`].
+const DOC_VIEW_TYPE_RETURN: &str = "return";
+/// The `docViewTypes` key naming [`DocViewType::Parameters`].
+const DOC_VIEW_TYPE_PARAMETERS: &str = "parameters";
+/// The `docViewTypes` key naming [`DocViewType::Errors`].
+const DOC_VIEW_TYPE_ERRORS: &str = "errors";
+
+/// The [telemetry id](DocViewTypes::id) of a configuration with **every** flag off — the one state
+/// that would otherwise be recorded as an empty string, which no reader could tell from a run that
+/// recorded nothing.
+const DOC_VIEW_TYPES_NONE: &str = "none";
+
+/// What joins the enabled flags into one [telemetry id](DocViewTypes::id).
+const DOC_VIEW_TYPES_JOIN: &str = "+";
+
+impl DocViewType {
+    /// The three flags, **in the fixed order** a [telemetry id](DocViewTypes::id) joins them in and
+    /// a [refusal](crate::validate) offers them back.
+    pub const ALL: [Self; 3] = [Self::Return, Self::Parameters, Self::Errors];
+
+    /// The flag's stable id — the `docViewTypes` key that toggles it, and the word a
+    /// [telemetry id](DocViewTypes::id) is assembled from.
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::Return => DOC_VIEW_TYPE_RETURN,
+            Self::Parameters => DOC_VIEW_TYPE_PARAMETERS,
+            Self::Errors => DOC_VIEW_TYPE_ERRORS,
+        }
+    }
+
+    /// The flag `id` names, or `None` for a key gg does not know.
+    pub fn from_id(id: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|flag| flag.id() == id)
+    }
+
+    /// Whether the flag is on in a configuration that says nothing about it.
+    ///
+    /// [`Return`](Self::Return) and [`Errors`](Self::Errors) are on and
+    /// [`Parameters`](Self::Parameters) is off: what a call hands back and how it fails are the two
+    /// things a model has to hold to use the result, while an argument's type is written into the
+    /// signature the model is already reading.
+    pub fn default_on(self) -> bool {
+        match self {
+            Self::Return | Self::Errors => true,
+            Self::Parameters => false,
+        }
+    }
+}
+
+/// Which of the SDK types a function names are opened as
 /// [documentation views](crate::context::ViewKind::Docs) beside it, when the model opens that
-/// function's own.
+/// function's own — **three independent toggles**, not a three-way mode.
 ///
-/// # Why this is a knob rather than a decision
+/// # Why these are knobs rather than decisions
 ///
-/// Every arm of it is defensible and none is obviously right, which is the definition of something
-/// worth measuring rather than choosing. Opening the **return** type lands the agent on what it can
-/// do with the value it is about to get, which is the case for it — and is not automatically the
-/// cheaper arm, because a function returning a list of records opens the record, whose own fields
-/// may reference further types the agent then has to ask for one at a time: three round trips where
-/// one open of everything in the signature would have been one. Opening **nothing** is cheapest per
-/// open and costs a turn whenever the model needs a shape it was not given. So gg holds all three
-/// and reports which one a run was configured with.
+/// Every setting of them is defensible and none is obviously right, which is the definition of
+/// something worth measuring rather than choosing. Opening the **return** type lands the agent on
+/// what it can do with the value it is about to get, which is the case for it — and is not
+/// automatically the cheaper arm, because a function returning a list of records opens the record,
+/// whose own fields may reference further types the agent then has to ask for one at a time: three
+/// round trips where one open of everything in the signature would have been one. Opening
+/// **nothing** is cheapest per open and costs a turn whenever the model needs a shape it was not
+/// given. So gg holds every combination and reports which one a run was configured with.
 ///
 /// It is per **agent**, like the [program language](crate::sandbox::resolve_program_language) it
-/// sits beside, so one run can hold two agents at two languages *and* two modes.
+/// sits beside, so one run can hold two agents at two languages *and* two sets of flags.
 ///
 /// # What it is not
 ///
-/// It is not a *depth*. Whichever mode is chosen, exactly one level is opened: a type view never
+/// It is not a *depth*. Whichever flags are set, exactly one level is opened: a type view never
 /// opens another type view, not even for a field whose type is itself catalogued. There is
 /// therefore no closure to compute, no cycle to detect and no termination rule — and an agent that
 /// wants the second level opens it by name, which is one call and is visible in the record as a
 /// thing the model chose.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum DocViewTypes {
-    /// Open no type views at all. The function's signature names its types; reading one is a call
-    /// the model makes for itself.
-    Off,
-    /// Open the types in the function's **return** position, and no others. The default.
-    #[default]
-    ReturnOnly,
-    /// Open every SDK type the function's own signature **names** — the return position and the
-    /// arguments both. Still one level: a type named only by a *field* of one of those types is not
-    /// named by the signature, so it is not opened.
-    ReturnAndParameters,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DocViewTypes {
+    /// [`DocViewType::Return`].
+    returns: bool,
+    /// [`DocViewType::Parameters`].
+    parameters: bool,
+    /// [`DocViewType::Errors`].
+    errors: bool,
 }
 
-/// The `docViewTypes` param's spelling of [`DocViewTypes::Off`].
-const DOC_VIEW_TYPES_OFF: &str = "off";
-/// The `docViewTypes` param's spelling of [`DocViewTypes::ReturnOnly`].
-const DOC_VIEW_TYPES_RETURN: &str = "return";
-/// The `docViewTypes` param's spelling of [`DocViewTypes::ReturnAndParameters`].
-const DOC_VIEW_TYPES_RETURN_AND_PARAMETERS: &str = "return-and-parameters";
-
-impl DocViewTypes {
-    /// The three modes, in the spelling a [refusal](crate::validate) offers back.
-    pub const ALL: [&'static str; 3] = [
-        DOC_VIEW_TYPES_OFF,
-        DOC_VIEW_TYPES_RETURN,
-        DOC_VIEW_TYPES_RETURN_AND_PARAMETERS,
-    ];
-
-    /// The mode's stable id — what the run was configured with, and what a replay reads to tell one
-    /// arm of the comparison from another.
-    pub fn id(self) -> &'static str {
-        match self {
-            Self::Off => DOC_VIEW_TYPES_OFF,
-            Self::ReturnOnly => DOC_VIEW_TYPES_RETURN,
-            Self::ReturnAndParameters => DOC_VIEW_TYPES_RETURN_AND_PARAMETERS,
+impl Default for DocViewTypes {
+    /// Each flag at [its own default](DocViewType::default_on) — which is *not* the same thing as
+    /// "everything on": `return` and `errors` are on, `parameters` is off.
+    ///
+    /// Built by folding [`default_on`](DocViewType::default_on) over
+    /// [`ALL`](DocViewType::ALL) rather than by listing bools, so a flag's default lives in exactly
+    /// one place and a new flag cannot be added here with a silently different one.
+    fn default() -> Self {
+        let mut types = Self::OFF;
+        for flag in DocViewType::ALL {
+            types.set(flag, flag.default_on());
         }
+        types
     }
 }
 
-/// The [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability param choosing how much of a
-/// function's type a documentation view shows. Absent takes [`DocViewTypes::default`].
+impl DocViewTypes {
+    /// Every flag off — what the master switch (`"docViewTypes": false`) produces. A function's
+    /// signature names its types; reading one is then a call the model makes for itself.
+    pub const OFF: Self = Self {
+        returns: false,
+        parameters: false,
+        errors: false,
+    };
+
+    /// Whether `flag` is on.
+    pub fn enabled(&self, flag: DocViewType) -> bool {
+        match flag {
+            DocViewType::Return => self.returns,
+            DocViewType::Parameters => self.parameters,
+            DocViewType::Errors => self.errors,
+        }
+    }
+
+    /// Turn one flag on or off.
+    pub fn set(&mut self, flag: DocViewType, on: bool) {
+        let field = match flag {
+            DocViewType::Return => &mut self.returns,
+            DocViewType::Parameters => &mut self.parameters,
+            DocViewType::Errors => &mut self.errors,
+        };
+        *field = on;
+    }
+
+    /// **Exactly one flag on**, and the other two off — what the console's reference computes each
+    /// flag's own column with, since a column says what that flag alone would place.
+    pub fn only(flag: DocViewType) -> Self {
+        let mut types = Self::OFF;
+        types.set(flag, true);
+        types
+    }
+
+    /// The enabled flags, in [the fixed order](DocViewType::ALL).
+    pub fn on(&self) -> Vec<DocViewType> {
+        DocViewType::ALL
+            .into_iter()
+            .filter(|flag| self.enabled(*flag))
+            .collect()
+    }
+
+    /// The configuration's stable id — what the run was configured with, and what a replay reads to
+    /// tell one arm of the comparison from another.
+    ///
+    /// The enabled flags joined with `+` in [the fixed order](DocViewType::ALL), so one
+    /// configuration has exactly one spelling however an operator wrote the object, and
+    /// [`none`](DOC_VIEW_TYPES_NONE) when every flag is off — because an empty string is the one
+    /// answer a reader could not tell from a record that carries nothing.
+    pub fn id(&self) -> String {
+        let on = self.on();
+        if on.is_empty() {
+            return DOC_VIEW_TYPES_NONE.to_string();
+        }
+        on.into_iter()
+            .map(DocViewType::id)
+            .collect::<Vec<_>>()
+            .join(DOC_VIEW_TYPES_JOIN)
+    }
+}
+
+/// The [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability param choosing which of a
+/// function's types a documentation view opens beside it. Absent takes [`DocViewTypes::default`].
 pub const PARAM_DOC_VIEW_TYPES: &str = "docViewTypes";
 
-/// Resolve the [documentation-view type mode](DocViewTypes) from this agent's
+/// The [locus](crate::validate::param_locus) every `docViewTypes` refusal is filed under, and the
+/// stem each per-key refusal appends its key to.
+fn doc_view_types_locus() -> String {
+    crate::validate::param_locus(CAPABILITY_RESPONSES_AS_CODE, PARAM_DOC_VIEW_TYPES)
+}
+
+/// Resolve the [documentation-view type flags](DocViewTypes) from this agent's
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's
 /// [`docViewTypes`](PARAM_DOC_VIEW_TYPES) param.
 ///
-/// | `params.docViewTypes` | Mode |
-/// | --- | --- |
-/// | absent / `null` / `"return"` | [`ReturnOnly`](DocViewTypes::ReturnOnly) — the return position (the default) |
-/// | `"off"` | [`Off`](DocViewTypes::Off) |
-/// | `"return-and-parameters"` | [`ReturnAndParameters`](DocViewTypes::ReturnAndParameters) |
-/// | anything else | **refused** — the launch does not start |
+/// The param names a **delta against the defaults**, not a whole configuration, exactly as
+/// [`healing`](crate::healing::resolve_healing) does. Saying nothing means
+/// [the defaults](DocViewTypes::default) — which is *not* "everything on", because
+/// [`parameters`](DocViewType::Parameters) is [off by default](DocViewType::default_on).
 ///
-/// Read literally — with only surrounding whitespace forgiven — and [refused](crate::validate) on
-/// mismatch for the reason
-/// [`resolve_assistant_messages`](crate::healing::resolve_assistant_messages) is: the value is
-/// contract-visible, and the [agent surface](crate::telemetry) records the *resolved* mode, so a
-/// typo read as the default would leave a run whose every record says it ran the arm it did not.
-/// The default comes back anyway to keep the resolver total for the per-turn calls that re-read it.
-/// The value is read whether the capability is switched on or off, on the rule the whole params
-/// table follows: a disabled capability records the configuration the arm would have used, and a
-/// typo skipped because a switch happened to be off is a typo that surfaces on the launch where it
-/// is flipped.
+/// | `params.docViewTypes` | Meaning |
+/// | --- | --- |
+/// | absent / `null` / `true` / `{}` | the **defaults** — `return` and `errors` on, `parameters` off |
+/// | `false` | every flag **off** — the master switch |
+/// | `{ "parameters": true }` | `parameters` on, the rest at their defaults |
+/// | `{ "return": false }` | `return` off, the rest at their defaults |
+/// | `{ "return": 0 }` | **refused**: a non-boolean is not a toggle |
+/// | `{ "returns": true }` | **refused**: `returns` names no flag |
+/// | `5`, `"off"`, `[]` | **refused**: there is no set of toggles here to read |
+///
+/// A key or value gg cannot act on [refuses the launch](crate::validate) rather than leaving the
+/// default standing, for the reason [`resolve_healing`](crate::healing::resolve_healing) refuses
+/// one: `{"returns": false}` reads as a run with `return` **on**, which is the arm its author was
+/// trying to switch off, and the [agent surface](crate::telemetry) records the *resolved* flags, so
+/// a typo read as the default would leave a run whose every record says it ran the arm it did not.
+/// The flag ids are **contract-visible** — they are what the console's capability catalogue writes
+/// and what persisted run data records — so they are read literally, with only surrounding
+/// whitespace forgiven, and never guessed at. The defaults come back anyway to keep the resolver
+/// total for the per-turn calls that re-read it.
+///
+/// The flags are read whether the capability is switched on or off, on the rule the whole params
+/// table follows: a disabled capability records the configuration the arm would have used, so the
+/// two arms of one comparison stay symmetric, and a typo skipped because a switch happened to be
+/// off is a typo that surfaces on the launch where it is flipped.
 pub fn resolve_doc_view_types(
     profile: &GgAgentConfig,
     report: &mut crate::validate::LaunchReport,
 ) -> DocViewTypes {
+    let mut types = DocViewTypes::default();
     let Some(capability) = profile.capability(CAPABILITY_RESPONSES_AS_CODE) else {
-        return DocViewTypes::default();
+        return types;
     };
     let Some(value) = capability.params.get(PARAM_DOC_VIEW_TYPES) else {
-        return DocViewTypes::default();
+        return types;
     };
 
     match value {
-        Value::Null => DocViewTypes::default(),
-        Value::String(mode) if mode.trim() == DOC_VIEW_TYPES_RETURN => DocViewTypes::default(),
-        Value::String(mode) if mode.trim() == DOC_VIEW_TYPES_OFF => DocViewTypes::Off,
-        Value::String(mode) if mode.trim() == DOC_VIEW_TYPES_RETURN_AND_PARAMETERS => {
-            DocViewTypes::ReturnAndParameters
-        }
-        other => {
-            report.report(
-                crate::validate::LaunchDefect::run_level(
-                    crate::validate::param_locus(
-                        CAPABILITY_RESPONSES_AS_CODE,
-                        PARAM_DOC_VIEW_TYPES,
+        // Three spellings of "say nothing", all meaning the default set: a key written out as null,
+        // an explicit `true`, and an object that changes nothing.
+        Value::Null | Value::Bool(true) => {}
+        Value::Bool(false) => types = DocViewTypes::OFF,
+        Value::Object(toggles) => {
+            for (key, value) in toggles {
+                match (DocViewType::from_id(key.trim()), value.as_bool()) {
+                    // The one arm that moves a flag off its default, in either direction: `false`
+                    // turns off `return` or `errors`, and `true` turns on `parameters`.
+                    (Some(flag), Some(on)) => types.set(flag, on),
+                    // A known key carrying something that is not a toggle: reading `0` as `false`
+                    // would be gg deciding what an operator meant, which is the whole of what this
+                    // refusal exists to stop.
+                    (Some(flag), None) => report.report(crate::validate::LaunchDefect::run_level(
+                        format!("{}.{key}", doc_view_types_locus()),
+                        crate::validate::as_written(value),
+                        format!(
+                            "the `{}` documentation-view type is opened or withheld with `true` or \
+                             `false`; gg cannot read this as either, and leaving it at its default \
+                             would open a different amount of documentation than this line was \
+                             written to ask for.",
+                            flag.id()
+                        ),
+                    )),
+                    (None, _) => report.report(
+                        crate::validate::LaunchDefect::run_level(
+                            format!("{}.{key}", doc_view_types_locus()),
+                            crate::validate::as_written(value),
+                            format!(
+                                "`{key}` names no documentation-view type, so it opens and \
+                                 withholds nothing; the agent would read a set of types nobody \
+                                 wrote."
+                            ),
+                        )
+                        .known(DocViewType::ALL.map(DocViewType::id)),
                     ),
-                    crate::validate::as_written(other),
-                    format!(
-                        "the `{PARAM_DOC_VIEW_TYPES}` param names how much of a function's type is \
-                         opened beside it; gg has no such mode, and opening the default set would \
-                         hand the agent a different amount of documentation than the run asked for."
-                    ),
-                )
-                .known(DocViewTypes::ALL),
-            );
-            DocViewTypes::default()
+                }
+            }
         }
+        other => report.report(
+            crate::validate::LaunchDefect::run_level(
+                doc_view_types_locus(),
+                crate::validate::as_written(other),
+                format!(
+                    "the `{PARAM_DOC_VIEW_TYPES}` param is `true` (the defaults), `false` (every \
+                     type withheld), or an object of per-type toggles; there is nothing here gg \
+                     can read a set of types from."
+                ),
+            )
+            .known(DocViewType::ALL.map(DocViewType::id)),
+        ),
     }
+
+    types
 }
 
 /// The documentation half of one profile's contribution to the
-/// [launch pass](crate::validate::validate_launch): the [type mode](DocViewTypes) it declares, read
+/// [launch pass](crate::validate::validate_launch): the [type flags](DocViewTypes) it declares, read
 /// exactly as the run will read it.
 pub fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) {
     resolve_doc_view_types(profile, report);
@@ -549,14 +713,27 @@ impl DocsRuntime {
             .map(|_| module.path.to_string())
     }
 
-    /// The SDK types to open beside the function called `name`, under `mode` — the whole of the
+    /// The SDK types to open beside the function called `name`, under `types` — the whole of the
     /// transitive rule, and **exactly one level deep**.
     ///
-    /// Empty for [`Off`](DocViewTypes::Off), for a name that is not a bound function (a type has no
+    /// Empty for [`OFF`](DocViewTypes::OFF), for a name that is not a bound function (a type has no
     /// signature to read types out of, which is what makes the rule non-recursive by construction
-    /// rather than by a depth counter), and for a function whose signature names no catalogued
-    /// type. Names are returned in catalogue order and deduplicated, so the views land in a stable
-    /// order whatever the model asked for.
+    /// rather than by a depth counter), and for a function that names no catalogued type under any
+    /// enabled flag. Names are returned in catalogue order and deduplicated, so the views land in a
+    /// stable order whatever the model asked for.
+    ///
+    /// # The three flags are read independently and unioned
+    ///
+    /// [`Return`](DocViewType::Return) and [`Parameters`](DocViewType::Parameters) both select out
+    /// of the narrowed signature set described below, by the two predicates that sort a returned
+    /// type from an argument one. [`Errors`](DocViewType::Errors) does not read the signature at
+    /// all: a declared failure is written in a documentation comment rather than in a signature, so
+    /// its source is the catalogue's own
+    /// [`throws`](crate::sandbox::CatalogueFunction::throws) list, which each reflector states from
+    /// its arm's own tag for declaring one. Narrowing that list by what a signature writes down
+    /// would withhold every error on every arm.
+    ///
+    /// A type more than one flag selects is placed once, because a view is keyed by the type.
     ///
     /// # Why the catalogue's own `types` list cannot be used as it stands
     ///
@@ -586,42 +763,61 @@ impl DocsRuntime {
     /// argument type, and every other type the signature names is reached through what it hands
     /// back. That fallback errs toward *showing* rather than withholding, since a type named only by
     /// a field of an argument's type is not named by the argument itself.
-    /// [`ReturnAndParameters`](DocViewTypes::ReturnAndParameters) and [`Off`](DocViewTypes::Off) do
-    /// not ask the question at all.
-    pub fn types_to_open(&self, name: &str, mode: DocViewTypes) -> Vec<&'static str> {
-        if mode == DocViewTypes::Off {
+    /// [`Parameters`](DocViewType::Parameters) asks the mirrored question — does one of this
+    /// function's own documented arguments declare it — and the two are asked independently, so a
+    /// type in both positions is selected by either flag alone.
+    pub fn types_to_open(&self, name: &str, types: DocViewTypes) -> Vec<&'static str> {
+        if types == DocViewTypes::OFF {
             return Vec::new();
         }
         let Some(function) = self.function(name) else {
             return Vec::new();
         };
         let mut names: Vec<&'static str> = Vec::new();
-        for referenced in function.types {
-            let declaration = match type_declaration(self.language, referenced.fqn()) {
-                Some(declaration) => declaration,
-                // A referenced name this language's catalogue does not declare has nothing to
-                // render, so there is no view to open for it. The name rule
-                // (`sandbox/signatures.fqn.rs`) holds every arm to declaring what it references, so
-                // this is drift rather than a run-time condition.
-                None => continue,
-            };
-            // Depth one, applied before the mode split: a referenced type no shape of this function
-            // writes down was reached through some *other* type, and is a level the rule does not
-            // reach. See *Why the catalogue's own `types` list cannot be used as it stands*.
-            if !names_a_signature(&function, &declaration.name) {
-                continue;
-            }
-            if mode == DocViewTypes::ReturnOnly
-                && !returned(&function, referenced, &declaration.name)
-            {
-                continue;
-            }
-            // The key, never the bare name: what comes back from here is handed straight to
-            // `read_type`, and a name that is indexed under one string and opened under another is
-            // a type this rule would name and that lookup would then miss.
-            let key = declaration.key();
+        // The key, never the bare name: what comes back from here is handed straight to
+        // `read_type`, and a name that is indexed under one string and opened under another is a
+        // type this rule would name and that lookup would then miss.
+        let mut place = |key: &'static str| {
             if !names.contains(&key) {
                 names.push(key);
+            }
+        };
+        if types.enabled(DocViewType::Return) || types.enabled(DocViewType::Parameters) {
+            for referenced in function.types {
+                let declaration = match type_declaration(self.language, referenced.fqn()) {
+                    Some(declaration) => declaration,
+                    // A referenced name this language's catalogue does not declare has nothing to
+                    // render, so there is no view to open for it. The name rule
+                    // (`sandbox/signatures.fqn.rs`) holds every arm to declaring what it
+                    // references, so this is drift rather than a run-time condition.
+                    None => continue,
+                };
+                // Depth one, applied before the flags are read: a referenced type no shape of this
+                // function writes down was reached through some *other* type, and is a level the
+                // rule does not reach. See *Why the catalogue's own `types` list cannot be used as
+                // it stands*.
+                if !names_a_signature(&function, &declaration.name) {
+                    continue;
+                }
+                let selected = (types.enabled(DocViewType::Return)
+                    && returned(&function, referenced, &declaration.name))
+                    || (types.enabled(DocViewType::Parameters)
+                        && names_a_parameter(&function, &declaration.name));
+                if selected {
+                    place(declaration.key());
+                }
+            }
+        }
+        if types.enabled(DocViewType::Errors) {
+            for referenced in function.throws {
+                // Unnarrowed by the signature, deliberately: a declared failure is written in a
+                // documentation comment and a signature need not mention it at all, so the same
+                // depth-one test applied here would withhold every error on every arm. What holds
+                // the list honest instead is the name rule, which refuses an arm whose `throws`
+                // names a type its own catalogue does not declare.
+                if let Some(declaration) = type_declaration(self.language, referenced.fqn()) {
+                    place(declaration.key());
+                }
             }
         }
         names
@@ -814,8 +1010,7 @@ impl DocsRuntime {
 /// render their parameter types into the signature line, and the arms that render an untyped call
 /// shape (Ruby's `read_file(path, offset:, limit:)`) carry the types only on the parameters — and an
 /// arm read through the signature alone would silently collapse
-/// [`ReturnAndParameters`](DocViewTypes::ReturnAndParameters) into
-/// [`ReturnOnly`](DocViewTypes::ReturnOnly).
+/// [`Parameters`](DocViewType::Parameters) into a flag that selected nothing at all.
 ///
 /// A parameter's inline [fields](Parameter::fields) are deliberately **not** read: a field's type is
 /// a second level, and reading it here would put back one of the levels this test exists to remove.
@@ -860,7 +1055,7 @@ fn returned(function: &CatalogueFunction, reference: &TypeReference, type_name: 
 /// `FileRead` out of `FileReadOptions` and quietly reclassify a return as an argument. Only the
 /// parameter's own declared type is read, never its inline [fields](Parameter::fields): a field's
 /// type is a *second* level, and treating one as named by the argument would make
-/// [`ReturnOnly`](DocViewTypes::ReturnOnly) withhold a type the return position also uses.
+/// [`Return`](DocViewType::Return) withhold a type the return position also uses.
 fn names_a_parameter(function: &CatalogueFunction, type_name: &str) -> bool {
     function.signatures.iter().any(|entry| {
         entry

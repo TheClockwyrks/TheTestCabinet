@@ -908,6 +908,120 @@ fn every_arm_states_the_line_a_program_writes_to_reach_a_module() {
     );
 }
 
+/// **Every registered arm states the failures its own documentation declares.**
+///
+/// # Why an empty list is not a safe default
+///
+/// [`FunctionSignature::throws`] is `#[serde(default)]`, so a reflector that **stopped emitting the
+/// field** produces exactly the value an entry whose comment declares no failure produces
+/// deliberately: an empty list. That is the shape of every silent loss this catalogue is capable of
+/// — the surface still parses, every other gate stays green, and the only thing that changes is that
+/// the `errors` flag of every agent's `docViewTypes` has nothing to place, on every call, on that
+/// arm. The model is then shown a function it can call and none of the ways it can fail.
+///
+/// Nothing in this crate can read a `@throws`, an `<exception cref="…">`, a `# Errors` or a
+/// `Raises:` — that is the reflector's job and the arm's compiler's or doc tool's, and this test
+/// deliberately does not re-implement eleven of them. What it can say is the thing that distinguishes
+/// a working reflector from a stopped one: an arm whose SDK declares failures emits some, and gg's
+/// SDK declares failures on every arm, because a refused call is how the sandbox answers and the
+/// invariants require a declared failure to be recorded rather than discovered at run time.
+///
+/// So the shape of the assertion is per arm rather than per entry, and it is read out of the **raw
+/// emitted JSON** for the reason the import-line gate is: only the raw document tells a dropped field
+/// from a stated empty one.
+///
+/// # What else is held here
+///
+/// * **The projection hop.** Every entry's reflected list is compared against
+///   [`CatalogueFunction::throws`], resolution and spelling alike, so a hop that dropped the field
+///   between the document and the shape every consumer reads is caught where it would cost a model
+///   something.
+/// * **A reference, not a sentence.** Each entry is a [type reference](TypeReference) naming
+///   something — a blank spelling or a blank resolution is a reflector that put a `@throws`
+///   paragraph where a type name goes, and the `errors` flag would open nothing for it.
+/// * **The list is what the arm resolved.** That every name resolves to a type the same catalogue
+///   declares is the name rule's (`signatures.fqn.rs`), which walks `throws` beside `returns`; it is
+///   not restated here, because one rule stated twice is two rules that can disagree.
+#[test]
+fn every_arm_states_the_failures_its_documentation_declares() {
+    let mut declaring = 0usize;
+
+    for &id in GgProgramLanguage::ALL {
+        let arm = language(id);
+        let name = arm.display_name();
+        let document = reflected(id);
+        let entries = document["functions"].as_array().unwrap_or_else(|| {
+            panic!("{name}: its reflected catalogue declares no `functions` array")
+        });
+
+        let mut on_this_arm = 0usize;
+        for function in crate::sandbox::catalogue_functions(arm) {
+            let raw = entries
+                .iter()
+                .find(|entry| entry["fqn"] == serde_json::json!(function.fqn))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{name}: the projection carries `{}`, which the reflected catalogue does not",
+                        function.fqn
+                    )
+                });
+            // An absent key is read as an empty list, deliberately and by the schema: an entry whose
+            // comment declares no failure is the common case and an arm should not have to write
+            // `"throws": []` on every one of them.
+            let reflected_throws = match &raw["throws"] {
+                serde_json::Value::Null => Vec::new(),
+                stated => stated
+                    .as_array()
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "{name}: `{}` states a `throws` that is not a list ({stated}) — it is \
+                             the error types the comment declares, one entry each",
+                            function.fqn
+                        )
+                    })
+                    .clone(),
+            };
+
+            assert_eq!(
+                function.throws.len(),
+                reflected_throws.len(),
+                "{name}: `{}` reflected {} declared failure(s) and the projection carries {} — the \
+                 hop invented or dropped one, and the `errors` flag places exactly what it finds \
+                 here",
+                function.fqn,
+                reflected_throws.len(),
+                function.throws.len()
+            );
+            for thrown in function.throws {
+                assert!(
+                    !thrown.spelled().trim().is_empty() && !thrown.fqn().trim().is_empty(),
+                    "{name}: `{}` declares a failure with nothing in it ({thrown:?}) — a `throws` \
+                     entry is the type a comment named, and a blank one opens nothing",
+                    function.fqn
+                );
+            }
+            if !function.throws.is_empty() {
+                on_this_arm += 1;
+            }
+        }
+
+        assert!(
+            on_this_arm > 0,
+            "{name}: not one of its catalogued calls declares a failure. gg's SDK documents its \
+             refusals on every arm, so this is a reflector that stopped reading the tag its language \
+             declares one with — and the field it stopped emitting defaults to the empty list an \
+             entry with nothing to declare emits, so nothing else notices. Every agent on this arm \
+             then reads the `errors` half of its `docViewTypes` as though no call could fail."
+        );
+        declaring += on_this_arm;
+    }
+
+    assert!(
+        declaring > 0,
+        "no arm declared a failure anywhere, so the `errors` flag has nothing to place on any of them"
+    );
+}
+
 /// **An authored brief and detail render as one block**, with the blank line between them a
 /// documentation view needs.
 #[test]

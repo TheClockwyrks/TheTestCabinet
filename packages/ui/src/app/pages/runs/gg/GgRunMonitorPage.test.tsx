@@ -1482,18 +1482,18 @@ describe("GgRunMonitorPage", () => {
             functions: [{ name: "readFile", operation: "files.read_file" }],
           },
         ],
-        "return-and-parameters",
+        "return+parameters+errors",
       ),
     ]);
     openTab("Instances");
     openFile("root apis");
 
-    const chip = screen.getByText("docs: return-and-parameters");
+    const chip = screen.getByText("docs: return+parameters+errors");
     expect(chip).toBeInTheDocument();
     // And it says what the mode did, in the vocabulary of what it cost — not merely that a
     // setting was set.
     expect(chip.getAttribute("title")).toMatch(
-      /every type a function's signature names/,
+      /the failures its documentation declares it throws/,
     );
     expect(chip.getAttribute("title")).toMatch(/per-agent setting/);
   });

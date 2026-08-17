@@ -132,8 +132,9 @@ export interface GgAgentSurface {
   // reads through rather than breaking the fold.
   executionMode: string;
   // Which SDK types an `openDocsView` of a function opened beside it for this instance —
-  // "off", "return" or "return-and-parameters" — as gg RESOLVED it, not as the profile
-  // wrote it. Null for a tool-calling instance, which opens no documentation.
+  // the enabled flags joined with "+" in gg's own order ("return+errors"), or "none" where
+  // every flag is off — as gg RESOLVED it, not as the profile wrote it. Null for a
+  // tool-calling instance, which opens no documentation.
   //
   // It is the arm of a per-agent A/B, which is why it rides on the instance rather than on
   // the run: one run may hold two agents in two modes, and a reader attributing the

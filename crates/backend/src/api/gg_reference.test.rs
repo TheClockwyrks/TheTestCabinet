@@ -74,7 +74,8 @@ fn entry(name: &str, kind: GgReferenceEntryKind) -> GgReferenceEntry {
         types: Vec::new(),
         returns: Vec::new(),
         opens_under_return: Vec::new(),
-        opens_under_return_and_parameters: Vec::new(),
+        opens_under_parameters: Vec::new(),
+        opens_under_errors: Vec::new(),
     }
 }
 
