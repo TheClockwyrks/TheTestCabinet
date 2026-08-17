@@ -33,6 +33,10 @@
 //! automatically. Every `Job` carries the [`MANAGED_BY`] label so the dispatcher
 //! can list exactly the `Job`s it owns on restart, and the [`JOB_ID_LABEL`] so one
 //! `Job` maps back to its backend job id without parsing its name.
+//!
+//! Because there *is* no second attempt, every `Job` pod is also pinned against
+//! cluster-autoscaler scale-down with `safe-to-evict: "false"` — an evicted driver
+//! is not rescheduled, it is a destroyed run.
 
 use std::collections::BTreeMap;
 
@@ -69,6 +73,29 @@ pub const JOB_ID_LABEL: &str = "tcab.dev/job-id";
 /// already is. Changing one without the other breaks sandbox reaping, so both sides
 /// are covered by tests asserting the literal.
 pub const SANDBOX_MANAGED_BY: &str = "tcab-driver";
+
+/// The cluster-autoscaler annotation that pins a pod to its node, and the value
+/// that forbids eviction.
+///
+/// A driver pod is a `Job` pod, so the autoscaler treats it as freely relocatable —
+/// it is controller-backed, and moving it "just" means the controller makes another
+/// one. That reasoning does not hold here: `backoffLimit: 0` means there is no
+/// replacement, so evicting a driver **destroys the run it is conducting**, mid
+/// flight, along with the model spend already incurred.
+///
+/// The driver is also an unusually attractive scale-down target. It requests a tenth
+/// of a CPU (see `config::DEFAULT_DRIVER_CPU_REQUEST`) while the sandbox it drives —
+/// a separate pod, frequently on a separate node — holds the run's real reservation.
+/// A node whose only tenant is a driver therefore sits far below the autoscaler's
+/// utilization threshold for as long as the run takes, which is precisely the
+/// profile it consolidates away.
+///
+/// Pinning the pod is the correct trade: a driver node lingers until the run ends,
+/// which is exactly as long as the work it is doing lasts.
+const SAFE_TO_EVICT_ANNOTATION: &str = "cluster-autoscaler.kubernetes.io/safe-to-evict";
+
+/// The annotation value that forbids the cluster autoscaler from evicting a pod.
+const SAFE_TO_EVICT_FALSE: &str = "false";
 
 /// The name of the single container in each driver `Job`'s pod.
 const DRIVER_CONTAINER: &str = "driver";
@@ -215,6 +242,7 @@ pub fn build_driver_job(claim: &ClaimedJob, config: &Config) -> Result<Job, serd
         template: PodTemplateSpec {
             metadata: Some(ObjectMeta {
                 labels: Some(labels.clone()),
+                annotations: Some(pod_annotations()),
                 ..Default::default()
             }),
             spec: Some(pod_spec),
@@ -315,6 +343,7 @@ pub fn build_publish_job(claim: &PublishClaim, config: &Config) -> Job {
         template: PodTemplateSpec {
             metadata: Some(ObjectMeta {
                 labels: Some(labels.clone()),
+                annotations: Some(pod_annotations()),
                 ..Default::default()
             }),
             spec: Some(pod_spec),
@@ -383,6 +412,17 @@ fn job_labels(job_id: &str) -> BTreeMap<String, String> {
         ),
         (JOB_ID_LABEL.to_string(), job_id.to_string()),
     ])
+}
+
+/// The annotations every `Job` pod template carries. Both the driver and the
+/// publisher are single-attempt (`backoffLimit: 0`) and hold work that cannot be
+/// reconstructed by restarting them elsewhere, so both are pinned against
+/// autoscaler scale-down for their lifetime. See [`SAFE_TO_EVICT_ANNOTATION`].
+fn pod_annotations() -> BTreeMap<String, String> {
+    BTreeMap::from([(
+        SAFE_TO_EVICT_ANNOTATION.to_string(),
+        SAFE_TO_EVICT_FALSE.to_string(),
+    )])
 }
 
 /// The fixed driver env every Job carries: the backend URL, the job id and token,

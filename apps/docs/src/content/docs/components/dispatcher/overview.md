@@ -139,6 +139,43 @@ The driver pod also carries small resource **requests**
 OOM-killed. Limits are deliberately unset by default: a memory limit would
 re-introduce the same `SIGKILL` from the container's own cgroup.
 
+## Surviving the cluster autoscaler
+
+Reaping an orphaned sandbox limits the damage from a killed driver; it does not stop
+the run from dying. The cluster autoscaler is a standing source of exactly that kill,
+and by default it has every reason to pick a driver:
+
+- A driver pod is a `Job` pod, so the autoscaler treats it as **replaceable** — for an
+  ordinary `Job` a new pod would simply appear elsewhere. These `Job`s are
+  `backoffLimit: 0`, so there is no replacement. Evicting one destroys the run it is
+  conducting, mid flight, along with whatever model spend the run had already incurred.
+- Those deliberately small requests make the driver's node look **idle**. The run's
+  real reservation belongs to the sandbox, which is a separate pod and frequently on a
+  separate node, so a node whose only tenant is a driver sits under the autoscaler's
+  utilization threshold for the entire length of the run — precisely the profile it
+  consolidates away.
+
+So every pod the dispatcher and driver create — driver `Job`s, publish `Job`s, and
+sandbox pods — carries
+`cluster-autoscaler.kubernetes.io/safe-to-evict: "false"`. A node running one lingers
+until the work on it finishes. The sandbox carries the annotation even though the
+autoscaler already spares controller-less pods: that exemption is a property of the
+cluster's configuration rather than of the manifest, and it would silently invert if
+anything ever gave the sandbox an owner.
+
+This is a **scale-down** guard only. It does not pin the pod against a node the
+operator drains, a spot reclaim, or kubelet node-pressure eviction — the sandbox
+reaping above, and the driver's own `activeDeadlineSeconds` backstop, remain the
+answer for those.
+
+When a driver *is* disrupted anyway, the death report says so. The dispatcher reads
+the pod's `DisruptionTarget` condition ahead of its container state, because an
+evicted driver's container reports the `SIGTERM` it received — describing how it died
+and not why — which would otherwise read as an ordinary crash. If the pod is gone
+entirely, the report distinguishes "the `Job` never started a pod" from "a pod ran and
+was deleted out from under the run" using the `Job`'s own `status.failed` count, which
+outlives the pod.
+
 ## RBAC
 
 The dispatcher runs under its own `ServiceAccount` with a namespaced `Role`

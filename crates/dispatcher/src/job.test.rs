@@ -370,6 +370,57 @@ fn carries_ownership_and_job_id_labels() {
     );
 }
 
+/// A driver `Job` has `backoffLimit: 0`, so an evicted driver pod is not replaced —
+/// it is a destroyed run. The autoscaler cannot know that (a `Job` pod normally
+/// *is* replaceable), and the driver's small CPU request makes its node an
+/// attractive consolidation target for as long as the run lasts, so the pod must
+/// say so itself.
+#[test]
+fn driver_pod_is_pinned_against_autoscaler_eviction() {
+    let job = build_driver_job(&claim(), &config()).unwrap();
+    let annotations = job
+        .spec
+        .as_ref()
+        .unwrap()
+        .template
+        .metadata
+        .as_ref()
+        .unwrap()
+        .annotations
+        .as_ref()
+        .unwrap();
+    assert_eq!(
+        annotations
+            .get("cluster-autoscaler.kubernetes.io/safe-to-evict")
+            .map(String::as_str),
+        Some("false"),
+    );
+}
+
+/// The publisher is single-attempt for the same reason and holds an in-flight
+/// release; evicting it mid-deploy is no more recoverable than evicting a driver.
+#[test]
+fn publish_pod_is_pinned_against_autoscaler_eviction() {
+    let job = build_publish_job(&publish_claim(), &config());
+    let annotations = job
+        .spec
+        .as_ref()
+        .unwrap()
+        .template
+        .metadata
+        .as_ref()
+        .unwrap()
+        .annotations
+        .as_ref()
+        .unwrap();
+    assert_eq!(
+        annotations
+            .get("cluster-autoscaler.kubernetes.io/safe-to-evict")
+            .map(String::as_str),
+        Some("false"),
+    );
+}
+
 #[test]
 fn names_the_job_and_namespaces_it() {
     let job = build_driver_job(&claim(), &config()).unwrap();

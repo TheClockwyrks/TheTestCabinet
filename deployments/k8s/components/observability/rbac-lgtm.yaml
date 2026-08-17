@@ -1,0 +1,56 @@
+# RBAC for the LGTM stack's Prometheus to scrape per-container resource metrics
+# from every node's kubelet (see prometheus.yaml's `kubelet-cadvisor` job).
+#
+# This is the ONE cluster-scoped grant in the deployment. base/rbac.yaml is
+# deliberately all namespaced `Role`s, and this does not relax that by choice:
+# `nodes` is a cluster-scoped resource with no namespaced equivalent, so reading
+# node metrics cannot be expressed as a `Role`. Both rules are read-only and
+# neither can reach a workload:
+#
+#   - nodes list/watch — Prometheus' `role: node` service discovery enumerates the
+#     kubelets to scrape. It reads node objects (names, addresses, labels), not pods.
+#   - nodes/metrics get — the kubelet authorizes its /metrics/* endpoints under this
+#     subresource. Note it is `metrics`, NOT `proxy`: `nodes/proxy` would also open
+#     /exec, /run and /attach on every node in the cluster, which is arbitrary code
+#     execution. `nodes/metrics` reaches the metrics endpoints and nothing else.
+#
+# The LGTM pod previously ran under a zero-permission ServiceAccount, and this is a
+# real, if narrow, widening of that. It buys the per-container CPU/memory history
+# that resource sizing depends on; without it the only metrics in the cluster are
+# what the services push over OTLP, which say nothing about what a run pod consumed.
+#
+# CLUSTER-SCOPED NAMES: unlike everything else in this component, these two objects
+# are not namespaced, so their names do not vary with the including overlay's
+# `namespace:`. Two environments sharing ONE cluster would collide on them — the
+# second apply would rebind the ClusterRole to the second environment's
+# ServiceAccount. That is not the deployment model (staging and prod are separate
+# clusters; see deployment/kubernetes.md), but it is the constraint to remember
+# before co-locating two environments.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tcab-lgtm-node-metrics
+rules:
+  # Service discovery: enumerate the kubelets to scrape.
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["list", "watch"]
+  # Read those kubelets' /metrics/cadvisor. NOT `nodes/proxy` — see the header.
+  - apiGroups: [""]
+    resources: ["nodes/metrics"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tcab-lgtm-node-metrics
+subjects:
+  # The namespace is rewritten by the including overlay's `namespace:` directive,
+  # the same way it retargets every other resource in this component.
+  - kind: ServiceAccount
+    name: tcab-lgtm
+    namespace: tcab-prod
+roleRef:
+  kind: ClusterRole
+  name: tcab-lgtm-node-metrics
+  apiGroup: rbac.authorization.k8s.io
