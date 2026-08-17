@@ -336,7 +336,8 @@ pub enum TurnErrorType {
     SandboxTimeout,
     /// The guest's linear memory grew past its cap.
     SandboxOutOfMemory,
-    /// The guest trapped for some other reason.
+    /// The guest trapped for some other reason, which on an arm whose program dies the way its
+    /// runtime kills it is where an ordinary uncaught program failure lands.
     SandboxTrap,
     /// A tool-calling turn ended with no call under an explicit-call completion signal.
     MissingCompletionNoCall,

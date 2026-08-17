@@ -60,6 +60,7 @@ use std::time::Instant;
 use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::super::g8::{self, Answered, Case, Located, Shape};
+use crate::limits::TurnErrorType;
 
 use super::compile::{self, compile_program};
 use crate::sandbox::fake::{
@@ -854,6 +855,7 @@ gg.log(text)
                 names: &["read_text_file", "not-found", "missing.md"],
                 located: Located::At("main.swift:4:"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::NativeFault,
@@ -867,6 +869,7 @@ gg.log("\(missing)")
                 names: &["Swift runtime failure: Index out of range"],
                 located: Located::At("main.swift:5:21"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::FailureValue,
@@ -881,6 +884,7 @@ Task {
                 names: &["StepFailure"],
                 located: Located::Nowhere,
                 answered: Answered::AtRuntime,
+                recorded: None,
             },
             Case {
                 shape: Shape::ResourceFault,
@@ -896,6 +900,7 @@ gg.log("\(deeper(0))")
                 names: &["call stack exhausted"],
                 located: Located::At("main.swift:5:16"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::Abort,
@@ -911,6 +916,7 @@ exit(
                 names: &["exit(3)"],
                 located: Located::Nowhere,
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
         ],
     );

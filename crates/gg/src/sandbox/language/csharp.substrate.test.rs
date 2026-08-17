@@ -51,6 +51,7 @@ use std::time::Instant;
 use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 
 use super::super::g8::{self, Answered, Case, Located, Shape};
+use crate::limits::TurnErrorType;
 use wasmtime::component::Component;
 
 use super::GUEST_COMPONENT;
@@ -915,6 +916,7 @@ Console.WriteLine(text);
                 names: &["Gg.ToolException", "Files.ReadTextFile", "missing.md"],
                 located: Located::At("./program.cs:line 5"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::ProgramThrow),
             },
             Case {
                 shape: Shape::NativeFault,
@@ -933,6 +935,7 @@ Console.WriteLine(missing);
                 ],
                 located: Located::At("./program.cs:line 5"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::ProgramThrow),
             },
             Case {
                 shape: Shape::FailureValue,
@@ -953,6 +956,7 @@ public static class Program {
                 names: &["returned 3"],
                 located: Located::Nowhere,
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::ProgramThrow),
             },
             Case {
                 shape: Shape::ResourceFault,
@@ -975,6 +979,7 @@ public static class Program {
                 names: &["StackOverflowException"],
                 located: Located::At("./program.cs:6"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::Abort,
@@ -990,6 +995,7 @@ Console.WriteLine("after the exit");
                 names: &["exit(3)"],
                 located: Located::Nowhere,
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
         ],
     );

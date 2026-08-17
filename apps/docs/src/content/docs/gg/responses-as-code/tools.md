@@ -146,10 +146,11 @@ is spelled in the program's own language, because the sentence is an instruction
 the model can act on; the error's `tool` field carries the operation's own key
 instead, because a catch site branches on identity rather than on prose.
 
-An uncaught refusal is classified from the failure code, so it records as
-`program_unknown_name`. Two arms do not carry a code up with the throw, so a
+An uncaught refusal is classified from the failure code where the arm's guest
+carries one up with the throw, and it records as `program_unknown_name`. The
+arms whose programs die the way their runtime kills them carry nothing up, so a
 cross-arm count of refusals joins on the refusal roster rather than on the
-turn's error type.
+[turn's error type](/gg/languages/static-sdks/#the-turn-error-for-an-uncaught-refusal).
 
 ## Failed calls
 

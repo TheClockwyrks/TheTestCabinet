@@ -77,6 +77,25 @@ A slice on this base kind is therefore not a valid cross-arm comparison. Read
 with a host-side preparation step does.
 :::
 
+:::caution[`program_fault` and `sandbox_limit` split one event by arm]
+A program owns its failures, and gg reads what the program's own runtime said
+rather than intercepting the throw. So an uncaught failure ends the turn the way
+that arm's runtime ends a program, and which base kind the turn lands under
+follows from that.
+
+An arm whose guest reports the throw to the host before it dies hands up the
+failure's class, and the turn is filed under `program_fault`. An arm whose
+program dies as its runtime kills it reports nothing, so the turn is filed as
+`sandbox_trap`, under `sandbox_limit` beside the two ceilings gg imposes. The
+same model mistake therefore counts as a program fault on one arm and a sandbox
+limit on another.
+
+A slice on either base kind is a valid comparison within one arm and not across
+arms. Across arms, read the two together, or read the
+[per-arm table](/gg/languages/static-sdks/#the-turn-error-for-an-uncaught-refusal)
+of what each one files.
+:::
+
 Every type's id names its base, because a "top error types" ranking shows one row
 per type with no heading over it. Each also carries a human-readable label. The
 labels live in Rust beside the variants and are generated into the TypeScript

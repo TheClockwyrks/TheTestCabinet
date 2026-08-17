@@ -30,6 +30,7 @@ use serde_json::json;
 use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::super::g8::{self, Answered, Case, Located, Shape};
+use crate::limits::TurnErrorType;
 
 use crate::context::ViewKind;
 use crate::ending::EndingRole;
@@ -559,6 +560,7 @@ console.log(text);
                 names: &["read_text_file", "not-found", "missing.md"],
                 located: Located::At("program.js:6:3"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::NativeFault,
@@ -572,6 +574,7 @@ console.log(
                 names: &["TypeError", "toString"],
                 located: Located::At("program.js:5:3"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::FailureValue,
@@ -586,6 +589,7 @@ step();
                 names: &["the third step did not finish"],
                 located: Located::At("program.js:4:13"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::ResourceFault,
@@ -600,6 +604,7 @@ deeper(0);
                 names: &["Maximum call stack size exceeded"],
                 located: Located::At("program.js:4:21"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::Abort,
@@ -617,6 +622,7 @@ console.log("after the exit");
                 // the model reads is the engine's own `ReferenceError` at the line it reached for
                 // one, and the statements after it do not run.
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
         ],
     );

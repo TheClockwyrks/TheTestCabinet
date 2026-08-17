@@ -1280,7 +1280,7 @@
         },
         {
           "const": "sandbox_trap",
-          "description": "The guest trapped for some other reason. The program ran and its landed calls stand.",
+          "description": "The guest trapped for some other reason. The program ran and its landed calls stand.\n\nOn an arm whose program dies the way its runtime kills it rather than reporting a throw to\nthe host, this is also where an ordinary uncaught program failure lands, so a slice over\nthis type — or over the [`SandboxLimit`](GgTurnErrorKind::SandboxLimit) kind above it — is a\ncomparison within one program language and not across them.",
           "type": "string"
         },
         {

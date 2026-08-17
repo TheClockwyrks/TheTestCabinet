@@ -10,6 +10,7 @@
 use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::super::g8::{self, Answered, Case, Located, Shape};
+use crate::limits::TurnErrorType;
 
 /// **Gate [G8](super::super::g8) for TypeScript** — all five shapes a runtime failure takes,
 /// driven through the production path and read back as the model would read them.
@@ -32,6 +33,7 @@ console.log(text);
                 names: &["read_text_file", "not-found", "missing.md"],
                 located: Located::At("program.ts:5:28"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::NativeFault,
@@ -45,6 +47,7 @@ console.log(
                 names: &["TypeError"],
                 located: Located::At("program.ts:5:3"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::FailureValue,
@@ -59,6 +62,7 @@ step();
                 names: &["the third step did not finish"],
                 located: Located::At("program.ts:4:13"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::ResourceFault,
@@ -73,6 +77,7 @@ deeper(0);
                 names: &["Maximum call stack size exceeded"],
                 located: Located::At("program.ts:4:21"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::Abort,
@@ -90,6 +95,7 @@ console.log("after the exit");
                 // a model reaches for to stop a program. It cannot abort at all, and the refusal is
                 // what it reads instead, at its own line and column.
                 answered: Answered::ByRefusingToCompile,
+                recorded: Some(TurnErrorType::TranspileCompile),
             },
         ],
     );

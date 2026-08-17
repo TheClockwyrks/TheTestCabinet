@@ -3424,6 +3424,11 @@ pub enum GgTurnErrorType {
     /// The guest's linear memory grew past its cap and the program was stopped.
     SandboxOutOfMemory,
     /// The guest trapped for some other reason. The program ran and its landed calls stand.
+    ///
+    /// On an arm whose program dies the way its runtime kills it rather than reporting a throw to
+    /// the host, this is also where an ordinary uncaught program failure lands, so a slice over
+    /// this type — or over the [`SandboxLimit`](GgTurnErrorKind::SandboxLimit) kind above it — is a
+    /// comparison within one program language and not across them.
     SandboxTrap,
     /// A tool-calling turn ended with **no tool call** — the model replied in prose where the one
     /// way to end a session is an explicit, typed call.

@@ -58,6 +58,7 @@ fn a_silent_turn_never_satisfies_the_gate() {
         names: &[],
         located: Located::Nowhere,
         answered: Answered::AtRuntime,
+        recorded: None,
     };
     let why = satisfies(&silent, &case).expect_err("an empty body satisfies nothing");
     assert!(
@@ -96,6 +97,7 @@ fn a_cell_declares_whether_its_program_ran() {
         names: &["Cannot find name 'process'"],
         located: Located::Nowhere,
         answered: Answered::ByRefusingToCompile,
+        recorded: Some(TurnErrorType::TranspileCompile),
     };
     assert!(satisfies(&refused, &case).is_ok());
 
@@ -146,6 +148,7 @@ fn the_location_is_checked_in_both_directions() {
         names: &["IndexError"],
         located: Located::At("line 7, column 13"),
         answered: Answered::AtRuntime,
+        recorded: Some(TurnErrorType::ProgramThrow),
     };
     assert!(satisfies(&located, &right).is_ok());
 
@@ -183,6 +186,7 @@ fn the_location_is_checked_in_both_directions() {
         names: &["java.lang.IndexOutOfBoundsException"],
         located: Located::At("program.java:5"),
         answered: Answered::AtRuntime,
+        recorded: Some(TurnErrorType::SandboxTrap),
     };
     let why = satisfies(&doubled, &case).expect_err("a second location satisfies nothing");
     assert!(why.contains("a second location"), "{why}");

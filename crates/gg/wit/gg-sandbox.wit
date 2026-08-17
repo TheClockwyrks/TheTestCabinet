@@ -1382,13 +1382,18 @@ world sandbox {
     /// `feedback.report-module-error` and leaves `lib.<name>` empty — it never takes the program
     /// down with it.
     ///
-    /// It returns **nothing**, because a program's return value is not a channel: everything one
-    /// program has to say it says over `feedback` — what it logged, what it threw, and (through
-    /// `session`) whether the session is over. A value handed to a top-level `return` is
-    /// discarded, and `feedback.note-return` is how the model is told so rather than left to wonder.
+    /// It returns **nothing**, because a program's return value is not a channel: what a program
+    /// has to say about its own work it says over `feedback`, and what it has to say about its own
+    /// death it says the way its runtime says it.
     ///
-    /// A throw is caught and reported over `feedback.report-error`, never allowed to escape as an
-    /// opaque wasm trap.
+    /// A guest with an exception mechanism that survives to the export boundary MAY report an
+    /// uncaught throw over `feedback.report-error`, which is what carries the failure's class to the
+    /// host and files the turn under one of the `program_*` types. A guest without one lets the
+    /// program die as its runtime kills it: the runtime's own words reach the host on standard
+    /// error, the crossing ends in a trap, and the turn is filed as `sandbox_trap`. Both are
+    /// [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) — the mechanism is
+    /// capture rather than interception, and no guest may build a catch chain to type a throw it
+    /// would otherwise have died of.
     export run: func(
         program: string,
         modules: list<code-module>,

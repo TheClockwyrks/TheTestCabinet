@@ -121,19 +121,21 @@ agent that reached for the wrong one ends its session on the next line:
 
 ## The turn error for an uncaught refusal
 
-Nine arms record an uncaught refusal as `program_unknown_name`, and the host
-decides that from the failure's code rather than from the guest's own reading.
-Two arms report differently.
+The refusal is recorded identically on all eleven arms, so a study counting what
+an agent reached for and was not granted reads the refusal roster. The
+[turn error type](/gg/telemetry/turn-outcomes/) an uncaught refusal ends the turn
+with is an arm-by-arm answer, because it is decided by how the arm's runtime
+kills a program that does not catch one.
 
-- C# reports every uncaught managed exception with kind `other` and no code, so
-  an uncaught refusal is recorded as `program_throw`, as is an uncaught
-  `not-found`.
-- Swift's guest shell has no top-level `throws` context to wrap, so an uncaught
-  error arrives as a sandbox trap.
+An arm whose guest reports the throw to the host before it dies carries the
+failure's code across, and the host files the turn as `program_unknown_name`. An
+arm whose program dies the way its runtime kills it reports nothing to the host
+and the turn is filed as `sandbox_trap`. C# reports every uncaught managed
+exception with kind `other` and no code, so its refusals are filed as
+`program_throw`.
 
-The refusal itself is recorded identically on all eleven arms, so a study
-counting what an agent reached for and was not granted reads the refusal roster
-rather than the turn's error type.
+`crates/gg/src/sandbox/language/g8.rs` carries the eleven-arm table of what each
+arm files each failure shape as, and every cell of it is driven.
 
 ## Argument lowering on the interpreted arms
 

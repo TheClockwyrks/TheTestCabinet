@@ -45,6 +45,7 @@ use serde_json::Value;
 use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 
 use super::super::g8::{self, Answered, Case, Located, Shape};
+use crate::limits::TurnErrorType;
 
 use super::compile::{compile_module, compile_program};
 use crate::ending::{Ending, EndingRole};
@@ -906,6 +907,7 @@ public final class Program {
                 names: &["read_text_file", "not-found", "missing.md"],
                 located: Located::At("Program.java:6"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::NativeFault,
@@ -923,6 +925,7 @@ public final class Program {
                 names: &["java.lang.IndexOutOfBoundsException"],
                 located: Located::At("Program.java:8"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::FailureValue,
@@ -939,6 +942,7 @@ public final class Program {
                 // declared `main` itself, Java's `main` returns `void`, and javac says so at the
                 // model's own line. Termination by a value is `System.exit`, which is shape (e).
                 answered: Answered::ByRefusingToCompile,
+                recorded: Some(TurnErrorType::TranspileCompile),
             },
             Case {
                 shape: Shape::ResourceFault,
@@ -961,6 +965,7 @@ public final class Program {
                 names: &["call stack exhausted"],
                 located: Located::Nowhere,
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::Abort,
@@ -979,6 +984,7 @@ public final class Program {
                 // the translation step. The model reads the method it wrote, by its JVM descriptor,
                 // at its own line.
                 answered: Answered::ByRefusingToCompile,
+                recorded: Some(TurnErrorType::TranspileCompile),
             },
         ],
     );

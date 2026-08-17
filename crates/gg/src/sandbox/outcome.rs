@@ -298,11 +298,19 @@ pub enum ProgramErrorKind {
 impl ProgramErrorKind {
     /// The [turn error type](TurnErrorType) an uncaught throw of this class is recorded as.
     ///
-    /// The class is settled at the membrane on every uncaught throw — by the host, from the failure
-    /// code the guest hands up with the throw, so that one event is one class in every language;
-    /// see the membrane's `capture::classify`. It is the whole difference between "the program
-    /// faulted" and "the program was fighting a call it could not make". All three land under
-    /// [`ProgramFault`](crate::limits::TurnErrorKind::ProgramFault) at the base level.
+    /// The class is settled at the membrane — by the host, from the failure code the guest hands up
+    /// with the throw; see the membrane's `capture::classify`. It is the whole difference between
+    /// "the program faulted" and "the program was fighting a call it could not make", and all three
+    /// land under [`ProgramFault`](crate::limits::TurnErrorKind::ProgramFault) at the base level.
+    ///
+    /// **It is reached only where a guest reports the throw before its program dies.** On an arm
+    /// whose program dies the way its runtime kills it — which is what
+    /// [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) asks of every arm
+    /// that can — nothing is handed up, the failure arrives as [`SandboxError::Trap`] and the turn
+    /// is recorded as [`SandboxTrap`](TurnErrorType::SandboxTrap) whatever the program threw. Which
+    /// arms are which is measured, per failure shape, by gate G8
+    /// (`sandbox/language/g8.rs`) and stated for a reader of the data at
+    /// [turn outcomes](https://docs.testcabinet.ai/gg/telemetry/turn-outcomes/).
     ///
     /// **This is the class's only consumer.** The feedback the model reads is the throw's rendered
     /// message, not its class: nothing in the [loop](crate::agent) branches on the class to pick
@@ -432,6 +440,13 @@ pub enum SandboxError {
         said: String,
     },
     /// The guest trapped for some other reason.
+    ///
+    /// On the arms with no exception mechanism reaching the host this is where an **ordinary
+    /// uncaught throw** arrives, because the program died the way its runtime killed it and said
+    /// what it had to say on standard error rather than over `feedback`. What the model reads is
+    /// unaffected — it is the runtime's own words either way — but the turn is recorded as
+    /// [`SandboxTrap`](TurnErrorType::SandboxTrap); see
+    /// [`ProgramErrorKind::turn_error_type`].
     ///
     /// An explicit `exit` is one of them, and it is **named** rather than being left to a wasm
     /// backtrace — see the classifier's `exit_message`. It shares this variant rather than getting

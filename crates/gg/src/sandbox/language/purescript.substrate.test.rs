@@ -37,6 +37,7 @@ use serde_json::{Value, json};
 use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 
 use super::super::g8::{self, Answered, Case, Located, Shape};
+use crate::limits::TurnErrorType;
 
 use super::compile::{self, compile_module, compile_program};
 use crate::ending::{Ending, EndingRole};
@@ -1451,6 +1452,7 @@ main = do
                 names: &["read_text_file", "not-found", "missing.md"],
                 located: Located::At("program.purs:14:5"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::NativeFault,
@@ -1474,6 +1476,7 @@ main = do
                 names: &["Failed pattern match"],
                 located: Located::At("program.purs:15:5"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::FailureValue,
@@ -1495,6 +1498,7 @@ main = do
                 names: &["the third step did not finish"],
                 located: Located::Nowhere,
                 answered: Answered::AtRuntime,
+                recorded: None,
             },
             Case {
                 shape: Shape::ResourceFault,
@@ -1516,6 +1520,7 @@ main = Console.log (show (deeper 0))
                 names: &["Maximum call stack size exceeded"],
                 located: Located::At("program.purs:11:24"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::Abort,
@@ -1538,6 +1543,7 @@ main = do
                 names: &["the third step did not finish"],
                 located: Located::At("program.purs:15:5"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
         ],
     );

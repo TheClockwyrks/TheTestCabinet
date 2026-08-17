@@ -55,6 +55,7 @@ use std::time::Instant;
 use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::super::g8::{self, Answered, Case, Located, Shape};
+use crate::limits::TurnErrorType;
 
 use super::compile::{self, compile_program};
 use crate::sandbox::fake::{
@@ -1255,6 +1256,7 @@ int main() {
                 ],
                 located: Located::Nowhere,
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::ProgramToolError),
             },
             Case {
                 shape: Shape::NativeFault,
@@ -1271,6 +1273,7 @@ int main() {
                 names: &["vector[] index out of bounds"],
                 located: Located::At("main.cpp:7:23"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::FailureValue,
@@ -1290,6 +1293,7 @@ int main() {
                 names: &["returned 3"],
                 located: Located::Nowhere,
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::ProgramThrow),
             },
             Case {
                 shape: Shape::ResourceFault,
@@ -1306,6 +1310,7 @@ int main() {
                 names: &["out of bounds memory access"],
                 located: Located::At("main.cpp:4:14"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::Abort,
@@ -1325,6 +1330,7 @@ int main() {
                 names: &["exit(3)"],
                 located: Located::Nowhere,
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
         ],
     );

@@ -52,6 +52,7 @@ use serde_json::Value;
 use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::super::g8::{self, Answered, Case, Located, Shape};
+use crate::limits::TurnErrorType;
 
 use super::compile::compile_program;
 use crate::ending::{Ending, EndingRole};
@@ -838,6 +839,7 @@ fn main() -> Result<(), gg::Failure> {
                 names: &["read_text_file", "not-found", "missing.md"],
                 located: Located::Nowhere,
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::NativeFault,
@@ -855,6 +857,7 @@ fn main() {
                 ],
                 located: Located::At("program.rs:5:25"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::FailureValue,
@@ -870,6 +873,7 @@ fn main() -> Result<(), gg::Failure> {
                 names: &["invalid digit found in string"],
                 located: Located::Nowhere,
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::ResourceFault,
@@ -887,6 +891,7 @@ fn main() {
                 names: &["call stack exhausted"],
                 located: Located::Nowhere,
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::Abort,
@@ -901,6 +906,7 @@ fn main() {
                 names: &["exit(3)"],
                 located: Located::Nowhere,
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
         ],
     );

@@ -3,10 +3,16 @@
 //! The [invariants](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) say a program owns
 //! its failures and that what the model reads is what its language emitted. This is the assertion
 //! behind that sentence: five failure shapes, driven through every registered arm's **real**
-//! preparation and **real** run, read back through the **production** renderer, and held to four
+//! preparation and **real** run, read back through the **production** renderer, and held to five
 //! things — that the model is told something at all, that it is told under the band the cell
-//! declares, that what it is told names the fault in the program's or the language's own words, and
-//! that it carries a location wherever the language reports one.
+//! declares, that what it is told names the fault in the program's or the language's own words, that
+//! it carries a location wherever the language reports one, and that the turn is filed under the
+//! class the cell declares.
+//!
+//! The fifth is the one that is not about what a model reads, and it is here because nothing else
+//! pinned it: see [`Case::recorded`]. It is asserted for every cell, including the ones
+//! [`KNOWN_HOLES`] holds a row for, because a row records what a model reads *instead* and says
+//! nothing about how the turn is filed.
 //!
 //! # Not every cell reaches a run, and each one says which
 //!
@@ -58,6 +64,7 @@ use serde_json::Value;
 use test_cabinet_core::gg::{GgContextSource, GgProgramLanguage};
 
 use crate::agent::code::ModelFacing;
+use crate::limits::TurnErrorType;
 use crate::sandbox::fake::{
     CallLog, FakeToolApi, all_capabilities, all_operations, canned_outcome, granted_operations,
 };
@@ -192,6 +199,25 @@ pub(super) struct Case {
     pub(super) located: Located,
     /// Whether this arm reaches this shape at run time, or refuses the program before it runs.
     pub(super) answered: Answered,
+    /// **The class the turn is recorded as**, or `None` for a cell the loop records as a turn that
+    /// carried out its work.
+    ///
+    /// The one thing in this gate that is not about what the model *reads*, and it is here because
+    /// nothing else in the tree pinned it. G8 asserts the [band](Answered::band), which is what the
+    /// model sees; the class is what a **study** sees, and the two moved apart without a gate
+    /// noticing: since [D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) made the
+    /// mechanism capture rather than interception, an uncaught throw on an arm with no exception
+    /// mechanism reaching the host dies as a wasm trap and is recorded as
+    /// [`SandboxTrap`](TurnErrorType::SandboxTrap) rather than as one of the three
+    /// `Program*` classes. Six arms moved across on this branch and every gate stayed green.
+    ///
+    /// It is therefore declared per cell rather than derived, and asserted for **every** cell
+    /// including the ones [`KNOWN_HOLES`] holds a row for: a hole records what a model *reads*
+    /// instead, and says nothing about how the turn is filed. The consequence for a reader of the
+    /// resulting data is written down at
+    /// [turn outcomes](https://docs.testcabinet.ai/gg/telemetry/turn-outcomes/), which is where the
+    /// confound belongs; this is the gate that stops the twelfth arm moving it quietly.
+    pub(super) recorded: Option<TurnErrorType>,
 }
 
 /// A cell an arm does not satisfy today, and what the model reads in its place.
@@ -414,6 +440,19 @@ pub(super) fn gate(arm: GgProgramLanguage, cases: &[Case]) {
         let read = drive(arm, case.program);
         if std::env::var_os("GG_G8_SHOW").is_some() {
             eprintln!("=== {arm} {} ===\n{}", case.shape.label(), quoted(&read));
+        }
+        // Checked for every cell, ahead of the hole machinery and outside it: a row in
+        // `KNOWN_HOLES` records what a model READS instead, and how a turn is FILED is a separate
+        // fact that no row has ever covered. See `Case::recorded`.
+        if read.model.error != case.recorded {
+            wrong.push(format!(
+                "{} is recorded as the turn class {:?}, and the turn was filed as {:?}\n\nwhat the \
+                 model reads:\n{}",
+                case.shape.label(),
+                case.recorded,
+                read.model.error,
+                quoted(&read)
+            ));
         }
         let verdict = satisfies(&read, case);
         let held = KNOWN_HOLES

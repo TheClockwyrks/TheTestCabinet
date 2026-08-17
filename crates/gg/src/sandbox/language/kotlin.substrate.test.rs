@@ -45,6 +45,7 @@ use serde_json::Value;
 use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 
 use super::super::g8::{self, Answered, Case, Located, Shape};
+use crate::limits::TurnErrorType;
 
 use super::compile::{compile_module, compile_program, warm};
 use crate::ending::{Ending, EndingRole};
@@ -1077,6 +1078,7 @@ fun main() {
                 names: &["read_text_file", "not-found", "missing.md"],
                 located: Located::At("Program.kt:3"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::NativeFault,
@@ -1090,6 +1092,7 @@ fun main() {
                 names: &["java.lang.ArrayIndexOutOfBoundsException"],
                 located: Located::At("Program.kt:5"),
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::FailureValue,
@@ -1105,6 +1108,7 @@ fun main() {
                 // at the model's own line. Termination by a value is `exitProcess`, which is shape
                 // (e).
                 answered: Answered::ByRefusingToCompile,
+                recorded: Some(TurnErrorType::TranspileCompile),
             },
             Case {
                 shape: Shape::ResourceFault,
@@ -1125,6 +1129,7 @@ fun main() {
                 names: &["call stack exhausted"],
                 located: Located::Nowhere,
                 answered: Answered::AtRuntime,
+                recorded: Some(TurnErrorType::SandboxTrap),
             },
             Case {
                 shape: Shape::Abort,
@@ -1144,6 +1149,7 @@ fun main() {
                 // Nothing runs: TeaVM has no `System.exit` to link, so the program is refused at
                 // the translation step, at the model's own line.
                 answered: Answered::ByRefusingToCompile,
+                recorded: Some(TurnErrorType::TranspileCompile),
             },
         ],
     );
