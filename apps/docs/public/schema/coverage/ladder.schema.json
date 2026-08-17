@@ -133,7 +133,7 @@
   "properties": {
     "autoTopUp": {
       "default": false,
-      "description": "Whether submitting a review re-runs this ladder's top-up automatically. Off by\ndefault, so an existing ladder never silently starts enqueueing.",
+      "description": "Whether submitting a review re-runs this ladder's top-up automatically.\n\n**On** by default, because it is the only thing that moves an enabled ladder\nalong: a review is the verdict that decides a rung, and the moment it frees a\nbuffer slot is exactly the moment the next rung's runs should be asked for.\nEnqueueing is already gated on the ladder being enabled at all, so this cannot\nmake an untouched ladder start spending.",
       "type": "boolean"
     },
     "bufferTarget": {
@@ -175,7 +175,7 @@
     },
     "paused": {
       "default": false,
-      "description": "Whether topping up is suspended.",
+      "description": "Whether topping up is suspended — the console calls this ladder **disabled**.\n\nA ladder is created suspended and enqueues nothing at all until the reviewer\nenables it: a climb is declared long before it is meant to start spending, and a\nladder that launched runs the moment it was saved would have spent a buffer's\nworth of tokens before its author had finished reading it back.",
       "type": "boolean"
     },
     "rungs": {

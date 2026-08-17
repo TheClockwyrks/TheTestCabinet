@@ -17,10 +17,12 @@ import {
 import { NotificationToast } from "./NotificationToast";
 import { NotificationsSidebar } from "./NotificationsSidebar";
 
-// How often, while runs are in progress, the console reconciles its in-progress
-// list against the workers' authoritative active sets — the backstop that recovers
-// a completion whose live push never arrived (the feed keeps no backlog), even if
-// the push channel is wedged. Frequent enough to feel prompt, cheap enough to poll.
+// How often the console reconciles its in-progress list against the workers'
+// authoritative active sets — the backstop that recovers a completion whose live push
+// never arrived (the feed keeps no backlog) even if the push channel is wedged, and
+// the only thing that surfaces a run enqueued somewhere other than this browser (a
+// coverage plan or ladder top-up, another tab, another machine). Frequent enough to
+// feel prompt, cheap enough to poll.
 const RECONCILE_INTERVAL_MS = 15_000;
 
 // The console's notification subsystem, mounted once inside the router (so its
@@ -163,11 +165,19 @@ export function NotificationsLayer() {
   // A periodic backstop for reconnect-time reconciliation: that only recovers a
   // missed completion if the channel actually reconnects. If it wedges — an
   // EventSource stuck after an error, or a push dropped with the connection still
-  // up — poll the active list while runs are in flight so the list still heals
-  // within an interval instead of waiting on a manual refresh.
+  // up — polling the active list heals the list within an interval instead of
+  // waiting on a manual refresh.
+  //
+  // It polls unconditionally, and not merely while this session already has a run in
+  // flight. A run this browser never launched is exactly as real: a coverage plan or
+  // ladder top-up enqueues server-side, and so does another tab or another machine
+  // signed into the same cabinet. Gating the poll on a non-empty list left every one
+  // of those invisible until the user happened to launch something by hand — the seed
+  // runs once on mount, so navigating to the Runs page (which never remounts this
+  // layer) showed nothing at all.
   useEffect(() => {
     const timer = setInterval(() => {
-      if (runtimeRef.current.inProgress.length > 0) void reconcileActive();
+      void reconcileActive();
     }, RECONCILE_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [reconcileActive]);

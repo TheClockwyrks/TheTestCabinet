@@ -88,12 +88,22 @@ export type LadderSchedule = {
    */
   outerAxis: LadderAxis;
   /**
-   * Whether topping up is suspended.
+   * Whether topping up is suspended — the console calls this ladder **disabled**.
+   *
+   * A ladder is created suspended and enqueues nothing at all until the reviewer
+   * enables it: a climb is declared long before it is meant to start spending, and a
+   * ladder that launched runs the moment it was saved would have spent a buffer's
+   * worth of tokens before its author had finished reading it back.
    */
   paused: boolean;
   /**
-   * Whether submitting a review re-runs this ladder's top-up automatically. Off by
-   * default, so an existing ladder never silently starts enqueueing.
+   * Whether submitting a review re-runs this ladder's top-up automatically.
+   *
+   * **On** by default, because it is the only thing that moves an enabled ladder
+   * along: a review is the verdict that decides a rung, and the moment it frees a
+   * buffer slot is exactly the moment the next rung's runs should be asked for.
+   * Enqueueing is already gated on the ladder being enabled at all, so this cannot
+   * make an untouched ladder start spending.
    */
   autoTopUp: boolean;
   /**
@@ -258,12 +268,22 @@ export type LadderOut = {
    */
   outerAxis: LadderAxis;
   /**
-   * Whether topping up is suspended.
+   * Whether topping up is suspended — the console calls this ladder **disabled**.
+   *
+   * A ladder is created suspended and enqueues nothing at all until the reviewer
+   * enables it: a climb is declared long before it is meant to start spending, and a
+   * ladder that launched runs the moment it was saved would have spent a buffer's
+   * worth of tokens before its author had finished reading it back.
    */
   paused: boolean;
   /**
-   * Whether submitting a review re-runs this ladder's top-up automatically. Off by
-   * default, so an existing ladder never silently starts enqueueing.
+   * Whether submitting a review re-runs this ladder's top-up automatically.
+   *
+   * **On** by default, because it is the only thing that moves an enabled ladder
+   * along: a review is the verdict that decides a rung, and the moment it frees a
+   * buffer slot is exactly the moment the next rung's runs should be asked for.
+   * Enqueueing is already gated on the ladder being enabled at all, so this cannot
+   * make an untouched ladder start spending.
    */
   autoTopUp: boolean;
   /**

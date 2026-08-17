@@ -774,6 +774,45 @@ fn retry_count_of(request_json: &str) -> u32 {
         .min(MAX_RETRY_COUNT)
 }
 
+/// Whether the coverage plan or ladder that launched `job` is currently paused — a
+/// ladder's paused flag is what the console calls **disabled**.
+///
+/// A paused plan or ladder has been told to stop producing work, and re-enqueueing a
+/// failed run of it is producing work: it is a fresh `queued` job, minted minutes after
+/// the reviewer halted the queue and watched it empty. That is the shape of the bug
+/// this guards — runs "coming back" after being stopped, with nothing in the console
+/// that asked for them. Whatever was already in flight still runs to completion, which
+/// is the promise a pause makes; only the *next* attempt is withheld.
+///
+/// Answers false, so the retry proceeds, whenever the question cannot be settled: an
+/// unattributed job (launched by hand — no plan ever spoke for it), one with no
+/// launching account to scope the lookup to, or an origin whose plan or ladder has since
+/// been deleted. Deleting a plan deliberately leaves its runs alone, and a run nobody
+/// can attribute is still a perfectly good run that a transient failure should not end.
+async fn origin_is_paused(state: &AppState, job: &job::Model) -> Result<bool, ApiError> {
+    let Some(origin) = job.origin.as_deref().and_then(JobOrigin::parse) else {
+        return Ok(false);
+    };
+    let Some(user_id) = job.user_id.as_deref() else {
+        return Ok(false);
+    };
+    let paused = match origin {
+        JobOrigin::Plan(id) => state
+            .db
+            .coverage_plan_schedule(user_id, &id)
+            .await
+            .map_err(ApiError::from)?
+            .map(|schedule| schedule.paused),
+        JobOrigin::Ladder(id) => state
+            .db
+            .ladder_schedule(user_id, &id)
+            .await
+            .map_err(ApiError::from)?
+            .map(|schedule| schedule.paused),
+    };
+    Ok(paused.unwrap_or(false))
+}
+
 /// Whether a terminal run in `state` should be automatically retried.
 /// [`RunState::Infrastructure`] (our infra broke) and [`RunState::Catastrophic`]
 /// (the harness ran clean but the build won't load) retry, as does
@@ -811,7 +850,10 @@ fn is_retryable(state: RunState) -> bool {
 /// Two guards keep the chain finite: `already_terminal` skips a duplicate/late
 /// terminal report (the decision is made only the first time a job goes terminal),
 /// and the strictly-monotonic `attempt` bounded by the request's `retryCount` means
-/// the chain always terminates.
+/// the chain always terminates. A third, [`origin_is_paused`], stops the chain
+/// outright when the plan or ladder that launched the run has been paused since: a
+/// halted queue that refills itself minutes later is indistinguishable from a queue
+/// that was never halted.
 async fn maybe_enqueue_retry(
     state: &AppState,
     job: &job::Model,
@@ -826,6 +868,16 @@ async fn maybe_enqueue_retry(
     // `attempt` is 1-based over the retries: attempt 1 is the first retry, so the
     // chain stops once it would exceed `retryCount` retries.
     if attempt as u32 > retry_count {
+        return Ok(());
+    }
+    if origin_is_paused(state, job).await? {
+        tracing::info!(
+            parent_job = %job.id,
+            origin = job.origin.as_deref().unwrap_or(""),
+            terminal_state = ?terminal_state,
+            "skipped the automatic retry of a failed run: the plan or ladder that \
+             launched it is paused"
+        );
         return Ok(());
     }
 
