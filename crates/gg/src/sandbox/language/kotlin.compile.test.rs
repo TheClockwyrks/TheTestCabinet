@@ -130,6 +130,17 @@ fn a_handshake_from_another_protocol_or_another_release_is_refused_by_name() {
         "the operator is told what is installed and what to run: {refused}",
     );
 
+    // A greeting gg cannot read at all is reported with the line in it, because a parse error alone
+    // says a JVM answered wrongly and never what it answered — and on this road the answer that
+    // mattered came from the VM rather than from the driver. See `jvm::LOG_TO_STDERR`, and the
+    // measurement of it in the Java arm's `a_vm_that_warns_about_its_machine_is_not_read_as_a_greeting`,
+    // which drives the launch this arm's JVM is started by too.
+    let unreadable = handshake("not json at all").expect_err("a greeting gg cannot read");
+    assert!(
+        unreadable.contains("\"not json at all\""),
+        "the greeting gg could not read is in the message it reports: {unreadable}"
+    );
+
     // A version that could not be read at all is deliberately not a mismatch: that is a strange
     // machine rather than a wrong one, and the compile that follows has far more to say about it.
     handshake(&format!(

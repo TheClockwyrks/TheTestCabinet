@@ -59,7 +59,8 @@
 
 use std::path::{Path, PathBuf};
 
-use super::compile::shared_toolchain_dir;
+use super::compile;
+use super::compile::{DaemonCommand, shared_toolchain_dir};
 
 /// Encoding the core module TeaVM's `WEBASSEMBLY_WASI` backend writes as the component gg's engine
 /// instantiates.
@@ -84,6 +85,68 @@ pub(super) const IMAGE_ROOT: &str = "/opt/gg/toolchains/java";
 /// jars — so there is no `PATH` lookup that could find it, and a test suite that needed an
 /// environment variable set by hand would be a test suite that is red on a fresh clone.
 pub(super) const HOME_ROOT: &str = ".local/share/gg-java";
+
+/// **The VM's own logging, off the pipe the protocol is spoken on.**
+///
+/// A JVM's default unified-logging configuration is `all=warning:stdout:uptime,level,tags` — which
+/// `java -Xlog:help` states from the other side, documenting `-Xlog:disable` as "turn off all
+/// logging, **including warnings and errors**". So a warning the VM raises about the machine it is
+/// on — a thread it could not start, a class-data archive it could not map — is written to *stdout*,
+/// which is the one pipe gg's compiler driver answers requests on, and it is written by the VM
+/// itself before any Java code runs. Both driver front ends re-point `System.out` at stderr for this
+/// exact hazard (`java.compiler.java:80`), and it does not help: `System.setOut` moves the Java
+/// stream, not the file descriptor the VM logs to.
+///
+/// One such line ahead of the greeting is read as the greeting, and gg refuses a JVM that is working
+/// perfectly. Measured, that is the shape of it:
+///
+/// ```text
+/// $ java -XX:SharedArchiveFile=/tmp/bogus.jsa GgCompiler.java …   # stdout
+/// [0.001s][error][cds] Not a valid shared archive file (/tmp/bogus.jsa)
+/// {"protocol":2,"java":"25.0.3","release":"21"}
+/// ```
+///
+/// and `serde` reads `[0.001s]…` as a JSON *array* whose first element is a float:
+/// `invalid type: floating point `0.001`, expected u32 at line 1 column 6`. It was found as a
+/// full-suite-only flake in the Java arm's substrate tests, which is what a resource warning looks
+/// like: sixteen preparations compiling at once is when a VM has something to warn about.
+///
+/// Disabling and re-enabling to stderr rather than disabling outright, because the lines are worth
+/// having — [`CompilerDaemon::stderr_tail`](super::compile::CompilerDaemon::stderr_tail) puts the
+/// daemon's stderr on the end of every failure gg reports about it, so a VM that says why it is
+/// unhappy is quoted rather than silenced. Two flags in this order and not one: configuring a second
+/// output does not retire the default one, so without `disable` the lines would go to both.
+pub(super) const LOG_TO_STDERR: [&str; 2] = [
+    "-Xlog:disable",
+    "-Xlog:all=warning:stderr:uptime,level,tags",
+];
+
+/// **A JVM started the way both arms start one**, up to the classpath and the driver.
+///
+/// Everything here is a property of *being a gg compiler daemon* rather than of either language, so
+/// it is decided once: the machine's own options out of the way, the VM's own logging off the reply
+/// pipe, a serial collector, and one heap number. What is left for a caller is the two things that
+/// really do differ — which jars are on the classpath and which driver is run.
+///
+/// `heap` is the ceiling and the floor both, spelled as a JVM wants it (`768m`, `1g`): a JVM that
+/// lives for a bounded number of builds and is then replaced has no use for a growing heap, and a
+/// serial collector leaves the cores to the fifteen other preparations that may be compiling beside
+/// it.
+pub(super) fn daemon(java: &Path, heap: &str) -> Result<DaemonCommand, String> {
+    let mut command = compile::daemon(java)?;
+    command
+        // A developer's shell may carry either of these, and a JVM that picks one up prints a line
+        // to stderr and may compile differently from the one in the run image — which is a
+        // difference between two arms of a study that came from a dotfile. Emptied rather than unset
+        // because that is what the launcher checks.
+        .env("JAVA_TOOL_OPTIONS", "")
+        .env("_JAVA_OPTIONS", "")
+        .args(LOG_TO_STDERR)
+        .arg("-XX:+UseSerialGC")
+        .arg("-Xms64m")
+        .arg(format!("-Xmx{heap}"));
+    Ok(command)
+}
 
 /// One arm's compiler driver, assembled: its own front end with the shared backend appended and the
 /// class closed.

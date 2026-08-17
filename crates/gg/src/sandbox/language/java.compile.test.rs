@@ -1,8 +1,11 @@
 //! The parts of the Java compile that are decisions rather than compilers: the toolchain pin, the
 //! diagnostic bands and the generated entry class.
 //!
-//! None of these starts a JVM. [The substrate's tests](super::super::substrate) do, and prove that
-//! what is decided here matches what the real toolchain does.
+//! One of these starts a JVM and the rest do not; [the substrate's tests](super::super::substrate)
+//! are where the real toolchain is driven, and prove that what is decided here matches what it does.
+//! The exception is [`a_vm_that_warns_about_its_machine_is_not_read_as_a_greeting`], because what it
+//! measures is which of a real VM's two pipes a line comes out of, and there is no way to ask that
+//! of anything but a VM.
 
 use super::*;
 
@@ -63,9 +66,74 @@ fn a_handshake_from_another_protocol_is_refused_by_number() {
     handshake(&format!("{{\"protocol\":{}}}", manifest().protocol)).expect("its own protocol");
     let refused = handshake("{\"protocol\":99}").expect_err("another protocol");
     assert!(refused.contains("99"), "{refused}");
+    let unreadable = handshake("not json at all").expect_err("a greeting gg cannot read");
+    // The line itself, quoted: a parse error alone says a JVM answered wrongly and never what it
+    // answered, and the answer that mattered came from somewhere gg did not expect. See
+    // `a_vm_that_warns_about_its_machine_is_not_read_as_a_greeting`.
     assert!(
-        handshake("not json at all").is_err(),
-        "a greeting gg cannot read is a failure rather than a guess"
+        unreadable.contains("\"not json at all\""),
+        "the greeting gg could not read is in the message it reports: {unreadable}"
+    );
+}
+
+/// **The VM's own logging is not on the pipe the protocol is spoken on** — measured, by provoking a
+/// line out of a real JVM and reading which end it came out of.
+///
+/// This starts JVMs, which nothing else in this file does. It is here rather than next door because
+/// the consequence being asserted is [`handshake`]'s, and it is measured on this arm alone because
+/// [the launch is shared](jvm::daemon): the Kotlin arm's JVM is started by the same function with a
+/// different heap.
+#[test]
+fn a_vm_that_warns_about_its_machine_is_not_read_as_a_greeting() {
+    use crate::sandbox::language::compile::{self, DaemonCommand};
+
+    let toolchain = jvm::toolchain().expect("the JDK and TeaVM jars this arm compiles with");
+    let placed = placed().expect("gg's own driver and SDK, unpacked");
+    let classpath = format!("{}:{}", placed.sdk.display(), toolchain.classpath);
+    // Something to make the VM speak. What this was found by is a *resource* warning — a loaded
+    // machine, sixteen preparations compiling at once, a VM with something to say about threads or
+    // memory — and that cannot be provoked to order, so a class-data archive stands in for it: gg's
+    // own SDK jar is a file that certainly exists and is certainly not one, which every JDK 21 and
+    // 25 measured here answers with `[…][warning][cds] The shared archive file has a bad magic
+    // number` and then carries on without (`-Xshare` defaults to `auto`). What matters is the class
+    // and not the message: every line a VM writes about its own machine goes to the same pipe.
+    let bad_archive = format!("-XX:SharedArchiveFile={}", placed.sdk.display());
+    // The rest of the arm's own launch: the classpath the driver is run on, the driver, and the
+    // classpath it compiles programs against.
+    let launch = |mut command: DaemonCommand| {
+        command
+            .arg(&bad_archive)
+            .arg("-cp")
+            .arg(&toolchain.classpath)
+            .arg(&placed.driver)
+            .arg(&classpath);
+        let mut daemon = command.start().expect("a JVM starts");
+        let first = daemon.reply(START_TIMEOUT).expect("it says something");
+        (first, daemon.stderr_tail())
+    };
+
+    // 1. Left at the VM's default logging configuration — `all=warning:stdout` — the warning is the
+    //    first thing on the reply pipe, gg reads it as the greeting, and refuses a JVM that is
+    //    working perfectly. This is the flake, reproduced on demand.
+    let (noisy, _) = launch(compile::daemon(&toolchain.java).expect("a daemon of its own"));
+    let refused = handshake(&noisy).expect_err("a VM log line is not a greeting");
+    assert!(
+        noisy.starts_with('[') && noisy.contains("]["),
+        "the first line on stdout is the VM's own log line: {noisy:?}"
+    );
+    assert!(
+        refused.contains(&format!("{noisy:?}")),
+        "and gg's diagnostic quotes it rather than describing it: {refused}"
+    );
+
+    // 2. Started the way the arm really starts one, the greeting is the greeting — and the warning
+    //    is not lost, it is on the daemon's stderr, which gg puts on the end of every failure it
+    //    reports about that daemon.
+    let (quiet, stderr) = launch(jvm::daemon(&toolchain.java, HEAP).expect("a daemon of its own"));
+    handshake(&quiet).unwrap_or_else(|error| panic!("a quiet VM's greeting is read: {error}"));
+    assert!(
+        stderr.contains("archive"),
+        "the VM still said it, on the pipe an operator reads: {stderr:?}"
     );
 }
 

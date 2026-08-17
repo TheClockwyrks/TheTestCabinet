@@ -78,7 +78,7 @@ use serde::Deserialize;
 
 use crate::sandbox::CodeModule;
 use crate::sandbox::language::compile::{
-    CompilerDaemon, CompilerPool, Workspace, daemon, place, place_bytes,
+    CompilerDaemon, CompilerPool, Workspace, place, place_bytes,
 };
 use crate::sandbox::language::jvm;
 use crate::sandbox::language::{
@@ -137,6 +137,11 @@ const BUILD_TIMEOUT: Duration = Duration::from_secs(180);
 
 /// How long starting a JVM and reading its handshake may take.
 const START_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// The heap one of this arm's warm JVMs gets, floor and ceiling both — see [`jvm::daemon`].
+///
+/// Larger than the Java arm's, because this one holds an embedded Kotlin compiler beside TeaVM.
+const HEAP: &str = "1g";
 
 /// The file a program's source is written into, and the one its diagnostics are located in.
 ///
@@ -613,20 +618,8 @@ impl KotlinCompiler {
         // the copy would never be read and the change would vanish with no diagnostic. See
         // `packages/gg-sandbox-jvm/vendor/org/teavm/runtime/ExceptionHandling.java`.
         let program_path = format!("{}:{}", placed.sdk.display(), toolchain.program_path);
-        let started = daemon(&toolchain.java).and_then(|mut command| {
+        let started = jvm::daemon(&toolchain.java, HEAP).and_then(|mut command| {
             command
-                // A developer's shell may carry either of these, and a JVM that picks one up prints
-                // a line to stderr and may compile differently from the one in the run image —
-                // which is a difference between two arms of a study that came from a dotfile.
-                // Emptied rather than unset because that is what the launcher checks.
-                .env("JAVA_TOOL_OPTIONS", "")
-                .env("_JAVA_OPTIONS", "")
-                // A JVM that lives for sixty-four builds and is then replaced has no use for a
-                // concurrent collector, and a serial one leaves the cores to the fifteen other
-                // preparations that may be compiling beside it.
-                .arg("-XX:+UseSerialGC")
-                .arg("-Xms64m")
-                .arg("-Xmx1g")
                 .arg("-cp")
                 .arg(&toolchain.classpath)
                 // The driver's own source. The JDK's single-file launcher compiles it in memory,
@@ -683,8 +676,14 @@ fn handshake(greeting: &str) -> Result<(), String> {
         /// The Kotlin release the JVM loaded, or nothing when it could not be read.
         kotlin: Option<String>,
     }
-    let greeting: Greeting = serde_json::from_str(greeting.trim())
-        .map_err(|error| format!("gg could not read its Kotlin compiler's greeting ({error})"))?;
+    // The line itself is in the message, and it is the whole of the diagnostic's value: a parse
+    // error alone says a JVM answered wrongly and never what it answered, which is a dead end when
+    // the answer came from somewhere gg did not expect (see `jvm::LOG_TO_STDERR`, found the hard way
+    // through exactly this message with the evidence thrown away).
+    let line = greeting.trim();
+    let greeting: Greeting = serde_json::from_str(line).map_err(|error| {
+        format!("gg could not read its Kotlin compiler's greeting ({error}): {line:?}")
+    })?;
     if greeting.protocol != manifest().protocol {
         return Err(format!(
             "gg speaks protocol {} to its Kotlin compiler and this one answered {}",

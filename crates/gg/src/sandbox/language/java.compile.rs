@@ -30,7 +30,7 @@
 //!    is below.
 //! 3. **Output goes where the request says**, which is the calling preparation's own
 //!    [workspace](crate::sandbox::Workspace). The daemon remembers no path between requests.
-//! 4. **The daemon stands on ground of its own** ([`daemon`]) rather than on any preparation's
+//! 4. **The daemon stands on ground of its own** ([`jvm::daemon`]) rather than on any preparation's
 //!    workspace, which is removed when that preparation ends.
 //! 5. **A daemon is retired after [`MAX_BUILDS`]**, because a JVM that has built a hundred programs
 //!    has a hundred class loaders' worth of metaspace and nothing gg can do about it from here.
@@ -87,7 +87,7 @@ use serde::Deserialize;
 
 use crate::sandbox::CodeModule;
 use crate::sandbox::language::compile::{
-    CompilerDaemon, CompilerPool, Workspace, daemon, place, place_bytes,
+    CompilerDaemon, CompilerPool, Workspace, place, place_bytes,
 };
 use crate::sandbox::language::jvm::{self, HOME_ROOT, IMAGE_ROOT, JAVA_ENV, TEAVM_ENV};
 use crate::sandbox::language::{
@@ -152,6 +152,9 @@ const BUILD_TIMEOUT: Duration = Duration::from_secs(180);
 
 /// How long starting a JVM and reading its handshake may take.
 const START_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// The heap one of this arm's warm JVMs gets, floor and ceiling both — see [`jvm::daemon`].
+const HEAP: &str = "768m";
 
 /// The name this arm's SDK jar is placed under, beside the driver.
 const SDK_FILE: &str = "gg-sdk.jar";
@@ -689,20 +692,8 @@ impl JavaCompiler {
         // the copy would never be read and the change would vanish with no diagnostic. See
         // `packages/gg-sandbox-jvm/vendor/org/teavm/runtime/ExceptionHandling.java`.
         let classpath = format!("{}:{}", placed.sdk.display(), toolchain.classpath);
-        let started = daemon(&toolchain.java).and_then(|mut command| {
+        let started = jvm::daemon(&toolchain.java, HEAP).and_then(|mut command| {
             command
-                // A JVM that lives for sixty-four builds and is then replaced has no use for a
-                // concurrent collector, and a serial one leaves the cores to the fifteen other
-                // preparations that may be compiling beside it.
-                // A developer's shell may carry either of these, and a JVM that picks one up
-                // prints a line to stderr and may compile differently from the one in the run
-                // image — which is a difference between two arms of a study that came from a
-                // dotfile. Emptied rather than unset because that is what the launcher checks.
-                .env("JAVA_TOOL_OPTIONS", "")
-                .env("_JAVA_OPTIONS", "")
-                .arg("-XX:+UseSerialGC")
-                .arg("-Xms64m")
-                .arg("-Xmx768m")
                 .arg("-cp")
                 .arg(&toolchain.classpath)
                 // The driver's own source. The JDK's single-file launcher compiles it in memory,
@@ -755,8 +746,14 @@ fn handshake(greeting: &str) -> Result<(), String> {
         /// The protocol the driver speaks.
         protocol: u32,
     }
-    let greeting: Greeting = serde_json::from_str(greeting.trim())
-        .map_err(|error| format!("gg could not read its Java compiler's greeting ({error})"))?;
+    // The line itself is in the message, and it is the whole of the diagnostic's value: a parse
+    // error alone says a JVM answered wrongly and never what it answered, which is a dead end when
+    // the answer came from somewhere gg did not expect (see `jvm::LOG_TO_STDERR`, found the hard way
+    // through exactly this message with the evidence thrown away).
+    let line = greeting.trim();
+    let greeting: Greeting = serde_json::from_str(line).map_err(|error| {
+        format!("gg could not read its Java compiler's greeting ({error}): {line:?}")
+    })?;
     if greeting.protocol != manifest().protocol {
         return Err(format!(
             "gg speaks protocol {} to its Java compiler and this one answered {}",

@@ -822,9 +822,8 @@ impl DaemonCommand {
     }
 
     /// Add several arguments.
-    // The one daemon there is names its half-dozen one at a time; a language with a computed
-    // argument list wants this.
-    #[allow(dead_code)]
+    // Both JVM arms pass a fixed pair this way (`jvm::LOG_TO_STDERR`), which is the shape it exists
+    // for: an argument list that is decided in one place and spelled in two.
     pub fn args<I, S>(&mut self, args: I) -> &mut Self
     where
         I: IntoIterator<Item = S>,
