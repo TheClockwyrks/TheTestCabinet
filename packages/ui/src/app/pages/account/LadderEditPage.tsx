@@ -13,12 +13,20 @@ import type {
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import type { Model } from "../../../client/types";
+import { HelpTip } from "../../components/HelpTip";
 import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { BackChevron } from "../../components/BackChevron";
+import { SettingRow } from "../../components/SettingRow";
+import { Switch } from "../../components/Switch";
 import { routes } from "../../routes";
 import { BufferTargetField, ComboPicker } from "./coveragePickers";
-import { GateEditor, LadderAxisPicker, RungListEditor } from "./ladderPickers";
+import {
+  DEFAULT_GATE,
+  GateEditor,
+  LadderAxisPicker,
+  RungListEditor,
+} from "./ladderPickers";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
@@ -28,21 +36,8 @@ import styles from "./Coverage.module.scss";
 // field defers to it rather than to this.
 const FALLBACK_BUFFER_TARGET = 10;
 
-/**
- * The gate a new ladder starts with, mirroring the Rust `Gate::default`.
- *
- * The gentlest rule that still stops a hopeless climb: a climber advances as long as
- * one run was playable at all, and is walled only when the whole rung came back
- * broken. A ladder should not wall anybody by accident on the day it is created —
- * tightening the bar is a deliberate act, and the editor's worked example is there to
- * make the consequence visible before it is saved.
- */
-const DEFAULT_GATE: Gate = {
-  floor: "scuffed",
-  threshold: { kind: "count", runs: 1 },
-  unloadedCountsAsBroken: true,
-  earlyStop: false,
-};
+/** The run target a new ladder starts with, and the one its control resets to. */
+const DEFAULT_RUNS_PER_CELL = 3;
 
 // The ladder editor (`/account/ladders/new` and `/account/ladders/:ladderId/edit`):
 // the climb (an ordered list of version-pinned rungs), the climbers (the same
@@ -69,7 +64,7 @@ export function LadderEditPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
-  const [runsPerCell, setRunsPerCell] = useState(3);
+  const [runsPerCell, setRunsPerCell] = useState(DEFAULT_RUNS_PER_CELL);
   const [gate, setGate] = useState<Gate>(DEFAULT_GATE);
   const [comboGroupIds, setComboGroupIds] = useState<string[]>([]);
   const [combos, setCombos] = useState<ReviewPlanCombo[]>([]);
@@ -246,34 +241,39 @@ export function LadderEditPage() {
             />
           </label>
 
-          <label className={exec.runCountField}>
-            <span className={exec.fieldLabel}>Runs per rung</span>
-            <input
-              className={exec.input}
-              type="number"
-              min={1}
-              max={100}
-              step={1}
-              value={runsPerCell}
-              onChange={(e) => {
-                const n = Math.floor(Number(e.target.value));
-                setRunsPerCell(
-                  Number.isFinite(n) && n >= 1 ? Math.min(n, 100) : 1,
-                );
-              }}
-            />
-          </label>
-          <p className={styles.fieldHint}>
-            How many runs each climber does on a rung before the gate below
-            decides it. A single rung can ask for more with its own override.
-          </p>
-
           <p className={exec.sectionLabel}>The climb</p>
           <RungListEditor
             rungs={rungs}
             runsPerCell={runsPerCell}
             onChange={setRungs}
           />
+          <SettingRow
+            label="Runs per rung"
+            description="How many runs each climber does on a rung before the gate decides it."
+            help="A single rung can ask for more than this with its own run count, so one pivotal step can demand more evidence than the rest of the climb."
+            modified={runsPerCell !== DEFAULT_RUNS_PER_CELL}
+            onReset={() => setRunsPerCell(DEFAULT_RUNS_PER_CELL)}
+          >
+            {(id) => (
+              <span className={styles.settingNumber}>
+                <input
+                  id={id}
+                  className={exec.input}
+                  type="number"
+                  min={1}
+                  max={100}
+                  step={1}
+                  value={runsPerCell}
+                  onChange={(e) => {
+                    const n = Math.floor(Number(e.target.value));
+                    setRunsPerCell(
+                      Number.isFinite(n) && n >= 1 ? Math.min(n, 100) : 1,
+                    );
+                  }}
+                />
+              </span>
+            )}
+          </SettingRow>
 
           <p className={exec.sectionLabel}>The gate</p>
           <GateEditor
@@ -282,45 +282,42 @@ export function LadderEditPage() {
             onChange={setGate}
           />
 
-          <p className={exec.sectionLabel}>Climb order</p>
+          <p className={exec.sectionLabel}>Feeding the ladder</p>
           <LadderAxisPicker value={outerAxis} onChange={setOuterAxis} />
-
-          <p className={exec.sectionLabel}>Review buffer</p>
           <BufferTargetField
             value={bufferTarget}
             accountDefault={accountBuffer}
             onChange={setBufferTarget}
+            subject="ladder"
           />
-          <label className={styles.controlToggle}>
-            <input
-              type="checkbox"
-              checked={autoTopUp}
-              onChange={(e) => setAutoTopUp(e.target.checked)}
-            />
-            Top this ladder up when I submit a review
-          </label>
-          <label className={styles.controlToggle}>
-            <input
-              type="checkbox"
-              checked={paused}
-              onChange={(e) => setPaused(e.target.checked)}
-            />
-            Paused — do not enqueue anything
-          </label>
-          <p className={styles.fieldHint}>
-            A top-up resolves where every climber stands, then enqueues only the
-            rung each one is currently on, whole rungs at a time until the
-            buffer is full — so a rung&rsquo;s runs arrive together and can be
-            judged against each other. Pausing leaves everything already queued
-            alone; cancelling it is the dashboard&rsquo;s halt.
-          </p>
+          <SettingRow
+            label="Top this ladder up when I submit a review"
+            description="Each review submitted enqueues more of the rung every climber is currently on, up to the review buffer."
+            modified={autoTopUp}
+            onReset={() => setAutoTopUp(false)}
+          >
+            {(id) => (
+              <Switch id={id} checked={autoTopUp} onChange={setAutoTopUp} />
+            )}
+          </SettingRow>
+          <SettingRow
+            label="Pause this ladder"
+            description="Stops anything new being enqueued. Runs already queued carry on."
+            help="Cancelling queued runs is the halt control on the ladder's dashboard, where what would be cancelled is visible."
+            modified={paused}
+            onReset={() => setPaused(false)}
+          >
+            {(id) => <Switch id={id} checked={paused} onChange={setPaused} />}
+          </SettingRow>
 
-          <p className={exec.sectionLabel}>Climbers</p>
+          <p className={exec.sectionLabel}>
+            Climbers{" "}
+            <HelpTip text="Groups are shared with your coverage plans, so editing one reshapes both. A climber added to a standing ladder starts at rung one while the others carry on from where they had got to." />
+          </p>
           {comboGroups.length === 0 ? (
             <p className={styles.empty}>
-              No model groups yet — create some on the Groups tab, or pin
-              one-off combinations below. Groups are shared with your coverage
-              plans, so editing one reshapes both.
+              No model groups yet. Create one on the Groups tab, or pin one-off
+              combinations below.
             </p>
           ) : (
             <div className={styles.groupPicks}>
@@ -348,10 +345,6 @@ export function LadderEditPage() {
             One-off harness / model combinations
           </p>
           <ComboPicker combos={combos} onChange={setCombos} models={models} />
-          <p className={styles.fieldHint}>
-            A climber added to a standing ladder starts at rung one and climbs
-            on its own — the others carry on from wherever they had got to.
-          </p>
 
           <div className={styles.editorActions}>
             <button

@@ -15,6 +15,8 @@ import {
 import { useTestCases } from "../../data/useTestCases";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { useCatalog } from "../../runtime/useCatalog";
+import { SettingRow } from "../../components/SettingRow";
+import { Switch } from "../../components/Switch";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 import ladder from "./Ladder.module.scss";
@@ -25,6 +27,21 @@ import ladder from "./Ladder.module.scss";
 // pickers do — the editor renders them and the dashboard has to be able to *name*
 // what they mean, and one home for them is what stops the two surfaces describing
 // the same rule two different ways.
+
+/**
+ * The gate a new ladder starts with, mirroring the Rust `Gate::default`.
+ *
+ * The gentlest rule that still stops a hopeless climb: a climber advances as long as
+ * one run was playable at all, and is walled only when the whole rung came back
+ * broken. It is also the value every gate control resets to, which is how the editor
+ * shows where the defaults are without captioning each control with its own.
+ */
+export const DEFAULT_GATE: Gate = {
+  floor: "scuffed",
+  threshold: { kind: "count", runs: 1 },
+  unloadedCountsAsBroken: true,
+  earlyStop: false,
+};
 
 /**
  * How each ladder ordering axis is described to a reviewer.
@@ -41,9 +58,9 @@ export const LADDER_AXIS_LABELS: Readonly<Record<LadderAxis, string>> = {
   combination: "Model by model",
 };
 
-/** The longer form shown under the picker, saying what the choice buys. */
+/** The longer form shown beside the picker, saying what the choice buys. */
 const LADDER_AXIS_HINTS: Readonly<Record<LadderAxis, string>> = {
-  rung: "Every climber comes up a rung before anyone moves on, so a rung's runs arrive together and the models can be judged against each other on the same case.",
+  rung: "Every climber comes up a rung before anyone moves on, so a rung's runs arrive together and can be judged against each other.",
   combination:
     "One climber goes as high as it can before the next one starts, so you find out how far a single model gets soonest.",
 };
@@ -53,8 +70,12 @@ export function ladderAxisLabel(axis: LadderAxis): string {
   return LADDER_AXIS_LABELS[axis];
 }
 
+/** The order a new ladder starts in, and the one the picker resets to. */
+export const DEFAULT_LADDER_AXIS: LadderAxis = "rung";
+
 /**
- * The ordering control: two mutually exclusive pills over {@link LADDER_AXIS_LABELS}.
+ * The ordering setting: two mutually exclusive pills over {@link LADDER_AXIS_LABELS},
+ * described by what the selected order buys.
  *
  * The choice is real and not cosmetic — a top-up emits whole cells in this order,
  * `job.queue_seq` is monotonic, and the dispatcher claims in ascending order, so the
@@ -71,9 +92,14 @@ export function LadderAxisPicker({
   disabled?: boolean;
 }) {
   return (
-    <>
+    <SettingRow
+      label="Climb order"
+      description={LADDER_AXIS_HINTS[value]}
+      modified={value !== DEFAULT_LADDER_AXIS}
+      onReset={() => onChange(DEFAULT_LADDER_AXIS)}
+    >
       <div
-        className={styles.kindRow}
+        className={styles.settingPills}
         role="radiogroup"
         aria-label="Climb order"
       >
@@ -93,8 +119,7 @@ export function LadderAxisPicker({
           </button>
         ))}
       </div>
-      <p className={styles.fieldHint}>{LADDER_AXIS_HINTS[value]}</p>
-    </>
+    </SettingRow>
   );
 }
 
@@ -115,6 +140,14 @@ export function requiredRuns(threshold: GateThreshold, total: number): number {
   // computed in binary floating point, where a product that is whole in decimal need
   // not be, and rounding that up would demand a run that can never exist.
   return Math.max(0, Math.ceil(fraction * total - 1e-9));
+}
+
+/** Whether two thresholds demand the same thing, so a control knows it has moved. */
+function sameThreshold(a: GateThreshold, b: GateThreshold): boolean {
+  if (a.kind === "count" && b.kind === "count") return a.runs === b.runs;
+  if (a.kind === "fraction" && b.kind === "fraction")
+    return a.fraction === b.fraction;
+  return false;
 }
 
 /** A rating named as the reviewer sees it ("Passable"), never as the wire spells it. */
@@ -159,11 +192,11 @@ export function gateExample(gate: Gate, runsPerCell: number): string {
   const need = Math.min(requiredRuns(gate.threshold, total), total);
   const floor = `rated ${ratingLabel(gate.floor)} or better`;
   if (need <= 0) {
-    return `At ${total} runs a rung, this gate demands nothing: every climber advances past every rung. Raise the threshold to make the ladder able to stop anyone.`;
+    return `At ${total} runs a rung, this gate demands nothing: every climber advances past every rung. Raise the threshold to let the ladder stop anyone.`;
   }
   const decides = gate.earlyStop
-    ? "The rung is decided as soon as the outcome is certain, and its remaining runs are cancelled."
-    : "The rung still finishes all of its runs either way — the evidence is worth having even once the outcome is certain.";
+    ? "Its remaining runs are cancelled once the outcome is certain."
+    : "The rung still finishes all of its runs either way.";
   return (
     `At ${total} runs a rung: a climber advances once ${need} of its ${total} runs ` +
     `${need === 1 ? "is" : "are"} ${floor}, and is walled when ` +
@@ -207,106 +240,129 @@ export function GateEditor({
 
   return (
     <>
-      <div className={ladder.gateRow}>
-        <label className={`${exec.field} ${exec.comboField}`}>
-          <span className={exec.fieldLabel}>Counts as clearing the rung</span>
-          <select
-            className={exec.select}
-            value={gate.floor}
-            onChange={(e) =>
-              onChange({ ...gate, floor: e.target.value as Rating })
+      <SettingRow
+        label="Counts as clearing the rung"
+        help={describeGate(gate)}
+        modified={gate.floor !== DEFAULT_GATE.floor}
+        onReset={() => onChange({ ...gate, floor: DEFAULT_GATE.floor })}
+      >
+        {(id) => (
+          <span className={styles.settingSelect}>
+            <select
+              id={id}
+              className={exec.select}
+              value={gate.floor}
+              onChange={(e) =>
+                onChange({ ...gate, floor: e.target.value as Rating })
+              }
+            >
+              {RATINGS.map((rating) => (
+                <option key={rating} value={rating}>
+                  {ratingLabel(rating)} or better
+                </option>
+              ))}
+            </select>
+          </span>
+        )}
+      </SettingRow>
+
+      <SettingRow
+        label="How many must clear it"
+        description={gateExample(gate, runsPerCell)}
+        modified={!sameThreshold(threshold, DEFAULT_GATE.threshold)}
+        onReset={() => setThreshold(DEFAULT_GATE.threshold)}
+      >
+        {(id) => (
+          <>
+            <span className={styles.settingNumber}>
+              <input
+                id={id}
+                className={exec.input}
+                type="number"
+                min={isCount ? 1 : 0}
+                max={100}
+                step={isCount ? 1 : 5}
+                value={amount}
+                onChange={(e) => {
+                  const n = Math.floor(Number(e.target.value));
+                  if (!Number.isFinite(n)) return;
+                  setThreshold(
+                    isCount
+                      ? { kind: "count", runs: Math.min(Math.max(n, 1), 100) }
+                      : {
+                          kind: "fraction",
+                          fraction: Math.min(Math.max(n, 0), 100) / 100,
+                        },
+                  );
+                }}
+              />
+            </span>
+            <span className={styles.settingUnit}>
+              <select
+                className={exec.select}
+                aria-label="Measured as"
+                value={gate.threshold.kind}
+                // Switching unit re-seeds the amount rather than reinterpreting it:
+                // "50" means half as a percentage and fifty runs as a count, and
+                // silently carrying the number across would change the gate by an
+                // order of magnitude on a control the reviewer only meant to
+                // relabel.
+                onChange={(e) =>
+                  setThreshold(
+                    e.target.value === "count"
+                      ? { kind: "count", runs: 1 }
+                      : { kind: "fraction", fraction: 0.5 },
+                  )
+                }
+              >
+                <option value="count">runs</option>
+                <option value="fraction">
+                  % of the rung&rsquo;s completed runs
+                </option>
+              </select>
+            </span>
+          </>
+        )}
+      </SettingRow>
+
+      <SettingRow
+        label="Count a run whose build never loaded as broken"
+        help="A build that does not load leaves a reviewer nothing to judge, so counting it at once keeps it from holding up the climb and from taking a slot in your review buffer."
+        modified={
+          gate.unloadedCountsAsBroken !== DEFAULT_GATE.unloadedCountsAsBroken
+        }
+        onReset={() =>
+          onChange({
+            ...gate,
+            unloadedCountsAsBroken: DEFAULT_GATE.unloadedCountsAsBroken,
+          })
+        }
+      >
+        {(id) => (
+          <Switch
+            id={id}
+            checked={gate.unloadedCountsAsBroken}
+            onChange={(next) =>
+              onChange({ ...gate, unloadedCountsAsBroken: next })
             }
-          >
-            {RATINGS.map((rating) => (
-              <option key={rating} value={rating}>
-                {ratingLabel(rating)} or better
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className={exec.runCountField}>
-          <span className={exec.fieldLabel}>How many must clear it</span>
-          <input
-            className={exec.input}
-            type="number"
-            min={isCount ? 1 : 0}
-            max={100}
-            step={isCount ? 1 : 5}
-            value={amount}
-            onChange={(e) => {
-              const n = Math.floor(Number(e.target.value));
-              if (!Number.isFinite(n)) return;
-              setThreshold(
-                isCount
-                  ? { kind: "count", runs: Math.min(Math.max(n, 1), 100) }
-                  : {
-                      kind: "fraction",
-                      fraction: Math.min(Math.max(n, 0), 100) / 100,
-                    },
-              );
-            }}
           />
-        </label>
-        <label className={`${exec.field} ${exec.comboField}`}>
-          <span className={exec.fieldLabel}>Measured as</span>
-          <select
-            className={exec.select}
-            value={gate.threshold.kind}
-            // Switching unit re-seeds the amount rather than reinterpreting it: "50"
-            // means half as a percentage and fifty runs as a count, and silently
-            // carrying the number across would change the gate by an order of
-            // magnitude on a control the reviewer only meant to relabel.
-            onChange={(e) =>
-              setThreshold(
-                e.target.value === "count"
-                  ? { kind: "count", runs: 1 }
-                  : { kind: "fraction", fraction: 0.5 },
-              )
-            }
-          >
-            <option value="count">runs</option>
-            <option value="fraction">
-              % of the rung&rsquo;s completed runs
-            </option>
-          </select>
-        </label>
-      </div>
-      <p className={ladder.gateExample}>
-        {describeGate(gate)} {gateExample(gate, runsPerCell)}
-      </p>
+        )}
+      </SettingRow>
 
-      <label className={styles.controlToggle}>
-        <input
-          type="checkbox"
-          checked={gate.unloadedCountsAsBroken}
-          onChange={(e) =>
-            onChange({ ...gate, unloadedCountsAsBroken: e.target.checked })
-          }
-        />
-        Count a run whose build never loaded as broken, without a review
-      </label>
-      <p className={styles.fieldHint}>
-        On by default. There is nothing for a reviewer to judge in a build that
-        does not load, so counting it immediately keeps it from blocking the
-        climb and from occupying a slot in your review buffer. Turn it off only
-        if you want to look at every one of them yourself.
-      </p>
-
-      <label className={styles.controlToggle}>
-        <input
-          type="checkbox"
-          checked={gate.earlyStop}
-          onChange={(e) => onChange({ ...gate, earlyStop: e.target.checked })}
-        />
-        Decide a rung early and cancel its remaining runs
-      </label>
-      <p className={styles.fieldHint}>
-        Off by default: a rung <strong>completes all of its runs</strong> even
-        once the verdict is certain, because those runs are evidence in their
-        own right — five runs of a case on a model are worth having in full.
-        Turn this on when you are spending real money to find a wall and do not
-        need the rest.
-      </p>
+      <SettingRow
+        label="Decide a rung early and cancel its remaining runs"
+        help="A rung's runs are evidence as well as a verdict, so leaving this off keeps the full record of every rung. Turn it on to stop paying for runs whose outcome is already certain."
+        modified={gate.earlyStop !== DEFAULT_GATE.earlyStop}
+        onReset={() => onChange({ ...gate, earlyStop: DEFAULT_GATE.earlyStop })}
+      >
+        {(id) => (
+          <Switch
+            id={id}
+            checked={gate.earlyStop}
+            onChange={(next) => onChange({ ...gate, earlyStop: next })}
+          />
+        )}
+      </SettingRow>
     </>
   );
 }
@@ -465,9 +521,7 @@ export function RungListEditor({
     <>
       {rungs.length === 0 ? (
         <p className={styles.empty}>
-          No rungs yet. Add the cases you want climbed, easiest first — the
-          order is the climb, and a model that walls on one rung never reaches
-          the next.
+          No rungs yet. Add the cases to be climbed, easiest first.
         </p>
       ) : (
         <ol className={ladder.rungEditList}>
@@ -616,13 +670,6 @@ export function RungListEditor({
           + Add rung
         </button>
       </div>
-      <p className={styles.fieldHint}>
-        Performance cases and game jams cannot be rungs: the first is graded
-        automatically and never reaches a reviewer, the second is scored on the
-        graded category scale and records no rating — so a gate over either
-        could never resolve and the climber would stall with nothing looking
-        wrong.
-      </p>
     </>
   );
 }

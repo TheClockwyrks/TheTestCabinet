@@ -1,0 +1,84 @@
+@use "../styles/tokens" as t;
+@use "../styles/breakpoints" as bp;
+
+// Name and explanation on the left edge, control on the right, separated by a
+// hairline so a run of settings reads as a list. The last row drops its rule so the
+// list ends on the panel's own padding.
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-lg;
+  padding: t.$space-md 0;
+  border-bottom: t.$border-hairline solid t.$color-border;
+
+  &:last-child {
+    border-bottom: 0;
+  }
+
+  // A phone has no room for two columns, so the control drops under the text it
+  // belongs to and keeps the left edge.
+  @include bp.below(t.$bp-sm) {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: t.$space-sm;
+  }
+}
+
+.text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+// The name, its help badge and its reset control on one line.
+.labelRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+.label {
+  color: t.$color-text;
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+}
+
+.description {
+  margin: t.$space-2xs 0 0;
+  max-width: 42rem;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+// The reset affordance, shown only while the setting differs from its starting
+// value.
+.reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  line-height: 1;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-accent;
+    outline: none;
+  }
+}
+
+.control {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: t.$space-sm;
+  max-width: 100%;
+}
