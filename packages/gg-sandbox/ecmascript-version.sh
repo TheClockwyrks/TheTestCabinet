@@ -9,8 +9,8 @@
 # WHY THIS GUEST EXISTS AT ALL, in one paragraph, because the pins below only make sense against it:
 # gg's contract requires a program's every SDK name to come from an import the program wrote, and the
 # incumbent engine (StarlingMonkey, via `componentize-js`) cannot evaluate a module at run time by
-# any route — measured exhaustively in `gg-js-runtime-decision.md`. quickjs-ng can. Ruling D14 chose
-# it. `guest/src/lib.rs` is the long form.
+# any route — every route was tried against the built guest before this one was chosen. quickjs-ng
+# can. Ruling D14 chose it. `guest/src/lib.rs` is the long form.
 set -euo pipefail
 
 GG_ECMASCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

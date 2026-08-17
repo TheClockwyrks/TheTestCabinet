@@ -17,8 +17,8 @@
 //! filesystem to `unreachable` after wizening. So a program there was a **function body** —
 //! `new Function(...names, program)` — with sixteen reserved formal parameters, a re-printed AST
 //! rather than the model's bytes, a written refusal for the word `import`, and line numbers arrived
-//! at by subtracting a calibration throw. `gg-js-runtime-decision.md` has the measurements; ruling
-//! D14 chose this engine and ruling D9 deleted that shape.
+//! at by subtracting a calibration throw. Ruling D14 chose this engine on those measurements, and
+//! ruling D9 deleted that shape.
 //!
 //! # How a failure reaches the model
 //!

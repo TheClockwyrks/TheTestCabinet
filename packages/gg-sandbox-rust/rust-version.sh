@@ -38,7 +38,7 @@ fi
 # `wasm32-wasip1`, and the WASI surface is the POINT rather than a side effect this target drags in.
 # It used to be `wasm32-unknown-unknown`, argued for here on the grounds that it imports nothing
 # beyond what the program's own bindings declare. That argument was answered by measurement, and the
-# measurement is in `gg-runtime-failure-audit.md` and `gg-whole-programs-decisions.md`: a program
+# measurement is the rest of this comment: a program
 # compiled to `wasm32-unknown-unknown` HAS NO STANDARD ERROR. It is not that gg does not wire one —
 # `membrane.rs` wires the guest's stderr and every other arm speaks to it — it is that std itself
 # has nothing to speak with. `library/std/src/sys/stdio/mod.rs` matches no arm of its `cfg_select!`

@@ -21,8 +21,8 @@
 //! evaluate module source at run time by ANY route: `import()` of a `data:` URL, of a `blob:`, of a
 //! `node:` specifier, of a path, and of the same specifier smuggled through a nested `new Function`
 //! all trap the store at `path_filestat_get`, because `componentize-js` stubs the preview1 filesystem
-//! to `unreachable` after wizening and no bake flag restores it. That is measured, exhaustively, in
-//! `gg-js-runtime-decision.md`.
+//! to `unreachable` after wizening and no bake flag restores it. Every one of those routes was tried
+//! against the built guest before this one was chosen.
 //!
 //! So a program there is a **function body**: `new Function(...names, program)` with sixteen reserved
 //! formal parameters, against which the SDK's names resolve with no line the model wrote, and every
