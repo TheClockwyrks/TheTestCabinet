@@ -33,7 +33,7 @@ namespace skills {
 ///
 /// \param name The skill's name, as the system prompt lists it.
 /// \returns the skill's body, with its front matter stripped.
-/// \throws gg::core::tool_error `not_found`, listing the skills that do exist, when the name is
+/// \throws gg::core::api_error `not_found`, listing the skills that do exist, when the name is
 ///   unknown.
 std::string read_skill(std::string_view name);
 

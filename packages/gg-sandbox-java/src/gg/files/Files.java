@@ -1,7 +1,7 @@
 package gg.files;
 
-import gg.ToolError;
-import gg.ToolErrorCode;
+import gg.ApiError;
+import gg.ApiErrorCode;
 import gg.internal.Coding;
 import gg.internal.Read;
 import gg.internal.Value;
@@ -45,7 +45,7 @@ public final class Files {
      *
      * @param path The file to read, relative to the workspace or absolute.
      * @return the file's text, or the picture's description
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} for a missing path.
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for a missing path.
      * @ggop files.read_file
      */
     public static FileRead readFile(String path) {
@@ -63,7 +63,7 @@ public final class Files {
      * @param offset The 1-based first line to read from.
      * @param limit How many lines to read from {@code offset}.
      * @return the window of the file's text, or the picture's description
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} for a missing path.
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for a missing path.
      * @ggop files.read_file
      */
     public static FileRead readFile(String path, int offset, int limit) {
@@ -79,7 +79,7 @@ public final class Files {
      *
      * @param path The file to read, relative to the workspace or absolute.
      * @return the file's text
-     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} when the path names a picture, which
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} when the path names a picture, which
      *     {@link #readFile(String)} inspects instead.
      * @ggop files.read_text_file
      */
@@ -95,7 +95,7 @@ public final class Files {
      * @param offset The 1-based first line to read from.
      * @param limit How many lines to read from {@code offset}.
      * @return the window of the file's text
-     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} when the path names a picture.
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} when the path names a picture.
      * @ggop files.read_text_file
      */
     public static String readTextFile(String path, int offset, int limit) {
@@ -114,8 +114,8 @@ public final class Files {
      *     created as needed.
      * @param contents The UTF-8 text to write. It replaces the file entirely.
      * @return how many bytes were written
-     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} for an empty path, and {@link
-     *     ToolErrorCode#IO_ERROR} when creating the parent directories or the write itself failed.
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for an empty path, and {@link
+     *     ApiErrorCode#IO_ERROR} when creating the parent directories or the write itself failed.
      * @ggop files.write_file
      */
     public static int writeFile(String path, String contents) {
@@ -131,8 +131,8 @@ public final class Files {
      * @param path The file to edit.
      * @param oldString The exact text to find, whitespace included. It must appear once.
      * @param newString The text to put in its place. An empty string deletes the match.
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} when the text does not appear, and
-     *     {@link ToolErrorCode#CONFLICT} — with the number of matches — when it appears more than
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} when the text does not appear, and
+     *     {@link ApiErrorCode#CONFLICT} — with the number of matches — when it appears more than
      *     once.
      * @ggop files.edit_file
      */
@@ -158,8 +158,8 @@ public final class Files {
      *
      * @param path The directory to list, relative to the workspace or absolute.
      * @return every entry in that directory
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} for a directory that is not there, and
-     *     {@link ToolErrorCode#INVALID_ARGUMENT} for a path that is empty — the overload that takes
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for a directory that is not there, and
+     *     {@link ApiErrorCode#INVALID_ARGUMENT} for a path that is empty — the overload that takes
      *     none is what lists the workspace root.
      * @ggop files.list_dir
      */

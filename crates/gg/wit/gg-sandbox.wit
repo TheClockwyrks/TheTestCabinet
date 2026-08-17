@@ -25,7 +25,7 @@
 package test-cabinet:gg;
 
 /// The types shared across the tool interfaces. It declares no functions: it exists so that one
-/// `tool-error` crosses the whole membrane rather than one per family.
+/// `api-error` crosses the whole membrane rather than one per family.
 interface types {
     /// Why a call failed, in the vocabulary a program branches on.
     ///
@@ -66,8 +66,8 @@ interface types {
         other,
     }
 
-    /// A failed call. Surfaces in the guest as a thrown `ToolError`.
-    record tool-error {
+    /// A failed call. Surfaces in the guest as a thrown `ApiError`.
+    record api-error {
         /// The failure class, so a catch site branches on a value rather than on prose.
         code: error-code,
         /// The call that failed, by the KEY of the operation the program reached for:
@@ -75,7 +75,7 @@ interface types {
         /// `open_file` for `views.open_file`. A catch site branches on the call the program wrote
         /// rather than on prose; it is never the name of whatever ran underneath, which several
         /// operations share.
-        tool: string,
+        operation: string,
         /// The model-facing guidance, written in this program's own spelling of the call.
         message: string,
     }
@@ -98,7 +98,7 @@ interface types {
 
 /// Running commands in the workspace.
 interface shell {
-    use types.{tool-error};
+    use types.{api-error};
 
     /// What a completed process reported.
     record shell-output {
@@ -121,7 +121,7 @@ interface shell {
     ///
     /// `timeout-secs` defaults to gg's 120 s and is CLAMPED to whatever is left of the run's
     /// wall-clock budget, so one call cannot outlive the run it belongs to.
-    shell: func(command: string, timeout-secs: option<f64>) -> result<shell-output, tool-error>;
+    shell: func(command: string, timeout-secs: option<f64>) -> result<shell-output, api-error>;
 }
 
 /// Reading and writing files. A relative path is resolved against gg's working directory (the
@@ -129,7 +129,7 @@ interface shell {
 /// confinement to the workspace: the container is the boundary, and gg's own shell writes offloaded
 /// output outside it.
 interface files {
-    use types.{tool-error};
+    use types.{api-error};
 
     /// A text file, or the window of one this run's read policy returned.
     record text-read {
@@ -179,7 +179,7 @@ interface files {
     /// whole file comes back and both are ignored. The system prompt states which policy this run
     /// uses.
     read-file: func(path: string, offset: option<u32>, limit: option<u32>)
-        -> result<file-read, tool-error>;
+        -> result<file-read, api-error>;
 
     /// Write UTF-8 text to a file, creating parent directories and overwriting any
     /// existing file. Returns the number of bytes written.
@@ -188,16 +188,16 @@ interface files {
     /// costs about 14,600 fuel per byte, against about 46 for lifting one in. A program that
     /// rewrites twenty 64 KiB files spends roughly 24 G fuel — a tenth of the default ceiling — so
     /// a very large rewrite belongs in several programs.
-    write-file: func(path: string, contents: string) -> result<u64, tool-error>;
+    write-file: func(path: string, contents: string) -> result<u64, api-error>;
 
     /// Replace the single exact occurrence of `old-string` with `new-string`.
     ///
     /// An occurrence that is missing is `not-found`; one that appears more than once is a
     /// `conflict` whose message carries the count. The count stays in the message rather than
-    /// becoming a field: `tool-error` is shared by all 32 functions and a per-tool payload on it
+    /// becoming a field: `api-error` is shared by all 32 functions and a per-operation payload on it
     /// would be a wart on every other call — a program that needs to disambiguate should add
     /// surrounding context, not count.
-    edit-file: func(path: string, old-string: string, new-string: string) -> result<_, tool-error>;
+    edit-file: func(path: string, old-string: string, new-string: string) -> result<_, api-error>;
 
     /// What a directory holds.
     enum entry-kind { file, directory, other }
@@ -212,7 +212,7 @@ interface files {
 
     /// List a directory, sorted by name. `none` lists the workspace root. An empty
     /// directory is an empty list, not an error.
-    list-dir: func(path: option<string>) -> result<list<dir-entry>, tool-error>;
+    list-dir: func(path: option<string>) -> result<list<dir-entry>, api-error>;
 }
 
 /// The convenience wrappers bound alongside the tools — the sixth interface standing outside the
@@ -230,7 +230,7 @@ interface files {
 /// actually used. An API function is a function in its own right; that it shares a core with
 /// another is not a reason for the two to share one record.
 interface helpers {
-    use types.{tool-error};
+    use types.{api-error};
 
     /// Read a text file and return its contents directly — `read-file` without the variant
     /// narrowing, for the common case.
@@ -239,12 +239,12 @@ interface helpers {
     /// picture is `invalid-argument`: the caller asked for text and there is none, and `read-file`
     /// is the call that inspects one.
     read-text-file: func(path: string, offset: option<u32>, limit: option<u32>)
-        -> result<string, tool-error>;
+        -> result<string, api-error>;
 }
 
 /// The authored skill library.
 interface skills {
-    use types.{tool-error};
+    use types.{api-error};
 
     /// Read an authored skill by name and return its body, front matter stripped.
     ///
@@ -252,7 +252,7 @@ interface skills {
     /// `read_skill` does. The name is a plain string rather than an enum because the skill
     /// catalogue is per-run while this component is baked once; the available names are listed in
     /// the system prompt, and an unknown one comes back as `not-found` with the full list.
-    read-skill: func(name: string) -> result<string, tool-error>;
+    read-skill: func(name: string) -> result<string, api-error>;
 }
 
 /// Durable memories that survive context compaction.
@@ -264,7 +264,7 @@ interface skills {
 /// component is baked once, for every run there will ever be; what a given program can call is
 /// decided at instantiation.
 interface memories {
-    use types.{tool-error};
+    use types.{api-error};
 
     /// A memory to record or revise.
     record memory-input {
@@ -340,26 +340,26 @@ interface memories {
 
     /// Record a new durable memory. A duplicate name, or a body that would breach a limit, is an
     /// error — revise or evict instead of accruing more.
-    write-memory: func(memory: memory-input) -> result<memory-usage, tool-error>;
+    write-memory: func(memory: memory-input) -> result<memory-usage, api-error>;
     /// Replace an existing memory's description and body.
-    update-memory: func(memory: memory-input) -> result<memory-usage, tool-error>;
+    update-memory: func(memory: memory-input) -> result<memory-usage, api-error>;
     /// Record a new memory file, whose contents stay out of the context window until read.
-    create-memory: func(memory: memory-input) -> result<memory-usage, tool-error>;
+    create-memory: func(memory: memory-input) -> result<memory-usage, api-error>;
     /// Read one memory's contents back, by slug.
-    read-memory: func(name: string) -> result<string, tool-error>;
+    read-memory: func(name: string) -> result<string, api-error>;
     /// Revise a memory in place. A search that is missing or ambiguous, and an edit that would
     /// leave the memory empty, are errors.
-    edit-memory: func(edit: memory-edit) -> result<memory-usage, tool-error>;
+    edit-memory: func(edit: memory-edit) -> result<memory-usage, api-error>;
     /// Find the memories mentioning any of `keywords`, best first. An empty keyword list is an
     /// error; a list that matches nothing is an empty result.
-    search-memories: func(keywords: list<string>) -> result<list<memory-hit>, tool-error>;
+    search-memories: func(keywords: list<string>) -> result<list<memory-hit>, api-error>;
     /// Evict a memory by name, freeing room for new ones.
-    delete-memory: func(name: string) -> result<memory-usage, tool-error>;
+    delete-memory: func(name: string) -> result<memory-usage, api-error>;
 }
 
 /// The task DAG.
 interface tasks {
-    use types.{tool-error, text-edit};
+    use types.{api-error, text-edit};
 
     /// Where a task stands. WIT identifiers cannot contain `_`, so `in-progress` is mapped to the
     /// store's `in_progress` by the host — an SDK uses gg's spelling, so a model sees one
@@ -397,20 +397,20 @@ interface tasks {
     }
 
     /// Add a task to the DAG.
-    add-task: func(task: task-input) -> result<task-usage, tool-error>;
+    add-task: func(task: task-input) -> result<task-usage, api-error>;
     /// Revise a task's title, description, and/or status.
-    update-task: func(id: string, patch: task-patch) -> result<_, tool-error>;
+    update-task: func(id: string, patch: task-patch) -> result<_, api-error>;
     /// Replace a task's full blocker set; an empty list clears every blocker.
-    set-blocked-by: func(id: string, blocked-by: list<string>) -> result<_, tool-error>;
+    set-blocked-by: func(id: string, blocked-by: list<string>) -> result<_, api-error>;
     /// Mark a task done. Tasks it blocked become actionable once all their blockers are done.
-    complete-task: func(id: string) -> result<_, tool-error>;
+    complete-task: func(id: string) -> result<_, api-error>;
     /// Remove a task and every blocker edge pointing at it.
-    remove-task: func(id: string) -> result<task-usage, tool-error>;
+    remove-task: func(id: string) -> result<task-usage, api-error>;
 }
 
 /// The epic/issue board.
 interface board {
-    use types.{tool-error, text-edit};
+    use types.{api-error, text-edit};
 
     /// Where an issue stands.
     enum issue-status { open, in-progress, done }
@@ -509,28 +509,28 @@ interface board {
 
     /// Create an epic to group related issues, returning the id (the upper-cased prefix) it was
     /// given.
-    create-epic: func(epic: epic-input) -> result<epic-created, tool-error>;
+    create-epic: func(epic: epic-input) -> result<epic-created, api-error>;
     /// Create a self-contained, dispatchable issue, returning the id the board assigned it.
-    create-issue: func(issue: issue-input) -> result<issue-created, tool-error>;
+    create-issue: func(issue: issue-input) -> result<issue-created, api-error>;
     /// Revise an issue.
-    update-issue: func(id: string, patch: issue-patch) -> result<_, tool-error>;
+    update-issue: func(id: string, patch: issue-patch) -> result<_, api-error>;
     /// Replace an issue's full blocker set; an empty list clears every blocker.
-    set-issue-blocked-by: func(id: string, blocked-by: list<string>) -> result<_, tool-error>;
+    set-issue-blocked-by: func(id: string, blocked-by: list<string>) -> result<_, api-error>;
     /// Remove an epic. Its issues are kept and ungrouped.
-    remove-epic: func(id: string) -> result<board-usage, tool-error>;
+    remove-epic: func(id: string) -> result<board-usage, api-error>;
     /// Remove an issue and every blocker edge pointing at it.
-    remove-issue: func(id: string) -> result<board-usage, tool-error>;
+    remove-issue: func(id: string) -> result<board-usage, api-error>;
     /// Register a wait on an issue and return an acknowledgement. It does NOT block inside the
     /// program: it records the wait and returns at once, so the rest of the program still runs.
     /// After the program ends the run suspends — freeing this agent's slot for others — until the
     /// issue is terminal (done, or failed if its assigned agent could not complete it), then
     /// resumes and reports which. You cannot wait on the issue you were assigned to implement.
-    wait-for-issue: func(id: string) -> result<string, tool-error>;
+    wait-for-issue: func(id: string) -> result<string, api-error>;
 }
 
 /// Managing the agent's own context window.
 interface context {
-    use types.{tool-error};
+    use types.{api-error};
 
     /// What a reclaim actually freed from the live context window.
     record reclaim-report {
@@ -568,11 +568,11 @@ interface context {
 
     /// Drop file contents you have read from the context window. `none` drops every file view. The
     /// files on disk are unchanged.
-    evict-file-view: func(path: option<string>) -> result<reclaim-report, tool-error>;
+    evict-file-view: func(path: option<string>) -> result<reclaim-report, api-error>;
     /// Move whole turns out of the window, named by the turn numbers on your results. Ranges are
     /// inclusive and may overlap. Your own messages in an archived turn are dropped; the results are
     /// kept and stay searchable.
-    archive-thread: func(ranges: list<turn-range>) -> result<reclaim-report, tool-error>;
+    archive-thread: func(ranges: list<turn-range>) -> result<reclaim-report, api-error>;
     /// What a search of the archive found.
     record archive-search {
         /// Nothing has been archived yet, so there was nothing to search. Distinct from a search
@@ -586,7 +586,7 @@ interface context {
 
     /// Search archived history (case-insensitive substring). At most 8 hits; no match is an empty
     /// `hits` list, not an error.
-    search-archive: func(query: string) -> result<archive-search, tool-error>;
+    search-archive: func(query: string) -> result<archive-search, api-error>;
 
     /// Compact the context window: gg drops the detailed thread and restarts it from `summary`,
     /// plus a fresh read of each path in `files`. Skills, memories and the task list are kept.
@@ -598,7 +598,7 @@ interface context {
     ///
     /// gg asks for this call when the window is full, and refuses every other call until it is
     /// made; it is available at all times so the offered surface never changes mid-run.
-    compact: func(summary: string, files: list<string>) -> result<_, tool-error>;
+    compact: func(summary: string, files: list<string>) -> result<_, api-error>;
 }
 
 /// Ending the session.
@@ -617,7 +617,7 @@ interface context {
 /// an ordinary agent cannot call `approve`, because it has nothing to approve. That is what makes an
 /// ending a *typed declaration* rather than prose the host has to parse back out of a final message.
 interface session {
-    use types.{tool-error};
+    use types.{api-error};
 
     /// Which group of ending functions a program is given, decided by the role the agent was
     /// dispatched in. Exactly one group is bound; the others are not names in the program's scope.
@@ -654,21 +654,21 @@ interface session {
     /// stopping it. A program that did not run to its end did not run the checks its summary claims,
     /// so the session continues and the model is told its ending was cancelled.
     ///
-    /// It is never refused for the run's wall-clock budget being spent, unlike every tool call:
+    /// It is never refused for the run's wall-clock budget being spent, unlike every API call:
     /// ending performs no work and ends the session, which is exactly what a spent budget wants. Its
     /// failures are `unavailable` when this agent's role does not end this way, and
     /// `invalid-argument` for an empty `summary` — in that order, so a reviewer is told it is not
     /// the one to say the work is finished rather than told to write a better summary.
     ///
     /// Bound only under `ending-kind.standard`, and refused by the host under any other.
-    finish: func(summary: string) -> result<_, tool-error>;
+    finish: func(summary: string) -> result<_, api-error>;
 
     /// Declare the work under review acceptable. Takes nothing: an approval carries no further
     /// obligation, and a shape that demanded prose would be a shape the host had to read back.
     ///
     /// Ends the session under the same flag rules as `finish`. Bound only under
     /// `ending-kind.review`, and refused `unavailable` by the host under any other.
-    approve: func() -> result<_, tool-error>;
+    approve: func() -> result<_, api-error>;
 
     /// Declare the work under review unacceptable, listing every change that must be made before it
     /// can be accepted. Each item must say what is wrong and what to change.
@@ -679,7 +679,7 @@ interface session {
     ///
     /// Ends the session under the same flag rules as `finish`. Bound only under
     /// `ending-kind.review`, and refused `unavailable` by the host under any other.
-    request-changes: func(items: list<string>) -> result<_, tool-error>;
+    request-changes: func(items: list<string>) -> result<_, api-error>;
 
 }
 
@@ -695,7 +695,7 @@ interface session {
 /// documentation view only ever adds to the end of your prompt, while closing one rewrites its
 /// middle, and those are different enough trades to be different decisions.
 interface docs {
-    use types.{tool-error};
+    use types.{api-error};
 
     /// One thing a documentation search found: enough to choose from, and no more.
     record doc-hit {
@@ -746,7 +746,7 @@ interface docs {
     /// and `close-view` on that selector closes it.
     search: func(query: string, module: option<string>, %type: option<string>,
                  kind: option<string>, offset: option<u32>, limit: option<u32>)
-        -> result<doc-search, tool-error>;
+        -> result<doc-search, api-error>;
 
     /// Take one documentation view back out of your context window, by the key it was opened under,
     /// and return how many were closed. A key that is not open closes `0`; it is not a failure.
@@ -759,11 +759,11 @@ interface docs {
     /// It is NOT bound into every program's scope. Unlike the rest of this interface it is bought by
     /// a capability, because opening documentation only ever adds to the end of your prompt while
     /// closing it rewrites the middle. A run that did not enable it gets `unavailable`.
-    close-doc-view: func(key: string) -> result<u32, tool-error>;
+    close-doc-view: func(key: string) -> result<u32, api-error>;
 
     /// Take EVERY documentation view out of your context window and return how many went. The
     /// blanket form of `close-doc-view`, on exactly the same terms and behind the same capability.
-    close-doc-views: func() -> result<u32, tool-error>;
+    close-doc-views: func() -> result<u32, api-error>;
 }
 
 /// Putting material into your own context window — the third model-facing carve-out, and like
@@ -788,7 +788,7 @@ interface docs {
 /// `open-file-view` is bound only when the `read-file` tool is: it is a read, and a run with reading
 /// withheld must not get one through a side door.
 interface views {
-    use types.{tool-error};
+    use types.{api-error};
     use files.{file-read};
 
     /// Which of the three kinds a view is.
@@ -838,7 +838,7 @@ interface views {
     /// the SAME page replaces it rather than piling up a duplicate — this call names an intent
     /// ("this file should be visible"), and re-stating an intent replaces it.
     open-file-view: func(path: string, offset: option<u32>, limit: option<u32>)
-        -> result<file-read, tool-error>;
+        -> result<file-read, api-error>;
 
     /// Show yourself a value you computed, under `label`. Opening the same label again replaces what
     /// it showed.
@@ -847,7 +847,7 @@ interface views {
     /// replaced or attributed. An empty BODY is allowed: it is how a program says that something it
     /// was showing is now empty. A body or label over gg's caps is `limit-exceeded` naming the cap,
     /// never a silent truncation.
-    open-text-view: func(label: string, body: string) -> result<_, tool-error>;
+    open-text-view: func(label: string, body: string) -> result<_, api-error>;
 
     /// Show yourself the full documentation for one thing gg's SDK offers, addressed by the name it
     /// is called by (`readFile`, `createIssue`, `finish`) or by the function itself
@@ -863,7 +863,7 @@ interface views {
     /// `Documentation` heading keyed by the name — the same way a file or a computed value reaches
     /// you. Opening something you ALREADY have open does nothing at all: it is not moved, not
     /// re-sent, not duplicated. An unknown name is `not-found`.
-    open-docs-view: func(name: string) -> result<_, tool-error>;
+    open-docs-view: func(name: string) -> result<_, api-error>;
 
     /// Close every file, text or search-results view whose selector matches — for a file, every page
     /// of that path — and return how many were closed. Closing a selector that is not open returns
@@ -874,7 +874,7 @@ interface views {
     /// call that names that act is `docs.close-doc-view`, and this sweep is a transitional
     /// convenience for the arms whose SDKs do not spell it yet — a run without the capability gets
     /// `0` for a documentation key, because it cannot reclaim one by any route.
-    close-view: func(selector: string) -> result<u32, tool-error>;
+    close-view: func(selector: string) -> result<u32, api-error>;
 
     /// What is open in your window right now — the views, never the functions. It is named for what
     /// it enumerates because a bare `list` on this interface would read as the object's own
@@ -894,7 +894,7 @@ interface views {
 /// exactly as `context.compact` and `delegation.transition-state` are: the call validates the source
 /// and returns, the calling program carries on to its end, and gg then runs what it was handed as
 /// this turn's program. Running it inside the call would mean a program executing inside itself,
-/// with two sets of tool calls, two throw sites and one turn to report them in.
+/// with two sets of API calls, two throw sites and one turn to report them in.
 ///
 /// The whole interface is bound only when the run enables the program library — see the `library`
 /// parameter of `run` in the world below. A guest that can withhold a name gives a run without it
@@ -903,7 +903,7 @@ interface views {
 /// a guest that links its SDK as a library has no name to withhold: there, `unavailable` is the
 /// gate rather than a backstop behind one.
 interface programs {
-    use types.{tool-error};
+    use types.{api-error};
 
     /// One program this agent ran, as `history` lists it. It carries the SHAPE of the program and
     /// not its source: a directory that inlined sixty lines per entry would put the whole session's
@@ -929,7 +929,7 @@ interface programs {
     /// It is a `result` for one reason, and it is not that a lookup can fail: an agent that keeps
     /// no library is refused `unavailable`, and an empty list would be indistinguishable from the
     /// honest empty answer on the first turn of a session that does keep one.
-    history: func() -> result<list<program-summary>, tool-error>;
+    history: func() -> result<list<program-summary>, api-error>;
 
     /// The exact source of one program, as it was RUN. `none` is the most recent one.
     ///
@@ -940,14 +940,14 @@ interface programs {
     ///
     /// A turn that ran no program, or one the library's retention has already dropped, is
     /// `not-found` naming the turns that are held.
-    get: func(turn: option<u32>) -> result<string, tool-error>;
+    get: func(turn: option<u32>) -> result<string, api-error>;
 
     /// Hand gg a program to run in place of this one: your program ends, and gg runs `source` as
     /// this turn's program.
     ///
     /// It is **registered, not performed**. The call returns and the rest of your program still
     /// runs; only when it has ended does gg compile and run what you handed over. Everything the
-    /// registering program did stands — its tool calls, its views — and the program that runs next
+    /// registering program did stands — its API calls, its views — and the program that runs next
     /// sees exactly the world it left behind.
     ///
     /// The FIRST call stands and a second is `refused`: a silently replaced program is a change you
@@ -957,12 +957,12 @@ interface programs {
     ///
     /// The chain is bounded, so a program handed over cannot hand over indefinitely; when the bound
     /// is reached gg says so in your turn's feedback and the last program it ran is the turn's.
-    rerun: func(source: string) -> result<_, tool-error>;
+    rerun: func(source: string) -> result<_, api-error>;
 }
 
 /// Delegating work to child agents.
 interface delegation {
-    use types.{tool-error};
+    use types.{api-error};
 
     /// What a child agent is asked to do. Exactly one of the two — today's JSON schema declares
     /// both optional and enforces "one of" only at runtime, so "neither" is representable and costs
@@ -1010,12 +1010,12 @@ interface delegation {
 
     /// Delegate scoped work to a child agent. Returns immediately with its handle; the child runs
     /// in parallel.
-    spawn-subagent: func(request: spawn-request) -> result<subagent-handle, tool-error>;
+    spawn-subagent: func(request: spawn-request) -> result<subagent-handle, api-error>;
     /// Wait for the named children — or, with `none`, every outstanding child — and collect their
     /// results. This blocks while it waits, and the run's wall-clock budget keeps running.
-    wait-for-subagents: func(ids: option<list<string>>) -> result<list<subagent-result>, tool-error>;
+    wait-for-subagents: func(ids: option<list<string>>) -> result<list<subagent-result>, api-error>;
     /// Deliver a message to a running child's inbox; it receives it at its next turn.
-    send-message: func(agent-id: string, message: string) -> result<_, tool-error>;
+    send-message: func(agent-id: string, message: string) -> result<_, api-error>;
 
     /// Move the process you are running inside on to another of its states, naming the state the
     /// way you name an agent to spawn. `note` is the opening message the next state's agent sees.
@@ -1029,7 +1029,7 @@ interface delegation {
     ///
     /// Bound only when a state machine is driving you and the state you are in has somewhere to go.
     /// `invalid-argument` names a state you may not move to; `unavailable` means no machine.
-    transition-state: func(state: string, note: option<string>) -> result<_, tool-error>;
+    transition-state: func(state: string, note: option<string>) -> result<_, api-error>;
 
     /// Continue this session as a different agent: it takes over from your next turn with its own
     /// model, tools and instructions, keeping every capability the two of you both have — your
@@ -1043,7 +1043,7 @@ interface delegation {
     /// Bound only when your agent may make agent transitions and has agents it may become, and
     /// never while a state machine is driving you — there, `transition-state` is the move.
     /// `invalid-argument` names an agent you may not become.
-    exec: func(agent: string, prompt: option<string>) -> result<_, tool-error>;
+    exec: func(agent: string, prompt: option<string>) -> result<_, api-error>;
 
     /// Run a copy of yourself, in parallel, on something you will not do yourself. The copy has
     /// your model, your tools and a private copy of your whole conversation, so `prompt` is the
@@ -1054,7 +1054,7 @@ interface delegation {
     /// `wait-for-subagents` can only collect it on a later turn. Everything that can refuse a fork
     /// is checked here: `limit-exceeded` at the delegation depth cap, `unavailable` with no
     /// delegation runtime to collect the copy with.
-    fork: func(prompt: string) -> result<subagent-handle, tool-error>;
+    fork: func(prompt: string) -> result<subagent-handle, api-error>;
 }
 
 /// The channel the interpreter SHIM reports back to gg through.
@@ -1070,8 +1070,8 @@ interface feedback {
     /// What kind of failure a program hit, so gg can choose the right feedback and the right
     /// telemetry rather than matching on prose.
     enum error-kind {
-        /// A tool call failed and the throw was not caught.
-        tool-failure,
+        /// An API call failed and the throw was not caught.
+        api-failure,
         /// The program referenced a name that is not in scope.
         unknown-name,
         /// Anything else the program threw.
@@ -1090,10 +1090,10 @@ interface feedback {
         /// `unavailable` means the model reached for something this run does not offer it, which
         /// is the same fact — and the same recovery — as a name that was never in scope. A guest
         /// that can withhold the name raises `ReferenceError` and reports `unknown-name`; a guest
-        /// that cannot raises a failed call and would report `tool-failure`. Same event, two
+        /// that cannot raises a failed call and would report `api-failure`. Same event, two
         /// metrics, one per arm. The code is the fact both guests agree on.
         code: option<error-code>,
-        /// The rendered message, already naming the tool for a tool failure and the available
+        /// The rendered message, already naming the operation for an API failure and the available
         /// identifiers for an unknown name.
         message: string,
         /// Where in the PROGRAM it happened (`line 5, column 12`), remapped out of the
@@ -1113,7 +1113,7 @@ interface feedback {
     /// silent discard would be the failure this protocol most needs to avoid, so the host says so
     /// in the turn's feedback.
     note-return: func();
-    /// A tool call happened AFTER the program ended — i.e. from work the program deferred into a
+    /// An API call happened AFTER the program ended — i.e. from work the program deferred into a
     /// microtask with `.then()` or after an `await`. Called at most once per run.
     ///
     /// Deferred work still executes (its effects are real and are recorded), but it happens after
@@ -1163,7 +1163,7 @@ interface feedback {
 /// What is on **this** side of it is unchanged by that. `op` is one of gg's own rendered operation
 /// ids (`files.read_file`, `views.open_text`), and the host answers it by decoding the request and
 /// calling the very same typed host function the fifteen interfaces above are implemented by — same
-/// capability gate, same recorded call, same deadline, same `tool-error`. Nothing here is a second
+/// capability gate, same recorded call, same deadline, same `api-error`. Nothing here is a second
 /// implementation of anything, and nothing reachable through it is reachable any other way.
 ///
 /// # What travels inside the byte lists
@@ -1200,7 +1200,7 @@ interface feedback {
 interface wire {
     /// Run one gg call and hold its encoded result: `op` is a rendered operation id and `request` is
     /// the encoded arguments. What comes back is the **byte length** of the result — the value the
-    /// call returned, or the three fields of the `tool-error` it failed with — which [`take`] then
+    /// call returned, or the three fields of the `api-error` it failed with — which [`take`] then
     /// hands over.
     ///
     /// It cannot trap and it cannot fail: a request the host cannot decode, or an `op` it does not
@@ -1241,7 +1241,7 @@ interface wire {
 /// Not model-facing, and not a capability: no name here is in `ALL_TOOL_NAMES`, nothing dispatches
 /// one, and a model writes `kotlin.math.sqrt(2.0)` or `Math.sqrt(2.0)` exactly as it would anywhere
 /// else. Every one is a total function on `f64` with no failure mode, which is why none of them can
-/// return a `tool-error`: `log(-1)` is `NaN` on this interface for the same reason it is `NaN` in
+/// return an `api-error`: `log(-1)` is `NaN` on this interface for the same reason it is `NaN` in
 /// Java.
 interface math {
     /// The sine of an angle in radians.
@@ -1311,7 +1311,7 @@ world jvm-sandbox {
     export run: func(
         program: string,
         modules: list<code-module>,
-        tools: list<string>,
+        operations: list<string>,
         ending: ending-kind,
         library: bool,
     );
@@ -1320,7 +1320,7 @@ world jvm-sandbox {
     /// — [`wire`] — and so answers the empty list; the export exists because gg instantiates every
     /// component through the `sandbox` world's bindings and a missing export is an instantiation
     /// failure.
-    export bound-tools: func() -> list<string>;
+    export bound-operations: func() -> list<string>;
 }
 
 /// The sandbox: one baked component that evaluates a program against exactly the tools a run
@@ -1360,13 +1360,13 @@ world sandbox {
 
     /// Evaluate one program.
     ///
-    /// `program` is source the host has already prepared for this guest. `tools` is what this
+    /// `program` is source the host has already prepared for this guest. `operations` is what this
     /// agent was GRANTED, as gg's own rendered operation ids (`files.read_file`, `shell.shell`,
-    /// `views.open_file`); the parameter's name is historical and every SDK is static, so nothing
-    /// is withheld from a program's scope — the whole surface compiles, and a call this agent does
-    /// not hold travels to the host and is refused there, in the one place that can answer the same
-    /// way for all eleven arms. `ending` and `library` are the same fact said twice more, for the
-    /// session group and the program library, and they are equally advisory.
+    /// `views.open_file`); every SDK is static, so nothing is withheld from a program's scope — the
+    /// whole surface compiles, and a call this agent does not hold travels to the host and is
+    /// refused there, in the one place that can answer the same way for all eleven arms. `ending`
+    /// and `library` are the same fact said twice more, for the session group and the program
+    /// library, and they are equally advisory.
     ///
     /// NO GUEST READS ANY OF THE THREE. They are kept because the world is shared with ten sibling
     /// guests and removing a parameter reshapes every one of them, and because a guest that wanted
@@ -1397,7 +1397,7 @@ world sandbox {
     export run: func(
         program: string,
         modules: list<code-module>,
-        tools: list<string>,
+        operations: list<string>,
         ending: ending-kind,
         library: bool,
     );
@@ -1409,5 +1409,5 @@ world sandbox {
     /// It says nothing about what a PROGRAM may call: that is the operations vocabulary, which is
     /// richer than this one (several operations share one of these, and many reach none of them at
     /// all) and is decided by the host from the agent's grant.
-    export bound-tools: func() -> list<string>;
+    export bound-operations: func() -> list<string>;
 }

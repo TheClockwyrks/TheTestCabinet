@@ -12,7 +12,7 @@ namespace gg {
 
 namespace detail {
 
-const std::vector<std::string>& skills_tools() {
+const std::vector<std::string>& skills_operations() {
   static const std::vector<std::string> names{"read_skill"};
   return names;
 }
@@ -25,7 +25,7 @@ std::string read_skill(std::string_view name) {
   detail::scratch scratch;
   sandbox_string_t lowered = scratch.str(name);
   sandbox_string_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_skills_read_skill(&lowered, &ret, &err)) detail::fail(err);
   std::string body = detail::lift(ret);
   sandbox_string_free(&ret);

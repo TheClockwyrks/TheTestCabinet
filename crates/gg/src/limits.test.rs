@@ -485,7 +485,7 @@ fn only_error_outcomes_count_as_errors() {
         TurnOutcome::Finished,
         TurnOutcome::Error(TurnErrorType::ModelRetryExhausted),
         TurnOutcome::Error(TurnErrorType::TranspileSyntax),
-        TurnOutcome::Error(TurnErrorType::ProgramToolError),
+        TurnOutcome::Error(TurnErrorType::ProgramApiError),
         TurnOutcome::Error(TurnErrorType::SandboxTimeout),
         TurnOutcome::Error(TurnErrorType::MissingCompletionNoCall),
         TurnOutcome::Fatal(FatalFault::ArtifactDefect),
@@ -508,7 +508,7 @@ fn only_error_outcomes_count_as_errors() {
                 | TurnErrorType::TranspileSyntax
                 | TurnErrorType::TranspileCompile
                 | TurnErrorType::TranspileUnsupported
-                | TurnErrorType::ProgramToolError
+                | TurnErrorType::ProgramApiError
                 | TurnErrorType::ProgramUnknownName
                 | TurnErrorType::ProgramThrow
                 | TurnErrorType::SandboxTimeout
@@ -551,10 +551,10 @@ fn every_outcome_publishes_itself_and_carries_a_kind_exactly_when_it_is_an_error
             Some(GgTurnErrorType::TranspileCompile),
         ),
         (
-            TurnOutcome::Error(TurnErrorType::ProgramToolError),
+            TurnOutcome::Error(TurnErrorType::ProgramApiError),
             GgTurnOutcome::Error,
             Some(GgTurnErrorKind::ProgramFault),
-            Some(GgTurnErrorType::ProgramToolError),
+            Some(GgTurnErrorType::ProgramApiError),
         ),
         (
             TurnOutcome::Error(TurnErrorType::SandboxOutOfMemory),
@@ -703,7 +703,7 @@ fn every_turn_error_type() -> impl Iterator<Item = TurnErrorType> {
         TurnErrorType::TranspileSyntax,
         TurnErrorType::TranspileCompile,
         TurnErrorType::TranspileUnsupported,
-        TurnErrorType::ProgramToolError,
+        TurnErrorType::ProgramApiError,
         TurnErrorType::ProgramUnknownName,
         TurnErrorType::ProgramThrow,
         TurnErrorType::SandboxTimeout,
@@ -724,7 +724,7 @@ fn every_turn_error_type() -> impl Iterator<Item = TurnErrorType> {
             | TurnErrorType::TranspileSyntax
             | TurnErrorType::TranspileCompile
             | TurnErrorType::TranspileUnsupported
-            | TurnErrorType::ProgramToolError
+            | TurnErrorType::ProgramApiError
             | TurnErrorType::ProgramUnknownName
             | TurnErrorType::ProgramThrow
             | TurnErrorType::SandboxTimeout

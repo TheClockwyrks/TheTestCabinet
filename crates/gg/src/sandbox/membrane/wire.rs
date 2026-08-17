@@ -26,7 +26,7 @@
 //! interfaces are implemented by — `files`'s `read-file`, `board`'s `create-issue`, and so on
 //! down the table. That means this file adds no policy of any kind: the
 //! [capability gate](super::recording), the recorded call, the deadline, the picture collection and
-//! the `tool-error` are all reached exactly where they were, because they are reached through the
+//! the `api-error` are all reached exactly where they were, because they are reached through the
 //! same functions.
 //!
 //! Two consequences worth stating plainly. A call this agent was not granted is refused **here** in
@@ -49,8 +49,8 @@
 //! **`other`** failure whose message says the guest and the host have parted — which is what has in
 //! fact happened, since the two are built from one checkout.
 
-use super::test_cabinet::gg::types::{ErrorCode, ToolError};
-use super::{MembraneState, ToolApi};
+use super::test_cabinet::gg::types::{ApiError, ErrorCode};
+use super::{MembraneState, OperationApi};
 
 use wire_coding::{Value, WireFault, decode_request, encode_error, encode_ok};
 
@@ -77,15 +77,15 @@ pub(super) type Answer = Result<Value, Failure>;
 /// about the program.
 pub(super) enum Failure {
     /// gg refused the call or the tool behind it failed — the ordinary outcome a program catches.
-    Tool(ToolError),
+    Api(ApiError),
     /// The request did not decode, or named an operation with no row. Never the model's doing: the
     /// SDK that lowered it and the host that read it are built from one checkout.
     Fault(WireFault),
 }
 
-impl From<ToolError> for Failure {
-    fn from(error: ToolError) -> Self {
-        Self::Tool(error)
+impl From<ApiError> for Failure {
+    fn from(error: ApiError) -> Self {
+        Self::Api(error)
     }
 }
 
@@ -95,7 +95,7 @@ impl From<WireFault> for Failure {
     }
 }
 
-impl<A: ToolApi> WireHost for MembraneState<A> {
+impl<A: OperationApi> WireHost for MembraneState<A> {
     /// Decode one call, run it through the typed host function it names, and **hold** what came back
     /// for [`take`](WireHost::take) — answering its length.
     ///
@@ -107,8 +107,8 @@ impl<A: ToolApi> WireHost for MembraneState<A> {
             Err(fault) => fault_response(&op, &fault),
             Ok(arguments) => match dispatch(self, &op, &arguments) {
                 Ok(value) => encode_ok(&value),
-                Err(Failure::Tool(error)) => {
-                    encode_error(&error.tool, code_name(error.code), &error.message)
+                Err(Failure::Api(error)) => {
+                    encode_error(&error.operation, code_name(error.code), &error.message)
                 }
                 Err(Failure::Fault(fault)) => fault_response(&op, &fault),
             },
@@ -153,7 +153,7 @@ impl<A: ToolApi> WireHost for MembraneState<A> {
 /// only by the imports it *declares* — the ten guests that reach gg the typed way never ask for this
 /// one, and defining it costs them nothing. That is the same argument the whole WASI surface is
 /// defined by.
-pub(crate) fn add_to_linker<A: ToolApi>(
+pub(crate) fn add_to_linker<A: OperationApi>(
     linker: &mut wasmtime::component::Linker<MembraneState<A>>,
 ) -> wasmtime::Result<()> {
     test_cabinet::gg::wire::add_to_linker::<_, wasmtime::component::HasSelf<_>>(linker, |state| {
@@ -164,7 +164,7 @@ pub(crate) fn add_to_linker<A: ToolApi>(
 /// A failure that is gg's own, encoded as the program will read it.
 ///
 /// Reported under the **key** of the operation the program named, so that a catch site branching on
-/// `failure.tool()` sees the call it wrote even when what went wrong was underneath it. An `op` with
+/// `failure.operation()` sees the call it wrote even when what went wrong was underneath it. An `op` with
 /// no dot at all has no key, and is reported whole.
 fn fault_response(op: &str, fault: &WireFault) -> Vec<u8> {
     encode_error(
@@ -178,8 +178,8 @@ fn fault_response(op: &str, fault: &WireFault) -> Vec<u8> {
     )
 }
 
-/// An operation id's **key**, which is what a `tool-error` is reported under: `read_file` out of
-/// `files.read_file`, so a catch site branching on `failure.tool()` sees the call the program wrote.
+/// An operation id's **key**, which is what an `api-error` is reported under: `read_file` out of
+/// `files.read_file`, so a catch site branching on `failure.operation()` sees the call the program wrote.
 /// An id with no dot at all has no key and is reported whole.
 fn key(op: &str) -> &str {
     op.split_once('.').map_or(op, |(_, key)| key)
@@ -209,7 +209,11 @@ fn code_name(code: ErrorCode) -> &'static str {
 /// only check a list they can see. Every arm hands
 /// off to the family file that carries the argument decoding and the result lowering for that
 /// family; nothing is done here but the routing.
-fn dispatch<A: ToolApi>(state: &mut MembraneState<A>, op: &str, arguments: &[Value]) -> Answer {
+fn dispatch<A: OperationApi>(
+    state: &mut MembraneState<A>,
+    op: &str,
+    arguments: &[Value],
+) -> Answer {
     match op {
         // shell
         "shell.shell" => workspace::shell(state, op, arguments),

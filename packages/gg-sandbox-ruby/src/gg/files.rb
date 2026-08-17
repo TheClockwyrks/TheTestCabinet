@@ -37,7 +37,7 @@ module GG
     #   capped read policy.
     # @return [GG::Files::TextFile, GG::Files::ImageFile] the file's window of text, or the
     #   picture's description
-    # @raise [GG::Core::ToolError] `:not_found` for a missing path.
+    # @raise [GG::Core::ApiError] `:not_found` for a missing path.
     def self.read_file(path, offset: nil, limit: nil)
       Wire.file_read(Wire.call("read_file", "files", "readFile", [
                                  path,
@@ -58,7 +58,7 @@ module GG
     # @param limit [Integer, nil] How many lines to return from `offset`. Honoured only under a
     #   capped read policy.
     # @return [String] the file's text, or just the requested window
-    # @raise [GG::Core::ToolError] `:invalid_argument` when the path names a picture, which
+    # @raise [GG::Core::ApiError] `:invalid_argument` when the path names a picture, which
     #   `GG::Files.read_file` inspects instead and `GG::Views.open_file` displays.
     def self.read_text_file(path, offset: nil, limit: nil)
       Wire.call("read_text_file", "helpers", "readTextFile", [
@@ -88,15 +88,15 @@ module GG
     #   @param contents [String] A block returning the UTF-8 text to write. It replaces the file
     #     entirely.
     # @return [Integer] how many bytes were written
-    # @raise [GG::Core::ToolError] `:invalid_argument` when neither a `contents` argument nor a
+    # @raise [GG::Core::ApiError] `:invalid_argument` when neither a `contents` argument nor a
     #   block was given, and for an empty path; `:io_error` when creating the parent directories or
     #   the write itself failed.
     def self.write_file(path, contents = nil, &block)
       text = block ? block.call : contents
       if text.nil?
-        raise Core::ToolError.new("write_file", Core::ToolErrorCode::INVALID_ARGUMENT,
-                                  "`write_file` needs the text to write, as an argument or as a " \
-                                  "block")
+        raise Core::ApiError.new("write_file", Core::ApiErrorCode::INVALID_ARGUMENT,
+                                 "`write_file` needs the text to write, as an argument or as a " \
+                                 "block")
       end
 
       Wire.integer(Wire.call("write_file", "files", "writeFile", [path, text]))
@@ -113,7 +113,7 @@ module GG
     #   once.
     # @param new_string [String] The text to put in its place. An empty string deletes the match.
     # @return [nil]
-    # @raise [GG::Core::ToolError] `:not_found` when the text does not appear, and `:conflict` —
+    # @raise [GG::Core::ApiError] `:not_found` when the text does not appear, and `:conflict` —
     #   with the number of matches — when it appears more than once.
     def self.edit_file(path, old_string, new_string)
       Wire.call("edit_file", "files", "editFile", [path, old_string, new_string])
@@ -129,7 +129,7 @@ module GG
     # @param path [String, nil] The directory to list, relative to the workspace or absolute. Leave
     #   it out for the workspace root.
     # @return [Array<GG::Files::DirEntry>] what the directory holds, sorted by name
-    # @raise [GG::Core::ToolError] `:not_found` for a missing directory, and `:invalid_argument` for
+    # @raise [GG::Core::ApiError] `:not_found` for a missing directory, and `:invalid_argument` for
     #   a path that is given but empty — leaving it out is what lists the workspace root.
     def self.list_dir(path = nil)
       Wire.call("list_dir", "files", "listDir", [Wire.js(path)]).map do |entry|

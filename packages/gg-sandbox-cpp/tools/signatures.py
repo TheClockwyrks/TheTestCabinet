@@ -70,7 +70,7 @@ GENERATED_FROM = "packages/gg-sandbox-cpp/Sources/sdk/ (clang++ -ast-dump=json)"
 #: The types every call's failure arm refers to, closed over on every entry because every function
 #: in this SDK throws one of these when the call fails — including the two that cannot fail, whose
 #: documentation says so. Written as a program writes them, and resolved like any other reference.
-ALWAYS_REFERENCED = ("core::tool_error", "core::tool_error_code")
+ALWAYS_REFERENCED = ("core::api_error", "core::api_error_code")
 
 #: The line a declaration carries to name the gg operation it binds.
 OPERATION_TAG = re.compile(r"^<ggop>([a-z_]+\.[a-z_]+)</ggop>$")

@@ -2,8 +2,8 @@
 ///
 /// A capability module owns the types it produces, so `files.FileRead` belongs to `files` and
 /// `board.IssueCreated` to `board`. These three belong to none of them because they belong to all of
-/// them: every fallible function in this SDK throws a `core.ToolError`, every one of those is
-/// classified by a `core.ToolErrorCode`, and both patch calls take a `core.TextEdit`.
+/// them: every fallible function in this SDK throws a `core.ApiError`, every one of those is
+/// classified by a `core.ApiErrorCode`, and both patch calls take a `core.TextEdit`.
 ///
 /// It is the one module that offers no capability at all, and the reflector refuses a catalogue in
 /// which it offers one.
@@ -23,15 +23,15 @@ public enum core {
     /// ```swift
     /// do {
     ///     try views.openText("notes", body: try files.readTextFile("notes.md"))
-    /// } catch let failure as core.ToolError where failure.code == .notFound {
+    /// } catch let failure as core.ApiError where failure.code == .notFound {
     ///     try files.writeFile("notes.md", contents: "")
     /// }
     /// ```
-    public struct ToolError: Error, CustomStringConvertible, Sendable {
+    public struct ApiError: Error, CustomStringConvertible, Sendable {
         /// The failure class, so a catch site branches on a value rather than on prose.
-        public let code: ToolErrorCode
+        public let code: ApiErrorCode
         /// The gg call that failed, under gg's own name for it (`read_file`, `spawn_subagent`).
-        public let tool: String
+        public let operation: String
         /// What went wrong, in gg's words. Worth showing in a view; not worth matching on.
         public let message: String
 
@@ -42,19 +42,19 @@ public enum core {
         /// when a failure escapes — so two arms whose uncaught failures read differently would be
         /// two arms whose error rates a study could not compare.
         public var description: String {
-            "`\(tool)` failed (\(code.ggName)): \(message)"
+            "`\(operation)` failed (\(code.ggName)): \(message)"
         }
 
         /// The SDK's own failure, built from the wire's record.
-        init(code: ToolErrorCode, tool: String, message: String) {
+        init(code: ApiErrorCode, operation: String, message: String) {
             self.code = code
-            self.tool = tool
+            self.operation = operation
             self.message = message
         }
     }
 
     /// Why a gg call failed — the `code` a catch site branches on.
-    public enum ToolErrorCode: Sendable {
+    public enum ApiErrorCode: Sendable {
         /// The arguments were malformed, ill-typed, or out of range.
         ///
         /// It covers an agent name this run does not declare, and an empty list where the call

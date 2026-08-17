@@ -14,17 +14,17 @@ use crate::tools::ToolFailure;
 /// creation assigned — or a failure naming what it carried instead.
 fn usage(outcome: &ToolOutcome) -> &BoardUsageData {
     match outcome.data.as_ref() {
-        Some(ToolData::BoardUsage(data)) => data,
-        Some(ToolData::BoardNode(node)) => &node.board,
+        Some(ApiData::BoardUsage(data)) => data,
+        Some(ApiData::BoardNode(node)) => &node.board,
         other => panic!("expected board usage, got {other:?}"),
     }
 }
 
-/// The id a creation reported on its [`BoardNode`](ToolData::BoardNode) sidecar — the one thing its
+/// The id a creation reported on its [`BoardNode`](ApiData::BoardNode) sidecar — the one thing its
 /// caller could not have known.
 fn assigned_id(outcome: &ToolOutcome) -> &str {
     match outcome.data.as_ref() {
-        Some(ToolData::BoardNode(node)) => &node.id,
+        Some(ApiData::BoardNode(node)) => &node.id,
         other => panic!("expected an assigned id, got {other:?}"),
     }
 }

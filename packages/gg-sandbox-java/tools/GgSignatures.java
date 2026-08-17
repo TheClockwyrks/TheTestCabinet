@@ -602,7 +602,7 @@ public final class GgSignatures implements Doclet {
         rendered.append(" -> ").append(returned);
 
         if (!throwsTags(method).isEmpty()) {
-            referenced.add(GgCatalogue.CORE_PACKAGE + ".ToolError");
+            referenced.add(GgCatalogue.CORE_PACKAGE + ".ApiError");
         }
 
         Json out = Json.object();

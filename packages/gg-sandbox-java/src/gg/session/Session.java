@@ -1,7 +1,7 @@
 package gg.session;
 
-import gg.ToolError;
-import gg.ToolErrorCode;
+import gg.ApiError;
+import gg.ApiErrorCode;
 import gg.internal.Coding;
 import gg.internal.Value;
 
@@ -56,7 +56,7 @@ public final class Session {
      *
      * @param items Every change the work needs before it can be accepted, one per entry: what is
      *     wrong, and what to change. The list may not be empty.
-     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} when the list is empty.
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} when the list is empty.
      * @ggop session.request_changes
      */
     public static void requestChanges(String... items) {

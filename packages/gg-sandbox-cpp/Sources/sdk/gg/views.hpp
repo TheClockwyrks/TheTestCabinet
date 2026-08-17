@@ -69,7 +69,7 @@ struct open_view {
   /// <ggop-alias>views.close</ggop-alias>
   ///
   /// \returns how many views were closed, which is `0` when it has been closed already.
-  /// \throws gg::core::tool_error `invalid_argument` when this view's `selector` is empty, which no
+  /// \throws gg::core::api_error `invalid_argument` when this view's `selector` is empty, which no
   ///   view gg reports ever is.
   std::uint32_t close() const;
 };
@@ -90,7 +90,7 @@ struct open_view {
 /// \param path The file to open, relative to the workspace or absolute.
 /// \param window The lines to show; `{}` shows the whole file.
 /// \returns the same read `gg::files::read_file` would have handed back.
-/// \throws gg::core::tool_error `not_found` for a missing path, and `invalid_argument` for an offset
+/// \throws gg::core::api_error `not_found` for a missing path, and `invalid_argument` for an offset
 ///   past the end of the file. The read is what fails; nothing is opened when it does.
 files::file_read open_file(std::string_view path, files::read_window window = {});
 
@@ -106,7 +106,7 @@ files::file_read open_file(std::string_view path, files::read_window window = {}
 ///   again replaces what it showed. It may not be empty.
 /// \param body What to show. An empty body is allowed: it is how something that was being shown
 ///   is said to be empty now.
-/// \throws gg::core::tool_error `invalid_argument` for an empty label — a view with no selector could
+/// \throws gg::core::api_error `invalid_argument` for an empty label — a view with no selector could
 ///   never be closed or attributed — and `limit_exceeded`, naming the cap, for a body or label
 ///   over gg's caps.
 void open_text(std::string_view label, std::string_view body);
@@ -127,7 +127,7 @@ void open_text(std::string_view label, std::string_view body);
 ///   it is called under its module (`"read_file"`) also resolves and is a fallback rather than the
 ///   form to reach for: two modules are free to declare a `close`, and only the qualified name says
 ///   which one is meant. Whatever a search returns can be opened here.
-/// \throws gg::core::tool_error `not_found` for an unknown or unbound name.
+/// \throws gg::core::api_error `not_found` for an unknown or unbound name.
 void open_docs_view(std::string_view name);
 
 /// Close every view carrying `selector`, freeing the tokens they occupied.
@@ -147,7 +147,7 @@ void open_docs_view(std::string_view name);
 /// \param selector What the view is filed under: a file's path, a text view's label, or
 ///   `search results`.
 /// \returns how many views were closed.
-/// \throws gg::core::tool_error `invalid_argument` for an empty selector, which names nothing rather
+/// \throws gg::core::api_error `invalid_argument` for an empty selector, which names nothing rather
 ///   than everything — there is no call here that closes the window wholesale.
 std::uint32_t close(std::string_view selector);
 

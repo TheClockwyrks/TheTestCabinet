@@ -72,7 +72,7 @@ fn world() -> Result<&'static (wit_parser::Resolve, wit_parser::WorldId), String
 ///
 /// The measured shape of what comes out of TeaVM, and therefore what this has to describe: six core
 /// imports — the four preview1 functions the adapter answers, and `test-cabinet:gg/wire`'s `call`
-/// and `take` — and the exports `run`, `bound-tools`, `cabi_realloc` and `memory`. The first three
+/// and `take` — and the exports `run`, `bound-operations`, `cabi_realloc` and `memory`. The first three
 /// are read back by name out of the module's export section in `jvm.wire.test.rs`, because
 /// `setClassesToPreserve` silently deciding otherwise is what produces a component with no exports
 /// at all.

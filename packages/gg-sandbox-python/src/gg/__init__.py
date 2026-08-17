@@ -12,7 +12,7 @@ documentation view of what it found.
 
 `import gg` is the line a program writes to reach any of it, and after it every name below is
 written the way the documentation spells it: `gg.files.read_file("a.py")`, `except
-gg.core.ToolError`. Python's other spellings mean the same thing, so `from gg import files` and
+gg.core.ApiError`. Python's other spellings mean the same thing, so `from gg import files` and
 `from gg.files import read_file` reach the same objects.
 
 What this package is, and what it is not
@@ -24,10 +24,10 @@ generator belongs: a mechanical lowering of typed values across a membrane, whic
 layer is the one a model reads, so it is written the way Python is written — module-level functions
 rather than a class of static methods, required arguments positional, optional ones as keyword
 arguments with real defaults, results as frozen dataclasses, fixed choices as enums, a failure as a
-raised `ToolError`, and `None` where another language would say `undefined`.
+raised `ApiError`, and `None` where another language would say `undefined`.
 
 It is **not the capability model**. Every function is here whatever a run enables; gg refuses the
-ones the run withheld, at the host, with `ToolErrorCode.UNAVAILABLE`. What the run decides is which
+ones the run withheld, at the host, with `ApiErrorCode.UNAVAILABLE`. What the run decides is which
 of them a model is shown by a documentation search.
 
 Its documentation is **the** documentation. Every docstring on a catalogued function, argument, type
@@ -62,12 +62,12 @@ from . import (
     views,
 )
 from ._registry import missing
-from .core import UNCHANGED, ToolError, ToolErrorCode, Unchanged
+from .core import UNCHANGED, ApiError, ApiErrorCode, Unchanged
 
 __all__ = [
     "UNCHANGED",
-    "ToolError",
-    "ToolErrorCode",
+    "ApiError",
+    "ApiErrorCode",
     "Unchanged",
     "board",
     "context",

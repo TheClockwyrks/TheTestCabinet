@@ -1,4 +1,4 @@
-//! The **structured half of a tool result**: [`ToolData`] (what a call produced) and
+//! The **structured half of a tool result**: [`ApiData`] (what a call produced) and
 //! [`ToolFailure`] (why one did not).
 //!
 //! Every gg tool has always computed two things and kept only one. `shell` knows the exit code, the
@@ -15,7 +15,7 @@
 //! prose payloads would be a typed API over untyped data, which is the one thing worth avoiding
 //! here.
 //!
-//! So each tool now emits its facts **alongside** its prose, as a [`ToolData`] sidecar on the
+//! So each tool now emits its facts **alongside** its prose, as a [`ApiData`] sidecar on the
 //! [`ToolOutcome`](super::ToolOutcome) it already returned. This is purely additive: `ok`, `output`
 //! and `summary` are byte-for-byte what they were, the native path keeps reading `output`, and the
 //! sidecar is the only thing a structured consumer reads. The two never disagree because they are
@@ -57,7 +57,7 @@
 //! lines) saturates rather than wrapping into a small, plausible, wrong number.
 
 use serde::{Deserialize, Serialize};
-use test_cabinet_core::gg::GgToolFailure;
+use test_cabinet_core::gg::GgCallFailure;
 
 use crate::model::Role;
 
@@ -106,7 +106,7 @@ pub fn saturating_u64(count: u128) -> u64 {
 /// `PartialEq, Eq` every existing tool test compares with.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "kind", content = "data")]
-pub enum ToolData {
+pub enum ApiData {
     /// What a `shell` command reported: [`ShellData`]. Present whenever the process actually ran,
     /// **including when it exited non-zero** — that is a completed call, not a failed one, and its
     /// presence is what distinguishes it from a command that could not be launched.
@@ -520,18 +520,18 @@ impl ToolFailure {
     /// Written out by hand rather than through a `From`, for the reason
     /// [`TurnOutcome::wire`](crate::limits::TurnOutcome::wire) gives: gg's vocabulary and the
     /// published one must not become interchangeable, and the contract carries an eighth value
-    /// ([`Other`](GgToolFailure::Other)) that this enum deliberately does not — an unclassified
+    /// ([`Other`](GgCallFailure::Other)) that this enum deliberately does not — an unclassified
     /// failure is an *absent* `ToolFailure` here and a present `other` there, because the wire has
     /// to distinguish "this call failed and nobody said why" from "this call did not fail".
-    pub fn wire(self) -> GgToolFailure {
+    pub fn wire(self) -> GgCallFailure {
         match self {
-            Self::InvalidArgument => GgToolFailure::InvalidArgument,
-            Self::NotFound => GgToolFailure::NotFound,
-            Self::Conflict => GgToolFailure::Conflict,
-            Self::Refused => GgToolFailure::Refused,
-            Self::Unavailable => GgToolFailure::Unavailable,
-            Self::LimitExceeded => GgToolFailure::LimitExceeded,
-            Self::IoError => GgToolFailure::IoError,
+            Self::InvalidArgument => GgCallFailure::InvalidArgument,
+            Self::NotFound => GgCallFailure::NotFound,
+            Self::Conflict => GgCallFailure::Conflict,
+            Self::Refused => GgCallFailure::Refused,
+            Self::Unavailable => GgCallFailure::Unavailable,
+            Self::LimitExceeded => GgCallFailure::LimitExceeded,
+            Self::IoError => GgCallFailure::IoError,
         }
     }
 }

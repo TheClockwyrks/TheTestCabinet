@@ -22,7 +22,7 @@
 //   * an absent `option<f64>` is `double.NaN`, and an absent `option<string>` is `null`;
 //   * a `list<record>` arrives as one array per field, of equal length.
 //
-// FAILURE. Every fallible call returns `false` and parks its `tool-error` in the guest's own
+// FAILURE. Every fallible call returns `false` and parks its `api-error` in the guest's own
 // single-slot error register, which `TakeError` reads back. It is a register rather than three more
 // `out` parameters on all forty of them because a failure is the same three fields everywhere, and
 // it is safe because a program is single-threaded and every call is synchronous — there is no second
@@ -37,7 +37,7 @@ internal static class Native
 {
     // The failure the last call parked. Only ever read immediately after a `false`.
     [MethodImpl(MethodImplOptions.InternalCall)]
-    internal static extern void TakeError(out int code, out string tool, out string message);
+    internal static extern void TakeError(out int code, out string operation, out string message);
 
     // One line to the run's operator log — the channel `Console.Out` is redirected onto.
     [MethodImpl(MethodImplOptions.InternalCall)]

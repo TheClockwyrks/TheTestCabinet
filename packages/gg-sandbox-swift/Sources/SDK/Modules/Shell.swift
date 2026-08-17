@@ -8,8 +8,8 @@
 ///
 /// - ggmodule: shell
 public enum shell {
-    /// The gg tools this module dispatches — see `files.ggTools`.
-    static let ggTools = ["shell"]
+    /// The gg tools this module dispatches — see `files.ggOperations`.
+    static let ggOperations = ["shell"]
 
     /// Run a command with `sh -c` in the workspace and hand back its merged stdout and stderr.
     ///
@@ -27,7 +27,7 @@ public enum shell {
     ///   - timeout: How long to let it run, in seconds, before killing it. Left out, it takes gg's
     ///     default of 120, clamped to whatever is left of the run's wall-clock budget.
     /// - Returns: what the process printed, and how it exited.
-    /// - Throws: `core.ToolError` with `.limitExceeded` when the timeout killed the process, and
+    /// - Throws: `core.ApiError` with `.limitExceeded` when the timeout killed the process, and
     ///   `.ioError` when it could not be launched.
     /// - ggop: shell.shell
     @discardableResult
@@ -35,7 +35,7 @@ public enum shell {
         try withScratch { scratch in
             var command = scratch.string(command)
             var ret = test_cabinet_gg_shell_shell_output_t()
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             let ok = withOptional(timeout) { timeout in
                 test_cabinet_gg_shell_shell(&command, timeout, &ret, &err)
             }

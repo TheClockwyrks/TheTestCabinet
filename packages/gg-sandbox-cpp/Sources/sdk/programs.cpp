@@ -14,7 +14,7 @@ namespace programs {
 
 std::vector<programs::program_summary> history() {
   test_cabinet_gg_programs_list_program_summary_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_programs_history(&ret, &err)) detail::fail(err);
   std::vector<programs::program_summary> summaries =
       detail::lift_each(ret.ptr, ret.len, detail::lift_program_summary);
@@ -25,7 +25,7 @@ std::vector<programs::program_summary> history() {
 std::string get(std::optional<std::uint32_t> turn) {
   std::uint32_t which = turn.value_or(0);
   sandbox_string_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_programs_get(turn.has_value() ? &which : nullptr, &ret, &err)) {
     detail::fail(err);
   }
@@ -37,7 +37,7 @@ std::string get(std::optional<std::uint32_t> turn) {
 void rerun(std::string_view source) {
   detail::scratch scratch;
   sandbox_string_t lowered = scratch.str(source);
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_programs_rerun(&lowered, &err)) detail::fail(err);
 }
 

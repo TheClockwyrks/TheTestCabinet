@@ -2,11 +2,11 @@
 
 A capability module owns the types it produces, so `FileRead` belongs to `gg.files` and
 `IssueCreated` to `gg.board`. The three here belong to none of them because they belong to all of
-them: every function in this SDK raises `ToolError`, and `UNCHANGED` is the default of every patch
+them: every function in this SDK raises `ApiError`, and `UNCHANGED` is the default of every patch
 argument that can also be cleared.
 
 They are written the way every other name in this package is written: `import gg` and then
-`gg.core.ToolError`, which is the same path the documentation files them under.
+`gg.core.ApiError`, which is the same path the documentation files them under.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from wit_world.imports import types as wire
 
 from ._registry import missing
 
-__all__ = ["UNCHANGED", "ToolError", "ToolErrorCode", "Unchanged"]
+__all__ = ["UNCHANGED", "ApiError", "ApiErrorCode", "Unchanged"]
 
 T = TypeVar("T")
 
@@ -28,7 +28,7 @@ U32_MAX = 4_294_967_295
 """The `u32` range, so no wrapper below inlines the magic number."""
 
 
-class ToolErrorCode(Enum):
+class ApiErrorCode(Enum):
     """Why a gg call failed — the `code` a handler branches on rather than the message it reads."""
 
     INVALID_ARGUMENT = "invalid-argument"
@@ -78,14 +78,15 @@ class ToolErrorCode(Enum):
     OTHER = "other"
     """The failure was not classified.
 
-    Reserved for outcomes raised outside a tool implementation; no call in this SDK produces it.
+    Reserved for outcomes raised outside an operation's implementation; no call in this SDK produces
+    it.
     """
 
 
-class ToolError(Exception):
+class ApiError(Exception):
     """A gg call that failed.
 
-    WIT models a failure as `result<T, tool-error>`, and a surface that handed that back as a pair
+    WIT models a failure as `result<T, api-error>`, and a surface that handed that back as a pair
     would force a branch after every line. Python's own answer is an exception, so that is what this
     SDK raises: the happy path is already unwrapped, and a failure that nobody expected ends the
     program with gg told which call failed and on which line.
@@ -97,33 +98,33 @@ class ToolError(Exception):
 
     try:
         notes = gg.files.read_text_file("notes.md")
-    except gg.core.ToolError as failure:
-        if failure.code is not gg.core.ToolErrorCode.NOT_FOUND:
+    except gg.core.ApiError as failure:
+        if failure.code is not gg.core.ApiErrorCode.NOT_FOUND:
             raise
         gg.files.write_file("notes.md", "")
     ```
     """
 
-    tool: str
+    operation: str
     """The gg call that failed, under gg's own name for it (`read_file`, `spawn_subagent`).
 
     It is gg's name for the capability rather than this SDK's spelling of it, so it is the same word
     in every language a program may be written in.
     """
 
-    code: ToolErrorCode
+    code: ApiErrorCode
     """The failure class, so a handler branches on a value rather than on prose."""
 
-    def __init__(self, tool: str, code: ToolErrorCode, message: str) -> None:
+    def __init__(self, operation: str, code: ApiErrorCode, message: str) -> None:
         super().__init__(message)
-        self.tool = tool
+        self.operation = operation
         self.code = code
 
     def __str__(self) -> str:
-        # The code and the tool travel with the message, because the rendered exception is what a
-        # model reads when it does NOT catch one — and `ToolError: not found` without the name of
+        # The code and the operation travel with the message, because the rendered exception is what
+        # a model reads when it does NOT catch one — and `ApiError: not found` without the name of
         # the call or the class of the failure is a sentence it cannot act on.
-        return f"{self.tool}: {self.code.value}: {super().__str__()}"
+        return f"{self.operation}: {self.code.value}: {super().__str__()}"
 
 
 class Unchanged(Enum):
@@ -145,7 +146,7 @@ UNCHANGED = Unchanged.UNCHANGED
 
 
 def _call(fn: Callable[..., T], /, *args: Any) -> T:
-    """Make one membrane call, turning the wire's failure arm into a `ToolError`.
+    """Make one membrane call, turning the wire's failure arm into an `ApiError`.
 
     `from None` deliberately: the generated `Err` wrapper is an implementation detail of the bridge,
     and a chained "during handling of the above exception" would put a toolchain type in front of a
@@ -155,15 +156,15 @@ def _call(fn: Callable[..., T], /, *args: Any) -> T:
         return fn(*args)
     except Err as raised:
         failure = raised.value
-        if isinstance(failure, wire.ToolError):
-            raise ToolError(
-                failure.tool, ToolErrorCode[failure.code.name], failure.message
+        if isinstance(failure, wire.ApiError):
+            raise ApiError(
+                failure.operation, ApiErrorCode[failure.code.name], failure.message
             ) from None
         raise
 
 
 def _uint(fn: str, name: str, value: int | None, maximum: int = U32_MAX) -> int | None:
-    """A whole number in `[0, maximum]`, or a `ToolError` naming the argument.
+    """A whole number in `[0, maximum]`, or an `ApiError` naming the argument.
 
     The membrane lowers a negative number by wrapping it — `-1` arrives as `4294967295` — so the
     range check has to happen on this side of it. `bool` is rejected along with everything else that
@@ -173,29 +174,29 @@ def _uint(fn: str, name: str, value: int | None, maximum: int = U32_MAX) -> int 
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= maximum:
-        raise ToolError(
+        raise ApiError(
             fn,
-            ToolErrorCode.INVALID_ARGUMENT,
+            ApiErrorCode.INVALID_ARGUMENT,
             f"`{name}` must be a whole number 0..{maximum}, got {value!r}",
         )
     return value
 
 
 def _positive(fn: str, name: str, value: float | None) -> float | None:
-    """A finite positive number, or a `ToolError` naming the argument."""
+    """A finite positive number, or an `ApiError` naming the argument."""
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not value > 0:
-        raise ToolError(
+        raise ApiError(
             fn,
-            ToolErrorCode.INVALID_ARGUMENT,
+            ApiErrorCode.INVALID_ARGUMENT,
             f"`{name}` must be a positive number of seconds, got {value!r}",
         )
     return float(value)
 
 
 def _strings(fn: str, name: str, value: object) -> list[str]:
-    """A sequence of strings, defaulted to empty, or a `ToolError` naming the argument.
+    """A sequence of strings, defaulted to empty, or an `ApiError` naming the argument.
 
     Every `list<string>` argument goes through this. A bare string is the mistake worth catching by
     hand: it *is* iterable, so `reviewers="alice"` would otherwise lower to five one-character
@@ -204,17 +205,17 @@ def _strings(fn: str, name: str, value: object) -> list[str]:
     if value is None:
         return []
     if isinstance(value, str) or not hasattr(value, "__iter__"):
-        raise ToolError(
+        raise ApiError(
             fn,
-            ToolErrorCode.INVALID_ARGUMENT,
+            ApiErrorCode.INVALID_ARGUMENT,
             f"`{name}` must be a list of strings, got {value!r}",
         )
     items = [*value]
     for item in items:
         if not isinstance(item, str):
-            raise ToolError(
+            raise ApiError(
                 fn,
-                ToolErrorCode.INVALID_ARGUMENT,
+                ApiErrorCode.INVALID_ARGUMENT,
                 f"every entry of `{name}` must be a string, got {item!r}",
             )
     return items

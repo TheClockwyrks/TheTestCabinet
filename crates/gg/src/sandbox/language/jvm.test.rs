@@ -106,7 +106,7 @@ fn the_entry_class_catches_nothing_and_calls_what_it_was_told_to() {
     );
     assert!(
         entry.contains("@Export(name = \"run\")")
-            && entry.contains("@Export(name = \"bound-tools\")"),
+            && entry.contains("@Export(name = \"bound-operations\")"),
         "the two exports the world declares are both here:\n{entry}",
     );
     // AND NOTHING ELSE. The list of exception classes this used to carry — so that TeaVM's

@@ -394,7 +394,7 @@ fn session_summary() -> GgSessionSummary {
             loop_aborts: 4,
             by_type: BTreeMap::from([
                 ("model_retry_exhausted".to_string(), 1),
-                ("program_tool_error".to_string(), 2),
+                ("program_api_error".to_string(), 2),
             ]),
             tool_failures: BTreeMap::from([("not-found".to_string(), 5)]),
         },
@@ -741,7 +741,7 @@ fn the_error_rollup_is_queryable_the_moment_it_exists_on_the_summary() {
     // without a line of query-layer work, which is the property that lets a type added to
     // gg become queryable the moment a run records it.
     assert_eq!(
-        doc.get("summary.errors.byType.program_tool_error"),
+        doc.get("summary.errors.byType.program_api_error"),
         Some(&GgValue::Number(2.0)),
         "\"which configurations spend their turns fighting a call?\" is one field away"
     );

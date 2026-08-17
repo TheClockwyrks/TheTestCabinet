@@ -114,7 +114,7 @@ export interface DirEntry {
  * policy.
  * @returns the window of text that was read, or the picture's description where the bytes are an
  * image.
- * @throws `ToolError` with `invalid-argument` for an empty path, and `not-found` for a path that is
+ * @throws `ApiError` with `invalid-argument` for an empty path, and `not-found` for a path that is
  * not there.
  */
 export function readFile(path: string, options?: { offset?: number; limit?: number }): FileRead {
@@ -138,7 +138,7 @@ export function readFile(path: string, options?: { offset?: number; limit?: numb
  * policy.
  * @returns the text that was read: the whole file, or the requested window under a capped read
  * policy.
- * @throws `ToolError` with `invalid-argument` when the path names a picture, which `readFile`
+ * @throws `ApiError` with `invalid-argument` when the path names a picture, which `readFile`
  * inspects instead and `gg.views.openFile` displays, and `not-found` for a path that is not there.
  */
 export function readTextFile(path: string, options?: { offset?: number; limit?: number }): string {
@@ -158,7 +158,7 @@ export function readTextFile(path: string, options?: { offset?: number; limit?: 
  * @param path Where to write, relative to the workspace or absolute. Parent directories are created.
  * @param contents The UTF-8 text to write. It replaces the file entirely.
  * @returns how many bytes were written, which is the length of `contents` in UTF-8.
- * @throws `ToolError` with `invalid-argument` for an empty path, and `io-error` when the write or a
+ * @throws `ApiError` with `invalid-argument` for an empty path, and `io-error` when the write or a
  * parent directory failed.
  */
 export function writeFile(path: string, contents: string): number {
@@ -175,7 +175,7 @@ export function writeFile(path: string, contents: string): number {
  * @param path The file to edit.
  * @param oldString The exact text to find, whitespace included. It must appear exactly once.
  * @param newString The text to put in its place. An empty string deletes the match.
- * @throws `ToolError` with `not-found` when the text does not appear, and `conflict` — carrying the
+ * @throws `ApiError` with `not-found` when the text does not appear, and `conflict` — carrying the
  * number of matches — when it appears more than once.
  */
 export function editFile(path: string, oldString: string, newString: string): void {
@@ -192,7 +192,7 @@ export function editFile(path: string, oldString: string, newString: string): vo
  * @param path The directory to list, relative to the workspace or absolute. The default lists the
  * workspace root.
  * @returns the directory's entries, sorted by name.
- * @throws `ToolError` with `not-found` for a directory that is not there, and `invalid-argument`
+ * @throws `ApiError` with `not-found` for a directory that is not there, and `invalid-argument`
  * for an empty path — omitting it entirely is what lists the workspace root.
  */
 export function listDir(path?: string): DirEntry[] {

@@ -7,7 +7,7 @@
 //! the guest lowers it into a WIT call with typed parameters, and the host receives
 //! `read_file(path: String, offset: Option<u32>, limit: Option<u32>)`. Nothing on this path names a
 //! call by a string or hands it a bag of JSON: [`MembraneState::call`] runs a typed method on the
-//! [api](ToolApi), which builds the native implementation and calls it. Dispatch by name with a JSON
+//! [api](OperationApi), which builds the native implementation and calls it. Dispatch by name with a JSON
 //! payload is the *other* surface's shape, where a model really does emit a name and an object, and
 //! it is reached from the [loop](crate::agent) rather than from here. The compiler, not a test, is
 //! what guarantees a WIT function cannot exist without a host implementation.
@@ -17,23 +17,23 @@
 //! **Every** host function on this membrane — all forty-eight of them, dispatching or not — opens
 //! an API-call bracket with [`MembraneState::recorded`], which is what records the call the *model
 //! wrote* under its own identity and is the only source of the [`Recording`](recording) token
-//! without which a host function can reach neither the [api](ToolApi) nor the dispatch path. See
+//! without which a host function can reach neither the [api](OperationApi) nor the dispatch path. See
 //! [`recording`] for what that record carries and why it is keyed on the operation.
 //!
 //! Inside that bracket, every host function that reaches gg's real machinery funnels through
 //! [`MembraneState::call`] (or its one sibling [`call_raw`](MembraneState::call_raw)), carrying the
 //! same [operation](OperationId) the bracket was opened with. That is where the run's wall-clock
 //! deadline is honoured, where the ordered call record is kept, where pictures are collected, and
-//! where a failed [`ToolOutcome`] becomes a typed `tool-error`. A host function itself is three
+//! where a failed [`ToolOutcome`] becomes a typed `api-error`. A host function itself is three
 //! lines: normalise what the WIT declared, call, and convert the
-//! [structured sidecar](crate::tools::ToolData) into its typed WIT result.
+//! [structured sidecar](crate::tools::ApiData) into its typed WIT result.
 //!
 //! A handful of functions reach nothing and so skip both. The three
 //! [session-ending calls](session) set this agent's ending flag through
 //! [`MembraneState::declare`], because ending a session is the one thing a program may ask for that
 //! no spent budget may withhold. The [documentation directory](docs), the
 //! [program library](programs) and four of the five [view calls](views) go straight to the
-//! [api](ToolApi) for the same reason: `dispatch`'s deadline guard is wrong for a call that performs
+//! [api](OperationApi) for the same reason: `dispatch`'s deadline guard is wrong for a call that performs
 //! no work, and a program that cannot show itself what it computed has nothing to report at all. The
 //! fifth view call, `open-file-view`, performs a read and goes through `dispatch` like any other —
 //! under `views.open_file`, which is the call the model wrote, and not under either of the two other
@@ -75,11 +75,11 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
-use test_cabinet_core::gg::GgToolFailure;
+use test_cabinet_core::gg::GgCallFailure;
 use wasmtime::component::ResourceTable;
 use wasmtime_wasi::{DirPerms, FilePerms, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
-use super::invoker::{SandboxRefusal, SandboxToolCall, SandboxViewOpened, ToolApi};
+use super::invoker::{OperationApi, SandboxRefusal, SandboxToolCall, SandboxViewOpened};
 use super::language::{ProgramLanguage, spell};
 use super::limits::{MemoryLimiter, SandboxLimits};
 use super::locate::Locations;
@@ -89,7 +89,7 @@ use super::operations::{
 };
 use super::{ProgramCompletion, ProgramError, ProgramErrorKind, ProgramScope};
 use crate::ending::{Ending, EndingRole};
-use crate::tools::{ToolData, ToolFailure, ToolOutcome};
+use crate::tools::{ApiData, ToolFailure, ToolOutcome};
 
 mod capture;
 mod context;
@@ -109,7 +109,7 @@ use recording::{GuardedApi, Recording};
 wasmtime::component::bindgen!({ world: "sandbox", path: "wit" });
 
 use test_cabinet::gg::feedback;
-use test_cabinet::gg::types::{self, ErrorCode, ToolError};
+use test_cabinet::gg::types::{self, ApiError, ErrorCode};
 
 /// Which ending calls one sandbox run binds.
 ///
@@ -156,16 +156,16 @@ impl From<RunEnding> for EndingKind {
     }
 }
 
-/// The per-[`Store`](wasmtime::Store) host state: the tool bridge, the memory limiter, the run's
+/// The per-[`Store`](wasmtime::Store) host state: the operation bridge, the memory limiter, the run's
 /// wall-clock deadline, and everything the program accumulated on its way to a result.
 ///
 /// It owns its invoker (rather than borrowing one) so the store's data is `'static` with no
 /// lifetime erasure and no `unsafe`, and it is reclaimed whole by
 /// `into_parts` on **every** exit path — including a trap — because the calls a
 /// program landed before it was stopped are exactly what the model needs to see next turn.
-pub(crate) struct MembraneState<A: ToolApi> {
-    /// The native, typed tool surface a bridged call is aimed at: the loop's own state in
-    /// production ([`LoopToolApi`](crate::agent)), an in-memory fake under test.
+pub(crate) struct MembraneState<A: OperationApi> {
+    /// The native, typed operation surface a bridged call is aimed at: the loop's own state in
+    /// production ([`LoopOperationApi`](crate::agent)), an in-memory fake under test.
     ///
     /// Behind a [guard](recording::GuardedApi) rather than in the open, so that no host function can
     /// reach it without first opening the API-call bracket that records what the model called.
@@ -560,7 +560,7 @@ impl wasmtime_wasi::cli::StdoutStream for GuestStderr {
 /// this struct, so a guest is reached only by the part of this it actually imports — the TypeScript
 /// component reads the clock and the RNG through here and never opens a file, while a
 /// `componentize-py` guest imports the whole surface and gets all of it.
-impl<A: ToolApi> WasiView for MembraneState<A> {
+impl<A: OperationApi> WasiView for MembraneState<A> {
     fn ctx(&mut self) -> WasiCtxView<'_> {
         WasiCtxView {
             ctx: &mut self.wasi,
@@ -717,11 +717,11 @@ pub(crate) struct MembraneParts {
     pub revoked_rerun: bool,
 }
 
-impl<A: ToolApi> MembraneState<A> {
+impl<A: OperationApi> MembraneState<A> {
     /// The state for one program: bridged through `api`, written in `language`, offering exactly
     /// what `scope` says this program was given, bounded by `limits`, and stopping at `deadline`.
     ///
-    /// It takes the whole [`ProgramScope`] rather than the tool names alone because everything in it
+    /// It takes the whole [`ProgramScope`] rather than the operation names alone because everything in it
     /// is one decision — what this program may reach — and every part of that decision is checked
     /// **here** as well as bound into the guest's scope. Splitting it was how the ending group and
     /// the program-library flag came to be handed to the guest and to nobody else.
@@ -872,7 +872,7 @@ impl<A: ToolApi> MembraneState<A> {
         self.timed_out = true;
     }
 
-    /// The reclaimed [tool api](ToolApi) and everything the program accumulated, consuming the
+    /// The reclaimed [operation api](OperationApi) and everything the program accumulated, consuming the
     /// state. The api is handed back so the loop reclaims the per-turn state it moved in (the
     /// context window, the skills/docs runtimes, the delegation context).
     pub(crate) fn api_and_parts(self) -> (A, MembraneParts) {
@@ -933,7 +933,7 @@ impl<A: ToolApi> MembraneState<A> {
     /// Bridge one typed membrane call to gg's real toolset, turning a failed outcome into the typed
     /// error the program sees thrown.
     ///
-    /// This is what twenty-eight of the twenty-nine bound tools call. The twenty-ninth is `shell`,
+    /// This is what twenty-eight of the twenty-nine bound operations call. The twenty-ninth is `shell`,
     /// which needs a non-`ok` outcome as a value — see [`call_raw`](Self::call_raw).
     ///
     /// The [`Recording`] is the caller's proof that the API call it is servicing has already been
@@ -947,14 +947,14 @@ impl<A: ToolApi> MembraneState<A> {
         recording: Recording,
         id: OperationId,
         run: impl FnOnce(&mut A) -> ToolOutcome,
-    ) -> Result<ToolOutcome, ToolError> {
+    ) -> Result<ToolOutcome, ApiError> {
         // For every call but `shell`, the internal call's verdict and the model-facing call's are
         // the same thing.
         let outcome = self.dispatch(recording, id, run, |outcome| outcome.ok)?;
         if outcome.ok {
             Ok(outcome)
         } else {
-            Err(self.tool_error(id, &outcome))
+            Err(self.api_error(id, &outcome))
         }
     }
 
@@ -964,7 +964,7 @@ impl<A: ToolApi> MembraneState<A> {
     /// `shell` is the only caller: a process that ran is a success of the call whatever it exited
     /// with, and throwing on a non-zero exit would make `shell("npm test")` unusable inside an
     /// expression — which is the single most common thing a program does. The presence of a
-    /// [`ToolData::Shell`] sidecar is what distinguishes "it ran and exited non-zero" from "it
+    /// [`ApiData::Shell`] sidecar is what distinguishes "it ran and exited non-zero" from "it
     /// could not be launched, or the timeout killed it", and it is therefore also what the roster
     /// records: a completed process is a **successful call**, summarised as `exited 1`, not a
     /// failure carrying the command's whole output as its message.
@@ -973,9 +973,9 @@ impl<A: ToolApi> MembraneState<A> {
         recording: Recording,
         id: OperationId,
         run: impl FnOnce(&mut A) -> ToolOutcome,
-    ) -> Result<ToolOutcome, ToolError> {
+    ) -> Result<ToolOutcome, ApiError> {
         self.dispatch(recording, id, run, |outcome| {
-            matches!(outcome.data, Some(ToolData::Shell(_)))
+            matches!(outcome.data, Some(ApiData::Shell(_)))
         })
     }
 
@@ -1015,10 +1015,10 @@ impl<A: ToolApi> MembraneState<A> {
         _recording: Recording,
         ending: Result<Ending, String>,
         id: OperationId,
-    ) -> Result<(), ToolError> {
-        let ending = ending.map_err(|message| ToolError {
+    ) -> Result<(), ApiError> {
+        let ending = ending.map_err(|message| ApiError {
             code: ErrorCode::InvalidArgument,
-            tool: id.key.to_string(),
+            operation: id.key.to_string(),
             message,
         })?;
         let superseded = match self.completion.take() {
@@ -1059,7 +1059,7 @@ impl<A: ToolApi> MembraneState<A> {
         id: OperationId,
         run: impl FnOnce(&mut A) -> ToolOutcome,
         completed: fn(&ToolOutcome) -> bool,
-    ) -> Result<ToolOutcome, ToolError> {
+    ) -> Result<ToolOutcome, ApiError> {
         if self.deadline_spent() {
             return Err(self.refuse(
                 id,
@@ -1108,9 +1108,9 @@ impl<A: ToolApi> MembraneState<A> {
     /// it means gg's own table has fallen behind a host function, and refusing every call gg has
     /// mislaid would take a run down over drift.
     ///
-    /// # Why `tool` is gg's name and the message is the language's
+    /// # Why `operation` is gg's name and the message is the language's
     ///
-    /// [`ToolError::tool`] is an **identity**: the thing that failed, in gg's own vocabulary, so a
+    /// [`ApiError::operation`] is an **identity**: the thing that failed, in gg's own vocabulary, so a
     /// catch site can report it without parsing prose. The `message` is an **instruction**, and an
     /// instruction naming a call has to name it the way this program would write it, so it
     /// [spells](spell) every call it quotes. The two fields differ on purpose; they are not two
@@ -1137,7 +1137,7 @@ impl<A: ToolApi> MembraneState<A> {
     /// own [operation id](OperationId), caught or uncaught, whatever the guest made of the throw.
     /// That is the record a comparison of two configurations joins on, and
     /// `/gg/languages/static-sdks/` tells an operator the same thing.
-    fn granted(&mut self, id: OperationId) -> Result<(), ToolError> {
+    fn granted(&mut self, id: OperationId) -> Result<(), ApiError> {
         let Some(operation) = operation(id) else {
             return Ok(());
         };
@@ -1151,9 +1151,9 @@ impl<A: ToolApi> MembraneState<A> {
         // because a catch site branches on the thing that failed rather than on prose.
         let message = self.withheld(&self.spelled(id), operation.binding);
         self.record_refusal(id, &message);
-        Err(ToolError {
+        Err(ApiError {
             code: ErrorCode::Unavailable,
-            tool: id.key.to_string(),
+            operation: id.key.to_string(),
             message,
         })
     }
@@ -1173,7 +1173,7 @@ impl<A: ToolApi> MembraneState<A> {
     ///
     /// The call is [spelled](spell) in the program's own language, because the sentence is put in
     /// front of a model and a model reads a name it could write. gg's own vocabulary is what the
-    /// error's [`ToolError::tool`] carries instead — an identity for a catch site, not an
+    /// error's [`ApiError::operation`] carries instead — an identity for a catch site, not an
     /// instruction.
     fn withheld(&self, spelled: &str, binding: Binding) -> String {
         match binding {
@@ -1227,17 +1227,12 @@ impl<A: ToolApi> MembraneState<A> {
     /// The roster is keyed on the rendered [operation id](OperationId) and the error carries the
     /// bare key, exactly as [`granted`](Self::granted)'s refusals are: a cross-arm readout joins on
     /// an identity no arm chose, and a `catch` site branches on the call that failed.
-    fn refuse(
-        &mut self,
-        id: OperationId,
-        code: ErrorCode,
-        message: impl Into<String>,
-    ) -> ToolError {
+    fn refuse(&mut self, id: OperationId, code: ErrorCode, message: impl Into<String>) -> ApiError {
         let message = message.into();
         self.record_refusal(id, &message);
-        ToolError {
+        ApiError {
             code,
-            tool: id.key.to_string(),
+            operation: id.key.to_string(),
             message,
         }
     }
@@ -1259,23 +1254,23 @@ impl<A: ToolApi> MembraneState<A> {
     /// The typed error a failed outcome becomes, classified by the failure the internal call
     /// reported rather than by matching on its prose.
     ///
-    /// [`ToolError::tool`] carries the **operation's key**, never the name of whatever ran
+    /// [`ApiError::operation`] carries the **operation's key**, never the name of whatever ran
     /// underneath. The field's name belongs to the failure type every call shares; what goes in it
     /// is the call the program wrote, so `gg.files.readTextFile` reports `read_text_file` and
     /// `gg.views.openFile` reports `open_file` even though one internal read serviced all three.
     /// Reporting the internal name would put a word in front of the model that its SDK does not
     /// spell and that no arm can type.
-    fn tool_error(&self, id: OperationId, outcome: &ToolOutcome) -> ToolError {
-        ToolError {
+    fn api_error(&self, id: OperationId, outcome: &ToolOutcome) -> ApiError {
+        ApiError {
             code: error_code(outcome.failure),
-            tool: id.key.to_string(),
+            operation: id.key.to_string(),
             // The model-facing text, which for a failure is both the outcome's `output` and its
             // telemetry summary — the same sentence the native tool-calling path would show.
             message: outcome.output.clone(),
         }
     }
 
-    /// The error a successful call with no [structured sidecar](ToolData) becomes, with the call's
+    /// The error a successful call with no [structured sidecar](ApiData) becomes, with the call's
     /// own record corrected to say it failed.
     ///
     /// Unreachable in a correct build — every tool a typed membrane function reads data from emits
@@ -1287,7 +1282,7 @@ impl<A: ToolApi> MembraneState<A> {
     /// recorded a moment ago, as a success: without this the roster the model reads next turn would
     /// say the call succeeded while the program was thrown into, which is the one thing worse than
     /// either message on its own.
-    fn missing_data(&mut self, id: OperationId, produced: Option<&ToolData>) -> ToolError {
+    fn missing_data(&mut self, id: OperationId, produced: Option<&ApiData>) -> ApiError {
         let produced = match produced {
             Some(data) => format!(" (it produced a `{}` payload instead)", data_kind(data)),
             None => String::new(),
@@ -1299,24 +1294,24 @@ impl<A: ToolApi> MembraneState<A> {
         let message =
             format!("`{spelled}` produced no structured result{produced}; this is a gg defect");
         self.amend_last_call_as_failed(&message);
-        ToolError {
+        ApiError {
             code: ErrorCode::IoError,
-            tool: id.key.to_string(),
+            operation: id.key.to_string(),
             message,
         }
     }
 }
 
-pub(super) fn wire_failure(code: ErrorCode) -> GgToolFailure {
+pub(super) fn wire_failure(code: ErrorCode) -> GgCallFailure {
     match code {
-        ErrorCode::InvalidArgument => GgToolFailure::InvalidArgument,
-        ErrorCode::NotFound => GgToolFailure::NotFound,
-        ErrorCode::Conflict => GgToolFailure::Conflict,
-        ErrorCode::Refused => GgToolFailure::Refused,
-        ErrorCode::Unavailable => GgToolFailure::Unavailable,
-        ErrorCode::LimitExceeded => GgToolFailure::LimitExceeded,
-        ErrorCode::IoError => GgToolFailure::IoError,
-        ErrorCode::Other => GgToolFailure::Other,
+        ErrorCode::InvalidArgument => GgCallFailure::InvalidArgument,
+        ErrorCode::NotFound => GgCallFailure::NotFound,
+        ErrorCode::Conflict => GgCallFailure::Conflict,
+        ErrorCode::Refused => GgCallFailure::Refused,
+        ErrorCode::Unavailable => GgCallFailure::Unavailable,
+        ErrorCode::LimitExceeded => GgCallFailure::LimitExceeded,
+        ErrorCode::IoError => GgCallFailure::IoError,
+        ErrorCode::Other => GgCallFailure::Other,
     }
 }
 
@@ -1326,7 +1321,7 @@ pub(super) fn wire_failure(code: ErrorCode) -> GgToolFailure {
 /// The two enums are one-to-one, and the conversion is written out by hand rather than derived: the
 /// WIT enum is the guest's vocabulary and the contract's is a published wire value, and a `From`
 /// that made them interchangeable would let a change to either travel silently to the other. It is
-/// taken from the `ToolError` the program was actually thrown, rather than from the outcome behind
+/// taken from the `ApiError` the program was actually thrown, rather than from the outcome behind
 /// it, so a refusal — which has no outcome at all — is classified by the same function as everything
 /// else.
 ///
@@ -1348,31 +1343,31 @@ fn error_code(failure: Option<ToolFailure>) -> ErrorCode {
 
 /// The name of a sidecar's variant, for [`MembraneState::missing_data`]'s diagnostic.
 ///
-/// Exhaustive on purpose: a new [`ToolData`] variant has to be named here, which is a two-second
+/// Exhaustive on purpose: a new [`ApiData`] variant has to be named here, which is a two-second
 /// edit that keeps the one message a developer will read while debugging drift accurate.
-fn data_kind(data: &ToolData) -> &'static str {
+fn data_kind(data: &ApiData) -> &'static str {
     match data {
-        ToolData::Shell(_) => "shell",
-        ToolData::FileText(_) => "fileText",
-        ToolData::FileImage(_) => "fileImage",
-        ToolData::BytesWritten(_) => "bytesWritten",
-        ToolData::DirEntries(_) => "dirEntries",
-        ToolData::MemoryUsage(_) => "memoryUsage",
-        ToolData::MemoryHits(_) => "memoryHits",
-        ToolData::TaskUsage(_) => "taskUsage",
-        ToolData::BoardUsage(_) => "boardUsage",
-        ToolData::BoardNode(_) => "boardNode",
-        ToolData::Reclaim(_) => "reclaim",
-        ToolData::ArchiveSearch(_) => "archiveSearch",
-        ToolData::SubagentSpawned(_) => "subagentSpawned",
-        ToolData::SubagentResults(_) => "subagentResults",
+        ApiData::Shell(_) => "shell",
+        ApiData::FileText(_) => "fileText",
+        ApiData::FileImage(_) => "fileImage",
+        ApiData::BytesWritten(_) => "bytesWritten",
+        ApiData::DirEntries(_) => "dirEntries",
+        ApiData::MemoryUsage(_) => "memoryUsage",
+        ApiData::MemoryHits(_) => "memoryHits",
+        ApiData::TaskUsage(_) => "taskUsage",
+        ApiData::BoardUsage(_) => "boardUsage",
+        ApiData::BoardNode(_) => "boardNode",
+        ApiData::Reclaim(_) => "reclaim",
+        ApiData::ArchiveSearch(_) => "archiveSearch",
+        ApiData::SubagentSpawned(_) => "subagentSpawned",
+        ApiData::SubagentResults(_) => "subagentResults",
     }
 }
 
 /// The empty trait the shared `types` interface generates. It declares no functions — it exists so
-/// that one `tool-error` crosses the whole membrane rather than one per family — but the world
+/// that one `api-error` crosses the whole membrane rather than one per family — but the world
 /// still requires an implementation.
-impl<A: ToolApi> types::Host for MembraneState<A> {}
+impl<A: OperationApi> types::Host for MembraneState<A> {}
 
 #[cfg(test)]
 #[path = "membrane.test.rs"]

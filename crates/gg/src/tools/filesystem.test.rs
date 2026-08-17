@@ -7,7 +7,7 @@ use crate::tools::{Tool, ToolContext, ToolFailure};
 /// The [`DirEntryData`] list an outcome carries, or a failure naming what it carried instead.
 fn dir_entries(outcome: &ToolOutcome) -> &[DirEntryData] {
     match outcome.data.as_ref() {
-        Some(ToolData::DirEntries(entries)) => entries,
+        Some(ApiData::DirEntries(entries)) => entries,
         other => panic!("expected directory entries, got {other:?}"),
     }
 }
@@ -213,7 +213,7 @@ async fn write_file_reports_the_bytes_written() {
         .invoke(json!({ "path": "a.txt", "contents": "héllo" }), &ctx)
         .await;
 
-    assert_eq!(write.data, Some(ToolData::BytesWritten(6)));
+    assert_eq!(write.data, Some(ApiData::BytesWritten(6)));
 }
 
 /// `read_file` reports the window it returned and the file's length, footer-free.
@@ -225,7 +225,7 @@ async fn read_file_reports_the_window_it_returned() {
     let read = reader().invoke(json!({ "path": "f.txt" }), &ctx).await;
 
     match read.data {
-        Some(ToolData::FileText(data)) => {
+        Some(ApiData::FileText(data)) => {
             assert_eq!(data.contents, "one\ntwo\nthree\n");
             assert_eq!(
                 (data.first_line, data.last_line, data.total_lines),

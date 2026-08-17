@@ -24,8 +24,8 @@
 // `mono_wasm_load_runtime` is the runtime pack's own boot: it loads ICU out of the bundle,
 // initialises `monovm` from the bundled `runtimeconfig.bin`, registers the bundled BCL and starts
 // the interpreter. It is done on the first `run` rather than in a constructor because a component
-// instance that is created and never driven — an instantiation gg makes to read `bound-tools` — has
-// no reason to pay for it.
+// instance that is created and never driven — an instantiation gg makes to read `bound-operations`
+// — has no reason to pay for it.
 //
 // # Why `mono_debug_init` is called before it
 //
@@ -131,15 +131,15 @@ static uint8_t *base64_decode(const char *text, size_t length, size_t *decoded_l
 // The world's exports
 // ---------------------------------------------------------------------------------------------
 
-/// **The gg tool names this component can bind** — what `bound-tools` answers.
+/// **The gg tool names this component can bind** — what `bound-operations` answers.
 ///
 /// Read straight off `Sources/bridge.c`'s registration table, so what the artifact reports and what
 /// it actually binds are one statement rather than two that can disagree. gg's drift gate compares
 /// the answer with its own `ALL_TOOL_NAMES`.
-void exports_sandbox_bound_tools(sandbox_list_string_t *ret) {
+void exports_sandbox_bound_operations(sandbox_list_string_t *ret) {
   const char *const *names = NULL;
   size_t count = 0;
-  gg_bridge_tool_names(&names, &count);
+  gg_bridge_operation_names(&names, &count);
   ret->len = count;
   ret->ptr = (sandbox_string_t *)malloc(count * sizeof(sandbox_string_t));
   for (size_t index = 0; index < count; index++) {
@@ -186,8 +186,8 @@ static void flush_operator_console(MonoImage *image) {
 /// once code modules land on this arm: a module is C# compiled into the same assembly, so it arrives
 /// already inside `program` rather than as a source the guest evaluates.
 ///
-/// `tools`, `ending` and `library` are ignored **on purpose and permanently**. A compiled arm links
-/// its SDK as a library, so there is no scope to leave a name out of: every function is there
+/// `operations`, `ending` and `library` are ignored **on purpose and permanently**. A compiled arm
+/// links its SDK as a library, so there is no scope to leave a name out of: every function is there
 /// whatever a run offers, and what withholds one is the host — which refuses anything outside the
 /// run's enabled set, the agent's ending role and its program-library flag `unavailable`. That is
 /// the seam's own rule for a language of this shape, not a gap here.
@@ -203,9 +203,10 @@ static void flush_operator_console(MonoImage *image) {
 /// reported with the number the program chose. `Environment.ExitCode` is a different field and this
 /// runtime does not fold it in; `csharp.substrate.test.rs` measures both.
 void exports_sandbox_run(sandbox_string_t *program, sandbox_list_code_module_t *modules,
-                         sandbox_list_string_t *tools, sandbox_ending_kind_t ending, bool library) {
+                         sandbox_list_string_t *operations, sandbox_ending_kind_t ending,
+                         bool library) {
   (void)modules;
-  (void)tools;
+  (void)operations;
   (void)ending;
   (void)library;
 

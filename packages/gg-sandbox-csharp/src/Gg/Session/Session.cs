@@ -27,9 +27,9 @@ public static partial class Session
     /// The last word: for a root agent the run's final text, for a child its return value to whoever
     /// asked for the work. It must not be empty.
     /// </param>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.Unavailable"/> when the agent's role does not end this way, and
-    /// <see cref="ToolErrorCode.InvalidArgument"/> for an empty summary.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.Unavailable"/> when the agent's role does not end this way, and
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for an empty summary.
     /// </exception>
     /// <ggop>session.finish</ggop>
     public static void Finish(string summary) => Internal.Wire.Check(Internal.Native.Finish(summary));
@@ -40,8 +40,8 @@ public static partial class Session
     /// demanded prose would be a shape gg had to read back. It ends the session under the same rules
     /// <see cref="Finish"/> does, and is revoked the same way.
     /// </remarks>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.Unavailable"/> when the agent's role returns no verdict.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.Unavailable"/> when the agent's role returns no verdict.
     /// </exception>
     /// <ggop>session.approve</ggop>
     public static void Approve() => Internal.Wire.Check(Internal.Native.Approve());
@@ -56,9 +56,9 @@ public static partial class Session
     /// One entry per change, each saying what is wrong and what to change. At least one, and none of
     /// them blank.
     /// </param>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.Unavailable"/> when the agent's role returns no verdict, and
-    /// <see cref="ToolErrorCode.InvalidArgument"/> for an empty list or a blank entry.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.Unavailable"/> when the agent's role returns no verdict, and
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for an empty list or a blank entry.
     /// </exception>
     /// <ggop>session.request_changes</ggop>
     public static void RequestChanges(params string[] items) =>

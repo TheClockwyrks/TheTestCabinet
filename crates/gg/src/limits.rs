@@ -326,7 +326,7 @@ pub enum TurnErrorType {
     TranspileUnsupported,
     /// The program's uncaught throw was a **failed call** — one the membrane serviced and the tool
     /// rejected, or refused for any reason other than the run not offering it.
-    ProgramToolError,
+    ProgramApiError,
     /// The program reached for something this run does not offer it: a name that was never in
     /// scope, or a call the membrane refused `unavailable`.
     ProgramUnknownName,
@@ -362,7 +362,7 @@ impl TurnErrorType {
             Self::TranspileSyntax | Self::TranspileCompile | Self::TranspileUnsupported => {
                 TurnErrorKind::Transpile
             }
-            Self::ProgramToolError | Self::ProgramUnknownName | Self::ProgramThrow => {
+            Self::ProgramApiError | Self::ProgramUnknownName | Self::ProgramThrow => {
                 TurnErrorKind::ProgramFault
             }
             Self::SandboxTimeout | Self::SandboxOutOfMemory | Self::SandboxTrap => {
@@ -387,7 +387,7 @@ impl TurnErrorType {
             Self::TranspileSyntax => GgTurnErrorType::TranspileSyntax,
             Self::TranspileCompile => GgTurnErrorType::TranspileCompile,
             Self::TranspileUnsupported => GgTurnErrorType::TranspileUnsupported,
-            Self::ProgramToolError => GgTurnErrorType::ProgramToolError,
+            Self::ProgramApiError => GgTurnErrorType::ProgramApiError,
             Self::ProgramUnknownName => GgTurnErrorType::ProgramUnknownName,
             Self::ProgramThrow => GgTurnErrorType::ProgramThrow,
             Self::SandboxTimeout => GgTurnErrorType::SandboxTimeout,

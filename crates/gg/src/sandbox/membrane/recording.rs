@@ -4,7 +4,7 @@
 //! # Two surfaces over one core, and only one of them is here
 //!
 //! gg's tools and gg's [operations](crate::sandbox::operations) are two surfaces over one core of
-//! typed functions ([`ToolApi`]), and they are independent: a tool exists because a tool-calling
+//! typed functions ([`OperationApi`]), and they are independent: a tool exists because a tool-calling
 //! model needs a JSON name to dispatch, an operation exists because a program needs something to
 //! write, and neither is defined in terms of the other. An agent has exactly one of the two, so what
 //! is recorded here is the **whole** account of what a responses-as-code agent did — no tool-call
@@ -32,7 +32,7 @@
 //!
 //! # Why a token
 //!
-//! [`GuardedApi`] owns the [api](ToolApi) behind a field this module alone can see, and hands it out
+//! [`GuardedApi`] owns the [api](OperationApi) behind a field this module alone can see, and hands it out
 //! only against a [`Recording`] — which only [`recorded`](MembraneState::recorded) and its siblings
 //! can mint. A host function in a sibling module therefore *cannot* reach the api, dispatch a tool,
 //! or declare an ending without having opened a bracket first: the omission this whole file exists
@@ -41,8 +41,8 @@
 //! function that opened a bracket naming the *wrong* call, and the one function that touches
 //! neither the api nor a tool and could therefore have skipped the bracket and still compiled.
 
-use super::test_cabinet::gg::types::ToolError;
-use super::{MembraneState, ToolApi, wire_failure};
+use super::test_cabinet::gg::types::ApiError;
+use super::{MembraneState, OperationApi, wire_failure};
 use crate::sandbox::OperationId;
 use crate::sandbox::invoker::ApiIdentity;
 
@@ -54,18 +54,18 @@ use crate::sandbox::invoker::ApiIdentity;
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Recording(());
 
-/// The [api](ToolApi) itself, reachable only from inside an open [`Recording`].
+/// The [api](OperationApi) itself, reachable only from inside an open [`Recording`].
 ///
 /// A newtype rather than a bare field on [`MembraneState`] for one reason: Rust privacy is
 /// module-*subtree* privacy, so a field declared in `membrane.rs` is visible to every host function
 /// file under it and could be called without a record. Declared here, it is visible to this module
 /// alone, and [`get`](Self::get) is the only door.
-pub(super) struct GuardedApi<A: ToolApi> {
-    /// The native, typed tool surface. Private to this module on purpose.
+pub(super) struct GuardedApi<A: OperationApi> {
+    /// The native, typed operation surface. Private to this module on purpose.
     api: A,
 }
 
-impl<A: ToolApi> GuardedApi<A> {
+impl<A: OperationApi> GuardedApi<A> {
     /// Take ownership of the api for one program.
     pub(super) fn new(api: A) -> Self {
         Self { api }
@@ -83,7 +83,7 @@ impl<A: ToolApi> GuardedApi<A> {
     }
 }
 
-impl<A: ToolApi> MembraneState<A> {
+impl<A: OperationApi> MembraneState<A> {
     /// Record one model-facing API call around `body` — the bracket every host function on this
     /// membrane opens, and the only source of the [`Recording`] its body needs to do anything.
     ///
@@ -108,8 +108,8 @@ impl<A: ToolApi> MembraneState<A> {
     pub(super) fn recorded<R>(
         &mut self,
         id: OperationId,
-        body: impl FnOnce(&mut Self, Recording) -> Result<R, ToolError>,
-    ) -> Result<R, ToolError> {
+        body: impl FnOnce(&mut Self, Recording) -> Result<R, ApiError>,
+    ) -> Result<R, ApiError> {
         let rendered = id.to_string();
         // Built once and used for **both** halves of the bracket, so a closing record cannot name a
         // different call from the opening one it answers.

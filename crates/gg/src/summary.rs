@@ -42,9 +42,9 @@ use std::collections::BTreeSet;
 use std::sync::Mutex;
 
 use test_cabinet_core::gg::{
-    GgErrorSummary, GgHealingStrategy, GgHealingSummary, GgIssueReviewPhase, GgIssueStatus,
-    GgLimitBreach, GgProgramLanguage, GgResponseHealing, GgRunLimits, GgSessionSummary, GgSlotCost,
-    GgTelemetryKind, GgToolFailure, GgTurnErrorKind, GgTurnErrorType,
+    GgCallFailure, GgErrorSummary, GgHealingStrategy, GgHealingSummary, GgIssueReviewPhase,
+    GgIssueStatus, GgLimitBreach, GgProgramLanguage, GgResponseHealing, GgRunLimits,
+    GgSessionSummary, GgSlotCost, GgTelemetryKind, GgTurnErrorKind, GgTurnErrorType,
 };
 
 /// Accumulates a running session's aggregatable outcome from the telemetry stream it
@@ -276,7 +276,7 @@ impl SummaryState {
     /// be counted), while every dispatched call streams its result pair whatever the cap says. A
     /// count taken off the roster would silently undercount exactly the runaway programs worth
     /// counting.
-    fn fold_tool_result(&mut self, failure: Option<GgToolFailure>) {
+    fn fold_tool_result(&mut self, failure: Option<GgCallFailure>) {
         let Some(failure) = failure else {
             return;
         };

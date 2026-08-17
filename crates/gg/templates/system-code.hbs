@@ -34,7 +34,7 @@ Your response is compiled verbatim, as a whole translation unit, and must define
 is legal where you put it. The C++ standard library is declared in front of your
 first line, so `std::vector` and `std::format` need no `#include`.
 
-Every call throws on failure. A failure you expect is a `gg::core::tool_error`,
+Every call throws on failure. A failure you expect is a `gg::core::api_error`,
 which is a `std::runtime_error` whose `code()` is an `enum class`; let the rest
 escape, and gg names the call that failed.
 
@@ -49,7 +49,7 @@ Your response is compiled verbatim, as a whole compilation unit: the `using`
 lines you need, then top-level statements, which run in the order you wrote them
 with every declaration C# has legal beside them.
 
-Every method throws on failure. A failure you expect is a `ToolException` whose
+Every method throws on failure. A failure you expect is an `ApiException` whose
 `Code` is an `enum`; let the rest escape, and gg names the call that failed.
 
 Everything gg offers lives in the namespace `Gg`. Write a name in full, or write
@@ -64,8 +64,8 @@ you need, then `public final class Program` with a
 `main` may declare `throws`. Anything else you declare — a second class, a
 record, an enum — goes beside it in the same file, without `public` on it.
 
-A failure is an unchecked `gg.ToolError`: let one escape, or catch it with
-`catch (ToolError failure)` after `import gg.ToolError;` and read
+A failure is an unchecked `gg.ApiError`: let one escape, or catch it with
+`catch (ApiError failure)` after `import gg.ApiError;` and read
 `failure.code()`, which is an enum.
 
 Required arguments are positional, and an optional one is an overload: an entry
@@ -80,9 +80,9 @@ Your response is evaluated verbatim, as a whole JavaScript module. Top-level
 statements run in the order you wrote them, and every declaration JavaScript has
 is legal beside them.
 
-A failed call throws a `gg.core.ToolError`, so
-`catch (e) { if (e instanceof gg.core.ToolError) … }` is the shape that reads its
-`tool` and `code`.
+A failed call throws a `gg.core.ApiError`, so
+`catch (e) { if (e instanceof gg.core.ApiError) … }` is the shape that reads its
+`operation` and `code`.
 
 Required arguments are positional, and a call's optional arguments are the fields
 of one options object in the last position. `import * as gg from "gg";` is the
@@ -97,8 +97,8 @@ your work goes. Anything else you declare — a class, an object, a sealed
 interface, an enum class, a typealias — goes beside it at the top level of the
 same file.
 
-A failure is a `gg.core.ToolError`, and Kotlin has no checked exceptions: let one
-escape, catch it with `catch (failure: gg.core.ToolError)`, or wrap a call in
+A failure is a `gg.core.ApiError`, and Kotlin has no checked exceptions: let one
+escape, catch it with `catch (failure: gg.core.ApiError)`, or wrap a call in
 `runCatching`. Its `code` is an enum.
 
 Required arguments are positional, and an optional one is a default argument you
@@ -116,7 +116,7 @@ write.
 
 A failed call is thrown rather than returned, so the happy path is already
 unwrapped. `Gg.Core.attempt` takes a call and hands back
-`Either Gg.Core.ToolError a` for a failure you expect, re-throwing anything that
+`Either Gg.Core.ApiError a` for a failure you expect, re-throwing anything that
 is not a gg failure; let the rest escape, and it reaches you located in your own
 module.
 
@@ -131,7 +131,7 @@ with `__name__` set to `"__main__"`. It is a module body, so statements and
 definitions sit side by side at the top level and there is no function to return
 from. Write the `import` lines you would normally write.
 
-A failed call raises `gg.core.ToolError`, so `except gg.core.ToolError as
+A failed call raises `gg.core.ApiError`, so `except gg.core.ApiError as
 failure` is how you handle one and `failure.code` is an enum member; let the rest
 escape, and gg names the call that failed.
 
@@ -145,8 +145,8 @@ Your response is executed exactly as you wrote it, as the whole of a
 the last expression's value goes nowhere. Write the `require` lines you would
 normally write.
 
-A failed call raises `GG::Core::ToolError`, which is a `StandardError` — so
-`rescue GG::Core::ToolError => failure` is how you handle one, and
+A failed call raises `GG::Core::ApiError`, which is a `StandardError` — so
+`rescue GG::Core::ApiError => failure` is how you handle one, and
 `failure.code` is a Symbol rather than free text; let the rest escape, and gg
 names the call that failed.
 
@@ -161,9 +161,9 @@ Your response is compiled verbatim, as a whole Rust program, and must define
 every item Rust has is legal beside it. Write the `use` lines you would normally
 write.
 
-Every call returns `Result<_, gg::core::ToolError>`, so `?` composes against that
+Every call returns `Result<_, gg::core::ApiError>`, so `?` composes against that
 return type. A failure you do not handle ends the turn with the failed call
-named, and matching on a `ToolError`'s `code` is how you branch on the kind of
+named, and matching on an `ApiError`'s `code` is how you branch on the kind of
 failure. A failure of your own is built from a sentence with
 `gg::program::message("no rows")`.
 
@@ -181,7 +181,7 @@ every other module is reached by writing its `import`.
 
 A call that can fail is `throws` and its signature says so, so `try` is the whole
 of the ceremony. A failure you expect is caught with
-`catch let failure as core.ToolError`, whose `code` is an `enum`; let the rest
+`catch let failure as core.ApiError`, whose `code` is an `enum`; let the rest
 escape, and gg names the call that failed.
 
 Required arguments are positional and optional ones have default values.
@@ -197,8 +197,8 @@ statements run in the order you wrote them, and every declaration TypeScript has
 is legal beside them.
 
 A failed call throws, and a caught error is `unknown` until you narrow it:
-`catch (e) { if (e instanceof gg.core.ToolError) … }` is the shape that reads its
-`tool` and `code`.
+`catch (e) { if (e instanceof gg.core.ApiError) … }` is the shape that reads its
+`operation` and `code`.
 
 Required arguments are positional, and a call's optional arguments are the fields
 of one options object in the last position. `import * as gg from "gg";` is the

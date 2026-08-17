@@ -9,11 +9,11 @@
 //! `enum` rather than two optional arguments, "both" and "neither" are programs that do not compile.
 
 use crate::bindings::test_cabinet::gg::delegation;
-use crate::core::ToolError;
+use crate::core::ApiError;
 use crate::wire;
 
-/// The gg tools this module dispatches — see [`files::TOOLS`](crate::files::TOOLS).
-pub(crate) const TOOLS: &[&str] = &[
+/// The gg tools this module dispatches — see [`files::OPERATIONS`](crate::files::OPERATIONS).
+pub(crate) const OPERATIONS: &[&str] = &[
     "spawn_subagent",
     "wait_for_subagents",
     "send_message",
@@ -47,7 +47,7 @@ pub(crate) const TOOLS: &[&str] = &[
 /// `LimitExceeded` at the delegation depth cap, and `InvalidArgument` when `agent` is not one this
 /// agent may spawn.
 #[doc(alias = "ggop:delegation.spawn_subagent")]
-pub fn spawn_subagent(agent: &str, brief: Brief<'_>) -> Result<SubagentHandle, ToolError> {
+pub fn spawn_subagent(agent: &str, brief: Brief<'_>) -> Result<SubagentHandle, ApiError> {
     wire::lift(delegation::spawn_subagent(&delegation::SpawnRequest {
         agent: agent.to_string(),
         task: brief.to_wire(),
@@ -73,7 +73,7 @@ pub fn spawn_subagent(agent: &str, brief: Brief<'_>) -> Result<SubagentHandle, T
 ///
 /// `NotFound` for an id this agent did not spawn.
 #[doc(alias = "ggop:delegation.wait_for_subagents")]
-pub fn wait_for_subagents(ids: Option<&[&str]>) -> Result<Vec<SubagentResult>, ToolError> {
+pub fn wait_for_subagents(ids: Option<&[&str]>) -> Result<Vec<SubagentResult>, ApiError> {
     let ids = ids.map(wire::strings);
     wire::lift(delegation::wait_for_subagents(ids.as_deref()))
         .map(|results| results.into_iter().map(wire::subagent_result).collect())
@@ -93,7 +93,7 @@ pub fn wait_for_subagents(ids: Option<&[&str]>) -> Result<Vec<SubagentResult>, T
 ///
 /// `NotFound` for an unknown agent id, and `Conflict` when that child has already returned.
 #[doc(alias = "ggop:delegation.send_message")]
-pub fn send_message(agent_id: &str, message: &str) -> Result<(), ToolError> {
+pub fn send_message(agent_id: &str, message: &str) -> Result<(), ApiError> {
     wire::lift(delegation::send_message(agent_id, message))
 }
 
@@ -116,7 +116,7 @@ pub fn send_message(agent_id: &str, message: &str) -> Result<(), ToolError> {
 /// `InvalidArgument` for a state this session may not move to, `Refused` for a second declaration in
 /// one turn, and `Unavailable` when this agent is not running inside a state machine at all.
 #[doc(alias = "ggop:delegation.transition_state")]
-pub fn transition_state(state: &str, note: Option<&str>) -> Result<(), ToolError> {
+pub fn transition_state(state: &str, note: Option<&str>) -> Result<(), ApiError> {
     wire::lift(delegation::transition_state(state, note))
 }
 
@@ -141,7 +141,7 @@ pub fn transition_state(state: &str, note: Option<&str>) -> Result<(), ToolError
 /// one turn, and `Unavailable` when this agent is running inside a machine, which is left by
 /// [`transition_state`] instead.
 #[doc(alias = "ggop:delegation.exec")]
-pub fn exec(agent: &str, prompt: Option<&str>) -> Result<(), ToolError> {
+pub fn exec(agent: &str, prompt: Option<&str>) -> Result<(), ApiError> {
     wire::lift(delegation::exec(agent, prompt))
 }
 
@@ -171,7 +171,7 @@ pub fn exec(agent: &str, prompt: Option<&str>) -> Result<(), ToolError> {
 /// `InvalidArgument` for a blank prompt, `LimitExceeded` at the delegation depth cap, and
 /// `Unavailable` when the run has no delegation runtime to copy this agent into.
 #[doc(alias = "ggop:delegation.fork")]
-pub fn fork(prompt: &str) -> Result<SubagentHandle, ToolError> {
+pub fn fork(prompt: &str) -> Result<SubagentHandle, ApiError> {
     wire::lift(delegation::fork(prompt)).map(wire::subagent_handle)
 }
 
@@ -213,7 +213,7 @@ impl SubagentHandle {
     ///
     /// `Conflict` when this child has already returned.
     #[doc(alias = "ggop-alias:delegation.send_message")]
-    pub fn send(&self, message: &str) -> Result<(), ToolError> {
+    pub fn send(&self, message: &str) -> Result<(), ApiError> {
         send_message(&self.id, message)
     }
 }

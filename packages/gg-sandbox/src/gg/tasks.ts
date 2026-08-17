@@ -66,7 +66,7 @@ function witStatus(status: TaskStatus | undefined): TaskStatusRaw | undefined {
  * @param task.description What the work is, at whatever length is useful.
  * @param task.blockedBy The ids of the tasks that must be done before this one. The default is none.
  * @returns how much of the task budget is used now that the task is on the list.
- * @throws `ToolError` with `conflict` on a duplicate id, or on an edge that would close a cycle.
+ * @throws `ApiError` with `conflict` on a duplicate id, or on an edge that would close a cycle.
  */
 export function addTask(task: {
   id: string;
@@ -95,7 +95,7 @@ export function addTask(task: {
  * @param patch.title The title to replace the old one with.
  * @param patch.description The description to replace the old one with, or `null` to clear it.
  * @param patch.status Where the task now stands.
- * @throws `ToolError` with `not-found` for an unknown id.
+ * @throws `ApiError` with `not-found` for an unknown id.
  */
 export function updateTask(
   id: string,
@@ -117,7 +117,7 @@ export function updateTask(
  * @param id The task whose blockers to replace.
  * @param blockedBy The ids of every task that must now be done before it. An empty array clears them
  * all.
- * @throws `ToolError` with `not-found` for an unknown id, and `conflict` when an edge would close a
+ * @throws `ApiError` with `not-found` for an unknown id, and `conflict` when an edge would close a
  * cycle.
  */
 export function setBlockedBy(id: string, blockedBy: string[]): void {
@@ -131,7 +131,7 @@ export function setBlockedBy(id: string, blockedBy: string[]): void {
  *
  * @ggop tasks.complete_task
  * @param id The task to mark done.
- * @throws `ToolError` with `not-found` for an unknown id.
+ * @throws `ApiError` with `not-found` for an unknown id.
  */
 export function completeTask(id: string): void {
   call(() => raw.completeTask(id));
@@ -143,7 +143,7 @@ export function completeTask(id: string): void {
  * @ggop tasks.remove_task
  * @param id The task to remove.
  * @returns how much of the task budget is used now that the task has gone.
- * @throws `ToolError` with `not-found` for an unknown id.
+ * @throws `ApiError` with `not-found` for an unknown id.
  */
 export function removeTask(id: string): TaskUsage {
   return call(() => raw.removeTask(id));

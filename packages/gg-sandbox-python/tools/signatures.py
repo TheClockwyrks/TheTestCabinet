@@ -120,12 +120,12 @@ one as a binding would report this arm binding `views.close` twice and the cover
 so.
 """
 
-ALWAYS_REFERENCED = ("ToolError",)
+ALWAYS_REFERENCED = ("ApiError",)
 """The types every catalogued function refers to whether or not its signature writes them.
 
-Exactly one, and it is not a convenience: every function in this SDK raises `ToolError` on a failure,
+Exactly one, and it is not a convenience: every function in this SDK raises `ApiError` on a failure,
 which is the half of a signature Python states in prose rather than in the annotation. An arm whose
-`Result<_, ToolError>` is written in the return type carries it in every entry's references; this one
+`Result<_, ApiError>` is written in the return type carries it in every entry's references; this one
 would carry it in none, and the failure type would be a declaration no model could open.
 """
 

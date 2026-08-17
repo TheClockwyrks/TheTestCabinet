@@ -27,7 +27,8 @@
 // catalogue; a program written by a model calls the curated surface in `Sources/SDK/`, which
 // is compiled ahead of time into the `gg` module imported below.
 
-/// The SDK, for [`ggBoundTools`](ggBoundTools) alone — this file dispatches nothing else.
+/// The SDK, for [`ggBoundOperations`](ggBoundOperations) alone — this file dispatches nothing
+/// else.
 ///
 /// A separate Swift module from the program's is also what makes the SDK **shadowable**: a
 /// program that declares its own `files`, its own `DirEntry` or its own `log` wins over gg's
@@ -44,10 +45,10 @@ import gg
 /// nowhere else.
 import GgShell
 
-/// The gg tool names this component can bind — what `bound-tools` answers.
+/// The gg tool names this component can bind — what `bound-operations` answers.
 ///
 /// It is **derived from the SDK's own binding table**, object by object: each API object states
-/// the tools it dispatches beside the functions that dispatch them, and `gg.boundToolNames()`
+/// the tools it dispatches beside the functions that dispatch them, and `gg.boundOperationNames()`
 /// concatenates them. gg's drift gate compares the artifact's answer with its own
 /// `ALL_TOOL_NAMES`, so what that gate really checks here is that the SDK's declarations and
 /// gg's vocabulary have not drifted apart — which a hand-written list in this file could not
@@ -57,9 +58,9 @@ import GgShell
 /// generated post-return frees what this returns with `free`, element by element and then the
 /// array — so Swift's own allocator would be a mismatched pair on the one path that runs after
 /// every single turn.
-@_cdecl("exports_sandbox_bound_tools")
-public func ggBoundTools(_ ret: UnsafeMutablePointer<sandbox_list_string_t>) {
-    let names = gg.boundToolNames()
+@_cdecl("exports_sandbox_bound_operations")
+public func ggBoundOperations(_ ret: UnsafeMutablePointer<sandbox_list_string_t>) {
+    let names = gg.boundOperationNames()
     let bytes = MemoryLayout<sandbox_string_t>.stride * max(names.count, 1)
     guard let items = malloc(bytes)?.bindMemory(to: sandbox_string_t.self, capacity: names.count)
     else {
@@ -79,7 +80,7 @@ public func ggBoundTools(_ ret: UnsafeMutablePointer<sandbox_list_string_t>) {
 /// Every parameter is ignored, and on this arm that is a property of the strategy rather than
 /// an omission. `program` is empty because the program is not source that crossed the membrane:
 /// it was compiled INTO this component, and this component exists only for that one program.
-/// `modules`, `tools`, `ending` and `library` describe what the run offers, and what a program
+/// `modules`, `operations`, `ending` and `library` describe what the run offers, and what a program
 /// may reach is decided at COMPILE time on an arm like this one — by which SDK the entry file
 /// was built against — with the host checking every call regardless, because a guest that links
 /// its SDK as a library has no name to withhold.
@@ -93,7 +94,7 @@ public func ggBoundTools(_ ret: UnsafeMutablePointer<sandbox_list_string_t>) {
 public func ggRun(
     _ program: UnsafeMutablePointer<sandbox_string_t>?,
     _ modules: UnsafeMutablePointer<sandbox_list_code_module_t>?,
-    _ tools: UnsafeMutablePointer<sandbox_list_string_t>?,
+    _ operations: UnsafeMutablePointer<sandbox_list_string_t>?,
     _ ending: sandbox_ending_kind_t,
     _ library: Bool
 ) {

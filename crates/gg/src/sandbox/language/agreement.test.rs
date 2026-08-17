@@ -68,11 +68,11 @@ fn every_registered_language_describes_one_capability_surface() {
     );
 }
 
-/// **Every registered language's component binds exactly the tools gg offers.**
+/// **Every registered language's component binds exactly the operations gg offers.**
 ///
 /// Two gates in one test, both against the `.wasm` rather than against a source file. Instantiating
 /// proves the artifact imports exactly what the membrane provides — a WIT change with no rebuild
-/// fails here — and asking the guest which tools it binds proves the artifact is not merely
+/// fails here — and asking the guest which operations it binds proves the artifact is not merely
 /// *loadable* but current.
 ///
 /// It lives with the capability gate because it is the third of the three statements that have to
@@ -98,7 +98,7 @@ fn every_registered_language_describes_one_capability_surface() {
 /// `turns`, so instantiation cannot notice a change to those — only the tool-name check below, and
 /// the Rust compiler, can.
 #[test]
-fn every_registered_language_binds_exactly_the_tools_gg_offers() {
+fn every_registered_language_binds_exactly_the_operations_gg_offers() {
     /// **The arms whose component imports one interface rather than the fifteen**, and therefore
     /// answer this export with nothing.
     ///
@@ -114,7 +114,7 @@ fn every_registered_language_binds_exactly_the_tools_gg_offers() {
     /// and an arm not listed that stops fails.
     const ONE_DOOR: [GgProgramLanguage; 2] = [GgProgramLanguage::Java, GgProgramLanguage::Kotlin];
 
-    let mut expected: Vec<String> = crate::sandbox::signatures::sandbox_tool_names()
+    let mut expected: Vec<String> = crate::sandbox::signatures::sandbox_operation_names()
         .into_iter()
         .map(str::to_string)
         .collect();
@@ -131,8 +131,8 @@ fn every_registered_language_binds_exactly_the_tools_gg_offers() {
                 .component
                 .expect("a compiled arm hands back the component it compiled")
         });
-        let mut bound = crate::sandbox::component_bound_tools(language, artifact)
-            .expect("the guest instantiates and reports its tools");
+        let mut bound = crate::sandbox::component_bound_operations(language, artifact)
+            .expect("the guest instantiates and reports its operations");
         bound.sort();
         if ONE_DOOR.contains(&language.id()) {
             assert!(

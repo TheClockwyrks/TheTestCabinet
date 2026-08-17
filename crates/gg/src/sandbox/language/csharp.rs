@@ -94,7 +94,7 @@
 //!
 //! **Eleven capability modules, each a `public static partial class` in `namespace Gg`**, with
 //! `PascalCase` methods, optional arguments a call names, real `enum`s, nullable reference types,
-//! `record`s for results and a thrown `ToolException` for the error arm — plus a twelfth,
+//! `record`s for results and a thrown `ApiException` for the error arm — plus a twelfth,
 //! class-less `core` module holding the three types every other module's signatures name. It is
 //! compiled **with** the model's program rather than referenced as a built assembly, which is what
 //! makes gg's surface reachable without the prebuilt guest having to carry it — see [`sdk`] for
@@ -116,9 +116,9 @@
 //! collision-safe by construction, which is the property this design is being prototyped for — two
 //! modules may both declare a `Status` and neither has to be renamed.
 //!
-//! The one exception is the `core` module, whose declarations (`ToolException`, `ToolErrorCode`)
-//! sit directly in `namespace Gg`, so `using Gg;` is what makes `catch (ToolException failure)`
-//! resolve and `catch (Gg.ToolException failure)` is the same clause written out.
+//! The one exception is the `core` module, whose declarations (`ApiException`, `ApiErrorCode`)
+//! sit directly in `namespace Gg`, so `using Gg;` is what makes `catch (ApiException failure)`
+//! resolve and `catch (Gg.ApiException failure)` is the same clause written out.
 //!
 //! There is no logging function, and that is this arm's own answer rather than an omission:
 //! `Console.WriteLine` reaches the run's operator, because the SDK redirects `Console.Out` onto gg's

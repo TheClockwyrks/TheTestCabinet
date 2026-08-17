@@ -38,12 +38,12 @@ module GG
     # @param prompt [String, nil] self-contained instructions
     # @param issue_id [String, nil] a board issue's id
     # @return [Object] the membrane's `subagent-brief` variant
-    # @raise [GG::Core::ToolError] `invalid-argument` when neither or both were given
+    # @raise [GG::Core::ApiError] `invalid-argument` when neither or both were given
     # @api private
     def self.brief(fn, prompt, issue_id)
       if prompt.nil? == issue_id.nil?
-        raise Core::ToolError.new(fn, Core::ToolErrorCode::INVALID_ARGUMENT,
-                                  "expected exactly one of `prompt` or `issue_id`")
+        raise Core::ApiError.new(fn, Core::ApiErrorCode::INVALID_ARGUMENT,
+                                 "expected exactly one of `prompt` or `issue_id`")
       end
 
       prompt.nil? ? Wire.variant("issue", issue_id) : Wire.variant("prompt", prompt)
@@ -64,7 +64,7 @@ module GG
     # @param issue_id [String, nil] The board issue to brief the child from. Give this or `prompt`,
     #   never both and never neither.
     # @return [GG::Delegation::SubagentHandle] the child that is now running
-    # @raise [GG::Core::ToolError] `:limit_exceeded` at the delegation depth cap, and
+    # @raise [GG::Core::ApiError] `:limit_exceeded` at the delegation depth cap, and
     #   `:invalid_argument` when `agent` is not one this agent may spawn.
     def self.spawn_subagent(agent, prompt: nil, issue_id: nil)
       handle(Wire.call("spawn_subagent", "delegation", "spawnSubagent", [
@@ -83,7 +83,7 @@ module GG
     #   still outstanding.
     # @return [Array<GG::Delegation::SubagentResult>] what each child finished with, in dispatch
     #   order
-    # @raise [GG::Core::ToolError] `:not_found` for an id this agent did not spawn.
+    # @raise [GG::Core::ApiError] `:not_found` for an id this agent did not spawn.
     def self.wait_for_subagents(*ids)
       wanted = Check.strings("wait_for_subagents", "ids", ids)
       results = Wire.call("wait_for_subagents", "delegation", "waitForSubagents",
@@ -107,7 +107,7 @@ module GG
     #   it.
     # @param message [String] What to put in its inbox. It reads it at its next turn.
     # @return [nil]
-    # @raise [GG::Core::ToolError] `:not_found` for an unknown agent id, and `:conflict` when that
+    # @raise [GG::Core::ApiError] `:not_found` for an unknown agent id, and `:conflict` when that
     #   child has already returned.
     def self.send_message(agent_id, message)
       Wire.call("send_message", "delegation", "sendMessage", [agent_id, message])
@@ -128,7 +128,7 @@ module GG
     # @param note [String, nil] The opening message the next state's agent sees. Leave it out to
     #   tell it nothing.
     # @return [nil]
-    # @raise [GG::Core::ToolError] `:invalid_argument` for a state this session may not move to, and
+    # @raise [GG::Core::ApiError] `:invalid_argument` for a state this session may not move to, and
     #   `:refused` for a second declaration in one turn.
     def self.transition_state(state, note = nil)
       Wire.call("transition_state", "delegation", "transitionState", [state, Wire.js(note)])
@@ -148,7 +148,7 @@ module GG
     # @param prompt [String, nil] Its opening message. It already has the whole conversation, so
     #   this is the instruction rather than a briefing.
     # @return [nil]
-    # @raise [GG::Core::ToolError] `:refused` for a second succession in one turn or one after a
+    # @raise [GG::Core::ApiError] `:refused` for a second succession in one turn or one after a
     #   state transition, and `:invalid_argument` for an agent this session may not become.
     def self.exec(agent, prompt = nil)
       Wire.call("exec", "delegation", "exec", [agent, Wire.js(prompt)])
@@ -170,7 +170,7 @@ module GG
     # @param prompt [String] What the copy is to do instead. It has the whole conversation already,
     #   so this is the difference rather than a briefing.
     # @return [GG::Delegation::SubagentHandle] the copy that starts once this turn is recorded
-    # @raise [GG::Core::ToolError] `:limit_exceeded` at the delegation depth cap, and
+    # @raise [GG::Core::ApiError] `:limit_exceeded` at the delegation depth cap, and
     #   `:invalid_argument` for a blank prompt.
     def self.fork(prompt)
       handle(Wire.call("fork", "delegation", "fork", [prompt]))
@@ -208,7 +208,7 @@ module GG
       #
       # @param message [String] What to put in its inbox.
       # @return [nil]
-      # @raise [GG::Core::ToolError] `:conflict` when this child has already returned.
+      # @raise [GG::Core::ApiError] `:conflict` when this child has already returned.
       def send_message(message)
         Delegation.send_message(@id, message)
       end

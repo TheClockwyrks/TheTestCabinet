@@ -1,7 +1,7 @@
 package gg.context;
 
-import gg.ToolError;
-import gg.ToolErrorCode;
+import gg.ApiError;
+import gg.ApiErrorCode;
 import gg.internal.Coding;
 import gg.internal.Read;
 import gg.internal.Value;
@@ -42,7 +42,7 @@ public final class Context {
      *
      * @param path The file whose views to drop.
      * @return what the eviction reclaimed
-     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} for a path that is empty; the
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for a path that is empty; the
      *     overload that takes none is how every file view is dropped.
      * @ggop context.evict_file_view
      */
@@ -60,7 +60,7 @@ public final class Context {
      *
      * @param ranges The inclusive spans of turn numbers to move out of the window.
      * @return what the archive reclaimed
-     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} for a span whose ends are not turn
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for a span whose ends are not turn
      *     numbers.
      * @ggop context.archive_thread
      */
@@ -83,7 +83,7 @@ public final class Context {
      *
      * @param query The substring to look for. Matching is case-insensitive.
      * @return what the search found, and whether there was anything to search
-     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} for an empty query.
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for an empty query.
      * @ggop context.search_archive
      */
     public static ArchiveSearch searchArchive(String query) {
@@ -105,7 +105,7 @@ public final class Context {
      *     {@code files} is gone.
      * @param files The paths to read afresh into the restarted window. Naming none reads nothing
      *     back.
-     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} for a blank summary. This is the one
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for a blank summary. This is the one
      *     call gg does not refuse while a compaction is in flight, since nothing else can clear the
      *     window.
      * @ggop context.compact

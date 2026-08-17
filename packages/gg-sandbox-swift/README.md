@@ -88,9 +88,9 @@ catalogue publishes.
 
 Everything else is Swift's own idiom:
 
-- **Every fallible call `throws`**, so `try` is the whole of the ceremony and `core.ToolError` is an
+- **Every fallible call `throws`**, so `try` is the whole of the ceremony and `core.ApiError` is an
   ordinary `Error`. Catch what you expect
-  (`catch let failure as core.ToolError where failure.code == .notFound`) and let the rest out.
+  (`catch let failure as core.ApiError where failure.code == .notFound`) and let the rest out.
 - **Required arguments are positional; optional ones are default values.** There is no options
   record anywhere in this surface — `files.readFile("a.swift", limit: 40)` skips `offset:` because
   Swift lets it.

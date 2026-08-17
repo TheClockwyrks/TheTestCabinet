@@ -17,7 +17,7 @@
 
 import * as raw from "test-cabinet:gg/session";
 import { call, requireString, typeName } from "../internal/errors.js";
-import { ToolError } from "./core.js";
+import { ApiError } from "./core.js";
 
 /**
  * End the session, reporting what was done in a sentence or two.
@@ -28,7 +28,7 @@ import { ToolError } from "./core.js";
  *
  * @ggop session.finish
  * @param summary What was done, in a sentence or two.
- * @throws `ToolError` with `invalid-argument` for a blank summary, and `unavailable` when this
+ * @throws `ApiError` with `invalid-argument` for a blank summary, and `unavailable` when this
  * agent's role ends its session some other way.
  */
 export function finish(summary: string): void {
@@ -43,7 +43,7 @@ export function finish(summary: string): void {
  * actually been read.
  *
  * @ggop session.approve
- * @throws `ToolError` with `unavailable` when this agent's role ends its session some other way.
+ * @throws `ApiError` with `unavailable` when this agent's role ends its session some other way.
  */
 export function approve(): void {
   call(() => raw.approve());
@@ -58,12 +58,12 @@ export function approve(): void {
  * @ggop session.request_changes
  * @param items Every change that must be made before the work can be accepted, one per entry: what is
  * wrong, and what to change. It may not be empty.
- * @throws `ToolError` with `invalid-argument` when the list is empty, and `unavailable` when this
+ * @throws `ApiError` with `invalid-argument` when the list is empty, and `unavailable` when this
  * agent's role ends its session some other way.
  */
 export function requestChanges(items: string[]): void {
   if (!Array.isArray(items)) {
-    throw new ToolError(
+    throw new ApiError(
       "requestChanges",
       "invalid-argument",
       `expected an array of strings, got ${typeName(items)}`,

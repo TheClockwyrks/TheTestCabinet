@@ -12,12 +12,12 @@ use super::super::test_cabinet::gg::files::{
 };
 use super::super::test_cabinet::gg::helpers::Host as HelpersHost;
 use super::super::test_cabinet::gg::shell::{Host as ShellHost, ShellOutput};
-use super::super::{MembraneState, ToolApi};
+use super::super::{MembraneState, OperationApi};
 use super::wire_coding::{Value, argument, integer, optional, record, text, wide};
 use super::{Answer, Failure};
 
 /// `shell.shell` — run a command.
-pub(super) fn shell<A: ToolApi>(
+pub(super) fn shell<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -28,7 +28,7 @@ pub(super) fn shell<A: ToolApi>(
 }
 
 /// `files.read_file` — read a file as the variant the read returned.
-pub(super) fn read_file<A: ToolApi>(
+pub(super) fn read_file<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -39,7 +39,7 @@ pub(super) fn read_file<A: ToolApi>(
 }
 
 /// `files.read_text_file` — read a text file's contents directly.
-pub(super) fn read_text_file<A: ToolApi>(
+pub(super) fn read_text_file<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -52,7 +52,7 @@ pub(super) fn read_text_file<A: ToolApi>(
 }
 
 /// `files.write_file` — write a file whole.
-pub(super) fn write_file<A: ToolApi>(
+pub(super) fn write_file<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -63,7 +63,7 @@ pub(super) fn write_file<A: ToolApi>(
 }
 
 /// `files.edit_file` — replace one string in a file.
-pub(super) fn edit_file<A: ToolApi>(
+pub(super) fn edit_file<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -76,7 +76,7 @@ pub(super) fn edit_file<A: ToolApi>(
 }
 
 /// `files.list_dir` — list a directory.
-pub(super) fn list_dir<A: ToolApi>(
+pub(super) fn list_dir<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -91,7 +91,7 @@ pub(super) fn list_dir<A: ToolApi>(
 }
 
 /// `skills.read_skill` — read an authored skill.
-pub(super) fn read_skill<A: ToolApi>(
+pub(super) fn read_skill<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],

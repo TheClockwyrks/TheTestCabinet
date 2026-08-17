@@ -20,7 +20,7 @@ fn g8_a_runtime_failure_reaches_the_model() {
         GgProgramLanguage::TypeScript,
         &[
             Case {
-                shape: Shape::ToolError,
+                shape: Shape::ApiError,
                 program: r#"// G8 (a): a gg call the host answers `not-found`, uncaught.
 
 import { files } from "gg";

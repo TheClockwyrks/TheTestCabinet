@@ -269,14 +269,14 @@ fn code_mode_names_objects_and_teaches_discovery() {
         assert!(flat.contains(keyword), "missing `{keyword}`:\n{prompt}");
     }
     // The signature dump is gone: no return types and no type declarations of any kind. A type's
-    // *name* is allowed — the type-check section names `ToolError`, because narrowing a caught error
+    // *name* is allowed — the type-check section names `ApiError`, because narrowing a caught error
     // is the one thing a model has to spell to read a failure at all, and a prompt that withheld it
     // would buy a strict-mode diagnostic every time a program caught something. What is banned is
     // a block of declarations in the prompt, which the on-demand documentation lookup replaces.
     //
     // So the ban is on the declaration *shape* rather than on a list of spellings: any line that
     // opens a declaration fails, whatever it goes on to declare. Naming three types would leave a
-    // reintroduced `interface ToolError { … }` — or a fourth type nobody thought of — passing.
+    // reintroduced `interface ApiError { … }` — or a fourth type nobody thought of — passing.
     assert!(!prompt.contains("): FileRead"), "{prompt}");
     for line in prompt.lines() {
         let opener = line.trim_start();

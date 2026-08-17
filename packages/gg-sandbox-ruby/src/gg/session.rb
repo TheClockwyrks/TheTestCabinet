@@ -22,7 +22,7 @@ module GG
     #
     # @param summary [String] What was done, in a sentence or two.
     # @return [nil]
-    # @raise [GG::Core::ToolError] `:invalid_argument` for a blank summary.
+    # @raise [GG::Core::ApiError] `:invalid_argument` for a blank summary.
     def self.finish(summary)
       Wire.call("finish", "session", "finish", [summary])
       nil
@@ -51,7 +51,7 @@ module GG
     # @param items [Array<String>] Every change that must be made before the work can be accepted,
     #   splatted, one per entry: what is wrong, and what to change. It may not be empty.
     # @return [nil]
-    # @raise [GG::Core::ToolError] `:invalid_argument` when the list is empty.
+    # @raise [GG::Core::ApiError] `:invalid_argument` when the list is empty.
     def self.request_changes(*items)
       Wire.call("request_changes", "session", "requestChanges",
                 [Check.strings("request_changes", "items", items)])

@@ -84,7 +84,7 @@ module GG
     # @param on_use [String, nil] A script gg runs the first time the memory comes into use. Leave
     #   it out for a memory that runs nothing.
     # @return [GG::Memories::MemoryUsage] how much of the memory budget is now used
-    # @raise [GG::Core::ToolError] `:conflict` on a duplicate name, and `:limit_exceeded` when the
+    # @raise [GG::Core::ApiError] `:conflict` on a duplicate name, and `:limit_exceeded` when the
     #   body would breach the run's caps — revising or deleting a memory is the way out, rather than
     #   accruing more.
     def self.write_memory(name, description, body, code: nil, on_use: nil)
@@ -105,7 +105,7 @@ module GG
     #   it.
     # @param on_use [String, nil] The script to replace the old one with. Leave it out to clear it.
     # @return [GG::Memories::MemoryUsage] how much of the memory budget is now used
-    # @raise [GG::Core::ToolError] `:not_found` when no memory has that name.
+    # @raise [GG::Core::ApiError] `:not_found` when no memory has that name.
     def self.update_memory(name, description, body, code: nil, on_use: nil)
       usage(Wire.call("update_memory", "memories", "updateMemory",
                       [input(name, description, body, code, on_use)]))
@@ -125,7 +125,7 @@ module GG
     # @param on_use [String, nil] A script gg runs on that first read. Leave it out for a memory
     #   that runs nothing.
     # @return [GG::Memories::MemoryUsage] how much of the memory budget is now used
-    # @raise [GG::Core::ToolError] `:conflict` on a duplicate slug, and `:limit_exceeded` when the
+    # @raise [GG::Core::ApiError] `:conflict` on a duplicate slug, and `:limit_exceeded` when the
     #   contents, or the index entry, would breach a limit.
     def self.create_memory(name, description, body, code: nil, on_use: nil)
       usage(Wire.call("create_memory", "memories", "createMemory",
@@ -141,7 +141,7 @@ module GG
     #
     # @param name [String] The memory's slug.
     # @return [String] the memory's contents
-    # @raise [GG::Core::ToolError] `:not_found` when no memory has that slug.
+    # @raise [GG::Core::ApiError] `:not_found` when no memory has that slug.
     def self.read_memory(name)
       Wire.call("read_memory", "memories", "readMemory", [name])
     end
@@ -156,7 +156,7 @@ module GG
     # @param search [String] The exact text to find in its contents. It must appear exactly once.
     # @param replace [String] The text to put in its place.
     # @return [GG::Memories::MemoryUsage] how much of the memory budget is now used
-    # @raise [GG::Core::ToolError] `:not_found` when the text does not appear, `:conflict` when it
+    # @raise [GG::Core::ApiError] `:not_found` when the text does not appear, `:conflict` when it
     #   appears more than once, `:limit_exceeded` when the result would be too long, and
     #   `:invalid_argument` when the edit would leave the memory empty — deleting it is the way to
     #   do that.
@@ -177,7 +177,7 @@ module GG
     # @param keywords [Array<String>] The words to look for, splatted. Several specific words rank
     #   better than one sentence, because a memory is ranked by how many of them it mentions.
     # @return [Array<GG::Memories::MemoryHit>] the memories that matched, best first
-    # @raise [GG::Core::ToolError] `:invalid_argument` when every keyword is empty.
+    # @raise [GG::Core::ApiError] `:invalid_argument` when every keyword is empty.
     def self.search_memories(*keywords)
       hits = Wire.call("search_memories", "memories", "searchMemories",
                        [Check.strings("search_memories", "keywords", keywords)])
@@ -197,7 +197,7 @@ module GG
     #
     # @param name [String] The memory's slug.
     # @return [GG::Memories::MemoryUsage] how much of the memory budget is still used
-    # @raise [GG::Core::ToolError] `:not_found` when no memory has that name.
+    # @raise [GG::Core::ApiError] `:not_found` when no memory has that name.
     def self.delete_memory(name)
       usage(Wire.call("delete_memory", "memories", "deleteMemory", [name]))
     end
@@ -279,7 +279,7 @@ module GG
       # is in hand.
       #
       # @return [String] the memory's contents
-      # @raise [GG::Core::ToolError] `:not_found` when the memory has since been deleted.
+      # @raise [GG::Core::ApiError] `:not_found` when the memory has since been deleted.
       def read
         Memories.read_memory(@name)
       end

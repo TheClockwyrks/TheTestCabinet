@@ -29,7 +29,7 @@
 //! Every one is `f64`'s own method, which is the platform's libm — the same function TeaVM's C
 //! runtime would have reached through libc, so a program that ran through this and a program that
 //! ran through that agree. Nothing here can fail: a `log(-1.0)` is `NaN` on this interface for the
-//! same reason it is `NaN` in Java, and a function that returned a `tool-error` would be inventing a
+//! same reason it is `NaN` in Java, and a function that returned an `api-error` would be inventing a
 //! failure mode `java.lang.Math` does not have.
 //!
 //! `random` is declared because the classlib annotates a method with it and is **not imported on
@@ -40,9 +40,9 @@
 // Out of [the wire's own bindings](super::wire) rather than the `sandbox` world's, because this
 // interface belongs to `jvm-sandbox`: the ten arms that are not JVM arms declare neither of the two.
 use super::wire::test_cabinet::gg::math::Host as MathHost;
-use super::{MembraneState, ToolApi};
+use super::{MembraneState, OperationApi};
 
-impl<A: ToolApi> MathHost for MembraneState<A> {
+impl<A: OperationApi> MathHost for MembraneState<A> {
     fn sin(&mut self, x: f64) -> f64 {
         x.sin()
     }
@@ -119,7 +119,7 @@ impl<A: ToolApi> MathHost for MembraneState<A> {
 /// Unconditional, exactly as [the wire's](super::wire) is: a linker offering an import a guest never
 /// declares costs that guest nothing, and the ten arms that are not JVM arms never declare either of
 /// these.
-pub(crate) fn add_to_linker<A: ToolApi>(
+pub(crate) fn add_to_linker<A: OperationApi>(
     linker: &mut wasmtime::component::Linker<MembraneState<A>>,
 ) -> wasmtime::Result<()> {
     super::wire::test_cabinet::gg::math::add_to_linker::<_, wasmtime::component::HasSelf<_>>(

@@ -1,4 +1,4 @@
-//! The workspace half of the membrane: `shell`, the four file tools, and the one helper built on
+//! The workspace half of the membrane: `shell`, the four file operations, and the one helper built on
 //! them.
 //!
 //! These six are what almost every program touches, and two of them carry rules worth stating
@@ -19,14 +19,14 @@ use super::test_cabinet::gg::files::{
 };
 use super::test_cabinet::gg::helpers::Host as HelpersHost;
 use super::test_cabinet::gg::shell::{Host as ShellHost, ShellOutput};
-use super::test_cabinet::gg::types::{ErrorCode, ToolError};
-use super::{MembraneState, ToolApi};
+use super::test_cabinet::gg::types::{ApiError, ErrorCode};
+use super::{MembraneState, OperationApi};
 use crate::sandbox::operations::OperationId;
 use crate::sandbox::operations::{
     FILES_EDIT_FILE, FILES_LIST_DIR, FILES_READ_FILE, FILES_READ_TEXT_FILE, FILES_WRITE_FILE,
     SHELL_SHELL,
 };
-use crate::tools::{DirEntryData, DirEntryKind, ToolData};
+use crate::tools::{ApiData, DirEntryData, DirEntryKind};
 
 /// gg's own default `shell` timeout, restated here because the membrane must clamp a value *before*
 /// the tool sees it — and a call that arrived at the tool with no timeout at all would be clamped
@@ -54,12 +54,12 @@ const MAX_TIMEOUT_SECS: f64 = 86_400.0;
 /// as what it plainly means: the first line.
 const FIRST_LINE_OFFSET: u32 = 1;
 
-impl<A: ToolApi> ShellHost for MembraneState<A> {
+impl<A: OperationApi> ShellHost for MembraneState<A> {
     fn shell(
         &mut self,
         command: String,
         timeout_secs: Option<f64>,
-    ) -> Result<ShellOutput, ToolError> {
+    ) -> Result<ShellOutput, ApiError> {
         self.recorded(SHELL_SHELL, |state, rec| {
             let timeout =
                 Duration::from_secs_f64(clamp_timeout(timeout_secs, state.remaining_budget())?);
@@ -69,7 +69,7 @@ impl<A: ToolApi> ShellHost for MembraneState<A> {
             match data {
                 // The process ran. Whatever it exited with, that is a completed call, and the
                 // program is handed the facts to branch on rather than an exception to catch.
-                Some(ToolData::Shell(shell)) => Ok(ShellOutput {
+                Some(ApiData::Shell(shell)) => Ok(ShellOutput {
                     exit_code: shell.exit_code,
                     output: shell.body,
                     truncated: shell.truncated,
@@ -79,20 +79,20 @@ impl<A: ToolApi> ShellHost for MembraneState<A> {
                 other => Err(if outcome.ok {
                     state.missing_data(SHELL_SHELL, other.as_ref())
                 } else {
-                    state.tool_error(SHELL_SHELL, &outcome)
+                    state.api_error(SHELL_SHELL, &outcome)
                 }),
             }
         })
     }
 }
 
-impl<A: ToolApi> FilesHost for MembraneState<A> {
+impl<A: OperationApi> FilesHost for MembraneState<A> {
     fn read_file(
         &mut self,
         path: String,
         offset: Option<u32>,
         limit: Option<u32>,
-    ) -> Result<FileRead, ToolError> {
+    ) -> Result<FileRead, ApiError> {
         self.recorded(FILES_READ_FILE, |state, rec| {
             let (offset, limit) = read_window(offset, limit);
             let outcome = state.call(rec, FILES_READ_FILE, |api| {
@@ -102,12 +102,12 @@ impl<A: ToolApi> FilesHost for MembraneState<A> {
         })
     }
 
-    fn write_file(&mut self, path: String, contents: String) -> Result<u64, ToolError> {
+    fn write_file(&mut self, path: String, contents: String) -> Result<u64, ApiError> {
         self.recorded(FILES_WRITE_FILE, |state, rec| {
             let outcome =
                 state.call(rec, FILES_WRITE_FILE, |api| api.write_file(path, contents))?;
             match outcome.data {
-                Some(ToolData::BytesWritten(bytes)) => Ok(bytes),
+                Some(ApiData::BytesWritten(bytes)) => Ok(bytes),
                 other => Err(state.missing_data(FILES_WRITE_FILE, other.as_ref())),
             }
         })
@@ -118,9 +118,9 @@ impl<A: ToolApi> FilesHost for MembraneState<A> {
         path: String,
         old_string: String,
         new_string: String,
-    ) -> Result<(), ToolError> {
+    ) -> Result<(), ApiError> {
         // A successful edit has nothing structured to say, which is why it declares
-        // `result<_, tool-error>`: reaching here at all means the replacement landed.
+        // `result<_, api-error>`: reaching here at all means the replacement landed.
         self.recorded(FILES_EDIT_FILE, |state, rec| {
             state.call(rec, FILES_EDIT_FILE, |api| {
                 api.edit_file(path, old_string, new_string)
@@ -129,18 +129,18 @@ impl<A: ToolApi> FilesHost for MembraneState<A> {
         })
     }
 
-    fn list_dir(&mut self, path: Option<String>) -> Result<Vec<DirEntry>, ToolError> {
+    fn list_dir(&mut self, path: Option<String>) -> Result<Vec<DirEntry>, ApiError> {
         self.recorded(FILES_LIST_DIR, |state, rec| {
             let outcome = state.call(rec, FILES_LIST_DIR, |api| api.list_dir(path))?;
             match outcome.data {
-                Some(ToolData::DirEntries(entries)) => Ok(entries.into_iter().map(entry).collect()),
+                Some(ApiData::DirEntries(entries)) => Ok(entries.into_iter().map(entry).collect()),
                 other => Err(state.missing_data(FILES_LIST_DIR, other.as_ref())),
             }
         })
     }
 }
 
-impl<A: ToolApi> HelpersHost for MembraneState<A> {
+impl<A: OperationApi> HelpersHost for MembraneState<A> {
     /// Read a text file's contents directly — `fs.readTextFile`.
     ///
     /// It is the same core read as `fs.readFile` and the same `read_file` tool underneath, and it is
@@ -158,7 +158,7 @@ impl<A: ToolApi> HelpersHost for MembraneState<A> {
         path: String,
         offset: Option<u32>,
         limit: Option<u32>,
-    ) -> Result<String, ToolError> {
+    ) -> Result<String, ApiError> {
         self.recorded(FILES_READ_TEXT_FILE, |state, rec| {
             let (offset, limit) = read_window(offset, limit);
             let outcome = state.call(rec, FILES_READ_TEXT_FILE, |api| {
@@ -166,9 +166,9 @@ impl<A: ToolApi> HelpersHost for MembraneState<A> {
             })?;
             match file_read(state, FILES_READ_TEXT_FILE, outcome.data)? {
                 FileRead::Text(text) => Ok(text.contents),
-                FileRead::Image(image) => Err(ToolError {
+                FileRead::Image(image) => Err(ApiError {
                     code: ErrorCode::InvalidArgument,
-                    tool: FILES_READ_TEXT_FILE.key.to_string(),
+                    operation: FILES_READ_TEXT_FILE.key.to_string(),
                     message: format!("`{path}` is a {} image, not text", image.label),
                 }),
             }
@@ -195,21 +195,21 @@ pub(super) fn read_window(
 }
 
 /// What a read returned, as the membrane's `file-read` variant — or the defect diagnostic if the
-/// tool answered `ok` with no [structured sidecar](ToolData).
+/// tool answered `ok` with no [structured sidecar](ApiData).
 ///
 /// Shared by `read-file`, `read-text-file` and [`open-file-view`](super::views), which differ in
 /// what gg does with the result and not at all in what the program is handed back — so `id` is the
 /// caller's own [operation](OperationId), and a defect diagnostic names the call the model wrote
 /// rather than the one of the three that happens to hold the helper.
-pub(super) fn file_read<A: ToolApi>(
+pub(super) fn file_read<A: OperationApi>(
     state: &mut MembraneState<A>,
     id: OperationId,
-    data: Option<ToolData>,
-) -> Result<FileRead, ToolError> {
+    data: Option<ApiData>,
+) -> Result<FileRead, ApiError> {
     match data {
         // The text is MOVED out of the outcome rather than cloned: a 256 KiB read is the
         // largest thing that crosses this membrane, and it crosses once.
-        Some(ToolData::FileText(text)) => Ok(FileRead::Text(TextRead {
+        Some(ApiData::FileText(text)) => Ok(FileRead::Text(TextRead {
             contents: text.contents,
             first_line: text.first_line,
             last_line: text.last_line,
@@ -220,7 +220,7 @@ pub(super) fn file_read<A: ToolApi>(
         // (a bare read) or into the file view's own context item (`open-file-view`), so the model
         // *looks* at the picture, and what comes back here is the description — including whether
         // it is in fact being shown.
-        Some(ToolData::FileImage(image)) => Ok(FileRead::Image(ImageRead {
+        Some(ApiData::FileImage(image)) => Ok(FileRead::Image(ImageRead {
             media_type: image.media_type,
             label: image.label,
             bytes: image.bytes,
@@ -263,14 +263,14 @@ fn entry(entry: DirEntryData) -> DirEntry {
 /// its timeout whichever surface it called through. The guest SDK rejects these first; this is the
 /// backstop for a guest that did not, for the same reason the ceiling above is enforced here rather
 /// than trusted to the guest.
-fn clamp_timeout(requested: Option<f64>, remaining: Option<Duration>) -> Result<f64, ToolError> {
+fn clamp_timeout(requested: Option<f64>, remaining: Option<Duration>) -> Result<f64, ApiError> {
     let requested = match requested {
         None => DEFAULT_TIMEOUT_SECS,
         Some(secs) if secs.is_finite() && secs > 0.0 => secs,
         Some(secs) => {
-            return Err(ToolError {
+            return Err(ApiError {
                 code: ErrorCode::InvalidArgument,
-                tool: SHELL_SHELL.key.to_string(),
+                operation: SHELL_SHELL.key.to_string(),
                 message: format!(
                     "`timeout_secs` is how many seconds the command may run for, so it must be a                      positive number; `{secs}` names no duration. Omit it to take gg's default of                      {DEFAULT_TIMEOUT_SECS}s."
                 ),

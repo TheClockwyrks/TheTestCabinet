@@ -261,7 +261,7 @@ fn typescript() -> &'static dyn crate::sandbox::ProgramLanguage {
 #[test]
 fn a_read_that_carried_no_picture_is_not_rewritten() {
     let mut outcome = ToolOutcome::ok("`big.png` is a PNG image (9.0 MB).", "too large").with_data(
-        ToolData::FileImage(FileImageData {
+        ApiData::FileImage(FileImageData {
             media_type: "image/png".to_string(),
             label: "PNG".to_string(),
             bytes: 9_437_184,
@@ -272,7 +272,7 @@ fn a_read_that_carried_no_picture_is_not_rewritten() {
 
     withhold_pictures(&mut outcome, typescript());
 
-    let Some(ToolData::FileImage(image)) = outcome.data else {
+    let Some(ApiData::FileImage(image)) = outcome.data else {
         panic!("the sidecar survives");
     };
     assert!(!image.shown);
@@ -288,7 +288,7 @@ fn a_read_that_carried_no_picture_is_not_rewritten() {
 #[test]
 fn a_picture_already_taken_into_a_view_keeps_its_shown_flag() {
     let mut outcome = ToolOutcome::ok("`mock.png` — PNG image, 45 KB. The image follows.", "read")
-        .with_data(ToolData::FileImage(FileImageData {
+        .with_data(ApiData::FileImage(FileImageData {
             media_type: "image/png".to_string(),
             label: "PNG".to_string(),
             bytes: 46_080,
@@ -298,7 +298,7 @@ fn a_picture_already_taken_into_a_view_keeps_its_shown_flag() {
 
     withhold_pictures(&mut outcome, typescript());
 
-    let Some(ToolData::FileImage(image)) = outcome.data else {
+    let Some(ApiData::FileImage(image)) = outcome.data else {
         panic!("the sidecar survives");
     };
     assert!(
@@ -375,7 +375,7 @@ fn the_record_keeps_the_summary_but_never_the_arguments() {
 /// `unavailable` means the model reached for something this run does not offer it, and that is the
 /// same fact — and the same recovery — as a name that was never in scope. Which of the two a guest
 /// raises depends only on whether its SDK can withhold a name: one raises a `ReferenceError` and
-/// reports `unknown-name`, the other is refused at the membrane and would report `tool-failure`.
+/// reports `unknown-name`, the other is refused at the membrane and would report `api-failure`.
 /// Deciding it from the *code* is what stops one event becoming two turn-error metrics, one per
 /// language arm.
 #[test]
@@ -384,7 +384,7 @@ fn a_refused_call_is_classified_by_its_code_rather_than_by_the_guests_reading() 
     let mut state = membrane(&log);
 
     state.report_error(feedback::ProgramError {
-        kind: ErrorKind::ToolFailure,
+        kind: ErrorKind::ApiFailure,
         code: Some(ErrorCode::Unavailable),
         message: "`approve` failed (unavailable): not your ending".to_string(),
         location: None,
@@ -407,12 +407,12 @@ fn a_throw_that_is_not_a_refusal_keeps_the_class_it_arrived_with() {
     for (code, kind, want) in [
         (
             Some(ErrorCode::NotFound),
-            ErrorKind::ToolFailure,
+            ErrorKind::ApiFailure,
             ProgramErrorKind::ToolFailure,
         ),
         (
             Some(ErrorCode::LimitExceeded),
-            ErrorKind::ToolFailure,
+            ErrorKind::ApiFailure,
             ProgramErrorKind::ToolFailure,
         ),
         (None, ErrorKind::UnknownName, ProgramErrorKind::UnknownName),

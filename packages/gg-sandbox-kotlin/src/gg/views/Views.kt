@@ -13,7 +13,7 @@
  */
 package gg.views
 
-import gg.core.ToolError
+import gg.core.ApiError
 import gg.files.FileRead
 import gg.internal.Read
 import gg.internal.ggCall
@@ -37,7 +37,7 @@ import gg.internal.ggText
  * @param offset The 1-based line to start at. Left out, the whole file is shown.
  * @param limit How many lines to show from `offset`. Left out, the view runs to the end.
  * @return the file's text, or the picture's description
- * @throws ToolError `NOT_FOUND` for a missing path, and `INVALID_ARGUMENT` for an offset past the
+ * @throws ApiError `NOT_FOUND` for a missing path, and `INVALID_ARGUMENT` for an offset past the
  *   end of the file. The read is what fails, and nothing is opened when it does.
  */
 public fun openFile(path: String, offset: Int? = null, limit: Int? = null): FileRead =
@@ -57,7 +57,7 @@ public fun openFile(path: String, offset: Int? = null, limit: Int? = null): File
  *   what it showed, and it may not be empty.
  * @param body What to show. An empty body is allowed: it is how a program says that something it was
  *   showing is now empty.
- * @throws ToolError `INVALID_ARGUMENT` for an empty label, and `LIMIT_EXCEEDED`, naming the cap, for
+ * @throws ApiError `INVALID_ARGUMENT` for an empty label, and `LIMIT_EXCEEDED`, naming the cap, for
  *   a body or label over gg's caps; nothing is ever silently truncated.
  */
 public fun openText(label: String, body: String) {
@@ -75,7 +75,7 @@ public fun openText(label: String, body: String) {
  *
  * @ggop views.open_docs_view
  * @param name What to document, by the fully-qualified name it is keyed under.
- * @throws ToolError `NOT_FOUND` for an unknown or unbound name.
+ * @throws ApiError `NOT_FOUND` for an unknown or unbound name.
  */
 public fun openDocsView(name: String) {
     ggRun("views.open_docs_view", ggText(name))
@@ -98,7 +98,7 @@ public fun openDocsView(name: String) {
  * @param selector What the view is filed under: a file's path, a text view's label, or
  *   `search results`.
  * @return how many views were closed
- * @throws ToolError `INVALID_ARGUMENT` for an empty selector.
+ * @throws ApiError `INVALID_ARGUMENT` for an empty selector.
  */
 public fun close(selector: String): Int =
     ggCall("views.close", ggText(selector)).integer()
@@ -146,7 +146,7 @@ public data class OpenView(
      *
      * @ggalias views.close
      * @return how many views were closed, which is `0` when this one has already gone
-     * @throws ToolError `INVALID_ARGUMENT` for an empty selector.
+     * @throws ApiError `INVALID_ARGUMENT` for an empty selector.
      */
     public fun close(): Int = gg.views.close(selector)
 }

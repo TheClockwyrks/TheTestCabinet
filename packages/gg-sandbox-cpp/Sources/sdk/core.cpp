@@ -11,26 +11,27 @@ namespace gg {
 
 namespace core {
 
-tool_error::tool_error(tool_error_code code, std::string tool, std::string message)
+api_error::api_error(api_error_code code, std::string operation, std::string message)
     // gg's own sentence about a failed call: the call, the class, and what went wrong. It is gg's
     // convention rather than C++'s — the same line the ECMAScript guest's shim writes and the
     // native tool-calling path shows — so two arms whose uncaught failures read differently would
     // be two arms whose error rates a study could not compare.
-    : std::runtime_error("`" + tool + "` failed (" + std::string(gg_name(code)) + "): " + message),
+    : std::runtime_error("`" + operation + "` failed (" + std::string(gg_name(code)) +
+                         "): " + message),
       code_(code),
-      tool_(std::move(tool)),
+      operation_(std::move(operation)),
       message_(std::move(message)) {}
 
-std::string_view gg_name(tool_error_code code) noexcept {
+std::string_view gg_name(api_error_code code) noexcept {
   switch (code) {
-    case tool_error_code::invalid_argument: return "invalid-argument";
-    case tool_error_code::not_found: return "not-found";
-    case tool_error_code::conflict: return "conflict";
-    case tool_error_code::refused: return "refused";
-    case tool_error_code::unavailable: return "unavailable";
-    case tool_error_code::limit_exceeded: return "limit-exceeded";
-    case tool_error_code::io_error: return "io-error";
-    case tool_error_code::other: return "other";
+    case api_error_code::invalid_argument: return "invalid-argument";
+    case api_error_code::not_found: return "not-found";
+    case api_error_code::conflict: return "conflict";
+    case api_error_code::refused: return "refused";
+    case api_error_code::unavailable: return "unavailable";
+    case api_error_code::limit_exceeded: return "limit-exceeded";
+    case api_error_code::io_error: return "io-error";
+    case api_error_code::other: return "other";
   }
   return "other";
 }

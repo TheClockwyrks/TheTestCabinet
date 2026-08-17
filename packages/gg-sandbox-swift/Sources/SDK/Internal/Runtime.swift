@@ -22,15 +22,15 @@ public func log(_ line: String) {
 
 /// Every gg tool this SDK binds, gathered from the modules that dispatch them.
 ///
-/// It is what gg's shell answers `bound-tools` with, and gg's drift gate compares that answer with
-/// its own `ALL_TOOL_NAMES`. The value of asking the artifact rather than reading a list is that the
-/// answer is assembled from the *same* declarations the functions are: each module states the tools
-/// it dispatches beside the functions that dispatch them, so a tool that gained a function without
-/// gaining an entry — or the reverse — is a failing gate rather than a silent difference between
-/// what a model may call and what gg thinks it may call.
+/// It is what gg's shell answers `bound-operations` with, and gg's drift gate compares that answer
+/// with its own `ALL_TOOL_NAMES`. The value of asking the artifact rather than reading a list is
+/// that the answer is assembled from the *same* declarations the functions are: each module states
+/// the tools it dispatches beside the functions that dispatch them, so a tool that gained a function
+/// without gaining an entry — or the reverse — is a failing gate rather than a silent difference
+/// between what a model may call and what gg thinks it may call.
 ///
 /// Not model-facing and not catalogued: a program has the functions themselves.
-public func boundToolNames() -> [String] {
-    files.ggTools + shell.ggTools + board.ggTools + tasks.ggTools + memories.ggTools
-        + context.ggTools + delegation.ggTools + skills.ggTools
+public func boundOperationNames() -> [String] {
+    files.ggOperations + shell.ggOperations + board.ggOperations + tasks.ggOperations
+        + memories.ggOperations + context.ggOperations + delegation.ggOperations + skills.ggOperations
 }

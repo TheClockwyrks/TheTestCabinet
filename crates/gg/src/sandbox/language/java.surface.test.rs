@@ -78,7 +78,7 @@ fn whole(body: &str) -> String {
             lines.push(line.clone());
         }
     }
-    for class in ["Gg", "ToolError", "ToolErrorCode"] {
+    for class in ["Gg", "ApiError", "ApiErrorCode"] {
         if names(body, class) {
             lines.push(format!("import gg.{class};"));
         }
@@ -142,7 +142,7 @@ fn run_as(
     )
 }
 
-/// Compile and run one Java program with `enabled`'s tools offered and no ending group.
+/// Compile and run one Java program with `enabled`'s operations offered and no ending group.
 fn run_with(
     body: &str,
     operations: &[crate::sandbox::operations::OperationId],
@@ -152,10 +152,10 @@ fn run_with(
 }
 
 // ---------------------------------------------------------------------------------------------
-// Every tool, from its Java spelling
+// Every operation, from its Java spelling
 // ---------------------------------------------------------------------------------------------
 
-/// One tool, called through the Java spelling of it, and the JSON gg's dispatch must have seen.
+/// One operation, called through the Java spelling of it, and the JSON gg's dispatch must have seen.
 struct Crossing {
     /// The gg tool name the call must arrive under.
     tool: &'static str,
@@ -408,7 +408,7 @@ fn crossings() -> Vec<Crossing> {
 }
 
 #[test]
-fn every_tool_crosses_the_membrane_from_its_java_spelling() {
+fn every_operation_crosses_the_membrane_from_its_java_spelling() {
     let crossings = crossings();
 
     // One program rather than one per crossing, for the reason the PureScript arm gives: a compile
@@ -443,15 +443,15 @@ fn every_tool_crosses_the_membrane_from_its_java_spelling() {
         );
     }
 
-    // Exhaustive by construction: a tool added to gg with no row here fails now, rather than
+    // Exhaustive by construction: an operation added to gg with no row here fails now, rather than
     // shipping as a typed method nobody ever called.
     let mut covered: Vec<&str> = crossings.iter().map(|crossing| crossing.tool).collect();
     covered.sort_unstable();
-    let mut vocabulary = crate::sandbox::signatures::sandbox_tool_names();
+    let mut vocabulary = crate::sandbox::signatures::sandbox_operation_names();
     vocabulary.sort_unstable();
     assert_eq!(
         covered, vocabulary,
-        "every bound tool needs a crossing, and only bound tools may have one"
+        "every bound operation needs a crossing, and only bound operations may have one"
     );
 }
 
@@ -524,7 +524,7 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
         "List<Programs.ProgramSummary> history = Programs.history();\n\
          Gg.log(String.valueOf(history.size()));\n\
          try { Programs.get(2); }\n\
-         catch (ToolError failure) { Gg.log(failure.code().toString()); }\n\
+         catch (ApiError failure) { Gg.log(failure.code().toString()); }\n\
          Programs.rerun(\"Gg.log(\\\"again\\\");\");\n\
          Session.requestChanges(\"widen the test\", \"name the file\");\n",
         &[],
@@ -586,7 +586,7 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
          Gg.log(String.valueOf(Views.current().get(0).close()));\n\
          try {\n\
          \x20   new Programs.ProgramSummary(2, 1, 1, true, Optional.empty()).source();\n\
-         } catch (ToolError failure) {\n\
+         } catch (ApiError failure) {\n\
          \x20   Gg.log(String.valueOf(failure.code()));\n\
          }\n",
         &all_operations(),
@@ -638,8 +638,8 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
          Gg.log(String.valueOf(narrowed.hits().isEmpty()));\n\
          try {\n\
          \x20   Docs.close(\"gg.files.Files.readFile\");\n\
-         } catch (ToolError failure) {\n\
-         \x20   Gg.log(failure.code() + \" \" + failure.tool());\n\
+         } catch (ApiError failure) {\n\
+         \x20   Gg.log(failure.code() + \" \" + failure.operation());\n\
          }\n",
         &[],
         canned_outcome,
@@ -712,14 +712,14 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
 fn a_failure_is_a_java_exception_whether_it_is_caught_or_not() {
     // The whole of this arm's failure story, and the half of it that is Java's rather than gg's.
     // TeaVM wraps a JavaScript exception crossing into Java in a `RuntimeException` it prefixes
-    // with `(JavaScript) `, so a `catch (ToolError failure)` would catch NOTHING if the SDK let the
+    // with `(JavaScript) `, so a `catch (ApiError failure)` would catch NOTHING if the SDK let the
     // guest's throw propagate. It catches the throw in JavaScript instead and raises a real Java
     // exception, which is what makes the clause below work at all.
     let (outcome, _log) = run_with(
         "try {\n\
          \x20   Files.readTextFile(\"gone.java\");\n\
-         } catch (ToolError failure) {\n\
-         \x20   Gg.log(failure.code() + \" on \" + failure.tool());\n\
+         } catch (ApiError failure) {\n\
+         \x20   Gg.log(failure.code() + \" on \" + failure.operation());\n\
          }\n\
          Gg.log(\"carried on\");\n",
         &all_operations(),
@@ -737,7 +737,7 @@ fn a_failure_is_a_java_exception_whether_it_is_caught_or_not() {
 
     // And the half that no SDK could do for itself: one that ESCAPED kills the program the way its
     // runtime kills it, and what the model reads is the exception's own message — which is why
-    // `ToolError` builds one carrying all three of gg's fields — and the model's own line.
+    // `ApiError` builds one carrying all three of gg's fields — and the model's own line.
     let (outcome, _log) = run_with(
         "Gg.log(\"before\");\n\
          Files.readTextFile(\"gone.java\");\n\
@@ -788,7 +788,7 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     // rather than crash on it.
     let (outcome, _log) = run_with(
         "try { Delegation.fork(\"a copy\"); }\n\
-         catch (ToolError failure) { Gg.log(failure.code().wireName()); }\n",
+         catch (ApiError failure) { Gg.log(failure.code().wireName()); }\n",
         &[],
         canned_outcome,
     );
@@ -832,7 +832,7 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     let diagnostic = refused(
         "public final class Program {\n\
          \x20   public static void main(String[] args) {\n\
-         \x20       ToolErrorCode code = null;\n\
+         \x20       ApiErrorCode code = null;\n\
          \x20   }\n\
          }\n",
     );
@@ -893,7 +893,7 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
              \n\
              public final class Program {{\n\
              \x20   public static void main(String[] args) {{\n\
-             \x20       ToolErrorCode code = ToolErrorCode.NOT_FOUND;\n\
+             \x20       ApiErrorCode code = ApiErrorCode.NOT_FOUND;\n\
              \x20       gg.Gg.log(code.toString());\n\
              \x20   }}\n\
              }}\n",

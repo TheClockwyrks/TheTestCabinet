@@ -25,8 +25,8 @@
 //
 // # The error register
 //
-// Every fallible call returns `false` and parks its `tool-error` in [`parked`], which `TakeError`
-// reads back and the SDK turns into a thrown `ToolException`. It is a register rather than three
+// Every fallible call returns `false` and parks its `api-error` in [`parked`], which `TakeError`
+// reads back and the SDK turns into a thrown `ApiException`. It is a register rather than three
 // more `out` parameters on all forty of them because a failure is the same three fields everywhere,
 // and it is safe because a program is single-threaded and every call is synchronous: there is no
 // second call that could overwrite it between the `false` and the `TakeError`.
@@ -155,24 +155,24 @@ static MonoArray *string_array(size_t count) {
 /// The failure the last call parked, read back by `TakeError` and never by anything else.
 static struct {
   int32_t code;
-  char *tool;
+  char *operation;
   char *message;
 } parked = {0, NULL, NULL};
 
-/// Take ownership of a `tool-error` and free the wire's copy of it.
-static void park(test_cabinet_gg_types_tool_error_t *failure) {
-  free(parked.tool);
+/// Take ownership of an `api-error` and free the wire's copy of it.
+static void park(test_cabinet_gg_types_api_error_t *failure) {
+  free(parked.operation);
   free(parked.message);
   parked.code = (int32_t)failure->code;
-  parked.tool = strndup((const char *)failure->tool.ptr, failure->tool.len);
+  parked.operation = strndup((const char *)failure->operation.ptr, failure->operation.len);
   parked.message = strndup((const char *)failure->message.ptr, failure->message.len);
-  test_cabinet_gg_types_tool_error_free(failure);
+  test_cabinet_gg_types_api_error_free(failure);
 }
 
-static void gg_take_error(int32_t *code, MonoString **tool, MonoString **message) {
+static void gg_take_error(int32_t *code, MonoString **operation, MonoString **message) {
   MonoDomain *domain = mono_domain_get();
   *code = parked.code;
-  *tool = mono_string_new(domain, parked.tool == NULL ? "" : parked.tool);
+  *operation = mono_string_new(domain, parked.operation == NULL ? "" : parked.operation);
   *message = mono_string_new(domain, parked.message == NULL ? "" : parked.message);
 }
 
@@ -199,7 +199,7 @@ static MonoBoolean gg_shell(MonoString *command, double timeout_seconds,
   sandbox_string_t owned = borrow(utf8);
   double timeout_storage = 0;
   test_cabinet_gg_shell_shell_output_t result;
-  test_cabinet_gg_shell_tool_error_t failure;
+  test_cabinet_gg_shell_api_error_t failure;
   const bool ok = test_cabinet_gg_shell_shell(
       &owned, maybe_f64(timeout_seconds, &timeout_storage), &result, &failure);
   if (utf8 != NULL) mono_free(utf8);
@@ -269,7 +269,7 @@ static MonoBoolean gg_read_file(MonoString *path, int32_t offset, int32_t limit,
   uint32_t offset_storage = 0;
   uint32_t limit_storage = 0;
   test_cabinet_gg_files_file_read_t read;
-  test_cabinet_gg_files_tool_error_t failure;
+  test_cabinet_gg_files_api_error_t failure;
   const bool ok =
       test_cabinet_gg_files_read_file(&owned, maybe_u32(offset, &offset_storage),
                                       maybe_u32(limit, &limit_storage), &read, &failure);
@@ -290,7 +290,7 @@ static MonoBoolean gg_read_text_file(MonoString *path, int32_t offset, int32_t l
   uint32_t offset_storage = 0;
   uint32_t limit_storage = 0;
   sandbox_string_t result;
-  test_cabinet_gg_helpers_tool_error_t failure;
+  test_cabinet_gg_helpers_api_error_t failure;
   const bool ok =
       test_cabinet_gg_helpers_read_text_file(&owned, maybe_u32(offset, &offset_storage),
                                              maybe_u32(limit, &limit_storage), &result, &failure);
@@ -309,7 +309,7 @@ static MonoBoolean gg_write_file(MonoString *path, MonoString *contents, uint64_
   char *contents_utf8 = lift(contents);
   sandbox_string_t owned_path = borrow(path_utf8);
   sandbox_string_t owned_contents = borrow(contents_utf8);
-  test_cabinet_gg_files_tool_error_t failure;
+  test_cabinet_gg_files_api_error_t failure;
   const bool ok =
       test_cabinet_gg_files_write_file(&owned_path, &owned_contents, written, &failure);
   if (path_utf8 != NULL) mono_free(path_utf8);
@@ -325,7 +325,7 @@ static MonoBoolean gg_edit_file(MonoString *path, MonoString *old_string, MonoSt
   sandbox_string_t owned_path = borrow(path_utf8);
   sandbox_string_t owned_old = borrow(old_utf8);
   sandbox_string_t owned_new = borrow(new_utf8);
-  test_cabinet_gg_files_tool_error_t failure;
+  test_cabinet_gg_files_api_error_t failure;
   const bool ok =
       test_cabinet_gg_files_edit_file(&owned_path, &owned_old, &owned_new, &failure);
   if (path_utf8 != NULL) mono_free(path_utf8);
@@ -339,7 +339,7 @@ static MonoBoolean gg_list_dir(MonoString *path, MonoArray **names, MonoArray **
   char *utf8 = lift(path);
   sandbox_string_t owned = borrow(utf8);
   test_cabinet_gg_files_list_dir_entry_t result;
-  test_cabinet_gg_files_tool_error_t failure;
+  test_cabinet_gg_files_api_error_t failure;
   const bool ok =
       test_cabinet_gg_files_list_dir(utf8 == NULL ? NULL : &owned, &result, &failure);
   if (utf8 != NULL) mono_free(utf8);
@@ -365,7 +365,7 @@ static MonoBoolean gg_read_skill(MonoString *name, MonoString **body) {
   char *utf8 = lift(name);
   sandbox_string_t owned = borrow(utf8);
   sandbox_string_t result;
-  test_cabinet_gg_skills_tool_error_t failure;
+  test_cabinet_gg_skills_api_error_t failure;
   const bool ok = test_cabinet_gg_skills_read_skill(&owned, &result, &failure);
   if (utf8 != NULL) mono_free(utf8);
   if (!ok) {
@@ -412,7 +412,7 @@ static MonoBoolean gg_record_memory(int32_t strategy, MonoString *name, MonoStri
   input.on_use.is_some = on_use_utf8 != NULL;
   if (on_use_utf8 != NULL) input.on_use.val = borrow(on_use_utf8);
   test_cabinet_gg_memories_memory_usage_t usage;
-  test_cabinet_gg_memories_tool_error_t failure;
+  test_cabinet_gg_memories_api_error_t failure;
   bool ok;
   switch (strategy) {
     case 0:
@@ -443,7 +443,7 @@ static MonoBoolean gg_read_memory(MonoString *name, MonoString **body) {
   char *utf8 = lift(name);
   sandbox_string_t owned = borrow(utf8);
   sandbox_string_t result;
-  test_cabinet_gg_memories_tool_error_t failure;
+  test_cabinet_gg_memories_api_error_t failure;
   const bool ok = test_cabinet_gg_memories_read_memory(&owned, &result, &failure);
   if (utf8 != NULL) mono_free(utf8);
   if (!ok) {
@@ -467,7 +467,7 @@ static MonoBoolean gg_edit_memory(MonoString *name, MonoString *search, MonoStri
   edit.search = borrow(search_utf8);
   edit.replace = borrow(replace_utf8);
   test_cabinet_gg_memories_memory_usage_t usage;
-  test_cabinet_gg_memories_tool_error_t failure;
+  test_cabinet_gg_memories_api_error_t failure;
   const bool ok = test_cabinet_gg_memories_edit_memory(&edit, &usage, &failure);
   if (name_utf8 != NULL) mono_free(name_utf8);
   if (search_utf8 != NULL) mono_free(search_utf8);
@@ -486,7 +486,7 @@ static MonoBoolean gg_search_memories(MonoArray *keywords, MonoArray **names,
                                       MonoArray **occurrences, MonoArray **excerpts) {
   borrowed_list_t borrowed = borrow_list(keywords);
   test_cabinet_gg_memories_list_memory_hit_t result;
-  test_cabinet_gg_memories_tool_error_t failure;
+  test_cabinet_gg_memories_api_error_t failure;
   const bool ok = test_cabinet_gg_memories_search_memories(&borrowed.list, &result, &failure);
   release_list(&borrowed);
   if (!ok) {
@@ -515,7 +515,7 @@ static MonoBoolean gg_delete_memory(MonoString *name, uint32_t *count, int64_t *
   char *utf8 = lift(name);
   sandbox_string_t owned = borrow(utf8);
   test_cabinet_gg_memories_memory_usage_t usage;
-  test_cabinet_gg_memories_tool_error_t failure;
+  test_cabinet_gg_memories_api_error_t failure;
   const bool ok = test_cabinet_gg_memories_delete_memory(&owned, &usage, &failure);
   if (utf8 != NULL) mono_free(utf8);
   if (!ok) {
@@ -562,7 +562,7 @@ static MonoBoolean gg_add_task(MonoString *id, MonoString *title, MonoString *de
   if (description_utf8 != NULL) input.description.val = borrow(description_utf8);
   input.blocked_by = borrowed.list;
   test_cabinet_gg_tasks_task_usage_t usage;
-  test_cabinet_gg_tasks_tool_error_t failure;
+  test_cabinet_gg_tasks_api_error_t failure;
   const bool ok = test_cabinet_gg_tasks_add_task(&input, &usage, &failure);
   if (id_utf8 != NULL) mono_free(id_utf8);
   if (title_utf8 != NULL) mono_free(title_utf8);
@@ -589,7 +589,7 @@ static MonoBoolean gg_update_task(MonoString *id, MonoString *title, int32_t des
   patch.description = text_edit(description_edit, description_utf8);
   patch.status.is_some = status >= 0;
   patch.status.val = (test_cabinet_gg_tasks_task_status_t)(status < 0 ? 0 : status);
-  test_cabinet_gg_tasks_tool_error_t failure;
+  test_cabinet_gg_tasks_api_error_t failure;
   const bool ok = test_cabinet_gg_tasks_update_task(&owned_id, &patch, &failure);
   if (id_utf8 != NULL) mono_free(id_utf8);
   if (title_utf8 != NULL) mono_free(title_utf8);
@@ -602,7 +602,7 @@ static MonoBoolean gg_set_blocked_by(MonoString *id, MonoArray *blocked_by) {
   char *utf8 = lift(id);
   sandbox_string_t owned = borrow(utf8);
   borrowed_list_t borrowed = borrow_list(blocked_by);
-  test_cabinet_gg_tasks_tool_error_t failure;
+  test_cabinet_gg_tasks_api_error_t failure;
   const bool ok = test_cabinet_gg_tasks_set_blocked_by(&owned, &borrowed.list, &failure);
   if (utf8 != NULL) mono_free(utf8);
   release_list(&borrowed);
@@ -613,7 +613,7 @@ static MonoBoolean gg_set_blocked_by(MonoString *id, MonoArray *blocked_by) {
 static MonoBoolean gg_complete_task(MonoString *id) {
   char *utf8 = lift(id);
   sandbox_string_t owned = borrow(utf8);
-  test_cabinet_gg_tasks_tool_error_t failure;
+  test_cabinet_gg_tasks_api_error_t failure;
   const bool ok = test_cabinet_gg_tasks_complete_task(&owned, &failure);
   if (utf8 != NULL) mono_free(utf8);
   if (!ok) park(&failure);
@@ -624,7 +624,7 @@ static MonoBoolean gg_remove_task(MonoString *id, uint32_t *count, uint32_t *max
   char *utf8 = lift(id);
   sandbox_string_t owned = borrow(utf8);
   test_cabinet_gg_tasks_task_usage_t usage;
-  test_cabinet_gg_tasks_tool_error_t failure;
+  test_cabinet_gg_tasks_api_error_t failure;
   const bool ok = test_cabinet_gg_tasks_remove_task(&owned, &usage, &failure);
   if (utf8 != NULL) mono_free(utf8);
   if (!ok) {
@@ -670,7 +670,7 @@ static MonoBoolean gg_create_epic(MonoString *prefix, MonoString *title, MonoStr
   input.title = borrow(title_utf8);
   input.description = borrow(description_utf8);
   test_cabinet_gg_board_epic_created_t created;
-  test_cabinet_gg_board_tool_error_t failure;
+  test_cabinet_gg_board_api_error_t failure;
   const bool ok = test_cabinet_gg_board_create_epic(&input, &created, &failure);
   if (prefix_utf8 != NULL) mono_free(prefix_utf8);
   if (title_utf8 != NULL) mono_free(title_utf8);
@@ -711,7 +711,7 @@ static MonoBoolean gg_create_issue(MonoString *title, MonoString *description, M
   input.agent = borrow(agent_utf8);
   input.reviewers = reviewer_list.list;
   test_cabinet_gg_board_issue_created_t created;
-  test_cabinet_gg_board_tool_error_t failure;
+  test_cabinet_gg_board_api_error_t failure;
   const bool ok = test_cabinet_gg_board_create_issue(&input, &created, &failure);
   if (title_utf8 != NULL) mono_free(title_utf8);
   if (description_utf8 != NULL) mono_free(description_utf8);
@@ -768,7 +768,7 @@ static MonoBoolean gg_update_issue(MonoString *id, MonoString *title, int32_t de
       patch.epic.tag = TEST_CABINET_GG_BOARD_EPIC_ASSIGNMENT_KEEP;
       break;
   }
-  test_cabinet_gg_board_tool_error_t failure;
+  test_cabinet_gg_board_api_error_t failure;
   const bool ok = test_cabinet_gg_board_update_issue(&owned_id, &patch, &failure);
   if (id_utf8 != NULL) mono_free(id_utf8);
   if (title_utf8 != NULL) mono_free(title_utf8);
@@ -785,7 +785,7 @@ static MonoBoolean gg_set_issue_blocked_by(MonoString *id, MonoArray *blocked_by
   char *utf8 = lift(id);
   sandbox_string_t owned = borrow(utf8);
   borrowed_list_t borrowed = borrow_list(blocked_by);
-  test_cabinet_gg_board_tool_error_t failure;
+  test_cabinet_gg_board_api_error_t failure;
   const bool ok = test_cabinet_gg_board_set_issue_blocked_by(&owned, &borrowed.list, &failure);
   if (utf8 != NULL) mono_free(utf8);
   release_list(&borrowed);
@@ -797,7 +797,7 @@ static MonoBoolean gg_remove_from_board(int32_t epic, MonoString *id, MonoArray 
   char *utf8 = lift(id);
   sandbox_string_t owned = borrow(utf8);
   test_cabinet_gg_board_board_usage_t usage;
-  test_cabinet_gg_board_tool_error_t failure;
+  test_cabinet_gg_board_api_error_t failure;
   const bool ok = epic != 0 ? test_cabinet_gg_board_remove_epic(&owned, &usage, &failure)
                             : test_cabinet_gg_board_remove_issue(&owned, &usage, &failure);
   if (utf8 != NULL) mono_free(utf8);
@@ -813,7 +813,7 @@ static MonoBoolean gg_wait_for_issue(MonoString *id, MonoString **acknowledgemen
   char *utf8 = lift(id);
   sandbox_string_t owned = borrow(utf8);
   sandbox_string_t result;
-  test_cabinet_gg_board_tool_error_t failure;
+  test_cabinet_gg_board_api_error_t failure;
   const bool ok = test_cabinet_gg_board_wait_for_issue(&owned, &result, &failure);
   if (utf8 != NULL) mono_free(utf8);
   if (!ok) {
@@ -842,7 +842,7 @@ static MonoBoolean gg_evict_file_view(MonoString *path, uint32_t *items, uint32_
   char *utf8 = lift(path);
   sandbox_string_t owned = borrow(utf8);
   test_cabinet_gg_context_reclaim_report_t report;
-  test_cabinet_gg_context_tool_error_t failure;
+  test_cabinet_gg_context_api_error_t failure;
   const bool ok =
       test_cabinet_gg_context_evict_file_view(utf8 == NULL ? NULL : &owned, &report, &failure);
   if (utf8 != NULL) mono_free(utf8);
@@ -870,7 +870,7 @@ static MonoBoolean gg_archive_thread(MonoArray *starts, MonoArray *ends, uint32_
     ranges.ptr[index].end = mono_array_get(ends, uint32_t, index);
   }
   test_cabinet_gg_context_reclaim_report_t report;
-  test_cabinet_gg_context_tool_error_t failure;
+  test_cabinet_gg_context_api_error_t failure;
   const bool ok = test_cabinet_gg_context_archive_thread(&ranges, &report, &failure);
   free(ranges.ptr);
   if (!ok) {
@@ -887,7 +887,7 @@ static MonoBoolean gg_search_archive(MonoString *query, MonoBoolean *archive_emp
   char *utf8 = lift(query);
   sandbox_string_t owned = borrow(utf8);
   test_cabinet_gg_context_archive_search_t result;
-  test_cabinet_gg_context_tool_error_t failure;
+  test_cabinet_gg_context_api_error_t failure;
   const bool ok = test_cabinet_gg_context_search_archive(&owned, &result, &failure);
   if (utf8 != NULL) mono_free(utf8);
   if (!ok) {
@@ -911,7 +911,7 @@ static MonoBoolean gg_compact(MonoString *summary, MonoArray *files) {
   char *utf8 = lift(summary);
   sandbox_string_t owned = borrow(utf8);
   borrowed_list_t borrowed = borrow_list(files);
-  test_cabinet_gg_context_tool_error_t failure;
+  test_cabinet_gg_context_api_error_t failure;
   const bool ok = test_cabinet_gg_context_compact(&owned, &borrowed.list, &failure);
   if (utf8 != NULL) mono_free(utf8);
   release_list(&borrowed);
@@ -937,7 +937,7 @@ static MonoBoolean gg_spawn_subagent(MonoString *agent, int32_t brief_kind, Mono
     request.task.val.prompt = borrow(brief_utf8);
   }
   test_cabinet_gg_delegation_subagent_handle_t handle;
-  test_cabinet_gg_delegation_tool_error_t failure;
+  test_cabinet_gg_delegation_api_error_t failure;
   const bool ok = test_cabinet_gg_delegation_spawn_subagent(&request, &handle, &failure);
   if (agent_utf8 != NULL) mono_free(agent_utf8);
   if (brief_utf8 != NULL) mono_free(brief_utf8);
@@ -956,7 +956,7 @@ static MonoBoolean gg_wait_for_subagents(MonoArray *ids, MonoArray **result_ids,
                                          MonoArray **statuses, MonoArray **summaries) {
   borrowed_list_t borrowed = borrow_list(ids);
   test_cabinet_gg_delegation_list_subagent_result_t results;
-  test_cabinet_gg_delegation_tool_error_t failure;
+  test_cabinet_gg_delegation_api_error_t failure;
   const bool ok = test_cabinet_gg_delegation_wait_for_subagents(
       ids == NULL ? NULL : &borrowed.list, &results, &failure);
   release_list(&borrowed);
@@ -982,7 +982,7 @@ static MonoBoolean gg_send_message(MonoString *agent_id, MonoString *message) {
   char *message_utf8 = lift(message);
   sandbox_string_t owned_agent = borrow(agent_utf8);
   sandbox_string_t owned_message = borrow(message_utf8);
-  test_cabinet_gg_delegation_tool_error_t failure;
+  test_cabinet_gg_delegation_api_error_t failure;
   const bool ok =
       test_cabinet_gg_delegation_send_message(&owned_agent, &owned_message, &failure);
   if (agent_utf8 != NULL) mono_free(agent_utf8);
@@ -996,7 +996,7 @@ static MonoBoolean gg_transition_state(MonoString *state, MonoString *note) {
   char *note_utf8 = lift(note);
   sandbox_string_t owned_state = borrow(state_utf8);
   sandbox_string_t owned_note = borrow(note_utf8);
-  test_cabinet_gg_delegation_tool_error_t failure;
+  test_cabinet_gg_delegation_api_error_t failure;
   const bool ok = test_cabinet_gg_delegation_transition_state(
       &owned_state, note_utf8 == NULL ? NULL : &owned_note, &failure);
   if (state_utf8 != NULL) mono_free(state_utf8);
@@ -1010,7 +1010,7 @@ static MonoBoolean gg_exec(MonoString *agent, MonoString *prompt) {
   char *prompt_utf8 = lift(prompt);
   sandbox_string_t owned_agent = borrow(agent_utf8);
   sandbox_string_t owned_prompt = borrow(prompt_utf8);
-  test_cabinet_gg_delegation_tool_error_t failure;
+  test_cabinet_gg_delegation_api_error_t failure;
   const bool ok = test_cabinet_gg_delegation_exec(
       &owned_agent, prompt_utf8 == NULL ? NULL : &owned_prompt, &failure);
   if (agent_utf8 != NULL) mono_free(agent_utf8);
@@ -1024,7 +1024,7 @@ static MonoBoolean gg_fork(MonoString *prompt, MonoString **id, MonoString **slo
   char *utf8 = lift(prompt);
   sandbox_string_t owned = borrow(utf8);
   test_cabinet_gg_delegation_subagent_handle_t handle;
-  test_cabinet_gg_delegation_tool_error_t failure;
+  test_cabinet_gg_delegation_api_error_t failure;
   const bool ok = test_cabinet_gg_delegation_fork(&owned, &handle, &failure);
   if (utf8 != NULL) mono_free(utf8);
   if (!ok) {
@@ -1045,7 +1045,7 @@ static MonoBoolean gg_fork(MonoString *prompt, MonoString **id, MonoString **slo
 static MonoBoolean gg_finish(MonoString *summary) {
   char *utf8 = lift(summary);
   sandbox_string_t owned = borrow(utf8);
-  test_cabinet_gg_session_tool_error_t failure;
+  test_cabinet_gg_session_api_error_t failure;
   const bool ok = test_cabinet_gg_session_finish(&owned, &failure);
   if (utf8 != NULL) mono_free(utf8);
   if (!ok) park(&failure);
@@ -1053,7 +1053,7 @@ static MonoBoolean gg_finish(MonoString *summary) {
 }
 
 static MonoBoolean gg_approve(void) {
-  test_cabinet_gg_session_tool_error_t failure;
+  test_cabinet_gg_session_api_error_t failure;
   const bool ok = test_cabinet_gg_session_approve(&failure);
   if (!ok) park(&failure);
   return ok ? 1 : 0;
@@ -1061,7 +1061,7 @@ static MonoBoolean gg_approve(void) {
 
 static MonoBoolean gg_request_changes(MonoArray *items) {
   borrowed_list_t borrowed = borrow_list(items);
-  test_cabinet_gg_session_tool_error_t failure;
+  test_cabinet_gg_session_api_error_t failure;
   const bool ok = test_cabinet_gg_session_request_changes(&borrowed.list, &failure);
   release_list(&borrowed);
   if (!ok) park(&failure);
@@ -1092,7 +1092,7 @@ static MonoBoolean gg_search_docs(MonoString *query, MonoString *module, MonoStr
   uint32_t offset_storage = 0;
   uint32_t limit_storage = 0;
   test_cabinet_gg_docs_doc_search_t result;
-  test_cabinet_gg_docs_tool_error_t failure;
+  test_cabinet_gg_docs_api_error_t failure;
   const bool ok = test_cabinet_gg_docs_search(
       &owned_query, module_utf8 == NULL ? NULL : &owned_module,
       type_utf8 == NULL ? NULL : &owned_type, kind_utf8 == NULL ? NULL : &owned_kind,
@@ -1127,7 +1127,7 @@ static MonoBoolean gg_search_docs(MonoString *query, MonoString *module, MonoStr
 static MonoBoolean gg_close_doc_view(MonoString *key, uint32_t *closed) {
   char *utf8 = lift(key);
   sandbox_string_t owned = borrow(utf8);
-  test_cabinet_gg_docs_tool_error_t failure;
+  test_cabinet_gg_docs_api_error_t failure;
   const bool ok = test_cabinet_gg_docs_close_doc_view(&owned, closed, &failure);
   if (utf8 != NULL) mono_free(utf8);
   if (!ok) park(&failure);
@@ -1135,7 +1135,7 @@ static MonoBoolean gg_close_doc_view(MonoString *key, uint32_t *closed) {
 }
 
 static MonoBoolean gg_close_doc_views(uint32_t *closed) {
-  test_cabinet_gg_docs_tool_error_t failure;
+  test_cabinet_gg_docs_api_error_t failure;
   const bool ok = test_cabinet_gg_docs_close_doc_views(closed, &failure);
   if (!ok) park(&failure);
   return ok ? 1 : 0;
@@ -1154,7 +1154,7 @@ static MonoBoolean gg_open_file_view(MonoString *path, int32_t offset, int32_t l
   uint32_t offset_storage = 0;
   uint32_t limit_storage = 0;
   test_cabinet_gg_views_file_read_t read;
-  test_cabinet_gg_views_tool_error_t failure;
+  test_cabinet_gg_views_api_error_t failure;
   const bool ok =
       test_cabinet_gg_views_open_file_view(&owned, maybe_u32(offset, &offset_storage),
                                            maybe_u32(limit, &limit_storage), &read, &failure);
@@ -1173,7 +1173,7 @@ static MonoBoolean gg_open_text_view(MonoString *label, MonoString *body) {
   char *body_utf8 = lift(body);
   sandbox_string_t owned_label = borrow(label_utf8);
   sandbox_string_t owned_body = borrow(body_utf8);
-  test_cabinet_gg_views_tool_error_t failure;
+  test_cabinet_gg_views_api_error_t failure;
   const bool ok = test_cabinet_gg_views_open_text_view(&owned_label, &owned_body, &failure);
   if (label_utf8 != NULL) mono_free(label_utf8);
   if (body_utf8 != NULL) mono_free(body_utf8);
@@ -1184,7 +1184,7 @@ static MonoBoolean gg_open_text_view(MonoString *label, MonoString *body) {
 static MonoBoolean gg_open_docs_view(MonoString *name) {
   char *utf8 = lift(name);
   sandbox_string_t owned = borrow(utf8);
-  test_cabinet_gg_views_tool_error_t failure;
+  test_cabinet_gg_views_api_error_t failure;
   const bool ok = test_cabinet_gg_views_open_docs_view(&owned, &failure);
   if (utf8 != NULL) mono_free(utf8);
   if (!ok) park(&failure);
@@ -1194,7 +1194,7 @@ static MonoBoolean gg_open_docs_view(MonoString *name) {
 static MonoBoolean gg_close_view(MonoString *selector, uint32_t *closed) {
   char *utf8 = lift(selector);
   sandbox_string_t owned = borrow(utf8);
-  test_cabinet_gg_views_tool_error_t failure;
+  test_cabinet_gg_views_api_error_t failure;
   const bool ok = test_cabinet_gg_views_close_view(&owned, closed, &failure);
   if (utf8 != NULL) mono_free(utf8);
   if (!ok) park(&failure);
@@ -1228,7 +1228,7 @@ static void gg_current_views(MonoArray **kinds, MonoArray **selectors, MonoArray
 static MonoBoolean gg_history(MonoArray **turns, MonoArray **lines, MonoArray **chars,
                               MonoArray **ok_flags, MonoArray **errors) {
   test_cabinet_gg_programs_list_program_summary_t history;
-  test_cabinet_gg_programs_tool_error_t failure;
+  test_cabinet_gg_programs_api_error_t failure;
   const bool ok = test_cabinet_gg_programs_history(&history, &failure);
   if (!ok) {
     park(&failure);
@@ -1253,7 +1253,7 @@ static MonoBoolean gg_history(MonoArray **turns, MonoArray **lines, MonoArray **
 static MonoBoolean gg_get_program(int32_t turn, MonoString **source) {
   uint32_t turn_storage = 0;
   sandbox_string_t result;
-  test_cabinet_gg_programs_tool_error_t failure;
+  test_cabinet_gg_programs_api_error_t failure;
   const bool ok =
       test_cabinet_gg_programs_get(maybe_u32(turn, &turn_storage), &result, &failure);
   if (!ok) {
@@ -1268,7 +1268,7 @@ static MonoBoolean gg_get_program(int32_t turn, MonoString **source) {
 static MonoBoolean gg_rerun(MonoString *source) {
   char *utf8 = lift(source);
   sandbox_string_t owned = borrow(utf8);
-  test_cabinet_gg_programs_tool_error_t failure;
+  test_cabinet_gg_programs_api_error_t failure;
   const bool ok = test_cabinet_gg_programs_rerun(&owned, &failure);
   if (utf8 != NULL) mono_free(utf8);
   if (!ok) park(&failure);
@@ -1282,10 +1282,10 @@ static MonoBoolean gg_rerun(MonoString *source) {
 /// One row of the registration table: the `Namespace.Class::Method` Mono resolves by, the C function
 /// that answers it, and — for the thirty-five that dispatch a gg tool — that tool's name.
 ///
-/// The tool name lives here rather than in a second list so that `bound-tools` and the bindings are
-/// one statement. A row with no tool name is one of the model-facing carve-outs that is not a gg
-/// tool: an ending, a view, a documentation search or close, a program-library call, or the feedback
-/// channel.
+/// The tool name lives here rather than in a second list so that `bound-operations` and the
+/// bindings are one statement. A row with no tool name is one of the model-facing carve-outs that
+/// is not a gg tool: an ending, a view, a documentation search or close, a program-library call, or
+/// the feedback channel.
 typedef struct {
   const char *managed;
   const void *native;
@@ -1370,21 +1370,21 @@ void gg_bridge_register(void) {
 }
 
 /// Every gg tool name the table above binds, gathered once.
-static const char *tool_names[GG_BINDING_COUNT + GG_RECORD_MEMORY_COUNT + GG_REMOVE_COUNT];
-static size_t tool_name_count = 0;
+static const char *operation_names[GG_BINDING_COUNT + GG_RECORD_MEMORY_COUNT + GG_REMOVE_COUNT];
+static size_t operation_name_count = 0;
 
-void gg_bridge_tool_names(const char *const **names, size_t *count) {
-  if (tool_name_count == 0) {
+void gg_bridge_operation_names(const char *const **names, size_t *count) {
+  if (operation_name_count == 0) {
     for (size_t index = 0; index < GG_BINDING_COUNT; index++) {
-      if (bindings[index].tool != NULL) tool_names[tool_name_count++] = bindings[index].tool;
+      if (bindings[index].tool != NULL) operation_names[operation_name_count++] = bindings[index].tool;
     }
     for (size_t index = 0; index < GG_RECORD_MEMORY_COUNT; index++) {
-      tool_names[tool_name_count++] = record_memory_tools[index];
+      operation_names[operation_name_count++] = record_memory_tools[index];
     }
     for (size_t index = 0; index < GG_REMOVE_COUNT; index++) {
-      tool_names[tool_name_count++] = remove_from_board_tools[index];
+      operation_names[operation_name_count++] = remove_from_board_tools[index];
     }
   }
-  *names = tool_names;
-  *count = tool_name_count;
+  *names = operation_names;
+  *count = operation_name_count;
 }

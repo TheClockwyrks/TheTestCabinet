@@ -57,7 +57,7 @@ use crate::limits::TurnErrorType;
 use super::compile::compile_program;
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::fake::{
-    CallLog, FakeToolApi, all_capabilities, all_operations, canned_outcome, granted_operations,
+    CallLog, FakeOperationApi, all_capabilities, all_operations, canned_outcome, granted_operations,
 };
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{ProgramError, SandboxError, SandboxOutcome};
@@ -104,7 +104,7 @@ pub(super) fn evaluate(
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
     evaluate_granting(component, operations, modules, ending, library, |log| {
-        FakeToolApi::with(log, responder)
+        FakeOperationApi::with(log, responder)
     })
 }
 
@@ -123,7 +123,7 @@ pub(super) fn evaluate_closing_docviews(
         &[],
         RunEnding::None,
         false,
-        |log| FakeToolApi::with(log, responder),
+        |log| FakeOperationApi::with(log, responder),
     )
 }
 
@@ -144,7 +144,7 @@ pub(super) fn evaluate_with_program(
         &[],
         RunEnding::None,
         true,
-        |log| FakeToolApi::with(log, responder).with_program(turn, source),
+        |log| FakeOperationApi::with(log, responder).with_program(turn, source),
     )
 }
 
@@ -160,12 +160,12 @@ fn evaluate_granting(
     modules: &[CodeModule],
     ending: RunEnding,
     library: bool,
-    build: impl FnOnce(&CallLog) -> FakeToolApi,
+    build: impl FnOnce(&CallLog) -> FakeOperationApi,
 ) -> (SandboxOutcome, CallLog) {
     let limits = SandboxLimits::default();
     let log = CallLog::default();
     let api = build(&log);
-    let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let linker = linker::<FakeOperationApi>().expect("the production linker builds");
     let compiled =
         engine::compile_bytes(component).expect("a freshly compiled Rust program is a component");
     let operations = granted_operations(operations, library);
@@ -332,7 +332,7 @@ fn main() -> Result<(), gg::Failure> {{
 
 #[test]
 fn a_program_reaches_gg_and_ends_the_run_through_the_real_membrane() {
-    // The membrane, not just the guest: a real gg tool dispatched through `FakeToolApi`, a view
+    // The membrane, not just the guest: a real gg tool dispatched through `FakeOperationApi`, a view
     // opened, and the session ended — the three things that make this a sandbox rather than a
     // wasm runtime.
     let component = prepare(&format!(
@@ -356,7 +356,7 @@ fn a_program_reaches_gg_and_ends_the_run_through_the_real_membrane() {
         false,
         |name, _arguments| match name {
             "read_file" => ToolOutcome::ok("hello gg", "read notes.md").with_data(
-                crate::tools::ToolData::FileText(crate::tools::FileTextData {
+                crate::tools::ApiData::FileText(crate::tools::FileTextData {
                     contents: "hello gg".to_string(),
                     first_line: 1,
                     last_line: 1,
@@ -697,7 +697,7 @@ fn what_a_program_costs_and_what_it_weighs() {
     );
 
     // And that the weighed artifact really runs. What it BINDS is
-    // `surface::the_component_binds_exactly_the_tools_gg_offers`, which asks the artifact itself.
+    // `surface::the_component_binds_exactly_the_operations_gg_offers`, which asks the artifact itself.
     let (outcome, _log) = evaluate(&component, &[], &[], RunEnding::None, false, canned_outcome);
     assert_eq!(logs(&outcome), ["weighed"]);
 }
@@ -823,7 +823,7 @@ fn g8_a_runtime_failure_reaches_the_model() {
         GgProgramLanguage::Rust,
         &[
             Case {
-                shape: Shape::ToolError,
+                shape: Shape::ApiError,
                 program: r#"// G8 (a): a gg call the host answers `not-found`, uncaught.
 use gg::files;
 

@@ -10,9 +10,9 @@
 /// - ggmodule: files
 public enum files {
     /// The gg tools this module dispatches, which is its share of what the artifact answers
-    /// `bound-tools` with. Declared beside the functions that call them, so a tool added here is a
-    /// tool the artifact reports.
-    static let ggTools = ["read_file", "write_file", "edit_file", "list_dir"]
+    /// `bound-operations` with. Declared beside the functions that call them, so a tool added here
+    /// is a tool the artifact reports.
+    static let ggOperations = ["read_file", "write_file", "edit_file", "list_dir"]
 
     /// Read a file, as either a `FileRead.text` or a `FileRead.image`.
     ///
@@ -38,7 +38,7 @@ public enum files {
     ///   - offset: The 1-based line to start at. Left out, the read starts at the first line.
     ///   - limit: How many lines to return from `offset`. Left out, the read runs to the end.
     /// - Returns: the file's text window, or the picture's description.
-    /// - Throws: `core.ToolError` with `.notFound` for a missing path.
+    /// - Throws: `core.ApiError` with `.notFound` for a missing path.
     /// - ggop: files.read_file
     public static func readFile(
         _ path: String, offset: Int? = nil, limit: Int? = nil
@@ -46,7 +46,7 @@ public enum files {
         try withScratch { scratch in
             var path = scratch.string(path)
             var ret = test_cabinet_gg_files_file_read_t()
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             let ok = withWindow(offset, limit) { offset, limit in
                 test_cabinet_gg_files_read_file(&path, offset, limit, &ret, &err)
             }
@@ -67,7 +67,7 @@ public enum files {
     ///   - offset: The 1-based line to start at. Left out, the read starts at the first line.
     ///   - limit: How many lines to return from `offset`. Left out, the read runs to the end.
     /// - Returns: the file's text.
-    /// - Throws: `core.ToolError` with `.invalidArgument` when the path names a picture, which
+    /// - Throws: `core.ApiError` with `.invalidArgument` when the path names a picture, which
     ///   `files.readFile` inspects instead and `views.openFile` displays.
     /// - ggop: files.read_text_file
     public static func readTextFile(
@@ -76,7 +76,7 @@ public enum files {
         try withScratch { scratch in
             var path = scratch.string(path)
             var ret = sandbox_string_t()
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             let ok = withWindow(offset, limit) { offset, limit in
                 test_cabinet_gg_helpers_read_text_file(&path, offset, limit, &ret, &err)
             }
@@ -98,7 +98,7 @@ public enum files {
     ///     created.
     ///   - contents: The UTF-8 text to write. It replaces the file entirely.
     /// - Returns: how many bytes were written.
-    /// - Throws: `core.ToolError` with `.invalidArgument` for an empty path, and `.ioError` when
+    /// - Throws: `core.ApiError` with `.invalidArgument` for an empty path, and `.ioError` when
     ///   creating the parent directories or the write itself failed.
     /// - ggop: files.write_file
     @discardableResult
@@ -107,7 +107,7 @@ public enum files {
             var path = scratch.string(path)
             var contents = scratch.string(contents)
             var ret: UInt64 = 0
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             guard test_cabinet_gg_files_write_file(&path, &contents, &ret, &err) else {
                 throw lift(failure: &err)
             }
@@ -124,7 +124,7 @@ public enum files {
     ///   - path: The file to edit.
     ///   - replacing: The exact text to find, whitespace included. It must appear exactly once.
     ///   - with: The text to put in its place. An empty string deletes the match.
-    /// - Throws: `core.ToolError` with `.notFound` when the text does not appear, and `.conflict` —
+    /// - Throws: `core.ApiError` with `.notFound` when the text does not appear, and `.conflict` —
     ///   with the number of matches — when it appears more than once.
     /// - ggop: files.edit_file
     public static func editFile(
@@ -134,7 +134,7 @@ public enum files {
             var path = scratch.string(path)
             var oldString = scratch.string(oldString)
             var newString = scratch.string(newString)
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             guard test_cabinet_gg_files_edit_file(&path, &oldString, &newString, &err) else {
                 throw lift(failure: &err)
             }
@@ -149,13 +149,13 @@ public enum files {
     /// - Parameter path: The directory to list, relative to the workspace or absolute. Left out, it
     ///   lists the workspace root.
     /// - Returns: the directory's entries, sorted by name.
-    /// - Throws: `core.ToolError` with `.notFound` for a directory that is not there, and
+    /// - Throws: `core.ApiError` with `.notFound` for a directory that is not there, and
     ///   `.invalidArgument` for a path that is given but empty.
     /// - ggop: files.list_dir
     public static func listDir(_ path: String? = nil) throws -> [DirEntry] {
         try withScratch { scratch in
             var ret = test_cabinet_gg_files_list_dir_entry_t()
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             let ok = withOptional(path.map { scratch.string($0) }) { path in
                 test_cabinet_gg_files_list_dir(path, &ret, &err)
             }

@@ -17,7 +17,7 @@
 //!    process, and `wit_component` encodes the module with the preview1 adapter;
 //! 4. the component instantiates against the **production** linker, which means its one gg import —
 //!    `test-cabinet:gg/wire` — resolves against the host implementation the whole membrane is
-//!    behind, and its `bound-tools` export answers;
+//!    behind, and its `bound-operations` export answers;
 //! 5. `Abi` and `Coding` carry real calls across in both directions, **at gg's own maxima** — a
 //!    quarter-megabyte answer, a megabyte request, and thirteen calls with forty-four megabytes
 //!    churned through the collector between them;
@@ -43,7 +43,7 @@ use serde_json::Value;
 use test_cabinet_core::gg::GgProgramLanguage;
 
 use crate::sandbox::fake::{
-    CallLog, FakeToolApi, all_capabilities, all_operations, canned_outcome, granted_operations,
+    CallLog, FakeOperationApi, all_capabilities, all_operations, canned_outcome, granted_operations,
 };
 use crate::sandbox::language::jvm;
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
@@ -53,7 +53,7 @@ use crate::sandbox::{
     FILES_READ_FILE, FILES_READ_TEXT_FILE, PrepareContext, ProgramScope, SandboxLimits,
     bounded_store, engine, linker, reclaim,
 };
-use crate::tools::{FileTextData, ToolData, ToolOutcome};
+use crate::tools::{ApiData, FileTextData, ToolOutcome};
 
 use super::*;
 
@@ -184,12 +184,12 @@ public final class GgEntry {
 
     @Export(name = "run")
     public static void run(int program, int programLength, int modules, int modulesLength,
-            int tools, int toolsLength, int ending, int library) {
+            int operations, int operationsLength, int ending, int library) {
         Program.main(new String[0]);
     }
 
-    @Export(name = "bound-tools")
-    public static int boundTools() {
+    @Export(name = "bound-operations")
+    public static int boundOperations() {
         return Abi.emptyList();
     }
 }
@@ -202,7 +202,7 @@ const MODULE_FILE: &str = "program.wasm";
 const MAIN_CLASS: &str = "Program";
 
 /// The three core exports the component encode needs, read out of the module's export section.
-const REQUIRED_EXPORTS: [&str; 3] = ["run", "bound-tools", "cabi_realloc"];
+const REQUIRED_EXPORTS: [&str; 3] = ["run", "bound-operations", "cabi_realloc"];
 
 // ---------------------------------------------------------------------------------------------
 // The tests
@@ -252,10 +252,10 @@ fn a_hand_written_java_program_reaches_gg_through_the_wire_and_dies_as_its_runti
     );
 
     assert!(
-        ran.bound_tools.is_empty(),
+        ran.bound_operations.is_empty(),
         "a compiled arm imports one interface and it is not one of the fifteen, so it answers \
-         `bound-tools` with nothing; it answered {:?}",
-        ran.bound_tools
+         `bound-operations` with nothing; it answered {:?}",
+        ran.bound_operations
     );
     assert_eq!(
         ran.api_calls, 1,
@@ -309,7 +309,7 @@ fn a_program_carries_ggs_own_maxima_and_survives_its_own_collector() {
     let responder = move |name: &str, args: &Value| -> ToolOutcome {
         match name {
             "read_file" => ToolOutcome::ok(answer.clone(), "read a big file").with_data(
-                ToolData::FileText(FileTextData {
+                ApiData::FileText(FileTextData {
                     contents: answer.clone(),
                     first_line: 1,
                     last_line: 1,
@@ -468,8 +468,8 @@ struct Ran {
     failed: Option<String>,
     /// Everything the guest wrote to standard error.
     said: String,
-    /// What `bound-tools` answered.
-    bound_tools: Vec<String>,
+    /// What `bound-operations` answered.
+    bound_operations: Vec<String>,
     /// How many model-facing calls the membrane recorded.
     api_calls: u64,
     /// Every call that reached the loop, in order.
@@ -492,8 +492,8 @@ fn run_against_the_membrane(
 ) -> Ran {
     let limits = SandboxLimits::default();
     let log = CallLog::default();
-    let api = FakeToolApi::with(&log, responder);
-    let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let api = FakeOperationApi::with(&log, responder);
+    let linker = linker::<FakeOperationApi>().expect("the production linker builds");
     let scope = ProgramScope {
         capabilities: &all_capabilities(),
         operations: &operations,
@@ -518,9 +518,9 @@ fn run_against_the_membrane(
             engine::classify(&store, limits, &error, SandboxError::Instantiate)
         ),
     };
-    let bound_tools = bound
-        .call_bound_tools(&mut store)
-        .expect("the `bound-tools` export answers");
+    let bound_operations = bound
+        .call_bound_operations(&mut store)
+        .expect("the `bound-operations` export answers");
     let returned = bound
         .call_run(&mut store, "", &[], &granted, RunEnding::None.into(), false)
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
@@ -530,7 +530,7 @@ fn run_against_the_membrane(
     Ran {
         failed,
         said,
-        bound_tools,
+        bound_operations,
         api_calls: outcome.api_calls,
         log,
     }

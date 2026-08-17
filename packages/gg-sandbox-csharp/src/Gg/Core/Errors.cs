@@ -9,7 +9,7 @@ namespace Gg;
 /// branching on <see cref="Exception.Message"/> is not.
 /// </remarks>
 /// <ggmodule>core</ggmodule>
-public enum ToolErrorCode
+public enum ApiErrorCode
 {
     /// <summary>The arguments were malformed, ill-typed, or out of range.</summary>
     InvalidArgument,
@@ -65,7 +65,7 @@ public enum ToolErrorCode
 /// {
 ///     Views.OpenText("notes", Files.ReadTextFile("NOTES.md"));
 /// }
-/// catch (ToolException failure) when (failure.Code == ToolErrorCode.NotFound)
+/// catch (ApiException failure) when (failure.Code == ApiErrorCode.NotFound)
 /// {
 ///     Views.OpenText("notes", "there are no notes yet");
 /// }
@@ -76,28 +76,28 @@ public enum ToolErrorCode
 /// </para>
 /// </remarks>
 /// <ggmodule>core</ggmodule>
-public sealed class ToolException : Exception
+public sealed class ApiException : Exception
 {
     /// <summary>Build a failure, which gg raises and a program has no reason to.</summary>
     /// <param name="code">The failure class.</param>
-    /// <param name="tool">The call that failed, by the operation's key.</param>
+    /// <param name="operation">The call that failed, by the operation's key.</param>
     /// <param name="message">The model-facing guidance.</param>
-    public ToolException(ToolErrorCode code, string tool, string message)
+    public ApiException(ApiErrorCode code, string operation, string message)
         : base(message)
     {
         Code = code;
-        Tool = tool;
+        Operation = operation;
     }
 
     /// <summary>The failure class, so a catch site branches on a value rather than on prose.</summary>
-    public ToolErrorCode Code { get; }
+    public ApiErrorCode Code { get; }
 
     /// <summary>The call that failed, by the key of the operation this program reached for.</summary>
     /// <remarks>
     /// <c>read_file</c> for <c>Files.ReadFile</c>, <c>read_text_file</c> for
     /// <c>Files.ReadTextFile</c>.
     /// </remarks>
-    public string Tool { get; }
+    public string Operation { get; }
 }
 
 // WHERE THE `core` MODULE'S OWN DOCUMENTATION IS WRITTEN, AND WHY IT IS WRITTEN ON A CLASS.
@@ -131,7 +131,7 @@ public sealed class ToolException : Exception
 /// <summary>The types and the failure vocabulary every other module's signatures name.</summary>
 /// <remarks>
 /// They are declared directly in <c>namespace Gg</c>, which the SDK brings into every program's
-/// scope, so <see cref="ToolException"/> and <see cref="ToolErrorCode"/> are written without a
+/// scope, so <see cref="ApiException"/> and <see cref="ApiErrorCode"/> are written without a
 /// module prefix.
 /// </remarks>
 /// <ggmodule>core</ggmodule>

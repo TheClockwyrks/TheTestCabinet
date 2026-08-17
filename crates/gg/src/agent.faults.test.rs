@@ -1495,7 +1495,7 @@ fn outcomes_for(
 /// **A turn that failed because gg broke under it is not recorded against the model.**
 ///
 /// The defect does not only end a turn, it fails one. gg refused a spawn it had already validated,
-/// the refusal threw into the program that made it, and an uncaught throw is a `program_tool_error`
+/// the refusal threw into the program that made it, and an uncaught throw is a `program_api_error`
 /// — so gg's own defect entered the published record as a fault the model committed, spent the
 /// model's error ceilings, and showed up in a console's failed-call panels under this agent's name.
 ///

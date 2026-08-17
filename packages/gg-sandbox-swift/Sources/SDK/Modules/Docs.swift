@@ -43,7 +43,7 @@ public enum docs {
     ///   - limit: How many hits to return. Left out, the page holds 20; the ceiling is 100, and a
     ///     larger one clamps rather than failing.
     /// - Returns: the page that matched, best first, and how many matched behind it.
-    /// - Throws: `core.ToolError` with `.invalidArgument` when `query` is empty and no filter is set
+    /// - Throws: `core.ApiError` with `.invalidArgument` when `query` is empty and no filter is set
     ///   — asking for nothing and matching nothing are different answers — and when `limit` is `0`,
     ///   which is a page that could never answer anything.
     /// - ggop: docs.search
@@ -54,7 +54,7 @@ public enum docs {
         try withScratch { scratch in
             var query = scratch.string(query)
             var ret = test_cabinet_gg_docs_doc_search_t()
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             let ok = withOptional(module.map { scratch.string($0) }) { module in
                 withOptional(type.map { scratch.string($0) }) { type in
                     withOptional(kind.map { scratch.string($0.wire) }) { kind in
@@ -82,7 +82,7 @@ public enum docs {
     ///   it.
     /// - Returns: how many views were closed, which is `0` when that key is not open — not a
     ///   failure, so a program that tidies up unconditionally needs no guard.
-    /// - Throws: `core.ToolError` with `.unavailable` when this agent was not given the capability
+    /// - Throws: `core.ApiError` with `.unavailable` when this agent was not given the capability
     ///   that buys closing documentation.
     /// - ggop: docs.close
     @discardableResult
@@ -90,7 +90,7 @@ public enum docs {
         try withScratch { scratch in
             var key = scratch.string(key)
             var ret: UInt32 = 0
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             guard test_cabinet_gg_docs_close_doc_view(&key, &ret, &err) else {
                 throw lift(failure: &err)
             }
@@ -105,13 +105,13 @@ public enum docs {
     /// beside them.
     ///
     /// - Returns: how many views were closed.
-    /// - Throws: `core.ToolError` with `.unavailable` when this agent was not given the capability
+    /// - Throws: `core.ApiError` with `.unavailable` when this agent was not given the capability
     ///   that buys closing documentation.
     /// - ggop: docs.close_all
     @discardableResult
     public static func closeAll() throws -> Int {
         var ret: UInt32 = 0
-        var err = test_cabinet_gg_types_tool_error_t()
+        var err = test_cabinet_gg_types_api_error_t()
         guard test_cabinet_gg_docs_close_doc_views(&ret, &err) else { throw lift(failure: &err) }
         return Int(ret)
     }

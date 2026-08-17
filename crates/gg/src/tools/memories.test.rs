@@ -15,7 +15,7 @@ use crate::tools::ToolFailure;
 /// The [`MemoryUsageData`] an outcome carries, or a failure naming what it carried instead.
 fn usage(outcome: &ToolOutcome) -> &MemoryUsageData {
     match outcome.data.as_ref() {
-        Some(ToolData::MemoryUsage(data)) => data,
+        Some(ApiData::MemoryUsage(data)) => data,
         other => panic!("expected memory usage, got {other:?}"),
     }
 }

@@ -10,8 +10,8 @@
 ///
 /// - ggmodule: board
 public enum board {
-    /// The gg tools this module dispatches — see `files.ggTools`.
-    static let ggTools = [
+    /// The gg tools this module dispatches — see `files.ggOperations`.
+    static let ggOperations = [
         "create_epic", "create_issue", "update_issue", "set_issue_blocked_by", "remove_epic",
         "remove_issue", "wait_for_issue",
     ]
@@ -28,7 +28,7 @@ public enum board {
     ///   - title: A short line naming the body of work.
     ///   - description: What the epic covers, for a reader who has not seen its issues.
     /// - Returns: the epic's id, and the board budget.
-    /// - Throws: `core.ToolError` with `.invalidArgument` when the prefix is not 3-6 letters,
+    /// - Throws: `core.ApiError` with `.invalidArgument` when the prefix is not 3-6 letters,
     ///   `.conflict` when another epic already holds it, and `.limitExceeded` at the board's epic
     ///   cap.
     /// - ggop: board.create_epic
@@ -42,7 +42,7 @@ public enum board {
                 title: scratch.string(title),
                 description: scratch.string(description))
             var ret = test_cabinet_gg_board_epic_created_t()
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             guard test_cabinet_gg_board_create_epic(&input, &ret, &err) else {
                 throw lift(failure: &err)
             }
@@ -76,7 +76,7 @@ public enum board {
     ///   - reviewers: The agents that must approve the work, from the set this agent may spawn.
     ///     Required when this run's reviewers feature is on, and empty otherwise.
     /// - Returns: the id the board assigned, and the board budget.
-    /// - Throws: `core.ToolError` with `.invalidArgument` when `agent` or a reviewer is not one this
+    /// - Throws: `core.ApiError` with `.invalidArgument` when `agent` or a reviewer is not one this
     ///   agent may assign, `.notFound` for an unknown epic or blocker, and `.conflict` on a blocker
     ///   edge that would close a cycle.
     /// - ggop: board.create_issue
@@ -98,7 +98,7 @@ public enum board {
                 agent: scratch.string(agent),
                 reviewers: scratch.list(reviewers))
             var ret = test_cabinet_gg_board_issue_created_t()
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             guard test_cabinet_gg_board_create_issue(&input, &ret, &err) else {
                 throw lift(failure: &err)
             }
@@ -126,7 +126,7 @@ public enum board {
     ///   - status: Where the issue now stands. Left out, the status is untouched.
     ///   - epic: A three-way change of epic grouping: `.keep` leaves it, `.ungroup` detaches the
     ///     issue, `.set` regroups it.
-    /// - Throws: `core.ToolError` with `.notFound` for an unknown issue or epic id, and
+    /// - Throws: `core.ApiError` with `.notFound` for an unknown issue or epic id, and
     ///   `.invalidArgument` when nothing was named to change.
     /// - ggop: board.update_issue
     public static func updateIssue(
@@ -145,7 +145,7 @@ public enum board {
                 status: test_cabinet_gg_board_option_issue_status_t(
                     is_some: status != nil, val: status?.wire ?? 0),
                 epic: scratch.epicAssignment(epic))
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             guard test_cabinet_gg_board_update_issue(&id, &patch, &err) else {
                 throw lift(failure: &err)
             }
@@ -158,14 +158,14 @@ public enum board {
     ///   - id: The issue whose blockers to replace.
     ///   - to: The ids of every issue that must now be done before it. An empty array clears them
     ///     all.
-    /// - Throws: `core.ToolError` with `.notFound` for an issue or blocker the board does not hold,
+    /// - Throws: `core.ApiError` with `.notFound` for an issue or blocker the board does not hold,
     ///   and `.conflict` when an edge would close a cycle or block the issue on itself.
     /// - ggop: board.set_issue_blocked_by
     public static func setIssueBlockedBy(_ id: String, to blockedBy: [String]) throws {
         try withScratch { scratch in
             var id = scratch.string(id)
             var blockedBy = scratch.list(blockedBy)
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             guard test_cabinet_gg_board_set_issue_blocked_by(&id, &blockedBy, &err) else {
                 throw lift(failure: &err)
             }
@@ -176,14 +176,14 @@ public enum board {
     ///
     /// - Parameter id: The epic to remove.
     /// - Returns: the board budget after the removal.
-    /// - Throws: `core.ToolError` with `.notFound` for an unknown id.
+    /// - Throws: `core.ApiError` with `.notFound` for an unknown id.
     /// - ggop: board.remove_epic
     @discardableResult
     public static func removeEpic(_ id: String) throws -> BoardUsage {
         try withScratch { scratch in
             var id = scratch.string(id)
             var ret = test_cabinet_gg_board_board_usage_t()
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             guard test_cabinet_gg_board_remove_epic(&id, &ret, &err) else {
                 throw lift(failure: &err)
             }
@@ -195,14 +195,14 @@ public enum board {
     ///
     /// - Parameter id: The issue to remove.
     /// - Returns: the board budget after the removal.
-    /// - Throws: `core.ToolError` with `.notFound` for an unknown id.
+    /// - Throws: `core.ApiError` with `.notFound` for an unknown id.
     /// - ggop: board.remove_issue
     @discardableResult
     public static func removeIssue(_ id: String) throws -> BoardUsage {
         try withScratch { scratch in
             var id = scratch.string(id)
             var ret = test_cabinet_gg_board_board_usage_t()
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             guard test_cabinet_gg_board_remove_issue(&id, &ret, &err) else {
                 throw lift(failure: &err)
             }
@@ -220,7 +220,7 @@ public enum board {
     ///
     /// - Parameter id: The issue to wait on. It may not be the issue this agent was assigned.
     /// - Returns: gg's acknowledgement of the registered wait.
-    /// - Throws: `core.ToolError` with `.invalidArgument` for this agent's own assigned issue, and
+    /// - Throws: `core.ApiError` with `.invalidArgument` for this agent's own assigned issue, and
     ///   `.notFound` for an id the board does not hold.
     /// - ggop: board.wait_for_issue
     @discardableResult
@@ -228,7 +228,7 @@ public enum board {
         try withScratch { scratch in
             var id = scratch.string(id)
             var ret = sandbox_string_t()
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             guard test_cabinet_gg_board_wait_for_issue(&id, &ret, &err) else {
                 throw lift(failure: &err)
             }
@@ -330,7 +330,7 @@ extension board.IssueCreated {
     /// `board.waitForIssue` for the common case where the created issue is in hand.
     ///
     /// - Returns: gg's acknowledgement of the registered wait.
-    /// - Throws: `core.ToolError` with `.invalidArgument` when this is the issue the agent was
+    /// - Throws: `core.ApiError` with `.invalidArgument` when this is the issue the agent was
     ///   assigned.
     /// - ggop-alias: board.wait_for_issue
     @discardableResult

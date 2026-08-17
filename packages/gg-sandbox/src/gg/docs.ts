@@ -99,7 +99,7 @@ export interface DocSearch {
  * @param options.limit How many hits to return: 20 by default, 100 at most, and zero is refused.
  * Compare it against `total` to see how much of the answer this page is.
  * @returns one page of hits, best first, beside the `total` that says how much of the answer it is.
- * @throws `ToolError` with `invalid-argument` for a blank query carrying no filter — a search that
+ * @throws `ApiError` with `invalid-argument` for a blank query carrying no filter — a search that
  * asked for nothing and a search that found nothing are different answers — for an unrecognised
  * `kind`, which would otherwise silently widen a search believed to be narrow, and for a `limit` of
  * zero, which is a page that could answer nothing.
@@ -151,7 +151,7 @@ export function search(
  * @ggop docs.close
  * @param key The fully-qualified name the view was opened under, as a search hit reports it.
  * @returns how many views were closed, which is zero when that key was not open.
- * @throws `ToolError` with `unavailable` for an agent this run did not give the closing of
+ * @throws `ApiError` with `unavailable` for an agent this run did not give the closing of
  * documentation views.
  */
 export function close(key: string): number {
@@ -168,7 +168,7 @@ export function close(key: string): number {
  *
  * @ggop docs.close_all
  * @returns how many views went, which is zero when none was open.
- * @throws `ToolError` with `unavailable` for an agent this run did not give the closing of
+ * @throws `ApiError` with `unavailable` for an agent this run did not give the closing of
  * documentation views.
  */
 export function closeAll(): number {

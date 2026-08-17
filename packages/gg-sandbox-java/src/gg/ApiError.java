@@ -10,8 +10,8 @@ package gg;
  * <pre>{@code
  * try {
  *     Views.openText("notes", Files.readTextFile("NOTES.md"));
- * } catch (ToolError failure) {
- *     if (failure.code() != ToolErrorCode.NOT_FOUND) {
+ * } catch (ApiError failure) {
+ *     if (failure.code() != ApiErrorCode.NOT_FOUND) {
  *         throw failure;
  *     }
  *     Views.openText("notes", "there are no notes yet");
@@ -21,27 +21,27 @@ package gg;
  * <p>An unexpected one is best left to escape: the program dies the way its runtime kills it, and
  * what the model reads is the runtime's own dying words — this exception's message, then the stack,
  * in the program's own file and lines. That is why {@link #getMessage()} is
- * <b>{@code `tool` failed (code): what went wrong}</b> rather than gg's sentence alone: an uncaught
- * failure has no second channel to carry the call's name and its class on, and every arm of a study
- * reports one in that same shape. {@link #detail()} is the sentence without them.
+ * <b>{@code `operation` failed (code): what went wrong}</b> rather than gg's sentence alone: an
+ * uncaught failure has no second channel to carry the call's name and its class on, and every arm of
+ * a study reports one in that same shape. {@link #detail()} is the sentence without them.
  */
-public final class ToolError extends RuntimeException {
+public final class ApiError extends RuntimeException {
     private static final long serialVersionUID = 1L;
 
-    private final String tool;
-    private final ToolErrorCode code;
+    private final String operation;
+    private final ApiErrorCode code;
     private final String detail;
 
     /**
      * Build one, which is what this SDK's bridge does when a call comes back a failure.
      *
-     * @param tool the gg tool that failed, under gg's own name for it
+     * @param operation the gg operation that failed, under gg's own name for it
      * @param code the class of failure
      * @param message what went wrong, in gg's words
      */
-    public ToolError(String tool, ToolErrorCode code, String message) {
-        super("`" + tool + "` failed (" + code.wireName() + "): " + message);
-        this.tool = tool;
+    public ApiError(String operation, ApiErrorCode code, String message) {
+        super("`" + operation + "` failed (" + code.wireName() + "): " + message);
+        this.operation = operation;
         this.code = code;
         this.detail = message;
     }
@@ -66,8 +66,8 @@ public final class ToolError extends RuntimeException {
      *
      * @return gg's own key for the call
      */
-    public String tool() {
-        return tool;
+    public String operation() {
+        return operation;
     }
 
     /**
@@ -75,7 +75,7 @@ public final class ToolError extends RuntimeException {
      *
      * @return why the call failed
      */
-    public ToolErrorCode code() {
+    public ApiErrorCode code() {
         return code;
     }
 }

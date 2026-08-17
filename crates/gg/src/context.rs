@@ -1730,7 +1730,7 @@ impl ContextModel {
     }
 }
 
-// The view surface the responses-as-code sandbox membrane drives: `LoopToolApi` services a
+// The view surface the responses-as-code sandbox membrane drives: `LoopOperationApi` services a
 // program's `view.*` calls against the window it holds by value for the turn.
 impl ContextModel {
     /// Close [`TextView`](GgContextSource::TextView) items from the live window, reclaiming their

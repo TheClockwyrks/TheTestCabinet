@@ -5,7 +5,7 @@
 //! compiles it against the process-wide engine, instantiates it against
 //! [`crate::sandbox::linker`] — which carries all fifteen typed interfaces and the whole WASI
 //! surface — and calls the world's `run` export with a program. What a program's `gg.files.readFile`
-//! reaches is [`FakeToolApi`](crate::sandbox::fake), the same fake every other arm's substrate test
+//! reaches is [`FakeOperationApi`](crate::sandbox::fake), the same fake every other arm's substrate test
 //! drives, so a call that arrives here arrived across the canonical ABI with the capability gate and
 //! the recording bracket in place.
 //!
@@ -19,7 +19,7 @@ use wasmtime::Store;
 use wasmtime::component::HasSelf;
 
 use crate::sandbox::RunEnding;
-use crate::sandbox::fake::{CallLog, FakeToolApi};
+use crate::sandbox::fake::{CallLog, FakeOperationApi};
 use crate::sandbox::membrane::{CodeModule, MembraneState, Sandbox};
 use crate::sandbox::{SandboxError, bounded_store, fake, limits::SandboxLimits};
 
@@ -67,20 +67,20 @@ fn warm() {
 fn run_with(program: &str, modules: &[(&str, &str)]) -> Ran {
     warm();
     let log = CallLog::default();
-    let state = fake::membrane_from(FakeToolApi::new(&log));
+    let state = fake::membrane_from(FakeOperationApi::new(&log));
     drive(state, SandboxLimits::default(), program, modules, log)
 }
 
 /// Run one program against a membrane and a set of limits the caller chose.
 fn drive(
-    state: MembraneState<FakeToolApi>,
+    state: MembraneState<FakeOperationApi>,
     limits: SandboxLimits,
     program: &str,
     modules: &[(&str, &str)],
     log: CallLog,
 ) -> Ran {
     let component = super::component().expect("the guest encodes and compiles");
-    let mut store: Store<MembraneState<FakeToolApi>> = bounded_store(state, limits);
+    let mut store: Store<MembraneState<FakeOperationApi>> = bounded_store(state, limits);
     let mut linker = wasmtime::component::Linker::new(crate::sandbox::engine::shared_engine());
     Sandbox::add_to_linker::<_, HasSelf<_>>(&mut linker, |state| state)
         .expect("the membrane links");
@@ -166,7 +166,7 @@ console.log(readTextFile("a.ts").slice(0, 5));
 
 /// **The sixteen names the incumbent reserves are ordinary names here.**
 ///
-/// `buildScope` binds `gg`, `ToolError`, `lib` and thirteen legacy grouping names as FORMAL
+/// `buildScope` binds `gg`, `ApiError`, `lib` and thirteen legacy grouping names as FORMAL
 /// PARAMETERS of the function a program is evaluated as, so `const context = 1` is a `SyntaxError`
 /// about a redeclared parameter — thrown at `Function` construction, with no location at all. A
 /// module has no such thing.
@@ -258,14 +258,14 @@ inner();
     );
 }
 
-/// **A `ToolError` a refused call raised, uncaught, reaches the model** — with the SDK's frames and
+/// **An `ApiError` a refused call raised, uncaught, reaches the model** — with the SDK's frames and
 /// the program's own line under them.
 ///
 /// The refusal is the membrane's own: the scope grants no operations at all, so the host answers
 /// with `unavailable` exactly as it does for a run that was not given the tool. Nothing in the guest
 /// decides this and nothing in the guest catches it.
 #[test]
-fn a_refused_call_reaches_standard_error_as_a_tool_error() {
+fn a_refused_call_reaches_standard_error_as_an_api_error() {
     warm();
     let log = CallLog::default();
     let state = fake::membrane_with(&log, &[], None, crate::sandbox::fake::canned_outcome);
@@ -283,7 +283,7 @@ files.readFile("notes.md");
         "a program that let a refusal escape did not run to its end"
     );
     assert!(
-        ran.stderr.contains("ToolError"),
+        ran.stderr.contains("ApiError"),
         "the thrown value should name itself; stderr was {:?}",
         ran.stderr
     );
@@ -318,7 +318,7 @@ fn a_runaway_loop_is_stopped_by_the_engine_rather_than_by_an_epoch_trap() {
     let capabilities = fake::all_capabilities();
     let operations = fake::all_operations();
     let state = MembraneState::new(
-        FakeToolApi::new(&log),
+        FakeOperationApi::new(&log),
         fake::typescript(),
         crate::sandbox::ProgramScope {
             capabilities: &capabilities,
@@ -393,7 +393,7 @@ console.log("the program itself ended fine");
 /// handler in JavaScript is attached after that instant. Read there, `try { await p } catch`,
 /// `p.catch(…)` and `Promise.allSettled` are all failures — which is every idiomatic way a
 /// JavaScript program handles an error, including the one gg's own prompt teaches a program to
-/// catch a `ToolError` with. The guest holds the rejection until the job queue is empty instead.
+/// catch an `ApiError` with. The guest holds the rejection until the job queue is empty instead.
 ///
 /// Four shapes, and the last one is the one a count cannot fake: two promises rejecting with the
 /// same message, one awaited and one not, must leave exactly one failure behind.
@@ -562,19 +562,19 @@ readFile("a.ts", undefined, undefined);
 // The drift gate, on the artifact rather than on a source file
 // -------------------------------------------------------------------------------------------------
 
-/// **The component binds exactly the tools gg offers.**
+/// **The component binds exactly the operations gg offers.**
 ///
-/// The same assertion `every_registered_language_binds_exactly_the_tools_gg_offers` makes of the ten
+/// The same assertion `every_registered_language_binds_exactly_the_operations_gg_offers` makes of the ten
 /// registered arms, made here of an artifact no arm is registered against yet — because the point of
 /// that gate is to catch a stale `.wasm`, and this one is as capable of being stale as any other. The
 /// list the guest answers with is generated from `crates/gg/wit` by
 /// `packages/gg-sandbox/guest/build.rs`, so a tool gg adds is bound the moment the WIT declares it.
 #[test]
-fn the_ecmascript_guest_binds_exactly_the_tools_gg_offers() {
+fn the_ecmascript_guest_binds_exactly_the_operations_gg_offers() {
     let log = CallLog::default();
-    let state = fake::membrane_from(FakeToolApi::new(&log));
+    let state = fake::membrane_from(FakeOperationApi::new(&log));
     let limits = SandboxLimits::default();
-    let mut store: Store<MembraneState<FakeToolApi>> = bounded_store(state, limits);
+    let mut store: Store<MembraneState<FakeOperationApi>> = bounded_store(state, limits);
     let component = super::component().expect("the guest encodes and compiles");
     let mut linker = wasmtime::component::Linker::new(crate::sandbox::engine::shared_engine());
     Sandbox::add_to_linker::<_, HasSelf<_>>(&mut linker, |state| state)
@@ -583,17 +583,17 @@ fn the_ecmascript_guest_binds_exactly_the_tools_gg_offers() {
     let bound =
         Sandbox::instantiate(&mut store, component, &linker).expect("the guest instantiates");
 
-    let mut bound_tools = bound
-        .call_bound_tools(&mut store)
-        .expect("the guest reports its tools");
-    bound_tools.sort();
-    let mut expected: Vec<String> = crate::sandbox::signatures::sandbox_tool_names()
+    let mut bound_operations = bound
+        .call_bound_operations(&mut store)
+        .expect("the guest reports its operations");
+    bound_operations.sort();
+    let mut expected: Vec<String> = crate::sandbox::signatures::sandbox_operation_names()
         .into_iter()
         .map(str::to_string)
         .collect();
     expected.sort();
     assert_eq!(
-        bound_tools, expected,
+        bound_operations, expected,
         "the ECMAScript guest and gg's tool vocabulary have drifted apart — rebuild it with \
          `packages/gg-sandbox/build.sh`"
     );

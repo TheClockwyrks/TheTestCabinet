@@ -124,7 +124,7 @@ struct dir_entry {
 /// \param path The file to read, relative to the workspace or absolute.
 /// \param window The lines to read; `{}` reads the whole file.
 /// \returns the file's text window, or the picture's description.
-/// \throws gg::core::tool_error `not_found` for a missing path.
+/// \throws gg::core::api_error `not_found` for a missing path.
 files::file_read read_file(std::string_view path, files::read_window window = {});
 
 /// Read a text file and hand back its contents directly, without the narrowing.
@@ -137,7 +137,7 @@ files::file_read read_file(std::string_view path, files::read_window window = {}
 /// \param path The file to read, relative to the workspace or absolute.
 /// \param window The lines to read; `{}` reads the whole file.
 /// \returns the file's text.
-/// \throws gg::core::tool_error `invalid_argument` when the path names a picture, which
+/// \throws gg::core::api_error `invalid_argument` when the path names a picture, which
 ///   `gg::files::read_file` describes and `gg::views::open_file` shows.
 std::string read_text_file(std::string_view path, files::read_window window = {});
 
@@ -152,7 +152,7 @@ std::string read_text_file(std::string_view path, files::read_window window = {}
 ///   created.
 /// \param contents The UTF-8 text to write. It replaces the file entirely.
 /// \returns how many bytes were written.
-/// \throws gg::core::tool_error `invalid_argument` for an empty path, and `io_error` when creating the
+/// \throws gg::core::api_error `invalid_argument` for an empty path, and `io_error` when creating the
 ///   parent directories or the write itself failed.
 std::uint64_t write_file(std::string_view path, std::string_view contents);
 
@@ -166,7 +166,7 @@ std::uint64_t write_file(std::string_view path, std::string_view contents);
 /// \param path The file to edit.
 /// \param old_string The exact text to find, whitespace included. It must appear exactly once.
 /// \param new_string The text to put in its place. An empty string deletes the match.
-/// \throws gg::core::tool_error `not_found` when the text does not appear, and `conflict` — with the
+/// \throws gg::core::api_error `not_found` when the text does not appear, and `conflict` — with the
 ///   number of matches — when it appears more than once.
 void edit_file(std::string_view path, std::string_view old_string, std::string_view new_string);
 
@@ -180,7 +180,7 @@ void edit_file(std::string_view path, std::string_view old_string, std::string_v
 /// \param path The directory to list, relative to the workspace or absolute; empty lists the
 ///   workspace root.
 /// \returns the directory's entries, sorted by name.
-/// \throws gg::core::tool_error `not_found` for a directory that is not there, and `invalid_argument`
+/// \throws gg::core::api_error `not_found` for a directory that is not there, and `invalid_argument`
 ///   for a path that is given but empty.
 std::vector<files::dir_entry> list_dir(std::optional<std::string_view> path = std::nullopt);
 

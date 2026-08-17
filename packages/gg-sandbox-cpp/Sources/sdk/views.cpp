@@ -17,7 +17,7 @@ files::file_read open_file(std::string_view path, files::read_window window) {
   detail::window lines(window);
   sandbox_string_t lowered = scratch.str(path);
   test_cabinet_gg_views_file_read_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_views_open_file_view(&lowered, lines.offset(), lines.limit(), &ret, &err)) {
     detail::fail(err);
   }
@@ -28,7 +28,7 @@ void open_text(std::string_view label, std::string_view body) {
   detail::scratch scratch;
   sandbox_string_t lowered_label = scratch.str(label);
   sandbox_string_t lowered_body = scratch.str(body);
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_views_open_text_view(&lowered_label, &lowered_body, &err)) {
     detail::fail(err);
   }
@@ -37,7 +37,7 @@ void open_text(std::string_view label, std::string_view body) {
 void open_docs_view(std::string_view name) {
   detail::scratch scratch;
   sandbox_string_t lowered = scratch.str(name);
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_views_open_docs_view(&lowered, &err)) detail::fail(err);
 }
 
@@ -45,7 +45,7 @@ std::uint32_t close(std::string_view selector) {
   detail::scratch scratch;
   sandbox_string_t lowered = scratch.str(selector);
   std::uint32_t ret = 0;
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_views_close_view(&lowered, &ret, &err)) detail::fail(err);
   return ret;
 }

@@ -7,7 +7,7 @@ use crate::tools::{Tool, ToolContext, ToolFailure};
 /// The [`ShellData`] an outcome carries, or a failure naming what it carried instead.
 fn shell_data(outcome: &ToolOutcome) -> &ShellData {
     match outcome.data.as_ref() {
-        Some(ToolData::Shell(data)) => data,
+        Some(ApiData::Shell(data)) => data,
         other => panic!("expected shell data, got {other:?}"),
     }
 }

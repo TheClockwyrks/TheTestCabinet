@@ -7,11 +7,11 @@
 //! run passed is the single most common thing a program does with one.
 
 use crate::bindings::test_cabinet::gg::shell;
-use crate::core::ToolError;
+use crate::core::ApiError;
 use crate::wire;
 
-/// The gg tools this module dispatches — see [`files::TOOLS`](crate::files::TOOLS).
-pub(crate) const TOOLS: &[&str] = &["shell"];
+/// The gg tools this module dispatches — see [`files::OPERATIONS`](crate::files::OPERATIONS).
+pub(crate) const OPERATIONS: &[&str] = &["shell"];
 
 
 /// Run a command with `sh -c` in the workspace and hand back its merged stdout and stderr.
@@ -40,7 +40,7 @@ pub(crate) const TOOLS: &[&str] = &["shell"];
 ///
 /// `LimitExceeded` when the timeout killed the process, and `IoError` when it could not be launched.
 #[doc(alias = "ggop:shell.shell")]
-pub fn run(command: &str, timeout_secs: Option<f64>) -> Result<ShellOutput, ToolError> {
+pub fn run(command: &str, timeout_secs: Option<f64>) -> Result<ShellOutput, ApiError> {
     wire::lift(shell::shell(command, timeout_secs)).map(wire::shell_output)
 }
 

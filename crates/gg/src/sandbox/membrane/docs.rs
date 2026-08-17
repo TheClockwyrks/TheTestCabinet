@@ -7,7 +7,7 @@
 //! not perturbed.
 //!
 //! It bypasses [`dispatch`](super::MembraneState) — its deadline guard is wrong for a call that is
-//! not a tool — and goes straight to the [api](super::ToolApi), whose loop-side implementation
+//! not a tool — and goes straight to the [api](super::OperationApi), whose loop-side implementation
 //! answers it against the agent's [`DocsRuntime`](crate::docs).
 //!
 //! # One of the three is unconditional, and two are bought
@@ -26,12 +26,12 @@
 //! material the model reads and every channel into the model is a view.
 
 use super::test_cabinet::gg::docs::{DocHit, DocSearch, Host as DocsHost};
-use super::test_cabinet::gg::types::ToolError;
-use super::{MembraneState, ToolApi};
+use super::test_cabinet::gg::types::ApiError;
+use super::{MembraneState, OperationApi};
 use crate::sandbox::invoker::{DocSearchQuery, ViewRefusal};
 use crate::sandbox::operations::{DOCS_CLOSE, DOCS_CLOSE_ALL, DOCS_SEARCH, OperationId};
 
-impl<A: ToolApi> DocsHost for MembraneState<A> {
+impl<A: OperationApi> DocsHost for MembraneState<A> {
     /// Search the surface this agent binds, hand the program its page, and leave the results in the
     /// window as a view.
     ///
@@ -54,7 +54,7 @@ impl<A: ToolApi> DocsHost for MembraneState<A> {
         kind: Option<String>,
         offset: Option<u32>,
         limit: Option<u32>,
-    ) -> Result<DocSearch, ToolError> {
+    ) -> Result<DocSearch, ApiError> {
         self.recorded(DOCS_SEARCH, |state, rec| {
             let request = DocSearchQuery {
                 query,
@@ -96,7 +96,7 @@ impl<A: ToolApi> DocsHost for MembraneState<A> {
     /// the API call is still opened and still counted as a failure, because "the model reached for
     /// something this agent was not granted" is the fact a comparison of two configurations rests on,
     /// and a refusal that closed no bracket would be invisible to it.
-    fn close_doc_view(&mut self, key: String) -> Result<u32, ToolError> {
+    fn close_doc_view(&mut self, key: String) -> Result<u32, ApiError> {
         self.recorded(DOCS_CLOSE, |state, rec| {
             match state.api(rec).close_docviews(Some(key.clone())) {
                 Ok(closed) => {
@@ -112,7 +112,7 @@ impl<A: ToolApi> DocsHost for MembraneState<A> {
 
     /// Close every documentation view, and report how many went. The blanket form, on the same
     /// terms and behind the same capability.
-    fn close_doc_views(&mut self) -> Result<u32, ToolError> {
+    fn close_doc_views(&mut self) -> Result<u32, ApiError> {
         self.recorded(DOCS_CLOSE_ALL, |state, rec| {
             match state.api(rec).close_docviews(None) {
                 Ok(closed) => {
@@ -130,16 +130,16 @@ impl<A: ToolApi> DocsHost for MembraneState<A> {
     }
 }
 
-impl<A: ToolApi> MembraneState<A> {
+impl<A: OperationApi> MembraneState<A> {
     /// Record a refused documentation call and render it as the error the program will see thrown —
     /// the [view](super::views) family's `refuse_view` for the two calls that live on this
     /// interface rather than on `views`, and filed in the same view report for the same reason:
     /// nothing was dispatched and no tool was withheld.
-    fn refuse_docs(&mut self, id: OperationId, refusal: ViewRefusal) -> ToolError {
+    fn refuse_docs(&mut self, id: OperationId, refusal: ViewRefusal) -> ApiError {
         self.record_view_refusal(&refusal.message);
-        ToolError {
+        ApiError {
             code: super::error_code(Some(refusal.failure)),
-            tool: id.key.to_string(),
+            operation: id.key.to_string(),
             message: refusal.message,
         }
     }

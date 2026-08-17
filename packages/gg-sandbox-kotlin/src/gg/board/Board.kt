@@ -13,7 +13,7 @@
 package gg.board
 
 import gg.core.Patch
-import gg.core.ToolError
+import gg.core.ApiError
 import gg.internal.Read
 import gg.internal.ggCall
 import gg.internal.ggList
@@ -36,7 +36,7 @@ import gg.internal.loweredEpic
  * @param title A short line naming the body of work.
  * @param description What the epic covers, for a reader who has not seen its issues.
  * @return the epic's id, and how much of the board budget is now used
- * @throws ToolError `INVALID_ARGUMENT` when the prefix is not 3-6 letters, and `CONFLICT` when
+ * @throws ApiError `INVALID_ARGUMENT` when the prefix is not 3-6 letters, and `CONFLICT` when
  *   another epic already holds it.
  */
 public fun createEpic(prefix: String, title: String, description: String): EpicCreated {
@@ -78,7 +78,7 @@ public fun createEpic(prefix: String, title: String, description: String): EpicC
  * @param reviewers The agents that must approve the work. Required when this run's reviewers feature
  *   is on.
  * @return the id the board assigned, and how much of the board budget is now used
- * @throws ToolError `INVALID_ARGUMENT` when `agent` or a reviewer is not one to assign, and
+ * @throws ApiError `INVALID_ARGUMENT` when `agent` or a reviewer is not one to assign, and
  *   `CONFLICT` on a blocker edge that would close a cycle.
  */
 public fun createIssue(
@@ -123,7 +123,7 @@ public fun createIssue(
  * @param completionCriteria The completion criteria to replace the old ones with.
  * @param status Where the issue now stands.
  * @param epicId The epic to regroup it under, or `Patch.Clear` to leave it ungrouped.
- * @throws ToolError `NOT_FOUND` for an unknown id.
+ * @throws ApiError `NOT_FOUND` for an unknown id.
  */
 public fun updateIssue(
     id: String,
@@ -153,7 +153,7 @@ public fun updateIssue(
  * @ggop board.set_issue_blocked_by
  * @param id The issue whose blockers to replace.
  * @param blockedBy The ids of every issue that must now be done before it.
- * @throws ToolError `NOT_FOUND` for an unknown id, and `CONFLICT` when an edge would close a cycle.
+ * @throws ApiError `NOT_FOUND` for an unknown id, and `CONFLICT` when an edge would close a cycle.
  */
 public fun setIssueBlockedBy(id: String, vararg blockedBy: String) {
     ggRun("board.set_issue_blocked_by", ggText(id), ggTexts(blockedBy.asIterable()))
@@ -165,7 +165,7 @@ public fun setIssueBlockedBy(id: String, vararg blockedBy: String) {
  * @ggop board.remove_epic
  * @param id The epic to remove.
  * @return how much of the board budget is now used
- * @throws ToolError `NOT_FOUND` for an unknown id.
+ * @throws ApiError `NOT_FOUND` for an unknown id.
  */
 public fun removeEpic(id: String): BoardUsage =
     Read.boardUsage(ggCall("board.remove_epic", ggText(id)))
@@ -176,7 +176,7 @@ public fun removeEpic(id: String): BoardUsage =
  * @ggop board.remove_issue
  * @param id The issue to remove.
  * @return how much of the board budget is now used
- * @throws ToolError `NOT_FOUND` for an unknown id.
+ * @throws ApiError `NOT_FOUND` for an unknown id.
  */
 public fun removeIssue(id: String): BoardUsage =
     Read.boardUsage(ggCall("board.remove_issue", ggText(id)))
@@ -192,7 +192,7 @@ public fun removeIssue(id: String): BoardUsage =
  * @ggop board.wait_for_issue
  * @param id The issue to wait on. It may not be the issue this agent was assigned.
  * @return gg's acknowledgement that the wait is registered
- * @throws ToolError `NOT_FOUND` for an unknown id.
+ * @throws ApiError `NOT_FOUND` for an unknown id.
  */
 public fun waitForIssue(id: String): String =
     ggCall("board.wait_for_issue", ggText(id)).text()
@@ -237,7 +237,7 @@ public data class IssueCreated(val id: String, val board: BoardUsage) {
      *
      * @ggalias board.wait_for_issue
      * @return gg's acknowledgement that the wait is registered
-     * @throws ToolError `NOT_FOUND` when the board no longer holds the issue.
+     * @throws ApiError `NOT_FOUND` when the board no longer holds the issue.
      */
     public fun wait(): String = waitForIssue(id)
 }

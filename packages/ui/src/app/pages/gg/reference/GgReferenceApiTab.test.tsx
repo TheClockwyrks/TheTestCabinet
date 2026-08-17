@@ -59,7 +59,7 @@ const TS_READ_FILE_BODY =
   "Read a file, as either text or a picture.";
 
 const RUST_READ_FILE_BODY =
-  "read_file(path: &str, options: files::ReadOptions) -> Result<files::FileRead, ToolError>\n" +
+  "read_file(path: &str, options: files::ReadOptions) -> Result<files::FileRead, ApiError>\n" +
   "  path: &str — The file to read, relative to the workspace or absolute.\n\n" +
   "Read a file, as either a `FileRead::Text` or a `FileRead::Image`.";
 
@@ -145,7 +145,7 @@ const TYPESCRIPT: GgReferenceApi = {
       operation: "files.read_file",
       // The transitive closure, of which the two "opens" sets are one-level subsets — the
       // discrepancy the page used to explain in a paragraph and now marks per row.
-      types: ["gg.files.ReadOptions", "gg.files.FileRead", "gg.core.ToolError"],
+      types: ["gg.files.ReadOptions", "gg.files.FileRead", "gg.core.ApiError"],
       returns: ["gg.files.FileRead"],
       opensUnderReturn: ["gg.files.FileRead"],
       opensUnderReturnAndParameters: [
@@ -164,11 +164,11 @@ const TYPESCRIPT: GgReferenceApi = {
     },
     {
       kind: "type",
-      fqn: "gg.core.ToolError",
-      name: "ToolError",
+      fqn: "gg.core.ApiError",
+      name: "ApiError",
       module: "core",
       brief: "What a call rejects with.",
-      body: "class ToolError extends Error\nWhat a call rejects with.",
+      body: "class ApiError extends Error\nWhat a call rejects with.",
     },
   ],
 };
@@ -234,7 +234,7 @@ const RUST: GgReferenceApi = {
       module: "session",
       category: "gg-session",
       brief: "End your session.",
-      body: "finish(summary: &str) -> Result<(), ToolError>\n\nEnd your session, reporting what you did.",
+      body: "finish(summary: &str) -> Result<(), ApiError>\n\nEnd your session, reporting what you did.",
       operation: "session.finish",
       ending: "standard",
     },

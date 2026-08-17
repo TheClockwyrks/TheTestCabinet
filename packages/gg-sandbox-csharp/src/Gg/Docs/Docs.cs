@@ -12,7 +12,7 @@ namespace Gg;
 /// A search only ever returns what this agent may actually call. The compiler is less careful — the
 /// SDK is one library and every module of it compiles — so a program can write a call that a search
 /// would never have shown it, and what happens then is a
-/// <see cref="ToolErrorCode.Unavailable"/> naming the capability the run withheld.
+/// <see cref="ApiErrorCode.Unavailable"/> naming the capability the run withheld.
 /// </para>
 /// </remarks>
 /// <ggmodule>docs</ggmodule>
@@ -66,8 +66,8 @@ public static partial class Docs
     /// against <see cref="DocPage.Total"/> to see how much of the answer this page is.
     /// </param>
     /// <returns>one page of matches, best first, and the total behind it.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.InvalidArgument"/> for an empty query with no filter beside it, and
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for an empty query with no filter beside it, and
     /// for a <paramref name="limit"/> of zero, which is a page that could answer nothing.
     /// </exception>
     /// <ggop>docs.search</ggop>
@@ -116,8 +116,8 @@ public static partial class Docs
     /// The fully-qualified name the view was opened under, as <see cref="DocHit.Key"/> reports it.
     /// </param>
     /// <returns>how many views were closed, which is one unless it had already gone.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.Unavailable"/> when this agent may not close documentation views.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.Unavailable"/> when this agent may not close documentation views.
     /// </exception>
     /// <ggop>docs.close</ggop>
     public static uint Close(string key)
@@ -132,8 +132,8 @@ public static partial class Docs
     /// nothing open is not a failure.
     /// </remarks>
     /// <returns>how many views went.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.Unavailable"/> when this agent may not close documentation views.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.Unavailable"/> when this agent may not close documentation views.
     /// </exception>
     /// <ggop>docs.close_all</ggop>
     public static uint CloseAll()

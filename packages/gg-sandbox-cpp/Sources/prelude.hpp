@@ -81,7 +81,7 @@
 
 // == Diagnostics ==
 // The exception hierarchy a `throw` and a `catch` are written in, and the base gg's own
-// `gg::core::tool_error` derives from once a program has included the header declaring it.
+// `gg::core::api_error` derives from once a program has included the header declaring it.
 #include <cassert>
 #include <exception>
 #include <stdexcept>

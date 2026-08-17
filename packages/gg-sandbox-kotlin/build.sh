@@ -86,7 +86,7 @@ TEAVM="$(find "$TEAVM_LIBS" -name '*.jar' | sort | tr '\n' ':')"
 # `gg.internal.Value` and `gg.internal.Frames` — the canonical ABI this SDK reaches gg through and
 # the encoding that travels inside it. Both JVM arms compile the identical two trees into their own
 # jars, because a second implementation of one WIT is the thing the single door exists to avoid; what
-# is NOT shared is the one function above them that raises the arm's own `ToolError`, which here is
+# is NOT shared is the one function above them that raises the arm's own `ApiError`, which here is
 # `gg/internal/Wire.kt` and on the Java arm is `gg/internal/Coding.java`.
 #
 # Written in Java rather than translated, and compiled by `javac` here rather than read as source by

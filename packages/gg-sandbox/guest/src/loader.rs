@@ -10,7 +10,7 @@
 //!
 //! | specifier | what it is | who may import it |
 //! | --- | --- | --- |
-//! | `gg` | the whole SDK: one namespace per family, plus `ToolError` | anybody |
+//! | `gg` | the whole SDK: one namespace per family, plus `ApiError` | anybody |
 //! | `gg:<family>` | one family on its own (`gg:files`, `gg:views`) | anybody |
 //! | `lib:<name>` | a code module from a code skill or a code memory the agent read | anybody |
 //! | `sdk:<path>` | the SDK's own emitted files, and how its relative imports resolve | the SDK |
@@ -25,8 +25,8 @@
 //! # `gg:<family>` and `sdk:gg/<family>.js` are ONE module
 //!
 //! `gg:files` resolves *to* `sdk:gg/files.js` rather than declaring a second copy, so a program and
-//! the SDK share one module instance. Two instances would mean two `ToolError` classes, and the
-//! `error instanceof ToolError` a program writes to narrow a `catch` would be false for an error the
+//! the SDK share one module instance. Two instances would mean two `ApiError` classes, and the
+//! `error instanceof ApiError` a program writes to narrow a `catch` would be false for an error the
 //! SDK threw.
 
 use rquickjs::loader::{ImportAttributes, Loader, Resolver};
@@ -217,19 +217,19 @@ impl Loader for GgLoader {
     }
 }
 
-/// The `gg` module: one namespace per family, and `ToolError` beside them.
+/// The `gg` module: one namespace per family, and `ApiError` beside them.
 ///
 /// Composed from the baked SDK rather than written down, so a family gg grows is importable the
 /// moment its declarations land. `core` is re-exported twice on purpose — as a namespace, because
-/// `gg.core.ToolError` is the name a documentation view of the error type is opened by, and as the
-/// bare `ToolError`, because `catch (error) { if (error instanceof ToolError) … }` is the shape the
+/// `gg.core.ApiError` is the name a documentation view of the error type is opened by, and as the
+/// bare `ApiError`, because `catch (error) { if (error instanceof ApiError) … }` is the shape the
 /// prompt teaches and a qualified name in a `catch` reads as ceremony.
 fn aggregate_source() -> String {
     let mut source = String::new();
     for family in families() {
         source.push_str(&format!("export * as {family} from \"gg:{family}\";\n"));
     }
-    source.push_str("export { ToolError } from \"gg:core\";\n");
+    source.push_str("export { ApiError } from \"gg:core\";\n");
     source
 }
 

@@ -24,8 +24,8 @@ public static partial class Programs
         /// the listing says which program is worth fetching, and this fetches that one.
         /// </remarks>
         /// <returns>this program's source, ready to patch and hand to <see cref="Rerun"/>.</returns>
-        /// <exception cref="ToolException">
-        /// <see cref="ToolErrorCode.NotFound"/> when the library has dropped that turn since the
+        /// <exception cref="ApiException">
+        /// <see cref="ApiErrorCode.NotFound"/> when the library has dropped that turn since the
         /// history was read.
         /// </exception>
         /// <ggop alias="true">programs.get</ggop>

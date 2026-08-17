@@ -13,7 +13,7 @@
 //! before any of these bodies runs. Without it an agent with no library could hand gg a replacement
 //! program for a turn it was never given the capability to replace.
 //!
-//! The two **reads** go straight to the [api](super::ToolApi), because
+//! The two **reads** go straight to the [api](super::OperationApi), because
 //! [`dispatch`](super::MembraneState)'s deadline guard is wrong for a call that is not a tool: a
 //! spent wall-clock budget must not withhold a lookup that reads gg's own memory and touches
 //! nothing. The capability check is not a budget either — it is a fact about what this agent *is*,
@@ -27,18 +27,18 @@
 //! `try`/`catch` and impossible to perform underneath a program that is still running.
 
 use super::test_cabinet::gg::programs::{Host as ProgramsHost, ProgramSummary};
-use super::test_cabinet::gg::types::{ErrorCode, ToolError};
-use super::{MembraneState, ToolApi};
+use super::test_cabinet::gg::types::{ApiError, ErrorCode};
+use super::{MembraneState, OperationApi};
 use crate::sandbox::operations::{PROGRAMS_GET, PROGRAMS_HISTORY, PROGRAMS_RERUN};
 
-impl<A: ToolApi> ProgramsHost for MembraneState<A> {
+impl<A: OperationApi> ProgramsHost for MembraneState<A> {
     /// The programs this agent has run, oldest first — or `unavailable` when it keeps no library.
     ///
     /// A library it *does* keep and has run nothing into is an empty list rather than an error,
     /// which is the honest answer on the first turn of every session. That is exactly why this is a
     /// `result` and not a bare list: the empty answer and the refusal are different facts, and one
     /// list could only tell the model one of them.
-    fn history(&mut self) -> Result<Vec<ProgramSummary>, ToolError> {
+    fn history(&mut self) -> Result<Vec<ProgramSummary>, ApiError> {
         self.recorded(PROGRAMS_HISTORY, |state, rec| {
             Ok(state
                 .api(rec)
@@ -60,14 +60,14 @@ impl<A: ToolApi> ProgramsHost for MembraneState<A> {
     }
 
     /// The source of one program as it was run, or `not-found` naming the turns that are held.
-    fn get(&mut self, turn: Option<u32>) -> Result<String, ToolError> {
+    fn get(&mut self, turn: Option<u32>) -> Result<String, ApiError> {
         self.recorded(PROGRAMS_GET, |state, rec| {
             state
                 .api(rec)
                 .program_source(turn.map(u64::from))
-                .map_err(|refusal| ToolError {
+                .map_err(|refusal| ApiError {
                     code: super::error_code(Some(refusal.failure)),
-                    tool: PROGRAMS_GET.key.to_string(),
+                    operation: PROGRAMS_GET.key.to_string(),
                     message: refusal.message,
                 })
         })
@@ -80,7 +80,7 @@ impl<A: ToolApi> ProgramsHost for MembraneState<A> {
     /// declaration stands — a silently replaced program is a change the model cannot see, the same
     /// argument that makes a succession first-wins — and a blank source is refused rather than
     /// handed to a compiler that would answer with a syntax error about nothing.
-    fn rerun(&mut self, source: String) -> Result<(), ToolError> {
+    fn rerun(&mut self, source: String) -> Result<(), ApiError> {
         // The one host function on this membrane that touches neither the api nor the dispatch path
         // — it writes a field and returns — and it opens the bracket anyway. What is recorded is
         // that the model made the call, which is a fact about the model rather than about what gg
@@ -117,10 +117,10 @@ impl<A: ToolApi> ProgramsHost for MembraneState<A> {
 /// what it says about the model is nothing such a comparison is measuring. The throw the program sees is
 /// the whole report, which is what it is for — the model reads it, drops the second hand-over, and
 /// carries on.
-fn refused(code: ErrorCode, message: &str) -> ToolError {
-    ToolError {
+fn refused(code: ErrorCode, message: &str) -> ApiError {
+    ApiError {
         code,
-        tool: PROGRAMS_RERUN.key.to_string(),
+        operation: PROGRAMS_RERUN.key.to_string(),
         message: message.to_string(),
     }
 }

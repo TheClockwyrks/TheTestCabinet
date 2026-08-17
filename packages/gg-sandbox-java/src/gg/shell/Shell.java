@@ -1,7 +1,7 @@
 package gg.shell;
 
-import gg.ToolError;
-import gg.ToolErrorCode;
+import gg.ApiError;
+import gg.ApiErrorCode;
 import gg.internal.Coding;
 import gg.internal.Read;
 import gg.internal.Value;
@@ -34,8 +34,8 @@ public final class Shell {
      * @param command The command line, run by {@code sh -c} with the workspace as its working
      *     directory.
      * @return what the command printed, and how it exited
-     * @throws ToolError {@link ToolErrorCode#LIMIT_EXCEEDED} when the timeout killed the process,
-     *     and {@link ToolErrorCode#IO_ERROR} when it could not be launched.
+     * @throws ApiError {@link ApiErrorCode#LIMIT_EXCEEDED} when the timeout killed the process,
+     *     and {@link ApiErrorCode#IO_ERROR} when it could not be launched.
      * @ggop shell.shell
      */
     public static ShellOutput shell(String command) {
@@ -50,8 +50,8 @@ public final class Shell {
      * @param timeoutSecs How long to let it run before killing it, in seconds. It is clamped to
      *     whatever is left of the run's wall-clock budget.
      * @return what the command printed, and how it exited
-     * @throws ToolError {@link ToolErrorCode#LIMIT_EXCEEDED} when the timeout killed the process,
-     *     and {@link ToolErrorCode#IO_ERROR} when it could not be launched.
+     * @throws ApiError {@link ApiErrorCode#LIMIT_EXCEEDED} when the timeout killed the process,
+     *     and {@link ApiErrorCode#IO_ERROR} when it could not be launched.
      * @ggop shell.shell
      */
     public static ShellOutput shell(String command, int timeoutSecs) {

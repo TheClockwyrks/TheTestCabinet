@@ -12,25 +12,25 @@ module GG
   # **The model never sees any of this.** Every function above this layer is ordinary Ruby taking
   # ordinary Ruby values; what lives here is the lowering — `nil` to `undefined`, a Symbol to the
   # wire's kebab-cased enum arm, a `BigInt` back to an Integer, a thrown record to a raised
-  # `GG::Core::ToolError`. That split is deliberate: a generic `call(name, hash)` would have been a
+  # `GG::Core::ApiError`. That split is deliberate: a generic `call(name, hash)` would have been a
   # smaller diff and a different experiment.
   #
   # @api private
   module Wire
-    # Make one membrane call and hand back whatever it returned, raising `GG::Core::ToolError` if
+    # Make one membrane call and hand back whatever it returned, raising `GG::Core::ApiError` if
     # it failed.
     #
     # The `try` is written in JavaScript rather than as a Ruby `rescue` because what the generated
     # bindings throw is a bare JavaScript object rather than a Ruby exception, and no `rescue`
     # clause matches one.
     #
-    # @param tool [String] gg's own name for the call, used when the failure carries none
+    # @param operation [String] gg's own key for the call, used when the failure carries none
     # @param family [String] the membrane interface (`files`, `board`, …)
     # @param name [String] the binding's own name on that interface (`readFile`)
     # @param args [Array] the positional arguments, already lowered to JavaScript values
     # @return [Object] the binding's return value, as JavaScript left it
-    # @raise [GG::Core::ToolError] whatever the membrane refused the call with
-    def self.call(tool, family, name, args)
+    # @raise [GG::Core::ApiError] whatever the membrane refused the call with
+    def self.call(operation, family, name, args)
       outcome = %x{
         (function () {
           try {
@@ -41,15 +41,15 @@ module GG
               ),
             };
           } catch (thrown) {
-            return { ok: false, failure: globalThis.__ggFailure(#{tool}, thrown) };
+            return { ok: false, failure: globalThis.__ggFailure(#{operation}, thrown) };
           }
         })()
       }
       return `#{outcome}.value` if `#{outcome}.ok`
 
       failure = `#{outcome}.failure`
-      raise Core::ToolError.new(`#{failure}.tool`, symbol(`#{failure}.code`),
-                                `#{failure}.message`)
+      raise Core::ApiError.new(`#{failure}.operation`, symbol(`#{failure}.code`),
+                               `#{failure}.message`)
     end
 
     # A Ruby value as the membrane's `option<T>`: `nil` becomes `undefined`.

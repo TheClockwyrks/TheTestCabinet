@@ -292,7 +292,7 @@ fn the_response_file_pins_everything_a_compile_must_not_inherit() {
 
     let sdk = [
         path.join("sdk/Files/Files.cs"),
-        path.join("sdk/ToolException.cs"),
+        path.join("sdk/ApiException.cs"),
     ];
     let rendered = response_file(
         path,
@@ -360,7 +360,7 @@ fn the_response_file_pins_everything_a_compile_must_not_inherit() {
         sources,
         [
             "sdk/Files/Files.cs",
-            "sdk/ToolException.cs",
+            "sdk/ApiException.cs",
             "module_Kit.cs",
             "program.cs",
         ],
@@ -380,7 +380,7 @@ fn a_module_is_compiled_as_a_library_because_a_class_body_has_no_entry_point() {
         path,
         Target::Library,
         path,
-        &[path.join("sdk/ToolException.cs")],
+        &[path.join("sdk/ApiException.cs")],
         &[path.join("module_Kit.cs")],
         &path.join("out.dll"),
     )

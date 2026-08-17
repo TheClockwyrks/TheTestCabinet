@@ -1,6 +1,6 @@
 """The private machinery every capability module shares: the decorator that writes a function's gg
 **operation** on the declaration itself, the registry it fills, the answer to the component's
-`bound-tools` export, and the sentence a module gives back for a name it does not declare.
+`bound-operations` export, and the sentence a module gives back for a name it does not declare.
 
 An operation is gg's own stable identity for a model-facing call — `files.read_file`,
 `views.open_text`, `session.finish` — and it is the join key every one of the eleven language arms
@@ -16,8 +16,8 @@ the C# arm's `<ggop>` documentation tag, and it is read twice from the one place
 
 * statically, by `tools/signatures.py`, out of the source's own decorator list — griffe never
   imports this package, so the reflector reads the written text rather than a run-time attribute;
-* dynamically, by `bound_tools` below, out of `REGISTRY`, to answer which gg tools this artifact
-  really binds.
+* dynamically, by `bound_operations` below, out of `REGISTRY`, to answer which gg tools this
+  artifact really binds.
 
 Two readings of one written fact is the whole point. Nothing can drift, because there is nothing for
 the two to drift apart *from*.
@@ -32,18 +32,18 @@ from __future__ import annotations
 import sys
 from typing import Callable, Sequence, TypeVar
 
-# At module scope rather than inside `bound_tools`, because `componentize-py` bakes the import
+# At module scope rather than inside `bound_operations`, because `componentize-py` bakes the import
 # closure it EXECUTES: an import that only runs when the function is called is a module the artifact
 # does not carry, and the export would fail on the one call gg makes to it.
-from .catalogue import GG_TOOLS, TOOL_BOUND
+from .catalogue import GG_OPERATIONS, OPERATION_BOUND
 
 F = TypeVar("F", bound=Callable[..., object])
 
 ATTRIBUTE = "__gg_operation__"
 """The attribute the decorator leaves on a function, naming the operation it binds.
 
-Read by `bound_tools` below, and by nothing else. It is a plain attribute rather than a wrapper so
-that the decorated object *is* the function: its `__name__`, its signature and its docstring are
+Read by `bound_operations` below, and by nothing else. It is a plain attribute rather than a wrapper
+so that the decorated object *is* the function: its `__name__`, its signature and its docstring are
 untouched, which matters because a program can inspect the functions it was given and because the
 reflector reads the same declaration.
 """
@@ -82,7 +82,7 @@ Deliberately a *different* attribute from `ATTRIBUTE`, and deliberately absent f
 alias is not a binding: `gg.board.wait_for_issue` is the one function that binds
 `board.wait_for_issue`, and `IssueCreated.wait` is a shorter way to write a call to it. Registering
 the method too would put a second claim on one operation — which the decorator above refuses
-outright — and would make `bound_tools` report a bound method as though it were a tool.
+outright — and would make `bound_operations` report a bound method as though it were a tool.
 
 It is read the way `ATTRIBUTE` is read statically — `tools/signatures.py` takes the id off the
 written decorator rather than off the object, since griffe never imports this package — and it is
@@ -111,7 +111,7 @@ def alias(id: str) -> Callable[[F], F]:
     return mark
 
 
-def bound_tools() -> list[str]:
+def bound_operations() -> list[str]:
     """The gg tool names this component can bind.
 
     gg calls the component's export in a unit test and asserts set-equality with its own
@@ -120,15 +120,15 @@ def bound_tools() -> list[str]:
     with a stale `.wasm` still checked in.
     """
     # A gg tool is DISPATCHED by the operation that shares its key — `files.write_file` dispatches
-    # `write_file`. The other two rows of `TOOL_BOUND` are a helper and a view that a tool merely
-    # *buys*, and reporting either as a tool would put a name in this answer that gg's own vocabulary
-    # does not hold.
+    # `write_file`. The other two rows of `OPERATION_BOUND` are a helper and a view that a tool
+    # merely *buys*, and reporting either as a tool would put a name in this answer that gg's own
+    # vocabulary does not hold.
     dispatched = {
         tool
-        for operation, tool in TOOL_BOUND.items()
+        for operation, tool in OPERATION_BOUND.items()
         if operation in REGISTRY and operation.split(".", 1)[1] == tool
     }
-    return [tool for tool in GG_TOOLS if tool in dispatched]
+    return [tool for tool in GG_OPERATIONS if tool in dispatched]
 
 
 def missing(module: str, declared: Sequence[str]) -> Callable[[str], object]:

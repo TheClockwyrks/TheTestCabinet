@@ -58,8 +58,8 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::{Value, json};
 
 use super::{
-    ArgumentError, DirEntryData, DirEntryKind, FileImageData, FileTextData, Tool, ToolContext,
-    ToolData, ToolFailure, ToolOutcome, invalid_argument, required_str, saturating_u32,
+    ApiData, ArgumentError, DirEntryData, DirEntryKind, FileImageData, FileTextData, Tool,
+    ToolContext, ToolFailure, ToolOutcome, invalid_argument, required_str, saturating_u32,
 };
 use test_cabinet_core::gg::CAPABILITY_READ_FILE;
 
@@ -401,7 +401,7 @@ impl ReadFileTool {
         // whether the model is actually being shown it — so a structured caller never has to
         // decide whether "cannot be shown to you" appearing in a sentence means it was withheld.
         let described = |shown: bool, why: Option<&str>| {
-            ToolData::FileImage(FileImageData {
+            ApiData::FileImage(FileImageData {
                 media_type: format.media_type.to_string(),
                 label: label.to_string(),
                 bytes: size,
@@ -480,7 +480,7 @@ impl ReadFileTool {
         }
 
         let returned_lines = count_lines(contents.as_bytes());
-        ToolOutcome::ok(output, format!("read {total} bytes")).with_data(ToolData::FileText(
+        ToolOutcome::ok(output, format!("read {total} bytes")).with_data(ApiData::FileText(
             FileTextData {
                 first_line: 1,
                 last_line: returned_lines,
@@ -535,7 +535,7 @@ impl ReadFileTool {
             ));
         }
 
-        let data = ToolData::FileText(FileTextData {
+        let data = ApiData::FileText(FileTextData {
             contents,
             first_line: saturating_u32(start + 1),
             last_line: saturating_u32(end),
@@ -765,7 +765,7 @@ impl WriteFileTool {
             format!("wrote {bytes} bytes"),
             format!("wrote {bytes} bytes"),
         )
-        .with_data(ToolData::BytesWritten(bytes as u64))
+        .with_data(ApiData::BytesWritten(bytes as u64))
     }
 }
 
@@ -991,7 +991,7 @@ impl ListDirTool {
                 .collect::<Vec<_>>()
                 .join("\n")
         };
-        ToolOutcome::ok(output, format!("{count} entries")).with_data(ToolData::DirEntries(
+        ToolOutcome::ok(output, format!("{count} entries")).with_data(ApiData::DirEntries(
             entries.into_iter().map(|(_, entry)| entry).collect(),
         ))
     }

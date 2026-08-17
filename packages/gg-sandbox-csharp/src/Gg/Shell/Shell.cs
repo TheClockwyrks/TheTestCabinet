@@ -2,7 +2,7 @@ namespace Gg;
 
 /// <summary>Run shell commands in the workspace.</summary>
 /// <remarks>
-/// One call, and the way a program reaches everything gg has no tool for: a build, a test run,
+/// One call, and the way a program reaches everything gg has no API for: a build, a test run,
 /// <c>git</c>, <c>curl</c>, a package manager. The workspace is the working directory.
 /// </remarks>
 /// <ggmodule>shell</ggmodule>
@@ -29,9 +29,9 @@ public static partial class Shell
     /// either way it is clamped to what is left of the run's wall-clock budget.
     /// </param>
     /// <returns>what the process reported, including whether the output cap cut what came back.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.LimitExceeded"/> when the timeout killed it, and
-    /// <see cref="ToolErrorCode.IOError"/> when the process could not be started at all.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.LimitExceeded"/> when the timeout killed it, and
+    /// <see cref="ApiErrorCode.IOError"/> when the process could not be started at all.
     /// </exception>
     /// <ggop>shell.shell</ggop>
     public static ShellOutput Run(string command, double? timeoutSeconds = null)

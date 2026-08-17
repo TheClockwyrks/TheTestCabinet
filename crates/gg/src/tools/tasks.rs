@@ -20,7 +20,7 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use super::{
-    ArgumentError, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome, UsagePair,
+    ApiData, ArgumentError, Tool, ToolContext, ToolFailure, ToolOutcome, UsagePair,
     invalid_argument, optional_str, required_str, saturating_u32,
 };
 use crate::model::ToolDefinition;
@@ -61,8 +61,8 @@ fn usage_note(store: &TaskStore) -> String {
 
 /// The two numbers [`usage_note`] renders into a sentence, as the structured sidecar the two
 /// tools that change how many tasks exist carry.
-fn usage_data(store: &TaskStore) -> ToolData {
-    ToolData::TaskUsage(UsagePair {
+fn usage_data(store: &TaskStore) -> ApiData {
+    ApiData::TaskUsage(UsagePair {
         count: saturating_u32(store.count()),
         max: saturating_u32(store.max_tasks()),
     })

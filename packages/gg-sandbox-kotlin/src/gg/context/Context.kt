@@ -9,7 +9,7 @@
  */
 package gg.context
 
-import gg.core.ToolError
+import gg.core.ApiError
 import gg.internal.Read
 import gg.internal.Value
 import gg.internal.ggCall
@@ -30,7 +30,7 @@ import gg.internal.ggTexts
  * @ggop context.evict_file_view
  * @param path The file whose views to drop. Left out, every file that was read is dropped.
  * @return what the eviction reclaimed
- * @throws ToolError `INVALID_ARGUMENT` for a path that is given but empty; leaving it out
+ * @throws ApiError `INVALID_ARGUMENT` for a path that is given but empty; leaving it out
  *   altogether is how every file view is dropped. A path with no view open frees nothing and is not
  *   a failure.
  */
@@ -48,7 +48,7 @@ public fun evictFileView(path: String? = null): ReclaimReport =
  * @ggop context.archive_thread
  * @param ranges The spans of turn numbers to move out of the window.
  * @return what the archive reclaimed
- * @throws ToolError `INVALID_ARGUMENT` for a span whose ends are not turn numbers.
+ * @throws ApiError `INVALID_ARGUMENT` for a span whose ends are not turn numbers.
  */
 public fun archiveThread(vararg ranges: IntRange): ReclaimReport {
     val spans = arrayOfNulls<Value>(ranges.size)
@@ -74,7 +74,7 @@ public fun archiveThread(vararg ranges: IntRange): ReclaimReport {
  * @ggop context.search_archive
  * @param query The substring to look for. Matching is case-insensitive.
  * @return what the search found, and whether there was anything to search
- * @throws ToolError `INVALID_ARGUMENT` for an empty query.
+ * @throws ApiError `INVALID_ARGUMENT` for an empty query.
  */
 public fun searchArchive(query: String): ArchiveSearch =
     Read.archiveSearch(ggCall("context.search_archive", ggText(query)))
@@ -92,7 +92,7 @@ public fun searchArchive(query: String): ArchiveSearch =
  * @ggop context.compact
  * @param summary What the restarted window opens with, written for the agent that resumes.
  * @param files The paths to read afresh into the restarted window. Naming none reads nothing back.
- * @throws ToolError `INVALID_ARGUMENT` for a blank summary. This is the one call gg does not refuse
+ * @throws ApiError `INVALID_ARGUMENT` for a blank summary. This is the one call gg does not refuse
  *   while a compaction is in flight, since nothing else can clear the window.
  */
 public fun compact(summary: String, vararg files: String) {

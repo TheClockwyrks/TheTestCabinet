@@ -1,8 +1,8 @@
 //! **Responses as code** — the wasmtime sandbox that runs an agent's code-shaped response as a
-//! *program over the tools*.
+//! *program over the operations*.
 //!
 //! Under the [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/sandbox/) capability a
-//! model answers a turn by writing a whole **program**, and every gg tool is a distinct, typed
+//! model answers a turn by writing a whole **program**, and every gg operation is a distinct, typed
 //! function in that program's scope. This module is the host: it prepares the program for its
 //! guest through the run's [program language](mod@language), evaluates it inside that language's
 //! embedded [interpreter component](engine) under an execution-timeout and linear-memory ceiling,
@@ -17,7 +17,7 @@
 //! running.
 //!
 //! What does not vary is the surface itself. The trust boundary is a **WIT interface** in which each
-//! tool is its own typed function with its own typed result and its own typed failure, and every
+//! operation is its own typed function with its own typed result and its own typed failure, and every
 //! language's hand-written SDK binds that same interface: what differs between two arms is the
 //! spelling of a call, never which calls exist. Nothing the interface does not declare is reachable.
 //!
@@ -76,7 +76,7 @@
 //!
 //! Under this capability every reply is a program, so there is no prose turn that could mean "I am
 //! done". [`FINISH_FUNCTION`] is what means it, and it is the only thing that does: it is a typed
-//! membrane function like every tool, but it dispatches nothing and is bound whatever the run
+//! membrane function like every operation, but it dispatches nothing and is bound whatever the run
 //! enables. What it does is **set a flag in the agent's host-side context**
 //! ([`MembraneState`](membrane)) and return. The program runs on; the loop reads the flag once the
 //! program has ended. Which ending an agent may declare is its [role](membrane::RunEnding)'s, and
@@ -105,7 +105,7 @@ mod operations;
 mod outcome;
 pub(crate) mod signatures;
 
-pub use invoker::ToolApi;
+pub use invoker::OperationApi;
 pub use language::{
     FileWindow, PARAM_LANGUAGE, PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage,
     all_languages, language, library_set, resolve_program_language, spell,
@@ -349,7 +349,7 @@ impl ProgramScope<'_> {
 /// [prepare step](ProgramLanguage::prepare_program) — which for a language that
 /// [compiles](ProgramLanguage::prepare_compiles) is a compiler, and is timed as
 /// [`SandboxOutcome::compile`](outcome::SandboxOutcome::compile) precisely because it is not free.
-pub fn run_program<A: ToolApi>(
+pub fn run_program<A: OperationApi>(
     language: &'static dyn ProgramLanguage,
     program: &str,
     scope: ProgramScope<'_>,
@@ -402,7 +402,7 @@ pub fn run_program<A: ToolApi>(
 /// [`compile`](SandboxOutcome::compile) is `None` here, and that is an absence rather than a
 /// missing measurement: what preparing this script cost was charged where it was spent, at the read,
 /// onto [`KnowledgeModules::take_compile`](crate::knowledge::KnowledgeModules::take_compile).
-pub fn run_prepared_program<A: ToolApi>(
+pub fn run_prepared_program<A: OperationApi>(
     language: &'static dyn ProgramLanguage,
     prepared: PreparedProgram,
     scope: ProgramScope<'_>,
@@ -419,7 +419,7 @@ pub fn run_prepared_program<A: ToolApi>(
 
 /// Instantiate the component this program is evaluated by and run it — everything both entry points
 /// do once there is a [`PreparedProgram`] in hand.
-fn evaluate<A: ToolApi>(
+fn evaluate<A: OperationApi>(
     language: &'static dyn ProgramLanguage,
     prepared: PreparedProgram,
     scope: ProgramScope<'_>,
@@ -518,7 +518,7 @@ fn evaluate<A: ToolApi>(
 /// gg imposed rather than anything the program said about itself, and a program that reported an
 /// error and *then* ran away must be reported as the runaway — otherwise a loop after a caught
 /// failure would be recorded as the caught failure.
-fn keep_reported_error<A: ToolApi>(
+fn keep_reported_error<A: OperationApi>(
     returned: Result<(), SandboxError>,
     store: &Store<MembraneState<A>>,
 ) -> Result<(), SandboxError> {
@@ -530,8 +530,8 @@ fn keep_reported_error<A: ToolApi>(
 
 /// A linker carrying the whole membrane, and the host's WASI beside it.
 ///
-/// The membrane is every one of the thirty-two typed gg tool functions, the four model-facing
-/// carve-outs that are not tools (the [`finish`](FINISH_FUNCTION) that ends the run, the
+/// The membrane is every one of the thirty-two typed gg operations, the four model-facing
+/// carve-outs that no tool backs (the [`finish`](FINISH_FUNCTION) that ends the run, the
 /// documentation lookups, the view calls a program puts material into its own window with, and the
 /// [program library](crate::programs) it reaches back through for a program it already ran), and the
 /// shim's feedback channel. That is the whole of what a program can ask *gg* for. Everything a
@@ -570,7 +570,7 @@ fn keep_reported_error<A: ToolApi>(
 /// process's stdout (`crate::telemetry`, newline-delimited JSON), so a guest write to fd 1 would
 /// corrupt the run's event stream. [`MembraneState`]'s context is built without it, and
 /// `console.*` is rebound to the feedback channel instead.
-fn linker<A: ToolApi>() -> Result<Linker<MembraneState<A>>, SandboxError> {
+fn linker<A: OperationApi>() -> Result<Linker<MembraneState<A>>, SandboxError> {
     let mut linker = Linker::new(engine::shared_engine());
     Sandbox::add_to_linker::<_, HasSelf<_>>(&mut linker, |state| state)
         .map_err(|error| SandboxError::Engine(error.to_string()))?;
@@ -613,7 +613,7 @@ fn linker<A: ToolApi>() -> Result<Linker<MembraneState<A>>, SandboxError> {
 /// runaway loop and not a guest parked inside a synchronous WASI call — a `wasi:io/poll` sleep, a
 /// blocking socket read. No guest gg ships today can reach that; the ones being added can. See
 /// [`limits`](limits#what-the-timeout-cannot-stop-and-who-has-to-care) for what closing it takes.
-fn bounded_store<A: ToolApi>(
+fn bounded_store<A: OperationApi>(
     state: MembraneState<A>,
     limits: SandboxLimits,
 ) -> Store<MembraneState<A>> {
@@ -727,10 +727,10 @@ pub fn prepare_module(
 /// toolset.
 pub const FINISH_FUNCTION: &str = "finish";
 
-/// The gg tool names `language`'s **component itself** says it can bind.
+/// The gg operation names `language`'s **component itself** says it can bind.
 ///
 /// This asks the artifact rather than a source file, which is the one drift no compiler and no
-/// source-level test can catch: a tool added, renamed or removed in gg with a stale `.wasm` still
+/// source-level test can catch: an operation added, renamed or removed in gg with a stale `.wasm` still
 /// checked in. It exists only for that test — a run never needs to ask, because the run's own
 /// enabled set is what it passes in.
 ///
@@ -740,13 +740,13 @@ pub const FINISH_FUNCTION: &str = "finish";
 /// evidence in the compiled case rather than weaker — it cannot be stale, because it was built from
 /// this checkout's SDK moments earlier.
 #[cfg(test)]
-pub(crate) fn component_bound_tools(
+pub(crate) fn component_bound_operations(
     language: &'static dyn ProgramLanguage,
     artifact: Option<Vec<u8>>,
 ) -> Result<Vec<String>, SandboxError> {
     let (holder, _) = engine::program_component(language, artifact)?;
     let component = holder.get();
-    let linker = linker::<fake::FakeToolApi>()?;
+    let linker = linker::<fake::FakeOperationApi>()?;
     let limits = SandboxLimits::default();
     let log = fake::CallLog::default();
     // Nothing at all is offered: the guest reports what it *can* bind, which does not depend on
@@ -757,13 +757,19 @@ pub(crate) fn component_bound_tools(
         modules: &[],
         ending: RunEnding::None,
     };
-    let state = MembraneState::new(fake::FakeToolApi::new(&log), language, scope, limits, None);
+    let state = MembraneState::new(
+        fake::FakeOperationApi::new(&log),
+        language,
+        scope,
+        limits,
+        None,
+    );
     let mut store = bounded_store(state, limits);
 
     let bound = Sandbox::instantiate(&mut store, component, &linker)
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Instantiate))?;
     bound
-        .call_bound_tools(&mut store)
+        .call_bound_operations(&mut store)
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap))
 }
 
@@ -776,7 +782,7 @@ pub(crate) fn component_bound_tools(
 /// It is named `reclaim` and not `finish` because `finish` now means something specific to a reader
 /// of this crate: the one model-facing call that ends the run ([`FINISH_FUNCTION`]). Two unrelated
 /// meanings of that word inside one module is exactly the confusion this rename removes.
-fn reclaim<A: ToolApi>(
+fn reclaim<A: OperationApi>(
     store: Store<MembraneState<A>>,
     returned: Result<(), SandboxError>,
     compile: Option<Duration>,

@@ -20,7 +20,7 @@ inside it are decided by gg's own WIT rather than by which compiler wrote the by
 copy would be a second implementation of one contract to keep in step, forever, by hand.
 
 What is **not** here is the one function above the frames that raises a failure. Each arm's
-`ToolError` is a model-facing class with its own documentation and its own catalogue entry, so
+`ApiError` is a model-facing class with its own documentation and its own catalogue entry, so
 `gg.internal.Coding` on the Java side and `gg.internal.ggCall` on the Kotlin side are each that
 arm's own.
 

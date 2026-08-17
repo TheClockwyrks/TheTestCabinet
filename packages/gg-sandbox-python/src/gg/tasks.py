@@ -95,7 +95,7 @@ def add_task(
         The task budget the addition left behind.
 
     Raises:
-        ToolError: `invalid-argument` for a blank id or title, `conflict` on a duplicate id or an
+        ApiError: `invalid-argument` for a blank id or title, `conflict` on a duplicate id or an
             edge that would close a cycle, `not-found` for an unknown blocker, and `limit-exceeded`
             at the task cap.
     """
@@ -133,7 +133,7 @@ def update_task(
         status: Where the task now stands. The default keeps the status it has.
 
     Raises:
-        ToolError: `invalid-argument` when no field was supplied or one was blanked, and `not-found`
+        ApiError: `invalid-argument` when no field was supplied or one was blanked, and `not-found`
             for an unknown id.
     """
     _call(
@@ -157,7 +157,7 @@ def set_blocked_by(id: str, blocked_by: list[str]) -> None:
             all.
 
     Raises:
-        ToolError: `invalid-argument` for a blank id or blocker, `not-found` for a task or blocker
+        ApiError: `invalid-argument` for a blank id or blocker, `not-found` for a task or blocker
             that is not on the list, and `conflict` when an edge would close a cycle or block the
             task on itself.
     """
@@ -174,7 +174,7 @@ def complete_task(id: str) -> None:
         id: The task to mark done.
 
     Raises:
-        ToolError: `not-found` for an unknown id.
+        ApiError: `not-found` for an unknown id.
     """
     _call(wire.complete_task, id)
 
@@ -190,7 +190,7 @@ def remove_task(id: str) -> TaskUsage:
         The task budget the removal left behind.
 
     Raises:
-        ToolError: `not-found` for an unknown id.
+        ApiError: `not-found` for an unknown id.
     """
     return _usage(_call(wire.remove_task, id))
 

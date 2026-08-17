@@ -12,7 +12,7 @@
 //! rewrites the middle.
 
 use crate::bindings::test_cabinet::gg::docs;
-use crate::core::ToolError;
+use crate::core::ApiError;
 use crate::wire;
 
 /// Search the bound modules, functions and types by keyword, by module, or by both — best match first.
@@ -52,7 +52,7 @@ use crate::wire;
 /// matched* are different answers — and when [`limit`](SearchOptions::limit) is `Some(0)`, which is a
 /// page that could never answer anything.
 #[doc(alias = "ggop:docs.search")]
-pub fn search(query: &str, options: SearchOptions<'_>) -> Result<DocSearch, ToolError> {
+pub fn search(query: &str, options: SearchOptions<'_>) -> Result<DocSearch, ApiError> {
     wire::lift(docs::search(
         query,
         options.module,
@@ -83,7 +83,7 @@ pub fn search(query: &str, options: SearchOptions<'_>) -> Result<DocSearch, Tool
 ///
 /// `Unavailable` when this agent was not given the capability that buys closing documentation.
 #[doc(alias = "ggop:docs.close")]
-pub fn close(key: &str) -> Result<u32, ToolError> {
+pub fn close(key: &str) -> Result<u32, ApiError> {
     wire::lift(docs::close_doc_view(key))
 }
 
@@ -100,7 +100,7 @@ pub fn close(key: &str) -> Result<u32, ToolError> {
 ///
 /// `Unavailable` when this agent was not given the capability that buys closing documentation.
 #[doc(alias = "ggop:docs.close_all")]
-pub fn close_all() -> Result<u32, ToolError> {
+pub fn close_all() -> Result<u32, ApiError> {
     wire::lift(docs::close_doc_views())
 }
 

@@ -95,7 +95,7 @@ class MemoryHit:
                 now bound at.
 
         Raises:
-            ToolError: `not-found` when the memory has since been deleted.
+            ApiError: `not-found` when the memory has since been deleted.
         """
         return read_memory(self.name)
 
@@ -164,7 +164,7 @@ def write_memory(
             is worth checking before subtracting.
 
     Raises:
-        ToolError: `conflict` on a duplicate name, and `limit-exceeded` when the body would breach
+        ApiError: `conflict` on a duplicate name, and `limit-exceeded` when the body would breach
             the run's caps — revising or deleting a memory is the way out, rather than accruing more.
     """
     return _usage(_call(wire.write_memory, _input(name, description, body, code, on_use)))
@@ -194,7 +194,7 @@ def update_memory(
         The memory budget the replacement left behind.
 
     Raises:
-        ToolError: `not-found` when no memory has that name.
+        ApiError: `not-found` when no memory has that name.
     """
     return _usage(_call(wire.update_memory, _input(name, description, body, code, on_use)))
 
@@ -223,7 +223,7 @@ def create_memory(
         The memory budget the new memory left behind.
 
     Raises:
-        ToolError: `invalid-argument` for a blank field or a slug with characters a name may not
+        ApiError: `invalid-argument` for a blank field or a slug with characters a name may not
             hold, `conflict` on a duplicate slug, and `limit-exceeded` when the contents, or the
             index entry, would breach a limit.
     """
@@ -245,7 +245,7 @@ def read_memory(name: str) -> str:
             bound at.
 
     Raises:
-        ToolError: `not-found` when no memory has that slug.
+        ApiError: `not-found` when no memory has that slug.
     """
     return _call(wire.read_memory, name)
 
@@ -265,7 +265,7 @@ def edit_memory(name: str, search: str, replace: str) -> MemoryUsage:
         The memory budget the revision left behind.
 
     Raises:
-        ToolError: `not-found` when the text does not appear, `conflict` when it appears more than
+        ApiError: `not-found` when the text does not appear, `conflict` when it appears more than
             once, `limit-exceeded` when the result would be too long, and `invalid-argument` when the
             edit would leave the memory empty — deleting it is the way to do that.
     """
@@ -291,7 +291,7 @@ def search_memories(keywords: list[str]) -> list[MemoryHit]:
             by. A search that matches nothing is an empty list.
 
     Raises:
-        ToolError: `invalid-argument` when every keyword is empty.
+        ApiError: `invalid-argument` when every keyword is empty.
     """
     hits = _call(wire.search_memories, _strings("search_memories", "keywords", keywords))
     return [
@@ -317,7 +317,7 @@ def delete_memory(name: str) -> MemoryUsage:
         The memory budget the eviction left behind.
 
     Raises:
-        ToolError: `not-found` when no memory has that name.
+        ApiError: `not-found` when no memory has that name.
     """
     return _usage(_call(wire.delete_memory, name))
 

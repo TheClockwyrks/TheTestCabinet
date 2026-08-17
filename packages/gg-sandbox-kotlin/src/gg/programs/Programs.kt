@@ -13,7 +13,7 @@
  */
 package gg.programs
 
-import gg.core.ToolError
+import gg.core.ApiError
 import gg.internal.Read
 import gg.internal.ggCall
 import gg.internal.ggNumber
@@ -34,7 +34,7 @@ import gg.internal.ggText
  *
  * @ggop programs.history
  * @return every program this session has run, oldest first
- * @throws ToolError `UNAVAILABLE` when this agent keeps no program library.
+ * @throws ApiError `UNAVAILABLE` when this agent keeps no program library.
  */
 public fun history(): List<ProgramSummary> =
     Read.programSummaries(ggCall("programs.history"))
@@ -51,7 +51,7 @@ public fun history(): List<ProgramSummary> =
  * @param turn The turn whose program to fetch, as the history reports it. Left out, the most recent
  *   program comes back.
  * @return the source of the program that ran on that turn
- * @throws ToolError `NOT_FOUND`, naming the turns that are held, for a turn that ran no program or
+ * @throws ApiError `NOT_FOUND`, naming the turns that are held, for a turn that ran no program or
  *   one the library has dropped.
  */
 public fun get(turn: Int? = null): String = ggCall("programs.get", ggNumber(turn)).text()
@@ -69,7 +69,7 @@ public fun get(turn: Int? = null): String = ggCall("programs.get", ggNumber(turn
  *
  * @ggop programs.rerun
  * @param source The program to run in place of this one, as Kotlin. It may not be blank.
- * @throws ToolError `REFUSED` for a second hand-over in one turn, and `INVALID_ARGUMENT` for a blank
+ * @throws ApiError `REFUSED` for a second hand-over in one turn, and `INVALID_ARGUMENT` for a blank
  *   source.
  */
 public fun rerun(source: String) {
@@ -103,7 +103,7 @@ public data class ProgramSummary(
      *
      * @ggalias programs.get
      * @return the source of the program that ran on that turn
-     * @throws ToolError `NOT_FOUND` when the library has dropped that turn since the history was
+     * @throws ApiError `NOT_FOUND` when the library has dropped that turn since the history was
      *   read.
      */
     public fun source(): String = get(turn)

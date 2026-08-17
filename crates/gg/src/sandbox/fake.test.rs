@@ -1,4 +1,4 @@
-//! The in-memory tool double the sandbox's tests drive the membrane with.
+//! The in-memory operation double the sandbox's tests drive the membrane with.
 //!
 //! It exists so the membrane's thirty-two functions can be exercised without a workspace, a tokio
 //! runtime, or the loop — and, in the end-to-end tests, so a program's real behaviour can be
@@ -16,7 +16,7 @@ use std::time::Instant;
 use serde_json::{Value, json};
 
 use test_cabinet_core::gg::{
-    CAPABILITY_DOCVIEW_CLOSE, CAPABILITY_PROGRAM_LIBRARY, GgProgramLanguage, GgToolFailure,
+    CAPABILITY_DOCVIEW_CLOSE, CAPABILITY_PROGRAM_LIBRARY, GgCallFailure, GgProgramLanguage,
 };
 
 use super::invoker::{
@@ -25,7 +25,7 @@ use super::invoker::{
 use super::language::ProgramLanguage;
 use super::membrane::{MembraneState, RunEnding};
 use super::operations::{OperationId, capability_operations, gating_capabilities};
-use super::{ProgramScope, SandboxLimits, ToolApi};
+use super::{OperationApi, ProgramScope, SandboxLimits};
 use crate::board::IssueStatus;
 use crate::context::{FileRegion, OpenViewInfo, SEARCH_RESULTS_VIEW, ViewKind};
 use crate::docs::DocSearch;
@@ -35,9 +35,9 @@ use crate::model::ImageContent;
 use crate::programs::{ProgramLibrary, ProgramRefusal, ProgramSummary};
 use crate::tasks::TaskStatus;
 use crate::tools::{
-    ArchiveHitData, ArchiveSearchData, BoardNodeData, BoardUsageData, DirEntryData, DirEntryKind,
-    FileImageData, FileTextData, MemoryHitData, MemoryUsageData, ReclaimData, ShellData,
-    SubagentHandleData, SubagentResultData, ToolData, ToolFailure, ToolOutcome, UsagePair,
+    ApiData, ArchiveHitData, ArchiveSearchData, BoardNodeData, BoardUsageData, DirEntryData,
+    DirEntryKind, FileImageData, FileTextData, MemoryHitData, MemoryUsageData, ReclaimData,
+    ShellData, SubagentHandleData, SubagentResultData, ToolFailure, ToolOutcome, UsagePair,
 };
 
 /// The [program language](ProgramLanguage) the sandbox's own tests drive: **TypeScript**.
@@ -100,7 +100,7 @@ impl CallLog {
         self.calls().into_iter().map(|call| call.name).collect()
     }
 
-    /// Record one call, in order — the recording half the typed [`FakeToolApi`] shares with the
+    /// Record one call, in order — the recording half the typed [`FakeOperationApi`] shares with the
     /// [`FakeInvoker`].
     #[allow(dead_code)]
     pub(crate) fn push(&self, call: RecordedCall) {
@@ -119,17 +119,17 @@ impl CallLog {
     }
 }
 
-/// How a [`FakeToolApi`] answers one call: named so the boxed form stays readable, and so a test
+/// How a [`FakeOperationApi`] answers one call: named so the boxed form stays readable, and so a test
 /// can pass a plain function (the canned table) or a closure that fails a specific tool.
 type Responder = dyn FnMut(&str, &Value) -> ToolOutcome + Send;
 
-/// The typed tool double under test: the [`ToolApi`] the membrane calls after the stage-2
+/// The typed operation double under test: the [`OperationApi`] the membrane calls after the stage-2
 /// inversion.
 ///
-/// Each method builds the *same* JSON the production [`LoopToolApi`](crate::agent::LoopToolApi)
+/// Each method builds the *same* JSON the production [`LoopOperationApi`](crate::agent::LoopOperationApi)
 /// records for that call, logs it, and answers with the canned outcome — so every `log.args("tool")`
 /// assertion written against the old membrane keeps holding against the typed path.
-pub(crate) struct FakeToolApi {
+pub(crate) struct FakeOperationApi {
     /// Where calls are recorded, shared with the test that built it.
     log: CallLog,
     /// How a call is answered. Boxed so a test can substitute a failing or asserting responder.
@@ -140,7 +140,7 @@ pub(crate) struct FakeToolApi {
     /// the membrane's own tests have no reason to stand up. What they *do* need is that the four
     /// view calls behave like one another — that an open is visible to a `current`, that a close
     /// removes what it names and reports how many — so the double models exactly that and no more.
-    /// The caps are not modelled at all: they live in `LoopToolApi`, which is where the window is.
+    /// The caps are not modelled at all: they live in `LoopOperationApi`, which is where the window is.
     views: Vec<OpenViewInfo>,
     /// The [program library](crate::programs) this double answers `programs.history` / `programs.get`
     /// from — a real one, because it is a small self-contained value with the retention already in
@@ -157,7 +157,7 @@ pub(crate) struct FakeToolApi {
     api: ApiLog,
 }
 
-/// The API calls a [`FakeToolApi`] was bracketed with, shared through an `Arc` for the reason
+/// The API calls a [`FakeOperationApi`] was bracketed with, shared through an `Arc` for the reason
 /// [`CallLog`] is: the api is moved into the store and cannot be borrowed back.
 #[derive(Clone, Default)]
 pub(crate) struct ApiLog(Arc<Mutex<Vec<RecordedApiCall>>>);
@@ -175,7 +175,7 @@ pub(crate) struct RecordedApiCall {
     /// The class the call threw with, on a call that threw — `None` on a success and on a call
     /// that never closed. Recorded because the class is the only thing that says *why* an API call
     /// the model made failed, and for the calls no tool backs it is the only record at all.
-    pub(crate) failure: Option<GgToolFailure>,
+    pub(crate) failure: Option<GgCallFailure>,
 }
 
 #[allow(dead_code)]
@@ -211,7 +211,7 @@ impl ApiLog {
 
     /// Close the most recent open record for `operation` — the innermost one, so a call nested
     /// inside another closes its own bracket rather than its parent's.
-    fn end(&self, operation: &str, failure: Option<GgToolFailure>) {
+    fn end(&self, operation: &str, failure: Option<GgCallFailure>) {
         let mut calls = self.0.lock().expect("the api log is never poisoned");
         if let Some(call) = calls
             .iter_mut()
@@ -225,7 +225,7 @@ impl ApiLog {
 }
 
 #[allow(dead_code)]
-impl FakeToolApi {
+impl FakeOperationApi {
     /// An api answering every gg tool with a plausible, correctly typed outcome.
     pub(crate) fn new(log: &CallLog) -> Self {
         Self::with(log, canned_outcome)
@@ -303,12 +303,12 @@ impl FakeToolApi {
 }
 
 #[allow(dead_code)]
-impl ToolApi for FakeToolApi {
+impl OperationApi for FakeOperationApi {
     fn begin_api_call(&mut self, call: ApiIdentity<'_>) {
         self.api.begin(call);
     }
 
-    fn end_api_call(&mut self, call: ApiIdentity<'_>, failure: Option<GgToolFailure>) {
+    fn end_api_call(&mut self, call: ApiIdentity<'_>, failure: Option<GgCallFailure>) {
         self.api.end(call.operation, failure);
     }
 
@@ -636,7 +636,7 @@ impl ToolApi for FakeToolApi {
             };
         }
         let region = match &outcome.data {
-            Some(ToolData::FileText(text)) => FileRegion::covered(
+            Some(ApiData::FileText(text)) => FileRegion::covered(
                 text.first_line.into(),
                 text.last_line.into(),
                 text.total_lines.into(),
@@ -719,7 +719,7 @@ fn issue_status_word(status: IssueStatus) -> &'static str {
 }
 
 /// A plausible outcome for every gg tool the sandbox binds, carrying the same
-/// [structured sidecar](ToolData) the real tool emits.
+/// [structured sidecar](ApiData) the real tool emits.
 ///
 /// The payloads are deliberately *specific* (an `a.ts` file, a `sub` directory, an exit code of
 /// zero unless the command says otherwise) so a test can assert on them without arranging anything,
@@ -736,10 +736,10 @@ pub(crate) fn canned_outcome(name: &str, args: &Value) -> ToolOutcome {
         "shell" => shell_outcome(&string("command")),
         "read_file" => read_outcome(&string("path")),
         "write_file" => ToolOutcome::ok("wrote the file", "wrote")
-            .with_data(ToolData::BytesWritten(string("contents").len() as u64)),
+            .with_data(ApiData::BytesWritten(string("contents").len() as u64)),
         "edit_file" => ToolOutcome::ok("edited the file", "edited"),
         "list_dir" => ToolOutcome::ok("a.ts\nb.test.ts\nsub/", "3 entries").with_data(
-            ToolData::DirEntries(vec![
+            ApiData::DirEntries(vec![
                 DirEntryData {
                     name: "a.ts".to_string(),
                     kind: DirEntryKind::File,
@@ -756,7 +756,7 @@ pub(crate) fn canned_outcome(name: &str, args: &Value) -> ToolOutcome {
         ),
         "read_skill" => ToolOutcome::ok("the skill body", "read a skill"),
         "write_memory" | "update_memory" | "create_memory" | "edit_memory" | "delete_memory" => {
-            ToolOutcome::ok("noted", "memory").with_data(ToolData::MemoryUsage(MemoryUsageData {
+            ToolOutcome::ok("noted", "memory").with_data(ApiData::MemoryUsage(MemoryUsageData {
                 count: 1,
                 max_count: Some(8),
                 total_chars: 12,
@@ -767,7 +767,7 @@ pub(crate) fn canned_outcome(name: &str, args: &Value) -> ToolOutcome {
         }
         "read_memory" => ToolOutcome::ok("the memory contents", "read a memory"),
         "search_memories" => ToolOutcome::ok("1 of 1 memories match", "searched memories")
-            .with_data(ToolData::MemoryHits(vec![MemoryHitData {
+            .with_data(ApiData::MemoryHits(vec![MemoryHitData {
                 name: "build-commands".to_string(),
                 description: "How to build".to_string(),
                 matched: 2,
@@ -775,29 +775,29 @@ pub(crate) fn canned_outcome(name: &str, args: &Value) -> ToolOutcome {
                 excerpt: "…cargo nextest run --workspace…".to_string(),
             }])),
         "add_task" | "remove_task" => ToolOutcome::ok("noted", "task")
-            .with_data(ToolData::TaskUsage(UsagePair { count: 2, max: 20 })),
+            .with_data(ApiData::TaskUsage(UsagePair { count: 2, max: 20 })),
         "update_task" | "set_blocked_by" | "complete_task" => ToolOutcome::ok("noted", "task"),
         // The two creations report the id gg assigned as well as the budget; the removals report
         // the budget alone.
         "create_epic" => {
-            ToolOutcome::ok("noted", "board").with_data(ToolData::BoardNode(BoardNodeData {
+            ToolOutcome::ok("noted", "board").with_data(ApiData::BoardNode(BoardNodeData {
                 id: "EPIC".to_string(),
                 board: fake_board_usage(),
             }))
         }
         "create_issue" => {
-            ToolOutcome::ok("noted", "board").with_data(ToolData::BoardNode(BoardNodeData {
+            ToolOutcome::ok("noted", "board").with_data(ApiData::BoardNode(BoardNodeData {
                 id: "EPIC-1".to_string(),
                 board: fake_board_usage(),
             }))
         }
         "remove_epic" | "remove_issue" => {
-            ToolOutcome::ok("noted", "board").with_data(ToolData::BoardUsage(fake_board_usage()))
+            ToolOutcome::ok("noted", "board").with_data(ApiData::BoardUsage(fake_board_usage()))
         }
         "update_issue" | "set_issue_blocked_by" => ToolOutcome::ok("noted", "board"),
         "wait_for_issue" => ToolOutcome::ok("wait registered", "wait registered"),
         "evict_file_view" | "archive_thread" => ToolOutcome::ok("reclaimed", "reclaimed")
-            .with_data(ToolData::Reclaim(ReclaimData {
+            .with_data(ApiData::Reclaim(ReclaimData {
                 items: 2,
                 reclaimed_tokens: 300,
                 paths: vec!["src/a.ts".to_string()],
@@ -816,32 +816,32 @@ pub(crate) fn canned_outcome(name: &str, args: &Value) -> ToolOutcome {
         // A fork's dispatch waits for the end of the turn, but its handle does not: the id is
         // minted at the call so the program can name the copy, which is why this carries the same
         // sidecar a spawn does.
-        "fork" => ToolOutcome::ok("forked", "forked").with_data(ToolData::SubagentSpawned(
+        "fork" => ToolOutcome::ok("forked", "forked").with_data(ApiData::SubagentSpawned(
             SubagentHandleData {
                 id: "agent-2".to_string(),
                 slot: "primary".to_string(),
                 model_id: "test/model".to_string(),
             },
         )),
-        "search_archive" => ToolOutcome::ok("1 hit", "searched").with_data(
-            ToolData::ArchiveSearch(ArchiveSearchData {
+        "search_archive" => ToolOutcome::ok("1 hit", "searched").with_data(ApiData::ArchiveSearch(
+            ArchiveSearchData {
                 archive_empty: false,
                 hits: vec![ArchiveHitData {
                     seq: 3,
                     role: crate::model::Role::Assistant,
                     text: "the earlier answer".to_string(),
                 }],
-            }),
-        ),
+            },
+        )),
         "spawn_subagent" => ToolOutcome::ok("spawned", "spawned").with_data(
-            ToolData::SubagentSpawned(SubagentHandleData {
+            ApiData::SubagentSpawned(SubagentHandleData {
                 id: "agent-1".to_string(),
                 slot: "primary".to_string(),
                 model_id: "test/model".to_string(),
             }),
         ),
         "wait_for_subagents" => {
-            ToolOutcome::ok("collected", "collected").with_data(ToolData::SubagentResults(vec![
+            ToolOutcome::ok("collected", "collected").with_data(ApiData::SubagentResults(vec![
                 SubagentResultData {
                     id: "agent-1".to_string(),
                     status: Some(crate::tools::AgentStatusData::Completed),
@@ -869,7 +869,7 @@ fn shell_outcome(command: &str) -> ToolOutcome {
         output: format!("exit code: {code}\nran `{command}`"),
         summary: Some(format!("exited {code}")),
         images: Vec::new(),
-        data: Some(ToolData::Shell(ShellData {
+        data: Some(ApiData::Shell(ShellData {
             exit_code: Some(code),
             body: format!("ran `{command}`"),
             truncated: false,
@@ -883,7 +883,7 @@ fn read_outcome(path: &str) -> ToolOutcome {
     if path.ends_with(".png") {
         return ToolOutcome::ok("[PNG image]", "read an image")
             .with_images(vec![ImageContent::new("image/png", "aGk=", 1_234)])
-            .with_data(ToolData::FileImage(FileImageData {
+            .with_data(ApiData::FileImage(FileImageData {
                 media_type: "image/png".to_string(),
                 label: "PNG".to_string(),
                 bytes: 1_234,
@@ -892,7 +892,7 @@ fn read_outcome(path: &str) -> ToolOutcome {
             }));
     }
     let contents = format!("contents of {path}\nline two\n");
-    ToolOutcome::ok(contents.clone(), "read 2 lines").with_data(ToolData::FileText(FileTextData {
+    ToolOutcome::ok(contents.clone(), "read 2 lines").with_data(ApiData::FileText(FileTextData {
         contents,
         first_line: 1,
         last_line: 2,
@@ -906,7 +906,7 @@ fn read_outcome(path: &str) -> ToolOutcome {
 ///
 /// The membrane's whole surface is tested this way — no store, no component, no wasm — which is
 /// what makes covering thirty-two functions affordable.
-pub(crate) fn membrane(log: &CallLog) -> MembraneState<FakeToolApi> {
+pub(crate) fn membrane(log: &CallLog) -> MembraneState<FakeOperationApi> {
     membrane_as(log, EndingRole::Standard)
 }
 
@@ -916,7 +916,7 @@ pub(crate) fn membrane(log: &CallLog) -> MembraneState<FakeToolApi> {
 /// The role crosses into the host: the membrane refuses an ending call outside the group, because a
 /// guest that links its SDK as a library has no scope to withhold one from. So this parameter is the
 /// subject of the tests that pass it, not decoration on them.
-pub(crate) fn membrane_as(log: &CallLog, role: EndingRole) -> MembraneState<FakeToolApi> {
+pub(crate) fn membrane_as(log: &CallLog, role: EndingRole) -> MembraneState<FakeOperationApi> {
     membrane_in(typescript(), log, role)
 }
 
@@ -926,9 +926,9 @@ pub(crate) fn membrane_in(
     language: &'static dyn ProgramLanguage,
     log: &CallLog,
     role: EndingRole,
-) -> MembraneState<FakeToolApi> {
+) -> MembraneState<FakeOperationApi> {
     MembraneState::new(
-        FakeToolApi::new(log),
+        FakeOperationApi::new(log),
         language,
         scope_of(
             &all_capabilities(),
@@ -942,9 +942,9 @@ pub(crate) fn membrane_in(
 
 /// A membrane state as [`membrane`], run under `ending` — the [`None`](RunEnding::None) arm being
 /// the one an on-use script gets, which may declare no ending at all.
-pub(crate) fn membrane_ending(log: &CallLog, ending: RunEnding) -> MembraneState<FakeToolApi> {
+pub(crate) fn membrane_ending(log: &CallLog, ending: RunEnding) -> MembraneState<FakeOperationApi> {
     MembraneState::new(
-        FakeToolApi::new(log),
+        FakeOperationApi::new(log),
         typescript(),
         scope_of(&all_capabilities(), &all_operations(), ending),
         SandboxLimits::default(),
@@ -962,9 +962,9 @@ pub(crate) fn membrane_with(
     operations: &[OperationId],
     deadline: Option<Instant>,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
-) -> MembraneState<FakeToolApi> {
+) -> MembraneState<FakeOperationApi> {
     MembraneState::new(
-        FakeToolApi::with(log, responder),
+        FakeOperationApi::with(log, responder),
         typescript(),
         scope_of(
             &all_capabilities(),
@@ -978,13 +978,16 @@ pub(crate) fn membrane_with(
 
 /// A membrane state over an already-prepared `api` — the one the program-library tests need, since
 /// what they vary is the api's own state (which programs it holds) rather than how it answers a call.
-pub(crate) fn membrane_from(api: FakeToolApi) -> MembraneState<FakeToolApi> {
+pub(crate) fn membrane_from(api: FakeOperationApi) -> MembraneState<FakeOperationApi> {
     membrane_from_scope(api, true)
 }
 
 /// [`membrane_from`], with the [program library](crate::programs) bound or withheld — the one scope
 /// variation the library's own tests turn on.
-pub(crate) fn membrane_from_scope(api: FakeToolApi, library: bool) -> MembraneState<FakeToolApi> {
+pub(crate) fn membrane_from_scope(
+    api: FakeOperationApi,
+    library: bool,
+) -> MembraneState<FakeOperationApi> {
     membrane_from_scope_in(typescript(), api, library)
 }
 
@@ -992,9 +995,9 @@ pub(crate) fn membrane_from_scope(api: FakeToolApi, library: bool) -> MembraneSt
 /// asserted through.
 pub(crate) fn membrane_from_scope_in(
     language: &'static dyn ProgramLanguage,
-    api: FakeToolApi,
+    api: FakeOperationApi,
     library: bool,
-) -> MembraneState<FakeToolApi> {
+) -> MembraneState<FakeOperationApi> {
     let capabilities: Vec<String> = all_capabilities()
         .into_iter()
         .filter(|id| library || id != CAPABILITY_PROGRAM_LIBRARY)
@@ -1019,13 +1022,13 @@ pub(crate) fn membrane_from_scope_in(
 pub(crate) fn membrane_closing_docs(
     log: &CallLog,
     docview_close: bool,
-) -> MembraneState<FakeToolApi> {
+) -> MembraneState<FakeOperationApi> {
     let capabilities: Vec<String> = all_capabilities()
         .into_iter()
         .filter(|id| docview_close || id != CAPABILITY_DOCVIEW_CLOSE)
         .collect();
     MembraneState::new(
-        FakeToolApi::new(log),
+        FakeOperationApi::new(log),
         typescript(),
         scope_of(
             &capabilities,

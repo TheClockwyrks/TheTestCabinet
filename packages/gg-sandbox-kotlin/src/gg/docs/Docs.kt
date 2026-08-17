@@ -14,7 +14,7 @@
  */
 package gg.docs
 
-import gg.core.ToolError
+import gg.core.ApiError
 import gg.internal.Read
 import gg.internal.ggCall
 import gg.internal.ggNumber
@@ -51,7 +51,7 @@ import gg.internal.ggText
  * @param limit How many hits to return: 20 by default, 100 at most, and zero is refused. Compare it
  *   against [DocSearch.total] to see how much of the answer this page is.
  * @return one page of matches, best first, and the total behind it
- * @throws ToolError `INVALID_ARGUMENT` for a blank query with no filter beside it — a search that
+ * @throws ApiError `INVALID_ARGUMENT` for a blank query with no filter beside it — a search that
  *   asked for nothing and a search that found nothing are different answers — and for a [limit] of
  *   zero, which is a page that could answer nothing.
  */
@@ -86,7 +86,7 @@ public fun search(
  * @ggop docs.close
  * @param key The fully-qualified name the view was opened under, as [DocHit.key] reports it.
  * @return how many views were closed, which is one unless it had already gone
- * @throws ToolError `UNAVAILABLE` for an agent this run did not give the closing of documentation
+ * @throws ApiError `UNAVAILABLE` for an agent this run did not give the closing of documentation
  *   views. Opening one only ever appends to the end of the prompt, while closing one rewrites its
  *   middle, which is why opening is always available and closing is bought.
  */
@@ -102,7 +102,7 @@ public fun close(key: String): Int = ggCall("docs.close", ggText(key)).integer()
  *
  * @ggop docs.close_all
  * @return how many views went
- * @throws ToolError `UNAVAILABLE` for an agent this run did not give the closing of documentation
+ * @throws ApiError `UNAVAILABLE` for an agent this run did not give the closing of documentation
  *   views.
  */
 public fun closeAll(): Int = ggCall("docs.close_all").integer()

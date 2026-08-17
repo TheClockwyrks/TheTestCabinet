@@ -1,11 +1,11 @@
-//! The membrane's context family: the three tools an agent manages its own context window with.
+//! The membrane's context family: the three operations an agent manages its own context window with.
 //!
-//! Their outcomes are unusual in one way worth knowing here: the two reclaim tools only *validate*
+//! Their outcomes are unusual in one way worth knowing here: the two reclaim operations only *validate*
 //! their arguments, and the [loop](crate::agent) — which owns the live window — performs the
 //! reclaim and rewrites the outcome with what it actually freed. So the numbers a program reads
 //! back are the real ones, not an estimate the tool made before the work happened.
 //!
-//! That also means the `ToolData::Reclaim` sidecar `evict_file_view` and `archive_thread` read is
+//! That also means the `ApiData::Reclaim` sidecar `evict_file_view` and `archive_thread` read is
 //! produced by the **loop**, not by the tool: `EvictFileViewTool` and `ArchiveThreadTool`
 //! deliberately return an outcome with no data. Until the loop's servicing seam attaches it, both
 //! of these functions report `missing_data` — and the tests below pass regardless, because their
@@ -16,17 +16,17 @@
 use super::test_cabinet::gg::context::{
     ArchiveHit, ArchiveSearch, Host as ContextHost, MessageRole, ReclaimReport, TurnRange,
 };
-use super::test_cabinet::gg::types::ToolError;
-use super::{MembraneState, ToolApi};
+use super::test_cabinet::gg::types::ApiError;
+use super::{MembraneState, OperationApi};
 use crate::model::Role;
 use crate::sandbox::operations::{
     CONTEXT_ARCHIVE_THREAD, CONTEXT_COMPACT, CONTEXT_EVICT_FILE_VIEW, CONTEXT_SEARCH_ARCHIVE,
     OperationId,
 };
-use crate::tools::{ReclaimData, ToolData};
+use crate::tools::{ApiData, ReclaimData};
 
-impl<A: ToolApi> ContextHost for MembraneState<A> {
-    fn evict_file_view(&mut self, path: Option<String>) -> Result<ReclaimReport, ToolError> {
+impl<A: OperationApi> ContextHost for MembraneState<A> {
+    fn evict_file_view(&mut self, path: Option<String>) -> Result<ReclaimReport, ApiError> {
         self.recorded(CONTEXT_EVICT_FILE_VIEW, |state, rec| {
             let outcome = state.call(rec, CONTEXT_EVICT_FILE_VIEW, |api| {
                 api.evict_file_view(path)
@@ -35,7 +35,7 @@ impl<A: ToolApi> ContextHost for MembraneState<A> {
         })
     }
 
-    fn archive_thread(&mut self, ranges: Vec<TurnRange>) -> Result<ReclaimReport, ToolError> {
+    fn archive_thread(&mut self, ranges: Vec<TurnRange>) -> Result<ReclaimReport, ApiError> {
         self.recorded(CONTEXT_ARCHIVE_THREAD, |state, rec| {
             // The membrane's `u32` turn bounds widen to the model's `u64` here rather than the other
             // way around, so a range can never be narrowed on its way in.
@@ -60,19 +60,19 @@ impl<A: ToolApi> ContextHost for MembraneState<A> {
     /// reset performed *during* the program would pull the window out from under the turn that is
     /// still running in it. Success carries no payload — what the compaction reclaimed is reported
     /// to the model on its next turn, in the window it wakes up in.
-    fn compact(&mut self, summary: String, files: Vec<String>) -> Result<(), ToolError> {
+    fn compact(&mut self, summary: String, files: Vec<String>) -> Result<(), ApiError> {
         self.recorded(CONTEXT_COMPACT, |state, rec| {
             state.call(rec, CONTEXT_COMPACT, |api| api.compact(summary, files))?;
             Ok(())
         })
     }
 
-    fn search_archive(&mut self, query: String) -> Result<ArchiveSearch, ToolError> {
+    fn search_archive(&mut self, query: String) -> Result<ArchiveSearch, ApiError> {
         self.recorded(CONTEXT_SEARCH_ARCHIVE, |state, rec| {
             let outcome =
                 state.call(rec, CONTEXT_SEARCH_ARCHIVE, |api| api.search_archive(query))?;
             match outcome.data {
-                Some(ToolData::ArchiveSearch(search)) => Ok(ArchiveSearch {
+                Some(ApiData::ArchiveSearch(search)) => Ok(ArchiveSearch {
                     // "Nothing has been archived yet" and "the search ran and matched nothing" are
                     // different answers to the same call, and collapsing them into an empty list
                     // would make a program archive its thread a second time believing the first had
@@ -102,13 +102,13 @@ impl<A: ToolApi> ContextHost for MembraneState<A> {
 ///
 /// It takes the state because the diagnostic is not only returned to the program: it also corrects
 /// the roster entry the dispatch already wrote, which until this point says the call succeeded.
-fn reclaim<A: ToolApi>(
+fn reclaim<A: OperationApi>(
     state: &mut MembraneState<A>,
     id: OperationId,
-    data: Option<ToolData>,
-) -> Result<ReclaimReport, ToolError> {
+    data: Option<ApiData>,
+) -> Result<ReclaimReport, ApiError> {
     match data {
-        Some(ToolData::Reclaim(ReclaimData {
+        Some(ApiData::Reclaim(ReclaimData {
             items,
             reclaimed_tokens,
             paths,

@@ -106,7 +106,7 @@ use std::hash::{Hash, Hasher};
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
-use test_cabinet_core::gg::{GgProgramLanguage, GgToolFailure};
+use test_cabinet_core::gg::{GgCallFailure, GgProgramLanguage};
 
 use crate::board::IssueStatus;
 use crate::context::{
@@ -117,9 +117,10 @@ use crate::ending::EndingRole;
 use crate::memories::MemoryCode;
 use crate::programs::{ProgramRefusal, ProgramSummary};
 use crate::sandbox::{
-    ApiIdentity, DOCS_SEARCH, DocSearchQuery, DocSearchResult, OperationId, PreparedProgram,
-    ProgramLanguage, ProgramScope, RunEnding, SandboxLimits, SandboxOutcome, SandboxViewOpened,
-    ToolApi, VIEWS_OPEN_DOCS_VIEW, ViewOpenOutcome, ViewRefusal, catalogue_functions, operation_of,
+    ApiIdentity, DOCS_SEARCH, DocSearchQuery, DocSearchResult, OperationApi, OperationId,
+    PreparedProgram, ProgramLanguage, ProgramScope, RunEnding, SandboxLimits, SandboxOutcome,
+    SandboxViewOpened, VIEWS_OPEN_DOCS_VIEW, ViewOpenOutcome, ViewRefusal, catalogue_functions,
+    operation_of,
 };
 use crate::tasks::TaskStatus;
 use crate::tools::{ToolFailure, ToolOutcome};
@@ -156,7 +157,7 @@ pub(crate) struct BootstrapAgent<'a> {
     pub role: EndingRole,
     /// The execution timeout and memory ceiling one of this agent's programs runs under.
     pub limits: SandboxLimits,
-    /// Which SDK types an [`open_docs_view`](ToolApi::open_docs_view) places beside the function it
+    /// Which SDK types an [`open_docs_view`](OperationApi::open_docs_view) places beside the function it
     /// was asked for, this agent's resolved [`DocViewTypes`] — read here for the same reason the
     /// loop's own api reads it, since these are the views the model will open the session holding.
     pub doc_view_types: DocViewTypes,
@@ -418,7 +419,7 @@ fn source_hash(source: &str) -> u64 {
 // The api the bootstrap program runs against
 // ---------------------------------------------------------------------------
 
-/// The [`ToolApi`] the bootstrap program's calls reach: this agent's window and its documentation
+/// The [`OperationApi`] the bootstrap program's calls reach: this agent's window and its documentation
 /// runtime, and nothing else.
 ///
 /// Two methods do real work — the search that lists a module and the open that places a
@@ -428,7 +429,7 @@ fn source_hash(source: &str) -> u64 {
 /// drifted from gg's api, and [`seed_bootstrap`] ends the run over it.
 ///
 /// It holds the window and the runtime **by value** and hands them back, which is what the
-/// [`Send + 'static`](ToolApi) bound on the trait requires: the sandbox runs on a blocking thread,
+/// [`Send + 'static`](OperationApi) bound on the trait requires: the sandbox runs on a blocking thread,
 /// so nothing borrowed from the loop could cross into it.
 struct BootstrapApi {
     /// The agent's window. Every view this program opens lands in it directly.
@@ -436,7 +437,7 @@ struct BootstrapApi {
     /// The agent's documentation runtime, which answers exactly what its own lookups will answer —
     /// so the listing it opens with is the surface it actually holds.
     docs: DocsRuntime,
-    /// Which SDK types an [`open_docs_view`](ToolApi::open_docs_view) places beside a function.
+    /// Which SDK types an [`open_docs_view`](OperationApi::open_docs_view) places beside a function.
     doc_view_types: DocViewTypes,
     /// The api methods this program reached that gg never wrote a call to. Empty on every healthy
     /// run; anything in it fails the run.
@@ -454,7 +455,7 @@ impl BootstrapApi {
     }
 }
 
-/// How one return type of the [`ToolApi`] surface says *the bootstrap api does not implement this*.
+/// How one return type of the [`OperationApi`] surface says *the bootstrap api does not implement this*.
 ///
 /// It exists so the forty-odd unreachable methods can be generated rather than hand-written. Every
 /// implementation is a refusal in that type's own vocabulary: a classified failure where the type
@@ -509,7 +510,7 @@ impl Refusal for ViewOpenOutcome {
     }
 }
 
-/// Generate the body of every [`ToolApi`] method the bootstrap program never calls.
+/// Generate the body of every [`OperationApi`] method the bootstrap program never calls.
 ///
 /// One line per method rather than forty hand-written bodies that would all say the same thing —
 /// and, more usefully, a shape that makes an api method added to the trait a compile error here
@@ -526,7 +527,7 @@ macro_rules! unimplemented_calls {
     };
 }
 
-impl ToolApi for BootstrapApi {
+impl OperationApi for BootstrapApi {
     /// A no-op, on both halves of the bracket. This is gg standing the agent up, not the agent
     /// making a call, and an [`ApiCall`](test_cabinet_core::gg::GgTelemetryKind::ApiCall) recorded
     /// here would put two searches and an open into a model's own surface record before it had taken
@@ -534,7 +535,7 @@ impl ToolApi for BootstrapApi {
     fn begin_api_call(&mut self, _call: ApiIdentity<'_>) {}
 
     /// The closing half of the same no-op. See [`begin_api_call`](Self::begin_api_call).
-    fn end_api_call(&mut self, _call: ApiIdentity<'_>, _failure: Option<GgToolFailure>) {}
+    fn end_api_call(&mut self, _call: ApiIdentity<'_>, _failure: Option<GgCallFailure>) {}
 
     /// Search the documentation surface and leave the page in the window as a search view **keyed by
     /// the module it listed**.
@@ -581,7 +582,7 @@ impl ToolApi for BootstrapApi {
     /// Open the documentation view for `name`, plus the SDK types this agent's
     /// [type mode](DocViewTypes) selects — the loop's own algorithm, on the loop's own terms.
     ///
-    /// It mirrors [`LoopToolApi::open_docs_view`](crate::agent) deliberately rather than doing
+    /// It mirrors [`LoopOperationApi::open_docs_view`](crate::agent) deliberately rather than doing
     /// something simpler: these are the views the session opens holding, and a model that closed one
     /// and re-opened it must get back what it started with. One call, one level, and a key already
     /// open is a total no-op.

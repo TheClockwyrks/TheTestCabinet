@@ -64,7 +64,7 @@ use crate::limits::TurnErrorType;
 
 use super::compile::{self, compile_program};
 use crate::sandbox::fake::{
-    CallLog, FakeToolApi, all_capabilities, all_operations, canned_outcome, granted_operations,
+    CallLog, FakeOperationApi, all_capabilities, all_operations, canned_outcome, granted_operations,
 };
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{SandboxError, SandboxOutcome};
@@ -140,8 +140,8 @@ fn evaluate_granting(
 ) -> (SandboxOutcome, CallLog) {
     let limits = SandboxLimits::default();
     let log = CallLog::default();
-    let api = FakeToolApi::with(&log, responder);
-    let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let api = FakeOperationApi::with(&log, responder);
+    let linker = linker::<FakeOperationApi>().expect("the production linker builds");
     let compiled =
         engine::compile_bytes(component).expect("a freshly compiled Swift program is a component");
     let operations = granted_operations(operations, library);
@@ -300,7 +300,7 @@ do {
     let contents = try files.readTextFile("notes.md")
     let firstLine = contents.split(separator: "\n").first.map(String.init) ?? ""
     gg.log("read \(firstLine.uppercased())")
-} catch let failure as core.ToolError where failure.code == .notFound {
+} catch let failure as core.ApiError where failure.code == .notFound {
     gg.log("no file")
 }
 "#;
@@ -773,7 +773,7 @@ fn temp_env<T>(key: &str, value: &str, body: impl FnOnce() -> T) -> T {
 #[test]
 fn a_whole_swift_program_a_model_would_write_runs_through_the_turn_path() {
     let log = CallLog::default();
-    let api = FakeToolApi::with(&log, canned_outcome);
+    let api = FakeOperationApi::with(&log, canned_outcome);
     let operations = granted_operations(&all_operations(), false);
     let scope = ProgramScope {
         capabilities: &all_capabilities(),
@@ -843,7 +843,7 @@ fn g8_a_runtime_failure_reaches_the_model() {
         GgProgramLanguage::Swift,
         &[
             Case {
-                shape: Shape::ToolError,
+                shape: Shape::ApiError,
                 program: r#"// G8 (a): a gg call the host answers `not-found`, uncaught.
 import gg
 

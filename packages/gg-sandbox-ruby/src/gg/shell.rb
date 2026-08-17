@@ -28,7 +28,7 @@ module GG
     #   Leave it out for gg's default of 120, clamped to whatever is left of the run's wall-clock
     #   budget.
     # @return [GG::Shell::ShellOutput] what the process reported when it finished
-    # @raise [GG::Core::ToolError] `:limit_exceeded` when the timeout killed the process, and
+    # @raise [GG::Core::ApiError] `:limit_exceeded` when the timeout killed the process, and
     #   `:io_error` when it could not be launched.
     def self.run(command, timeout_secs: nil)
       result = Wire.call("shell", "shell", "shell",

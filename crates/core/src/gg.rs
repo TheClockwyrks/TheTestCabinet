@@ -3400,7 +3400,7 @@ pub enum GgTurnErrorType {
     /// offering it. The single most actionable program fault there is — it says the model is
     /// fighting the API rather than mis-writing it — and it was previously indistinguishable from
     /// any other throw.
-    ProgramToolError,
+    ProgramApiError,
     /// **The program reached for something this run does not offer it**, and the throw ended the
     /// turn: a name that was never in the program's scope, or a call the membrane refused
     /// `unavailable` because this agent's capability set, [allowlist](GgAgentConfig::operations),
@@ -3456,7 +3456,7 @@ impl GgTurnErrorType {
         Self::TranspileSyntax,
         Self::TranspileCompile,
         Self::TranspileUnsupported,
-        Self::ProgramToolError,
+        Self::ProgramApiError,
         Self::ProgramUnknownName,
         Self::ProgramThrow,
         Self::SandboxTimeout,
@@ -3483,7 +3483,7 @@ impl GgTurnErrorType {
             Self::TranspileSyntax | Self::TranspileCompile | Self::TranspileUnsupported => {
                 GgTurnErrorKind::Transpile
             }
-            Self::ProgramToolError | Self::ProgramUnknownName | Self::ProgramThrow => {
+            Self::ProgramApiError | Self::ProgramUnknownName | Self::ProgramThrow => {
                 GgTurnErrorKind::ProgramFault
             }
             Self::SandboxTimeout | Self::SandboxOutOfMemory | Self::SandboxTrap => {
@@ -3512,7 +3512,7 @@ impl GgTurnErrorType {
             Self::TranspileSyntax => "transpile_syntax",
             Self::TranspileCompile => "transpile_compile",
             Self::TranspileUnsupported => "transpile_unsupported",
-            Self::ProgramToolError => "program_tool_error",
+            Self::ProgramApiError => "program_api_error",
             Self::ProgramUnknownName => "program_unknown_name",
             Self::ProgramThrow => "program_throw",
             Self::SandboxTimeout => "sandbox_timeout",
@@ -3539,7 +3539,7 @@ impl GgTurnErrorType {
             Self::TranspileSyntax => "syntax error",
             Self::TranspileCompile => "compiler rejected the program",
             Self::TranspileUnsupported => "unsupported program feature",
-            Self::ProgramToolError => "uncaught call failure",
+            Self::ProgramApiError => "uncaught call failure",
             Self::ProgramUnknownName => "unknown name",
             Self::ProgramThrow => "uncaught throw",
             Self::SandboxTimeout => "execution timeout",
@@ -3571,13 +3571,13 @@ impl GgTurnErrorType {
 ///
 /// Every other enum in this module is snake_case. This one is `"invalid-argument"`, because the
 /// class is *already* spelled that way in the three places a reader meets it — gg's own
-/// `ToolFailure` serde, the membrane's WIT `error-code`, and the `code` field of the `ToolError` a
+/// `ToolFailure` serde, the membrane's WIT `error-code`, and the `code` field of the `ApiError` a
 /// program catches. One deviation from this module's convention is a smaller cost than three
 /// spellings of one fact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub enum GgToolFailure {
+pub enum GgCallFailure {
     /// The arguments were malformed, ill-typed, or out of range — including a path that is absolute
     /// or climbs out of the workspace.
     InvalidArgument,
@@ -3613,7 +3613,7 @@ pub enum GgToolFailure {
     Other,
 }
 
-impl GgToolFailure {
+impl GgCallFailure {
     /// Every class, in declaration order.
     pub const ALL: [Self; 8] = [
         Self::InvalidArgument,
@@ -4601,7 +4601,7 @@ pub enum GgProgramLanguage {
     /// own with nothing in it: the SDK is the ordinary package `gg`, baked into the guest and
     /// reached by writing `import gg`, and the agent's code modules are the package `lib`. Its SDK
     /// is hand-written and reads as Python reads — `snake_case`, keyword arguments with real
-    /// defaults, dataclasses for results, enums for fixed choices, and a raised `gg.core.ToolError`
+    /// defaults, dataclasses for results, enums for fixed choices, and a raised `gg.core.ApiError`
     /// for the wire's error arm.
     Python,
     /// Ruby: **compiled to JavaScript on the host by Opal**, and evaluated by a guest that carries
@@ -4617,7 +4617,7 @@ pub enum GgProgramLanguage {
     /// `require "gg"` and its own loaded code by writing `require "lib"`. Its SDK is hand-written
     /// and reads as Ruby reads — `snake_case`, keyword arguments, blocks for a long body, `Range`
     /// for a span, splats for a list, `?` on a predicate, Symbols for a fixed choice, and a raised
-    /// `ToolError` that is a `StandardError`.
+    /// `ApiError` that is a `StandardError`.
     Ruby,
     /// PureScript: **compiled to JavaScript on the host by `purs`**, flattened into one script by
     /// `esbuild`, and evaluated by the same ECMAScript guest
@@ -4647,7 +4647,7 @@ pub enum GgProgramLanguage {
     /// **overloads** where every other arm has a default argument or a keyword, varargs for a list,
     /// builders for a bag of optional fields, records for every result, enums for every fixed
     /// choice, a sealed interface narrowed by a `switch`, `Optional` for what the wire may omit,
-    /// and an unchecked `ToolError`.
+    /// and an unchecked `ApiError`.
     Java,
     /// Kotlin: **compiled as a script** to bytecode by the Kotlin compiler and then to JavaScript by
     /// TeaVM, both inside a **warm JVM** gg keeps between preparations, and evaluated by the same
@@ -4663,7 +4663,7 @@ pub enum GgProgramLanguage {
     /// groups and this arm has none, more default arguments where Java has a builder, `data class`es
     /// for results, `enum class`es for fixed choices, sealed types for a closed set and for a
     /// three-way patch, an `IntRange` for a span of turns, nullable types for what the wire may
-    /// omit, and a `ToolError` caught with `catch` or `runCatching`. And it is declared in the
+    /// omit, and an `ApiError` caught with `catch` or `runCatching`. And it is declared in the
     /// **root package**, so a program reaches the whole surface with no `import` at all.
     Kotlin,
     /// Rust: **compiled by `rustc` into the wasm component that turn is evaluated by** — the first
@@ -4690,7 +4690,7 @@ pub enum GgProgramLanguage {
     /// A **code module** here is linked into the same artifact as the program that reads it, which
     /// is why the seam hands the modules in scope to a program's preparation at all: nothing can be
     /// bound at `lib::<key>` after the compile. Its SDK is hand-written and reads as Rust reads:
-    /// `snake_case`, an API object as a **module** so a call is a path, `Result<_, ToolError>`
+    /// `snake_case`, an API object as a **module** so a call is a path, `Result<_, ApiError>`
     /// everywhere so `?` composes gg's calls with `std`'s own fallible ones, a struct with `Default`
     /// and functional update where a call has two or more optional arguments and a bare `Option<T>`
     /// where it has one, real `enum`s for fixed choices, and a `RangeInclusive` for a span of
@@ -4740,7 +4740,7 @@ pub enum GgProgramLanguage {
     /// narrowed with `std::get_if` for a read, a default argument for one optional part and a
     /// **designated initialiser** (`{.limit = 40}`) for several — because C++ has no keyword
     /// arguments and a defaulted parameter cannot be skipped over — and a thrown
-    /// `gg::core::tool_error` for the error arm.
+    /// `gg::core::api_error` for the error arm.
     ///
     /// It also carries a **comparability risk no other arm has**, stated rather than hidden: an
     /// uncaught `throw` and a failed libc++ hardening check both arrive with words, but undefined
@@ -4767,7 +4767,7 @@ pub enum GgProgramLanguage {
     /// the `using Gg;` its catalogue states and then `Views.OpenText`. The SDK is hand-written and
     /// reads as C# reads: `PascalCase` methods, **optional arguments with defaults, passed by name**, nullable
     /// reference types, `record`s for results, real `enum`s for fixed choices, and a thrown
-    /// `ToolException` whose `Code` is an enum rather than free text. Nothing returns `Task` and
+    /// `ApiException` whose `Code` is an enum rather than free text. Nothing returns `Task` and
     /// nothing is `async`.
     ///
     /// It has the **best error surface of any compiled arm here**: `try`/`catch`/`finally` work
@@ -5127,12 +5127,12 @@ pub struct GgErrorSummary {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     #[cfg_attr(feature = "contract", ts(optional = nullable))]
     pub by_type: BTreeMap<String, u64>,
-    /// **Calls** that failed, by [failure class](GgToolFailure) — a different population from
+    /// **Calls** that failed, by [failure class](GgCallFailure) — a different population from
     /// everything above, which counts *turns*.
     ///
     /// Folded from the [`ToolResult`](GgTelemetryKind::ToolResult) events the run emitted, so it
     /// counts every failed tool dispatch in either execution mode, whether or not the program that
-    /// made it caught the failure and carried on. Keyed by [`GgToolFailure::wire_id`], and open for
+    /// made it caught the failure and carried on. Keyed by [`GgCallFailure::wire_id`], and open for
     /// the reason [`by_type`](Self::by_type) is.
     ///
     /// It counts **dispatches**, so a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) call that
@@ -5484,17 +5484,17 @@ pub enum GgTelemetryKind {
         /// A short human-readable summary of the result, when one is available.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         summary: Option<String>,
-        /// Why it failed, when it failed — the [class](GgToolFailure) the tool itself raised, never
+        /// Why it failed, when it failed — the [class](GgCallFailure) the tool itself raised, never
         /// one inferred afterwards from the summary's prose.
         ///
         /// Present on exactly the results whose [`ok`](Self::ToolResult::ok) is `false`, with
-        /// [`Other`](GgToolFailure::Other) for a failure raised outside a tool implementation, and
+        /// [`Other`](GgCallFailure::Other) for a failure raised outside a tool implementation, and
         /// absent on every success — so `failure != null` and `ok == false` are the same statement,
         /// and a reader never meets a failure with no class.
         ///
         /// `ok` stays the authoritative "did it fail?". This says how.
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        failure: Option<GgToolFailure>,
+        failure: Option<GgCallFailure>,
     },
     /// A [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program called one of the functions its
     /// modules offer it — the **model-facing** record, emitted once per call the program makes.
@@ -5545,7 +5545,7 @@ pub enum GgTelemetryKind {
         operation: String,
         /// Whether the call returned a value to the program rather than throwing into it.
         ok: bool,
-        /// The [class](GgToolFailure) of the `ToolError` thrown into the program, on a call that
+        /// The [class](GgCallFailure) of the `ApiError` thrown into the program, on a call that
         /// threw. Present on exactly the results whose [`ok`](Self::ApiResult::ok) is `false`.
         ///
         /// This is the **model's** view of why its call failed — the same `code` the program itself
@@ -5554,7 +5554,7 @@ pub enum GgTelemetryKind {
         /// refused before dispatch (a spent wall-clock budget, a name this agent was not granted),
         /// which never reached an implementation at all.
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        failure: Option<GgToolFailure>,
+        failure: Option<GgCallFailure>,
     },
     /// Token usage (and, when known, cost) accounted since the previous usage event,
     /// **attributed to the agent profile and model that spent it**.
@@ -6011,8 +6011,8 @@ pub enum GgTelemetryKind {
         /// The agent's depth in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/):
         /// `0` for the root, `parent.depth + 1` for a spawned child. A spawn that would exceed
         /// the configured maximum depth fails as a
-        /// [limit](GgToolFailure::LimitExceeded) rather than being queued — a *ceiling*, not a
-        /// [refusal](GgToolFailure::Refused): the request was well-formed, the run simply has no
+        /// [limit](GgCallFailure::LimitExceeded) rather than being queued — a *ceiling*, not a
+        /// [refusal](GgCallFailure::Refused): the request was well-formed, the run simply has no
         /// room left below the spawner.
         depth: u64,
         /// The task/issue brief the agent was dispatched with, when it is a subagent spawned to

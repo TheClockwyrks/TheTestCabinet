@@ -45,7 +45,7 @@ use test_cabinet_core::gg::{
 use test_cabinet_core::gg_session_record::GgShellOrigin;
 
 use super::{
-    ArgumentError, ShellData, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome, required_str,
+    ApiData, ArgumentError, ShellData, Tool, ToolContext, ToolFailure, ToolOutcome, required_str,
 };
 use crate::model::ToolDefinition;
 
@@ -584,7 +584,7 @@ pub(crate) async fn run_command(
         // leaves `ok` false (the model is told plainly that the command failed) but `failure`
         // empty: nothing about the *call* went wrong, and a caller that wants to branch on the
         // code reads it from here rather than from the first line of `output`.
-        data: Some(ToolData::Shell(ShellData {
+        data: Some(ApiData::Shell(ShellData {
             exit_code: code,
             body,
             truncated,

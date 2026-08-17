@@ -2,10 +2,10 @@
 //!
 //! A capability module owns the types it produces, so `files::FileRead` belongs to `files` and
 //! `board::IssueCreated` to `board`. These two belong to none of them because they belong to all of
-//! them: every function in this SDK returns `Result<_, ToolError>`.
+//! them: every function in this SDK returns `Result<_, ApiError>`.
 //!
 //! They are re-exported at the crate root as well as declared here, so a program reaches them as
-//! `gg::ToolError` or under a `use gg::ToolErrorCode;` of its own, whichever reads better beside the
+//! `gg::ApiError` or under a `use gg::ApiErrorCode;` of its own, whichever reads better beside the
 //! call it is matching on.
 
 use crate::bindings::test_cabinet::gg::types as wire;
@@ -22,24 +22,27 @@ use crate::bindings::test_cabinet::gg::types as wire;
 /// ```ignore
 /// match files::read_text_file("notes.md", files::ReadOptions::default()) {
 ///     Ok(notes) => views::open_text("notes", &notes)?,
-///     Err(failure) if failure.code == core::ToolErrorCode::NotFound => {
+///     Err(failure) if failure.code == core::ApiErrorCode::NotFound => {
 ///         files::write_file("notes.md", "")?;
 ///     }
 ///     Err(failure) => return Err(failure.into()),
 /// }
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ToolError {
+pub struct ApiError {
     /// The failure class, so a catch site branches on a value rather than on prose.
-    pub code: ToolErrorCode,
-    /// The gg call that failed, under gg's own name for it (`read_file`, `spawn_subagent`).
-    pub tool: String,
+    pub code: ApiErrorCode,
+    /// The gg call that failed, by the key of the operation the program reached for.
+    ///
+    /// gg's own operation key — `read_file`, `spawn_subagent` — rather than the name of whatever
+    /// ran underneath it.
+    pub operation: String,
     /// What went wrong, in gg's words. Worth showing in a view; not worth matching on.
     pub message: String,
 }
 
-impl std::fmt::Display for ToolError {
-    /// gg's own sentence about a failed call: the tool, the class, and what went wrong.
+impl std::fmt::Display for ApiError {
+    /// gg's own sentence about a failed call: the operation, the class, and what went wrong.
     ///
     /// Not a Rust convention so much as a gg one. It is the same line the ECMAScript guest's shim
     /// writes and the same one the native tool-calling path shows, and it is what a model reads
@@ -50,18 +53,18 @@ impl std::fmt::Display for ToolError {
         write!(
             formatter,
             "`{}` failed ({}): {}",
-            self.tool,
+            self.operation,
             self.code.as_str(),
             self.message
         )
     }
 }
 
-impl std::error::Error for ToolError {}
+impl std::error::Error for ApiError {}
 
-/// Why a gg call failed — the [`code`](ToolError::code) a catch site branches on.
+/// Why a gg call failed — the [`code`](ApiError::code) a catch site branches on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ToolErrorCode {
+pub enum ApiErrorCode {
     /// The arguments were malformed, ill-typed, or out of range.
     ///
     /// It covers a path that is absolute or climbs out of the workspace, and an agent name this run
@@ -100,18 +103,18 @@ pub enum ToolErrorCode {
     Other,
 }
 
-impl ToolError {
+impl ApiError {
     /// The SDK's own error, lifted out of the one the generated bindings hand back.
-    pub(crate) fn from_wire(error: wire::ToolError) -> Self {
+    pub(crate) fn from_wire(error: wire::ApiError) -> Self {
         Self {
-            code: ToolErrorCode::from_wire(error.code),
-            tool: error.tool,
+            code: ApiErrorCode::from_wire(error.code),
+            operation: error.operation,
             message: error.message,
         }
     }
 }
 
-impl ToolErrorCode {
+impl ApiErrorCode {
     /// gg's own word for this class, as every other execution mode and every other arm prints it.
     ///
     /// A variant's Rust name is `NotFound` and gg's word is `not-found`; a model that has read one

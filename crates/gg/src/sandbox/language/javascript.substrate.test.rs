@@ -37,7 +37,8 @@ use crate::ending::EndingRole;
 use test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE;
 
 use crate::sandbox::fake::{
-    CallLog, FakeToolApi, all_capabilities, all_operations, all_operations_without, canned_outcome,
+    CallLog, FakeOperationApi, all_capabilities, all_operations, all_operations_without,
+    canned_outcome,
 };
 use crate::sandbox::{
     ProgramLanguage, ProgramScope, RunEnding, SandboxLimits, SandboxOutcome, language, run_program,
@@ -71,7 +72,7 @@ fn run_with(
         },
         SandboxLimits::default(),
         None,
-        FakeToolApi::with(&log, canned_outcome),
+        FakeOperationApi::with(&log, canned_outcome),
     );
     (outcome, log)
 }
@@ -217,10 +218,10 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
 
     // 4. THE DOCUMENTED SPELLING. `import * as gg from "gg";` is the line every documentation view
     // states, and `gg.files.readTextFile` is the name every search hit carries and the prompt
-    // quotes. One call per bound module, plus the `ToolError` the aggregate re-exports bare.
+    // quotes. One call per bound module, plus the `ApiError` the aggregate re-exports bare.
     let (outcome, log) = run(concat!(
         "import * as gg from \"gg\";\n",
-        "import { ToolError } from \"gg\";\n",
+        "import { ApiError } from \"gg\";\n",
         "\n",
         "gg.views.openText(\"scratch\", gg.files.readTextFile(\"notes.md\"));\n",
         "gg.shell.shell(\"ls\");\n",
@@ -233,7 +234,7 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
         "try {\n",
         "  gg.files.readTextFile(\"a.ts\", { offset: -1 });\n",
         "} catch (error) {\n",
-        "  console.log(`${error instanceof ToolError} ${error.code}`);\n",
+        "  console.log(`${error instanceof ApiError} ${error.code}`);\n",
         "}\n",
         // The call the whole discovery loop begins at, written the way the prompt describes it: a
         // query, a module filter and a page, and a value the program reads fields off. The double
@@ -280,12 +281,12 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
         ],
         "the documented spellings of `openText` and `search` each opened the view they name"
     );
-    // The `ToolError` a `catch` narrows on, which the aggregate module exports beside the
+    // The `ApiError` a `catch` narrows on, which the aggregate module exports beside the
     // namespaces so that one class serves the SDK and the program alike.
     let lines = logs(&outcome);
     assert_eq!(
         lines[0], "true invalid-argument",
-        "an imported `ToolError` narrows a failure the SDK threw, and its `code` reads off it"
+        "an imported `ApiError` narrows a failure the SDK threw, and its `code` reads off it"
     );
     // The search's page came back as a value the program read fields off, envelope and all: a total
     // it can compare its page against, the offset echoed back so paging needs nothing tracked, and
@@ -460,13 +461,13 @@ fn a_withheld_capability_is_still_bound_and_refused_with_a_sentence() {
     let (outcome, log) = run_with(
         concat!(
             "import * as gg from \"gg\";\n",
-            "import { ToolError } from \"gg\";\n",
+            "import { ApiError } from \"gg\";\n",
             "\n",
             "console.log(String(typeof gg.files.listDir));\n",
             "try {\n",
             "  gg.files.listDir(\"src\");\n",
             "} catch (error) {\n",
-            "  console.log(`${error instanceof ToolError} ${error.code} ${error.tool}`);\n",
+            "  console.log(`${error instanceof ApiError} ${error.code} ${error.operation}`);\n",
             "  console.log(error.message);\n",
             "}\n",
         ),
@@ -503,13 +504,13 @@ fn a_withheld_capability_is_still_bound_and_refused_with_a_sentence() {
     let (outcome, log) = run_with(
         concat!(
             "import * as gg from \"gg\";\n",
-            "import { ToolError } from \"gg\";\n",
+            "import { ApiError } from \"gg\";\n",
             "\n",
             "console.log(String(gg.docs.search(\"view\").total));\n",
             "try {\n",
             "  gg.docs.closeAll();\n",
             "} catch (error) {\n",
-            "  console.log(`${error instanceof ToolError} ${error.code} ${error.tool}`);\n",
+            "  console.log(`${error instanceof ApiError} ${error.code} ${error.operation}`);\n",
             "  console.log(error.message);\n",
             "}\n",
         ),
@@ -547,7 +548,7 @@ fn g8_a_runtime_failure_reaches_the_model() {
         GgProgramLanguage::JavaScript,
         &[
             Case {
-                shape: Shape::ToolError,
+                shape: Shape::ApiError,
                 program: r#"// G8 (a): a gg call the host answers `not-found`, uncaught.
 
 import { files } from "gg";

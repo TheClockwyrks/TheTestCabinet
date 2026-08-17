@@ -20,7 +20,7 @@ from typing import Callable
 from wit_world.imports import views as wire
 
 from ._registry import alias, missing, operation
-from .core import ToolError, ToolErrorCode, _call, _uint
+from .core import ApiError, ApiErrorCode, _call, _uint
 from .files import FileRead, _as_file_read
 
 __all__ = [
@@ -123,7 +123,7 @@ def open_file(path: str, *, offset: int | None = None, limit: int | None = None)
             contents as well as the model holding the view.
 
     Raises:
-        ToolError: `not-found` for a missing path, and `invalid-argument` for an offset past the end
+        ApiError: `not-found` for a missing path, and `invalid-argument` for an offset past the end
             of the file. The read is what fails; nothing is opened when it does.
     """
     return _as_file_read(
@@ -152,7 +152,7 @@ def open_text(label: str, body: str) -> None:
             showing is now empty.
 
     Raises:
-        ToolError: `invalid-argument` for an empty label — a view with no selector could never be
+        ApiError: `invalid-argument` for an empty label — a view with no selector could never be
             closed or attributed — and `limit-exceeded`, naming the cap, for a body or label over
             gg's caps.
     """
@@ -181,7 +181,7 @@ def open_docs_view(target: Callable[..., object] | str) -> None:
             one is meant.
 
     Raises:
-        ToolError: `not-found` for an unknown or unbound name.
+        ApiError: `not-found` for an unknown or unbound name.
     """
     _call(wire.open_docs_view, _docs_name(target))
 
@@ -201,9 +201,9 @@ def _docs_name(target: object) -> str:
         return target
     name = getattr(target, "__name__", None)
     if not callable(target) or not isinstance(name, str):
-        raise ToolError(
+        raise ApiError(
             "open_docs_view",
-            ToolErrorCode.INVALID_ARGUMENT,
+            ApiErrorCode.INVALID_ARGUMENT,
             f"expected a function or a function name, got {target!r}",
         )
     return name
@@ -231,7 +231,7 @@ def close(selector: str) -> int:
             unconditionally need not guard every call.
 
     Raises:
-        ToolError: `invalid-argument` for an empty selector, which names nothing rather than
+        ApiError: `invalid-argument` for an empty selector, which names nothing rather than
             everything — no call here closes the window wholesale.
     """
     return _call(wire.close_view, selector)

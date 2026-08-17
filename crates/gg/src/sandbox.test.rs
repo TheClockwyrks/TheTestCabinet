@@ -19,7 +19,7 @@ use super::*;
 use crate::context::ViewKind;
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::fake::{
-    CallLog, FakeToolApi, all_capabilities, all_operations, canned_outcome, typescript,
+    CallLog, FakeOperationApi, all_capabilities, all_operations, canned_outcome, typescript,
 };
 use crate::tools::{ToolFailure, ToolOutcome};
 
@@ -71,7 +71,7 @@ fn run_with(
         },
         limits,
         None,
-        FakeToolApi::with(&log, responder),
+        FakeOperationApi::with(&log, responder),
     );
     (outcome, log)
 }
@@ -80,7 +80,7 @@ fn run_with(
 /// (turn, source) — the one scope variation that is not a tool and not a role.
 fn run_with_library(program: &str, held: &[(u64, &str)]) -> SandboxOutcome {
     let log = CallLog::default();
-    let mut api = FakeToolApi::new(&log);
+    let mut api = FakeOperationApi::new(&log);
     for (turn, source) in held {
         api = api.with_program(*turn, source);
     }
@@ -115,7 +115,7 @@ fn run_as(program: &str, role: EndingRole) -> SandboxOutcome {
         },
         SandboxLimits::default(),
         None,
-        FakeToolApi::new(&log),
+        FakeOperationApi::new(&log),
     );
     outcome
 }
@@ -291,7 +291,7 @@ fn a_program_runs_typed_calls_in_order() {
         "try {\n",
         "  gg.files.readFile(\"a.ts\", { offset: -1 });\n",
         "} catch (error) {\n",
-        "  console.log(String(error instanceof gg.core.ToolError));\n",
+        "  console.log(String(error instanceof gg.core.ApiError));\n",
         "}\n",
         "gg.session.finish(\"drove the documented spelling\");\n",
     ));
@@ -327,7 +327,7 @@ fn a_program_runs_typed_calls_in_order() {
     let lines = logs(&outcome);
     assert_eq!(
         lines[0], "true",
-        "`ToolError` is bound bare, so `instanceof` narrows a caught failure"
+        "`ApiError` is bound bare, so `instanceof` narrows a caught failure"
     );
     assert_eq!(
         summary_of(completion(&outcome)),
@@ -620,7 +620,7 @@ fn the_limits_stop_a_runaway_program() {
             if name == "read_file" {
                 let contents = "alpha ".repeat(64 * 1024 / 6);
                 return ToolOutcome::ok(contents.clone(), "read").with_data(
-                    crate::tools::ToolData::FileText(crate::tools::FileTextData {
+                    crate::tools::ApiData::FileText(crate::tools::FileTextData {
                         contents,
                         first_line: 1,
                         last_line: 1,
@@ -903,7 +903,7 @@ fn a_role_gets_only_its_own_ending_calls() {
 /// SDK withholds a name any more, so on every arm the first is what actually happens: the call is
 /// bound, it is made, and the membrane refuses it. If each guest's own reading of its throw decided
 /// the class, the identical event would be counted as `program_unknown_name` in one arm and
-/// `program_tool_error` in the next, which is exactly the confound a cross-language study cannot
+/// `program_api_error` in the next, which is exactly the confound a cross-language study cannot
 /// carry. The host reads the failure **code** instead, and this proves it end to end through the
 /// real component.
 ///
@@ -917,7 +917,7 @@ fn a_role_gets_only_its_own_ending_calls() {
 ///   (`packages/gg-sandbox-csharp/Sources/shell.c`'s `report`, which is the only path from
 ///   `mono_runtime_run_main`'s `thrown` to the membrane). An uncaught refusal is therefore
 ///   `program_throw`, and so is an uncaught `not-found`; that guest never classifies a
-///   `Gg.ToolException` by its code.
+///   `Gg.ApiException` by its code.
 /// * **Swift** has no top-level `throws` context its shell can wrap, so an uncaught error is not a
 ///   `program-error` at all: the runtime prints to stderr and executes `unreachable`, which arrives
 ///   as a trapped store (see `packages/gg-sandbox-swift/Sources/shell.swift`'s `ggRun`).
@@ -979,7 +979,7 @@ fn a_refused_call_is_the_same_turn_error_as_an_unbound_name() {
 /// The rest of the programs drive the four functions the way the prompt tells a model to write them,
 /// because everything about this surface that could be wrong is invisible from Rust: an argument
 /// under the wrong key, a `bigint` token count that makes `JSON.stringify` throw, a refusal that
-/// arrives as a bare record instead of a catchable `ToolError`.
+/// arrives as a bare record instead of a catchable `ApiError`.
 #[test]
 fn the_view_object_is_always_bound_and_only_open_file_is_gated() {
     // A run with NO tools at all still has `view`, and three of its four functions.
@@ -1070,16 +1070,16 @@ fn the_view_object_is_always_bound_and_only_open_file_is_gated() {
     );
     assert_eq!(logged_json(&outcome), json!({ "closed": 1, "left": ["b"] }));
 
-    // A refused view arrives as a catchable `ToolError` naming the call the program made, by the
+    // A refused view arrives as a catchable `ApiError` naming the call the program made, by the
     // key of the operation it wrote — the same identity every other failed call on this membrane
     // carries.
     let (outcome, _) = run(
         "import * as gg from \"gg\";\ntry { gg.views.openText(\"\", \"body\"); }\n\
-         catch (e) { console.log(JSON.stringify({ isToolError: e instanceof gg.core.ToolError, tool: (e as gg.core.ToolError).tool, code: (e as gg.core.ToolError).code })); }",
+         catch (e) { console.log(JSON.stringify({ isApiError: e instanceof gg.core.ApiError, operation: (e as gg.core.ApiError).operation, code: (e as gg.core.ApiError).code })); }",
     );
     assert_eq!(
         logged_json(&outcome),
-        json!({ "isToolError": true, "tool": "open_text", "code": "invalid-argument" }),
+        json!({ "isApiError": true, "operation": "open_text", "code": "invalid-argument" }),
         "a view with no selector could never be closed or attributed, so it is refused"
     );
 
@@ -1154,16 +1154,16 @@ fn the_program_library_is_bound_only_when_the_run_keeps_one() {
     );
     assert_eq!(logs(&outcome), ["first"]);
 
-    // A turn the library does not hold is a catchable `ToolError`, named after the call the model
+    // A turn the library does not hold is a catchable `ApiError`, named after the call the model
     // made rather than after a gg tool that does not exist.
     let outcome = run_with_library(
         "import * as gg from \"gg\";\ntry { gg.programs.get(99); }\n\
-         catch (e) { console.log(JSON.stringify({ isToolError: e instanceof gg.core.ToolError, tool: (e as gg.core.ToolError).tool, code: (e as gg.core.ToolError).code })); }",
+         catch (e) { console.log(JSON.stringify({ isApiError: e instanceof gg.core.ApiError, operation: (e as gg.core.ApiError).operation, code: (e as gg.core.ApiError).code })); }",
         &[(1, "first")],
     );
     assert_eq!(
         logged_json(&outcome),
-        json!({ "isToolError": true, "tool": "get", "code": "not-found" })
+        json!({ "isApiError": true, "operation": "get", "code": "not-found" })
     );
 
     // A hand-over returns like any other call and the program runs on — the same shape `finish` has,
@@ -1229,7 +1229,7 @@ fn run_with_modules_logged(program: &str, modules: &[(&str, &str)]) -> (SandboxO
         },
         SandboxLimits::default(),
         None,
-        FakeToolApi::new(&log),
+        FakeOperationApi::new(&log),
     );
     (outcome, log)
 }
@@ -1342,7 +1342,7 @@ fn an_on_use_script_has_no_ending_calls_in_scope() {
         },
         SandboxLimits::default(),
         None,
-        FakeToolApi::new(&log),
+        FakeOperationApi::new(&log),
     );
     assert!(
         outcome.completion.is_none(),

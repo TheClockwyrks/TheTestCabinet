@@ -326,7 +326,10 @@ fn the_entry_class_catches_nothing_and_names_the_model_s_own_class() {
         "{entry}"
     );
     assert!(entry.contains("@Export(name = \"run\")"), "{entry}");
-    assert!(entry.contains("@Export(name = \"bound-tools\")"), "{entry}");
+    assert!(
+        entry.contains("@Export(name = \"bound-operations\")"),
+        "{entry}"
+    );
     // `main` may declare a checked exception — a Java author writes `throws Exception` on one every
     // day — so the export that calls it declares one too.
     assert!(entry.contains("throws Throwable"), "{entry}");

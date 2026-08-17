@@ -64,8 +64,8 @@ public static partial class Delegation
         /// handle is in hand.
         /// </remarks>
         /// <param name="message">What to tell it.</param>
-        /// <exception cref="ToolException">
-        /// <see cref="ToolErrorCode.Conflict"/> for a child that has already returned.
+        /// <exception cref="ApiException">
+        /// <see cref="ApiErrorCode.Conflict"/> for a child that has already returned.
         /// </exception>
         /// <ggop alias="true">delegation.send_message</ggop>
         public void Send(string message) => SendMessage(Id, message);

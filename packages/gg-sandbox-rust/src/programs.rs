@@ -10,7 +10,7 @@
 //! ```
 
 use crate::bindings::test_cabinet::gg::programs;
-use crate::core::ToolError;
+use crate::core::ApiError;
 use crate::wire;
 
 
@@ -30,7 +30,7 @@ use crate::wire;
 /// `Unavailable` when this agent keeps no program library — which is a different fact from an empty
 /// one, and the reason this hands back a `Result` rather than a bare `Vec`.
 #[doc(alias = "ggop:programs.history")]
-pub fn history() -> Result<Vec<ProgramSummary>, ToolError> {
+pub fn history() -> Result<Vec<ProgramSummary>, ApiError> {
     wire::lift(programs::history())
         .map(|summaries| summaries.into_iter().map(wire::program_summary).collect())
 }
@@ -58,7 +58,7 @@ pub fn history() -> Result<Vec<ProgramSummary>, ToolError> {
 /// `NotFound`, naming the turns that are held, for a turn that ran no program or one old enough that
 /// the library has dropped it, and `Unavailable` when this agent keeps no program library.
 #[doc(alias = "ggop:programs.get")]
-pub fn get(turn: Option<u32>) -> Result<String, ToolError> {
+pub fn get(turn: Option<u32>) -> Result<String, ApiError> {
     wire::lift(programs::get(turn))
 }
 
@@ -83,7 +83,7 @@ pub fn get(turn: Option<u32>) -> Result<String, ToolError> {
 /// `Refused` for a second hand-over in one turn, `InvalidArgument` for a blank source, and
 /// `Unavailable` when this agent keeps no program library.
 #[doc(alias = "ggop:programs.rerun")]
-pub fn rerun(source: &str) -> Result<(), ToolError> {
+pub fn rerun(source: &str) -> Result<(), ApiError> {
     wire::lift(programs::rerun(source))
 }
 
@@ -120,7 +120,7 @@ impl ProgramSummary {
     ///
     /// `NotFound` when the library's retention has since dropped that turn.
     #[doc(alias = "ggop-alias:programs.get")]
-    pub fn source(&self) -> Result<String, ToolError> {
+    pub fn source(&self) -> Result<String, ApiError> {
         get(Some(self.turn))
     }
 }

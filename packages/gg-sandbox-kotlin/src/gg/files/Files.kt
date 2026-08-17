@@ -12,7 +12,7 @@
  */
 package gg.files
 
-import gg.core.ToolError
+import gg.core.ApiError
 import gg.internal.Read
 import gg.internal.ggCall
 import gg.internal.ggNumber
@@ -47,7 +47,7 @@ import gg.internal.ggText
  * @param offset The 1-based line to start at. Left out, the read starts at the first line.
  * @param limit How many lines to return from `offset`. Left out, the read runs to the end.
  * @return the file's text, or the picture's description
- * @throws ToolError `NOT_FOUND` for a missing path.
+ * @throws ApiError `NOT_FOUND` for a missing path.
  */
 public fun readFile(path: String, offset: Int? = null, limit: Int? = null): FileRead =
     Read.fileRead(
@@ -64,7 +64,7 @@ public fun readFile(path: String, offset: Int? = null, limit: Int? = null): File
  * @param offset The 1-based line to start at. Left out, the read starts at the first line.
  * @param limit How many lines to return from `offset`. Left out, the read runs to the end.
  * @return the file's text
- * @throws ToolError `INVALID_ARGUMENT` when the path names a picture, which `gg.files.readFile`
+ * @throws ApiError `INVALID_ARGUMENT` when the path names a picture, which `gg.files.readFile`
  *   inspects and `gg.views.openFile` shows.
  */
 public fun readTextFile(path: String, offset: Int? = null, limit: Int? = null): String =
@@ -80,7 +80,7 @@ public fun readTextFile(path: String, offset: Int? = null, limit: Int? = null): 
  * @param path Where to write, relative to the workspace or absolute. Parent directories are created.
  * @param contents The text to write. It replaces the file entirely.
  * @return how many bytes were written
- * @throws ToolError `INVALID_ARGUMENT` for an empty path, and `IO_ERROR` when creating the parent
+ * @throws ApiError `INVALID_ARGUMENT` for an empty path, and `IO_ERROR` when creating the parent
  *   directories or the write itself failed.
  */
 public fun writeFile(path: String, contents: String): Int =
@@ -96,7 +96,7 @@ public fun writeFile(path: String, contents: String): Int =
  * @param path The file to edit.
  * @param oldString The exact text to find, whitespace included. It must appear exactly once.
  * @param newString The text to put in its place. An empty string deletes the match.
- * @throws ToolError `NOT_FOUND` when the text does not appear, and `CONFLICT` — carrying the number
+ * @throws ApiError `NOT_FOUND` when the text does not appear, and `CONFLICT` — carrying the number
  *   of matches — when it appears more than once.
  */
 public fun editFile(path: String, oldString: String, newString: String) {
@@ -113,7 +113,7 @@ public fun editFile(path: String, oldString: String, newString: String) {
  * @param path The directory to list, relative to the workspace or absolute. Left out, the workspace
  *   root is listed.
  * @return every entry in that directory
- * @throws ToolError `NOT_FOUND` for a directory that is not there, and `INVALID_ARGUMENT` for a
+ * @throws ApiError `NOT_FOUND` for a directory that is not there, and `INVALID_ARGUMENT` for a
  *   path that is given but empty — leaving it out is what lists the workspace root.
  */
 public fun listDir(path: String? = null): List<DirEntry> =

@@ -7,7 +7,7 @@ use super::super::ErrorCode;
 use super::super::capture::MAX_RECORDED_VIEW_EVENTS;
 use super::*;
 use crate::sandbox::fake::{CallLog, all_operations, canned_outcome, membrane, membrane_with};
-use crate::tools::{FileTextData, ToolData, ToolFailure, ToolOutcome};
+use crate::tools::{ApiData, FileTextData, ToolFailure, ToolOutcome};
 
 /// **`open-file-view` is a `read_file`, and is rostered as one.**
 ///
@@ -61,7 +61,7 @@ fn a_paged_file_view_reports_its_region() {
     let log = CallLog::default();
     let mut state = membrane_with(&log, &all_operations(), None, |_name, args| {
         let path = args["path"].as_str().unwrap_or_default().to_string();
-        ToolOutcome::ok(format!("page of {path}"), "read 2 lines").with_data(ToolData::FileText(
+        ToolOutcome::ok(format!("page of {path}"), "read 2 lines").with_data(ApiData::FileText(
             FileTextData {
                 contents: format!("page of {path}"),
                 first_line: 201,
@@ -218,7 +218,10 @@ fn an_empty_label_is_an_argument_error() {
         .open_text_view("   ".to_string(), "body".to_string())
         .expect_err("a blank label names nothing");
     assert_eq!(error.code, ErrorCode::InvalidArgument);
-    assert_eq!(error.tool, "open_text", "it names the operation it called");
+    assert_eq!(
+        error.operation, "open_text",
+        "it names the operation it called"
+    );
 
     let parts = state.into_parts();
     assert_eq!(parts.view_refusals.len(), 1);

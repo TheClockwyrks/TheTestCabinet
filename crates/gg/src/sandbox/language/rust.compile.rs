@@ -374,7 +374,7 @@ fn invoke_rustc(
 ///
 /// The problem this solves, measured on this arm's real toolchain. `--extern gg=…` makes the crate
 /// *available*; `rustc` loads it only if the program's own text refers to it, and passes
-/// `--export run --export bound-tools …` to `rust-lld` only for a crate it loaded. So a program that
+/// `--export run --export bound-operations …` to `rust-lld` only for a crate it loaded. So a program that
 /// names nothing of gg's — `fn main() { let v = vec![1, 2, 3]; let _ = v[7]; }`, which is a whole
 /// Rust program and a perfectly ordinary reply — links a module with **no `run` export at all**. The
 /// encode below then succeeds, silently, and produces a component gg cannot call: the failure would
@@ -388,7 +388,7 @@ fn invoke_rustc(
 /// * the two `.rlib` paths are that member's archive and the `wit-bindgen` runtime it calls into —
 ///   both are already on `rustc`'s own link line for a program that *does* name `gg`, and naming an
 ///   archive twice is not an error, because archive members are taken on demand;
-/// * the four `--export=` names are the world's own two exports (`run`, `bound-tools`, out of
+/// * the four `--export=` names are the world's own two exports (`run`, `bound-operations`, out of
 ///   `crates/gg/wit/gg-sandbox.wit`) and the two the canonical ABI fixes (`cabi_post_<name>` for a
 ///   returning export, and `cabi_realloc`).
 ///
@@ -410,8 +410,8 @@ fn link_the_shell(libraries: &Libraries) -> Vec<String> {
     }
     for export in [
         "run",
-        "bound-tools",
-        "cabi_post_bound-tools",
+        "bound-operations",
+        "cabi_post_bound-operations",
         "cabi_realloc",
     ] {
         arguments.push(format!("-Clink-arg=--export={export}"));

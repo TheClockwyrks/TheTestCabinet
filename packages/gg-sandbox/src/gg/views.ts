@@ -12,7 +12,7 @@
 import * as raw from "test-cabinet:gg/views";
 import { DOCS_NAME } from "../catalogue.js";
 import { U32_MAX, call, opts, typeName, uint } from "../internal/errors.js";
-import { ToolError } from "./core.js";
+import { ApiError } from "./core.js";
 import { asFileRead } from "../internal/lower.js";
 import type { FileRead } from "./files.js";
 
@@ -90,7 +90,7 @@ export interface OpenView {
  * @param options.limit How many lines to show from `offset`.
  * @returns the same value `gg.files.readFile` hands back for that window, so a program can use what
  * it just put in front of the agent.
- * @throws `ToolError` with `not-found` for a path that is not there. The read is what fails, so
+ * @throws `ApiError` with `not-found` for a path that is not there. The read is what fails, so
  * nothing is opened when it does.
  */
 export function openFile(path: string, options?: { offset?: number; limit?: number }): FileRead {
@@ -115,7 +115,7 @@ export function openFile(path: string, options?: { offset?: number; limit?: numb
  * again replaces what it showed. It may not be empty.
  * @param body What to show. An empty body is allowed: it says that something previously shown is now
  * empty.
- * @throws `ToolError` with `invalid-argument` for an empty label, and `limit-exceeded`, naming the
+ * @throws `ApiError` with `invalid-argument` for an empty label, and `limit-exceeded`, naming the
  * cap, when a body or a label is over gg's ceilings. Nothing is ever silently truncated.
  */
 export function openText(label: string, body: string): void {
@@ -138,7 +138,7 @@ export function openText(label: string, body: string): void {
  * @ggop views.open_docs_view
  * @param target What to document: a bound function itself, or the entry's name as a string — a
  * module's name is its own path, as in `gg.files`.
- * @throws `ToolError` with `not-found` for an unknown or unbound name — searching the documentation
+ * @throws `ApiError` with `not-found` for an unknown or unbound name — searching the documentation
  * is what says which names exist — and `invalid-argument` for an argument that is neither a
  * function nor a string.
  */
@@ -168,7 +168,7 @@ export function openDocsView(target: Function | string): void {
 function docsName(target: Function | string): string {
   if (typeof target === "string") return target;
   if (typeof target !== "function") {
-    throw new ToolError(
+    throw new ApiError(
       "openDocsView",
       "invalid-argument",
       target === undefined || target === null
@@ -198,7 +198,7 @@ function docsName(target: Function | string): string {
  * @param selector What the view is filed under: a file's path, a text view's label, or `search
  * results`.
  * @returns how many views were closed, which is zero when the selector named nothing open.
- * @throws `ToolError` with `invalid-argument` for an empty selector, which could never have been a
+ * @throws `ApiError` with `invalid-argument` for an empty selector, which could never have been a
  * view's name.
  */
 export function close(selector: string): number {

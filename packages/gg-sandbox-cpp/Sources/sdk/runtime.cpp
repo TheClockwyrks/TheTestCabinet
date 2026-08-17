@@ -14,12 +14,12 @@ void log(std::string_view line) {
   test_cabinet_gg_feedback_log(&lowered);
 }
 
-std::vector<std::string> bound_tool_names() {
+std::vector<std::string> bound_operation_names() {
   std::vector<std::string> names;
   for (const std::vector<std::string>* module :
-       {&detail::files_tools(), &detail::shell_tools(), &detail::skills_tools(),
-        &detail::memories_tools(), &detail::tasks_tools(), &detail::board_tools(),
-        &detail::context_tools(), &detail::delegation_tools()}) {
+       {&detail::files_operations(), &detail::shell_operations(), &detail::skills_operations(),
+        &detail::memories_operations(), &detail::tasks_operations(), &detail::board_operations(),
+        &detail::context_operations(), &detail::delegation_operations()}) {
     names.insert(names.end(), module->begin(), module->end());
   }
   return names;

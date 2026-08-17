@@ -109,7 +109,7 @@ fn an_empty_summary_finishes_nothing() {
             .expect_err("a blank summary is not a completion");
         assert_eq!(refused.code, ErrorCode::InvalidArgument);
         assert_eq!(
-            refused.tool, FINISH_FUNCTION,
+            refused.operation, FINISH_FUNCTION,
             "the failure names the function that raised it, which is not a gg tool"
         );
         assert!(refused.message.contains("NOT over"), "{}", refused.message);
@@ -327,7 +327,7 @@ fn a_rejection_with_no_changes_is_refused() {
             .expect_err("a rejection with nothing in it is not a verdict");
         assert_eq!(refused.code, ErrorCode::InvalidArgument);
         assert_eq!(
-            refused.tool, "request_changes",
+            refused.operation, "request_changes",
             "the identity field is gg's own name for the call, as it is for every bound tool"
         );
         assert!(
@@ -386,7 +386,7 @@ fn an_ending_outside_this_agents_role_is_refused_by_the_host() {
         .expect_err("a reviewer is not the one who says the work is complete");
 
     assert_eq!(refused.code, ErrorCode::Unavailable);
-    assert_eq!(refused.tool, FINISH_FUNCTION);
+    assert_eq!(refused.operation, FINISH_FUNCTION);
     assert!(
         refused.message.contains("gg.session.approve")
             && refused.message.contains("gg.session.requestChanges"),

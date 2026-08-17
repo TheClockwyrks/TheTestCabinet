@@ -66,7 +66,7 @@ use test_cabinet_core::gg::{GgContextSource, GgProgramLanguage};
 use crate::agent::code::ModelFacing;
 use crate::limits::TurnErrorType;
 use crate::sandbox::fake::{
-    CallLog, FakeToolApi, all_capabilities, all_operations, canned_outcome, granted_operations,
+    CallLog, FakeOperationApi, all_capabilities, all_operations, canned_outcome, granted_operations,
 };
 use crate::sandbox::membrane::RunEnding;
 use crate::sandbox::{ProgramScope, SandboxLimits, run_program};
@@ -83,8 +83,8 @@ use crate::tools::{ToolFailure, ToolOutcome};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Shape {
     /// (a) A gg call the host answers with a failure, uncaught. The commonest runtime failure a gg
-    /// program has, and the one a model most needs the tool's name and the failure's code from.
-    ToolError,
+    /// program has, and the one a model most needs the operation's name and the failure's code from.
+    ApiError,
     /// (b) An uncaught native fault — an index past the end, a nil unwrapped, a bad cast. Never a
     /// divide by zero: that is not a fault on five of the eleven arms, so a gate built on it would
     /// be measuring the language rather than gg.
@@ -105,7 +105,7 @@ impl Shape {
     /// Every shape, in the order the ruling states them — what a per-arm case list is checked
     /// against for completeness.
     pub(super) const ALL: [Self; 5] = [
-        Self::ToolError,
+        Self::ApiError,
         Self::NativeFault,
         Self::FailureValue,
         Self::ResourceFault,
@@ -115,7 +115,7 @@ impl Shape {
     /// The shape's letter and name, for a failure message an operator reads without this file open.
     fn label(self) -> &'static str {
         match self {
-            Self::ToolError => "(a) an uncaught gg tool failure",
+            Self::ApiError => "(a) an uncaught gg API failure",
             Self::NativeFault => "(b) an uncaught native fault",
             Self::FailureValue => "(c) termination by a failure value",
             Self::ResourceFault => "(d) a resource fault",
@@ -294,7 +294,7 @@ const KNOWN_HOLES: &[Hole] = &[
     // ---- swift ------------------------------------------------------------------------------
     Hole {
         arm: GgProgramLanguage::Swift,
-        shape: Shape::ToolError,
+        shape: Shape::ApiError,
         // The words are whole — Swift's own `Fatal error: Error raised at top level:` in front of
         // the failed call's name and code — and the location is the STANDARD LIBRARY's. Swift
         // propagates an error by RETURN, so by the time the entry point's synthesized epilogue
@@ -374,7 +374,7 @@ pub(super) fn responder(name: &str, args: &Value) -> ToolOutcome {
 /// gate, which is the arrangement this module exists to replace.
 fn drive(arm: GgProgramLanguage, program: &str) -> Read {
     let log = CallLog::default();
-    let api = FakeToolApi::with(&log, responder);
+    let api = FakeOperationApi::with(&log, responder);
     let operations = granted_operations(&all_operations(), false);
     let scope = ProgramScope {
         capabilities: &all_capabilities(),

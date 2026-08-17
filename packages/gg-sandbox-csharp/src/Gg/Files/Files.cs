@@ -39,7 +39,7 @@ public static partial class Files
     /// <param name="offset">The 1-based first line, honoured only under a capped read policy.</param>
     /// <param name="limit">How many lines to read. Left out, the read runs to the end.</param>
     /// <returns>the file's text window, or the picture's description.</returns>
-    /// <exception cref="ToolException"><see cref="ToolErrorCode.NotFound"/> for a missing path.</exception>
+    /// <exception cref="ApiException"><see cref="ApiErrorCode.NotFound"/> for a missing path.</exception>
     /// <ggop>files.read_file</ggop>
     public static FileRead ReadFile(string path, uint? offset = null, uint? limit = null)
     {
@@ -72,8 +72,8 @@ public static partial class Files
     /// <param name="offset">The 1-based first line, honoured only under a capped read policy.</param>
     /// <param name="limit">How many lines to read. Left out, the read runs to the end.</param>
     /// <returns>the text alone, without the line counts <see cref="TextFile"/> reports beside it.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.InvalidArgument"/> when the path names a picture, which
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.InvalidArgument"/> when the path names a picture, which
     /// <see cref="ReadFile"/> inspects instead.
     /// </exception>
     /// <ggop>files.read_text_file</ggop>
@@ -92,9 +92,9 @@ public static partial class Files
     /// <param name="path">Where to write, relative to the workspace or absolute.</param>
     /// <param name="contents">The UTF-8 text to write. It replaces the file entirely.</param>
     /// <returns>how many bytes were written.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.InvalidArgument"/> for an empty path, and
-    /// <see cref="ToolErrorCode.IOError"/> when creating the parent directories or the write itself
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for an empty path, and
+    /// <see cref="ApiErrorCode.IOError"/> when creating the parent directories or the write itself
     /// failed.
     /// </exception>
     /// <ggop>files.write_file</ggop>
@@ -112,9 +112,9 @@ public static partial class Files
     /// <param name="path">The file to edit.</param>
     /// <param name="oldString">The exact text to find, whitespace included. It must appear once.</param>
     /// <param name="newString">The text to put in its place. An empty string deletes the match.</param>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.NotFound"/> when the text does not appear, and
-    /// <see cref="ToolErrorCode.Conflict"/> — with the number of matches — when it appears more than
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.NotFound"/> when the text does not appear, and
+    /// <see cref="ApiErrorCode.Conflict"/> — with the number of matches — when it appears more than
     /// once.
     /// </exception>
     /// <ggop>files.edit_file</ggop>
@@ -128,9 +128,9 @@ public static partial class Files
     /// </remarks>
     /// <param name="path">The directory to list. Left out, the workspace root is listed.</param>
     /// <returns>the directory's immediate entries only — nothing here descends into a subdirectory.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.NotFound"/> for a directory that is not there, and
-    /// <see cref="ToolErrorCode.InvalidArgument"/> for a path that is given but empty — leaving it
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.NotFound"/> for a directory that is not there, and
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for a path that is given but empty — leaving it
     /// out altogether is what lists the workspace root.
     /// </exception>
     /// <ggop>files.list_dir</ggop>

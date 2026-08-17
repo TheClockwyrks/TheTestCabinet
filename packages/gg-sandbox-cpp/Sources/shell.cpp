@@ -39,9 +39,9 @@ extern "C" {
 // the one call the standard forbids.
 extern "C" int __main_void(void);
 
-// **The gg tool names this component can bind** — what `bound-tools` answers.
+// **The gg tool names this component can bind** — what `bound-operations` answers.
 //
-// It is `gg::bound_tool_names()`, which is assembled from the SDK's own per-module tables: each
+// It is `gg::bound_operation_names()`, which is assembled from the SDK's own per-module tables: each
 // capability module states the tools it dispatches in the same translation unit as the functions
 // that dispatch them, so a tool that gained a function without gaining an entry — or the reverse — is a
 // failing gate rather than a silent difference between what a model may call and what gg thinks it
@@ -50,8 +50,8 @@ extern "C" int __main_void(void);
 // `std::malloc` rather than `new`, because the generated post-return frees this list and every
 // string in it with `free()`. A zero-length list keeps a null pointer, which is the shape the
 // post-return is written for.
-extern "C" void exports_sandbox_bound_tools(sandbox_list_string_t *ret) {
-  const std::vector<std::string> names = gg::bound_tool_names();
+extern "C" void exports_sandbox_bound_operations(sandbox_list_string_t *ret) {
+  const std::vector<std::string> names = gg::bound_operation_names();
   ret->len = names.size();
   ret->ptr = nullptr;
   if (names.empty()) return;
@@ -78,7 +78,7 @@ extern "C" void exports_sandbox_bound_tools(sandbox_list_string_t *ret) {
 // `what()`, reported over `feedback.report-error` as a located-nowhere program error — which is what
 // the Rust arm's panic hook buys that arm, reached a different way.
 //
-// **The code is read off a `gg::core::tool_error`**, which is the whole reason that exception carries
+// **The code is read off a `gg::core::api_error`**, which is the whole reason that exception carries
 // one. The host classifies a turn from the code rather than from the kind, so a failed
 // `files::read_file` that nothing caught arrives as `not-found` and is recorded as the same class of
 // failure it would be on every other arm. Anything else a program threw has no gg code at all and
@@ -149,7 +149,7 @@ static void report_uncaught(const char *kind, const char *what,
   }
   test_cabinet_gg_feedback_program_error_t error;
   error.kind = code == nullptr ? TEST_CABINET_GG_FEEDBACK_ERROR_KIND_OTHER
-                               : TEST_CABINET_GG_FEEDBACK_ERROR_KIND_TOOL_FAILURE;
+                               : TEST_CABINET_GG_FEEDBACK_ERROR_KIND_API_FAILURE;
   error.code.is_some = code != nullptr;
   if (code != nullptr) error.code.val = *code;
   error.location.is_some = false;
@@ -174,18 +174,18 @@ static void report_status(int status) {
 }
 
 // The wire's code for a failure the SDK threw.
-static test_cabinet_gg_types_error_code_t wire_code(gg::core::tool_error_code code) {
+static test_cabinet_gg_types_error_code_t wire_code(gg::core::api_error_code code) {
   switch (code) {
-    case gg::core::tool_error_code::invalid_argument:
+    case gg::core::api_error_code::invalid_argument:
       return TEST_CABINET_GG_TYPES_ERROR_CODE_INVALID_ARGUMENT;
-    case gg::core::tool_error_code::not_found: return TEST_CABINET_GG_TYPES_ERROR_CODE_NOT_FOUND;
-    case gg::core::tool_error_code::conflict: return TEST_CABINET_GG_TYPES_ERROR_CODE_CONFLICT;
-    case gg::core::tool_error_code::refused: return TEST_CABINET_GG_TYPES_ERROR_CODE_REFUSED;
-    case gg::core::tool_error_code::unavailable: return TEST_CABINET_GG_TYPES_ERROR_CODE_UNAVAILABLE;
-    case gg::core::tool_error_code::limit_exceeded:
+    case gg::core::api_error_code::not_found: return TEST_CABINET_GG_TYPES_ERROR_CODE_NOT_FOUND;
+    case gg::core::api_error_code::conflict: return TEST_CABINET_GG_TYPES_ERROR_CODE_CONFLICT;
+    case gg::core::api_error_code::refused: return TEST_CABINET_GG_TYPES_ERROR_CODE_REFUSED;
+    case gg::core::api_error_code::unavailable: return TEST_CABINET_GG_TYPES_ERROR_CODE_UNAVAILABLE;
+    case gg::core::api_error_code::limit_exceeded:
       return TEST_CABINET_GG_TYPES_ERROR_CODE_LIMIT_EXCEEDED;
-    case gg::core::tool_error_code::io_error: return TEST_CABINET_GG_TYPES_ERROR_CODE_IO_ERROR;
-    case gg::core::tool_error_code::other: return TEST_CABINET_GG_TYPES_ERROR_CODE_OTHER;
+    case gg::core::api_error_code::io_error: return TEST_CABINET_GG_TYPES_ERROR_CODE_IO_ERROR;
+    case gg::core::api_error_code::other: return TEST_CABINET_GG_TYPES_ERROR_CODE_OTHER;
   }
   return TEST_CABINET_GG_TYPES_ERROR_CODE_OTHER;
 }
@@ -195,7 +195,7 @@ static test_cabinet_gg_types_error_code_t wire_code(gg::core::tool_error_code co
 // Every parameter is ignored, and on this arm that is a property of the strategy rather than an
 // omission. `program` is empty because the program is not source that crossed the membrane: it was
 // compiled INTO this component, and this component exists only for that one program. `modules`,
-// `tools`, `ending` and `library` describe what the run offers, and what a program may reach is
+// `operations`, `ending` and `library` describe what the run offers, and what a program may reach is
 // decided at COMPILE time on an arm like this one — by which SDK the entry file was built against —
 // with the host checking every call regardless, because a guest that links its SDK as a library has
 // no name to withhold.
@@ -207,11 +207,11 @@ static test_cabinet_gg_types_error_code_t wire_code(gg::core::tool_error_code co
 // below is undefined behaviour, which says nothing anywhere.
 extern "C" void exports_sandbox_run(sandbox_string_t *program,
                                     sandbox_list_code_module_t *modules,
-                                    sandbox_list_string_t *tools,
+                                    sandbox_list_string_t *operations,
                                     sandbox_ending_kind_t ending, bool library) {
   (void)program;
   (void)modules;
-  (void)tools;
+  (void)operations;
   (void)ending;
   (void)library;
   try {
@@ -226,12 +226,12 @@ extern "C" void exports_sandbox_run(sandbox_string_t *program,
     if (status != 0) {
       report_status(status);
     }
-  } catch (const gg::core::tool_error &failure) {
+  } catch (const gg::core::api_error &failure) {
     // A gg call the program did not catch. `what()` is already gg's own sentence about it — the
     // call, the class and the guidance — so what is added here is only that nothing caught it, and
     // the CODE, which is what the host classifies the turn by.
     const test_cabinet_gg_types_error_code_t code = wire_code(failure.code());
-    report_uncaught("gg::core::tool_error", failure.what(), &code);
+    report_uncaught("gg::core::api_error", failure.what(), &code);
   } catch (const std::exception &failure) {
     // `typeid` rather than a fixed string, so a model reading the report sees the class it actually
     // threw — its own `struct TooSmall : std::runtime_error` rather than `std::exception`. What

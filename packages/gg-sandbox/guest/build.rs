@@ -12,7 +12,7 @@
 //! and the whole point of this guest is that its SDK is the same 4,000 lines the incumbent's is.
 //!
 //! Hand-writing that is not a one-off cost, it is a permanent one: it would have to be kept in step
-//! with a file that changes whenever gg grows a tool, and the failure of falling behind is a model
+//! with a file that changes whenever gg grows a call, and the failure of falling behind is a model
 //! shown a surface its guest cannot lower. So the WIT is read here, and the glue falls out of it.
 //! This is the same argument `crates/gg/build.rs` makes for the eleven signature catalogues, one
 //! level down.
@@ -60,11 +60,12 @@ const WORLD: &str = "sandbox";
 /// context window, `programs` is the library of programs this agent has already run, and `helpers`
 /// holds the convenience wrappers built on a tool without being one.
 ///
-/// It is what [`bound_tools`](../src/lib.rs) is derived from, and it is checked in both directions:
+/// It is what [`bound_operations`](../src/lib.rs) is derived from, and it is checked in both directions:
 /// a name here that is not an interface of the world fails this build, and an interface of the world
 /// that is not here contributes its functions to the tool list. That is the property gg's
 /// `every_registered_language_binds_exactly_the_tools_gg_offers` compares against `ALL_TOOL_NAMES`.
-const NOT_TOOL_INTERFACES: [&str; 6] = ["helpers", "session", "docs", "views", "programs", "feedback"];
+const NOT_OPERATION_INTERFACES: [&str; 6] =
+    ["helpers", "session", "docs", "views", "programs", "feedback"];
 
 fn main() {
     let manifest = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("cargo sets this"));
@@ -217,10 +218,10 @@ impl<'a> Generator<'a> {
         self.out.push_str(HEADER);
 
         let interfaces = self.interfaces();
-        for name in &NOT_TOOL_INTERFACES {
+        for name in &NOT_OPERATION_INTERFACES {
             assert!(
                 interfaces.iter().any(|(id, _)| id == name),
-                "`NOT_TOOL_INTERFACES` names `{name}`, and the `{WORLD}` world does not import an \
+                "`NOT_OPERATION_INTERFACES` names `{name}`, and the `{WORLD}` world does not import an \
                  interface by that name. The list decides which functions are reported as gg TOOLS, \
                  so a stale name silently moves a whole family into the tool vocabulary."
             );
@@ -247,13 +248,13 @@ impl<'a> Generator<'a> {
         }
 
         self.emit_registry(&interfaces);
-        self.emit_tool_names(&interfaces);
+        self.emit_operation_names(&interfaces);
         self.out
     }
 
     /// The world's imported interfaces, in declaration order, skipping the ones with no functions.
     ///
-    /// `types` is the one that has none: it exists so a single `tool-error` crosses the whole
+    /// `types` is the one that has none: it exists so a single `api-error` crosses the whole
     /// membrane rather than one per family, so there is nothing to import and nothing to bind.
     fn interfaces(&self) -> Vec<(String, wit_parser::InterfaceId)> {
         let mut found = Vec::new();
@@ -511,7 +512,7 @@ impl<'a> Generator<'a> {
              ///\n\
              /// Every export is a closure over the wit-bindgen import of the same function, so a call\n\
              /// from a program crosses gg's membrane exactly as any other guest's does — same\n\
-             /// capability gate, same recording bracket, same `tool-error`.\n\
+             /// capability gate, same recording bracket, same `api-error`.\n\
              pub struct {}Module;\n",
             pascal(name)
         );
@@ -571,7 +572,7 @@ impl<'a> Generator<'a> {
              crate::deadline::parked(started.elapsed());",
         );
 
-        // A `result<_, tool-error>` is the one shape gg's membrane returns errors in, and the JS
+        // A `result<_, api-error>` is the one shape gg's membrane returns errors in, and the JS
         // mapping for it is a THROW. Everything else comes straight back.
         let completion = match function.result {
             None => "                Ok(Value::new_undefined(ctx.clone()))".to_string(),
@@ -760,11 +761,11 @@ impl<'a> Generator<'a> {
         self.out.push_str("        _ => None,\n    }\n}\n\n");
     }
 
-    /// The gg tool names this component binds — what the world's `bound-tools` export answers.
-    fn emit_tool_names(&mut self, interfaces: &[(String, wit_parser::InterfaceId)]) {
+    /// The gg tool names this component binds — what the world's `bound-operations` export answers.
+    fn emit_operation_names(&mut self, interfaces: &[(String, wit_parser::InterfaceId)]) {
         let mut names: Vec<String> = Vec::new();
         for (name, id) in interfaces {
-            if NOT_TOOL_INTERFACES.contains(&name.as_str()) {
+            if NOT_OPERATION_INTERFACES.contains(&name.as_str()) {
                 continue;
             }
             for (function, _) in &self.resolve.interfaces[*id].functions {
@@ -775,10 +776,10 @@ impl<'a> Generator<'a> {
             "/// Every gg tool this component imports a binding for.\n\
              ///\n\
              /// Derived from the WIT rather than written down: it is exactly the functions of the\n\
-             /// interfaces `NOT_TOOL_INTERFACES` (in `build.rs`) does not exclude, which is the rule the\n\
+             /// interfaces `NOT_OPERATION_INTERFACES` (in `build.rs`) does not exclude, which is the rule the\n\
              /// WIT's own header states. gg compares it against `ALL_TOOL_NAMES` on the built artifact,\n\
              /// which is the one drift check that reads the `.wasm` rather than a source file.\n\
-             pub const BOUND_TOOLS: &[&str] = &[\n",
+             pub const BOUND_OPERATIONS: &[&str] = &[\n",
         );
         for name in &names {
             let _ = writeln!(self.out, "    {name:?},");

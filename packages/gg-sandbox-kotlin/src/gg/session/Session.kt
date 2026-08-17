@@ -13,7 +13,7 @@
  */
 package gg.session
 
-import gg.core.ToolError
+import gg.core.ApiError
 import gg.internal.ggRun
 import gg.internal.ggText
 import gg.internal.ggTexts
@@ -27,7 +27,7 @@ import gg.internal.ggTexts
  *
  * @ggop session.finish
  * @param summary What was done, in a sentence or two.
- * @throws ToolError `REFUSED` for a second ending in one turn.
+ * @throws ApiError `REFUSED` for a second ending in one turn.
  */
 public fun finish(summary: String) {
     ggRun("session.finish", ggText(summary))
@@ -40,7 +40,7 @@ public fun finish(summary: String) {
  * actually been read.
  *
  * @ggop session.approve
- * @throws ToolError `REFUSED` for a second verdict in one turn.
+ * @throws ApiError `REFUSED` for a second verdict in one turn.
  */
 public fun approve() {
     ggRun("session.approve")
@@ -55,7 +55,7 @@ public fun approve() {
  * @ggop session.request_changes
  * @param items Every change that must be made before the work can be accepted, one per entry. The
  *   list may not be empty.
- * @throws ToolError `INVALID_ARGUMENT` when the list is empty, and `REFUSED` for a second verdict in
+ * @throws ApiError `INVALID_ARGUMENT` when the list is empty, and `REFUSED` for a second verdict in
  *   one turn.
  */
 public fun requestChanges(vararg items: String) {

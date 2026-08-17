@@ -14,11 +14,11 @@ public static partial class Tasks
     /// <param name="description">A longer description, where a title does not carry it.</param>
     /// <param name="blockedBy">Ids of tasks that must finish first. A cycle is refused.</param>
     /// <returns>how full the task budget now is.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.InvalidArgument"/> for a blank id or title,
-    /// <see cref="ToolErrorCode.Conflict"/> for an id already in use or an edge that would make a
-    /// cycle, <see cref="ToolErrorCode.NotFound"/> for a blocker that is not on the list, and
-    /// <see cref="ToolErrorCode.LimitExceeded"/> at the task cap.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for a blank id or title,
+    /// <see cref="ApiErrorCode.Conflict"/> for an id already in use or an edge that would make a
+    /// cycle, <see cref="ApiErrorCode.NotFound"/> for a blocker that is not on the list, and
+    /// <see cref="ApiErrorCode.LimitExceeded"/> at the task cap.
     /// </exception>
     /// <ggop>tasks.add_task</ggop>
     public static TaskUsage AddTask(
@@ -47,9 +47,9 @@ public static partial class Tasks
     /// <param name="title">A new title.</param>
     /// <param name="description">A three-way edit of the description: keep it, clear it, or set it.</param>
     /// <param name="status">A new status.</param>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.NotFound"/> for an unknown id, and
-    /// <see cref="ToolErrorCode.InvalidArgument"/> when nothing at all was changed, or a field that
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.NotFound"/> for an unknown id, and
+    /// <see cref="ApiErrorCode.InvalidArgument"/> when nothing at all was changed, or a field that
     /// must have a value was blanked.
     /// </exception>
     /// <ggop>tasks.update_task</ggop>
@@ -71,10 +71,10 @@ public static partial class Tasks
     /// The ids that must finish first, replacing whatever was there. An empty list clears every
     /// blocker.
     /// </param>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.InvalidArgument"/> for a blank id or blocker,
-    /// <see cref="ToolErrorCode.NotFound"/> for a task or blocker that is not on the list, and
-    /// <see cref="ToolErrorCode.Conflict"/> for an edge that would make a cycle or block the task on
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for a blank id or blocker,
+    /// <see cref="ApiErrorCode.NotFound"/> for a task or blocker that is not on the list, and
+    /// <see cref="ApiErrorCode.Conflict"/> for an edge that would make a cycle or block the task on
     /// itself.
     /// </exception>
     /// <ggop>tasks.set_blocked_by</ggop>
@@ -84,14 +84,14 @@ public static partial class Tasks
     /// <summary>Mark a task done.</summary>
     /// <remarks>Tasks it blocked become actionable once every one of their blockers is done.</remarks>
     /// <param name="id">The task that is finished.</param>
-    /// <exception cref="ToolException"><see cref="ToolErrorCode.NotFound"/> for an unknown id.</exception>
+    /// <exception cref="ApiException"><see cref="ApiErrorCode.NotFound"/> for an unknown id.</exception>
     /// <ggop>tasks.complete_task</ggop>
     public static void CompleteTask(string id) => Internal.Wire.Check(Internal.Native.CompleteTask(id));
 
     /// <summary>Remove a task, and every blocker edge pointing at it.</summary>
     /// <param name="id">The task to drop.</param>
     /// <returns>how full the task budget now is.</returns>
-    /// <exception cref="ToolException"><see cref="ToolErrorCode.NotFound"/> for an unknown id.</exception>
+    /// <exception cref="ApiException"><see cref="ApiErrorCode.NotFound"/> for an unknown id.</exception>
     /// <ggop>tasks.remove_task</ggop>
     public static TaskUsage RemoveTask(string id)
     {

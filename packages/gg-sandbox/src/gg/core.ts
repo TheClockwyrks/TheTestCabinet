@@ -1,17 +1,17 @@
 /**
  * The types every other capability module speaks in.
  *
- * A failure is one type and one type only, so a program that handles `ToolError` handles every call
+ * A failure is one type and one type only, so a program that handles `ApiError` handles every call
  * this surface offers. Nothing here is a call: this module exists for the sake of the names its types
  * are qualified by.
  */
 
 /**
- * Why a call failed, as the `code` on a thrown `ToolError`.
+ * Why a call failed, as the `code` on a thrown `ApiError`.
  *
  * A catch site branches on this rather than on the message, which is prose and free to be reworded.
  */
-export type ToolErrorCode =
+export type ApiErrorCode =
   /**
    * The arguments were malformed, ill-typed, or out of range.
    *
@@ -63,26 +63,26 @@ export type ToolErrorCode =
 /**
  * A gg call that failed, thrown by every function on this surface.
  *
- * `catch (error) { if (error instanceof ToolError) … }` is the shape that reads `tool` and `code`; an
+ * `catch (error) { if (error instanceof ApiError) … }` is the shape that reads `operation` and `code`; an
  * uncaught one ends the program and is reported back with the line it was thrown on.
  */
-export class ToolError extends Error {
+export class ApiError extends Error {
   /**
    * The call that failed, by the key of the operation this program reached for.
    *
    * `read_file` for `gg.files.readFile`, `read_text_file` for `gg.files.readTextFile`, `open_file`
    * for `gg.views.openFile`.
    */
-  readonly tool: string;
+  readonly operation: string;
 
   /** The failure class, so a catch site branches on a value rather than on prose. */
-  readonly code: ToolErrorCode;
+  readonly code: ApiErrorCode;
 
   /** @internal Not model-facing: the SDK constructs these; a program only catches them. */
-  constructor(tool: string, code: ToolErrorCode, message: string) {
+  constructor(operation: string, code: ApiErrorCode, message: string) {
     super(message);
-    this.name = "ToolError";
-    this.tool = tool;
+    this.name = "ApiError";
+    this.operation = operation;
     this.code = code;
   }
 
@@ -92,8 +92,8 @@ export class ToolError extends Error {
    * `Error.prototype.message` is not enumerable, so without this a failure folded into a logged
    * structure would serialize to an empty object and lose the one field worth reading.
    */
-  toJSON(): { name: string; tool: string; code: ToolErrorCode; message: string } {
-    return { name: this.name, tool: this.tool, code: this.code, message: this.message };
+  toJSON(): { name: string; operation: string; code: ApiErrorCode; message: string } {
+    return { name: this.name, operation: this.operation, code: this.code, message: this.message };
   }
 }
 

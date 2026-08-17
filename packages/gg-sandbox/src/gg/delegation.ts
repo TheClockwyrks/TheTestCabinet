@@ -13,7 +13,7 @@
 import * as raw from "test-cabinet:gg/delegation";
 import type { AgentStatus, SubagentBrief } from "test-cabinet:gg/delegation";
 import { call } from "../internal/errors.js";
-import { ToolError } from "./core.js";
+import { ApiError } from "./core.js";
 
 /** A child agent that was spawned and is now running in parallel. */
 export interface SubagentHandle {
@@ -33,7 +33,7 @@ export interface SubagentHandle {
    *
    * @ggop delegation.send_message
    * @param message What to put in its inbox. The child reads it at its next turn.
-   * @throws `ToolError` with `conflict` when this child has already returned.
+   * @throws `ApiError` with `conflict` when this child has already returned.
    */
   send(message: string): void;
 }
@@ -115,7 +115,7 @@ function brief(fn: string, request: BriefInput): SubagentBrief {
   const candidate = request as { prompt?: unknown; issueId?: unknown };
   if (typeof candidate.prompt === "string") return { tag: "prompt", val: candidate.prompt };
   if (typeof candidate.issueId === "string") return { tag: "issue", val: candidate.issueId };
-  throw new ToolError(fn, "invalid-argument", "expected exactly one of `prompt` or `issueId`");
+  throw new ApiError(fn, "invalid-argument", "expected exactly one of `prompt` or `issueId`");
 }
 
 /**
@@ -163,7 +163,7 @@ function ending(status: AgentStatus | undefined): AgentEnding | undefined {
  * @param request.issueId The board issue to brief the child from. This or `prompt`, never both and
  * never neither.
  * @returns the child's handle: the id to wait on or message, and the agent and model it runs as.
- * @throws `ToolError` with `limit-exceeded` at the delegation depth cap, and `invalid-argument`
+ * @throws `ApiError` with `limit-exceeded` at the delegation depth cap, and `invalid-argument`
  * when `agent` is not one this agent may spawn or the brief is neither a prompt nor an issue.
  */
 export function spawnSubagent(
@@ -184,7 +184,7 @@ export function spawnSubagent(
  * @param ids The children to wait for. Omit it to wait for every one still outstanding.
  * @returns one result per child, in dispatch order: how each finished, and the summary it ended
  * with.
- * @throws `ToolError` with `not-found` for an unknown id.
+ * @throws `ApiError` with `not-found` for an unknown id.
  */
 export function waitForSubagents(ids?: string[]): SubagentResult[] {
   const results = call(() => raw.waitForSubagents(ids));
@@ -201,7 +201,7 @@ export function waitForSubagents(ids?: string[]): SubagentResult[] {
  * @ggop delegation.send_message
  * @param agentId The child to deliver to, as `spawnSubagent` returned it.
  * @param message What to put in its inbox. The child reads it at its next turn.
- * @throws `ToolError` with `not-found` for an unknown agent id, and `conflict` when that child has
+ * @throws `ApiError` with `not-found` for an unknown agent id, and `conflict` when that child has
  * already returned.
  */
 export function sendMessage(agentId: string, message: string): void {
@@ -222,7 +222,7 @@ export function sendMessage(agentId: string, message: string): void {
  * @ggop delegation.transition_state
  * @param state The state to move on to, named the way an agent to spawn is named.
  * @param note The opening message the next state's agent sees.
- * @throws `ToolError` with `invalid-argument` for a state this agent may not move to, and `refused`
+ * @throws `ApiError` with `invalid-argument` for a state this agent may not move to, and `refused`
  * for a second declaration in one turn.
  */
 export function transitionState(state: string, note?: string): void {
@@ -245,7 +245,7 @@ export function transitionState(state: string, note?: string): void {
  * @param agent The agent to become, from the ones this agent may become.
  * @param prompt Its opening message. It already holds the whole conversation, so this is the
  * instruction rather than a briefing.
- * @throws `ToolError` with `invalid-argument` for an agent this one may not become, and `refused`
+ * @throws `ApiError` with `invalid-argument` for an agent this one may not become, and `refused`
  * for a second succession in one turn.
  */
 export function exec(agent: string, prompt?: string): void {
@@ -266,7 +266,7 @@ export function exec(agent: string, prompt?: string): void {
  * @param prompt What the copy is to do instead. It holds the whole conversation already, so the
  * difference is what to write.
  * @returns the copy's handle, which only a later turn can collect.
- * @throws `ToolError` with `limit-exceeded` at the delegation depth cap.
+ * @throws `ApiError` with `limit-exceeded` at the delegation depth cap.
  */
 export function fork(prompt: string): SubagentHandle {
   return handle(call(() => raw.fork(prompt)));

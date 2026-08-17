@@ -116,7 +116,7 @@ use crate::context::{PromptItem, PromptSlot, Retention};
 use crate::fault::panic_message;
 use crate::model::{Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition};
 use crate::tools::{
-    READ_FILE_CAP, ShellExecution, ShellRequest, ShellRunner, ShellStatus, ToolData, ToolOutcome,
+    ApiData, READ_FILE_CAP, ShellExecution, ShellRequest, ShellRunner, ShellStatus, ToolOutcome,
 };
 
 /// A standard capture must keep whole whatever the model was shown whole, and the largest such
@@ -1096,7 +1096,7 @@ fn to_value<T: serde::Serialize>(value: &T) -> Value {
     serde_json::to_value(value).unwrap_or(Value::Null)
 }
 
-/// Split a tool's structured [`ToolData`] into the part that is recorded inline and the one
+/// Split a tool's structured [`ApiData`] into the part that is recorded inline and the one
 /// unbounded text field that is [pooled instead](GgSessionToolOutcome::data_text).
 ///
 /// Two variants carry the whole of what the tool returned a second time — a `read_file`'s
@@ -1106,7 +1106,7 @@ fn to_value<T: serde::Serialize>(value: &T) -> Value {
 /// disagreeing answers whenever the ceiling did cut `output`.
 ///
 /// The lift is by **variant**, not by field name, so it cannot silently start (or stop) applying to
-/// a payload as `ToolData` grows: a new variant carrying an unbounded string has to be added here
+/// a payload as `ApiData` grows: a new variant carrying an unbounded string has to be added here
 /// deliberately, and until it is, it is recorded inline exactly as today. Every other variant is a
 /// handful of numbers and short strings and is left whole — pooling those would cost a pool entry
 /// to save nothing.
@@ -1114,17 +1114,17 @@ fn to_value<T: serde::Serialize>(value: &T) -> Value {
 /// The returned text is `Some` whenever the variant *has* the field, empty body included, so the
 /// reading's restore is driven by the variant alone and never has to guess whether an
 /// absent index means "empty" or "not lifted".
-fn split_tool_data(data: Option<&ToolData>) -> (Option<Value>, Option<String>) {
+fn split_tool_data(data: Option<&ApiData>) -> (Option<Value>, Option<String>) {
     match data {
-        Some(ToolData::FileText(file)) => {
+        Some(ApiData::FileText(file)) => {
             let mut file = file.clone();
             let contents = std::mem::take(&mut file.contents);
-            (Some(to_value(&ToolData::FileText(file))), Some(contents))
+            (Some(to_value(&ApiData::FileText(file))), Some(contents))
         }
-        Some(ToolData::Shell(shell)) => {
+        Some(ApiData::Shell(shell)) => {
             let mut shell = shell.clone();
             let body = std::mem::take(&mut shell.body);
-            (Some(to_value(&ToolData::Shell(shell))), Some(body))
+            (Some(to_value(&ApiData::Shell(shell))), Some(body))
         }
         other => (other.map(to_value), None),
     }

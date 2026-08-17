@@ -1211,7 +1211,7 @@ fn an_error_turn_is_the_models_until_gg_breaks_under_it() {
         ..GgRunLimits::default()
     });
     let limits = healthy.limits;
-    let failed_call = TurnOutcome::Error(TurnErrorType::ProgramToolError);
+    let failed_call = TurnOutcome::Error(TurnErrorType::ProgramApiError);
 
     let breach = agent.record_turn(
         &mut AgentLimits::new(limits),

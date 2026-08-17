@@ -7,7 +7,7 @@ module GG
   # **Nothing here varies with the run, and nothing here is a gate.** Every declaration
   # `GG::Surface` recorded is bound onto its module when this file runs, which is when a program or
   # a code module requires `gg` and never before. A call this agent was not granted is an ordinary
-  # Ruby call that reaches the host, and what comes back is a `GG::Core::ToolError` naming the
+  # Ruby call that reaches the host, and what comes back is a `GG::Core::ApiError` naming the
   # capability that is missing and why: a value a `rescue` clause can catch and act on, where a
   # `NoMethodError` from Opal was only ever a dead end.
   #
@@ -16,7 +16,7 @@ module GG
   # it is not in this file.
   #
   # **The types are not built at all**, for the same reason they never were: a type is not a
-  # capability. `GG::Core::ToolError` is what a `rescue` clause catches and
+  # capability. `GG::Core::ApiError` is what a `rescue` clause catches and
   # `GG::Tasks::TaskStatus::DONE` is what a status argument is, and both are declared by this SDK
   # once, when it is required.
   #
@@ -188,7 +188,7 @@ module GG
             "#{unknown.map { |key| ":#{key}" }.join(", ")} — `#{fn}` #{takes}"
     end
 
-    # The gg tool names this component can bind.
+    # The gg tool names this component can bind, answering the `bound-operations` export.
     #
     # gg calls this export in a unit test and asserts set-equality with its own `ALL_TOOL_NAMES`. It
     # is the one drift gate that inspects the **committed artifact** rather than a source file, so
@@ -197,7 +197,7 @@ module GG
     #
     # @return [Array<String>] every gg tool this SDK really defines a method for, in declaration
     #   order
-    def self.bound_tools
+    def self.bound_operations
       Surface.registry.select { |entry| IMPLEMENTATIONS.key?(entry) }
              .reject(&:aliased)
              .filter_map(&:tool)

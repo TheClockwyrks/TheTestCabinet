@@ -71,7 +71,7 @@ fn prepare_program(body: &str) -> Vec<u8> {
     prepare(&whole("", body))
 }
 
-/// Compile and run one Kotlin program with `enabled`'s tools offered and no ending group.
+/// Compile and run one Kotlin program with `enabled`'s operations offered and no ending group.
 fn run_with(
     source: &str,
     operations: &[crate::sandbox::operations::OperationId],
@@ -81,10 +81,10 @@ fn run_with(
 }
 
 // ---------------------------------------------------------------------------------------------
-// Every tool, from its Kotlin spelling
+// Every operation, from its Kotlin spelling
 // ---------------------------------------------------------------------------------------------
 
-/// One tool, called through the Kotlin spelling of it, and the JSON gg's dispatch must have seen.
+/// One operation, called through the Kotlin spelling of it, and the JSON gg's dispatch must have seen.
 struct Crossing {
     /// The gg tool name the call must arrive under.
     tool: &'static str,
@@ -94,7 +94,7 @@ struct Crossing {
     expected: fn() -> Value,
 }
 
-/// Every bound tool, called through its idiomatic Kotlin function.
+/// Every bound operation, called through its idiomatic Kotlin function.
 ///
 /// Deliberately the same table `sandbox.membrane.test.rs` drives the TypeScript arm with and the
 /// Python, Ruby, PureScript and Java arms drive theirs with, down to the arguments and the expected
@@ -337,7 +337,7 @@ fn crossings() -> Vec<Crossing> {
 }
 
 #[test]
-fn every_tool_crosses_the_membrane_from_its_kotlin_spelling() {
+fn every_operation_crosses_the_membrane_from_its_kotlin_spelling() {
     let crossings = crossings();
 
     // One program rather than one per crossing, for the reason the Java arm gives: a compile here
@@ -371,15 +371,15 @@ fn every_tool_crosses_the_membrane_from_its_kotlin_spelling() {
         );
     }
 
-    // Exhaustive by construction: a tool added to gg with no row here fails now, rather than shipping
+    // Exhaustive by construction: an operation added to gg with no row here fails now, rather than shipping
     // as a typed function nobody ever called.
     let mut covered: Vec<&str> = crossings.iter().map(|crossing| crossing.tool).collect();
     covered.sort_unstable();
-    let mut vocabulary = crate::sandbox::signatures::sandbox_tool_names();
+    let mut vocabulary = crate::sandbox::signatures::sandbox_operation_names();
     vocabulary.sort_unstable();
     assert_eq!(
         covered, vocabulary,
-        "every bound tool needs a crossing, and only bound tools may have one"
+        "every bound operation needs a crossing, and only bound operations may have one"
     );
 }
 
@@ -453,7 +453,7 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
          gg.log(history.size.toString())\n\
          try {\n\
          \x20   gg.programs.get(2)\n\
-         } catch (failure: gg.core.ToolError) {\n\
+         } catch (failure: gg.core.ApiError) {\n\
          \x20   gg.log(failure.code.toString())\n\
          }\n\
          gg.programs.rerun(\"gg.log(\\\"again\\\")\")\n\
@@ -523,7 +523,7 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
          gg.log(gg.views.current()[0].close().toString())\n\
          try {\n\
          \x20   gg.programs.ProgramSummary(2, 1, 1, true, null).source()\n\
-         } catch (failure: gg.core.ToolError) {\n\
+         } catch (failure: gg.core.ApiError) {\n\
          \x20   gg.log(failure.code.toString())\n\
          }\n",
         &all_operations(),
@@ -577,8 +577,8 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
          gg.log(narrowed.hits.isEmpty().toString())\n\
          try {\n\
          \x20   gg.docs.close(\"gg.files.readFile\")\n\
-         } catch (failure: gg.core.ToolError) {\n\
-         \x20   gg.log(failure.code.toString() + \" \" + failure.tool)\n\
+         } catch (failure: gg.core.ApiError) {\n\
+         \x20   gg.log(failure.code.toString() + \" \" + failure.operation)\n\
          }\n",
         &[],
         canned_outcome,
@@ -654,13 +654,13 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
 #[test]
 fn a_failure_is_a_kotlin_exception_whether_it_is_caught_or_not() {
     // The whole of this arm's failure story. gg's refusal crosses as three encoded fields and this
-    // SDK's own one-line bridge raises them as `gg.core.ToolError` — an ordinary Kotlin exception,
+    // SDK's own one-line bridge raises them as `gg.core.ApiError` — an ordinary Kotlin exception,
     // which is what makes the clause below work at all and what a `runCatching` can see.
     let (outcome, _log) = run_with(
         "try {\n\
          \x20   gg.files.readTextFile(\"gone.kt\")\n\
-         } catch (failure: gg.core.ToolError) {\n\
-         \x20   gg.log(\"${failure.code} on ${failure.tool}\")\n\
+         } catch (failure: gg.core.ApiError) {\n\
+         \x20   gg.log(\"${failure.code} on ${failure.operation}\")\n\
          }\n\
          gg.log(\"carried on\")\n",
         &all_operations(),
@@ -678,7 +678,7 @@ fn a_failure_is_a_kotlin_exception_whether_it_is_caught_or_not() {
 
     // And one that ESCAPED. There is no second channel for it on a compiled arm — gg catches
     // nothing — so what the model reads is the exception's own header on the guest's standard error,
-    // which is why `ToolError`'s message carries the tool and the code as well as gg's sentence.
+    // which is why `ApiError`'s message carries the tool and the code as well as gg's sentence.
     let (outcome, _log) = run_with(
         "gg.log(\"before\")\n\
          gg.files.readTextFile(\"gone.kt\")\n\
@@ -693,7 +693,7 @@ fn a_failure_is_a_kotlin_exception_whether_it_is_caught_or_not() {
     );
     let reported = trap(&outcome);
     assert!(
-        reported.contains("gg.core.ToolError: `read_text_file` failed (not-found)")
+        reported.contains("gg.core.ApiError: `read_text_file` failed (not-found)")
             && reported.contains("no such file: gone.kt"),
         "the model reads gg's own sentence under the class it would have caught: {reported}",
     );
@@ -706,7 +706,7 @@ fn a_failure_is_a_kotlin_exception_whether_it_is_caught_or_not() {
     // reason: what the SDK raises is an ordinary exception rather than something the bridge wrapped.
     let (outcome, _log) = run_with(
         "val read = runCatching { gg.files.readTextFile(\"gone.kt\") }\n\
-         gg.log(read.exceptionOrNull().let { it is gg.core.ToolError }.toString())\n",
+         gg.log(read.exceptionOrNull().let { it is gg.core.ApiError }.toString())\n",
         &all_operations(),
         |_name: &str, _args: &Value| {
             ToolOutcome::failed(
@@ -744,7 +744,7 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     let (outcome, _log) = run_with(
         "try {\n\
          \x20   gg.delegation.fork(\"a copy\")\n\
-         } catch (failure: gg.core.ToolError) {\n\
+         } catch (failure: gg.core.ApiError) {\n\
          \x20   gg.log(failure.code.wireName)\n\
          }\n",
         &[],
@@ -1064,7 +1064,7 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     let failure = compile_program(
         &whole(
             "",
-            "    val code: ToolErrorCode? = null\n    gg.log(code.toString())\n",
+            "    val code: ApiErrorCode? = null\n    gg.log(code.toString())\n",
         ),
         &[],
         &PrepareContext::new(),

@@ -44,7 +44,7 @@
 //! a program did not ask for.
 //!
 //! The functions a run does **not** offer are still names this crate exports: a program that calls one
-//! gets a [`ToolError`] carrying [`Unavailable`](ToolErrorCode::Unavailable) rather than a compile
+//! gets an [`ApiError`] carrying [`Unavailable`](ApiErrorCode::Unavailable) rather than a compile
 //! error, because what a run enables is decided per run and this crate is compiled once.
 //! [`docs::search`] is what reports the surface this run really bound: it returns only entries that
 //! are callable here, so what it finds is what compiles *and* runs.
@@ -57,7 +57,7 @@
 //!   [`views::open_text`] is how a program shows itself something. [`log`] goes to
 //!   the run's operator, not to the model. A `println!` succeeds and its bytes are kept by nothing;
 //!   what `eprintln!` writes is kept and is shown with a failure.
-//! * **A failure is an [`Err`], not a panic.** Every call returns `Result<_, ToolError>`; `?`
+//! * **A failure is an [`Err`], not a panic.** Every call returns `Result<_, ApiError>`; `?`
 //!   composes them, and [`Failure`] is what a `main` returning a `Result` carries. A panic is
 //!   reported too — see below — but it is a bug rather than an interface.
 //!
@@ -152,7 +152,7 @@ pub mod tasks;
 #[doc(alias = "ggmodule:views")]
 pub mod views;
 
-pub use crate::core::{ToolError, ToolErrorCode};
+pub use crate::core::{ApiError, ApiErrorCode};
 pub use crate::program::Failure;
 
 /// Write one line to the run's **operator** log.

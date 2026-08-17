@@ -1,7 +1,7 @@
 package gg.tasks;
 
-import gg.ToolError;
-import gg.ToolErrorCode;
+import gg.ApiError;
+import gg.ApiErrorCode;
 import gg.internal.Coding;
 import gg.internal.Read;
 import gg.internal.Value;
@@ -27,7 +27,7 @@ public final class Tasks {
      *     may share one.
      * @param title A short line naming the work.
      * @return how much of the task budget is now used
-     * @throws ToolError {@link ToolErrorCode#CONFLICT} on a duplicate id.
+     * @throws ApiError {@link ApiErrorCode#CONFLICT} on a duplicate id.
      * @ggop tasks.add_task
      */
     public static TaskUsage addTask(String id, String title) {
@@ -41,7 +41,7 @@ public final class Tasks {
      * @param title A short line naming the work.
      * @param description What the work is, at whatever length is useful.
      * @return how much of the task budget is now used
-     * @throws ToolError {@link ToolErrorCode#CONFLICT} on a duplicate id.
+     * @throws ApiError {@link ApiErrorCode#CONFLICT} on a duplicate id.
      * @ggop tasks.add_task
      */
     public static TaskUsage addTask(String id, String title, String description) {
@@ -56,7 +56,7 @@ public final class Tasks {
      * @param description What the work is, at whatever length is useful.
      * @param blockedBy The ids of the tasks that must be done before this one.
      * @return how much of the task budget is now used
-     * @throws ToolError {@link ToolErrorCode#CONFLICT} on a duplicate id, or on an edge that would
+     * @throws ApiError {@link ApiErrorCode#CONFLICT} on a duplicate id, or on an edge that would
      *     close a cycle.
      * @ggop tasks.add_task
      */
@@ -74,7 +74,7 @@ public final class Tasks {
      *
      * @param id The task to revise.
      * @param patch The fields to change. It must carry at least one.
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} for an unknown id.
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for an unknown id.
      * @ggop tasks.update_task
      */
     public static void updateTask(String id, TaskPatch patch) {
@@ -87,8 +87,8 @@ public final class Tasks {
      * @param id The task whose blockers to replace.
      * @param blockedBy The ids of every task that must now be done before it. Naming none clears
      *     them all.
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} for an unknown id, and
-     *     {@link ToolErrorCode#CONFLICT} when an edge would close a cycle.
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for an unknown id, and
+     *     {@link ApiErrorCode#CONFLICT} when an edge would close a cycle.
      * @ggop tasks.set_blocked_by
      */
     public static void setBlockedBy(String id, String... blockedBy) {
@@ -101,7 +101,7 @@ public final class Tasks {
      * <p>A task becomes actionable when the last of its blockers is done rather than the first.
      *
      * @param id The task to mark done.
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} for an unknown id.
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for an unknown id.
      * @ggop tasks.complete_task
      */
     public static void completeTask(String id) {
@@ -113,7 +113,7 @@ public final class Tasks {
      *
      * @param id The task to remove.
      * @return how much of the task budget is now used
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} for an unknown id.
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for an unknown id.
      * @ggop tasks.remove_task
      */
     public static TaskUsage removeTask(String id) {

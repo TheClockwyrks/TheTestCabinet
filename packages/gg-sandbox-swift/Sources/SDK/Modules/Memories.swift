@@ -11,8 +11,8 @@
 ///
 /// - ggmodule: memories
 public enum memories {
-    /// The gg tools this module dispatches — see `files.ggTools`.
-    static let ggTools = [
+    /// The gg tools this module dispatches — see `files.ggOperations`.
+    static let ggOperations = [
         "write_memory", "update_memory", "create_memory", "read_memory", "edit_memory",
         "search_memories", "delete_memory",
     ]
@@ -37,7 +37,7 @@ public enum memories {
     ///   - onUse: A program to run once, when this memory first comes into use. Left out, the memory
     ///     carries none.
     /// - Returns: the memory budget after the write.
-    /// - Throws: `core.ToolError` with `.conflict` on a duplicate name, and `.limitExceeded` when
+    /// - Throws: `core.ApiError` with `.conflict` on a duplicate name, and `.limitExceeded` when
     ///   the body would breach the run's caps — revising or deleting a memory is the way out, rather
     ///   than accruing more.
     /// - ggop: memories.write_memory
@@ -67,7 +67,7 @@ public enum memories {
     ///   - onUse: A program to run when the memory next comes into use. Left out, it clears whatever
     ///     the memory carried.
     /// - Returns: the memory budget after the write.
-    /// - Throws: `core.ToolError` with `.notFound` when no memory has that name.
+    /// - Throws: `core.ApiError` with `.notFound` when no memory has that name.
     /// - ggop: memories.update_memory
     @discardableResult
     public static func updateMemory(
@@ -97,7 +97,7 @@ public enum memories {
     ///     Left out, the memory carries none.
     ///   - onUse: A program to run once, on that same first read. Left out, the memory carries none.
     /// - Returns: the memory budget after the write.
-    /// - Throws: `core.ToolError` with `.conflict` on a duplicate slug, and `.limitExceeded` when
+    /// - Throws: `core.ApiError` with `.conflict` on a duplicate slug, and `.limitExceeded` when
     ///   the contents, or the index entry, would breach a limit.
     /// - ggop: memories.create_memory
     @discardableResult
@@ -121,13 +121,13 @@ public enum memories {
     ///
     /// - Parameter name: The memory's slug.
     /// - Returns: the memory's contents.
-    /// - Throws: `core.ToolError` with `.notFound` when no memory has that slug.
+    /// - Throws: `core.ApiError` with `.notFound` when no memory has that slug.
     /// - ggop: memories.read_memory
     public static func readMemory(_ name: String) throws -> String {
         try withScratch { scratch in
             var name = scratch.string(name)
             var ret = sandbox_string_t()
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             guard test_cabinet_gg_memories_read_memory(&name, &ret, &err) else {
                 throw lift(failure: &err)
             }
@@ -148,7 +148,7 @@ public enum memories {
     ///   - replacing: The exact text to find in its contents. It must appear exactly once.
     ///   - with: The text to put in its place.
     /// - Returns: the memory budget after the edit.
-    /// - Throws: `core.ToolError` with `.notFound` when the text does not appear, `.conflict` when
+    /// - Throws: `core.ApiError` with `.notFound` when the text does not appear, `.conflict` when
     ///   it appears more than once, `.limitExceeded` when the result would be too long, and
     ///   `.invalidArgument` when the edit would leave the memory empty — deleting it is the way to
     ///   do that.
@@ -178,13 +178,13 @@ public enum memories {
     /// - Parameter keywords: The words to look for. Several specific words rank better than one
     ///   sentence, because a memory is ranked by how many of them it mentions.
     /// - Returns: the matching memories, best first.
-    /// - Throws: `core.ToolError` with `.invalidArgument` when every keyword is empty.
+    /// - Throws: `core.ApiError` with `.invalidArgument` when every keyword is empty.
     /// - ggop: memories.search_memories
     public static func searchMemories(_ keywords: [String]) throws -> [MemoryHit] {
         try withScratch { scratch in
             var keywords = scratch.list(keywords)
             var ret = test_cabinet_gg_memories_list_memory_hit_t()
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             guard test_cabinet_gg_memories_search_memories(&keywords, &ret, &err) else {
                 throw lift(failure: &err)
             }
@@ -198,7 +198,7 @@ public enum memories {
     ///
     /// - Parameter name: The memory's slug.
     /// - Returns: the memory budget after the eviction.
-    /// - Throws: `core.ToolError` with `.notFound` when no memory has that name.
+    /// - Throws: `core.ApiError` with `.notFound` when no memory has that name.
     /// - ggop: memories.delete_memory
     @discardableResult
     public static func deleteMemory(_ name: String) throws -> MemoryUsage {
@@ -268,7 +268,7 @@ extension memories.MemoryHit {
     /// `memories.readMemory` for the common case where the search result is in hand.
     ///
     /// - Returns: the memory's contents.
-    /// - Throws: `core.ToolError` with `.notFound` when the memory has since been deleted.
+    /// - Throws: `core.ApiError` with `.notFound` when the memory has since been deleted.
     /// - ggop-alias: memories.read_memory
     public func read() throws -> String {
         try memories.readMemory(name)
@@ -288,15 +288,15 @@ private func memoryInput(
         on_use: scratch.optional(onUse))
 }
 
-/// The `result<memory-usage, tool-error>` every mutation in this module hands back.
+/// The `result<memory-usage, api-error>` every mutation in this module hands back.
 private func usage(
     _ call: (
         UnsafeMutablePointer<test_cabinet_gg_memories_memory_usage_t>,
-        UnsafeMutablePointer<test_cabinet_gg_types_tool_error_t>
+        UnsafeMutablePointer<test_cabinet_gg_types_api_error_t>
     ) -> Bool
 ) throws -> memories.MemoryUsage {
     var ret = test_cabinet_gg_memories_memory_usage_t()
-    var err = test_cabinet_gg_types_tool_error_t()
+    var err = test_cabinet_gg_types_api_error_t()
     guard call(&ret, &err) else { throw lift(failure: &err) }
     return memories.MemoryUsage(wire: ret)
 }

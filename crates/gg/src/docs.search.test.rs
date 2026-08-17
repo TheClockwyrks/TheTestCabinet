@@ -283,7 +283,7 @@ fn a_type_is_visible_through_the_functions_that_use_it() {
 /// disagree about where an entry lives.
 /// Asserted on the **Rust** arm rather than TypeScript's, because TypeScript's catalogue has exactly
 /// one type referenced from two modules and both are gated on the same capability, so the narrowing
-/// has nothing to bite on there. Rust's `gg::core::ToolError` is referenced from every module that
+/// has nothing to bite on there. Rust's `gg::core::ApiError` is referenced from every module that
 /// binds anything.
 #[test]
 fn a_types_modules_are_narrowed_to_what_this_agent_binds() {
@@ -299,7 +299,7 @@ fn a_types_modules_are_narrowed_to_what_this_agent_binds() {
     // Searched by the type's own name and found by its KEY, which are two different strings: a
     // query is words, and a key is the fully-qualified name a view is opened by.
     let modules_of = |docs: &DocsRuntime, key: &str| -> String {
-        docs.search(ask("ToolError"))
+        docs.search(ask("ApiError"))
             .expect("a usable query")
             .hits
             .into_iter()
@@ -310,9 +310,9 @@ fn a_types_modules_are_narrowed_to_what_this_agent_binds() {
 
     // The key is the type's fully-qualified name, because this arm is written in the normalized doc
     // model and a name is what a documentation view is keyed by.
-    const TOOL_ERROR: &str = "gg::core::ToolError";
+    const API_ERROR: &str = "gg::core::ApiError";
     let reader = rust(&[CAPABILITY_READ_FILE]);
-    let narrowed = modules_of(&reader, TOOL_ERROR);
+    let narrowed = modules_of(&reader, API_ERROR);
     assert!(
         narrowed.contains("gg::files"),
         "the module it does hold a call in: {narrowed}"
@@ -327,20 +327,20 @@ fn a_types_modules_are_narrowed_to_what_this_agent_binds() {
         // page would come back silently empty.
         let found = reader
             .search(DocQuery {
-                query: "ToolError",
+                query: "ApiError",
                 module: Some(absent),
                 ..DocQuery::default()
             })
             .expect("a usable query");
         assert!(
-            !keys(&found).contains(&TOOL_ERROR),
+            !keys(&found).contains(&API_ERROR),
             "`{absent}` answered a type it cannot reach: {:?}",
             keys(&found)
         );
     }
 
     // An agent that holds the surface is told the whole union, because for it the union is true.
-    let whole = modules_of(&rust(&gating_capabilities()), TOOL_ERROR);
+    let whole = modules_of(&rust(&gating_capabilities()), API_ERROR);
     for present in ["files", "memories", "skills", "tasks"] {
         assert!(
             whole.contains(&format!("gg::{present}")),

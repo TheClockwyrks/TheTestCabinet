@@ -165,7 +165,7 @@ async fn the_task_count_is_reported_by_exactly_the_tools_that_change_it() {
         .await;
     assert_eq!(
         added.data,
-        Some(ToolData::TaskUsage(UsagePair { count: 1, max: 10 }))
+        Some(ApiData::TaskUsage(UsagePair { count: 1, max: 10 }))
     );
 
     for outcome in [
@@ -192,7 +192,7 @@ async fn the_task_count_is_reported_by_exactly_the_tools_that_change_it() {
         .await;
     assert_eq!(
         removed.data,
-        Some(ToolData::TaskUsage(UsagePair { count: 0, max: 10 }))
+        Some(ApiData::TaskUsage(UsagePair { count: 0, max: 10 }))
     );
 }
 

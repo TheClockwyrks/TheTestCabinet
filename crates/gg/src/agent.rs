@@ -140,10 +140,10 @@ use test_cabinet_core::gg::{
     CAPABILITY_AUTOLOAD_SPECS, CAPABILITY_COMPACTION, CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SKILLS,
     CAPABILITY_SUBAGENTS, GgAgentApi, GgAgentApiFunction, GgAgentConfig, GgAgentStatus,
-    GgAgentTransitionKind, GgCapabilitySet, GgContextAction, GgContextSource, GgHealingStrategy,
-    GgHookAgentKind, GgHookEvent, GgIssueReviewPhase, GgLimitBreach, GgLimitKind,
-    GgProgramLanguage, GgResponseHealing, GgReviewer, GgRunLimits, GgSlotBinding, GgSubagentScope,
-    GgTelemetryKind, GgToolFailure, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
+    GgAgentTransitionKind, GgCallFailure, GgCapabilitySet, GgContextAction, GgContextSource,
+    GgHealingStrategy, GgHookAgentKind, GgHookEvent, GgIssueReviewPhase, GgLimitBreach,
+    GgLimitKind, GgProgramLanguage, GgResponseHealing, GgReviewer, GgRunLimits, GgSlotBinding,
+    GgSubagentScope, GgTelemetryKind, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
 };
 use test_cabinet_core::gg_session_journal::GG_SESSION_JOURNAL_PATH;
 use test_cabinet_core::gg_session_record::{
@@ -205,14 +205,14 @@ use crate::tasks::TasksRuntime;
 use crate::telemetry::Emitter;
 use crate::tools::VisionContext;
 use crate::tools::{
-    ARCHIVE_THREAD_TOOL, AgentFacts, AgentStatusData, COMPACT_TOOL, EVICT_FILE_VIEW_TOOL,
+    ARCHIVE_THREAD_TOOL, AgentFacts, AgentStatusData, ApiData, COMPACT_TOOL, EVICT_FILE_VIEW_TOOL,
     EXEC_TOOL, FORK_TOOL, OffloadPolicy, READ_FILE_TOOL, READ_SKILL_TOOL, ReadFileTool, ReadPolicy,
     ReclaimData, SEND_MESSAGE_TOOL, SHELL_TOOL, SPAWN_SUBAGENT_TOOL, ShellRunner,
-    SubagentHandleData, SubagentResultData, TRANSITION_STATE_TOOL, Tool, ToolContext, ToolData,
-    ToolFailure, ToolOutcome, ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL,
-    is_board_tool, is_memory_tool, is_subagent_tool, is_task_tool, parse_archive_ranges,
-    parse_compact_request, parse_evict_path, read_policy, real_shell, saturating_u32,
-    saturating_u64, shell_offload, ungranted_tools,
+    SubagentHandleData, SubagentResultData, TRANSITION_STATE_TOOL, Tool, ToolContext, ToolFailure,
+    ToolOutcome, ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL, is_board_tool,
+    is_memory_tool, is_subagent_tool, is_task_tool, parse_archive_ranges, parse_compact_request,
+    parse_evict_path, read_policy, real_shell, saturating_u32, saturating_u64, shell_offload,
+    ungranted_tools,
 };
 use crate::turn_timing::TurnTimer;
 use crate::vision::VisionSupport;
@@ -2793,7 +2793,7 @@ async fn handle_wait_for_issue(
 /// It is a function of its own because two paths reach the same wait: the native tool-calling loop,
 /// which parses the id off a `wait_for_issue` [`ToolCall`] and calls it through
 /// [`handle_wait_for_issue`]; and the responses-as-code loop, which performs the *deferred* waits a
-/// program [registered](code::LoopToolApi::register_issue_wait) once that program has ended, calling this
+/// program [registered](code::LoopOperationApi::register_issue_wait) once that program has ended, calling this
 /// directly for each recorded id. Both share the self-issue guard, the not-found check, the
 /// already-terminal short-circuit, the refusals that answer a wait nothing settled, and the
 /// slot-freeing block, so neither can drift from the other.
@@ -4600,7 +4600,7 @@ fn spawn_subagent(sub: &mut SubagentContext, spawner: &Agent, args: &Value) -> T
             // [`Tool`](crate::tools::Tool), so this handler is the **only** producer of the
             // sidecar a [code program](crate::sandbox)'s `spawnSubagent` reads back — without it a
             // program would be told the call succeeded and handed nothing to name the child by.
-            .with_data(ToolData::SubagentSpawned(SubagentHandleData {
+            .with_data(ApiData::SubagentSpawned(SubagentHandleData {
                 id: child.id,
                 slot: child.slot,
                 model_id: child.model_id,
@@ -4625,7 +4625,7 @@ struct DispatchedChild {
 /// A delegation that could not be dispatched, carrying **both** halves of the answer: the sentence
 /// the model reads and the class a structured consumer branches on.
 ///
-/// The class exists because a [code program](crate::sandbox) catches a typed `ToolError` and asks
+/// The class exists because a [code program](crate::sandbox) catches a typed `ApiError` and asks
 /// `e.code === "limit-exceeded"`. Every one of these failures is raised in the loop rather than in
 /// a [`Tool`], so nothing else would classify them, and an unclassified refusal reaches a program
 /// as the useless `other`. [`Display`](std::fmt::Display) renders the message alone, so the many
@@ -5064,7 +5064,7 @@ async fn wait_for_subagents(
             "You have no outstanding subagents to wait for.",
             "no subagents to wait for",
         )
-        .with_data(ToolData::SubagentResults(Vec::new()));
+        .with_data(ApiData::SubagentResults(Vec::new()));
     }
 
     // Block until every awaited child returns (freeing this agent's slot while it waits), then
@@ -5109,7 +5109,7 @@ async fn wait_for_subagents(
         ),
         format!("collected {} subagent result(s)", collected.len()),
     )
-    .with_data(ToolData::SubagentResults(results))
+    .with_data(ApiData::SubagentResults(results))
 }
 
 /// Block until every child in `awaited_ids` has returned — freeing this agent's running slot while
@@ -7274,7 +7274,7 @@ impl Agent {
                     exec_roster: &profile.subagents,
                 };
                 // The per-turn state (`context`/`skills`/`docs`/`subagents`) is handed to the code
-                // turn **by value** — it is moved into the program's `LoopToolApi` so the program's
+                // turn **by value** — it is moved into the program's `LoopOperationApi` so the program's
                 // calls act on the live window on the blocking sandbox thread — and handed back on
                 // every non-fatal path. On the one path it cannot come back (the sandbox task
                 // panicked, a host fault), the turn is `Fatal` and the loop returns below without
@@ -8270,7 +8270,7 @@ impl Agent {
     /// A gg defect does not only *end* a turn, it can also **fail** one. A call gg refuses because
     /// gg is broken — a subagent it validated and then could not stand up, a skill's code it
     /// accepted and could not prepare — throws into the program that made it, and an uncaught throw
-    /// is a [`ProgramToolError`](TurnErrorType::ProgramToolError). Recorded as it stands, that turn
+    /// is a [`ProgramApiError`](TurnErrorType::ProgramApiError). Recorded as it stands, that turn
     /// enters the published record as a `program_fault` the model committed and spends the model's
     /// [error ceilings](RunLimits), so gg's defect could end the run under `limit_exceeded` with
     /// the model's name on it. The refusal's *class* is chosen carefully at each of those sites;
@@ -9420,7 +9420,7 @@ impl ContextReclaim {
 /// with what was reclaimed (the call itself only validated its arguments), and return the
 /// [`ContextManaged`](GgTelemetryKind::ContextManaged) effect event to emit.
 ///
-/// The rewrite carries a [`ToolData::Reclaim`] sidecar as well as the prose, because this is the
+/// The rewrite carries a [`ApiData::Reclaim`] sidecar as well as the prose, because this is the
 /// **only** producer of one: the two reclaim calls return an outcome with no data at all, so a
 /// [code program](crate::sandbox)'s `evictFileView` would otherwise be handed nothing to compute
 /// with. The numbers and the sentence come from the same locals, so they cannot disagree.
@@ -9462,7 +9462,7 @@ fn apply_context_reclaim(
                 detail.clone(),
                 format!("evicted {} file view(s)", result.items),
             )
-            .with_data(ToolData::Reclaim(ReclaimData {
+            .with_data(ApiData::Reclaim(ReclaimData {
                 items: saturating_u32(result.items),
                 // The reclaim's own counters are `u64`; the sidecar is declared in the `u32` its
                 // structured consumers use, and saturates rather than wrapping a preposterous
@@ -9515,7 +9515,7 @@ fn apply_context_reclaim(
             };
             *outcome =
                 ToolOutcome::ok(detail.clone(), format!("archived {removed} thread item(s)"))
-                    .with_data(ToolData::Reclaim(ReclaimData {
+                    .with_data(ApiData::Reclaim(ReclaimData {
                         items: saturating_u32(removed),
                         reclaimed_tokens: u32::try_from(result.tokens).unwrap_or(u32::MAX),
                         // A thread archival frees whole conversation items, not file views, so it has
@@ -11316,7 +11316,7 @@ fn record_tool_result(
         // the call's `offset`/`limit`, because the two disagree whenever the run's
         // [read policy](ReadPolicy) ignores or reduces what was asked for.
         let region = match &outcome.data {
-            Some(ToolData::FileText(text)) => FileRegion::covered(
+            Some(ApiData::FileText(text)) => FileRegion::covered(
                 text.first_line.into(),
                 text.last_line.into(),
                 text.total_lines.into(),

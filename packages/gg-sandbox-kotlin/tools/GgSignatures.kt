@@ -112,13 +112,13 @@ private const val RETURN_TAG: String = "return"
 /**
  * The types every failure arm names, closed over on every entry.
  *
- * Every function in this SDK raises `ToolError` and every catch site reads its `ToolErrorCode`, and
+ * Every function in this SDK raises `ApiError` and every catch site reads its `ApiErrorCode`, and
  * Kotlin says neither in a signature — this language has no checked exceptions, so there is no
  * `throws` clause for the reflector to read them out of. Naming them here is what keeps the two types
  * reachable from every call, which is what decides whether a documentation view of either can be
  * opened at all.
  */
-private val ALWAYS_REFERENCED: List<String> = listOf("gg.core.ToolError", "gg.core.ToolErrorCode")
+private val ALWAYS_REFERENCED: List<String> = listOf("gg.core.ApiError", "gg.core.ApiErrorCode")
 
 fun main(args: Array<String>) {
     val options = args.toList().chunked(2).associate { it[0] to it[1] }
@@ -324,7 +324,7 @@ private class Names(file: KtFile, private val types: Map<String, Declared>) {
      * The declared type a written name refers to, or `null` when it refers to none.
      *
      * A dotted name is tried whole first and then by successively shorter prefixes, so
-     * `Patch.Replace` resolves as a nested type while `ToolError.code` resolves its type and keeps
+     * `Patch.Replace` resolves as a nested type while `ApiError.code` resolves its type and keeps
      * the member after it — which is what an intra-doc link to a property needs.
      */
     fun resolve(written: String): Resolution? {

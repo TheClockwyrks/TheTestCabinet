@@ -30,9 +30,9 @@ public static partial class Delegation
     /// What the child should do: a written prompt, or a board issue whose scope becomes the brief.
     /// </param>
     /// <returns>the child's handle — its id, the profile it runs as, and the model bound to it.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.InvalidArgument"/> for an agent outside the spawnable set, and
-    /// <see cref="ToolErrorCode.LimitExceeded"/> at the delegation depth cap.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for an agent outside the spawnable set, and
+    /// <see cref="ApiErrorCode.LimitExceeded"/> at the delegation depth cap.
     /// </exception>
     /// <ggop>delegation.spawn_subagent</ggop>
     public static SubagentHandle SpawnSubagent(string agent, Brief task)
@@ -59,8 +59,8 @@ public static partial class Delegation
     /// <summary>Wait for the named children, and collect their results.</summary>
     /// <param name="ids">The child ids to wait for, as <see cref="SpawnSubagent"/> handed them back.</param>
     /// <returns>one result per named child, in the order they were collected.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.NotFound"/> for an id this agent never spawned.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.NotFound"/> for an id this agent never spawned.
     /// </exception>
     /// <ggop>delegation.wait_for_subagents</ggop>
     public static IReadOnlyList<SubagentResult> WaitForSubagents(params string[] ids) => Collect(ids);
@@ -68,9 +68,9 @@ public static partial class Delegation
     /// <summary>Deliver a message to a running child's inbox, which it reads at its next turn.</summary>
     /// <param name="agentId">The child to write to.</param>
     /// <param name="message">What to tell it.</param>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.NotFound"/> for an unknown child, and
-    /// <see cref="ToolErrorCode.Conflict"/> for one that has already returned.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.NotFound"/> for an unknown child, and
+    /// <see cref="ApiErrorCode.Conflict"/> for one that has already returned.
     /// </exception>
     /// <ggop>delegation.send_message</ggop>
     public static void SendMessage(string agentId, string message) =>
@@ -92,10 +92,10 @@ public static partial class Delegation
     /// </remarks>
     /// <param name="state">The state to move to, named the way an agent to spawn is named.</param>
     /// <param name="note">The opening message the next state's agent sees.</param>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.InvalidArgument"/> names an unreachable state,
-    /// <see cref="ToolErrorCode.Refused"/> means a succession was already declared this turn, and
-    /// <see cref="ToolErrorCode.Unavailable"/> means no machine is driving this agent.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.InvalidArgument"/> names an unreachable state,
+    /// <see cref="ApiErrorCode.Refused"/> means a succession was already declared this turn, and
+    /// <see cref="ApiErrorCode.Unavailable"/> means no machine is driving this agent.
     /// </exception>
     /// <ggop>delegation.transition_state</ggop>
     public static void TransitionState(string state, string? note = null) =>
@@ -115,10 +115,10 @@ public static partial class Delegation
     /// </remarks>
     /// <param name="agent">The agent to become, drawn from the set this agent may become.</param>
     /// <param name="prompt">The opening message it sees.</param>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.InvalidArgument"/> names an agent outside that set,
-    /// <see cref="ToolErrorCode.Refused"/> means a succession was already declared this turn, and
-    /// <see cref="ToolErrorCode.Unavailable"/> means this agent is running inside a machine, which
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.InvalidArgument"/> names an agent outside that set,
+    /// <see cref="ApiErrorCode.Refused"/> means a succession was already declared this turn, and
+    /// <see cref="ApiErrorCode.Unavailable"/> means this agent is running inside a machine, which
     /// leaves by <see cref="TransitionState"/> instead.
     /// </exception>
     /// <ggop>delegation.exec</ggop>
@@ -139,10 +139,10 @@ public static partial class Delegation
     /// </remarks>
     /// <param name="prompt">What this copy is to do differently.</param>
     /// <returns>the copy's handle.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.InvalidArgument"/> for a blank prompt,
-    /// <see cref="ToolErrorCode.LimitExceeded"/> at the delegation depth cap, and
-    /// <see cref="ToolErrorCode.Unavailable"/> with no delegation runtime to collect the copy with.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for a blank prompt,
+    /// <see cref="ApiErrorCode.LimitExceeded"/> at the delegation depth cap, and
+    /// <see cref="ApiErrorCode.Unavailable"/> with no delegation runtime to collect the copy with.
     /// </exception>
     /// <ggop>delegation.fork</ggop>
     public static SubagentHandle Fork(string prompt)

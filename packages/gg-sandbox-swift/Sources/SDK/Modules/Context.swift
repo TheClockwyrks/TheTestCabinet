@@ -6,8 +6,8 @@
 ///
 /// - ggmodule: context
 public enum context {
-    /// The gg tools this module dispatches — see `files.ggTools`.
-    static let ggTools = [
+    /// The gg tools this module dispatches — see `files.ggOperations`.
+    static let ggOperations = [
         "evict_file_view", "archive_thread", "search_archive", "compact",
     ]
 
@@ -17,14 +17,14 @@ public enum context {
     ///
     /// - Parameter path: The file whose views to drop. Left out, it drops every file view held.
     /// - Returns: what the reclaim actually freed.
-    /// - Throws: `core.ToolError` with `.invalidArgument` for a path that is given but empty;
+    /// - Throws: `core.ApiError` with `.invalidArgument` for a path that is given but empty;
     ///   leaving it out altogether is how every file view is dropped.
     /// - ggop: context.evict_file_view
     @discardableResult
     public static func evictFileView(_ path: String? = nil) throws -> ReclaimReport {
         try withScratch { scratch in
             var ret = test_cabinet_gg_context_reclaim_report_t()
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             let ok = withOptional(path.map { scratch.string($0) }) { path in
                 test_cabinet_gg_context_evict_file_view(path, &ret, &err)
             }
@@ -46,7 +46,7 @@ public enum context {
     /// - Parameter ranges: The inclusive spans of turn numbers to move out of the window. They may
     ///   overlap.
     /// - Returns: what the archive actually freed.
-    /// - Throws: `core.ToolError` with `.invalidArgument` for an empty list, too many spans at once,
+    /// - Throws: `core.ApiError` with `.invalidArgument` for an empty list, too many spans at once,
     ///   or a span that ends before it starts.
     /// - ggop: context.archive_thread
     @discardableResult
@@ -54,7 +54,7 @@ public enum context {
         try withScratch { scratch in
             var ranges = scratch.ranges(ranges)
             var ret = test_cabinet_gg_context_reclaim_report_t()
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             guard test_cabinet_gg_context_archive_thread(&ranges, &ret, &err) else {
                 throw lift(failure: &err)
             }
@@ -72,13 +72,13 @@ public enum context {
     ///
     /// - Parameter query: The substring to look for. Matching is case-insensitive.
     /// - Returns: whether anything is archived at all, and the matches.
-    /// - Throws: `core.ToolError` with `.invalidArgument` for an empty query.
+    /// - Throws: `core.ApiError` with `.invalidArgument` for an empty query.
     /// - ggop: context.search_archive
     public static func searchArchive(_ query: String) throws -> ArchiveSearch {
         try withScratch { scratch in
             var query = scratch.string(query)
             var ret = test_cabinet_gg_context_archive_search_t()
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             guard test_cabinet_gg_context_search_archive(&query, &ret, &err) else {
                 throw lift(failure: &err)
             }
@@ -104,7 +104,7 @@ public enum context {
     ///     `files` is gone.
     ///   - files: The paths to read afresh into the restarted window. Empty by default, which reads
     ///     nothing back.
-    /// - Throws: `core.ToolError` with `.invalidArgument` for a blank summary. This is the one call
+    /// - Throws: `core.ApiError` with `.invalidArgument` for a blank summary. This is the one call
     ///   gg does not refuse while a compaction is in flight, since nothing else can clear the
     ///   window.
     /// - ggop: context.compact
@@ -112,7 +112,7 @@ public enum context {
         try withScratch { scratch in
             var summary = scratch.string(summary)
             var files = scratch.list(files)
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             guard test_cabinet_gg_context_compact(&summary, &files, &err) else {
                 throw lift(failure: &err)
             }

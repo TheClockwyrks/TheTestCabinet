@@ -15,7 +15,7 @@ internal static class Wire
     // Turn a `false` from the bridge into the exception a C# caller expects, reading the failure the
     // guest parked. It is `[MethodImpl(NoInlining)]` for one reason a reader would otherwise wonder
     // about: it keeps `Wire.Check` out of the frame a model reads at the top of an uncaught
-    // `ToolException`'s stack trace, so the first line names the SDK function that failed.
+    // `ApiException`'s stack trace, so the first line names the SDK function that failed.
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal static void Check(bool ok)
     {
@@ -23,8 +23,8 @@ internal static class Wire
         {
             return;
         }
-        Native.TakeError(out var code, out var tool, out var message);
-        throw new ToolException((ToolErrorCode)code, tool, message);
+        Native.TakeError(out var code, out var operation, out var message);
+        throw new ApiException((ApiErrorCode)code, operation, message);
     }
 
     // An `option<u32>` on the way out.

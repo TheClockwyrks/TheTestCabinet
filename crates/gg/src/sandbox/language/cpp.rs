@@ -44,7 +44,7 @@
 //! Everything else is spelling, and it is written to read like the standard library it arrives
 //! beside: `snake_case` throughout, `enum class` for a fixed choice, aggregates with public members
 //! for a record, `std::variant` for a value that is one of two things, a **default argument** for
-//! one optional part and a **designated initialiser** for several, and a thrown `gg::core::tool_error` —
+//! one optional part and a **designated initialiser** for several, and a thrown `gg::core::api_error` —
 //! a `std::runtime_error` — for a call that failed.
 //!
 //! # Why this arm has no guest component

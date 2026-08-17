@@ -566,7 +566,7 @@ mod substrate;
 ///
 /// Separate from [`substrate`] because it is a different claim. That file asks whether Kotlin runs
 /// here; this one asks whether the thing a model is *told* it may write is the thing the sandbox
-/// really has — every gg tool driven through the real membrane from its Kotlin spelling against the
+/// really has — every gg operation driven through the real membrane from its Kotlin spelling against the
 /// same expected JSON the other arms are held to.
 #[cfg(test)]
 #[path = "kotlin.surface.test.rs"]

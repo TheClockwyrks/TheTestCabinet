@@ -8,7 +8,7 @@
 
 import * as raw from "test-cabinet:gg/context";
 import { U32_MAX, arrayArg, call, typeName, uint } from "../internal/errors.js";
-import { ToolError } from "./core.js";
+import { ApiError } from "./core.js";
 
 /** What a reclaim actually freed from the live context window. */
 export interface ReclaimReport {
@@ -75,7 +75,7 @@ export interface ArchiveSearch {
  * @param path The file whose views to drop. Omit it to drop every file view held.
  * @returns what the eviction actually freed: the items dropped, the tokens they held, and the paths
  * they covered.
- * @throws `ToolError` with `invalid-argument` for an empty path — omitting it entirely is what
+ * @throws `ApiError` with `invalid-argument` for an empty path — omitting it entirely is what
  * drops every file view.
  */
 export function evictFileView(path?: string): ReclaimReport {
@@ -93,13 +93,13 @@ export function evictFileView(path?: string): ReclaimReport {
  * @ggop context.archive_thread
  * @param ranges The inclusive spans of turn numbers to move out of the window.
  * @returns what the archival actually freed: the items moved out and the tokens they held.
- * @throws `ToolError` with `invalid-argument` for an empty list, for more than 32 spans at once,
+ * @throws `ApiError` with `invalid-argument` for an empty list, for more than 32 spans at once,
  * and for a span that ends before it starts.
  */
 export function archiveThread(ranges: TurnRange[]): ReclaimReport {
   const spans = arrayArg<TurnRange>("archiveThread", "ranges", ranges).map((range) => {
     if (typeof range !== "object" || range === null) {
-      throw new ToolError(
+      throw new ApiError(
         "archiveThread",
         "invalid-argument",
         `every entry of \`ranges\` must be a { from, to } turn span, got ${typeName(range)}`,
@@ -108,7 +108,7 @@ export function archiveThread(ranges: TurnRange[]): ReclaimReport {
     const from = uint("archiveThread", "ranges[].from", range.from, U32_MAX);
     const to = uint("archiveThread", "ranges[].to", range.to, U32_MAX);
     if (from === undefined || to === undefined) {
-      throw new ToolError(
+      throw new ApiError(
         "archiveThread",
         "invalid-argument",
         "every entry of `ranges` needs both `from` and `to`",
@@ -132,7 +132,7 @@ export function archiveThread(ranges: TurnRange[]): ReclaimReport {
  * @param query The substring to look for. Matching is case-insensitive.
  * @returns the matches, most recent first, beside the flag that says whether anything has been
  * archived at all.
- * @throws `ToolError` with `invalid-argument` for an empty query.
+ * @throws `ApiError` with `invalid-argument` for an empty query.
  */
 export function searchArchive(query: string): ArchiveSearch {
   return call(() => raw.searchArchive(query));
@@ -152,7 +152,7 @@ export function searchArchive(query: string): ArchiveSearch {
  * @param summary What the restarted window opens with. Everything not in it, and not re-read from the
  * named files, is gone.
  * @param files The paths to read afresh into the restarted window. The default is none.
- * @throws `ToolError` with `invalid-argument` for a blank summary.
+ * @throws `ApiError` with `invalid-argument` for a blank summary.
  */
 export function compact(summary: string, files: string[] = []): void {
   call(() => raw.compact(summary, files));

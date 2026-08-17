@@ -283,8 +283,8 @@ fn every_arm_selects_only_types_it_declares() {
 /// so reading it raw opens a type's fields' types and a returned enum's variants, which is depth two
 /// and beyond. It went unnoticed because the two ECMAScript arms' closures are nearly flat, while on
 /// the compiled arms they are three to five times the depth-one set: `read_file` on Rust opened
-/// `ToolErrorCode`, `TextFile` and `ImageFile`, none of which
-/// `read_file(path: &str, options: ReadOptions) -> Result<FileRead, ToolError>` names.
+/// `ApiErrorCode`, `TextFile` and `ImageFile`, none of which
+/// `read_file(path: &str, options: ReadOptions) -> Result<FileRead, ApiError>` names.
 ///
 /// The haystack is rebuilt here from the catalogue rather than taken from the helper under test, so
 /// this asserts the *rule* rather than the implementation of it.

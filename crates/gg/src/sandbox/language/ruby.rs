@@ -59,7 +59,7 @@
 //!
 //! What those lines reach is **Ruby**: the capability modules are constants under `GG`, a call is a
 //! module function (`GG::Files.read_file`), the types are declared inside the module that produces
-//! them, a failure is a raised `GG::Core::ToolError` carrying a Symbol code, and a code module is an
+//! them, a failure is a raised `GG::Core::ApiError` carrying a Symbol code, and a code module is an
 //! anonymous `Module` at `lib.<key>`. The SDK behind that is hand-written and idiomatic
 //! (`packages/gg-sandbox-ruby/src/gg/`), and its [catalogue](crate::sandbox::signatures) is
 //! reflected out of its own YARD documentation.

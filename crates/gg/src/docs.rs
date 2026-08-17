@@ -563,9 +563,9 @@ impl DocsRuntime {
     /// [`CatalogueFunction::types`] is **transitively closed** — it is gathered so that a consumer
     /// can declare every type a run's surface can reach, which is a different question from *what
     /// does this one signature say*. Read raw it is a closure, not a depth: `read_file`'s entry on
-    /// the Rust arm carries `ToolErrorCode` (a field of `ToolError`), `TextFile` and `ImageFile`
+    /// the Rust arm carries `ApiErrorCode` (a field of `ApiError`), `TextFile` and `ImageFile`
     /// (variants of `FileRead`), none of which the signature
-    /// `read_file(path: &str, options: ReadOptions) -> Result<FileRead, ToolError>` writes down.
+    /// `read_file(path: &str, options: ReadOptions) -> Result<FileRead, ApiError>` writes down.
     /// Opening those would be depth 2 and beyond, which is exactly what the one-level rule forbids —
     /// and it would do it silently, since a closure that happens to be shallow on one arm (the two
     /// ECMAScript arms) is four times as deep on the compiled ones, so the same rule would cost four

@@ -111,7 +111,7 @@ struct doc_search {
 /// \param filters The filters and the page; `{}` searches the whole bound surface and takes the
 ///   first page.
 /// \returns the page that matched, best first, and how many matched behind it.
-/// \throws gg::core::tool_error `invalid_argument` when `query` is empty and no filter is set — asking
+/// \throws gg::core::api_error `invalid_argument` when `query` is empty and no filter is set — asking
 ///   for nothing and matching nothing are different answers — and when `limit` is `0`, which is a
 ///   page that could never answer anything.
 docs::doc_search search(std::string_view query, docs::search_filters filters = {});
@@ -127,7 +127,7 @@ docs::doc_search search(std::string_view query, docs::search_filters filters = {
 /// \param key The fully-qualified name the view was opened under, as a hit's `key` reports it.
 /// \returns how many views were closed, which is `0` when that key is not open — not a failure, so
 ///   a program that tidies up unconditionally needs no guard.
-/// \throws gg::core::tool_error `unavailable` when this agent was not given the capability that buys
+/// \throws gg::core::api_error `unavailable` when this agent was not given the capability that buys
 ///   closing documentation.
 std::uint32_t close(std::string_view key);
 
@@ -140,7 +140,7 @@ std::uint32_t close(std::string_view key);
 /// <ggop>docs.close_all</ggop>
 ///
 /// \returns how many views were closed.
-/// \throws gg::core::tool_error `unavailable` when this agent was not given the capability that buys
+/// \throws gg::core::api_error `unavailable` when this agent was not given the capability that buys
 ///   closing documentation.
 std::uint32_t close_all();
 

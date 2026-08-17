@@ -24,12 +24,12 @@
 
 use super::feedback;
 use super::{
-    ErrorCode, MembraneState, ProgramError, ProgramErrorKind, SandboxRefusal, SandboxToolCall,
-    SandboxViewOpened, ToolApi,
+    ErrorCode, MembraneState, OperationApi, ProgramError, ProgramErrorKind, SandboxRefusal,
+    SandboxToolCall, SandboxViewOpened,
 };
 use crate::sandbox::language::{ProgramLanguage, spell};
 use crate::sandbox::operations::{FILES_READ_FILE, OperationId, VIEWS_OPEN_FILE};
-use crate::tools::{ToolData, ToolOutcome};
+use crate::tools::{ApiData, ToolOutcome};
 
 /// The most log lines one program's output is kept from. A JavaScript guest can log in a loop well
 /// within its execution timeout, and every kept line is charged to the agent's context window on the
@@ -88,7 +88,7 @@ pub(super) const MAX_CALL_ERROR_BYTES: usize = 512;
 /// silently, for the reason the module opens with.
 pub(super) const MAX_RECORDED_VIEW_EVENTS: usize = 100;
 
-impl<A: ToolApi> MembraneState<A> {
+impl<A: OperationApi> MembraneState<A> {
     /// Push the ordered record of one dispatched call, under gg's own
     /// [operation id](OperationId) for it.
     ///
@@ -223,7 +223,7 @@ pub(super) fn withhold_pictures(outcome: &mut ToolOutcome, language: &dyn Progra
         return;
     }
     outcome.images.clear();
-    if let Some(ToolData::FileImage(image)) = outcome.data.as_mut() {
+    if let Some(ApiData::FileImage(image)) = outcome.data.as_mut() {
         image.shown = false;
         // Both calls spelled from this program's own catalogue: the sentence is one a model reads
         // and acts on, so naming a call it cannot make would be worse than saying nothing.
@@ -235,7 +235,7 @@ pub(super) fn withhold_pictures(outcome: &mut ToolOutcome, language: &dyn Progra
     }
 }
 
-impl<A: ToolApi> feedback::Host for MembraneState<A> {
+impl<A: OperationApi> feedback::Host for MembraneState<A> {
     /// One line the program produced with `console.*`, subject to the three capture caps.
     ///
     /// The capture keeps the **tail**: once a cap is reached the *oldest* kept line is evicted to
@@ -331,7 +331,7 @@ fn classify(kind: feedback::ErrorKind, code: Option<ErrorCode>) -> ProgramErrorK
         Some(ErrorCode::Unavailable) => ProgramErrorKind::UnknownName,
         Some(_) => ProgramErrorKind::ToolFailure,
         None => match kind {
-            feedback::ErrorKind::ToolFailure => ProgramErrorKind::ToolFailure,
+            feedback::ErrorKind::ApiFailure => ProgramErrorKind::ToolFailure,
             feedback::ErrorKind::UnknownName => ProgramErrorKind::UnknownName,
             feedback::ErrorKind::Other => ProgramErrorKind::Other,
         },

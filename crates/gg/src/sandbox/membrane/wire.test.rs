@@ -23,7 +23,7 @@ fn request(arguments: Vec<Value>) -> Vec<u8> {
 /// are never apart here either, and the length `call` promised is checked against the bytes `take`
 /// produced. A guest sizes its arena from that number, so a host that answered one and handed over
 /// the other would hand a program a truncated frame or an over-large one.
-fn crossing<A: crate::sandbox::membrane::ToolApi>(
+fn crossing<A: crate::sandbox::membrane::OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     request: Vec<u8>,
@@ -108,9 +108,9 @@ fn a_call_gg_does_not_have_is_reported_as_ggs_defect() {
     let log = CallLog::default();
     let mut state = membrane(&log);
     let response = crossing(&mut state, "files.teleport", request(Vec::new()));
-    let (tool, code, message) = failure(&response).expect("an unknown call fails");
+    let (operation, code, message) = failure(&response).expect("an unknown call fails");
     assert_eq!(
-        tool, "teleport",
+        operation, "teleport",
         "the failure is not reported under the key"
     );
     assert_eq!(code, "other");
@@ -126,8 +126,8 @@ fn a_request_that_does_not_decode_is_reported_as_ggs_defect() {
     let log = CallLog::default();
     let mut state = membrane(&log);
     let response = crossing(&mut state, "files.read_file", vec![99]);
-    let (tool, code, message) = failure(&response).expect("a malformed request fails");
-    assert_eq!(tool, "read_file");
+    let (operation, code, message) = failure(&response).expect("a malformed request fails");
+    assert_eq!(operation, "read_file");
     assert_eq!(code, "other");
     assert!(
         message.contains("defect in gg"),
@@ -149,8 +149,8 @@ fn a_call_outside_the_allowlist_is_refused_with_the_membranes_own_words() {
     let log = CallLog::default();
     let mut state = membrane_with(&log, &[SHELL_SHELL], None, canned_outcome);
     let response = crossing(&mut state, "files.list_dir", request(vec![Value::None]));
-    let (tool, code, _) = failure(&response).expect("a withheld call is refused");
-    assert_eq!(tool, "list_dir");
+    let (operation, code, _) = failure(&response).expect("a withheld call is refused");
+    assert_eq!(operation, "list_dir");
     assert_eq!(code, "unavailable");
     assert!(
         log.calls().is_empty(),
@@ -183,15 +183,15 @@ fn a_granted_call_reaches_the_loop_and_answers_with_a_record() {
     );
 }
 
-/// A failed tool comes back as the three fields of the `tool-error` it already was — the same code,
+/// A failed call comes back as the three fields of the `api-error` it already was — the same code,
 /// the same key, the same sentence the other ten arms are given.
 ///
 /// `read_text_file` over a picture is the failure chosen because the host function *itself* raises
 /// it, on the narrowing that is the whole difference between it and `read_file`: so what is asserted
-/// is that a `tool-error` built inside the typed implementation crosses this wire unaltered, rather
+/// is that an `api-error` built inside the typed implementation crosses this wire unaltered, rather
 /// than that a fake said no.
 #[test]
-fn a_failed_tool_comes_back_as_the_tool_error_it_already_was() {
+fn a_failed_call_comes_back_as_the_api_error_it_already_was() {
     let log = CallLog::default();
     let mut state = membrane(&log);
     let response = crossing(
@@ -203,8 +203,8 @@ fn a_failed_tool_comes_back_as_the_tool_error_it_already_was() {
             Value::None,
         ]),
     );
-    let (tool, code, message) = failure(&response).expect("reading a picture as text fails");
-    assert_eq!(tool, "read_text_file");
+    let (operation, code, message) = failure(&response).expect("reading a picture as text fails");
+    assert_eq!(operation, "read_text_file");
     assert_eq!(code, "invalid-argument");
     assert!(
         message.contains("logo.png") && message.contains("not text"),

@@ -34,7 +34,7 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use super::{
-    ArgumentError, MemoryUsageData, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome,
+    ApiData, ArgumentError, MemoryUsageData, Tool, ToolContext, ToolFailure, ToolOutcome,
     required_str, saturating_u32,
 };
 use crate::memories::{MemoryBinding, MemoryChange, MemoryCode, MemoryError, MemoryStore};
@@ -130,10 +130,10 @@ fn usage_note(store: &MemoryStore) -> String {
 /// character budget with room in the count would otherwise have no way to see the limit it was
 /// about to hit. A limit that does not apply — disabled, or not used by this strategy — is `None`
 /// rather than a sentinel, so a program branches on "is there a limit" instead of on a magic zero.
-fn usage_data(store: &MemoryStore) -> ToolData {
+fn usage_data(store: &MemoryStore) -> ApiData {
     let caps = store.caps();
     let cap_u32 = |cap: Option<usize>| cap.map(saturating_u32);
-    ToolData::MemoryUsage(MemoryUsageData {
+    ApiData::MemoryUsage(MemoryUsageData {
         count: saturating_u32(store.count()),
         max_count: cap_u32(caps.max_count),
         total_chars: saturating_u32(store.total_len()),

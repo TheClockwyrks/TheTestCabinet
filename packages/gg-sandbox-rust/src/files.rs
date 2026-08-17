@@ -8,13 +8,13 @@
 //! [`views::open_file`](crate::views::open_file) is the call that does.
 
 use crate::bindings::test_cabinet::gg::{files, helpers};
-use crate::core::ToolError;
+use crate::core::ApiError;
 use crate::wire;
 
-/// The gg tools this module dispatches, which is part of what the component answers `bound-tools`
-/// with. Declared beside the functions that call them, so a tool added here is a tool the artifact
-/// reports.
-pub(crate) const TOOLS: &[&str] = &["read_file", "write_file", "edit_file", "list_dir"];
+/// The gg tools this module dispatches, which is part of what the component answers
+/// `bound-operations` with. Declared beside the functions that call them, so a tool added here is a
+/// tool the artifact reports.
+pub(crate) const OPERATIONS: &[&str] = &["read_file", "write_file", "edit_file", "list_dir"];
 
 
 /// Read a file, as either a [`FileRead::Text`] or a [`FileRead::Image`].
@@ -49,7 +49,7 @@ pub(crate) const TOOLS: &[&str] = &["read_file", "write_file", "edit_file", "lis
 ///
 /// `NotFound` for a missing path.
 #[doc(alias = "ggop:files.read_file")]
-pub fn read_file(path: &str, options: ReadOptions) -> Result<FileRead, ToolError> {
+pub fn read_file(path: &str, options: ReadOptions) -> Result<FileRead, ApiError> {
     let (offset, limit) = options.window();
     wire::lift(files::read_file(path, offset, limit)).map(wire::file_read)
 }
@@ -73,7 +73,7 @@ pub fn read_file(path: &str, options: ReadOptions) -> Result<FileRead, ToolError
 /// `InvalidArgument` when the path names a picture, which [`read_file`] inspects instead and
 /// [`views::open_file`](crate::views::open_file) displays.
 #[doc(alias = "ggop:files.read_text_file")]
-pub fn read_text_file(path: &str, options: ReadOptions) -> Result<String, ToolError> {
+pub fn read_text_file(path: &str, options: ReadOptions) -> Result<String, ApiError> {
     let (offset, limit) = options.window();
     wire::lift(helpers::read_text_file(path, offset, limit))
 }
@@ -97,7 +97,7 @@ pub fn read_text_file(path: &str, options: ReadOptions) -> Result<String, ToolEr
 /// `InvalidArgument` for an empty path, and `IoError` when creating the parent directories or the
 /// write itself failed.
 #[doc(alias = "ggop:files.write_file")]
-pub fn write_file(path: &str, contents: &str) -> Result<u64, ToolError> {
+pub fn write_file(path: &str, contents: &str) -> Result<u64, ApiError> {
     wire::lift(files::write_file(path, contents))
 }
 
@@ -117,7 +117,7 @@ pub fn write_file(path: &str, contents: &str) -> Result<u64, ToolError> {
 /// `NotFound` when the text does not appear, and `Conflict` — with the number of matches — when it
 /// appears more than once.
 #[doc(alias = "ggop:files.edit_file")]
-pub fn edit_file(path: &str, old_string: &str, new_string: &str) -> Result<(), ToolError> {
+pub fn edit_file(path: &str, old_string: &str, new_string: &str) -> Result<(), ApiError> {
     wire::lift(files::edit_file(path, old_string, new_string))
 }
 
@@ -141,7 +141,7 @@ pub fn edit_file(path: &str, old_string: &str, new_string: &str) -> Result<(), T
 /// `NotFound` for a directory that is not there, and `InvalidArgument` for a path that is given but
 /// empty.
 #[doc(alias = "ggop:files.list_dir")]
-pub fn list_dir(path: Option<&str>) -> Result<Vec<DirEntry>, ToolError> {
+pub fn list_dir(path: Option<&str>) -> Result<Vec<DirEntry>, ApiError> {
     wire::lift(files::list_dir(path))
         .map(|entries| entries.into_iter().map(wire::dir_entry).collect())
 }

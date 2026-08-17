@@ -5,8 +5,8 @@ gg bakes **one** component per program language and reuses it for every program 
 That is the whole latency design: compiling this artifact costs a few seconds and happens once per
 process, after which a turn pays only an instantiate (~17-22 ms, dominated by CPython's own memory
 image) and an invoke (~2.6 ms). So the component cannot be specialised to a run — it receives the
-run's Python as a *string* and the run's enabled tool names as a *list*, and does the specialising
-itself, here, at the start of :func:`WitWorld.run`.
+run's Python as a *string* and the run's enabled operation names as a *list*, and does the
+specialising itself, here, at the start of :func:`WitWorld.run`.
 
 Why this file exists as its own guest, rather than compiling Python to something an existing guest
 already evaluates: CPython is *inside* the component. ``componentize-py`` links a real CPython
@@ -63,13 +63,13 @@ from componentize_py_types import Err
 # reaches the rest of the membrane. Importing it is also what BAKES the rest of the membrane in —
 # `componentize-py` bundles only the modules the entry module's import closure reached, so an
 # interface nothing imports is a binding a program could not reach even though the component
-# declares the import, and every one of `gg`'s tool modules imports the interface it wraps. It is
-# what makes `import gg` resolve inside the guest at all, and therefore what a program's own import
-# line finds. See `library` for the same mechanism applied to the standard library, and for why what
+# declares the import, and every one of `gg`'s capability modules imports the interface it wraps. It
+# is what makes `import gg` resolve inside the guest at all, and therefore what a program's own
+# import line finds. See `library` for the same mechanism applied to the standard library, and why
 # a program can import is a bake-time fact rather than a policy.
 import gg
-from gg._registry import bound_tools as gg_bound_tools
-from gg.core import ToolError
+from gg._registry import bound_operations as gg_bound_operations
+from gg.core import ApiError
 
 # Every library a program may reach for, likewise imported for its side effect. Its own docstring is
 # the authority on what the Python arm offers and what it deliberately does not.
@@ -244,25 +244,25 @@ def _classify(exc: BaseException, filenames: frozenset) -> feedback.ProgramError
     capability this run does not offer produces in a guest that withholds the name.
 
     A failed call arrives in **two** shapes and both are that middle class. The SDK raises its own
-    :class:`gg.core.ToolError`, which is what a program sees; a program that reached past the SDK
+    :class:`gg.core.ApiError`, which is what a program sees; a program that reached past the SDK
     into ``wit_world`` gets the generated ``Err`` wrapper. Reading only the first would classify the
     second as an ordinary exception and lose the code the host branches on.
 
     The message of the first is the exception's own rendering rather than the host's detail alone,
-    because ``gg.core.ToolError.__str__`` names the call that failed and a program with twenty reads
+    because ``gg.core.ApiError.__str__`` names the call that failed and a program with twenty reads
     in it is otherwise told a file was not found and left to guess which read wanted it.
     """
-    if isinstance(exc, ToolError):
+    if isinstance(exc, ApiError):
         return feedback.ProgramError(
-            kind=feedback.ErrorKind.TOOL_FAILURE,
+            kind=feedback.ErrorKind.API_FAILURE,
             code=wit_types.ErrorCode[exc.code.name],
             message=str(exc),
             location=_locate(exc, filenames),
         )
-    if isinstance(exc, Err) and isinstance(exc.value, wit_types.ToolError):
+    if isinstance(exc, Err) and isinstance(exc.value, wit_types.ApiError):
         failure = exc.value
         return feedback.ProgramError(
-            kind=feedback.ErrorKind.TOOL_FAILURE,
+            kind=feedback.ErrorKind.API_FAILURE,
             code=failure.code,
             message=failure.message,
             location=_locate(exc, filenames),
@@ -362,7 +362,7 @@ class WitWorld(wit_world.WitWorld):
         self,
         program: str,
         modules: List[CodeModule],
-        tools: List[str],
+        operations: List[str],
         ending: session.EndingKind,
         library: bool,
     ) -> None:
@@ -371,14 +371,14 @@ class WitWorld(wit_world.WitWorld):
         The code modules are evaluated first and under the same rule the program is: each one writes
         its own ``import gg``, and what it leaves behind is registered at ``lib.<name>``.
 
-        ``tools``, ``ending`` and ``library`` are **read by nothing here**, and the names are the
-        WIT's rather than underscored because that is what gg calls them. They used to build a scope
-        the program was given; a program now writes its own imports, and every capability question is
-        answered at the membrane, which is the one place that can answer it the same way for all
+        ``operations``, ``ending`` and ``library`` are **read by nothing here**, and the names are
+        the WIT's rather than underscored because that is what gg calls them. They used to build a
+        scope the program was given; a program now writes its own imports, and every capability
+        question is answered at the membrane, the one place that can answer it the same way for all
         eleven language arms. gg still sends them — the world is shared with ten sibling guests — so
         they arrive and are ignored.
         """
-        del tools, ending, library
+        del operations, ending, library
         stream = _FeedbackStream()
         sys.stdout = stream
         sys.stderr = stream
@@ -402,7 +402,7 @@ class WitWorld(wit_world.WitWorld):
             return
         stream.flush()
 
-    def bound_tools(self) -> List[str]:
+    def bound_operations(self) -> List[str]:
         """The gg tool names this component can bind.
 
         Derived from the SDK's own catalogue rather than listed here, and filtered by whether an
@@ -411,4 +411,4 @@ class WitWorld(wit_world.WitWorld):
         making it. gg compares it with ``ALL_TOOL_NAMES`` on the artifact it embedded, which is the
         one drift check that catches a stale ``.wasm``.
         """
-        return gg_bound_tools()
+        return gg_bound_operations()

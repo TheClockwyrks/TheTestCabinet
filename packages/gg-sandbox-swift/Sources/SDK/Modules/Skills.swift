@@ -6,8 +6,8 @@
 ///
 /// - ggmodule: skills
 public enum skills {
-    /// The gg tools this module dispatches — see `files.ggTools`.
-    static let ggTools = ["read_skill"]
+    /// The gg tools this module dispatches — see `files.ggOperations`.
+    static let ggOperations = ["read_skill"]
 
     /// Read a skill by name and hand back its body with the front matter stripped.
     ///
@@ -20,14 +20,14 @@ public enum skills {
     ///
     /// - Parameter name: The skill's name, as the system prompt lists it.
     /// - Returns: the skill's body, front matter stripped.
-    /// - Throws: `core.ToolError` with `.notFound` — listing the skills that do exist — when the
+    /// - Throws: `core.ApiError` with `.notFound` — listing the skills that do exist — when the
     ///   name is unknown.
     /// - ggop: skills.read_skill
     public static func readSkill(_ name: String) throws -> String {
         try withScratch { scratch in
             var name = scratch.string(name)
             var ret = sandbox_string_t()
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             guard test_cabinet_gg_skills_read_skill(&name, &ret, &err) else {
                 throw lift(failure: &err)
             }

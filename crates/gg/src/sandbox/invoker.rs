@@ -1,26 +1,26 @@
 //! The **native API surface** the typed membrane calls, and the records a run keeps of what a
 //! program composed.
 //!
-//! Everything above this file is typed all the way to the model: a WIT function per tool, a
-//! function per tool, typed arguments and a typed result. [`ToolApi`] is the near side
+//! Everything above this file is typed all the way to the model: a WIT function per operation, a
+//! function per operation, typed arguments and a typed result. [`OperationApi`] is the near side
 //! of that surface *inside* the host — **one standard, typed method per API function**, so a
-//! program's `fs.readFile(path, { limit })` reaches [`ToolApi::read_file`] with its arguments still
+//! program's `fs.readFile(path, { limit })` reaches [`OperationApi::read_file`] with its arguments still
 //! typed, never lowered into a bag of JSON to be re-parsed. That is the whole of the inversion:
 //! responses-as-code is the richer interface, so it calls these functions directly; the JSON
 //! tool-calling path is the one that parses its arguments and calls the same standard functions
 //! ([`Tool::invoke`](crate::tools::Tool)).
 //!
-//! The production implementation (the loop's `LoopToolApi`, in [`crate::agent`]) performs each call
+//! The production implementation (the loop's `LoopOperationApi`, in [`crate::agent`]) performs each call
 //! against gg's real tools and does the loop servicing — the compaction gate, `ToolCall`/
 //! `ToolResult` telemetry, session capture, agent-managed-context reclaim, skill pinning, and — for
 //! the delegation family — routing through the subagent scheduler. Because it holds the agent's
 //! loop state and the sandbox runs on a blocking thread, it drives the async parts (`shell`,
-//! delegation) with a [`Handle`](tokio::runtime::Handle)`::block_on`. The in-memory `FakeToolApi`
+//! delegation) with a [`Handle`](tokio::runtime::Handle)`::block_on`. The in-memory `FakeOperationApi`
 //! stands in for it in the sandbox's own tests.
 
 use std::time::Duration;
 
-use test_cabinet_core::gg::GgToolFailure;
+use test_cabinet_core::gg::GgCallFailure;
 
 use crate::board::IssueStatus;
 use crate::context::{OpenViewInfo, TurnRange, ViewKind};
@@ -82,7 +82,7 @@ pub struct SandboxToolCall {
 /// make the `CodeExecution` event's dispatch count include calls that reached nothing.
 ///
 /// The **API** record makes the opposite choice, and the contrast is what the two records are for:
-/// the model wrote the call, so [`begin_api_call`](ToolApi::begin_api_call) brackets it and closes
+/// the model wrote the call, so [`begin_api_call`](OperationApi::begin_api_call) brackets it and closes
 /// it as a failure — an agent reaching for something it was not given is exactly what a comparison
 /// of two configurations counts — while this roster stays a record of what a turn *ran*.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,7 +91,7 @@ pub struct SandboxRefusal {
     /// `session.approve`, `programs.rerun`. Never a tool name: a tool is the other surface's
     /// vocabulary, and most of what can be refused here has none.
     pub name: String,
-    /// Why — the same text the program's `ToolError` carried.
+    /// Why — the same text the program's `ApiError` carried.
     pub message: String,
 }
 
@@ -112,7 +112,7 @@ pub struct SandboxViewOpened {
     pub superseded: bool,
 }
 
-/// Why a `view.*` call was refused, in a shape the membrane lowers into a typed `tool-error`.
+/// Why a `view.*` call was refused, in a shape the membrane lowers into a typed `api-error`.
 ///
 /// It carries a [`ToolFailure`] rather than the membrane's generated `error-code` for the reason
 /// every type in this file is spelled out by hand: this trait must not depend on the `bindgen!`
@@ -219,7 +219,7 @@ pub struct ApiIdentity<'a> {
 /// two the documentation family needs (a search, and one close that both documentation closes reach
 /// through). No method takes a serde_json::Value: a program's typed call reaches
 /// gg's tools without a round trip through JSON. `&mut self` because a call records what it composed.
-pub trait ToolApi: Send + 'static {
+pub trait OperationApi: Send + 'static {
     /// A program has begun a model-facing [call](ApiIdentity) — the **opening** half of the API
     /// layer's own record, taken whether or not a gg tool backs the call.
     ///
@@ -243,12 +243,12 @@ pub trait ToolApi: Send + 'static {
     /// record would report a model as having ignored its whole surface.
     ///
     /// `failure` is `None` when the call returned a value and `Some` when it threw, carrying the
-    /// [class](GgToolFailure) of the `ToolError` the program was thrown — the same `code` a `catch`
+    /// [class](GgCallFailure) of the `ApiError` the program was thrown — the same `code` a `catch`
     /// site branches on. It is the verdict *and* the reason in one argument rather than an `ok` flag
     /// beside an optional class, so a caller cannot record a failure with no reason or a reason on a
     /// call that succeeded. For the calls that never reach a tool — a carve-out no tool backs, and a
     /// call the membrane refused before dispatch — this is the **only** record of why they failed.
-    fn end_api_call(&mut self, call: ApiIdentity<'_>, failure: Option<GgToolFailure>);
+    fn end_api_call(&mut self, call: ApiIdentity<'_>, failure: Option<GgCallFailure>);
 
     fn shell(&mut self, command: String, timeout: Duration) -> ToolOutcome;
     fn read_file(

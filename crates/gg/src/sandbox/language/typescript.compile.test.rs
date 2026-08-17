@@ -30,12 +30,12 @@ fn emitted(source: &str) -> String {
 /// JavaScript.**
 ///
 /// Every shape the surface offers at once: the aggregate import and a family import, a positional
-/// argument, a trailing options object, a discriminated return, a caught `ToolError`, a top-level
+/// argument, a trailing options object, a discriminated return, a caught `ApiError`, a top-level
 /// `await`, an ending call, and top-level names that were formal parameters of the guest this arm
 /// left (`context`, `fs`, `view`).
 #[test]
 fn a_program_that_uses_the_sdk_correctly_compiles_clean() {
-    let clean = r#"import { files, views, shell, docs, session, ToolError } from "gg";
+    let clean = r#"import { files, views, shell, docs, session, ApiError } from "gg";
 import { readTextFile } from "gg:files";
 
 const context = "not gg's";
@@ -55,7 +55,7 @@ views.openText("ls", ran.output);
 try {
   files.writeFile("notes.md", "hello");
 } catch (error) {
-  if (error instanceof ToolError) console.log(error.tool, error.code, context, fs, view);
+  if (error instanceof ApiError) console.log(error.operation, error.code, context, fs, view);
 }
 const found = await Promise.resolve(
   docs.search("open a file", { module: "gg.views", kind: "function", limit: 5 }),
@@ -93,7 +93,7 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     );
 
     // Nor is the aggregate, nor the error type a `catch` narrows against.
-    for name in ["gg", "ToolError", "lib"] {
+    for name in ["gg", "ApiError", "lib"] {
         let text = diagnostics(&format!("const x = {name};\n"))
             .unwrap_or_else(|| panic!("`{name}` is in scope with no line the program wrote"));
         assert!(
@@ -437,7 +437,7 @@ fn a_family_that_borrows_a_type_imports_it() {
         "`gg:views` borrows the type its own signature spells: {views}"
     );
     assert!(
-        !views.contains("import { ToolError }"),
+        !views.contains("import { ApiError }"),
         "and borrows nothing its declarations do not name: {views}"
     );
 }

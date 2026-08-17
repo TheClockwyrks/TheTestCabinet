@@ -81,7 +81,7 @@ SCHEMA = 1
 GENERATED_FROM = "packages/gg-sandbox-ruby/src/gg/ + src/library.rb (YARD)"
 
 # The types every call can name whether or not its own signature does, because every call can fail.
-ALWAYS_REFERENCED = ["GG::Core::ToolError", "GG::Core::ToolErrorCode"].freeze
+ALWAYS_REFERENCED = ["GG::Core::ApiError", "GG::Core::ApiErrorCode"].freeze
 
 # The brief is one line and short. A cap no honest one-liner reaches, enforced where the author is.
 BRIEF_CAP = 120
@@ -187,7 +187,7 @@ end
 # section's word is whatever the arm's own documentation convention uses, and no reflector may rename
 # or invent one. `# Errors` is Rust's word, from the Rust API Guidelines, and Ruby has no such
 # convention to borrow it back from. The class comes with it, because the word a program has to write
-# is `rescue GG::Core::ToolError` and a section that names only the code leaves that to be guessed.
+# is `rescue GG::Core::ApiError` and a section that names only the code leaves that to be guessed.
 #
 # `@return`'s prose is folded in for the same reason and was not, which is a defect this arm
 # shipped: the tag was read for its TYPES and its text had no destination, so fifty authored

@@ -31,7 +31,7 @@ fn reported(
 /// The [`FileTextData`] an outcome carries, or a failure naming what it carried instead.
 fn text_data(outcome: &ToolOutcome) -> &FileTextData {
     match outcome.data.as_ref() {
-        Some(ToolData::FileText(data)) => data,
+        Some(ApiData::FileText(data)) => data,
         other => panic!("expected file text, got {other:?}"),
     }
 }

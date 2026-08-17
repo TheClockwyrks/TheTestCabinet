@@ -433,7 +433,7 @@ export const TURN_ERROR_KINDS = Object.keys(
 // One row of a ranked error breakdown: what to show, how many, and which base bucket it
 // belongs to.
 export interface GgRankedError {
-  // The recorded id — a `GgTurnErrorType` wire value, or a `GgToolFailure` class for a
+  // The recorded id — a `GgTurnErrorType` wire value, or a `GgCallFailure` class for a
   // call-failure row.
   id: string;
   // What to render. Never empty: an id from a newer gg than this console falls back to a

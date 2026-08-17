@@ -739,7 +739,7 @@ fn the_restore_note_says_which_mechanism_brought_what_back() {
 /// It used to record nothing because a program's reads were consumed inside the program and never
 /// reached the window. `view.openFile` and `view.openText` push real context items, so
 /// `open_file_views` and `open_text_views` see them like any other — this drives the two
-/// `ContextModel` entry points the loop's `LoopToolApi` calls, over a **code-mode** window (the
+/// `ContextModel` entry points the loop's `LoopOperationApi` calls, over a **code-mode** window (the
 /// heading a text view carries is code-mode-only, and it must not leak into the recorded body).
 ///
 /// The loop-side half of the same claim — that a finishing code-mode instance really hands its desk
@@ -755,7 +755,7 @@ async fn a_code_mode_window_records_and_restores_the_views_a_program_opened() {
         Some(100_000),
         true,
     );
-    // What `LoopToolApi::open_file_view` and `open_text_view` do, and all a program's `view.*` calls
+    // What `LoopOperationApi::open_file_view` and `open_text_view` do, and all a program's `view.*` calls
     // ever amount to.
     window.open_file_view_deduped(
         "game.js".to_string(),

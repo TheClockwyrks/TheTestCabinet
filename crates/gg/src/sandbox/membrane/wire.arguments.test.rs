@@ -94,7 +94,7 @@ fn every_arm_decodes_the_arguments_its_wit_function_declares() {
         );
         let decoded = decode_response(&response)
             .unwrap_or_else(|fault| panic!("`{id}` answered a frame gg cannot read: {fault:?}"));
-        // A `tool-error` is a fine answer — the fake refuses some calls and fails others, and what
+        // An `api-error` is a fine answer — the fake refuses some calls and fails others, and what
         // is under test is the decoding rather than the outcome. A **fault** is not: it is the wire
         // saying it could not read a request built from the very WIT the guest builds one from.
         if let Err((_, _, message)) = decoded

@@ -14,7 +14,7 @@ namespace gg {
 
 namespace detail {
 
-const std::vector<std::string>& delegation_tools() {
+const std::vector<std::string>& delegation_operations() {
   static const std::vector<std::string> names{"spawn_subagent",   "wait_for_subagents",
                                               "send_message",     "transition_state",
                                               "exec",             "fork"};
@@ -24,7 +24,7 @@ const std::vector<std::string>& delegation_tools() {
 // The one call the two wait shapes share: a null pointer means "every outstanding child".
 static std::vector<delegation::subagent_result> collect(sandbox_list_string_t* ids) {
   test_cabinet_gg_delegation_list_subagent_result_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_delegation_wait_for_subagents(ids, &ret, &err)) fail(err);
   std::vector<delegation::subagent_result> results =
       lift_each(ret.ptr, ret.len, lift_subagent_result);
@@ -53,7 +53,7 @@ delegation::subagent_handle spawn_subagent(std::string_view agent, delegation::b
     request.task.val.prompt = scratch.str(task.text());
   }
   test_cabinet_gg_delegation_subagent_handle_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_delegation_spawn_subagent(&request, &ret, &err)) detail::fail(err);
   return detail::lift_subagent_handle(ret);
 }
@@ -70,7 +70,7 @@ void send_message(std::string_view agent_id, std::string_view message) {
   detail::scratch scratch;
   sandbox_string_t lowered_id = scratch.str(agent_id);
   sandbox_string_t lowered_message = scratch.str(message);
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_delegation_send_message(&lowered_id, &lowered_message, &err)) {
     detail::fail(err);
   }
@@ -81,7 +81,7 @@ void transition_state(std::string_view state, std::optional<std::string_view> no
   sandbox_string_t lowered_state = scratch.str(state);
   sandbox_string_t lowered_note{};
   if (note.has_value()) lowered_note = scratch.str(*note);
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_delegation_transition_state(
           &lowered_state, note.has_value() ? &lowered_note : nullptr, &err)) {
     detail::fail(err);
@@ -93,7 +93,7 @@ void exec(std::string_view agent, std::optional<std::string_view> prompt) {
   sandbox_string_t lowered_agent = scratch.str(agent);
   sandbox_string_t lowered_prompt{};
   if (prompt.has_value()) lowered_prompt = scratch.str(*prompt);
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_delegation_exec(&lowered_agent,
                                        prompt.has_value() ? &lowered_prompt : nullptr, &err)) {
     detail::fail(err);
@@ -104,7 +104,7 @@ delegation::subagent_handle fork(std::string_view prompt) {
   detail::scratch scratch;
   sandbox_string_t lowered = scratch.str(prompt);
   test_cabinet_gg_delegation_subagent_handle_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_delegation_fork(&lowered, &ret, &err)) detail::fail(err);
   return detail::lift_subagent_handle(ret);
 }

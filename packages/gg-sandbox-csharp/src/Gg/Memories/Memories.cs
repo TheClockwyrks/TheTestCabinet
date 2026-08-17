@@ -37,9 +37,9 @@ public static partial class Memories
     /// that loaded the memory has ended, so its views arrive on the next turn.
     /// </param>
     /// <returns>how full the memory budget now is.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.Conflict"/> for a name already held, and
-    /// <see cref="ToolErrorCode.LimitExceeded"/> for a body that would breach a cap.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.Conflict"/> for a name already held, and
+    /// <see cref="ApiErrorCode.LimitExceeded"/> for a body that would breach a cap.
     /// </exception>
     /// <ggop>memories.write_memory</ggop>
     public static MemoryUsage WriteMemory(
@@ -60,7 +60,7 @@ public static partial class Memories
     /// <param name="code">Reusable C# bound at <c>lib.&lt;name&gt;</c>, replacing what it carried.</param>
     /// <param name="onUse">A program to run once, when this memory next comes into use.</param>
     /// <returns>how full the memory budget now is.</returns>
-    /// <exception cref="ToolException"><see cref="ToolErrorCode.NotFound"/> for a memory not held.</exception>
+    /// <exception cref="ApiException"><see cref="ApiErrorCode.NotFound"/> for a memory not held.</exception>
     /// <ggop>memories.update_memory</ggop>
     public static MemoryUsage UpdateMemory(
         string name,
@@ -80,10 +80,10 @@ public static partial class Memories
     /// <param name="code">Reusable C# bound at <c>lib.&lt;name&gt;</c> in every later program.</param>
     /// <param name="onUse">A program to run once, on the read that first loads this memory.</param>
     /// <returns>how full the memory budget now is.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.InvalidArgument"/> for a blank field or a name carrying characters a
-    /// slug may not hold, <see cref="ToolErrorCode.Conflict"/> for a name already held, and
-    /// <see cref="ToolErrorCode.LimitExceeded"/> for contents, or an index entry, over a cap.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for a blank field or a name carrying characters a
+    /// slug may not hold, <see cref="ApiErrorCode.Conflict"/> for a name already held, and
+    /// <see cref="ApiErrorCode.LimitExceeded"/> for contents, or an index entry, over a cap.
     /// </exception>
     /// <ggop>memories.create_memory</ggop>
     public static MemoryUsage CreateMemory(
@@ -96,7 +96,7 @@ public static partial class Memories
     /// <summary>Read one memory's contents back, by name.</summary>
     /// <param name="name">The memory's slug, as the index lists it.</param>
     /// <returns>the memory's body alone; the description that indexes it is not part of it.</returns>
-    /// <exception cref="ToolException"><see cref="ToolErrorCode.NotFound"/> for a memory not held.</exception>
+    /// <exception cref="ApiException"><see cref="ApiErrorCode.NotFound"/> for a memory not held.</exception>
     /// <ggop>memories.read_memory</ggop>
     public static string ReadMemory(string name)
     {
@@ -109,11 +109,11 @@ public static partial class Memories
     /// <param name="search">The exact text to replace. It must occur exactly once.</param>
     /// <param name="replace">What to put in its place; empty cuts the text out.</param>
     /// <returns>how full the memory budget now is.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.NotFound"/> when the text is not there,
-    /// <see cref="ToolErrorCode.Conflict"/> when it is there more than once,
-    /// <see cref="ToolErrorCode.InvalidArgument"/> for an edit that would leave the memory empty, and
-    /// <see cref="ToolErrorCode.LimitExceeded"/> when the result would be over a cap.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.NotFound"/> when the text is not there,
+    /// <see cref="ApiErrorCode.Conflict"/> when it is there more than once,
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for an edit that would leave the memory empty, and
+    /// <see cref="ApiErrorCode.LimitExceeded"/> when the result would be over a cap.
     /// </exception>
     /// <ggop>memories.edit_memory</ggop>
     public static MemoryUsage EditMemory(string name, string search, string replace)
@@ -140,8 +140,8 @@ public static partial class Memories
     /// The words to look for. At least one — an empty search is a failure rather than every memory.
     /// </param>
     /// <returns>the memories that matched, best first, each with an excerpt around its first match.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.InvalidArgument"/> for an empty keyword list.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for an empty keyword list.
     /// </exception>
     /// <ggop>memories.search_memories</ggop>
     public static IReadOnlyList<MemoryHit> SearchMemories(params string[] keywords)
@@ -169,7 +169,7 @@ public static partial class Memories
     /// <summary>Evict a memory by name, freeing room for new ones.</summary>
     /// <param name="name">The memory to drop.</param>
     /// <returns>how full the memory budget now is.</returns>
-    /// <exception cref="ToolException"><see cref="ToolErrorCode.NotFound"/> for a memory not held.</exception>
+    /// <exception cref="ApiException"><see cref="ApiErrorCode.NotFound"/> for a memory not held.</exception>
     /// <ggop>memories.delete_memory</ggop>
     public static MemoryUsage DeleteMemory(string name)
     {

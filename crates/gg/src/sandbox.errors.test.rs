@@ -9,7 +9,7 @@ use std::time::Duration;
 use super::*;
 use crate::ending::EndingRole;
 use crate::limits::{TurnErrorKind, TurnErrorType};
-use crate::sandbox::fake::{CallLog, FakeToolApi, process_isolated, typescript};
+use crate::sandbox::fake::{CallLog, FakeOperationApi, process_isolated, typescript};
 use crate::sandbox::language::fixture;
 
 /// **A program that does not compile never touches the engine.** It is the only failure that costs
@@ -29,7 +29,7 @@ fn a_prepare_error_never_touches_the_engine() {
         },
         SandboxLimits::default(),
         None,
-        FakeToolApi::new(&log),
+        FakeOperationApi::new(&log),
     );
 
     let error = outcome.result.expect_err("invalid TypeScript cannot run");
@@ -73,7 +73,7 @@ fn an_unsupported_feature_is_a_prepare_error_with_guidance() {
         },
         SandboxLimits::default(),
         None,
-        FakeToolApi::new(&log),
+        FakeOperationApi::new(&log),
     );
 
     let error = outcome
@@ -118,7 +118,7 @@ fn a_compiler_that_rejected_the_program_still_reports_what_it_cost() {
         },
         SandboxLimits::default(),
         None,
-        FakeToolApi::new(&log),
+        FakeOperationApi::new(&log),
     );
 
     let error = outcome
@@ -164,7 +164,7 @@ fn refused(source: &str) -> SandboxOutcome {
         },
         SandboxLimits::default(),
         None,
-        FakeToolApi::new(&log),
+        FakeOperationApi::new(&log),
     );
     outcome
 }
@@ -280,7 +280,7 @@ fn a_language_that_compiles_nothing_reports_no_compile_time_at_all() {
         },
         SandboxLimits::default(),
         None,
-        FakeToolApi::new(&log),
+        FakeOperationApi::new(&log),
     );
 
     assert!(outcome.result.is_err());
@@ -306,7 +306,7 @@ fn typescript_reports_what_checking_a_program_cost() {
         },
         SandboxLimits::default(),
         None,
-        FakeToolApi::new(&log),
+        FakeOperationApi::new(&log),
     );
 
     let Err(SandboxError::Prepare(PrepareError::Compile(diagnostics))) = &outcome.result else {
@@ -587,7 +587,7 @@ fn ggs_own_lowering_defect_is_never_charged_to_the_model() {
 
 /// The three classes the guest already types an uncaught throw with are three recorded types.
 ///
-/// `program_tool_error` is the one worth having: it says the model is fighting a call it could not
+/// `program_api_error` is the one worth having: it says the model is fighting a call it could not
 /// make, rather than mis-writing its own program, and it was previously indistinguishable from a
 /// `TypeError`.
 #[test]
@@ -595,7 +595,7 @@ fn every_uncaught_throw_class_is_recorded_as_its_own_type() {
     let cases = [
         (
             ProgramErrorKind::ToolFailure,
-            TurnErrorType::ProgramToolError,
+            TurnErrorType::ProgramApiError,
         ),
         (
             ProgramErrorKind::UnknownName,

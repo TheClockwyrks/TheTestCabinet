@@ -333,8 +333,8 @@ describe("the specific error type", () => {
     const state = reduceGgEvents([
       errored("root", 1, "model_api", 1, "model_response_loop"),
       errored("root", 2, "model_api", 2, "model_retry_exhausted"),
-      errored("root", 3, "program_fault", 3, "program_tool_error"),
-      errored("root", 4, "program_fault", 4, "program_tool_error"),
+      errored("root", 3, "program_fault", 3, "program_api_error"),
+      errored("root", 4, "program_fault", 4, "program_api_error"),
       progressed("root", 5),
     ]);
 
@@ -344,7 +344,7 @@ describe("the specific error type", () => {
     expect(state.errors.byType).toEqual({
       model_response_loop: 1,
       model_retry_exhausted: 1,
-      program_tool_error: 2,
+      program_api_error: 2,
     });
     // The breakdown sums to the total error count, which is what a ranking is read
     // against — a ranking that added up to a different number from the split beside it
@@ -372,9 +372,9 @@ describe("the specific error type", () => {
 
   it("ranks the three most common types, counts and all", () => {
     const state = reduceGgEvents([
-      errored("root", 1, "program_fault", 1, "program_tool_error"),
-      errored("root", 2, "program_fault", 2, "program_tool_error"),
-      errored("root", 3, "program_fault", 3, "program_tool_error"),
+      errored("root", 1, "program_fault", 1, "program_api_error"),
+      errored("root", 2, "program_fault", 2, "program_api_error"),
+      errored("root", 3, "program_fault", 3, "program_api_error"),
       errored("root", 4, "transpile", 4, "transpile_syntax"),
       errored("root", 5, "transpile", 5, "transpile_syntax"),
       errored("root", 6, "sandbox_limit", 6, "sandbox_timeout"),
@@ -383,7 +383,7 @@ describe("the specific error type", () => {
 
     expect(topErrorTypes(state.errors, 3)).toEqual([
       {
-        id: "program_tool_error",
+        id: "program_api_error",
         label: "uncaught call failure",
         kind: "program_fault",
         count: 3,

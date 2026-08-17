@@ -616,7 +616,7 @@ fn invoke_esbuild(context: &PrepareContext) -> Result<CompilerReport, String> {
         // them.
         .arg("--format=esm")
         // gg's SDK, which the bridge in `Gg/Internal/Wire.js` imports. Left to the guest so that a
-        // program and the SDK share one instance, and therefore one `ToolError` class.
+        // program and the SDK share one instance, and therefore one `ApiError` class.
         .arg("--external:gg")
         // The code modules this turn was given, which the guest declares under these specifiers.
         .arg(format!(

@@ -9,7 +9,7 @@
  */
 package gg.skills
 
-import gg.core.ToolError
+import gg.core.ApiError
 import gg.internal.ggCall
 import gg.internal.ggText
 
@@ -27,7 +27,7 @@ import gg.internal.ggText
  * @ggop skills.read_skill
  * @param name The skill's name, as the system prompt lists it.
  * @return the skill's body, with its front matter stripped
- * @throws ToolError `NOT_FOUND`, listing the skills that do exist, when the name is unknown.
+ * @throws ApiError `NOT_FOUND`, listing the skills that do exist, when the name is unknown.
  */
 public fun readSkill(name: String): String =
     ggCall("skills.read_skill", ggText(name)).text()

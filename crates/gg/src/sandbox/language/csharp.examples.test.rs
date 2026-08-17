@@ -32,7 +32,7 @@
 //!
 //! **Inline spans are not gathered**, which is [Swift's answer](super::super::swift::examples). A
 //! span here is often a *fragment of a signature* rather than an expression — `` `ExitCode` ``,
-//! `` `ToolErrorCode.NotFound` `` — and compiling one would mean guessing at the context it was
+//! `` `ApiErrorCode.NotFound` `` — and compiling one would mean guessing at the context it was
 //! written for. What is already checked about those spans is what a compiler would have told us
 //! anyway: [`prompts`](crate::prompts) resolves each name against the catalogue and refuses a
 //! hand-typed spelling, and the surface gate compares the catalogue against the artifact the SDK

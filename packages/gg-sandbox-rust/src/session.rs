@@ -10,7 +10,7 @@
 //! and a program that then fails has its ending revoked along with everything else it decided.
 
 use crate::bindings::test_cabinet::gg::session;
-use crate::core::ToolError;
+use crate::core::ApiError;
 use crate::wire;
 
 
@@ -29,7 +29,7 @@ use crate::wire;
 /// `InvalidArgument` for a blank summary, and `Unavailable` when this agent's role ends its session
 /// some other way.
 #[doc(alias = "ggop:session.finish")]
-pub fn finish(summary: &str) -> Result<(), ToolError> {
+pub fn finish(summary: &str) -> Result<(), ApiError> {
     wire::lift(session::finish(summary))
 }
 
@@ -43,7 +43,7 @@ pub fn finish(summary: &str) -> Result<(), ToolError> {
 ///
 /// `Unavailable` when this agent's role ends its session some other way.
 #[doc(alias = "ggop:session.approve")]
-pub fn approve() -> Result<(), ToolError> {
+pub fn approve() -> Result<(), ApiError> {
     wire::lift(session::approve())
 }
 
@@ -62,6 +62,6 @@ pub fn approve() -> Result<(), ToolError> {
 /// `InvalidArgument` when the list is empty, and `Unavailable` when this agent's role ends its
 /// session some other way.
 #[doc(alias = "ggop:session.request_changes")]
-pub fn request_changes(items: &[&str]) -> Result<(), ToolError> {
+pub fn request_changes(items: &[&str]) -> Result<(), ApiError> {
     wire::lift(session::request_changes(&wire::strings(items)))
 }

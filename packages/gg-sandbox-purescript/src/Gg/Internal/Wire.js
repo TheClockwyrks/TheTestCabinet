@@ -4,14 +4,14 @@
 // name, so gg's surface is reached the way every other module reaches it — through an `import` line
 // written in the source. That line is the one below. `esbuild` is told `gg` is external, so it
 // survives into the bundle unchanged, and the guest's loader resolves it to the same SDK instance a
-// TypeScript program imports. One instance is what makes `ToolError` one class.
+// TypeScript program imports. One instance is what makes `ApiError` one class.
 //
 // `gg` binds every family whatever the run enabled. A capability this run withheld is refused by the
-// host, as a `ToolError` carrying `unavailable`, exactly as it is for every other arm — so a family
+// host, as an `ApiError` carrying `unavailable`, exactly as it is for every other arm — so a family
 // missing here is drift between this SDK and the guest artifact rather than a capability the run
 // withheld, which is what the fallback below says.
 import * as gg from "gg";
-import { ToolError } from "gg";
+import { ApiError } from "gg";
 
 // The code gg reports a call that could not be made under. Not `unavailable`, which is the host's
 // word for a capability this agent was not granted: this file cannot produce that case, and reusing
@@ -25,10 +25,10 @@ const NOT_EXPORTED = "other";
 // every program and every function on it is the host's to permit or refuse, so the only way the
 // lookup below fails is that this SDK names something `packages/gg-sandbox`'s SDK does not export:
 // one of the two was written without the other. A model told its capability set was the problem
-// would go looking for a tool to enable, which is a turn spent on the wrong thing.
-const notExported = (tool, written) =>
-  new ToolError(
-    tool,
+// would go looking for an operation to enable, which is a turn spent on the wrong thing.
+const notExported = (operation, written) =>
+  new ApiError(
+    operation,
     NOT_EXPORTED,
     `\`${written}\` did not reach gg's SDK: this SDK declares it and the SDK the guest carries ` +
       "does not export it, which is a mismatch between the two rather than anything this program did",
@@ -38,13 +38,14 @@ const notExported = (tool, written) =>
 // fully-qualified name a PureScript program writes — `Gg.Files.readTextFile` — and its last segment
 // is the family's own name for the same function. One string rather than two because the two halves
 // are the same word: what differs is the qualifier.
-export const callImpl = (tool) => (namespace) => (written) => (args) => () => {
-  const family = gg[namespace];
-  const name = written.slice(written.lastIndexOf(".") + 1);
-  const fn = family === undefined ? undefined : family[name];
-  if (typeof fn !== "function") throw notExported(tool, written);
-  return fn.apply(family, args);
-};
+export const callImpl =
+  (operation) => (namespace) => (written) => (args) => () => {
+    const family = gg[namespace];
+    const name = written.slice(written.lastIndexOf(".") + 1);
+    const fn = family === undefined ? undefined : family[name];
+    if (typeof fn !== "function") throw notExported(operation, written);
+    return fn.apply(family, args);
+  };
 
 // The code modules this turn was given, by the key each is bound at.
 //

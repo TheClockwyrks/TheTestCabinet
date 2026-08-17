@@ -22,14 +22,14 @@ module GG
     #
     # @param target [Object] whatever the program passed
     # @return [String] the catalogue name
-    # @raise [GG::Core::ToolError] `invalid-argument` for anything that is not a name or a method
+    # @raise [GG::Core::ApiError] `invalid-argument` for anything that is not a name or a method
     # @api private
     def self.docs_name(target)
       return target.to_s if target.is_a?(Symbol) || target.is_a?(String)
       return target.name.to_s if target.respond_to?(:name) && target.is_a?(Method)
 
-      raise Core::ToolError.new("open_docs_view", Core::ToolErrorCode::INVALID_ARGUMENT,
-                                "expected an entry name or a method, got #{target.inspect}")
+      raise Core::ApiError.new("open_docs_view", Core::ApiErrorCode::INVALID_ARGUMENT,
+                               "expected an entry name or a method, got #{target.inspect}")
     end
     private_class_method :docs_name
 
@@ -50,7 +50,7 @@ module GG
     # @param limit [Integer, nil] How many lines to show from `offset`.
     # @return [GG::Files::TextFile, GG::Files::ImageFile] the same thing `GG::Files.read_file`
     #   returns
-    # @raise [GG::Core::ToolError] `:not_found` for a missing path, and `:invalid_argument` for an
+    # @raise [GG::Core::ApiError] `:not_found` for a missing path, and `:invalid_argument` for an
     #   offset past the end of the file. The read is what fails; nothing is opened when it does.
     def self.open_file(path, offset: nil, limit: nil)
       Wire.file_read(Wire.call("open_file", "views", "openFileView", [
@@ -87,15 +87,15 @@ module GG
     #     the same label again replaces what it showed. It may not be empty.
     #   @param body [String] A block returning what to show.
     # @return [nil]
-    # @raise [GG::Core::ToolError] `:invalid_argument` for an empty label — a view with no selector
+    # @raise [GG::Core::ApiError] `:invalid_argument` for an empty label — a view with no selector
     #   could never be closed or attributed — and for neither a `body` argument nor a block, and
     #   `:limit_exceeded`, naming the cap, for a body or label over gg's caps. Nothing is ever
     #   silently truncated.
     def self.open_text(label, body = nil, &block)
       text = block ? block.call : body
       if text.nil?
-        raise Core::ToolError.new("open_text", Core::ToolErrorCode::INVALID_ARGUMENT,
-                                  "`open_text` needs the body to show, as an argument or as a block")
+        raise Core::ApiError.new("open_text", Core::ApiErrorCode::INVALID_ARGUMENT,
+                                 "`open_text` needs the body to show, as an argument or as a block")
       end
 
       Wire.call("open_text", "views", "openTextView", [label, text])
@@ -118,7 +118,7 @@ module GG
     #   (`"GG::Files.read_file"`), by the name it is called by in its module, or as the method
     #   itself. A module's own key is its path, `"GG::Files"`.
     # @return [nil]
-    # @raise [GG::Core::ToolError] `:not_found` for an unknown or unbound name.
+    # @raise [GG::Core::ApiError] `:not_found` for an unknown or unbound name.
     def self.open_docs_view(target)
       Wire.call("open_docs_view", "views", "openDocsView", [docs_name(target)])
       nil
@@ -140,7 +140,7 @@ module GG
     # @param selector [String] What the view is filed under: a file's path, a text view's label, or
     #   `search results`.
     # @return [Integer] how many views were closed
-    # @raise [GG::Core::ToolError] `:invalid_argument` for an empty selector, which names nothing
+    # @raise [GG::Core::ApiError] `:invalid_argument` for an empty selector, which names nothing
     #   rather than everything — no call here closes the window wholesale.
     def self.close(selector)
       Wire.call("close", "views", "closeView", [selector])

@@ -17,7 +17,7 @@
  * What is left here is the module vocabulary a scope is assembled from, the alias names two sibling
  * arms resolve against this same scope, and the one table that is a claim about *this package*
  * rather than about a run: which gg tool each operation this SDK implements would dispatch, read by
- * `boundTools` and by nothing else.
+ * `boundOperations` and by nothing else.
  */
 
 /** The gg module ids this SDK is divided into, in the order the surface is presented in. */
@@ -87,7 +87,7 @@ export const SURFACE = "gg";
  * performs that same read on the way to showing the file, so a run with reading withheld must not get
  * one through a side door. Everything else names the tool that shares its key.
  */
-export const TOOL_BOUND: Readonly<Record<string, string>> = {
+export const OPERATION_BOUND: Readonly<Record<string, string>> = {
   "shell.shell": "shell",
   "files.read_file": "read_file",
   "files.read_text_file": "read_file",
@@ -140,7 +140,7 @@ export const TOOL_BOUND: Readonly<Record<string, string>> = {
  * table.
  */
 export const OPERATIONS: readonly string[] = [
-  ...Object.keys(TOOL_BOUND),
+  ...Object.keys(OPERATION_BOUND),
   "docs.search",
   "docs.close",
   "docs.close_all",

@@ -1,4 +1,4 @@
-// The globals a program has that are NOT part of the tool surface, declared for the type checker.
+// The globals a program has that are NOT part of the API surface, declared for the type checker.
 //
 // gg type-checks a model's program before the guest evaluates it, against declarations assembled
 // from this language's generated signature catalogue plus this file. Everything the catalogue

@@ -82,7 +82,7 @@ fn program(body: &str) -> String {
     format!("#include <gg.hpp>\n\nint main() {{\n{body}\n  return 0;\n}}\n")
 }
 
-/// Compile and run one C++ program with `enabled`'s tools offered and no ending group.
+/// Compile and run one C++ program with `enabled`'s operations offered and no ending group.
 fn run_with(
     body: &str,
     operations: &[crate::sandbox::operations::OperationId],
@@ -98,10 +98,10 @@ fn run_with(
 }
 
 // ---------------------------------------------------------------------------------------------
-// Every tool, from its C++ spelling
+// Every operation, from its C++ spelling
 // ---------------------------------------------------------------------------------------------
 
-/// One tool, called through the C++ spelling of it, and the JSON gg's dispatch must have seen.
+/// One operation, called through the C++ spelling of it, and the JSON gg's dispatch must have seen.
 struct Crossing {
     /// The gg tool name the call must arrive under.
     tool: &'static str,
@@ -111,7 +111,7 @@ struct Crossing {
     expected: fn() -> Value,
 }
 
-/// Every bound tool, called through its idiomatic C++ function.
+/// Every bound operation, called through its idiomatic C++ function.
 ///
 /// Deliberately the same table the other arms' surface tests drive theirs with, down to the
 /// arguments and the expected JSON — because the expected JSON is the point. gg's dispatch is
@@ -361,7 +361,7 @@ fn crossings() -> Vec<Crossing> {
 }
 
 #[test]
-fn every_tool_crosses_the_membrane_from_its_cpp_spelling() {
+fn every_operation_crosses_the_membrane_from_its_cpp_spelling() {
     let crossings = crossings();
 
     // One program rather than one per crossing: a compile here is ~90 ms warm, so thirty-five of
@@ -394,15 +394,15 @@ fn every_tool_crosses_the_membrane_from_its_cpp_spelling() {
         );
     }
 
-    // Exhaustive by construction: a tool added to gg with no row here fails now, rather than
+    // Exhaustive by construction: an operation added to gg with no row here fails now, rather than
     // shipping as a typed function nobody ever called.
     let mut covered: Vec<&str> = crossings.iter().map(|crossing| crossing.tool).collect();
     covered.sort_unstable();
-    let mut vocabulary = crate::sandbox::signatures::sandbox_tool_names();
+    let mut vocabulary = crate::sandbox::signatures::sandbox_operation_names();
     vocabulary.sort_unstable();
     assert_eq!(
         covered, vocabulary,
-        "every bound tool needs a crossing, and only bound tools may have one"
+        "every bound operation needs a crossing, and only bound operations may have one"
     );
 }
 
@@ -432,13 +432,13 @@ fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_cpp_too() {
   gg::log(std::format("{} {} {}", found.total, found.offset, found.hits.size()));
   try {
     gg::log(std::format("closed {}", gg::docs::close("gg::views::open_text")));
-  } catch (const gg::core::tool_error &failure) {
-    gg::log(std::format("{} on {}", gg::core::gg_name(failure.code()), failure.tool()));
+  } catch (const gg::core::api_error &failure) {
+    gg::log(std::format("{} on {}", gg::core::gg_name(failure.code()), failure.operation()));
   }
   try {
     gg::log(std::format("closed {}", gg::docs::close_all()));
-  } catch (const gg::core::tool_error &failure) {
-    gg::log(std::format("{} on {}", gg::core::gg_name(failure.code()), failure.tool()));
+  } catch (const gg::core::api_error &failure) {
+    gg::log(std::format("{} on {}", gg::core::gg_name(failure.code()), failure.operation()));
   }
   gg::session::finish("read the file and showed myself the result");
 "####,
@@ -518,7 +518,7 @@ fn the_program_library_and_a_reviewers_verdict_are_reached_in_cpp_too() {
   gg::log(std::to_string(gg::programs::history().size()));
   try {
     gg::log(gg::programs::get(2));
-  } catch (const gg::core::tool_error &failure) {
+  } catch (const gg::core::api_error &failure) {
     gg::log(std::string(gg::core::gg_name(failure.code())));
   }
   gg::programs::rerun("int main() { gg::log(\"again\"); return 0; }");
@@ -567,17 +567,17 @@ fn the_program_library_and_a_reviewers_verdict_are_reached_in_cpp_too() {
 
 #[test]
 fn a_failure_is_thrown_whether_it_is_caught_or_let_out() {
-    // Caught: an ordinary `catch` on `gg::core::tool_error` with a test on the code, which is what a program
+    // Caught: an ordinary `catch` on `gg::core::api_error` with a test on the code, which is what a program
     // that expects one failure and not the others writes. Nothing about it is exceptional —
-    // `gg::core::tool_error` is a `std::runtime_error`, so `catch (const std::exception&)` sees it too and no
+    // `gg::core::api_error` is a `std::runtime_error`, so `catch (const std::exception&)` sees it too and no
     // SDK-specific combinator is needed to compose with the standard library's own throws.
     let (outcome, _log) = run_with(
         r####"
   try {
     gg::log(gg::files::read_text_file("gone.cpp"));
-  } catch (const gg::core::tool_error &failure) {
-    if (failure.code() != gg::core::tool_error_code::not_found) throw;
-    gg::log(std::format("{} on {}", gg::core::gg_name(failure.code()), failure.tool()));
+  } catch (const gg::core::api_error &failure) {
+    if (failure.code() != gg::core::api_error_code::not_found) throw;
+    gg::log(std::format("{} on {}", gg::core::gg_name(failure.code()), failure.operation()));
   }
   gg::log("carried on");
 "####,
@@ -593,7 +593,7 @@ fn a_failure_is_thrown_whether_it_is_caught_or_let_out() {
 
     // Let out: gg's shell catches what escapes `main`, so an uncaught failure is a reported,
     // RECOVERABLE program error rather than a trap — and it carries the failed call's own gg code,
-    // which is what the host classifies the turn by. That code is read off the `gg::core::tool_error` itself:
+    // which is what the host classifies the turn by. That code is read off the `gg::core::api_error` itself:
     // an arm whose uncaught gg failure was recorded as `other` would be an arm whose error rates a
     // study could not compare with any other.
     let (outcome, _log) = run_with(
@@ -618,7 +618,7 @@ fn a_failure_is_thrown_whether_it_is_caught_or_let_out() {
     assert_eq!(
         error.kind,
         crate::sandbox::outcome::ProgramErrorKind::ToolFailure,
-        "an uncaught gg failure is classified from the CODE gg's shell read off the `gg::core::tool_error`;          without that it would land in `Other` beside a model that threw an `int`: {error:?}"
+        "an uncaught gg failure is classified from the CODE gg's shell read off the `gg::core::api_error`;          without that it would land in `Other` beside a model that threw an `int`: {error:?}"
     );
     assert_eq!(
         outcome.logs,
@@ -637,8 +637,8 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
         r####"
   try {
     gg::files::write_file("out.txt", "hello");
-  } catch (const gg::core::tool_error &failure) {
-    gg::log(std::format("{} on {}", gg::core::gg_name(failure.code()), failure.tool()));
+  } catch (const gg::core::api_error &failure) {
+    gg::log(std::format("{} on {}", gg::core::gg_name(failure.code()), failure.operation()));
   }
   gg::log("carried on");
 "####,
@@ -828,7 +828,7 @@ fn cpp_tells_the_truth_about_what_is_off_the_library_set() {
 }
 
 #[test]
-fn the_artifact_binds_exactly_the_tools_gg_offers() {
+fn the_artifact_binds_exactly_the_operations_gg_offers() {
     // The one drift no source-level test can catch, asked of the artifact rather than of a source
     // file. On this arm the artifact cannot be STALE — it was compiled from this checkout's SDK
     // moments ago — so what it catches instead is the SDK's own per-object binding table falling out
@@ -839,13 +839,13 @@ fn the_artifact_binds_exactly_the_tools_gg_offers() {
     // supplied, so nothing reaches for a prebuilt guest, and this arm has no
     // `GgProgramLanguage` of its own until it is registered.
     let component = prepare(&program("  return 0;"));
-    let mut bound = crate::sandbox::component_bound_tools(
+    let mut bound = crate::sandbox::component_bound_operations(
         crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::TypeScript),
         Some(component),
     )
-    .expect("a freshly compiled C++ program reports the tools its SDK binds");
+    .expect("a freshly compiled C++ program reports the operations its SDK binds");
     bound.sort();
-    let mut expected: Vec<String> = crate::sandbox::signatures::sandbox_tool_names()
+    let mut expected: Vec<String> = crate::sandbox::signatures::sandbox_operation_names()
         .into_iter()
         .map(str::to_string)
         .collect();
@@ -1036,8 +1036,8 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
         [
             ("gg::files::read_window", "gg::files::read_window"),
             ("gg::files::file_read", "gg::files::file_read"),
-            ("gg::core::tool_error", "gg::core::tool_error"),
-            ("gg::core::tool_error_code", "gg::core::tool_error_code"),
+            ("gg::core::api_error", "gg::core::api_error"),
+            ("gg::core::api_error_code", "gg::core::api_error_code"),
             ("gg::files::text_file", "gg::files::text_file"),
             ("gg::files::image_file", "gg::files::image_file"),
         ]

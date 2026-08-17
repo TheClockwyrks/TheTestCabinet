@@ -18,7 +18,7 @@ use crate::bindings::{CodeModule, EndingKind};
 ///
 /// It lives in this rlib rather than in the file `rustc` compiles, which is the point: the file
 /// `rustc` compiles is the model's reply, byte for byte. The `export!` below turns this crate into
-/// the half of the component that answers `run` and `bound-tools`, and linking it into a **binary**
+/// the half of the component that answers `run` and `bound-operations`, and linking it into a **binary**
 /// crate is what makes the model's own `main` reachable — see [`Program::run`].
 struct Program;
 
@@ -50,7 +50,7 @@ impl crate::bindings::Guest for Program {
     fn run(
         _program: String,
         _modules: Vec<CodeModule>,
-        _tools: Vec<String>,
+        _operations: Vec<String>,
         _ending: EndingKind,
         _library: bool,
     ) {
@@ -63,8 +63,8 @@ impl crate::bindings::Guest for Program {
         }
     }
 
-    fn bound_tools() -> Vec<String> {
-        self::bound_tools()
+    fn bound_operations() -> Vec<String> {
+        self::bound_operations()
     }
 }
 
@@ -81,7 +81,7 @@ unsafe extern "C" {
     fn main() -> i32;
 }
 
-/// The gg tool names this component can bind, **module by module** — what `bound-tools` answers.
+/// The gg tool names this component can bind, **module by module** — what `bound-operations` answers.
 ///
 /// gg asks the built artifact which tools it binds and compares the answer with gg's own
 /// `ALL_TOOL_NAMES`. The answer has to come from the SDK's own binding table rather than from a
@@ -93,20 +93,20 @@ unsafe extern "C" {
 /// `views`, `programs` and `session` are the model-facing carve-outs the WIT keeps outside the tool
 /// interfaces, `core` declares no function at all, and `files`'s helper `read_text_file` dispatches
 /// `read_file` rather than a name of its own.
-const TOOLS: &[&[&str]] = &[
-    crate::files::TOOLS,
-    crate::shell::TOOLS,
-    crate::board::TOOLS,
-    crate::tasks::TOOLS,
-    crate::memories::TOOLS,
-    crate::context::TOOLS,
-    crate::delegation::TOOLS,
-    crate::skills::TOOLS,
+const OPERATIONS: &[&[&str]] = &[
+    crate::files::OPERATIONS,
+    crate::shell::OPERATIONS,
+    crate::board::OPERATIONS,
+    crate::tasks::OPERATIONS,
+    crate::memories::OPERATIONS,
+    crate::context::OPERATIONS,
+    crate::delegation::OPERATIONS,
+    crate::skills::OPERATIONS,
 ];
 
-/// The gg tool names this component can bind, as `bound-tools` returns them.
-pub fn bound_tools() -> Vec<String> {
-    TOOLS
+/// The gg tool names this component can bind, as `bound-operations` returns them.
+pub fn bound_operations() -> Vec<String> {
+    OPERATIONS
         .iter()
         .flat_map(|object| object.iter())
         .map(|name| (*name).to_string())

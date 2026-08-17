@@ -708,7 +708,7 @@ impl DocEntry {
     ///
     /// A function's module is its own and is returned unchanged. A **type**'s is the union of the
     /// modules of every function referencing it, and that union is a property of the whole catalogue
-    /// rather than of the agent asking: `ToolError` is referenced from `programs`, `skills` and
+    /// rather than of the agent asking: `ApiError` is referenced from `programs`, `skills` and
     /// `memory` as readily as from `fs`. Reported raw, an agent holding nothing but `read_file`
     /// would be told its one visible type lives in three modules it has not a single call in — and
     /// since a module name is the discovery vocabulary the prompt hands the model, it would then

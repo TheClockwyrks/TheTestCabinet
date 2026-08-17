@@ -1633,7 +1633,7 @@ fn a_standard_capture_still_clips_a_tool_payload_past_the_tool_ceiling() {
 fn a_structured_file_payload_is_pooled_with_the_output_it_duplicates() {
     let (dir, recorder) = recorder_in(None);
     let file = "hello, file\n".repeat(64);
-    let outcome = ToolOutcome::ok(file.clone(), "read 768 bytes").with_data(ToolData::FileText(
+    let outcome = ToolOutcome::ok(file.clone(), "read 768 bytes").with_data(ApiData::FileText(
         crate::tools::FileTextData {
             contents: file.clone(),
             first_line: 1,
@@ -1670,7 +1670,7 @@ fn a_structured_file_payload_is_pooled_with_the_output_it_duplicates() {
         Some(outcome.output),
         "the lifted body resolves to the very pool entry `output` took"
     );
-    // `ToolData` is adjacently tagged, so the payload sits under `data` beside its `kind`.
+    // `ApiData` is adjacently tagged, so the payload sits under `data` beside its `kind`.
     let data = outcome.data.as_ref().expect("the structured payload");
     assert_eq!(
         data.pointer("/kind").and_then(Value::as_str),

@@ -14,7 +14,7 @@
 package gg.tasks
 
 import gg.core.Patch
-import gg.core.ToolError
+import gg.core.ApiError
 import gg.internal.Read
 import gg.internal.ggCall
 import gg.internal.ggList
@@ -34,7 +34,7 @@ import gg.internal.lowered
  * @param description What the work is, at whatever length is useful.
  * @param blockedBy The ids of the tasks that must be done before this one.
  * @return how much of the task budget is now used
- * @throws ToolError `CONFLICT` on a duplicate id or on an edge that would close a cycle.
+ * @throws ApiError `CONFLICT` on a duplicate id or on an edge that would close a cycle.
  */
 public fun addTask(
     id: String,
@@ -64,7 +64,7 @@ public fun addTask(
  * @param description The description to replace the old one with, or `Patch.Clear` to leave the task
  *   with none.
  * @param status Where the task now stands.
- * @throws ToolError `NOT_FOUND` for an unknown id.
+ * @throws ApiError `NOT_FOUND` for an unknown id.
  */
 public fun updateTask(
     id: String,
@@ -86,7 +86,7 @@ public fun updateTask(
  * @ggop tasks.set_blocked_by
  * @param id The task whose blockers to replace.
  * @param blockedBy The ids of every task that must now be done before it.
- * @throws ToolError `NOT_FOUND` for an unknown id, and `CONFLICT` when an edge would close a cycle.
+ * @throws ApiError `NOT_FOUND` for an unknown id, and `CONFLICT` when an edge would close a cycle.
  */
 public fun setBlockedBy(id: String, vararg blockedBy: String) {
     ggRun("tasks.set_blocked_by", ggText(id), ggTexts(blockedBy.asIterable()))
@@ -97,7 +97,7 @@ public fun setBlockedBy(id: String, vararg blockedBy: String) {
  *
  * @ggop tasks.complete_task
  * @param id The task to mark done.
- * @throws ToolError `NOT_FOUND` for an unknown id.
+ * @throws ApiError `NOT_FOUND` for an unknown id.
  */
 public fun completeTask(id: String) {
     ggRun("tasks.complete_task", ggText(id))
@@ -109,7 +109,7 @@ public fun completeTask(id: String) {
  * @ggop tasks.remove_task
  * @param id The task to remove.
  * @return how much of the task budget is now used
- * @throws ToolError `NOT_FOUND` for an unknown id.
+ * @throws ApiError `NOT_FOUND` for an unknown id.
  */
 public fun removeTask(id: String): TaskUsage =
     Read.taskUsage(ggCall("tasks.remove_task", ggText(id)))

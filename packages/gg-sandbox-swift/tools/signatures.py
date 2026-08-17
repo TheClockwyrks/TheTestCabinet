@@ -60,9 +60,9 @@ GENERATED_FROM = "packages/gg-sandbox-swift/Sources/SDK/ (swiftc -emit-symbol-gr
 SURFACE_IMPORT = "import gg"
 
 #: The types every call's failure arm refers to, closed over on every entry because every fallible
-#: function in this SDK throws a ``core.ToolError`` — including the one that cannot fail, whose
+#: function in this SDK throws a ``core.ApiError`` — including the one that cannot fail, whose
 #: declaration says so by not being ``throws`` at all.
-ALWAYS_REFERENCED = ("gg.core.ToolError", "gg.core.ToolErrorCode")
+ALWAYS_REFERENCED = ("gg.core.ApiError", "gg.core.ApiErrorCode")
 
 #: The mangling prefix every declaration of THIS module carries. ``s:`` is Swift's mangled-name
 #: marker and ``2gg`` is the module name length-prefixed, so a ``preciseIdentifier`` starting with it

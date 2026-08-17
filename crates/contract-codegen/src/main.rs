@@ -270,7 +270,7 @@ fn gg_error_labels() -> Result<String> {
         .iter()
         .map(|error| (error.wire_id(), quoted(error.kind().wire_id())))
         .collect());
-    let failures = map(gg::GgToolFailure::ALL
+    let failures = map(gg::GgCallFailure::ALL
         .iter()
         .map(|failure| (failure.wire_id(), quoted(failure.label())))
         .collect());
@@ -287,7 +287,7 @@ fn gg_error_labels() -> Result<String> {
          {TYPE_DOC}export const GG_TURN_ERROR_TYPE_LABELS: Readonly<Record<GgTurnErrorType, string>> = {types};\n\n\
          {BASE_DOC}export const GG_TURN_ERROR_TYPE_BASE: Readonly<Record<GgTurnErrorType, GgTurnErrorKind>> = {bases};\n\n\
          {ORDER_DOC}export const GG_TURN_ERROR_TYPES: readonly GgTurnErrorType[] = {order};\n\n\
-         {FAILURE_DOC}export const GG_TOOL_FAILURE_LABELS: Readonly<Record<GgToolFailure, string>> = {failures};\n"
+         {FAILURE_DOC}export const GG_TOOL_FAILURE_LABELS: Readonly<Record<GgCallFailure, string>> = {failures};\n"
     ))
 }
 
@@ -373,7 +373,7 @@ fn main() -> Result<()> {
                 gg::GgHook, gg::GgHookEvent, gg::GgHookAction, gg::GgHookAgentKind,
                 gg::GgHookOutcomeKind,
                 gg::GgTurnOutcome, gg::GgTurnErrorKind, gg::GgTurnErrorType,
-                gg::GgToolFailure,
+                gg::GgCallFailure,
                 gg::GgHealingStrategy, gg::GgProgramLanguage,
                 gg::GgResponseHealing, gg::GgHealingSummary,
                 gg::GgErrorSummary,

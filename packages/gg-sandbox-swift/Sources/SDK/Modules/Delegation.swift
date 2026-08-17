@@ -10,8 +10,8 @@
 ///
 /// - ggmodule: delegation
 public enum delegation {
-    /// The gg tools this module dispatches — see `files.ggTools`.
-    static let ggTools = [
+    /// The gg tools this module dispatches — see `files.ggOperations`.
+    static let ggOperations = [
         "spawn_subagent", "wait_for_subagents", "send_message", "transition_state", "exec", "fork",
     ]
 
@@ -29,7 +29,7 @@ public enum delegation {
     ///   - task: What the child is to do: `.prompt` with self-contained instructions, or `.issue`
     ///     with the id of a board issue to brief it from.
     /// - Returns: the child's handle, to wait on or to message.
-    /// - Throws: `core.ToolError` with `.limitExceeded` at the delegation depth cap, and
+    /// - Throws: `core.ApiError` with `.limitExceeded` at the delegation depth cap, and
     ///   `.invalidArgument` when `agent` is not one this agent may spawn.
     /// - ggop: delegation.spawn_subagent
     @discardableResult
@@ -38,7 +38,7 @@ public enum delegation {
             var request = test_cabinet_gg_delegation_spawn_request_t(
                 agent: scratch.string(agent), task: scratch.brief(task))
             var ret = test_cabinet_gg_delegation_subagent_handle_t()
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             guard test_cabinet_gg_delegation_spawn_subagent(&request, &ret, &err) else {
                 throw lift(failure: &err)
             }
@@ -56,12 +56,12 @@ public enum delegation {
     /// - Parameter ids: The children to wait for, as `delegation.spawnSubagent` returned them. Left
     ///   out, it waits for every one still outstanding.
     /// - Returns: each child's status and final message.
-    /// - Throws: `core.ToolError` with `.notFound` for an id this agent did not spawn.
+    /// - Throws: `core.ApiError` with `.notFound` for an id this agent did not spawn.
     /// - ggop: delegation.wait_for_subagents
     public static func waitForSubagents(_ ids: [String]? = nil) throws -> [SubagentResult] {
         try withScratch { scratch in
             var ret = test_cabinet_gg_delegation_list_subagent_result_t()
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             let ok = withOptional(ids.map { scratch.list($0) }) { ids in
                 test_cabinet_gg_delegation_wait_for_subagents(ids, &ret, &err)
             }
@@ -80,14 +80,14 @@ public enum delegation {
     /// - Parameters:
     ///   - message: What to put in its inbox. It reads it at its next turn.
     ///   - to: The child to deliver to, as `delegation.spawnSubagent` returned it.
-    /// - Throws: `core.ToolError` with `.notFound` for an unknown agent id, and `.conflict` when
+    /// - Throws: `core.ApiError` with `.notFound` for an unknown agent id, and `.conflict` when
     ///   that child has already returned.
     /// - ggop: delegation.send_message
     public static func sendMessage(_ message: String, to agentId: String) throws {
         try withScratch { scratch in
             var agentId = scratch.string(agentId)
             var message = scratch.string(message)
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             guard test_cabinet_gg_delegation_send_message(&agentId, &message, &err) else {
                 throw lift(failure: &err)
             }
@@ -106,13 +106,13 @@ public enum delegation {
     /// - Parameters:
     ///   - to: The state to move on to, named the way an agent to spawn is named.
     ///   - note: The opening message the next state's agent sees. Left out, it is told nothing.
-    /// - Throws: `core.ToolError` with `.invalidArgument` for a state this session may not move to,
+    /// - Throws: `core.ApiError` with `.invalidArgument` for a state this session may not move to,
     ///   and `.refused` for a second declaration in one turn.
     /// - ggop: delegation.transition_state
     public static func transitionState(to state: String, note: String? = nil) throws {
         try withScratch { scratch in
             var state = scratch.string(state)
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             let ok = withOptional(note.map { scratch.string($0) }) { note in
                 test_cabinet_gg_delegation_transition_state(&state, note, &err)
             }
@@ -134,13 +134,13 @@ public enum delegation {
     ///   - agent: The agent to become, from the ones this agent may become.
     ///   - prompt: Its opening message. It already has the whole conversation, so this is the
     ///     instruction rather than a briefing. Left out, it is told nothing.
-    /// - Throws: `core.ToolError` with `.invalidArgument` for an agent this session may not become,
+    /// - Throws: `core.ApiError` with `.invalidArgument` for an agent this session may not become,
     ///   and `.refused` for a second succession in one turn.
     /// - ggop: delegation.exec
     public static func exec(_ agent: String, prompt: String? = nil) throws {
         try withScratch { scratch in
             var agent = scratch.string(agent)
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             let ok = withOptional(prompt.map { scratch.string($0) }) { prompt in
                 test_cabinet_gg_delegation_exec(&agent, prompt, &err)
             }
@@ -162,14 +162,14 @@ public enum delegation {
     /// - Parameter prompt: What the copy is to do instead. It has the whole conversation already, so
     ///   this is the difference rather than a briefing.
     /// - Returns: the copy's handle, collectable on a later turn.
-    /// - Throws: `core.ToolError` with `.limitExceeded` at the delegation depth cap.
+    /// - Throws: `core.ApiError` with `.limitExceeded` at the delegation depth cap.
     /// - ggop: delegation.fork
     @discardableResult
     public static func fork(_ prompt: String) throws -> SubagentHandle {
         try withScratch { scratch in
             var prompt = scratch.string(prompt)
             var ret = test_cabinet_gg_delegation_subagent_handle_t()
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             guard test_cabinet_gg_delegation_fork(&prompt, &ret, &err) else {
                 throw lift(failure: &err)
             }
@@ -258,7 +258,7 @@ extension delegation.SubagentHandle {
     /// is in hand.
     ///
     /// - Parameter message: What to put in its inbox.
-    /// - Throws: `core.ToolError` with `.conflict` when this child has already returned.
+    /// - Throws: `core.ApiError` with `.conflict` when this child has already returned.
     /// - ggop-alias: delegation.send_message
     public func send(_ message: String) throws {
         try delegation.sendMessage(message, to: id)

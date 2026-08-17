@@ -9,7 +9,7 @@ use super::*;
 // `GgTurnOutcome` is the one contract type these tests construct that the module under test never
 // names: the fold keys on the error *kind*, which is what keeps `errors` the sum of its parts.
 use test_cabinet_core::gg::{
-    GgBoardIssue, GgCapabilitySet, GgContextSourceUsage, GgLimitKind, GgToolFailure,
+    GgBoardIssue, GgCallFailure, GgCapabilitySet, GgContextSourceUsage, GgLimitKind,
     GgTurnErrorType, GgTurnOutcome,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
@@ -123,7 +123,7 @@ fn errored(error_type: GgTurnErrorType, consecutive_errors: u64) -> GgTelemetryK
 }
 
 /// One dispatched tool call's result, as the call-failure rollup reads it.
-fn tool_result(ok: bool, failure: Option<GgToolFailure>) -> GgTelemetryKind {
+fn tool_result(ok: bool, failure: Option<GgCallFailure>) -> GgTelemetryKind {
     GgTelemetryKind::ToolResult {
         name: "read_file".to_string(),
         ok,
@@ -655,7 +655,7 @@ fn the_error_rollup_counts_every_turn_and_splits_the_errors_by_kind() {
     let tracker = SessionSummaryTracker::new();
     tracker.observe(&progressed());
     tracker.observe(&errored(GgTurnErrorType::TranspileSyntax, 1));
-    tracker.observe(&errored(GgTurnErrorType::ProgramToolError, 2));
+    tracker.observe(&errored(GgTurnErrorType::ProgramApiError, 2));
     tracker.observe(&progressed());
     tracker.observe(&errored(GgTurnErrorType::SandboxTimeout, 1));
     tracker.observe(&turn(GgTurnOutcome::Fatal, None, 1, 0));
@@ -676,7 +676,7 @@ fn the_error_rollup_counts_every_turn_and_splits_the_errors_by_kind() {
             loop_aborts: 0,
             by_type: BTreeMap::from([
                 ("transpile_syntax".to_string(), 1),
-                ("program_tool_error".to_string(), 1),
+                ("program_api_error".to_string(), 1),
                 ("sandbox_timeout".to_string(), 1),
             ]),
             tool_failures: BTreeMap::new(),
@@ -708,8 +708,8 @@ fn the_error_rollup_breaks_the_same_errors_down_by_specific_type() {
     let tracker = SessionSummaryTracker::new();
     tracker.observe(&errored(GgTurnErrorType::ModelRejected, 1));
     tracker.observe(&errored(GgTurnErrorType::ModelResponseLoop, 2));
-    tracker.observe(&errored(GgTurnErrorType::ProgramToolError, 3));
-    tracker.observe(&errored(GgTurnErrorType::ProgramToolError, 4));
+    tracker.observe(&errored(GgTurnErrorType::ProgramApiError, 3));
+    tracker.observe(&errored(GgTurnErrorType::ProgramApiError, 4));
     tracker.observe(&errored(GgTurnErrorType::ProgramUnknownName, 5));
     tracker.observe(&progressed());
 
@@ -719,7 +719,7 @@ fn the_error_rollup_breaks_the_same_errors_down_by_specific_type() {
         BTreeMap::from([
             ("model_rejected".to_string(), 1),
             ("model_response_loop".to_string(), 1),
-            ("program_tool_error".to_string(), 2),
+            ("program_api_error".to_string(), 2),
             ("program_unknown_name".to_string(), 1),
         ])
     );
@@ -745,11 +745,11 @@ fn the_error_rollup_breaks_the_same_errors_down_by_specific_type() {
 fn failed_calls_are_counted_by_class_without_touching_the_turn_figures() {
     let tracker = SessionSummaryTracker::new();
     tracker.observe(&tool_result(true, None));
-    tracker.observe(&tool_result(false, Some(GgToolFailure::NotFound)));
-    tracker.observe(&tool_result(false, Some(GgToolFailure::NotFound)));
-    tracker.observe(&tool_result(false, Some(GgToolFailure::InvalidArgument)));
+    tracker.observe(&tool_result(false, Some(GgCallFailure::NotFound)));
+    tracker.observe(&tool_result(false, Some(GgCallFailure::NotFound)));
+    tracker.observe(&tool_result(false, Some(GgCallFailure::InvalidArgument)));
     // A failure raised outside a tool implementation, which has no class of its own.
-    tracker.observe(&tool_result(false, Some(GgToolFailure::Other)));
+    tracker.observe(&tool_result(false, Some(GgCallFailure::Other)));
     tracker.observe(&progressed());
 
     let errors = tracker.finalize("completed").errors;

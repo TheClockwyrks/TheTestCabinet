@@ -17,10 +17,10 @@ public static partial class Board
     /// <param name="title">What the epic is called.</param>
     /// <param name="description">What the epic covers.</param>
     /// <returns>the id the prefix resolved to, and how full the board now is.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.InvalidArgument"/> for a prefix that is not 3-6 letters or a blank
-    /// field, <see cref="ToolErrorCode.Conflict"/> for a prefix already in use, and
-    /// <see cref="ToolErrorCode.LimitExceeded"/> at the epic cap.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for a prefix that is not 3-6 letters or a blank
+    /// field, <see cref="ApiErrorCode.Conflict"/> for a prefix already in use, and
+    /// <see cref="ApiErrorCode.LimitExceeded"/> at the epic cap.
     /// </exception>
     /// <ggop>board.create_epic</ggop>
     public static EpicCreated CreateEpic(string prefix, string title, string description)
@@ -67,10 +67,10 @@ public static partial class Board
     /// <paramref name="agent"/>. Required where the run's reviewers feature is on.
     /// </param>
     /// <returns>the id the board assigned, and how full the board now is.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.InvalidArgument"/> for a blank field or an agent outside the
-    /// spawnable set, <see cref="ToolErrorCode.NotFound"/> for an epic or blocker the board does not
-    /// hold, and <see cref="ToolErrorCode.LimitExceeded"/> at the issue cap.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for a blank field or an agent outside the
+    /// spawnable set, <see cref="ApiErrorCode.NotFound"/> for an epic or blocker the board does not
+    /// hold, and <see cref="ApiErrorCode.LimitExceeded"/> at the issue cap.
     /// </exception>
     /// <ggop>board.create_issue</ggop>
     public static IssueCreated CreateIssue(
@@ -113,9 +113,9 @@ public static partial class Board
     /// <param name="completionCriteria">New criteria for the work being done.</param>
     /// <param name="status">A new status.</param>
     /// <param name="epic">A change of grouping: keep it, ungroup it, or group it under an epic.</param>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.NotFound"/> for an unknown issue or epic id, and
-    /// <see cref="ToolErrorCode.InvalidArgument"/> when nothing at all was changed, or a field that
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.NotFound"/> for an unknown issue or epic id, and
+    /// <see cref="ApiErrorCode.InvalidArgument"/> when nothing at all was changed, or a field that
     /// must have a value was blanked.
     /// </exception>
     /// <ggop>board.update_issue</ggop>
@@ -146,10 +146,10 @@ public static partial class Board
     /// The issue ids that must finish first, replacing whatever was there. An empty list clears
     /// every blocker.
     /// </param>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.InvalidArgument"/> for a blank id or blocker,
-    /// <see cref="ToolErrorCode.NotFound"/> for an issue or blocker the board does not hold, and
-    /// <see cref="ToolErrorCode.Conflict"/> for an edge that would make a cycle or block the issue on
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for a blank id or blocker,
+    /// <see cref="ApiErrorCode.NotFound"/> for an issue or blocker the board does not hold, and
+    /// <see cref="ApiErrorCode.Conflict"/> for an edge that would make a cycle or block the issue on
     /// itself.
     /// </exception>
     /// <ggop>board.set_issue_blocked_by</ggop>
@@ -159,14 +159,14 @@ public static partial class Board
     /// <summary>Remove an epic, keeping its issues and ungrouping them.</summary>
     /// <param name="id">The epic to drop, by its id.</param>
     /// <returns>how full the board now is.</returns>
-    /// <exception cref="ToolException"><see cref="ToolErrorCode.NotFound"/> for an unknown id.</exception>
+    /// <exception cref="ApiException"><see cref="ApiErrorCode.NotFound"/> for an unknown id.</exception>
     /// <ggop>board.remove_epic</ggop>
     public static BoardUsage RemoveEpic(string id) => Remove(epic: true, id);
 
     /// <summary>Remove an issue, and every blocker edge pointing at it.</summary>
     /// <param name="id">The issue to drop, by its id.</param>
     /// <returns>how full the board now is.</returns>
-    /// <exception cref="ToolException"><see cref="ToolErrorCode.NotFound"/> for an unknown id.</exception>
+    /// <exception cref="ApiException"><see cref="ApiErrorCode.NotFound"/> for an unknown id.</exception>
     /// <ggop>board.remove_issue</ggop>
     public static BoardUsage RemoveIssue(string id) => Remove(epic: false, id);
 
@@ -181,10 +181,10 @@ public static partial class Board
     /// </remarks>
     /// <param name="id">The issue to wait on.</param>
     /// <returns>an acknowledgement that the wait is registered.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.InvalidArgument"/> for a blank id, or for the issue this agent was
-    /// itself assigned, <see cref="ToolErrorCode.NotFound"/> for an id the board does not hold, and
-    /// <see cref="ToolErrorCode.Unavailable"/> when the run has no board.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for a blank id, or for the issue this agent was
+    /// itself assigned, <see cref="ApiErrorCode.NotFound"/> for an id the board does not hold, and
+    /// <see cref="ApiErrorCode.Unavailable"/> when the run has no board.
     /// </exception>
     /// <ggop>board.wait_for_issue</ggop>
     public static string WaitForIssue(string id)

@@ -274,7 +274,7 @@ fn every_tool_crosses_the_membrane_with_its_typed_arguments() {
     // shipping as a typed function nobody ever called.
     let mut covered: Vec<&str> = crossings.iter().map(|crossing| crossing.tool).collect();
     covered.sort_unstable();
-    let mut expected = crate::sandbox::signatures::sandbox_tool_names();
+    let mut expected = crate::sandbox::signatures::sandbox_operation_names();
     expected.sort_unstable();
     assert_eq!(
         covered, expected,
@@ -310,7 +310,7 @@ fn every_tool_crosses_the_membrane_with_its_typed_arguments() {
     );
 
     // And the error type a program is told to catch is in scope too, or `catch (e) { e instanceof
-    // ToolError }` — the shape the system prompt teaches — would be a ReferenceError.
-    let (outcome, _) = run("import * as gg from \"gg\";\nconsole.log(typeof gg.core.ToolError);");
+    // ApiError }` — the shape the system prompt teaches — would be a ReferenceError.
+    let (outcome, _) = run("import * as gg from \"gg\";\nconsole.log(typeof gg.core.ApiError);");
     assert_eq!(logs(&outcome), ["function"]);
 }

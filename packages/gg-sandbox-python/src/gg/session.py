@@ -24,14 +24,14 @@ def finish(summary: str) -> None:
     """End the session, reporting what was done in a sentence or two.
 
     This is the only thing that ends a working agent's session. It does not stop the program —
-    whatever follows it still runs — so it belongs last, once the tools have confirmed the work is
-    really done. A program that then fails has the ending cancelled and gets another turn.
+    whatever follows it still runs — so it belongs last, once the calls before it have confirmed the
+    work is really done. A program that then fails has the ending cancelled and gets another turn.
 
     Args:
         summary: What was done, in a sentence or two.
 
     Raises:
-        ToolError: `invalid-argument` for a blank summary, and `unavailable` when this agent's role
+        ApiError: `invalid-argument` for a blank summary, and `unavailable` when this agent's role
             ends its session some other way.
     """
     _call(wire.finish, summary)
@@ -46,7 +46,7 @@ def approve() -> None:
     carries no obligation beyond itself.
 
     Raises:
-        ToolError: `unavailable` when this agent's role ends its session some other way.
+        ApiError: `unavailable` when this agent's role ends its session some other way.
     """
     _call(wire.approve)
 
@@ -63,7 +63,7 @@ def request_changes(items: list[str]) -> None:
             wrong, and what to change. It may not be empty.
 
     Raises:
-        ToolError: `invalid-argument` when the list is empty, and `unavailable` when this agent's
+        ApiError: `invalid-argument` when the list is empty, and `unavailable` when this agent's
             role ends its session some other way.
     """
     _call(wire.request_changes, _strings("request_changes", "items", items))

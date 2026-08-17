@@ -1926,7 +1926,7 @@ export type GgTurnErrorType =
   | "transpile_syntax"
   | "transpile_compile"
   | "transpile_unsupported"
-  | "program_tool_error"
+  | "program_api_error"
   | "program_unknown_name"
   | "program_throw"
   | "sandbox_timeout"
@@ -1956,11 +1956,11 @@ export type GgTurnErrorType =
  *
  * Every other enum in this module is snake_case. This one is `"invalid-argument"`, because the
  * class is *already* spelled that way in the three places a reader meets it — gg's own
- * `ToolFailure` serde, the membrane's WIT `error-code`, and the `code` field of the `ToolError` a
+ * `ToolFailure` serde, the membrane's WIT `error-code`, and the `code` field of the `ApiError` a
  * program catches. One deviation from this module's convention is a smaller cost than three
  * spellings of one fact.
  */
-export type GgToolFailure =
+export type GgCallFailure =
   | "invalid-argument"
   | "not-found"
   | "conflict"
@@ -2251,12 +2251,12 @@ export type GgErrorSummary = {
    */
   byType?: { [key in string]: number };
   /**
-   * **Calls** that failed, by [failure class](GgToolFailure) — a different population from
+   * **Calls** that failed, by [failure class](GgCallFailure) — a different population from
    * everything above, which counts *turns*.
    *
    * Folded from the [`ToolResult`](GgTelemetryKind::ToolResult) events the run emitted, so it
    * counts every failed tool dispatch in either execution mode, whether or not the program that
-   * made it caught the failure and carried on. Keyed by [`GgToolFailure::wire_id`], and open for
+   * made it caught the failure and carried on. Keyed by [`GgCallFailure::wire_id`], and open for
    * the reason [`by_type`](Self::by_type) is.
    *
    * It counts **dispatches**, so a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) call that
@@ -2588,17 +2588,17 @@ export type GgTelemetryKind =
        */
       summary?: string;
       /**
-       * Why it failed, when it failed — the [class](GgToolFailure) the tool itself raised, never
+       * Why it failed, when it failed — the [class](GgCallFailure) the tool itself raised, never
        * one inferred afterwards from the summary's prose.
        *
        * Present on exactly the results whose [`ok`](Self::ToolResult::ok) is `false`, with
-       * [`Other`](GgToolFailure::Other) for a failure raised outside a tool implementation, and
+       * [`Other`](GgCallFailure::Other) for a failure raised outside a tool implementation, and
        * absent on every success — so `failure != null` and `ok == false` are the same statement,
        * and a reader never meets a failure with no class.
        *
        * `ok` stays the authoritative "did it fail?". This says how.
        */
-      failure?: GgToolFailure;
+      failure?: GgCallFailure;
     }
   | {
       type: "api_call";
@@ -2635,7 +2635,7 @@ export type GgTelemetryKind =
        */
       ok: boolean;
       /**
-       * The [class](GgToolFailure) of the `ToolError` thrown into the program, on a call that
+       * The [class](GgCallFailure) of the `ApiError` thrown into the program, on a call that
        * threw. Present on exactly the results whose [`ok`](Self::ApiResult::ok) is `false`.
        *
        * This is the **model's** view of why its call failed — the same `code` the program itself
@@ -2644,7 +2644,7 @@ export type GgTelemetryKind =
        * refused before dispatch (a spent wall-clock budget, a name this agent was not granted),
        * which never reached an implementation at all.
        */
-      failure?: GgToolFailure;
+      failure?: GgCallFailure;
     }
   | {
       type: "usage";
@@ -3073,8 +3073,8 @@ export type GgTelemetryKind =
        * The agent's depth in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/):
        * `0` for the root, `parent.depth + 1` for a spawned child. A spawn that would exceed
        * the configured maximum depth fails as a
-       * [limit](GgToolFailure::LimitExceeded) rather than being queued — a *ceiling*, not a
-       * [refusal](GgToolFailure::Refused): the request was well-formed, the run simply has no
+       * [limit](GgCallFailure::LimitExceeded) rather than being queued — a *ceiling*, not a
+       * [refusal](GgCallFailure::Refused): the request was well-formed, the run simply has no
        * room left below the spawner.
        */
       depth: number;
@@ -3681,17 +3681,17 @@ export type GgTelemetryEvent = {
        */
       summary?: string;
       /**
-       * Why it failed, when it failed — the [class](GgToolFailure) the tool itself raised, never
+       * Why it failed, when it failed — the [class](GgCallFailure) the tool itself raised, never
        * one inferred afterwards from the summary's prose.
        *
        * Present on exactly the results whose [`ok`](Self::ToolResult::ok) is `false`, with
-       * [`Other`](GgToolFailure::Other) for a failure raised outside a tool implementation, and
+       * [`Other`](GgCallFailure::Other) for a failure raised outside a tool implementation, and
        * absent on every success — so `failure != null` and `ok == false` are the same statement,
        * and a reader never meets a failure with no class.
        *
        * `ok` stays the authoritative "did it fail?". This says how.
        */
-      failure?: GgToolFailure;
+      failure?: GgCallFailure;
     }
   | {
       type: "api_call";
@@ -3728,7 +3728,7 @@ export type GgTelemetryEvent = {
        */
       ok: boolean;
       /**
-       * The [class](GgToolFailure) of the `ToolError` thrown into the program, on a call that
+       * The [class](GgCallFailure) of the `ApiError` thrown into the program, on a call that
        * threw. Present on exactly the results whose [`ok`](Self::ApiResult::ok) is `false`.
        *
        * This is the **model's** view of why its call failed — the same `code` the program itself
@@ -3737,7 +3737,7 @@ export type GgTelemetryEvent = {
        * refused before dispatch (a spent wall-clock budget, a name this agent was not granted),
        * which never reached an implementation at all.
        */
-      failure?: GgToolFailure;
+      failure?: GgCallFailure;
     }
   | {
       type: "usage";
@@ -4166,8 +4166,8 @@ export type GgTelemetryEvent = {
        * The agent's depth in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/):
        * `0` for the root, `parent.depth + 1` for a spawned child. A spawn that would exceed
        * the configured maximum depth fails as a
-       * [limit](GgToolFailure::LimitExceeded) rather than being queued — a *ceiling*, not a
-       * [refusal](GgToolFailure::Refused): the request was well-formed, the run simply has no
+       * [limit](GgCallFailure::LimitExceeded) rather than being queued — a *ceiling*, not a
+       * [refusal](GgCallFailure::Refused): the request was well-formed, the run simply has no
        * room left below the spawner.
        */
       depth: number;
@@ -4761,7 +4761,7 @@ export const GG_TURN_ERROR_TYPE_LABELS: Readonly<
   transpile_syntax: "syntax error",
   transpile_compile: "compiler rejected the program",
   transpile_unsupported: "unsupported program feature",
-  program_tool_error: "uncaught call failure",
+  program_api_error: "uncaught call failure",
   program_unknown_name: "unknown name",
   program_throw: "uncaught throw",
   sandbox_timeout: "execution timeout",
@@ -4787,7 +4787,7 @@ export const GG_TURN_ERROR_TYPE_BASE: Readonly<
   transpile_syntax: "transpile",
   transpile_compile: "transpile",
   transpile_unsupported: "transpile",
-  program_tool_error: "program_fault",
+  program_api_error: "program_fault",
   program_unknown_name: "program_fault",
   program_throw: "program_fault",
   sandbox_timeout: "sandbox_limit",
@@ -4812,7 +4812,7 @@ export const GG_TURN_ERROR_TYPES: readonly GgTurnErrorType[] = [
   "transpile_syntax",
   "transpile_compile",
   "transpile_unsupported",
-  "program_tool_error",
+  "program_api_error",
   "program_unknown_name",
   "program_throw",
   "sandbox_timeout",
@@ -4826,7 +4826,7 @@ export const GG_TURN_ERROR_TYPES: readonly GgTurnErrorType[] = [
  * How each call-failure class reads on screen — the class a failed tool call or a failed
  * model-facing API call is recorded with.
  */
-export const GG_TOOL_FAILURE_LABELS: Readonly<Record<GgToolFailure, string>> = {
+export const GG_TOOL_FAILURE_LABELS: Readonly<Record<GgCallFailure, string>> = {
   "invalid-argument": "invalid argument",
   "not-found": "not found",
   conflict: "conflict",

@@ -51,8 +51,8 @@
 //!
 //! A **response** is one leading byte and then a value: `0` and what the call returned (tag `0` for
 //! a call that returns nothing), or `1` followed by three text values — the failed call's key, the
-//! wire spelling of its error code, and its message. That is the same three fields the `tool-error`
-//! record carries, and the guest raises them as its own language's `ToolError`.
+//! wire spelling of its error code, and its message. That is the same three fields the `api-error`
+//! record carries, and the guest raises them as its own language's `ApiError`.
 
 use std::fmt;
 
@@ -349,10 +349,10 @@ pub(super) fn decode_response(
     Ok(outcome)
 }
 
-/// Encode the response of a call that failed, as the three fields of a `tool-error`.
-pub(crate) fn encode_error(tool: &str, code: &str, message: &str) -> Vec<u8> {
+/// Encode the response of a call that failed, as the three fields of an `api-error`.
+pub(crate) fn encode_error(operation: &str, code: &str, message: &str) -> Vec<u8> {
     let mut out = vec![RESPONSE_ERROR];
-    write(&mut out, &Value::Text(tool.to_owned()));
+    write(&mut out, &Value::Text(operation.to_owned()));
     write(&mut out, &Value::Text(code.to_owned()));
     write(&mut out, &Value::Text(message.to_owned()));
     out

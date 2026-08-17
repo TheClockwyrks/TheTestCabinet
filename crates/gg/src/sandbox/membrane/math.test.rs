@@ -6,14 +6,14 @@
 
 use super::*;
 
-use crate::sandbox::fake::{FakeToolApi, canned_outcome};
+use crate::sandbox::fake::{FakeOperationApi, canned_outcome};
 
 /// A membrane state to call the interface's own methods on. Nothing here reads it — every function
 /// is a pure function of its arguments — but the trait takes `&mut self`, so one has to exist.
-fn state() -> MembraneState<FakeToolApi> {
+fn state() -> MembraneState<FakeOperationApi> {
     let log = crate::sandbox::fake::CallLog::default();
     MembraneState::new(
-        FakeToolApi::with(&log, canned_outcome),
+        FakeOperationApi::with(&log, canned_outcome),
         crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::Kotlin),
         crate::sandbox::ProgramScope {
             capabilities: &[],
@@ -55,7 +55,7 @@ fn every_function_this_interface_declares_is_the_one_java_names() {
 #[test]
 fn a_domain_error_is_not_a_failure() {
     // `java.lang.Math` has no failure mode: `log(-1)` is `NaN` and `1/0.0` is infinity, and a host
-    // that turned either into a `tool-error` would be inventing a refusal the language does not
+    // that turned either into an `api-error` would be inventing a refusal the language does not
     // have. This interface therefore returns no `result` at all, and this is what that means.
     let mut host = state();
     assert!(host.log(-1.0).is_nan());

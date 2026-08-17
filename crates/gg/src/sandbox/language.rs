@@ -17,7 +17,7 @@
 //!
 //! It is **not** a source dialect. The wire — `crates/gg/wit/gg-sandbox.wit`, fourteen interfaces of
 //! typed functions — is a language-neutral IDL that other guest toolchains bind directly, and
-//! [`ToolApi`](super::ToolApi) on this side of it is already free of any language's fingerprints.
+//! [`OperationApi`](super::OperationApi) on this side of it is already free of any language's fingerprints.
 //! Nothing about either changes when a language is added, and neither is allowed to acquire a
 //! generic `call(name, json)` door in the name of pluggability: the typed surface *is* the
 //! capability model.

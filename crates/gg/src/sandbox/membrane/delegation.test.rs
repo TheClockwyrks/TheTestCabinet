@@ -1,4 +1,4 @@
-//! Tests for the delegation family: the five tools whose calls are serviced by the loop's subagent
+//! Tests for the delegation family: the five operations whose calls are serviced by the loop's subagent
 //! scheduler rather than by a tool implementation.
 
 use serde_json::json;
@@ -91,13 +91,13 @@ fn waiting_for_every_child_sends_no_ids() {
 fn a_child_with_no_ending_reports_no_status() {
     let log = CallLog::default();
     let mut state = membrane_with(&log, &all_operations(), None, |_, _| {
-        ToolOutcome::ok("collected", "collected").with_data(
-            crate::tools::ToolData::SubagentResults(vec![crate::tools::SubagentResultData {
+        ToolOutcome::ok("collected", "collected").with_data(crate::tools::ApiData::SubagentResults(
+            vec![crate::tools::SubagentResultData {
                 id: "agent-9".to_string(),
                 status: None,
                 summary: String::new(),
-            }]),
-        )
+            }],
+        ))
     });
 
     let results = state.wait_for_subagents(None).expect("collected");

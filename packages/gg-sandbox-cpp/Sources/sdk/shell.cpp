@@ -12,7 +12,7 @@ namespace gg {
 
 namespace detail {
 
-const std::vector<std::string>& shell_tools() {
+const std::vector<std::string>& shell_operations() {
   static const std::vector<std::string> names{"shell"};
   return names;
 }
@@ -26,7 +26,7 @@ shell::shell_output run(std::string_view command, std::optional<double> timeout_
   sandbox_string_t lowered = scratch.str(command);
   double timeout = timeout_secs.value_or(0.0);
   test_cabinet_gg_shell_shell_output_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_shell_shell(&lowered, timeout_secs.has_value() ? &timeout : nullptr, &ret,
                                    &err)) {
     detail::fail(err);

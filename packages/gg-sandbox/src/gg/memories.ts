@@ -65,7 +65,7 @@ export interface MemoryHit {
    *
    * @ggop memories.read_memory
    * @returns the memory's contents.
-   * @throws `ToolError` with `not-found` when the memory has gone since the search ran.
+   * @throws `ApiError` with `not-found` when the memory has gone since the search ran.
    */
   read(): string;
 }
@@ -165,7 +165,7 @@ function written(memory: MemoryWrite): raw.MemoryInput {
  * @ggop memories.write_memory
  * @param memory The memory to record. Its name must not already be taken.
  * @returns how much of the run's memory budget is used now that the memory is held.
- * @throws `ToolError` with `conflict` on a duplicate name, and `limit-exceeded` when the body would
+ * @throws `ApiError` with `conflict` on a duplicate name, and `limit-exceeded` when the body would
  * breach the run's caps — revising or deleting a memory beats accruing more.
  */
 export function writeMemory(memory: MemoryWrite): MemoryUsage {
@@ -181,7 +181,7 @@ export function writeMemory(memory: MemoryWrite): MemoryUsage {
  * @param memory The replacement, keyed on its `name`. Every other field replaces what the existing
  * memory held, and an omitted one clears it.
  * @returns how much of the run's memory budget is used after the replacement.
- * @throws `ToolError` with `not-found` when no memory has that name, and `limit-exceeded` when the
+ * @throws `ApiError` with `not-found` when no memory has that name, and `limit-exceeded` when the
  * replacement would breach the run's caps.
  */
 export function updateMemory(memory: MemoryWrite): MemoryUsage {
@@ -198,7 +198,7 @@ export function updateMemory(memory: MemoryWrite): MemoryUsage {
  * @param memory The memory to record. Its body stays out of the context window until it is read, and
  * its name must not already be taken.
  * @returns how much of the run's memory budget is used now that the memory is held.
- * @throws `ToolError` with `conflict` on a duplicate slug, and `limit-exceeded` when the contents,
+ * @throws `ApiError` with `conflict` on a duplicate slug, and `limit-exceeded` when the contents,
  * or the index entry, would breach a limit.
  */
 export function createMemory(memory: MemoryWrite): MemoryUsage {
@@ -214,7 +214,7 @@ export function createMemory(memory: MemoryWrite): MemoryUsage {
  * @ggop memories.read_memory
  * @param name The memory's slug.
  * @returns the memory's contents.
- * @throws `ToolError` with `not-found` when no memory has that slug.
+ * @throws `ApiError` with `not-found` when no memory has that slug.
  */
 export function readMemory(name: string): string {
   return call(() => raw.readMemory(name));
@@ -231,7 +231,7 @@ export function readMemory(name: string): string {
  * @param edit.search The exact text to find in its contents. It must appear exactly once.
  * @param edit.replace The text to put in its place.
  * @returns how much of the run's memory budget is used after the revision.
- * @throws `ToolError` with `not-found` when the text does not appear, `conflict` when it appears
+ * @throws `ApiError` with `not-found` when the text does not appear, `conflict` when it appears
  * more than once, `limit-exceeded` when the result would be too long, and `invalid-argument` when
  * the edit would leave the memory empty — deleting it is the way to empty it.
  */
@@ -251,7 +251,7 @@ export function editMemory(edit: { name: string; search: string; replace: string
  * because a memory is ranked by how many of them it mentions.
  * @returns the memories that matched, best first, each with the numbers it was ranked by; empty
  * where nothing matched.
- * @throws `ToolError` with `invalid-argument` when every keyword is empty.
+ * @throws `ApiError` with `invalid-argument` when every keyword is empty.
  */
 export function searchMemories(keywords: string[]): MemoryHit[] {
   return call(() => raw.searchMemories(keywords).map(hit));
@@ -263,7 +263,7 @@ export function searchMemories(keywords: string[]): MemoryHit[] {
  * @ggop memories.delete_memory
  * @param name The memory's slug.
  * @returns how much of the run's memory budget is left in use once it has gone.
- * @throws `ToolError` with `not-found` when no memory has that name.
+ * @throws `ApiError` with `not-found` when no memory has that name.
  */
 export function deleteMemory(name: string): MemoryUsage {
   return call(() => raw.deleteMemory(name));

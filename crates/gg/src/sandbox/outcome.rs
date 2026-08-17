@@ -317,13 +317,13 @@ impl ProgramErrorKind {
     /// what to say, and a class that decided the wording would be a second, quieter answer to a
     /// question the message already answers.
     ///
-    /// What the class does **not** carry is *which* [failure class](test_cabinet_core::gg::GgToolFailure)
+    /// What the class does **not** carry is *which* [failure class](test_cabinet_core::gg::GgCallFailure)
     /// the failed call had: the guest renders that into the message's prose, and recovering it here
     /// would mean matching on prose, which this codebase does not do. The class is on the call's own
     /// [`ApiResult`](test_cabinet_core::gg::GgTelemetryKind::ApiResult) instead, where it was raised.
     pub fn turn_error_type(self) -> TurnErrorType {
         match self {
-            Self::ToolFailure => TurnErrorType::ProgramToolError,
+            Self::ToolFailure => TurnErrorType::ProgramApiError,
             Self::UnknownName => TurnErrorType::ProgramUnknownName,
             Self::Other => TurnErrorType::ProgramThrow,
         }

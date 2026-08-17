@@ -54,9 +54,9 @@ fn program_faults_are_reported_not_trapped() {
     let said = program_failure(&outcome);
     for fragment in [
         // What was thrown, in the engine's own words,
-        "ToolError: read_file: no such file `missing.ts`",
+        "ApiError: read_file: no such file `missing.ts`",
         // which call it was and why, off the properties the error carries,
-        "tool: \"read_text_file\"",
+        "operation: \"read_text_file\"",
         "code: \"not-found\"",
         // and the line of the program that made the call.
         "(program.ts:3:23)",
@@ -79,8 +79,8 @@ fn program_faults_are_reported_not_trapped() {
             "try {\n",
             "  gg.files.readTextFile(\"missing.ts\");\n",
             "} catch (e) {\n",
-            "  const failure = e as gg.core.ToolError;\n",
-            "  console.log(JSON.stringify({ code: failure.code, tool: failure.tool, caught: true }));\n",
+            "  const failure = e as gg.core.ApiError;\n",
+            "  console.log(JSON.stringify({ code: failure.code, operation: failure.operation, caught: true }));\n",
             "}\n",
         ),
         &all_operations(),
@@ -89,7 +89,7 @@ fn program_faults_are_reported_not_trapped() {
     );
     assert_eq!(
         logged_json(&outcome),
-        json!({ "code": "not-found", "tool": "read_text_file", "caught": true })
+        json!({ "code": "not-found", "operation": "read_text_file", "caught": true })
     );
 
     // A caught failure is still on the record, so the feedback can say a call failed even when the
@@ -97,7 +97,7 @@ fn program_faults_are_reported_not_trapped() {
     assert_eq!(outcome.tool_calls.len(), 1);
     assert!(!outcome.tool_calls[0].ok);
 
-    // A `ToolError` survives `JSON.stringify` WITH its message. `Error.prototype.message` is
+    // An `ApiError` survives `JSON.stringify` WITH its message. `Error.prototype.message` is
     // non-enumerable, so without the SDK's `toJSON` a program that logs a caught failure — or an
     // array of them — writes `{}`: the difference between a reported failure and silence.
     let (outcome, _) = run_with(
@@ -124,8 +124,8 @@ fn program_faults_are_reported_not_trapped() {
     );
 
     let returned = logged_json(&outcome);
-    assert_eq!(returned["direct"]["name"], json!("ToolError"));
-    assert_eq!(returned["direct"]["tool"], json!("edit_file"));
+    assert_eq!(returned["direct"]["name"], json!("ApiError"));
+    assert_eq!(returned["direct"]["operation"], json!("edit_file"));
     assert_eq!(returned["direct"]["code"], json!("conflict"));
     assert!(
         returned["direct"]["message"]
@@ -338,7 +338,8 @@ fn a_docs_lookup_of_a_non_function_is_refused_on_the_argument() {
         let (outcome, _) = run(program);
         let said = program_failure(&outcome);
         assert!(
-            said.contains("tool: \"openDocsView\"") && said.contains("code: \"invalid-argument\""),
+            said.contains("operation: \"openDocsView\"")
+                && said.contains("code: \"invalid-argument\""),
             "{program}: {said}"
         );
         assert!(

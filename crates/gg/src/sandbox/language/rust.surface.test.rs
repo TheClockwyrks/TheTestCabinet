@@ -86,7 +86,7 @@ fn module_of(statement: &str) -> &str {
         .unwrap_or(statement)
 }
 
-/// Compile and run one Rust program with `enabled`'s tools offered and no ending group.
+/// Compile and run one Rust program with `enabled`'s operations offered and no ending group.
 fn run_with(
     source: &str,
     operations: &[crate::sandbox::operations::OperationId],
@@ -103,10 +103,10 @@ fn run_with(
 }
 
 // ---------------------------------------------------------------------------------------------
-// Every tool, from its Rust spelling
+// Every operation, from its Rust spelling
 // ---------------------------------------------------------------------------------------------
 
-/// One tool, called through the Rust spelling of it, and the JSON gg's dispatch must have seen.
+/// One operation, called through the Rust spelling of it, and the JSON gg's dispatch must have seen.
 struct Crossing {
     /// The gg tool name the call must arrive under.
     tool: &'static str,
@@ -116,7 +116,7 @@ struct Crossing {
     expected: fn() -> Value,
 }
 
-/// Every bound tool, called through its idiomatic Rust function.
+/// Every bound operation, called through its idiomatic Rust function.
 ///
 /// Deliberately the same table the other arms' surface tests drive theirs with, down to the
 /// arguments and the expected JSON — because the expected JSON is the point. gg's dispatch is
@@ -369,7 +369,7 @@ fn crossings() -> Vec<Crossing> {
 }
 
 #[test]
-fn every_tool_crosses_the_membrane_from_its_rust_spelling() {
+fn every_operation_crosses_the_membrane_from_its_rust_spelling() {
     let crossings = crossings();
 
     // One program rather than one per crossing: a compile here is ~70 ms, so thirty-five of them
@@ -408,15 +408,15 @@ fn every_tool_crosses_the_membrane_from_its_rust_spelling() {
         );
     }
 
-    // Exhaustive by construction: a tool added to gg with no row here fails now, rather than
+    // Exhaustive by construction: an operation added to gg with no row here fails now, rather than
     // shipping as a typed function nobody ever called.
     let mut covered: Vec<&str> = crossings.iter().map(|crossing| crossing.tool).collect();
     covered.sort_unstable();
-    let mut vocabulary = crate::sandbox::signatures::sandbox_tool_names();
+    let mut vocabulary = crate::sandbox::signatures::sandbox_operation_names();
     vocabulary.sort_unstable();
     assert_eq!(
         covered, vocabulary,
-        "every bound tool needs a crossing, and only bound tools may have one"
+        "every bound operation needs a crossing, and only bound operations may have one"
     );
 }
 
@@ -454,11 +454,11 @@ fn the_views_module_the_helper_and_the_standard_ending_are_reached_in_rust_too()
     gg::log(format!("{} {} {}", found.total, found.offset, found.hits.len()));
     match docs::close("gg::views::open_text") {
         Ok(count) => gg::log(format!("closed {count}")),
-        Err(failure) => gg::log(format!("{:?} on {}", failure.code, failure.tool)),
+        Err(failure) => gg::log(format!("{:?} on {}", failure.code, failure.operation)),
     }
     match docs::close_all() {
         Ok(count) => gg::log(format!("closed {count}")),
-        Err(failure) => gg::log(format!("{:?} on {}", failure.code, failure.tool)),
+        Err(failure) => gg::log(format!("{:?} on {}", failure.code, failure.operation)),
     }
     session::finish("read the file and showed the result")?;
 "####,
@@ -608,7 +608,7 @@ fn the_program_library_and_a_reviewers_verdict_are_reached_in_rust_too() {
 /// in.
 #[test]
 fn an_inherent_method_reaches_the_operation_it_is_an_alias_of() {
-    // Four of the five hang off a value a gg TOOL produced, so the alias's own crossing lands in the
+    // Four of the five hang off a value a gg OPERATION produced, so the alias's own crossing lands in the
     // log beside the crossing that made its receiver. `views::close` is the exception — a view is
     // not a tool — and it is checked by what it answers instead.
     let (outcome, log) = evaluate(
@@ -699,7 +699,7 @@ fn a_failure_is_a_result_whether_it_is_matched_on_or_let_out() {
             &["files"],
             r####"    match files::read_text_file("gone.rs", files::ReadOptions::default()) {
         Ok(text) => gg::log(text),
-        Err(failure) => gg::log(format!("{:?} on {}", failure.code, failure.tool)),
+        Err(failure) => gg::log(format!("{:?} on {}", failure.code, failure.operation)),
     }
     gg::log("carried on");
 "####,
@@ -890,10 +890,10 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     );
 
     // And a `core` type by its bare name, which is the one place the deleted prelude used to make
-    // an exception: the catalogue now spells it `core::ToolError`, and that is what compiles.
+    // an exception: the catalogue now spells it `core::ApiError`, and that is what compiles.
     let diagnostic = refused(
         "fn main() -> Result<(), gg::Failure> {\n    \
-             let _: Option<ToolErrorCode> = None;\n    Ok(())\n}\n",
+             let _: Option<ApiErrorCode> = None;\n    Ok(())\n}\n",
     );
     assert!(diagnostic.contains("line 2"), "{diagnostic}");
 
@@ -918,20 +918,20 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
 }
 
 #[test]
-fn the_component_binds_exactly_the_tools_gg_offers() {
+fn the_component_binds_exactly_the_operations_gg_offers() {
     // The one drift no source-level test can catch, asked of the artifact rather than of a source
     // file. On this arm the artifact cannot be STALE — it was compiled from this checkout's SDK
     // moments ago — so what it catches instead is the SDK's own binding table falling out of step
     // with the functions beside it, which is the second, independent statement of the same fact that
     // makes asking the artifact worth anything.
     let component = prepare("fn main() {}\n");
-    let mut bound = crate::sandbox::component_bound_tools(
+    let mut bound = crate::sandbox::component_bound_operations(
         crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::Rust),
         Some(component),
     )
     .expect("a freshly compiled Rust program instantiates and reports its tools");
     bound.sort();
-    let mut expected: Vec<String> = crate::sandbox::signatures::sandbox_tool_names()
+    let mut expected: Vec<String> = crate::sandbox::signatures::sandbox_operation_names()
         .into_iter()
         .map(str::to_string)
         .collect();
@@ -995,10 +995,10 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
         .filter(|entry| entry["aliasOf"].is_null())
         .map(|entry| text(entry, "operation"))
         .filter_map(|operation| operation.split_once('.').map(|(_, key)| key))
-        .filter(|key| crate::sandbox::signatures::sandbox_tool_names().contains(key))
+        .filter(|key| crate::sandbox::signatures::sandbox_operation_names().contains(key))
         .collect();
     bound.sort_unstable();
-    let mut vocabulary = crate::sandbox::signatures::sandbox_tool_names();
+    let mut vocabulary = crate::sandbox::signatures::sandbox_operation_names();
     vocabulary.sort_unstable();
     assert_eq!(
         bound, vocabulary,
@@ -1077,9 +1077,9 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
 
     // The idiom this arm exists to produce, asserted where a model reads it: required arguments
     // positional, an options struct for the optional ones, an `Option<T>` where there is exactly
-    // one, `Result<_, core::ToolError>` on the way out, an inclusive range where the wire has a
+    // one, `Result<_, core::ApiError>` on the way out, an inclusive range where the wire has a
     // record, and every SDK type written under the module that declares it — including the two in
-    // `core`, because gg puts no name of its own in a program's scope and `core::ToolError` is what
+    // `core`, because gg puts no name of its own in a program's scope and `core::ApiError` is what
     // `use gg::core;` leaves resolvable.
     let signature = |operation: &str| {
         let entry = functions
@@ -1097,22 +1097,22 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
     assert_eq!(
         signature("files.read_file"),
         "read_file(path: &str, options: files::ReadOptions) \
-         -> Result<files::FileRead, core::ToolError>"
+         -> Result<files::FileRead, core::ApiError>"
     );
     assert_eq!(
         signature("shell.shell"),
-        "run(command: &str, timeout_secs: Option<f64>) -> Result<shell::ShellOutput, core::ToolError>"
+        "run(command: &str, timeout_secs: Option<f64>) -> Result<shell::ShellOutput, core::ApiError>"
     );
     assert_eq!(
         signature("context.archive_thread"),
         "archive_thread(ranges: &[RangeInclusive<u32>]) \
-         -> Result<context::ReclaimReport, core::ToolError>"
+         -> Result<context::ReclaimReport, core::ApiError>"
     );
     assert_eq!(
         signature("board.create_issue"),
         "create_issue(title: &str, in_scope: &str, out_of_scope: &str, \
          completion_criteria: &str, agent: &str, options: board::IssueOptions<'_>) \
-         -> Result<board::IssueCreated, core::ToolError>"
+         -> Result<board::IssueCreated, core::ApiError>"
     );
 
     // Every word of it is written on a declaration: a brief on everything, an argument documented

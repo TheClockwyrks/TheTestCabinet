@@ -1,7 +1,7 @@
 package gg.programs;
 
-import gg.ToolError;
-import gg.ToolErrorCode;
+import gg.ApiError;
+import gg.ApiErrorCode;
 import gg.internal.Coding;
 import gg.internal.Read;
 import gg.internal.Value;
@@ -50,7 +50,7 @@ public final class Programs {
      * turn after turn.
      *
      * @return the source of the last program this session ran
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND}, naming the turns that are held, when
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND}, naming the turns that are held, when
      *     nothing has run yet.
      * @ggop programs.get
      */
@@ -63,7 +63,7 @@ public final class Programs {
      *
      * @param turn The turn whose program to fetch, as {@link #history} reports it.
      * @return the source of the program that ran on that turn
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND}, naming the turns that are held, for a turn
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND}, naming the turns that are held, for a turn
      *     that ran no program or one old enough that the library has dropped it.
      * @ggop programs.get
      */
@@ -85,8 +85,8 @@ public final class Programs {
      *
      * @param source The program to run in place of this one, as Java statements. It may not be
      *     blank.
-     * @throws ToolError {@link ToolErrorCode#REFUSED} for a second hand-over in one turn, and
-     *     {@link ToolErrorCode#INVALID_ARGUMENT} for a blank source.
+     * @throws ApiError {@link ApiErrorCode#REFUSED} for a second hand-over in one turn, and
+     *     {@link ApiErrorCode#INVALID_ARGUMENT} for a blank source.
      * @ggop programs.rerun
      */
     public static void rerun(String source) {
@@ -117,7 +117,7 @@ public final class Programs {
          * Fetch this program's source, which is {@link Programs#get(int)} on the turn it ran.
          *
          * @return the source of the program that ran on this turn
-         * @throws ToolError {@link ToolErrorCode#NOT_FOUND} when the library has dropped it.
+         * @throws ApiError {@link ApiErrorCode#NOT_FOUND} when the library has dropped it.
          * @ggalias programs.get
          */
         public String source() {

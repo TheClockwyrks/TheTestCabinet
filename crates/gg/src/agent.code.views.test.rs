@@ -439,7 +439,7 @@ fn an_empty_results_view_says_what_to_try_instead() {
 /// does** — so [`GgContextAction::CloseDocsViews`] has exactly one producer.
 ///
 /// This is a source-level assertion because the seam it guards is a *deletion*: the production
-/// [`close_view`](LoopToolApi::close_view) no longer sweeps documentation, and a deletion has no
+/// [`close_view`](LoopOperationApi::close_view) no longer sweeps documentation, and a deletion has no
 /// value to assert on. What a regression would look like is a second
 /// `context.close_docviews(...)` appearing in this file — which is exactly what this counts.
 ///

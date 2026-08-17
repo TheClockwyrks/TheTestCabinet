@@ -6,7 +6,7 @@ package gg;
  * <p>The set is gg's and is closed. A code this SDK has no constant for arrives as {@link #OTHER}
  * rather than as a crash, because a program that cannot name a failure can still handle it.
  */
-public enum ToolErrorCode {
+public enum ApiErrorCode {
     /**
      * The arguments were malformed, ill-typed, or out of range.
      *
@@ -56,7 +56,7 @@ public enum ToolErrorCode {
 
     private final String wire;
 
-    ToolErrorCode(String wire) {
+    ApiErrorCode(String wire) {
         this.wire = wire;
     }
 
@@ -75,8 +75,8 @@ public enum ToolErrorCode {
      * @param wire the hyphenated name gg used on the wire
      * @return the matching code, or {@link #OTHER}
      */
-    public static ToolErrorCode of(String wire) {
-        for (ToolErrorCode code : values()) {
+    public static ApiErrorCode of(String wire) {
+        for (ApiErrorCode code : values()) {
             if (code.wire.equals(wire)) {
                 return code;
             }

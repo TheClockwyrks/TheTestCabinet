@@ -14,7 +14,7 @@ missing, and there is no reading of a run's enabled set anywhere in this package
 
 What is left here is the module vocabulary the SDK is divided into, and the one table that is a
 claim about *this package* rather than about a run: which gg tool each operation this SDK implements
-would dispatch, read by `gg._registry.bound_tools` and by nothing else.
+would dispatch, read by `gg._registry.bound_operations` and by nothing else.
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ write, which is the whole reason the modules are real Python modules rather than
 run time.
 """
 
-GG_TOOLS: tuple[str, ...] = (
+GG_OPERATIONS: tuple[str, ...] = (
     "shell",
     "read_file",
     "write_file",
@@ -98,13 +98,13 @@ GG_TOOLS: tuple[str, ...] = (
 """Every gg tool, in `ALL_TOOL_NAMES` order.
 
 This is gg's tool vocabulary rather than this SDK's, and the guest carries it for exactly one reason:
-`gg._registry.bound_tools` answers the component's `bound-tools` export with it, and gg compares that
-answer against its own `ALL_TOOL_NAMES` on the **committed artifact**. It is the one drift check that
-catches a stale `.wasm` rather than a stale source file, so a tool added, renamed or removed in gg
-fails against the binary that would otherwise silently not implement it.
+`gg._registry.bound_operations` answers the component's `bound-operations` export with it, and gg
+compares that answer against its own `ALL_TOOL_NAMES` on the **committed artifact**. It is the one
+drift check that catches a stale `.wasm` rather than a stale source file, so a tool added, renamed
+or removed in gg fails against the binary that would otherwise silently not implement it.
 """
 
-TOOL_BOUND: dict[str, str] = {
+OPERATION_BOUND: dict[str, str] = {
     "shell.shell": "shell",
     "files.read_file": "read_file",
     "files.read_text_file": "read_file",
@@ -146,8 +146,8 @@ TOOL_BOUND: dict[str, str] = {
 """Every operation a gg **tool** would dispatch, and which tool it is.
 
 It no longer decides anything a program can see: the surface is static, so this table is read by
-`gg._registry.bound_tools` alone — the export gg compares against its own tool vocabulary on the
-committed artifact. What buys a call at *run time* is gg's own operations table, checked at the
+`gg._registry.bound_operations` alone — the export gg compares against its own tool vocabulary on
+the committed artifact. What buys a call at *run time* is gg's own operations table, checked at the
 membrane; what is here is only "which gg tool does this SDK implement a function for", which is a
 claim about this package rather than about a run.
 

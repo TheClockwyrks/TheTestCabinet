@@ -627,13 +627,13 @@ fn surface(catalogue: &SignatureCatalogue) -> String {
 /// The module the error type every failed call throws is declared in, and the type's own name.
 ///
 /// The guest's aggregate module re-exports it bare beside the namespaces, so a program may write
-/// `import { ToolError } from "gg";` and narrow a `catch` against the unqualified name. This
+/// `import { ApiError } from "gg";` and narrow a `catch` against the unqualified name. This
 /// declaration has to match what the guest offers or the compiler would refuse a named import the
 /// guest resolves.
 const ERROR_MODULE: &str = "core";
 
 /// See [`ERROR_MODULE`].
-const ERROR_TYPE: &str = "ToolError";
+const ERROR_TYPE: &str = "ApiError";
 
 /// The `import` lines the module `id`'s own declarations need — one per other module whose type it
 /// names.

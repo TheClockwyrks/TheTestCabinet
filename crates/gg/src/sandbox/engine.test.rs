@@ -11,7 +11,7 @@ use wasmtime_wasi::I32Exit;
 
 use super::*;
 use crate::ending::EndingRole;
-use crate::sandbox::fake::{CallLog, FakeToolApi, process_isolated, typescript};
+use crate::sandbox::fake::{CallLog, FakeOperationApi, process_isolated, typescript};
 use crate::sandbox::membrane::MembraneState;
 use crate::sandbox::{ProgramScope, RunEnding, SandboxLimits, bounded_store, run_program};
 
@@ -20,7 +20,7 @@ use crate::sandbox::{ProgramScope, RunEnding, SandboxLimits, bounded_store, run_
 /// [`classify`] reads the membrane state and the error it is handed, and never the guest, so every
 /// path through it can be driven here without paying the ~1.2 s component compile the rest of this
 /// file pays. That is what lets these be one test per property instead of one consolidated function.
-fn classifiable_store(limits: SandboxLimits) -> Store<MembraneState<FakeToolApi>> {
+fn classifiable_store(limits: SandboxLimits) -> Store<MembraneState<FakeOperationApi>> {
     store_on(typescript(), limits)
 }
 
@@ -28,11 +28,11 @@ fn classifiable_store(limits: SandboxLimits) -> Store<MembraneState<FakeToolApi>
 fn store_on(
     language: &'static dyn crate::sandbox::ProgramLanguage,
     limits: SandboxLimits,
-) -> Store<MembraneState<FakeToolApi>> {
+) -> Store<MembraneState<FakeOperationApi>> {
     let log = CallLog::default();
     bounded_store(
         MembraneState::new(
-            FakeToolApi::new(&log),
+            FakeOperationApi::new(&log),
             language,
             ProgramScope {
                 capabilities: &[],
@@ -414,7 +414,7 @@ fn the_component_compiles_once_per_process() {
         },
         SandboxLimits::default(),
         None,
-        FakeToolApi::new(&log),
+        FakeOperationApi::new(&log),
     );
     assert_eq!(compiles(), 1, "running a program must not recompile");
 
@@ -429,7 +429,7 @@ fn the_component_compiles_once_per_process() {
         },
         SandboxLimits::default(),
         None,
-        FakeToolApi::new(&log),
+        FakeOperationApi::new(&log),
     );
     assert_eq!(
         compiles(),
@@ -588,7 +588,7 @@ fn the_program_that_pays_the_compile_reports_what_it_cost() {
         },
         SandboxLimits::default(),
         None,
-        FakeToolApi::new(&log),
+        FakeOperationApi::new(&log),
     );
     assert_eq!(compiles(), 1, "the first program compiled the component");
     assert!(
@@ -609,7 +609,7 @@ fn the_program_that_pays_the_compile_reports_what_it_cost() {
         },
         SandboxLimits::default(),
         None,
-        FakeToolApi::new(&log),
+        FakeOperationApi::new(&log),
     );
     assert_eq!(compiles(), 1, "and no later program recompiles it");
     assert_eq!(

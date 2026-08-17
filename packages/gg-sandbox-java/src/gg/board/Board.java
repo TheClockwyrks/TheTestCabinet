@@ -1,7 +1,7 @@
 package gg.board;
 
-import gg.ToolError;
-import gg.ToolErrorCode;
+import gg.ApiError;
+import gg.ApiErrorCode;
 import gg.internal.Coding;
 import gg.internal.Read;
 import gg.internal.Value;
@@ -30,8 +30,8 @@ public final class Board {
      * @param title A short line naming the body of work.
      * @param description What the epic covers, for a reader who has not seen its issues.
      * @return the epic's id, and how much of the board budget is now used
-     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} when the prefix is not three to six
-     *     letters, and {@link ToolErrorCode#CONFLICT} when another epic already holds it.
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} when the prefix is not three to six
+     *     letters, and {@link ApiErrorCode#CONFLICT} when another epic already holds it.
      * @ggop board.create_epic
      */
     public static EpicCreated createEpic(String prefix, String title, String description) {
@@ -57,7 +57,7 @@ public final class Board {
      *     checks the work against.
      * @param agent The agent the issue is dispatched to. It must be one this agent may spawn.
      * @return the id the board assigned, and how much of the board budget is now used
-     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} when {@code agent} is not one this
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} when {@code agent} is not one this
      *     agent may assign.
      * @ggop board.create_issue
      */
@@ -78,8 +78,8 @@ public final class Board {
      * @param options The parts an issue may leave out: its description, its blockers, the epic to
      *     group it under, and the agents that must approve the work.
      * @return the id the board assigned, and how much of the board budget is now used
-     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} when {@code agent} or a reviewer is
-     *     not one this agent may assign, and {@link ToolErrorCode#CONFLICT} on a blocker edge that
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} when {@code agent} or a reviewer is
+     *     not one this agent may assign, and {@link ApiErrorCode#CONFLICT} on a blocker edge that
      *     would close a cycle.
      * @ggop board.create_issue
      */
@@ -105,7 +105,7 @@ public final class Board {
      *
      * @param id The issue to revise.
      * @param patch The fields to change. It must carry at least one.
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} for an unknown id.
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for an unknown id.
      * @ggop board.update_issue
      */
     public static void updateIssue(String id, IssuePatch patch) {
@@ -118,8 +118,8 @@ public final class Board {
      * @param id The issue whose blockers to replace.
      * @param blockedBy The ids of every issue that must now be done before it. Naming none clears
      *     them all.
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} for an unknown id, and
-     *     {@link ToolErrorCode#CONFLICT} when an edge would close a cycle.
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for an unknown id, and
+     *     {@link ApiErrorCode#CONFLICT} when an edge would close a cycle.
      * @ggop board.set_issue_blocked_by
      */
     public static void setIssueBlockedBy(String id, String... blockedBy) {
@@ -131,7 +131,7 @@ public final class Board {
      *
      * @param id The epic to remove.
      * @return how much of the board budget is now used
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} for an unknown id.
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for an unknown id.
      * @ggop board.remove_epic
      */
     public static BoardUsage removeEpic(String id) {
@@ -143,7 +143,7 @@ public final class Board {
      *
      * @param id The issue to remove.
      * @return how much of the board budget is now used
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} for an unknown id.
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for an unknown id.
      * @ggop board.remove_issue
      */
     public static BoardUsage removeIssue(String id) {
@@ -160,7 +160,7 @@ public final class Board {
      *
      * @param id The issue to wait on. It may not be the issue this agent was itself assigned.
      * @return gg's acknowledgement that the wait is registered
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} for an unknown id.
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for an unknown id.
      * @ggop board.wait_for_issue
      */
     public static String waitForIssue(String id) {
@@ -207,7 +207,7 @@ public final class Board {
          * and cannot be given another meaning.
          *
          * @return gg's acknowledgement that the wait is registered
-         * @throws ToolError {@link ToolErrorCode#NOT_FOUND} when the issue has since been removed.
+         * @throws ApiError {@link ApiErrorCode#NOT_FOUND} when the issue has since been removed.
          * @ggalias board.wait_for_issue
          */
         public String await() {

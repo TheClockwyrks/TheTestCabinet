@@ -9,11 +9,11 @@
 
 use super::super::test_cabinet::gg::types::ErrorCode;
 use super::*;
-use crate::sandbox::fake::{CallLog, FakeToolApi, membrane_from, membrane_from_scope};
+use crate::sandbox::fake::{CallLog, FakeOperationApi, membrane_from, membrane_from_scope};
 
 /// A membrane state whose library already holds `programs` (turn, source).
-fn membrane_holding(log: &CallLog, programs: &[(u64, &str)]) -> MembraneState<FakeToolApi> {
-    let mut api = FakeToolApi::new(log);
+fn membrane_holding(log: &CallLog, programs: &[(u64, &str)]) -> MembraneState<FakeOperationApi> {
+    let mut api = FakeOperationApi::new(log);
     for (turn, source) in programs {
         api = api.with_program(*turn, source);
     }
@@ -21,8 +21,8 @@ fn membrane_holding(log: &CallLog, programs: &[(u64, &str)]) -> MembraneState<Fa
 }
 
 /// A membrane state for an agent that keeps **no** library — the capability withheld.
-fn membrane_without_a_library(log: &CallLog) -> MembraneState<FakeToolApi> {
-    membrane_from_scope(FakeToolApi::new(log), false)
+fn membrane_without_a_library(log: &CallLog) -> MembraneState<FakeOperationApi> {
+    membrane_from_scope(FakeOperationApi::new(log), false)
 }
 
 #[test]
@@ -74,7 +74,7 @@ fn every_library_call_is_refused_without_the_capability() {
         let refused = refused.unwrap_or_else(|| panic!("`{call}` is not available to this agent"));
         assert_eq!(refused.code, ErrorCode::Unavailable, "`{call}`");
         assert_eq!(
-            refused.tool, call,
+            refused.operation, call,
             "the identity field is gg's own name for the call"
         );
         // The sentence names the call the way the program would have written it, module and all,

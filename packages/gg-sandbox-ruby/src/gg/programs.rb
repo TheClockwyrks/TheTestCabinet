@@ -22,7 +22,7 @@ module GG
     # that has run nothing yet gets an empty array rather than an error.
     #
     # @return [Array<GG::Programs::ProgramSummary>] every program this session has run, oldest first
-    # @raise [GG::Core::ToolError] `:unavailable` when this agent keeps no program library, which is
+    # @raise [GG::Core::ApiError] `:unavailable` when this agent keeps no program library, which is
     #   a different fact from an empty one.
     def self.history
       Wire.call("history", "programs", "history", []).map do |entry|
@@ -49,7 +49,7 @@ module GG
     # @param turn [Integer, nil] The turn whose program to fetch, as `GG::Programs.history` reports
     #   it. Leave it out for the most recent one.
     # @return [String] the program's source, exactly as it ran
-    # @raise [GG::Core::ToolError] `:not_found`, naming the turns that are held, for a turn that ran
+    # @raise [GG::Core::ApiError] `:not_found`, naming the turns that are held, for a turn that ran
     #   no program or one old enough that the library has dropped it.
     def self.get(turn = nil)
       Wire.call("get", "programs", "get", [Wire.js(Check.uint("get", "turn", turn))])
@@ -70,7 +70,7 @@ module GG
     #
     # @param source [String] The program to run in place of this one, as Ruby. It may not be blank.
     # @return [nil]
-    # @raise [GG::Core::ToolError] `:refused` for a second hand-over in one turn, and
+    # @raise [GG::Core::ApiError] `:refused` for a second hand-over in one turn, and
     #   `:invalid_argument` for a blank source.
     def self.rerun(source)
       Wire.call("rerun", "programs", "rerun", [source])
@@ -122,7 +122,7 @@ module GG
       # in hand.
       #
       # @return [String] the program's source, exactly as it ran
-      # @raise [GG::Core::ToolError] `:not_found` when the library has since dropped that turn.
+      # @raise [GG::Core::ApiError] `:not_found` when the library has since dropped that turn.
       def source
         Programs.get(@turn)
       end

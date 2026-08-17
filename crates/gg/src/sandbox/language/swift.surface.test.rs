@@ -58,7 +58,7 @@ fn text<'a>(entry: &'a Value, field: &str) -> &'a str {
         .unwrap_or_else(|| panic!("an entry carries a `{field}`: {entry}"))
 }
 
-/// Compile and run one Swift program with `enabled`'s tools offered and no ending group.
+/// Compile and run one Swift program with `enabled`'s operations offered and no ending group.
 fn run_with(
     source: &str,
     operations: &[crate::sandbox::operations::OperationId],
@@ -73,7 +73,7 @@ fn run_with(
     )
 }
 
-/// One tool, called through the Swift spelling of it, and the JSON gg's dispatch must have seen.
+/// One operation, called through the Swift spelling of it, and the JSON gg's dispatch must have seen.
 struct Crossing {
     /// The gg tool name the call must arrive under.
     tool: &'static str,
@@ -83,7 +83,7 @@ struct Crossing {
     expected: fn() -> Value,
 }
 
-/// Every bound tool, called through its idiomatic Swift function.
+/// Every bound operation, called through its idiomatic Swift function.
 ///
 /// Deliberately the same table the other arms' surface tests drive theirs with, down to the
 /// arguments and the expected JSON — because the expected JSON is the point. gg's dispatch is
@@ -327,7 +327,7 @@ fn crossings() -> Vec<Crossing> {
 }
 
 #[test]
-fn every_tool_crosses_the_membrane_from_its_swift_spelling() {
+fn every_operation_crosses_the_membrane_from_its_swift_spelling() {
     let crossings = crossings();
 
     // One program rather than one per crossing: a compile and an instantiate here are ~1.6 s
@@ -363,15 +363,15 @@ fn every_tool_crosses_the_membrane_from_its_swift_spelling() {
         );
     }
 
-    // Exhaustive by construction: a tool added to gg with no row here fails now, rather than
+    // Exhaustive by construction: an operation added to gg with no row here fails now, rather than
     // shipping as a typed function nobody ever called.
     let mut covered: Vec<&str> = crossings.iter().map(|crossing| crossing.tool).collect();
     covered.sort_unstable();
-    let mut vocabulary = crate::sandbox::signatures::sandbox_tool_names();
+    let mut vocabulary = crate::sandbox::signatures::sandbox_operation_names();
     vocabulary.sort_unstable();
     assert_eq!(
         covered, vocabulary,
-        "every bound tool needs a crossing, and only bound tools may have one"
+        "every bound operation needs a crossing, and only bound operations may have one"
     );
 }
 
@@ -402,13 +402,13 @@ let found = try docs.search("open", module: "views", kind: .function, limit: 5)
 gg.log("\(found.total) \(found.offset) \(found.hits.count)")
 do {
     gg.log("closed \(try docs.close("gg.views.openText"))")
-} catch let failure as core.ToolError {
-    gg.log("\(failure.code) on \(failure.tool)")
+} catch let failure as core.ApiError {
+    gg.log("\(failure.code) on \(failure.operation)")
 }
 do {
     gg.log("closed \(try docs.closeAll())")
-} catch let failure as core.ToolError {
-    gg.log("\(failure.code) on \(failure.tool)")
+} catch let failure as core.ApiError {
+    gg.log("\(failure.code) on \(failure.operation)")
 }
 try session.finish("read the file and showed myself the result")
 "####,
@@ -517,7 +517,7 @@ let history = try programs.history()
 gg.log("\(history.count)")
 do {
     gg.log(try programs.get(turn: 2))
-} catch let failure as core.ToolError {
+} catch let failure as core.ApiError {
     gg.log("\(failure.code)")
 }
 try programs.rerun("gg.log(\"again\")")
@@ -567,7 +567,7 @@ try session.requestChanges(["widen the test", "name the file"])
 #[test]
 fn a_failure_is_thrown_whether_it_is_caught_or_let_out() {
     // Caught: an ordinary `catch` with a `where` clause on the code, which is what a program that
-    // expects one failure and not the others writes. Nothing about it is exceptional — `ToolError`
+    // expects one failure and not the others writes. Nothing about it is exceptional — `ApiError`
     // is an ordinary Swift `Error`, so `do`/`catch`, `try?` and `Result { }` all work on it without
     // an SDK-specific combinator.
     let (outcome, _log) = run_with(
@@ -576,8 +576,8 @@ import gg
 
 do {
     gg.log(try files.readTextFile("gone.swift"))
-} catch let failure as core.ToolError where failure.code == .notFound {
-    gg.log("\(failure.code) on \(failure.tool)")
+} catch let failure as core.ApiError where failure.code == .notFound {
+    gg.log("\(failure.code) on \(failure.operation)")
 }
 gg.log("carried on")
 "####,
@@ -593,7 +593,7 @@ gg.log("carried on")
 
     // Let out: Swift's top-level code is not a `throws` context anything can wrap, so an uncaught
     // failure is a TRAP rather than a reported error. What a model reads is what the runtime says
-    // about it — and the measurement here is that **gg's own sentence survives**: `ToolError` is
+    // about it — and the measurement here is that **gg's own sentence survives**: `ApiError` is
     // `CustomStringConvertible`, the runtime renders the error it could not handle, and the tool,
     // the class and the message all come through.
     let (outcome, _log) = run_with(
@@ -655,7 +655,7 @@ import gg
 do {
     _ = try shell.run("swift build")
     gg.log("ran")
-} catch let failure as core.ToolError {
+} catch let failure as core.ApiError {
     gg.log("\(failure.code)")
 }
 "####,
@@ -830,7 +830,7 @@ const SHIPPED_WITH_THE_SDK: [&str; 9] = [
 ];
 
 #[test]
-fn the_artifact_binds_exactly_the_tools_gg_offers() {
+fn the_artifact_binds_exactly_the_operations_gg_offers() {
     // The one drift no source-level test can catch, asked of the artifact rather than of a source
     // file. On this arm the artifact cannot be STALE — it was compiled from this checkout's SDK
     // moments ago — so what it catches instead is the SDK's own binding table falling out of step
@@ -838,13 +838,13 @@ fn the_artifact_binds_exactly_the_tools_gg_offers() {
     // makes asking the artifact worth anything.
     //
     let component = prepare("");
-    let mut bound = crate::sandbox::component_bound_tools(
+    let mut bound = crate::sandbox::component_bound_operations(
         crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::Swift),
         Some(component),
     )
-    .expect("a freshly compiled Swift program reports the tools its SDK binds");
+    .expect("a freshly compiled Swift program reports the operations its SDK binds");
     bound.sort();
-    let mut expected: Vec<String> = crate::sandbox::signatures::sandbox_tool_names()
+    let mut expected: Vec<String> = crate::sandbox::signatures::sandbox_operation_names()
         .into_iter()
         .map(str::to_string)
         .collect();
@@ -1153,8 +1153,8 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     // either of these would put a name the model was never told about into the model's own file.
     // `@_cdecl` emits the C symbol at any access level, so `fileprivate` costs the world nothing.
     refusal(
-        "let bound = ggBoundTools\n",
-        "cannot find 'ggBoundTools' in scope",
+        "let bound = ggBoundOperations\n",
+        "cannot find 'ggBoundOperations' in scope",
     );
     refusal("let run = ggRun\n", "cannot find 'ggRun' in scope");
 }

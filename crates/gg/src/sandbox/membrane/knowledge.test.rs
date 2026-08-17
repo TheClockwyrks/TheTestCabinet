@@ -1,8 +1,8 @@
-//! Tests for the knowledge families: one round trip per tool, plus the three lowerings that could
+//! Tests for the knowledge families: one round trip per operation, plus the three lowerings that could
 //! silently do the wrong thing (the status spelling and the two sentinel-carrying variants).
 //!
 //! The round trips look repetitive on purpose. Each one asserts the **exact JSON** its typed call
-//! produced, which is what makes "every tool is a typed function" a checked property rather than a
+//! produced, which is what makes "every operation is a typed function" a checked property rather than a
 //! claim: a renamed key, a lost field, or a camelCase/snake_case slip in either direction fails
 //! here rather than in a container at 3am.
 
@@ -349,5 +349,5 @@ fn a_store_refusal_keeps_its_class() {
         })
         .expect_err("a duplicate id throws");
     assert_eq!(error.code, ErrorCode::Conflict);
-    assert_eq!(error.tool, "add_task");
+    assert_eq!(error.operation, "add_task");
 }

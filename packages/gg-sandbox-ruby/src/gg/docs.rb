@@ -46,7 +46,7 @@ module GG
     #   there is a ceiling above it, so comparing the hits against `total` is the only way to see a
     #   capped page. Zero is refused rather than read as "no cap".
     # @return [GG::Docs::DocSearch] the page that matched, best first, with the total behind it
-    # @raise [GG::Core::ToolError] `:invalid_argument` for an empty query with no filter at all —
+    # @raise [GG::Core::ApiError] `:invalid_argument` for an empty query with no filter at all —
     #   nothing matched and nothing was asked for are different answers — for a `kind` that is none
     #   of `:module`, `:function` and `:type`, and for a `limit` of zero, which asks for a page that
     #   answers nothing. A module or type name gg does not hold is not among them: it matches
@@ -79,7 +79,7 @@ module GG
     # @param key [String] The fully-qualified name the view was opened under.
     # @return [Integer] how many views were closed; a key that is not open closes `0` rather than
     #   failing
-    # @raise [GG::Core::ToolError] `:unavailable` under a run that did not enable closing
+    # @raise [GG::Core::ApiError] `:unavailable` under a run that did not enable closing
     #   documentation views.
     def self.close(key)
       Wire.call("close", "docs", "closeDocView", [key])
@@ -92,7 +92,7 @@ module GG
     # capability.
     #
     # @return [Integer] how many views were closed
-    # @raise [GG::Core::ToolError] `:unavailable` under a run that did not enable closing
+    # @raise [GG::Core::ApiError] `:unavailable` under a run that did not enable closing
     #   documentation views.
     def self.close_all
       Wire.call("close_all", "docs", "closeDocViews", [])

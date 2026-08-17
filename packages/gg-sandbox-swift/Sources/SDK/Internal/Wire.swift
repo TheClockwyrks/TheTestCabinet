@@ -192,11 +192,11 @@ func lift<T, R>(_ pointer: UnsafeMutablePointer<T>?, _ count: Int, _ each: (T) -
 ///
 /// It takes the record `inout` because freeing it is half the job: what comes back is guest-owned
 /// memory, and the strings are copied into Swift values first.
-func lift(failure: inout test_cabinet_gg_types_tool_error_t) -> core.ToolError {
-    let error = core.ToolError(
-        code: core.ToolErrorCode(wire: failure.code),
-        tool: lift(failure.tool),
+func lift(failure: inout test_cabinet_gg_types_api_error_t) -> core.ApiError {
+    let error = core.ApiError(
+        code: core.ApiErrorCode(wire: failure.code),
+        operation: lift(failure.operation),
         message: lift(failure.message))
-    test_cabinet_gg_types_tool_error_free(&failure)
+    test_cabinet_gg_types_api_error_free(&failure)
     return error
 }

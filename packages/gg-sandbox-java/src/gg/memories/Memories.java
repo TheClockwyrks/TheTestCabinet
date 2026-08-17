@@ -1,7 +1,7 @@
 package gg.memories;
 
-import gg.ToolError;
-import gg.ToolErrorCode;
+import gg.ApiError;
+import gg.ApiErrorCode;
 import gg.internal.Coding;
 import gg.internal.Read;
 import gg.internal.Value;
@@ -38,8 +38,8 @@ public final class Memories {
      * @param description A one-line description of what the memory holds.
      * @param body The memory's contents.
      * @return how much of the memory budget is now used
-     * @throws ToolError {@link ToolErrorCode#CONFLICT} on a duplicate name, and
-     *     {@link ToolErrorCode#LIMIT_EXCEEDED} when the body would breach this run's caps.
+     * @throws ApiError {@link ApiErrorCode#CONFLICT} on a duplicate name, and
+     *     {@link ApiErrorCode#LIMIT_EXCEEDED} when the body would breach this run's caps.
      * @ggop memories.write_memory
      */
     public static MemoryUsage writeMemory(String name, String description, String body) {
@@ -54,8 +54,8 @@ public final class Memories {
      * @param body The memory's contents.
      * @param code The module, the on-use script, or both.
      * @return how much of the memory budget is now used
-     * @throws ToolError {@link ToolErrorCode#CONFLICT} on a duplicate name, and
-     *     {@link ToolErrorCode#LIMIT_EXCEEDED} when the body would breach this run's caps.
+     * @throws ApiError {@link ApiErrorCode#CONFLICT} on a duplicate name, and
+     *     {@link ApiErrorCode#LIMIT_EXCEEDED} when the body would breach this run's caps.
      * @ggop memories.write_memory
      */
     public static MemoryUsage writeMemory(String name, String description, String body,
@@ -72,7 +72,7 @@ public final class Memories {
      * @param description The one-line description to replace the old one with.
      * @param body The contents to replace the old ones with.
      * @return how much of the memory budget is now used
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} when no memory has that name.
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} when no memory has that name.
      * @ggop memories.update_memory
      */
     public static MemoryUsage updateMemory(String name, String description, String body) {
@@ -87,7 +87,7 @@ public final class Memories {
      * @param body The contents to replace the old ones with.
      * @param code The module, the on-use script, or both, replacing whatever the memory carried.
      * @return how much of the memory budget is now used
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} when no memory has that name.
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} when no memory has that name.
      * @ggop memories.update_memory
      */
     public static MemoryUsage updateMemory(String name, String description, String body,
@@ -106,8 +106,8 @@ public final class Memories {
      *     index.
      * @param body The memory's initial contents, which stay out of the context window until read.
      * @return how much of the memory budget is now used
-     * @throws ToolError {@link ToolErrorCode#CONFLICT} on a duplicate slug, and
-     *     {@link ToolErrorCode#LIMIT_EXCEEDED} when the contents, or the index entry, would breach a
+     * @throws ApiError {@link ApiErrorCode#CONFLICT} on a duplicate slug, and
+     *     {@link ApiErrorCode#LIMIT_EXCEEDED} when the contents, or the index entry, would breach a
      *     limit.
      * @ggop memories.create_memory
      */
@@ -124,8 +124,8 @@ public final class Memories {
      * @param code The module bound at {@code lib.<name>} once the memory is read, the script gg runs
      *     on that first read, or both.
      * @return how much of the memory budget is now used
-     * @throws ToolError {@link ToolErrorCode#CONFLICT} on a duplicate slug, and
-     *     {@link ToolErrorCode#LIMIT_EXCEEDED} when the contents, or the index entry, would breach a
+     * @throws ApiError {@link ApiErrorCode#CONFLICT} on a duplicate slug, and
+     *     {@link ApiErrorCode#LIMIT_EXCEEDED} when the contents, or the index entry, would breach a
      *     limit.
      * @ggop memories.create_memory
      */
@@ -142,7 +142,7 @@ public final class Memories {
      *
      * @param name The memory's slug.
      * @return the memory's contents
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} when no memory has that slug.
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} when no memory has that slug.
      * @ggop memories.read_memory
      */
     public static String readMemory(String name) {
@@ -158,10 +158,10 @@ public final class Memories {
      * @param search The exact text to find in its contents. It must appear exactly once.
      * @param replace The text to put in its place.
      * @return how much of the memory budget is now used
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} when the text does not appear,
-     *     {@link ToolErrorCode#CONFLICT} when it appears more than once,
-     *     {@link ToolErrorCode#LIMIT_EXCEEDED} when the result would be too long, and
-     *     {@link ToolErrorCode#INVALID_ARGUMENT} when the edit would leave the memory empty.
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} when the text does not appear,
+     *     {@link ApiErrorCode#CONFLICT} when it appears more than once,
+     *     {@link ApiErrorCode#LIMIT_EXCEEDED} when the result would be too long, and
+     *     {@link ApiErrorCode#INVALID_ARGUMENT} when the edit would leave the memory empty.
      * @ggop memories.edit_memory
      */
     public static MemoryUsage editMemory(String name, String search, String replace) {
@@ -183,7 +183,7 @@ public final class Memories {
      * @param keywords The words to look for. Several specific words rank better than one sentence,
      *     because a memory is ranked by how many of them it mentions.
      * @return every memory that mentioned one, best first
-     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} when every keyword is empty.
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} when every keyword is empty.
      * @ggop memories.search_memories
      */
     public static List<MemoryHit> searchMemories(String... keywords) {
@@ -195,7 +195,7 @@ public final class Memories {
      *
      * @param name The memory's slug.
      * @return how much of the memory budget is now used
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} when no memory has that name.
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} when no memory has that name.
      * @ggop memories.delete_memory
      */
     public static MemoryUsage deleteMemory(String name) {
@@ -252,7 +252,7 @@ public final class Memories {
          * Read this memory in full, which is {@link Memories#readMemory} on its own slug.
          *
          * @return the memory's contents
-         * @throws ToolError {@link ToolErrorCode#NOT_FOUND} when the memory has since been deleted.
+         * @throws ApiError {@link ApiErrorCode#NOT_FOUND} when the memory has since been deleted.
          * @ggalias memories.read_memory
          */
         public String read() {

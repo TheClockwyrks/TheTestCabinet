@@ -5,7 +5,7 @@
 //! types shaped by what crosses a component boundary. The [SDK](crate) is what a Rust author calls.
 //! This module is where one becomes the other — lifting a wire record into an owned model-facing
 //! type, lowering an SDK option struct into the record the import expects, and turning the wire's
-//! `result<_, tool-error>` into a [`ToolError`](crate::ToolError).
+//! `result<_, api-error>` into an [`ApiError`](crate::ApiError).
 //!
 //! It is deliberately not a generic mapping layer. Each function here is written out, because the
 //! two sides differ in exactly the places the SDK was designed to differ — an inclusive
@@ -21,7 +21,7 @@ use crate::board::{
     BoardUsage, EpicAssignment, EpicCreated, IssueCreated, IssuePatch, IssueStatus,
 };
 use crate::context::{ArchiveHit, ArchiveSearch, MessageRole, ReclaimReport};
-use crate::core::ToolError;
+use crate::core::ApiError;
 use crate::delegation::{AgentStatus, Brief, SubagentHandle, SubagentResult};
 use crate::docs::{DocHit, DocKind, DocSearch};
 use crate::files::{DirEntry, EntryKind, FileRead, ImageFile, ReadOptions, TextFile};
@@ -32,8 +32,8 @@ use crate::tasks::{TaskPatch, TaskStatus, TaskUsage, TextEdit};
 use crate::views::{OpenView, ViewKind, ViewRegion};
 
 /// Every call in this SDK ends here: the wire's error arm, lifted into the SDK's own.
-pub(crate) fn lift<T>(outcome: Result<T, gen::types::ToolError>) -> Result<T, ToolError> {
-    outcome.map_err(ToolError::from_wire)
+pub(crate) fn lift<T>(outcome: Result<T, gen::types::ApiError>) -> Result<T, ApiError> {
+    outcome.map_err(ApiError::from_wire)
 }
 
 /// A slice of borrowed strings, as the wire's `list<string>` wants it.

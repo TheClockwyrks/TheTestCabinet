@@ -84,7 +84,7 @@ CLASSPATH="$(find "$LIBS" -name '*.jar' | sort | tr '\n' ':')"
 # compile — `gg.internal.Abi`, `gg.internal.Value` and `gg.internal.Frames`, which are the canonical
 # ABI and the wire encoding and are the same on either side of a compiler that only decides what
 # bytecode reaches them. The Kotlin arm's `build.sh` compiles the identical two trees into its own
-# jar; what is NOT shared is the one file above them that raises this arm's own `gg.ToolError`, which
+# jar; what is NOT shared is the one file above them that raises this arm's own `gg.ApiError`, which
 # is a model-facing class with a catalogue entry of its own. See `gg/internal/Abi.java`'s class note.
 mapfile -t OWN < <(find "$HERE/src" "$SHARED/src" -name '*.java' | sort)
 mapfile -t VENDORED < <(find "$SHARED/vendor" -name '*.java' | sort)

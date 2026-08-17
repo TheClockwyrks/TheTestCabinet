@@ -14,12 +14,12 @@
 // runtime has started and before the program's entry point is reached.
 void gg_bridge_register(void);
 
-// The gg tool names a program can dispatch through this bridge — what the world's `bound-tools`
-// answers, and what gg's own drift gate compares with `ALL_TOOL_NAMES`.
+// The gg tool names a program can dispatch through this bridge — what the world's
+// `bound-operations` answers, and what gg's own drift gate compares with `ALL_TOOL_NAMES`.
 //
 // It is one table beside the registrations rather than a second list somewhere else, so that what
 // the artifact reports and what it actually binds cannot disagree.
-void gg_bridge_tool_names(const char *const **names, size_t *count);
+void gg_bridge_operation_names(const char *const **names, size_t *count);
 
 // Install the managed-to-native trampolines gg's own bridge needs and the class library does not —
 // see `Sources/m2n.c`, which is where the four of them and the argument for each are written.

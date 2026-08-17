@@ -1523,7 +1523,7 @@ fn a_turn_outcome_event_carries_the_error_kind_and_the_agents_own_streak() {
     let kind = GgTelemetryKind::TurnOutcome {
         outcome: GgTurnOutcome::Error,
         error: Some(GgTurnErrorKind::ProgramFault),
-        error_type: Some(GgTurnErrorType::ProgramToolError),
+        error_type: Some(GgTurnErrorType::ProgramApiError),
         consecutive_errors: 3,
         turns: 21,
         loop_aborts: 0,
@@ -1535,7 +1535,7 @@ fn a_turn_outcome_event_carries_the_error_kind_and_the_agents_own_streak() {
             "type": "turn_outcome",
             "outcome": "error",
             "error": "program_fault",
-            "errorType": "program_tool_error",
+            "errorType": "program_api_error",
             "consecutiveErrors": 3,
             "turns": 21,
         })
@@ -1746,7 +1746,7 @@ fn the_error_rollup_carries_its_own_denominator_and_no_percentage() {
             ("model_auth".to_string(), 1),
             ("model_retry_exhausted".to_string(), 1),
             ("transpile_syntax".to_string(), 3),
-            ("program_tool_error".to_string(), 2),
+            ("program_api_error".to_string(), 2),
             ("program_throw".to_string(), 1),
             ("sandbox_timeout".to_string(), 1),
         ]),
@@ -1924,10 +1924,10 @@ fn every_error_type_has_a_stable_id_a_label_and_exactly_one_base() {
 }
 
 /// The failure class every failed call is recorded with: kebab-case on purpose, so one class is
-/// spelled one way in the telemetry, in the membrane's WIT and in the `ToolError` a program catches.
+/// spelled one way in the telemetry, in the membrane's WIT and in the `ApiError` a program catches.
 #[test]
 fn every_tool_failure_class_keeps_its_kebab_case_spelling() {
-    for failure in GgToolFailure::ALL {
+    for failure in GgCallFailure::ALL {
         assert_eq!(
             serde_json::to_value(failure).expect("serialize"),
             json!(failure.wire_id())
@@ -1935,12 +1935,12 @@ fn every_tool_failure_class_keeps_its_kebab_case_spelling() {
         assert!(!failure.label().is_empty());
     }
     assert_eq!(
-        GgToolFailure::InvalidArgument.wire_id(),
+        GgCallFailure::InvalidArgument.wire_id(),
         "invalid-argument",
         "the class a program branches on is spelled the same on the wire"
     );
     assert_eq!(
-        GgToolFailure::ALL.len(),
+        GgCallFailure::ALL.len(),
         8,
         "seven raised classes plus `other` for a failure raised outside a tool"
     );
@@ -1954,7 +1954,7 @@ fn a_failed_call_carries_its_class_on_both_of_its_records() {
         name: "read_file".to_string(),
         ok: false,
         summary: Some("no such file".to_string()),
-        failure: Some(GgToolFailure::NotFound),
+        failure: Some(GgCallFailure::NotFound),
     };
     let value = serde_json::to_value(&failed).expect("serialize");
     assert_eq!(value["failure"], json!("not-found"));
@@ -1984,7 +1984,7 @@ fn a_failed_call_carries_its_class_on_both_of_its_records() {
     let refused = GgTelemetryKind::ApiResult {
         operation: "files.read_file".to_string(),
         ok: false,
-        failure: Some(GgToolFailure::LimitExceeded),
+        failure: Some(GgCallFailure::LimitExceeded),
     };
     let value = serde_json::to_value(&refused).expect("serialize");
     assert_eq!(value["failure"], json!("limit-exceeded"));

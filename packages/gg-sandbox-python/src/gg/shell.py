@@ -1,6 +1,6 @@
 """Run shell commands in the workspace.
 
-One function, and the way a program reaches everything gg has no tool for: a build, a test run,
+One function, and the way a program reaches everything gg has no API for: a build, a test run,
 `git`, `curl`, a package manager. The workspace is the working directory.
 
 A non-zero exit is a *result* rather than a failure, because deciding whether a build or a test run
@@ -45,7 +45,7 @@ def shell(command: str, *, timeout_secs: float | None = None) -> ShellOutput:
     A non-zero exit is not a failure: read `exit_code` on the result. Only a process that could not
     be launched, or one the timeout killed, raises.
 
-    This run may **offload** shell output — the `shell` tool's own description says which mode is in
+    This run may **offload** shell output — this call's own description says which mode is in
     force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the
     two files the command's full stdout and stderr were written to. Under `adaptive`, the default, a
     command that succeeded returns no output at all, only that note, and one that failed returns the
@@ -61,7 +61,7 @@ def shell(command: str, *, timeout_secs: float | None = None) -> ShellOutput:
             process — and whether gg's cap `truncated` the output.
 
     Raises:
-        ToolError: `limit-exceeded` when the timeout killed the process, and `io-error` when it could
+        ApiError: `limit-exceeded` when the timeout killed the process, and `io-error` when it could
             not be launched.
     """
     result = _call(wire.shell, command, _positive("shell", "timeout_secs", timeout_secs))

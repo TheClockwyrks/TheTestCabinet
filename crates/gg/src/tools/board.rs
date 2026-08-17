@@ -25,7 +25,7 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use super::{
-    ArgumentError, BoardNodeData, BoardUsageData, Tool, ToolContext, ToolData, ToolFailure,
+    ApiData, ArgumentError, BoardNodeData, BoardUsageData, Tool, ToolContext, ToolFailure,
     ToolOutcome, invalid_argument, optional_str, required_str, saturating_u32,
 };
 use crate::board::{
@@ -74,9 +74,9 @@ fn usage_note(store: &BoardStore) -> String {
 
 /// The four numbers [`usage_note`] renders into a sentence, as the structured sidecar every board
 /// mutation that changes a population carries.
-fn usage_data(store: &BoardStore) -> ToolData {
+fn usage_data(store: &BoardStore) -> ApiData {
     let caps = store.caps();
-    ToolData::BoardUsage(BoardUsageData {
+    ApiData::BoardUsage(BoardUsageData {
         epics: saturating_u32(store.epic_count()),
         max_epics: saturating_u32(caps.max_epics),
         issues: saturating_u32(store.issue_count()),
@@ -86,11 +86,11 @@ fn usage_data(store: &BoardStore) -> ToolData {
 
 /// The [board usage](usage_data) plus the id the store just assigned — the sidecar the two creations
 /// carry, since their caller cannot name what it filed otherwise.
-fn board_node_data(id: &str, store: &BoardStore) -> ToolData {
-    let ToolData::BoardUsage(board) = usage_data(store) else {
+fn board_node_data(id: &str, store: &BoardStore) -> ApiData {
+    let ApiData::BoardUsage(board) = usage_data(store) else {
         unreachable!("usage_data yields BoardUsage")
     };
-    ToolData::BoardNode(BoardNodeData {
+    ApiData::BoardNode(BoardNodeData {
         id: id.to_string(),
         board,
     })
@@ -462,7 +462,7 @@ impl CreateIssueTool {
     /// [reviewers-required](IssuePolicy::require_reviewers) agent must name at least one.
     ///
     /// The id the store assigned is both stated in the confirmation and carried structurally on the
-    /// [`BoardNode`](ToolData::BoardNode) sidecar, so a program that files an issue can go on to
+    /// [`BoardNode`](ApiData::BoardNode) sidecar, so a program that files an issue can go on to
     /// reference it (as a blocker, or in a `wait_for_issue`) without parsing prose.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn create_issue(

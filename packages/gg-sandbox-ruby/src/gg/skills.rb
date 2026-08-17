@@ -20,7 +20,7 @@ module GG
     #
     # @param name [String] The skill's name, as the system prompt lists it.
     # @return [String] the skill's body, with its front matter stripped
-    # @raise [GG::Core::ToolError] `:not_found`, listing the skills that do exist, when the name is
+    # @raise [GG::Core::ApiError] `:not_found`, listing the skills that do exist, when the name is
     #   unknown.
     def self.read_skill(name)
       Wire.call("read_skill", "skills", "readSkill", [name])

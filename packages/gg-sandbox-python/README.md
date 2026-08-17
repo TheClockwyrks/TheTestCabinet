@@ -54,7 +54,7 @@ reads. Every difference above them is deliberate:
   that quietly never runs.
 * **A union of two classes for a read**, narrowed with `isinstance` or a `match`,
   rather than the wire's tagged wrapper.
-* **A raised `gg.core.ToolError`** carrying a typed `code`, because that is where a
+* **A raised `gg.core.ApiError`** carrying a typed `code`, because that is where a
   Python programmer expects a failure to be handled.
 * **`UNCHANGED` for a patch field that can also be cleared** — leave the argument
   out to keep it, pass `None` to empty it — because Python already spells "absent"
@@ -64,8 +64,8 @@ What must *not* differ from any other arm is the **capability**: which gg operat
 this SDK offers. The shape is free — Java may hang a call off an object where this
 one declares a function — and the identity is not: every model-facing function
 carries the gg operation it binds, written on the declaration as
-`@operation("files.read_file")` and read both by `gg._registry.bound_tools` at run time and by the
-reflector out of the source. gg holds the set to its own operations table, and
+`@operation("files.read_file")` and read both by `gg._registry.bound_operations` at
+run time and by the reflector out of the source. gg holds the set to its own operations table, and
 [`python.substrate.test.rs`](../../crates/gg/src/sandbox/language/) runs every one of
 the 35 tools through the real membrane and requires the JSON that reaches gg's
 dispatch to be **byte identical** to what the TypeScript arm produces for the same
@@ -95,7 +95,7 @@ to it, because CPython is inside the component and is the first thing to read it
 | Path | What it holds |
 | --- | --- |
 | `src/shim.py` | The component's entry point: it rebinds `print` to gg's feedback channel, defuses the interpreter's one store-killing landmine, registers the agent's code modules as the `lib` package, evaluates the program in a namespace of its own, and reports every failure at the program's own coordinates. |
-| `src/gg/` | The SDK: one module per capability (`files.py`, `board.py`, `views.py`, …) holding that capability's functions **and the types it produces**, plus `core.py` for the types they all speak in. `_registry.py` is the `@operation` decorator, the answer to the `bound-tools` export and the message a module gives for a name it does not declare; `catalogue.py` is the module vocabulary and the tool table, and nothing a model reads. |
+| `src/gg/` | The SDK: one module per capability (`files.py`, `board.py`, `views.py`, …) holding that capability's functions **and the types it produces**, plus `core.py` for the types they all speak in. `_registry.py` is the `@operation` decorator, the answer to the `bound-operations` export and the message a module gives for a name it does not declare; `catalogue.py` is the module vocabulary and the operation-to-tool table, and nothing a model reads. |
 | `tools/signatures.py` | The reflector: reads the SDK statically with `griffe` and emits the catalogue. It refuses to emit one with a blank in it. |
 | `signatures.sh` | The pinned-`griffe` wrapper the build runs, and a developer runs to read the result. |
 | `src/library.py` | Every library a program may reach for, imported for its side effect. Its docstring is the authority on what this arm offers, what it deliberately does not, and why the list has to exist at all. |

@@ -62,7 +62,7 @@
 //     that returns `void` carries none — the type in the signature says what shape a value has and
 //     nothing about what it holds, while "returns nothing" is a line that displaces the brief
 //     without replacing it;
-//   * a `@throws` opens by naming `ToolError`, so the one sentence that tells a model what a `catch`
+//   * a `@throws` opens by naming `ApiError`, so the one sentence that tells a model what a `catch`
 //     will hold cannot render as a verb with no subject;
 //   * every TYPE and every one of its members is documented, and a type nothing refers to is refused,
 //     because a declaration nothing reaches is a documentation view nothing can open;
@@ -180,8 +180,8 @@ const RETURNS_LEAD = "Returns:";
 /**
  * The word a `@throws` is rendered under.
  *
- * No colon, because the sentence continues grammatically: the tag carries `` `ToolError` with
- * `not-found` for a missing path ``, and the rendered line reads *Throws `ToolError` with
+ * No colon, because the sentence continues grammatically: the tag carries `` `ApiError` with
+ * `not-found` for a missing path ``, and the rendered line reads *Throws `ApiError` with
  * `not-found` for a missing path.* That inline lead-in is this arm's own form and JavaScript's own
  * verb — a program `throw`s, a `catch` catches — and it is what the prose said before it moved onto
  * a tag.
@@ -198,7 +198,7 @@ const NO_RETURN = "void";
  * checked exceptions. Folding it into each entry's closure is what makes a documentation view of any
  * call carry the type its failure arrives as.
  */
-const ALWAYS_REFERENCED = "ToolError";
+const ALWAYS_REFERENCED = "ApiError";
 
 /**
  * What a `@throws` must open with, so that every failure sentence names the type it arrives as.
@@ -630,7 +630,7 @@ function methodMembers(statement, sourceFile) {
  *
  * A reference is recorded as the pair `{ spelled, fqn }` — what the signature writes, and the key a
  * documentation view is opened by. On this arm the spelling is the bare name, because that is what a
- * signature really writes and what `gg` exports `ToolError` under; the fqn is
+ * signature really writes and what `gg` exports `ApiError` under; the fqn is
  * `gg.<module>.<name>`, which is where the declaration is filed.
  */
 class Resolver {

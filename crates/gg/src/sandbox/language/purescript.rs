@@ -82,7 +82,7 @@
 //! * **A fixed choice is a `data` type** (`TaskDone`, `IssueOpen`, `FileEntry`), and a read is a real
 //!   sum type a program matches on rather than a `kind` field it compares against a string.
 //! * **A failure is thrown and caught with `attempt`**, which is how effectful PureScript expresses a
-//!   failure that is usually fatal to what you were doing; `Effect (Either ToolError a)` on every
+//!   failure that is usually fatal to what you were doing; `Effect (Either ApiError a)` on every
 //!   call would force a branch after every line.
 //! * **The brief a child agent is spawned with is a constructor** — `Prompt` or `Issue` — so "both"
 //!   and "neither" are programs that do not compile rather than calls the host refuses.
@@ -90,7 +90,7 @@
 //! The bridge underneath it is `Gg.Internal.Wire`, one foreign module whose JavaScript half writes
 //! `import * as gg from "gg"` — the same line a TypeScript program writes, reaching the same SDK
 //! instance in the same guest, so both arms produce byte-identical arguments for one capability. A
-//! capability this run withheld is refused by the host as a `ToolError` carrying `unavailable`, as
+//! capability this run withheld is refused by the host as an `ApiError` carrying `unavailable`, as
 //! it is on every arm. gg's own spellings for the families are the lowering and not the surface:
 //! they are written once, beside the function that uses them, and a model never sees one.
 //!

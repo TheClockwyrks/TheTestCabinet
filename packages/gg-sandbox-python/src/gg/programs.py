@@ -57,7 +57,7 @@ class ProgramSummary:
             The source of the program that ran on that turn, as a string.
 
         Raises:
-            ToolError: `not-found` when the library has since dropped that turn.
+            ApiError: `not-found` when the library has since dropped that turn.
         """
         return get(turn=self.turn)
 
@@ -74,7 +74,7 @@ def history() -> list[ProgramSummary]:
             whether it ran to its end. A session that has run nothing yet gets an empty list.
 
     Raises:
-        ToolError: `unavailable` when this agent keeps no program library, which is a different fact
+        ApiError: `unavailable` when this agent keeps no program library, which is a different fact
             from an empty one.
     """
     return [
@@ -107,7 +107,7 @@ def get(turn: int | None = None) -> str:
         The source of the program that ran on that turn, as a string.
 
     Raises:
-        ToolError: `not-found`, naming the turns that are held, for a turn that ran no program or one
+        ApiError: `not-found`, naming the turns that are held, for a turn that ran no program or one
             old enough that the library has dropped it, and `unavailable` when this agent keeps no
             program library.
     """
@@ -132,7 +132,7 @@ def rerun(source: str) -> None:
         source: The program to run in place of this one, as Python. It may not be blank.
 
     Raises:
-        ToolError: `refused` for a second hand-over in one turn, `invalid-argument` for a blank
+        ApiError: `refused` for a second hand-over in one turn, `invalid-argument` for a blank
             source, and `unavailable` when this agent keeps no program library.
     """
     _call(wire.rerun, source)

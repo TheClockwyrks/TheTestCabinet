@@ -55,7 +55,7 @@ module GG
     # @param title [String] A short line naming the body of work.
     # @param description [String] What the epic covers, for a reader who has not seen its issues.
     # @return [GG::Board::EpicCreated] the id the prefix resolved to, and the board budget
-    # @raise [GG::Core::ToolError] `:invalid_argument` when the prefix is not three to six letters,
+    # @raise [GG::Core::ApiError] `:invalid_argument` when the prefix is not three to six letters,
     #   and `:conflict` when another epic already holds it.
     def self.create_epic(prefix, title, description)
       created = Wire.call("create_epic", "board", "createEpic", [
@@ -91,7 +91,7 @@ module GG
     # @param reviewers [Array<String>] The agents that must approve the work, from the same set this
     #   agent may spawn. Required when this run's reviewers feature is on.
     # @return [GG::Board::IssueCreated] the id the board assigned, and the board budget
-    # @raise [GG::Core::ToolError] `:invalid_argument` when `agent` or a reviewer is not one to
+    # @raise [GG::Core::ApiError] `:invalid_argument` when `agent` or a reviewer is not one to
     #   assign, and `:conflict` on a blocker edge that would close a cycle.
     def self.create_issue(title, in_scope, out_of_scope, completion_criteria, agent,
                           description: nil, blocked_by: [], epic_id: nil, reviewers: [])
@@ -128,7 +128,7 @@ module GG
     # @param epic_id [String, nil, GG::Core::Unchanged] The epic to regroup it under; `nil` detaches
     #   it from the one it has, and leaving it out keeps the grouping.
     # @return [nil]
-    # @raise [GG::Core::ToolError] `:not_found` for an unknown id.
+    # @raise [GG::Core::ApiError] `:not_found` for an unknown id.
     def self.update_issue(id, title: nil, description: Core::UNCHANGED, in_scope: nil,
                           out_of_scope: nil, completion_criteria: nil, status: nil,
                           epic_id: Core::UNCHANGED)
@@ -155,7 +155,7 @@ module GG
     # @param blocked_by [Array<String>] The ids of every issue that must now be done before it,
     #   splatted. Passing none clears them all.
     # @return [nil]
-    # @raise [GG::Core::ToolError] `:not_found` for an unknown id, and `:conflict` when an edge
+    # @raise [GG::Core::ApiError] `:not_found` for an unknown id, and `:conflict` when an edge
     #   would close a cycle.
     def self.set_issue_blocked_by(id, *blocked_by)
       Wire.call("set_issue_blocked_by", "board", "setIssueBlockedBy",
@@ -168,7 +168,7 @@ module GG
     #
     # @param id [String] The epic to remove.
     # @return [GG::Board::BoardUsage] how much of the board budget is still used
-    # @raise [GG::Core::ToolError] `:not_found` for an unknown id.
+    # @raise [GG::Core::ApiError] `:not_found` for an unknown id.
     def self.remove_epic(id)
       usage(Wire.call("remove_epic", "board", "removeEpic", [id]))
     end
@@ -178,7 +178,7 @@ module GG
     #
     # @param id [String] The issue to remove.
     # @return [GG::Board::BoardUsage] how much of the board budget is still used
-    # @raise [GG::Core::ToolError] `:not_found` for an unknown id.
+    # @raise [GG::Core::ApiError] `:not_found` for an unknown id.
     def self.remove_issue(id)
       usage(Wire.call("remove_issue", "board", "removeIssue", [id]))
     end
@@ -195,7 +195,7 @@ module GG
     # @param id [String] The issue to wait on. It may not be the issue this agent was assigned to
     #   implement.
     # @return [String] the acknowledgement, which says what happens once the program ends
-    # @raise [GG::Core::ToolError] `:not_found` for an unknown id.
+    # @raise [GG::Core::ApiError] `:not_found` for an unknown id.
     def self.wait_for_issue(id)
       Wire.call("wait_for_issue", "board", "waitForIssue", [id])
     end
@@ -296,7 +296,7 @@ module GG
       # was just created and the next turn's work is sequenced behind it.
       #
       # @return [String] the acknowledgement, which says what happens once the program ends
-      # @raise [GG::Core::ToolError] `:not_found` when the issue has since been removed.
+      # @raise [GG::Core::ApiError] `:not_found` when the issue has since been removed.
       def wait
         Board.wait_for_issue(@id)
       end

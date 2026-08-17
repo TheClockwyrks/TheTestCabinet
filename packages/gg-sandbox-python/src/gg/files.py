@@ -172,7 +172,7 @@ def read_file(path: str, *, offset: int | None = None, limit: int | None = None)
             never entered the program.
 
     Raises:
-        ToolError: `not-found` for a missing path.
+        ApiError: `not-found` for a missing path.
     """
     return _as_file_read(
         _call(
@@ -200,7 +200,7 @@ def read_text_file(path: str, *, offset: int | None = None, limit: int | None = 
         The file's text, or the window of it a capped read policy allowed.
 
     Raises:
-        ToolError: `invalid-argument` when the path names a picture, which `read_file` inspects
+        ApiError: `invalid-argument` when the path names a picture, which `read_file` inspects
             instead and `views.open_file` displays.
     """
     return _call(
@@ -227,7 +227,7 @@ def write_file(path: str, contents: str) -> int:
         How many bytes were written, which is the UTF-8 length rather than the number of characters.
 
     Raises:
-        ToolError: `invalid-argument` for an empty path, and `io-error` when creating the parent
+        ApiError: `invalid-argument` for an empty path, and `io-error` when creating the parent
             directories or the write itself failed.
     """
     return _call(wire.write_file, path, contents)
@@ -246,7 +246,7 @@ def edit_file(path: str, old_string: str, new_string: str) -> None:
         new_string: The text to put in its place. An empty string deletes the match.
 
     Raises:
-        ToolError: `not-found` when the text does not appear, and `conflict` — with the number of
+        ApiError: `not-found` when the text does not appear, and `conflict` — with the number of
             matches — when it appears more than once.
     """
     _call(wire.edit_file, path, old_string, new_string)
@@ -266,7 +266,7 @@ def list_dir(path: str | None = None) -> list[DirEntry]:
             makes a path.
 
     Raises:
-        ToolError: `not-found` for a directory that is not there, and `invalid-argument` for a path
+        ApiError: `not-found` for a directory that is not there, and `invalid-argument` for a path
             that is given but empty — the default is what lists the workspace root.
     """
     return [_as_dir_entry(entry) for entry in _call(wire.list_dir, path)]

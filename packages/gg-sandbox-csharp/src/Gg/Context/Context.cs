@@ -13,8 +13,8 @@ public static partial class Context
     /// <remarks>The files on disk are untouched; only the views of them go.</remarks>
     /// <param name="path">The workspace path whose views to drop. Left out, every file view goes.</param>
     /// <returns>what was actually freed, and from where.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.InvalidArgument"/> for a path that is given but empty; leaving it
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for a path that is given but empty; leaving it
     /// out altogether is how every file view is dropped.
     /// </exception>
     /// <ggop>context.evict_file_view</ggop>
@@ -39,8 +39,8 @@ public static partial class Context
     /// equal archives one turn.
     /// </param>
     /// <returns>what was actually freed.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.InvalidArgument"/> for an empty list, too many spans at once, or a
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for an empty list, too many spans at once, or a
     /// span that ends before it starts.
     /// </exception>
     /// <ggop>context.archive_thread</ggop>
@@ -71,8 +71,8 @@ public static partial class Context
     /// </remarks>
     /// <param name="query">The substring to look for.</param>
     /// <returns>whether there was an archive at all, and what matched.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.InvalidArgument"/> for an empty query.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for an empty query.
     /// </exception>
     /// <ggop>context.search_archive</ggop>
     public static ArchiveSearch SearchArchive(string query)
@@ -108,8 +108,8 @@ public static partial class Context
     /// what is left.
     /// </param>
     /// <param name="files">Workspace paths to read freshly into the new window.</param>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.InvalidArgument"/> for a blank summary. This is the one call gg does
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for a blank summary. This is the one call gg does
     /// not refuse while a compaction is in flight, since nothing else can clear the window.
     /// </exception>
     /// <ggop>context.compact</ggop>

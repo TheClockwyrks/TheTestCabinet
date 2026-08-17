@@ -4,15 +4,15 @@
  *
  * It sits outside `src/gg/` deliberately: `tools/signatures.mjs` reflects that directory and nothing
  * else, so a helper here can never reach a model as a call it was offered. What is model-facing about
- * failures — {@link "../gg/core.js".ToolError} and its code — lives in `gg/core.ts` with the rest of
+ * failures — {@link "../gg/core.js".ApiError} and its code — lives in `gg/core.ts` with the rest of
  * the shared vocabulary.
  *
- * **Why an error type at all.** A `result<T, tool-error>` surfaces in JavaScript as a *throw*, so the
+ * **Why an error type at all.** A `result<T, api-error>` surfaces in JavaScript as a *throw*, so the
  * happy path of a program is already unwrapped — `const text = readTextFile(p)` is a string, not
  * something to unwrap — and a failure stops the program instead of poisoning it with `undefined`.
  * What the component model throws, though, is a bare record: `e instanceof Error` is `false`,
  * `String(e)` is `"Error: [object Object] (see error.payload)"`, and the fields are hidden one level
- * down under a non-enumerable `payload`. {@link asToolError} normalises that into a real `ToolError`,
+ * down under a non-enumerable `payload`. {@link asApiError} normalises that into a real `ApiError`,
  * which is what a program catches and what the engine renders when nothing catches it.
  *
  * **Why the validators.** The JavaScript arm has no compiler at all, and the TypeScript arm's runs
@@ -24,7 +24,7 @@
  * - `readFile("a.ts", { offset: -1 })` lowers to `offset: 4292870144` by two's-complement wrap, and
  *   the read fails for a reason that has nothing to do with what was written.
  * - A missing `list<T>` record field throws `TypeError: can't access property "length", vec6 is
- *   undefined` — an opaque message that names neither the tool nor the field.
+ *   undefined` — an opaque message that names neither the operation nor the field.
  *
  * Bad *enum* strings and bad *variant tags* already produce good messages from the generated
  * bindings (`TypeError: "bogus" is not one of the cases of task-status`), so the validators here
@@ -32,48 +32,50 @@
  */
 
 import type { ErrorCode } from "test-cabinet:gg/types";
-import type { ToolErrorCode } from "../gg/core.js";
-import { ToolError } from "../gg/core.js";
+import type { ApiErrorCode } from "../gg/core.js";
+import { ApiError } from "../gg/core.js";
 
 /**
  * The failure fields, dug out of whatever the binding threw.
  *
  * Both the thrown value itself and its nested `payload` are inspected, because a failing
- * `result<T, tool-error>` arrives as an object whose only own key is `payload`. Anything that does
+ * `result<T, api-error>` arrives as an object whose only own key is `payload`. Anything that does
  * not carry all three fields is not a membrane failure and is left alone.
  */
-function unwrap(thrown: unknown): { tool: string; code: ErrorCode; message: string } | undefined {
+function unwrap(thrown: unknown): { operation: string; code: ErrorCode; message: string } | undefined {
   const nested =
     thrown === null || thrown === undefined ? undefined : (thrown as { payload?: unknown }).payload;
   for (const candidate of [thrown, nested]) {
     if (candidate === null || typeof candidate !== "object") continue;
-    const record = candidate as { tool?: unknown; code?: unknown; message?: unknown };
+    const record = candidate as { operation?: unknown; code?: unknown; message?: unknown };
     if (
-      typeof record.tool === "string" &&
+      typeof record.operation === "string" &&
       typeof record.code === "string" &&
       typeof record.message === "string"
     ) {
-      // The one place the membrane's `ErrorCode` becomes the model-facing `ToolErrorCode`: the
+      // The one place the membrane's `ErrorCode` becomes the model-facing `ApiErrorCode`: the
       // assignment below is what makes `tsc` reject a WIT arm `gg/core.ts` has not learned about.
-      return { tool: record.tool, code: record.code as ErrorCode, message: record.message };
+      return { operation: record.operation, code: record.code as ErrorCode, message: record.message };
     }
   }
   return undefined;
 }
 
 /**
- * Normalise whatever the component-model binding threw into a `ToolError`.
+ * Normalise whatever the component-model binding threw into an `ApiError`.
  *
  * A value that is not a membrane failure — a `TypeError` from the program itself, a thrown string —
  * is returned unchanged, so the engine renders it on its own terms.
  */
-export function asToolError(thrown: unknown): unknown {
+export function asApiError(thrown: unknown): unknown {
   // Already normalised: return it untouched rather than rebuilding an identical one. The rebuild
   // is not free — a fresh `Error` captures a fresh stack, replacing the stack that knew which line
-  // of the program called the tool.
-  if (thrown instanceof ToolError) return thrown;
+  // of the program called the operation.
+  if (thrown instanceof ApiError) return thrown;
   const record = unwrap(thrown);
-  return record ? new ToolError(record.tool, record.code as ToolErrorCode, record.message) : thrown;
+  return record
+    ? new ApiError(record.operation, record.code as ApiErrorCode, record.message)
+    : thrown;
 }
 
 /**
@@ -134,12 +136,12 @@ export function describeThrown(thrown: unknown): string {
   return `the program threw a value that is not an Error: ${text}${fields}`;
 }
 
-/** Run one membrane call, converting a thrown WIT record into a `ToolError`. */
+/** Run one membrane call, converting a thrown WIT record into an `ApiError`. */
 export function call<T>(fn: () => T): T {
   try {
     return fn();
   } catch (thrown) {
-    throw asToolError(thrown);
+    throw asApiError(thrown);
   }
 }
 
@@ -156,7 +158,7 @@ export function typeName(value: unknown): string {
 }
 
 /**
- * An options object, or a `ToolError` naming the positional mistake.
+ * An options object, or an `ApiError` naming the positional mistake.
  *
  * Every optional argument in this SDK travels in a trailing options object, so a model that writes
  * `shell("npm test", 300)` — the shape the native tool-calling schema would have taken — is told
@@ -165,7 +167,7 @@ export function typeName(value: unknown): string {
 export function opts<T extends object>(fn: string, value: unknown): T | undefined {
   if (value === undefined || value === null) return undefined;
   if (typeof value !== "object" || Array.isArray(value)) {
-    throw new ToolError(fn, "invalid-argument", `expected an options object, got ${typeName(value)}`);
+    throw new ApiError(fn, "invalid-argument", `expected an options object, got ${typeName(value)}`);
   }
   return value as T;
 }
@@ -174,7 +176,7 @@ export function opts<T extends object>(fn: string, value: unknown): T | undefine
 export const U32_MAX = 4_294_967_295;
 
 /**
- * A whole number in `[0, max]`, or a `ToolError`.
+ * A whole number in `[0, max]`, or an `ApiError`.
  *
  * The membrane lowers a negative or fractional number by silently wrapping it — `-1` arrives as
  * `4294967295` — so the range check has to happen on this side of it.
@@ -182,7 +184,7 @@ export const U32_MAX = 4_294_967_295;
 export function uint(fn: string, name: string, value: unknown, max: number): number | undefined {
   if (value === undefined || value === null) return undefined;
   if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > max) {
-    throw new ToolError(
+    throw new ApiError(
       fn,
       "invalid-argument",
       `\`${name}\` must be a whole number 0..${max}, got ${String(value)}`,
@@ -191,11 +193,11 @@ export function uint(fn: string, name: string, value: unknown, max: number): num
   return value;
 }
 
-/** A finite positive number, or a `ToolError`. */
+/** A finite positive number, or an `ApiError`. */
 export function positive(fn: string, name: string, value: unknown): number | undefined {
   if (value === undefined || value === null) return undefined;
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    throw new ToolError(
+    throw new ApiError(
       fn,
       "invalid-argument",
       `\`${name}\` must be a positive number, got ${String(value)}`,
@@ -205,11 +207,11 @@ export function positive(fn: string, name: string, value: unknown): number | und
 }
 
 /**
- * A list argument, defaulted to `[]`, or a `ToolError`.
+ * A list argument, defaulted to `[]`, or an `ApiError`.
  *
  * Every `list<T>` field of a membrane record goes through this. A record field left off entirely
  * does not arrive as an empty list: it arrives as `undefined` and the lowering code trips over it
- * with a message that names neither the tool nor the field.
+ * with a message that names neither the operation nor the field.
  *
  * The element type is a parameter because most lists are lists of ids but some — a reviewer's items
  * — is a list of records; the check itself is the same, and it is deliberately shallow, because the
@@ -218,7 +220,7 @@ export function positive(fn: string, name: string, value: unknown): number | und
 export function arrayArg<T = string>(fn: string, name: string, value: unknown): T[] {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value)) {
-    throw new ToolError(fn, "invalid-argument", `\`${name}\` must be an array, got ${typeName(value)}`);
+    throw new ApiError(fn, "invalid-argument", `\`${name}\` must be an array, got ${typeName(value)}`);
   }
   return value as T[];
 }
@@ -232,6 +234,6 @@ export function arrayArg<T = string>(fn: string, name: string, value: unknown): 
  */
 export function requireString(fn: string, expected: string, value: unknown): asserts value is string {
   if (typeof value !== "string") {
-    throw new ToolError(fn, "invalid-argument", `expected ${expected}, got ${typeName(value)}`);
+    throw new ApiError(fn, "invalid-argument", `expected ${expected}, got ${typeName(value)}`);
   }
 }

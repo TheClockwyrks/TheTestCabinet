@@ -2,8 +2,8 @@
 -- |
 -- | A capability module owns the types it produces, so `Gg.Files.FileRead` belongs to `Gg.Files` and
 -- | `Gg.Board.IssueCreated` to `Gg.Board`. The two here belong to none of them because they belong
--- | to all: every call in this SDK throws a `ToolError`, and every one of them is classified by a
--- | `ToolErrorCode`.
+-- | to all: every call in this SDK throws an `ApiError`, and every one of them is classified by an
+-- | `ApiErrorCode`.
 -- |
 -- | ```
 -- | import Gg.Core as Gg.Core
@@ -18,11 +18,11 @@
 -- | narrowed with `attempt`, which converts one gg failure into an `Either` and re-throws anything
 -- | that is not gg's.
 module Gg.Core
-  ( ToolError
-  , ToolErrorCode(..)
+  ( ApiError
+  , ApiErrorCode(..)
   , attempt
-  , toolError
-  , toolErrorCode
+  , apiError
+  , apiErrorCode
   , lib
   ) where
 
@@ -44,20 +44,20 @@ import Gg.Internal.Wire as Gg.Internal.Wire
 -- |
 -- | # Fields
 -- |
--- | - `tool` — The gg call that failed, under gg's own name for it.
+-- | - `operation` — The gg call that failed, by the key of the operation the program reached for.
 -- |
--- |   `read_file`, `spawn_subagent`: the vocabulary a run's enabled set is expressed in rather than
--- |   this SDK's spelling of it.
+-- |   `read_file`, `spawn_subagent`: the vocabulary a run's grant is expressed in rather than this
+-- |   SDK's spelling of it.
 -- | - `code` — The failure class, so a catch site branches on a value rather than on prose.
 -- | - `message` — What went wrong, in gg's words. Worth showing in a view; not worth matching on.
-type ToolError =
-  { tool :: String
-  , code :: ToolErrorCode
+type ApiError =
+  { operation :: String
+  , code :: ApiErrorCode
   , message :: String
   }
 
 -- | Why a gg call failed — the `code` a catch site branches on instead of matching on prose.
-data ToolErrorCode
+data ApiErrorCode
   -- | The arguments were malformed, ill-typed, or out of range.
   -- |
   -- | It covers a path that is absolute or climbs out of the workspace, and an agent name this run
@@ -98,34 +98,34 @@ data ToolErrorCode
   -- | is `Unavailable` and comes from the host.
   | OtherFailure
 
-derive instance Eq ToolErrorCode
-derive instance Generic ToolErrorCode _
-instance Show ToolErrorCode where
+derive instance Eq ApiErrorCode
+derive instance Generic ApiErrorCode _
+instance Show ApiErrorCode where
   show = genericShow
 
 -- | The failure fields, dug out of whatever was thrown — `null` for anything that is not a gg
 -- | failure.
-foreign import toolErrorImpl
-  :: Error -> Nullable { tool :: String, code :: String, message :: String }
+foreign import apiErrorImpl
+  :: Error -> Nullable { operation :: String, code :: String, message :: String }
 
 -- | Run a gg call and hand back its failure instead of throwing it.
 -- |
 -- | Anything that is not a gg failure is re-thrown: `attempt` narrows, it does not swallow.
-attempt :: forall a. Effect a -> Effect (Either ToolError a)
+attempt :: forall a. Effect a -> Effect (Either ApiError a)
 attempt action = do
   outcome <- try action
   case outcome of
     Right value -> pure (Right value)
-    Left failure -> maybe (throwException failure) (pure <<< Left) (toolError failure)
+    Left failure -> maybe (throwException failure) (pure <<< Left) (apiError failure)
 
 -- | The gg failure inside an `Error` caught by `Effect.Exception.try`, or `Nothing` for anything
 -- | else.
-toolError :: Error -> Maybe ToolError
-toolError failure = decode <$> toMaybe (toolErrorImpl failure)
+apiError :: Error -> Maybe ApiError
+apiError failure = decode <$> toMaybe (apiErrorImpl failure)
   where
   decode raw =
-    { tool: raw.tool
-    , code: toolErrorCode raw.code
+    { operation: raw.operation
+    , code: apiErrorCode raw.code
     , message: raw.message
     }
 
@@ -134,8 +134,8 @@ toolError failure = decode <$> toMaybe (toolErrorImpl failure)
 -- | An unrecognised one is `OtherFailure`, which is what that arm is for: the set is gg's and is
 -- | closed, and a program reading a code it has no arm for is better served by the unclassified arm
 -- | than by a crash.
-toolErrorCode :: String -> ToolErrorCode
-toolErrorCode = case _ of
+apiErrorCode :: String -> ApiErrorCode
+apiErrorCode = case _ of
   "invalid-argument" -> InvalidArgument
   "not-found" -> NotFound
   "conflict" -> Conflict

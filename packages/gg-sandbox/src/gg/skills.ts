@@ -21,7 +21,7 @@ import { call } from "../internal/errors.js";
  * @ggop skills.read_skill
  * @param name The skill's name, as the system prompt lists it.
  * @returns the skill's body, with its front matter stripped.
- * @throws `ToolError` with `not-found` — listing the skills that do exist — when the name is
+ * @throws `ApiError` with `not-found` — listing the skills that do exist — when the name is
  * unknown.
  */
 export function readSkill(name: string): string {

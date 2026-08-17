@@ -26,7 +26,7 @@ public enum views {
     ///   - offset: The 1-based line to start at. Left out, the whole file is shown.
     ///   - limit: How many lines to show from `offset`. Left out, the view runs to the end.
     /// - Returns: exactly what `files.readFile` returns for the same file.
-    /// - Throws: `core.ToolError` with `.notFound` for a missing path, and `.invalidArgument` for an
+    /// - Throws: `core.ApiError` with `.notFound` for a missing path, and `.invalidArgument` for an
     ///   offset past the end of the file. The read is what fails; nothing is opened when it does.
     /// - ggop: views.open_file
     @discardableResult
@@ -36,7 +36,7 @@ public enum views {
         try withScratch { scratch in
             var path = scratch.string(path)
             var ret = test_cabinet_gg_files_file_read_t()
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             let ok = withWindow(offset, limit) { offset, limit in
                 test_cabinet_gg_views_open_file_view(&path, offset, limit, &ret, &err)
             }
@@ -59,7 +59,7 @@ public enum views {
     ///     again replaces what it showed. It may not be empty.
     ///   - body: What to show. An empty body is allowed: it is how a program says that something it
     ///     was showing is now empty.
-    /// - Throws: `core.ToolError` with `.invalidArgument` for an empty label — a view with no
+    /// - Throws: `core.ApiError` with `.invalidArgument` for an empty label — a view with no
     ///   selector could never be closed or attributed — and `.limitExceeded`, naming the cap, for a
     ///   body or label over gg's caps. Nothing is ever silently truncated.
     /// - ggop: views.open_text
@@ -67,7 +67,7 @@ public enum views {
         try withScratch { scratch in
             var label = scratch.string(label)
             var body = scratch.string(body)
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             guard test_cabinet_gg_views_open_text_view(&label, &body, &err) else {
                 throw lift(failure: &err)
             }
@@ -90,12 +90,12 @@ public enum views {
     ///   to reach for: two modules are free to declare a `close`, and only the qualified name says
     ///   which one is meant. Searching the documentation says which names exist, and anything a
     ///   search returns can be opened here.
-    /// - Throws: `core.ToolError` with `.notFound` for an unknown or unbound name.
+    /// - Throws: `core.ApiError` with `.notFound` for an unknown or unbound name.
     /// - ggop: views.open_docs_view
     public static func openDocsView(_ name: String) throws {
         try withScratch { scratch in
             var name = scratch.string(name)
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             guard test_cabinet_gg_views_open_docs_view(&name, &err) else {
                 throw lift(failure: &err)
             }
@@ -117,7 +117,7 @@ public enum views {
     /// - Parameter selector: What the view is filed under: a file's path, a text view's label, or
     ///   `search results`.
     /// - Returns: how many views were closed.
-    /// - Throws: `core.ToolError` with `.invalidArgument` for an empty selector, which names nothing
+    /// - Throws: `core.ApiError` with `.invalidArgument` for an empty selector, which names nothing
     ///   rather than everything — no call here closes the window wholesale.
     /// - ggop: views.close
     @discardableResult
@@ -125,7 +125,7 @@ public enum views {
         try withScratch { scratch in
             var selector = scratch.string(selector)
             var ret: UInt32 = 0
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             guard test_cabinet_gg_views_close_view(&selector, &ret, &err) else {
                 throw lift(failure: &err)
             }
@@ -213,7 +213,7 @@ extension views.OpenView {
     /// that band: `docs.close(selector)` is the call for one of those.
     ///
     /// - Returns: how many views were closed.
-    /// - Throws: `core.ToolError` with `.invalidArgument` when this view's `selector` is empty,
+    /// - Throws: `core.ApiError` with `.invalidArgument` when this view's `selector` is empty,
     ///   which no view gg reports ever is.
     /// - ggop-alias: views.close
     @discardableResult

@@ -3,7 +3,7 @@
  *
  * It catalogues no capability of its own. What it holds is the vocabulary the other twelve modules
  * share, gathered here so that no module has to reach into another to name a failure — and so that a
- * program catching one writes a single `import gg.core.ToolError` rather than one per module it
+ * program catching one writes a single `import gg.core.ApiError` rather than one per module it
  * calls.
  *
  * @ggmodule core
@@ -19,8 +19,8 @@ package gg.core
  * ```
  * try {
  *     gg.views.openText("notes", gg.files.readTextFile("notes.md"))
- * } catch (failure: gg.core.ToolError) {
- *     if (failure.code == gg.core.ToolErrorCode.NOT_FOUND) gg.files.writeFile("notes.md", "")
+ * } catch (failure: gg.core.ApiError) {
+ *     if (failure.code == gg.core.ApiErrorCode.NOT_FOUND) gg.files.writeFile("notes.md", "")
  *     else throw failure
  * }
  * ```
@@ -32,25 +32,26 @@ package gg.core
  * An unexpected one is best left to escape: the program dies the way its runtime kills it, and what
  * the model reads is the runtime's own dying words — this exception's message, then the stack, in
  * the program's own file and lines. That is why `message` is
- * **`` `tool` failed (code): what went wrong ``** rather than gg's sentence alone: an uncaught
+ * **`` `operation` failed (code): what went wrong ``** rather than gg's sentence alone: an uncaught
  * failure has no second channel to carry the call's name and its class on, and every arm of a study
  * reports one in that same shape. [detail] is the sentence without them.
  *
- * @property tool The gg call that failed, under gg's own name for it (`read_file`, `spawn_subagent`).
+ * @property operation The gg call that failed, under gg's own name for it (`read_file`,
+ *   `spawn_subagent`).
  * @property code The failure class, so a catch site branches on a value rather than on prose.
  * @property detail What went wrong, in gg's own words alone.
  *
  *   Without the call's name and its class, which `message` carries in front of them so that an
  *   uncaught failure names all three.
  */
-public class ToolError(
-    public val tool: String,
-    public val code: ToolErrorCode,
+public class ApiError(
+    public val operation: String,
+    public val code: ApiErrorCode,
     public val detail: String,
-) : RuntimeException("`" + tool + "` failed (" + code.wireName + "): " + detail)
+) : RuntimeException("`" + operation + "` failed (" + code.wireName + "): " + detail)
 
 /**
- * Why a gg call failed — the [ToolError.code] a catch site branches on.
+ * Why a gg call failed — the [ApiError.code] a catch site branches on.
  *
  * The set is gg's own and is closed. A code this SDK has no entry for reads as [OTHER] rather than
  * failing the read, because a program handed an unclassified failure is better placed than a program
@@ -59,7 +60,7 @@ public class ToolError(
  * @property wireName gg's own spelling of the code, which a run record and the tool-calling arm both
  *   report.
  */
-public enum class ToolErrorCode(public val wireName: String) {
+public enum class ApiErrorCode(public val wireName: String) {
     /**
      * The arguments were malformed, ill-typed, or out of range.
      *
@@ -123,7 +124,7 @@ public enum class ToolErrorCode(public val wireName: String) {
          * The set is gg's and is closed; a program reading a code it has no arm for is better off
          * with the unclassified one than with a crash.
          */
-        fun of(wire: String): ToolErrorCode = entries.firstOrNull { it.wireName == wire } ?: OTHER
+        fun of(wire: String): ApiErrorCode = entries.firstOrNull { it.wireName == wire } ?: OTHER
     }
 }
 

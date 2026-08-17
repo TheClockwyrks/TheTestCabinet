@@ -12,7 +12,7 @@
 //! nobody at all, because gg attaches no standard output to the guest.
 
 use crate::bindings::test_cabinet::gg::views;
-use crate::core::ToolError;
+use crate::core::ApiError;
 use crate::files::{FileRead, ReadOptions};
 use crate::wire;
 
@@ -41,7 +41,7 @@ use crate::wire;
 /// `NotFound` for a missing path, and `InvalidArgument` for an offset past the end of the file. The
 /// read is what fails; nothing is opened when it does.
 #[doc(alias = "ggop:views.open_file")]
-pub fn open_file(path: &str, options: ReadOptions) -> Result<FileRead, ToolError> {
+pub fn open_file(path: &str, options: ReadOptions) -> Result<FileRead, ApiError> {
     let (offset, limit) = options.window();
     wire::lift(views::open_file_view(path, offset, limit)).map(wire::file_read)
 }
@@ -66,7 +66,7 @@ pub fn open_file(path: &str, options: ReadOptions) -> Result<FileRead, ToolError
 /// — and `LimitExceeded`, naming the cap, for a body or label over gg's caps. Nothing is ever
 /// silently truncated.
 #[doc(alias = "ggop:views.open_text")]
-pub fn open_text(label: &str, body: &str) -> Result<(), ToolError> {
+pub fn open_text(label: &str, body: &str) -> Result<(), ApiError> {
     wire::lift(views::open_text_view(label, body))
 }
 
@@ -93,7 +93,7 @@ pub fn open_text(label: &str, body: &str) -> Result<(), ToolError> {
 ///
 /// `NotFound` for an unknown or unbound name.
 #[doc(alias = "ggop:views.open_docs_view")]
-pub fn open_docs_view(name: &str) -> Result<(), ToolError> {
+pub fn open_docs_view(name: &str) -> Result<(), ApiError> {
     wire::lift(views::open_docs_view(name))
 }
 
@@ -123,7 +123,7 @@ pub fn open_docs_view(name: &str) -> Result<(), ToolError> {
 /// `InvalidArgument` for an empty selector, which names nothing rather than everything — no call
 /// here closes the window wholesale.
 #[doc(alias = "ggop:views.close")]
-pub fn close(selector: &str) -> Result<u32, ToolError> {
+pub fn close(selector: &str) -> Result<u32, ApiError> {
     wire::lift(views::close_view(selector))
 }
 
@@ -200,7 +200,7 @@ impl OpenView {
     /// `InvalidArgument` when this view's [`selector`](Self::selector) is empty, which no view gg
     /// reports ever is.
     #[doc(alias = "ggop-alias:views.close")]
-    pub fn close(&self) -> Result<u32, ToolError> {
+    pub fn close(&self) -> Result<u32, ApiError> {
         close(&self.selector)
     }
 }

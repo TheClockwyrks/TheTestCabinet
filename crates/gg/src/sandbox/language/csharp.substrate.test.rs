@@ -57,7 +57,7 @@ use wasmtime::component::Component;
 use super::GUEST_COMPONENT;
 use super::compile::{self, compile_program};
 use crate::sandbox::fake::{
-    CallLog, FakeToolApi, all_capabilities, all_operations, canned_outcome, granted_operations,
+    CallLog, FakeOperationApi, all_capabilities, all_operations, canned_outcome, granted_operations,
 };
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{SandboxError, SandboxOutcome};
@@ -140,7 +140,7 @@ pub(super) fn evaluate(
     responder: impl FnMut(&str, &serde_json::Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
     evaluate_granting(program, operations, ending, library, |log| {
-        FakeToolApi::with(log, responder)
+        FakeOperationApi::with(log, responder)
     })
 }
 
@@ -160,7 +160,7 @@ pub(super) fn evaluate_closing_docviews(
         .chain(capability_operations([CAPABILITY_DOCVIEW_CLOSE]))
         .collect();
     evaluate_granting(program, &granted, RunEnding::None, false, |log| {
-        FakeToolApi::with(log, responder)
+        FakeOperationApi::with(log, responder)
     })
 }
 
@@ -176,7 +176,7 @@ pub(super) fn evaluate_with_program(
     responder: impl FnMut(&str, &serde_json::Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
     evaluate_granting(program, &[], RunEnding::None, true, |log| {
-        FakeToolApi::with(log, responder).with_program(turn, source)
+        FakeOperationApi::with(log, responder).with_program(turn, source)
     })
 }
 
@@ -194,14 +194,14 @@ fn evaluate_granting(
     operations: &[crate::sandbox::operations::OperationId],
     ending: RunEnding,
     library: bool,
-    build: impl FnOnce(&CallLog) -> FakeToolApi,
+    build: impl FnOnce(&CallLog) -> FakeOperationApi,
 ) -> (SandboxOutcome, CallLog) {
     let limits = SandboxLimits::default();
     let log = CallLog::default();
     let api = build(&log);
     // Both of these before the store exists, for the reason this function's documentation gives.
     let component = component();
-    let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let linker = linker::<FakeOperationApi>().expect("the production linker builds");
     let operations = granted_operations(operations, library);
     let scope = ProgramScope {
         capabilities: &all_capabilities(),
@@ -778,7 +778,7 @@ fn csharp_runs_a_program_written_the_async_way_a_model_reaches_for() {
 #[test]
 fn a_whole_csharp_program_a_model_would_write_runs_through_the_turn_path() {
     let log = CallLog::default();
-    let api = FakeToolApi::with(&log, canned_outcome);
+    let api = FakeOperationApi::with(&log, canned_outcome);
     let operations = granted_operations(&all_operations(), false);
     let scope = ProgramScope {
         capabilities: &all_capabilities(),
@@ -882,7 +882,7 @@ fn a_status_a_csharp_program_ends_with_reaches_the_model_however_it_was_set() {
          nobody awaited. .NET has not made one a process failure since 4.5 — an unobserved task \
          exception is raised on the finalizer thread and swallowed — so `the runtime does not kill \
          it` is this language's own answer rather than a hole in the capture. The awaited form \
-         does reach the model, which is what the ToolError and NativeFault cases above drive. \
+         does reach the model, which is what the ApiError and NativeFault cases above drive. \
          Closing this one means a `TaskScheduler.UnobservedTaskException` handler and a collection \
          at end of run, which is interception rather than capture"
     );
@@ -903,7 +903,7 @@ fn g8_a_runtime_failure_reaches_the_model() {
         GgProgramLanguage::CSharp,
         &[
             Case {
-                shape: Shape::ToolError,
+                shape: Shape::ApiError,
                 program: r#"// G8 (a): a gg call the host answers `not-found`, uncaught.
 using Gg;
 using System;
@@ -913,7 +913,7 @@ var text = Files.ReadTextFile(
 );
 Console.WriteLine(text);
 "#,
-                names: &["Gg.ToolException", "Files.ReadTextFile", "missing.md"],
+                names: &["Gg.ApiException", "Files.ReadTextFile", "missing.md"],
                 located: Located::At("./program.cs:line 5"),
                 answered: Answered::AtRuntime,
                 recorded: Some(TurnErrorType::ProgramThrow),

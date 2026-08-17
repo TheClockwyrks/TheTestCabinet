@@ -11,11 +11,11 @@
 //! memory by reading numbers rather than by parsing a sentence about them.
 
 use crate::bindings::test_cabinet::gg::memories;
-use crate::core::ToolError;
+use crate::core::ApiError;
 use crate::wire;
 
-/// The gg tools this module dispatches — see [`files::TOOLS`](crate::files::TOOLS).
-pub(crate) const TOOLS: &[&str] = &[
+/// The gg tools this module dispatches — see [`files::OPERATIONS`](crate::files::OPERATIONS).
+pub(crate) const OPERATIONS: &[&str] = &[
     "write_memory",
     "update_memory",
     "create_memory",
@@ -57,7 +57,7 @@ pub fn write_memory(
     description: &str,
     body: &str,
     options: MemoryOptions<'_>,
-) -> Result<MemoryUsage, ToolError> {
+) -> Result<MemoryUsage, ApiError> {
     wire::lift(memories::write_memory(&input(
         name,
         description,
@@ -91,7 +91,7 @@ pub fn update_memory(
     description: &str,
     body: &str,
     options: MemoryOptions<'_>,
-) -> Result<MemoryUsage, ToolError> {
+) -> Result<MemoryUsage, ApiError> {
     wire::lift(memories::update_memory(&input(
         name,
         description,
@@ -130,7 +130,7 @@ pub fn create_memory(
     description: &str,
     body: &str,
     options: MemoryOptions<'_>,
-) -> Result<MemoryUsage, ToolError> {
+) -> Result<MemoryUsage, ApiError> {
     wire::lift(memories::create_memory(&input(
         name,
         description,
@@ -157,7 +157,7 @@ pub fn create_memory(
 ///
 /// `NotFound` when no memory has that slug.
 #[doc(alias = "ggop:memories.read_memory")]
-pub fn read_memory(name: &str) -> Result<String, ToolError> {
+pub fn read_memory(name: &str) -> Result<String, ApiError> {
     wire::lift(memories::read_memory(name))
 }
 
@@ -181,7 +181,7 @@ pub fn read_memory(name: &str) -> Result<String, ToolError> {
 /// `LimitExceeded` when the result would be too long, and `InvalidArgument` when the edit would leave
 /// the memory empty — deleting it is the way to do that.
 #[doc(alias = "ggop:memories.edit_memory")]
-pub fn edit_memory(name: &str, search: &str, replace: &str) -> Result<MemoryUsage, ToolError> {
+pub fn edit_memory(name: &str, search: &str, replace: &str) -> Result<MemoryUsage, ApiError> {
     wire::lift(memories::edit_memory(&memories::MemoryEdit {
         name: name.to_string(),
         search: search.to_string(),
@@ -211,7 +211,7 @@ pub fn edit_memory(name: &str, search: &str, replace: &str) -> Result<MemoryUsag
 ///
 /// `InvalidArgument` when every keyword is empty.
 #[doc(alias = "ggop:memories.search_memories")]
-pub fn search_memories(keywords: &[&str]) -> Result<Vec<MemoryHit>, ToolError> {
+pub fn search_memories(keywords: &[&str]) -> Result<Vec<MemoryHit>, ApiError> {
     wire::lift(memories::search_memories(&wire::strings(keywords)))
         .map(|hits| hits.into_iter().map(wire::memory_hit).collect())
 }
@@ -230,7 +230,7 @@ pub fn search_memories(keywords: &[&str]) -> Result<Vec<MemoryHit>, ToolError> {
 ///
 /// `NotFound` when no memory has that name.
 #[doc(alias = "ggop:memories.delete_memory")]
-pub fn delete_memory(name: &str) -> Result<MemoryUsage, ToolError> {
+pub fn delete_memory(name: &str) -> Result<MemoryUsage, ApiError> {
     wire::lift(memories::delete_memory(name)).map(wire::memory_usage)
 }
 
@@ -300,7 +300,7 @@ impl MemoryHit {
     ///
     /// `NotFound` when the memory has since been deleted.
     #[doc(alias = "ggop-alias:memories.read_memory")]
-    pub fn read(&self) -> Result<String, ToolError> {
+    pub fn read(&self) -> Result<String, ApiError> {
         read_memory(&self.name)
     }
 }

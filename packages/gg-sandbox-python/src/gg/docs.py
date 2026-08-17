@@ -7,7 +7,7 @@ reads one of those names in full.
 Searching is bound in every program whatever a run enables, because an agent must always be able to
 find the functions it does hold. Closing a documentation view is the exception and is bought by a
 capability: opening one only ever appends to the prompt, while closing one rewrites its middle, and
-a run that did not enable it gets `ToolErrorCode.UNAVAILABLE`.
+a run that did not enable it gets `ApiErrorCode.UNAVAILABLE`.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from enum import Enum
 from wit_world.imports import docs as wire
 
 from ._registry import missing, operation
-from .core import ToolError, ToolErrorCode, _call, _uint
+from .core import ApiError, ApiErrorCode, _call, _uint
 
 __all__ = [
     "DocHit",
@@ -93,9 +93,9 @@ def _kind(value: str) -> DocKind:
     try:
         return DocKind(value)
     except ValueError:
-        raise ToolError(
+        raise ApiError(
             "search",
-            ToolErrorCode.OTHER,
+            ApiErrorCode.OTHER,
             f"gg reported a kind of documentation entry this SDK does not know: {value!r}",
         ) from None
 
@@ -145,7 +145,7 @@ def search(
             a page shorter than `total` is a page there is more of.
 
     Raises:
-        ToolError: `invalid-argument` for an empty query with no filter at all — nothing matched and
+        ApiError: `invalid-argument` for an empty query with no filter at all — nothing matched and
             nothing was asked for are different answers — and for a `limit` of zero, which would ask
             for a page that answers nothing. A `module` or `type` that names something gg does not
             hold is not among them: it matches nothing.
@@ -190,7 +190,7 @@ def close(key: str) -> int:
         How many views were taken away; a key that is not open closes `0` rather than failing.
 
     Raises:
-        ToolError: `unavailable` under a run that did not enable closing documentation views.
+        ApiError: `unavailable` under a run that did not enable closing documentation views.
     """
     return _call(wire.close_doc_view, key)
 
@@ -205,7 +205,7 @@ def close_all() -> int:
         How many documentation views went, and `0` rather than a failure when none was open.
 
     Raises:
-        ToolError: `unavailable` under a run that did not enable closing documentation views.
+        ApiError: `unavailable` under a run that did not enable closing documentation views.
     """
     return _call(wire.close_doc_views)
 

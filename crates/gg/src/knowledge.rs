@@ -72,9 +72,9 @@ impl KnowledgeOrigin {
 ///
 /// Queued when the read happens and drained once the turn's program has ended — never run inline.
 /// Two reasons, and the first alone is decisive: a read reaches gg from *inside* a membrane call
-/// that already holds the [tool api](crate::sandbox::ToolApi) mutably, so there is no api to run a
-/// second program against. The second is that deferring is the honest contract anyway — the views
-/// the script opens arrive in the next prompt, which is what every view does.
+/// that already holds the [operation api](crate::sandbox::OperationApi) mutably, so there is no api
+/// to run a second program against. The second is that deferring is the honest contract anyway — the
+/// views the script opens arrive in the next prompt, which is what every view does.
 #[derive(Debug, Clone)]
 pub struct PendingOnUse {
     /// Whether it belongs to a skill or a memory.

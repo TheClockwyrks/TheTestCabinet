@@ -24,7 +24,7 @@
 //! into its own SDK jar, rather than either arm carrying a translation of them: a second copy would
 //! be a second canonical-ABI implementation to keep in step with one WIT, which is the thing this
 //! whole arrangement exists to avoid. What is *not* shared is the one function above them that
-//! raises the arm's own `ToolError`, because that class is model-facing and has a catalogue entry of
+//! raises the arm's own `ApiError`, because that class is model-facing and has a catalogue entry of
 //! its own on each side.
 //!
 //! [`entry_class`] is the last piece of that sharing and the sharpest: the two arms' generated entry
@@ -328,12 +328,12 @@ pub(super) fn entry_class(call: &str) -> String {
          \x20   @Export(name = \"run\")\n\
          \x20   public static void run(int program, int programLength, int modules, \
          int modulesLength,\n\
-         \x20           int tools, int toolsLength, int ending, int library) throws Throwable {{\n\
+         \x20           int operations, int operationsLength, int ending, int library) throws Throwable {{\n\
          \x20       {call}\n\
          \x20   }}\n\
          \n\
-         \x20   @Export(name = \"bound-tools\")\n\
-         \x20   public static int boundTools() {{\n\
+         \x20   @Export(name = \"bound-operations\")\n\
+         \x20   public static int boundOperations() {{\n\
          \x20       return Abi.emptyList();\n\
          \x20   }}\n\
          }}\n",

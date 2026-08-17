@@ -262,6 +262,51 @@
       ],
       "type": "object"
     },
+    "GgCallFailure": {
+      "description": "Why one call failed, in the class the caller branches on — the wire mirror of gg's own\n`ToolFailure`, and of the membrane's `error-code`.\n\nIt is carried by whichever of the two surfaces' closing records the call has: the\n[`ToolResult`](GgTelemetryKind::ToolResult) a tool-calling agent's dispatch closes with, or the\n[`ApiResult`](GgTelemetryKind::ApiResult) a responses-as-code agent's call closes with. **A call\nhas exactly one of them**, because an agent has exactly one surface (see\n[`ApiCall`](GgTelemetryKind::ApiCall)) — so the class is spelled on both types rather than on a\nshared one, and a cross-surface count of a failure class is a sum over two disjoint sets rather\nthan a join over one.\n\nWithout this, a failed call recorded nothing at all about *why*: the class was computed where\nthe failure was raised, handed to the program to branch on, and then dropped at the telemetry\nseam. A model fighting the same `not-found` forty times is among the most actionable facts a run\nhas, and it was not in the record.\n\n# Its spelling is kebab-case, on purpose\n\nEvery other enum in this module is snake_case. This one is `\"invalid-argument\"`, because the\nclass is *already* spelled that way in the three places a reader meets it — gg's own\n`ToolFailure` serde, the membrane's WIT `error-code`, and the `code` field of the `ApiError` a\nprogram catches. One deviation from this module's convention is a smaller cost than three\nspellings of one fact.",
+      "oneOf": [
+        {
+          "const": "invalid-argument",
+          "description": "The arguments were malformed, ill-typed, or out of range — including a path that is absolute\nor climbs out of the workspace.",
+          "type": "string"
+        },
+        {
+          "const": "not-found",
+          "description": "The named file, skill, memory, task, epic, issue, subagent, stored program or documentation\nentry does not exist. A *model slot* is not one of them: a slot is launch configuration, and\nan agent name a run does not declare is `invalid-argument`.",
+          "type": "string"
+        },
+        {
+          "const": "conflict",
+          "description": "Well-formed, but in conflict with the current state: an ambiguous edit, a dependency cycle,\na duplicate id, a subagent that already returned.",
+          "type": "string"
+        },
+        {
+          "const": "refused",
+          "description": "gg refused the call: a memory tool reached while this agent holds its memories read-only, a\ncall a pending compaction does not admit, a session that already ended (or was already\nhanded on) this turn, or a [hook](GgHook) that blocked it. Every one of those is gg\ndeclining a call it *could* have served, on a rule about this agent's state; a ceiling the\ncall ran into is `limit-exceeded` instead, and the delegation depth cap in particular is a\nceiling rather than a refusal.",
+          "type": "string"
+        },
+        {
+          "const": "unavailable",
+          "description": "The call exists but this run's capability set does not offer it. On the API surface this is\nthe membrane's backstop refusing a name a program reached anyway.",
+          "type": "string"
+        },
+        {
+          "const": "limit-exceeded",
+          "description": "A gg-side ceiling was hit: a shell timeout, a memory/task/board cap, the delegation depth\ncap, one of the view caps a program spends, or the run's wall-clock budget running out\nmid-program. The depth cap belongs here rather than under `refused` because the request was\nwell-formed and gg had no objection to it: the run simply has no room left below this\nagent, which is a quantity and not a rule.",
+          "type": "string"
+        },
+        {
+          "const": "io-error",
+          "description": "The underlying I/O or process failed.",
+          "type": "string"
+        },
+        {
+          "const": "other",
+          "description": "The failure was not classified. Raised outside a tool implementation — the loop's own bridge\nand degradation paths — where there is no tool vocabulary to draw a class from. Recorded as\nits own value rather than as an absent one, so \"this call failed\" and \"this call failed and\nnobody said why\" stay distinguishable.",
+          "type": "string"
+        }
+      ]
+    },
     "GgContextAction": {
       "description": "The kind of agent-managed-context action a [`ContextManaged`](GgTelemetryKind::ContextManaged)\nevent reports — the model-facing window management that is the complement to\n[compaction](CAPABILITY_COMPACTION).\n\nThe [agent-managed context](https://docs.testcabinet.ai/gg/agent-managed-context/)\ncapability lets a disciplined agent reclaim window space itself rather than waiting for\nthe automatic backstop: it can [evict file views](Self::EvictFileViews) it no longer\nneeds (safe — it can re-read the file later), [close text views](Self::CloseTextViews)\nit composed and no longer wants in front of it, [close documentation\nviews](Self::CloseDocsViews) it has finished with, [close the results of its last\ndocumentation search](Self::CloseSearchViews), or [archive a section of its\nthread](Self::ArchiveThread) (removed from the live window but kept **searchable** via\n`search_archive`). All five reclaim tokens; a `search_archive` call reclaims nothing and\nso is reported only as an ordinary tool result, not as a `ContextManaged` action.",
       "oneOf": [
@@ -449,7 +494,7 @@
             "minimum": 0,
             "type": "integer"
           },
-          "description": "**Calls** that failed, by [failure class](GgToolFailure) — a different population from\neverything above, which counts *turns*.\n\nFolded from the [`ToolResult`](GgTelemetryKind::ToolResult) events the run emitted, so it\ncounts every failed tool dispatch in either execution mode, whether or not the program that\nmade it caught the failure and carried on. Keyed by [`GgToolFailure::wire_id`], and open for\nthe reason [`by_type`](Self::by_type) is.\n\nIt counts **dispatches**, so a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) call that\nnever reached a tool is not here: a carve-out no tool backs, and a call the membrane refused\nbefore dispatch, have an [`ApiResult`](GgTelemetryKind::ApiResult) carrying their class and\nno `ToolResult` at all. Those are on the stream and a console folds them from there; they\nare deliberately not summed into this map, because a rollup whose population is \"some of one\nsurface plus some of another\" is a number nobody can check.",
+          "description": "**Calls** that failed, by [failure class](GgCallFailure) — a different population from\neverything above, which counts *turns*.\n\nFolded from the [`ToolResult`](GgTelemetryKind::ToolResult) events the run emitted, so it\ncounts every failed tool dispatch in either execution mode, whether or not the program that\nmade it caught the failure and carried on. Keyed by [`GgCallFailure::wire_id`], and open for\nthe reason [`by_type`](Self::by_type) is.\n\nIt counts **dispatches**, so a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) call that\nnever reached a tool is not here: a carve-out no tool backs, and a call the membrane refused\nbefore dispatch, have an [`ApiResult`](GgTelemetryKind::ApiResult) carrying their class and\nno `ToolResult` at all. Those are on the stream and a console folds them from there; they\nare deliberately not summed into this map, because a rollup whose population is \"some of one\nsurface plus some of another\" is a number nobody can check.",
           "type": "object"
         },
         "transpile": {
@@ -899,12 +944,12 @@
         },
         {
           "const": "python",
-          "description": "Python: evaluated by a **committed CPython**, with no compiler anywhere on the turn path.\n\nThe first arm whose guest carries its own interpreter rather than an engine gg lowers to.\n`componentize-py` links a real CPython 3.14 against gg's WIT world, so a program crosses the\nmembrane as *source*, the standard library it is baked with is what a program may `import`,\nand nothing is installed in the run container. A program is executed in a namespace of its\nown with nothing in it: the SDK is the ordinary package `gg`, baked into the guest and\nreached by writing `import gg`, and the agent's code modules are the package `lib`. Its SDK\nis hand-written and reads as Python reads — `snake_case`, keyword arguments with real\ndefaults, dataclasses for results, enums for fixed choices, and a raised `gg.core.ToolError`\nfor the wire's error arm.",
+          "description": "Python: evaluated by a **committed CPython**, with no compiler anywhere on the turn path.\n\nThe first arm whose guest carries its own interpreter rather than an engine gg lowers to.\n`componentize-py` links a real CPython 3.14 against gg's WIT world, so a program crosses the\nmembrane as *source*, the standard library it is baked with is what a program may `import`,\nand nothing is installed in the run container. A program is executed in a namespace of its\nown with nothing in it: the SDK is the ordinary package `gg`, baked into the guest and\nreached by writing `import gg`, and the agent's code modules are the package `lib`. Its SDK\nis hand-written and reads as Python reads — `snake_case`, keyword arguments with real\ndefaults, dataclasses for results, enums for fixed choices, and a raised `gg.core.ApiError`\nfor the wire's error arm.",
           "type": "string"
         },
         {
           "const": "ruby",
-          "description": "Ruby: **compiled to JavaScript on the host by Opal**, and evaluated by a guest that carries\nOpal's runtime pre-initialised into it.\n\nThe first arm whose program is neither evaluated as written nor lowered by a parse gg carries\nin-process: a real compiler runs in a real process on the turn path, so this arm reports a\ncompile time and can tell a model *the compiler read your program and refused it* — which is\nthe band [`Python`](Self::Python) has no producer for. The compiler is itself Ruby compiled to\nJavaScript, so it rides inside gg's binary and the run image gains nothing. gg's SDK, the\nagent's code modules and the libraries a program may require are all compiled into the guest\nas requirable units and none is loaded: a program reaches gg's surface by writing\n`require \"gg\"` and its own loaded code by writing `require \"lib\"`. Its SDK is hand-written\nand reads as Ruby reads — `snake_case`, keyword arguments, blocks for a long body, `Range`\nfor a span, splats for a list, `?` on a predicate, Symbols for a fixed choice, and a raised\n`ToolError` that is a `StandardError`.",
+          "description": "Ruby: **compiled to JavaScript on the host by Opal**, and evaluated by a guest that carries\nOpal's runtime pre-initialised into it.\n\nThe first arm whose program is neither evaluated as written nor lowered by a parse gg carries\nin-process: a real compiler runs in a real process on the turn path, so this arm reports a\ncompile time and can tell a model *the compiler read your program and refused it* — which is\nthe band [`Python`](Self::Python) has no producer for. The compiler is itself Ruby compiled to\nJavaScript, so it rides inside gg's binary and the run image gains nothing. gg's SDK, the\nagent's code modules and the libraries a program may require are all compiled into the guest\nas requirable units and none is loaded: a program reaches gg's surface by writing\n`require \"gg\"` and its own loaded code by writing `require \"lib\"`. Its SDK is hand-written\nand reads as Ruby reads — `snake_case`, keyword arguments, blocks for a long body, `Range`\nfor a span, splats for a list, `?` on a predicate, Symbols for a fixed choice, and a raised\n`ApiError` that is a `StandardError`.",
           "type": "string"
         },
         {
@@ -914,17 +959,17 @@
         },
         {
           "const": "java",
-          "description": "Java: **compiled to bytecode by `javac` and then to JavaScript by TeaVM**, both inside a\n**warm JVM** gg keeps between preparations, and evaluated by the same ECMAScript guest\n[`TypeScript`](Self::TypeScript) uses.\n\nThe first arm whose compiler gg cannot afford to *start* per program — a cold build costs\n4–9 s against 0.33–0.56 s in a JVM that has already done one — so it is the first served by\na pool of long-lived compiler processes rather than by a process per compile. It is also the\nonly arm whose program passes through **two** compilers, which is why a diagnostic here can\nbe `javac`'s (a type error, a name that does not resolve) or TeaVM's (a class of the\nstandard library its classlib does not carry) — two bands of the one recoverable,\nmodel-facing error. Its SDK is hand-written and reads as Java reads: `camelCase`,\n**overloads** where every other arm has a default argument or a keyword, varargs for a list,\nbuilders for a bag of optional fields, records for every result, enums for every fixed\nchoice, a sealed interface narrowed by a `switch`, `Optional` for what the wire may omit,\nand an unchecked `ToolError`.",
+          "description": "Java: **compiled to bytecode by `javac` and then to JavaScript by TeaVM**, both inside a\n**warm JVM** gg keeps between preparations, and evaluated by the same ECMAScript guest\n[`TypeScript`](Self::TypeScript) uses.\n\nThe first arm whose compiler gg cannot afford to *start* per program — a cold build costs\n4–9 s against 0.33–0.56 s in a JVM that has already done one — so it is the first served by\na pool of long-lived compiler processes rather than by a process per compile. It is also the\nonly arm whose program passes through **two** compilers, which is why a diagnostic here can\nbe `javac`'s (a type error, a name that does not resolve) or TeaVM's (a class of the\nstandard library its classlib does not carry) — two bands of the one recoverable,\nmodel-facing error. Its SDK is hand-written and reads as Java reads: `camelCase`,\n**overloads** where every other arm has a default argument or a keyword, varargs for a list,\nbuilders for a bag of optional fields, records for every result, enums for every fixed\nchoice, a sealed interface narrowed by a `switch`, `Optional` for what the wire may omit,\nand an unchecked `ApiError`.",
           "type": "string"
         },
         {
           "const": "kotlin",
-          "description": "Kotlin: **compiled as a script** to bytecode by the Kotlin compiler and then to JavaScript by\nTeaVM, both inside a **warm JVM** gg keeps between preparations, and evaluated by the same\nECMAScript guest [`TypeScript`](Self::TypeScript) uses.\n\nIt rides [`Java`](Self::Java)'s road from bytecode onwards and diverges in front of it. A\nprogram here is a **Kotlin script** rather than the body of a function gg declares, because\nthis language refuses `object`, `interface`, `enum class`, `typealias` and `private fun` as\n*local* declarations — so a reply with no `import` in it is compiled **byte for byte as the\nmodel wrote it**, which no other compiled arm can say. Its SDK is hand-written and reads as\nKotlin reads, which is deliberately nothing like Java's given that the two share a compiler,\na guest and a classlib: **default arguments passed by name** where Java has fourteen overload\ngroups and this arm has none, more default arguments where Java has a builder, `data class`es\nfor results, `enum class`es for fixed choices, sealed types for a closed set and for a\nthree-way patch, an `IntRange` for a span of turns, nullable types for what the wire may\nomit, and a `ToolError` caught with `catch` or `runCatching`. And it is declared in the\n**root package**, so a program reaches the whole surface with no `import` at all.",
+          "description": "Kotlin: **compiled as a script** to bytecode by the Kotlin compiler and then to JavaScript by\nTeaVM, both inside a **warm JVM** gg keeps between preparations, and evaluated by the same\nECMAScript guest [`TypeScript`](Self::TypeScript) uses.\n\nIt rides [`Java`](Self::Java)'s road from bytecode onwards and diverges in front of it. A\nprogram here is a **Kotlin script** rather than the body of a function gg declares, because\nthis language refuses `object`, `interface`, `enum class`, `typealias` and `private fun` as\n*local* declarations — so a reply with no `import` in it is compiled **byte for byte as the\nmodel wrote it**, which no other compiled arm can say. Its SDK is hand-written and reads as\nKotlin reads, which is deliberately nothing like Java's given that the two share a compiler,\na guest and a classlib: **default arguments passed by name** where Java has fourteen overload\ngroups and this arm has none, more default arguments where Java has a builder, `data class`es\nfor results, `enum class`es for fixed choices, sealed types for a closed set and for a\nthree-way patch, an `IntRange` for a span of turns, nullable types for what the wire may\nomit, and an `ApiError` caught with `catch` or `runCatching`. And it is declared in the\n**root package**, so a program reaches the whole surface with no `import` at all.",
           "type": "string"
         },
         {
           "const": "rust",
-          "description": "Rust: **compiled by `rustc` into the wasm component that turn is evaluated by** — the first\narm whose artifact is the program.\n\nEvery language before it evaluates a *string*: its committed component carries a whole\nruntime (a CPython, an Opal, a JavaScript engine) and a program crosses the membrane as\nsource that runtime reads. `rustc` produces no such thing — it produces the program — so this\narm commits **no component at all** and compiles one per turn instead, against a prebuilt\nlibrary set that ships inside gg's binary.\n\nA program is the reply **verbatim**, as a whole Rust program declaring its own `fn main` —\nno wrapper, no prologue, no offset to subtract. The crate type is `bin`, which is what makes\nthat `main` reachable: `rustc` emits the unmangled C entry symbol for a binary crate, and\ngg's SDK calls it from the world's `run` export. `--extern gg=…` makes the SDK available and\nputs no name in scope, so a program writes `gg::files::read_file` in full or the\n`use gg::files;` its catalogue states.\n\nA failure reaches the model by **capture**, with nothing intercepted. The target is\n`wasm32-wasip1`, so a panic writes `std`'s own message to a real standard error in the\nmodel's own file, line and column before it aborts; a `main` returning `Err` writes\n`Error: …` through `Termination`; and `std::process::exit` is `proc_exit`.\n\nA **code module** here is linked into the same artifact as the program that reads it, which\nis why the seam hands the modules in scope to a program's preparation at all: nothing can be\nbound at `lib::<key>` after the compile. Its SDK is hand-written and reads as Rust reads:\n`snake_case`, an API object as a **module** so a call is a path, `Result<_, ToolError>`\neverywhere so `?` composes gg's calls with `std`'s own fallible ones, a struct with `Default`\nand functional update where a call has two or more optional arguments and a bare `Option<T>`\nwhere it has one, real `enum`s for fixed choices, and a `RangeInclusive` for a span of\nturns.",
+          "description": "Rust: **compiled by `rustc` into the wasm component that turn is evaluated by** — the first\narm whose artifact is the program.\n\nEvery language before it evaluates a *string*: its committed component carries a whole\nruntime (a CPython, an Opal, a JavaScript engine) and a program crosses the membrane as\nsource that runtime reads. `rustc` produces no such thing — it produces the program — so this\narm commits **no component at all** and compiles one per turn instead, against a prebuilt\nlibrary set that ships inside gg's binary.\n\nA program is the reply **verbatim**, as a whole Rust program declaring its own `fn main` —\nno wrapper, no prologue, no offset to subtract. The crate type is `bin`, which is what makes\nthat `main` reachable: `rustc` emits the unmangled C entry symbol for a binary crate, and\ngg's SDK calls it from the world's `run` export. `--extern gg=…` makes the SDK available and\nputs no name in scope, so a program writes `gg::files::read_file` in full or the\n`use gg::files;` its catalogue states.\n\nA failure reaches the model by **capture**, with nothing intercepted. The target is\n`wasm32-wasip1`, so a panic writes `std`'s own message to a real standard error in the\nmodel's own file, line and column before it aborts; a `main` returning `Err` writes\n`Error: …` through `Termination`; and `std::process::exit` is `proc_exit`.\n\nA **code module** here is linked into the same artifact as the program that reads it, which\nis why the seam hands the modules in scope to a program's preparation at all: nothing can be\nbound at `lib::<key>` after the compile. Its SDK is hand-written and reads as Rust reads:\n`snake_case`, an API object as a **module** so a call is a path, `Result<_, ApiError>`\neverywhere so `?` composes gg's calls with `std`'s own fallible ones, a struct with `Default`\nand functional update where a call has two or more optional arguments and a bare `Option<T>`\nwhere it has one, real `enum`s for fixed choices, and a `RangeInclusive` for a span of\nturns.",
           "type": "string"
         },
         {
@@ -934,12 +979,12 @@
         },
         {
           "const": "cpp",
-          "description": "C++: **compiled by `clang++` into the wasm component that turn is evaluated by**, against a\nprelude gg precompiles once per machine — and the only arm with a working **exception**\nmechanism in the guest.\n\nIt is [`Rust`](Self::Rust)'s and [`Swift`](Self::Swift)'s shape — no committed component,\none artifact per turn — and, like Swift's, the reply is compiled **byte for byte**. A\nprogram here is an ordinary translation unit that defines `main`, because C++ refuses a\n`template`, a `namespace` and a usable `#include` inside a function body; the price is this\narm's one refusal, which is a reply that defines no entry point. It is refused by name at\nprepare time, because wasi-libc references `main` weakly and would otherwise link a program\nthat traps having run nothing.\n\nIt is the **cheapest compile of the three compiled arms** — ~90 ms against `swiftc`'s ~0.3 s\n— and only because the prelude, which is the C++ standard library, is precompiled: without\nthat the same program costs about a second. gg's own surface is deliberately not in that\nprelude, so a program reaches it by writing `#include <gg/files.hpp>` for each module it\ncalls. Its SDK is hand-written and reads like the standard library it arrives beside:\n`snake_case` functions *and* types, an API object as a **namespace** so a call is a\nqualified name, `enum class` for a fixed choice, aggregates for records, `std::variant`\nnarrowed with `std::get_if` for a read, a default argument for one optional part and a\n**designated initialiser** (`{.limit = 40}`) for several — because C++ has no keyword\narguments and a defaulted parameter cannot be skipped over — and a thrown\n`gg::core::tool_error` for the error arm.\n\nIt also carries a **comparability risk no other arm has**, stated rather than hidden: an\nuncaught `throw` and a failed libc++ hardening check both arrive with words, but undefined\nbehaviour arrives as a bare trap, so a failure caused by the language can be hard to tell in\nthe run record from a model that reasoned badly.",
+          "description": "C++: **compiled by `clang++` into the wasm component that turn is evaluated by**, against a\nprelude gg precompiles once per machine — and the only arm with a working **exception**\nmechanism in the guest.\n\nIt is [`Rust`](Self::Rust)'s and [`Swift`](Self::Swift)'s shape — no committed component,\none artifact per turn — and, like Swift's, the reply is compiled **byte for byte**. A\nprogram here is an ordinary translation unit that defines `main`, because C++ refuses a\n`template`, a `namespace` and a usable `#include` inside a function body; the price is this\narm's one refusal, which is a reply that defines no entry point. It is refused by name at\nprepare time, because wasi-libc references `main` weakly and would otherwise link a program\nthat traps having run nothing.\n\nIt is the **cheapest compile of the three compiled arms** — ~90 ms against `swiftc`'s ~0.3 s\n— and only because the prelude, which is the C++ standard library, is precompiled: without\nthat the same program costs about a second. gg's own surface is deliberately not in that\nprelude, so a program reaches it by writing `#include <gg/files.hpp>` for each module it\ncalls. Its SDK is hand-written and reads like the standard library it arrives beside:\n`snake_case` functions *and* types, an API object as a **namespace** so a call is a\nqualified name, `enum class` for a fixed choice, aggregates for records, `std::variant`\nnarrowed with `std::get_if` for a read, a default argument for one optional part and a\n**designated initialiser** (`{.limit = 40}`) for several — because C++ has no keyword\narguments and a defaulted parameter cannot be skipped over — and a thrown\n`gg::core::api_error` for the error arm.\n\nIt also carries a **comparability risk no other arm has**, stated rather than hidden: an\nuncaught `throw` and a failed libc++ hardening check both arrive with words, but undefined\nbehaviour arrives as a bare trap, so a failure caused by the language can be hard to tell in\nthe run record from a model that reasoned badly.",
           "type": "string"
         },
         {
           "const": "csharp",
-          "description": "C#: **compiled by Roslyn into an IL assembly on the host**, which a committed guest holding\nMono's IL interpreter and the whole .NET class library loads — the one arm that is neither\nof this seam's two shapes.\n\nAn interpreted arm sends **source** to a committed runtime; a compiled arm sends a\n**component** and commits nothing. This sends neither: `csc` turns the model's reply into an\nassembly in ~0.3 s, the bytes cross as base64 over the `program` string every arm already\nhas, and the committed component registers and loads them in memory. So it has an\ninterpreted arm's artifact — one guest, compiled once per process — and a compiled arm's\nfailure bands, and it is the reason C# is affordable at all: priced on\n`componentize-dotnet`, which compiles the *program* to native wasm, this arm measured 25–43\nseconds a turn.\n\nA program is the reply **verbatim**, as a compilation unit with an entry point — no wrapper,\nno prologue, no offset to subtract — and all four ways a C# program may begin work, top-level\nstatements first. Its SDK is compiled beside the program, which tells `csc` the library\nexists and puts no name in scope: a program writes `Gg.Views.OpenText` in full, or writes\nthe `using Gg;` its catalogue states and then `Views.OpenText`. The SDK is hand-written and\nreads as C# reads: `PascalCase` methods, **optional arguments with defaults, passed by name**, nullable\nreference types, `record`s for results, real `enum`s for fixed choices, and a thrown\n`ToolException` whose `Code` is an enum rather than free text. Nothing returns `Task` and\nnothing is `async`.\n\nIt has the **best error surface of any compiled arm here**: `try`/`catch`/`finally` work\nbecause they are IL, and an unhandled exception is reported as `Exception.ToString()` — the\ntype, the message *and* the managed frames, each frame carrying the model's own file and\nline, because the assembly carries its own portable debug information and the guest\ninitialises the lookup that reads it. What a program ends by **returning** is read too: a\nnon-zero status from its entry point, the one failure C# reports without throwing. Two\nabsences are\nstated rather than glossed: `System.Net.Http`'s native handler is not in this guest, so the\ntypes compile and the transport is gone (the network is `system.Shell`, as on every arm), and\n`System.Security.Cryptography` is Mono's own gap and arrives as a catchable\n`PlatformNotSupportedException`.",
+          "description": "C#: **compiled by Roslyn into an IL assembly on the host**, which a committed guest holding\nMono's IL interpreter and the whole .NET class library loads — the one arm that is neither\nof this seam's two shapes.\n\nAn interpreted arm sends **source** to a committed runtime; a compiled arm sends a\n**component** and commits nothing. This sends neither: `csc` turns the model's reply into an\nassembly in ~0.3 s, the bytes cross as base64 over the `program` string every arm already\nhas, and the committed component registers and loads them in memory. So it has an\ninterpreted arm's artifact — one guest, compiled once per process — and a compiled arm's\nfailure bands, and it is the reason C# is affordable at all: priced on\n`componentize-dotnet`, which compiles the *program* to native wasm, this arm measured 25–43\nseconds a turn.\n\nA program is the reply **verbatim**, as a compilation unit with an entry point — no wrapper,\nno prologue, no offset to subtract — and all four ways a C# program may begin work, top-level\nstatements first. Its SDK is compiled beside the program, which tells `csc` the library\nexists and puts no name in scope: a program writes `Gg.Views.OpenText` in full, or writes\nthe `using Gg;` its catalogue states and then `Views.OpenText`. The SDK is hand-written and\nreads as C# reads: `PascalCase` methods, **optional arguments with defaults, passed by name**, nullable\nreference types, `record`s for results, real `enum`s for fixed choices, and a thrown\n`ApiException` whose `Code` is an enum rather than free text. Nothing returns `Task` and\nnothing is `async`.\n\nIt has the **best error surface of any compiled arm here**: `try`/`catch`/`finally` work\nbecause they are IL, and an unhandled exception is reported as `Exception.ToString()` — the\ntype, the message *and* the managed frames, each frame carrying the model's own file and\nline, because the assembly carries its own portable debug information and the guest\ninitialises the lookup that reads it. What a program ends by **returning** is read too: a\nnon-zero status from its entry point, the one failure C# reports without throwing. Two\nabsences are\nstated rather than glossed: `System.Net.Http`'s native handler is not in this guest, so the\ntypes compile and the transport is gone (the network is `system.Shell`, as on every arm), and\n`System.Security.Cryptography` is Mono's own gap and arrives as a catchable\n`PlatformNotSupportedException`.",
           "type": "string"
         }
       ]
@@ -1107,51 +1152,6 @@
         }
       ]
     },
-    "GgToolFailure": {
-      "description": "Why one call failed, in the class the caller branches on — the wire mirror of gg's own\n`ToolFailure`, and of the membrane's `error-code`.\n\nIt is carried by whichever of the two surfaces' closing records the call has: the\n[`ToolResult`](GgTelemetryKind::ToolResult) a tool-calling agent's dispatch closes with, or the\n[`ApiResult`](GgTelemetryKind::ApiResult) a responses-as-code agent's call closes with. **A call\nhas exactly one of them**, because an agent has exactly one surface (see\n[`ApiCall`](GgTelemetryKind::ApiCall)) — so the class is spelled on both types rather than on a\nshared one, and a cross-surface count of a failure class is a sum over two disjoint sets rather\nthan a join over one.\n\nWithout this, a failed call recorded nothing at all about *why*: the class was computed where\nthe failure was raised, handed to the program to branch on, and then dropped at the telemetry\nseam. A model fighting the same `not-found` forty times is among the most actionable facts a run\nhas, and it was not in the record.\n\n# Its spelling is kebab-case, on purpose\n\nEvery other enum in this module is snake_case. This one is `\"invalid-argument\"`, because the\nclass is *already* spelled that way in the three places a reader meets it — gg's own\n`ToolFailure` serde, the membrane's WIT `error-code`, and the `code` field of the `ToolError` a\nprogram catches. One deviation from this module's convention is a smaller cost than three\nspellings of one fact.",
-      "oneOf": [
-        {
-          "const": "invalid-argument",
-          "description": "The arguments were malformed, ill-typed, or out of range — including a path that is absolute\nor climbs out of the workspace.",
-          "type": "string"
-        },
-        {
-          "const": "not-found",
-          "description": "The named file, skill, memory, task, epic, issue, subagent, stored program or documentation\nentry does not exist. A *model slot* is not one of them: a slot is launch configuration, and\nan agent name a run does not declare is `invalid-argument`.",
-          "type": "string"
-        },
-        {
-          "const": "conflict",
-          "description": "Well-formed, but in conflict with the current state: an ambiguous edit, a dependency cycle,\na duplicate id, a subagent that already returned.",
-          "type": "string"
-        },
-        {
-          "const": "refused",
-          "description": "gg refused the call: a memory tool reached while this agent holds its memories read-only, a\ncall a pending compaction does not admit, a session that already ended (or was already\nhanded on) this turn, or a [hook](GgHook) that blocked it. Every one of those is gg\ndeclining a call it *could* have served, on a rule about this agent's state; a ceiling the\ncall ran into is `limit-exceeded` instead, and the delegation depth cap in particular is a\nceiling rather than a refusal.",
-          "type": "string"
-        },
-        {
-          "const": "unavailable",
-          "description": "The call exists but this run's capability set does not offer it. On the API surface this is\nthe membrane's backstop refusing a name a program reached anyway.",
-          "type": "string"
-        },
-        {
-          "const": "limit-exceeded",
-          "description": "A gg-side ceiling was hit: a shell timeout, a memory/task/board cap, the delegation depth\ncap, one of the view caps a program spends, or the run's wall-clock budget running out\nmid-program. The depth cap belongs here rather than under `refused` because the request was\nwell-formed and gg had no objection to it: the run simply has no room left below this\nagent, which is a quantity and not a rule.",
-          "type": "string"
-        },
-        {
-          "const": "io-error",
-          "description": "The underlying I/O or process failed.",
-          "type": "string"
-        },
-        {
-          "const": "other",
-          "description": "The failure was not classified. Raised outside a tool implementation — the loop's own bridge\nand degradation paths — where there is no tool vocabulary to draw a class from. Recorded as\nits own value rather than as an absent one, so \"this call failed\" and \"this call failed and\nnobody said why\" stay distinguishable.",
-          "type": "string"
-        }
-      ]
-    },
     "GgTransitionModule": {
       "description": "What happened to one [module](GgModuleKind) across a succession — a row of an\n[`AgentTransition`](GgTelemetryKind::AgentTransition)'s\n[`modules`](GgTelemetryKind::AgentTransition::modules) list.\n\nIt carries the module instance on **both** sides of the boundary, which is what makes a store\nswap visible: a [`Carried`](GgModuleDisposition::Carried) or\n[`Linked`](GgModuleDisposition::Linked) module reports the same id twice, and everything else\nreports two different ones (or one, where only one side held anything).",
       "properties": {
@@ -1254,7 +1254,7 @@
           "type": "string"
         },
         {
-          "const": "program_tool_error",
+          "const": "program_api_error",
           "description": "The program ran and a **failed call it did not catch** ended it: a call the membrane\nserviced and the tool behind it rejected, or refused for any reason other than the run not\noffering it. The single most actionable program fault there is — it says the model is\nfighting the API rather than mis-writing it — and it was previously indistinguishable from\nany other throw.",
           "type": "string"
         },
@@ -1390,13 +1390,13 @@
         "failure": {
           "anyOf": [
             {
-              "$ref": "#/$defs/GgToolFailure"
+              "$ref": "#/$defs/GgCallFailure"
             },
             {
               "type": "null"
             }
           ],
-          "description": "Why it failed, when it failed — the [class](GgToolFailure) the tool itself raised, never\none inferred afterwards from the summary's prose.\n\nPresent on exactly the results whose [`ok`](Self::ToolResult::ok) is `false`, with\n[`Other`](GgToolFailure::Other) for a failure raised outside a tool implementation, and\nabsent on every success — so `failure != null` and `ok == false` are the same statement,\nand a reader never meets a failure with no class.\n\n`ok` stays the authoritative \"did it fail?\". This says how."
+          "description": "Why it failed, when it failed — the [class](GgCallFailure) the tool itself raised, never\none inferred afterwards from the summary's prose.\n\nPresent on exactly the results whose [`ok`](Self::ToolResult::ok) is `false`, with\n[`Other`](GgCallFailure::Other) for a failure raised outside a tool implementation, and\nabsent on every success — so `failure != null` and `ok == false` are the same statement,\nand a reader never meets a failure with no class.\n\n`ok` stays the authoritative \"did it fail?\". This says how."
         },
         "name": {
           "description": "The tool's name.",
@@ -1439,13 +1439,13 @@
         "failure": {
           "anyOf": [
             {
-              "$ref": "#/$defs/GgToolFailure"
+              "$ref": "#/$defs/GgCallFailure"
             },
             {
               "type": "null"
             }
           ],
-          "description": "The [class](GgToolFailure) of the `ToolError` thrown into the program, on a call that\nthrew. Present on exactly the results whose [`ok`](Self::ApiResult::ok) is `false`.\n\nThis is the **model's** view of why its call failed — the same `code` the program itself\nbranches on in a `catch` — and it is the only record of it, because a responses-as-code\nagent's calls are recorded on this stream alone. That includes the call the membrane\nrefused before dispatch (a spent wall-clock budget, a name this agent was not granted),\nwhich never reached an implementation at all."
+          "description": "The [class](GgCallFailure) of the `ApiError` thrown into the program, on a call that\nthrew. Present on exactly the results whose [`ok`](Self::ApiResult::ok) is `false`.\n\nThis is the **model's** view of why its call failed — the same `code` the program itself\nbranches on in a `catch` — and it is the only record of it, because a responses-as-code\nagent's calls are recorded on this stream alone. That includes the call the membrane\nrefused before dispatch (a spent wall-clock budget, a name this agent was not granted),\nwhich never reached an implementation at all."
         },
         "ok": {
           "description": "Whether the call returned a value to the program rather than throwing into it.",
@@ -2023,7 +2023,7 @@
           "type": "string"
         },
         "depth": {
-          "description": "The agent's depth in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/):\n`0` for the root, `parent.depth + 1` for a spawned child. A spawn that would exceed\nthe configured maximum depth fails as a\n[limit](GgToolFailure::LimitExceeded) rather than being queued — a *ceiling*, not a\n[refusal](GgToolFailure::Refused): the request was well-formed, the run simply has no\nroom left below the spawner.",
+          "description": "The agent's depth in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/):\n`0` for the root, `parent.depth + 1` for a spawned child. A spawn that would exceed\nthe configured maximum depth fails as a\n[limit](GgCallFailure::LimitExceeded) rather than being queued — a *ceiling*, not a\n[refusal](GgCallFailure::Refused): the request was well-formed, the run simply has no\nroom left below the spawner.",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"

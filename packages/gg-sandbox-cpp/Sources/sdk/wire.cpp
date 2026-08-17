@@ -130,23 +130,23 @@ std::vector<std::string> lift(const sandbox_list_string_t& texts) {
                    [](const sandbox_string_t& text) { return lift(text); });
 }
 
-void fail(test_cabinet_gg_types_tool_error_t& failure) {
-  core::tool_error thrown(lift_error_code(failure.code), lift(failure.tool), lift(failure.message));
-  test_cabinet_gg_types_tool_error_free(&failure);
+void fail(test_cabinet_gg_types_api_error_t& failure) {
+  core::api_error thrown(lift_error_code(failure.code), lift(failure.operation), lift(failure.message));
+  test_cabinet_gg_types_api_error_free(&failure);
   throw thrown;
 }
 
-core::tool_error_code lift_error_code(test_cabinet_gg_types_error_code_t wire) {
+core::api_error_code lift_error_code(test_cabinet_gg_types_error_code_t wire) {
   switch (wire) {
     case TEST_CABINET_GG_TYPES_ERROR_CODE_INVALID_ARGUMENT:
-      return core::tool_error_code::invalid_argument;
-    case TEST_CABINET_GG_TYPES_ERROR_CODE_NOT_FOUND: return core::tool_error_code::not_found;
-    case TEST_CABINET_GG_TYPES_ERROR_CODE_CONFLICT: return core::tool_error_code::conflict;
-    case TEST_CABINET_GG_TYPES_ERROR_CODE_REFUSED: return core::tool_error_code::refused;
-    case TEST_CABINET_GG_TYPES_ERROR_CODE_UNAVAILABLE: return core::tool_error_code::unavailable;
-    case TEST_CABINET_GG_TYPES_ERROR_CODE_LIMIT_EXCEEDED: return core::tool_error_code::limit_exceeded;
-    case TEST_CABINET_GG_TYPES_ERROR_CODE_IO_ERROR: return core::tool_error_code::io_error;
-    default: return core::tool_error_code::other;
+      return core::api_error_code::invalid_argument;
+    case TEST_CABINET_GG_TYPES_ERROR_CODE_NOT_FOUND: return core::api_error_code::not_found;
+    case TEST_CABINET_GG_TYPES_ERROR_CODE_CONFLICT: return core::api_error_code::conflict;
+    case TEST_CABINET_GG_TYPES_ERROR_CODE_REFUSED: return core::api_error_code::refused;
+    case TEST_CABINET_GG_TYPES_ERROR_CODE_UNAVAILABLE: return core::api_error_code::unavailable;
+    case TEST_CABINET_GG_TYPES_ERROR_CODE_LIMIT_EXCEEDED: return core::api_error_code::limit_exceeded;
+    case TEST_CABINET_GG_TYPES_ERROR_CODE_IO_ERROR: return core::api_error_code::io_error;
+    default: return core::api_error_code::other;
   }
 }
 

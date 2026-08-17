@@ -18,7 +18,7 @@ from enum import Enum
 from wit_world.imports import delegation as wire
 
 from ._registry import alias, missing, operation
-from .core import ToolError, ToolErrorCode, _call, _strings
+from .core import ApiError, ApiErrorCode, _call, _strings
 
 __all__ = [
     "AgentEnding",
@@ -57,7 +57,7 @@ class SubagentHandle:
             message: What to put in its inbox.
 
         Raises:
-            ToolError: `conflict` when this child has already returned.
+            ApiError: `conflict` when this child has already returned.
         """
         send_message(self.id, message)
 
@@ -106,9 +106,9 @@ def _brief(fn: str, prompt: str | None, issue_id: str | None) -> wire.SubagentBr
     only at dispatch — and the message that comes back has to name both options.
     """
     if (prompt is None) == (issue_id is None):
-        raise ToolError(
+        raise ApiError(
             fn,
-            ToolErrorCode.INVALID_ARGUMENT,
+            ApiErrorCode.INVALID_ARGUMENT,
             "expected exactly one of `prompt` or `issue_id`",
         )
     return (
@@ -146,7 +146,7 @@ def spawn_subagent(
             it runs as, and the model bound to that profile.
 
     Raises:
-        ToolError: `limit-exceeded` at the delegation depth cap, and `invalid-argument` when `agent`
+        ApiError: `limit-exceeded` at the delegation depth cap, and `invalid-argument` when `agent`
             is not one this agent may spawn.
     """
     return _handle(
@@ -173,7 +173,7 @@ def wait_for_subagents(ids: list[str] | None = None) -> list[SubagentResult]:
             child that produced no return value at all has no `status`.
 
     Raises:
-        ToolError: `not-found` for an id this agent did not spawn.
+        ApiError: `not-found` for an id this agent did not spawn.
     """
     waited = None if ids is None else _strings("wait_for_subagents", "ids", ids)
     return [
@@ -195,7 +195,7 @@ def send_message(agent_id: str, message: str) -> None:
         message: What to put in its inbox. It reads it at its next turn.
 
     Raises:
-        ToolError: `not-found` for an unknown agent id, and `conflict` when that child has already
+        ApiError: `not-found` for an unknown agent id, and `conflict` when that child has already
             returned.
     """
     _call(wire.send_message, agent_id, message)
@@ -216,7 +216,7 @@ def transition_state(state: str, note: str | None = None) -> None:
         note: The opening message the next state's agent sees. The default tells it nothing.
 
     Raises:
-        ToolError: `invalid-argument` for a state this session may not move to, `refused` for a
+        ApiError: `invalid-argument` for a state this session may not move to, `refused` for a
             second declaration in one turn, and `unavailable` when this agent is not running inside a
             state machine at all.
     """
@@ -240,7 +240,7 @@ def exec(agent: str, prompt: str | None = None) -> None:
             instruction rather than a briefing. The default tells it nothing.
 
     Raises:
-        ToolError: `invalid-argument` for an agent this session may not become, `refused` for a
+        ApiError: `invalid-argument` for an agent this session may not become, `refused` for a
             second succession in one turn, and `unavailable` when this agent is running inside a
             machine, which is left by `transition_state` instead.
     """
@@ -255,7 +255,7 @@ def fork(prompt: str) -> SubagentHandle:
     `prompt` is the *difference* rather than a briefing — everything already worked out is already
     there.
 
-    The copy itself starts once this turn's tool results are recorded, because the conversation it
+    The copy itself starts once this turn's results are recorded, because the conversation it
     inherits has to be a complete one. So `wait_for_subagents` can only collect it on a later turn,
     and waiting on it in the program that made it never returns it.
 
@@ -267,7 +267,7 @@ def fork(prompt: str) -> SubagentHandle:
         The copy's handle, carrying the id a later wait collects it by.
 
     Raises:
-        ToolError: `invalid-argument` for a blank prompt, `limit-exceeded` at the delegation depth
+        ApiError: `invalid-argument` for a blank prompt, `limit-exceeded` at the delegation depth
             cap, and `unavailable` when the run has no delegation runtime to copy this agent into.
     """
     return _handle(_call(wire.fork, prompt))

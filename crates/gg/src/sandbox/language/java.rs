@@ -474,7 +474,7 @@ pub(super) fn open_file_statement(
 /// would be a text in the model's own transcript that its next reply would be refused for.
 ///
 /// `main` declares no `throws`, because every call this SDK offers throws an unchecked
-/// [`ToolError`](https://docs.testcabinet.ai/gg/languages/java/) and nothing gg writes here declares
+/// [`ApiError`](https://docs.testcabinet.ai/gg/languages/java/) and nothing gg writes here declares
 /// a checked one.
 fn main_program(imports: &str, body: &str) -> String {
     format!(
@@ -604,7 +604,7 @@ mod substrate;
 ///
 /// Separate from [`substrate`] because it is a different claim. That file asks whether Java runs
 /// here; this one asks whether the thing a model is *told* it may write is the thing the sandbox
-/// really has — every gg tool driven through the real membrane from its Java spelling against the
+/// really has — every gg operation driven through the real membrane from its Java spelling against the
 /// same expected JSON the other arms are held to.
 #[cfg(test)]
 #[path = "java.surface.test.rs"]

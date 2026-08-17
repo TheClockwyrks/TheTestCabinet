@@ -249,7 +249,7 @@ internal static class Signatures
         // shown, and has nothing on it to call; that file says at length why it is a class at all.
         //
         // It is found by its tag, and told apart from the module's own TYPES by NOT BEING PUBLIC:
-        // `ToolException` and `ToolErrorCode` carry `<ggmodule>core</ggmodule>` too, saying which
+        // `ApiException` and `ApiErrorCode` carry `<ggmodule>core</ggmodule>` too, saying which
         // module they belong to, and what distinguishes the declaration carrying the module's own
         // documentation is exactly that it is not part of the surface.
         foreach (var module in Catalogue.Modules.Where(module => module.Class.Length == 0))
@@ -591,7 +591,7 @@ internal static class Signatures
                 Gather(parameter.Type, found);
             }
         }
-        Gather(GgType("ToolException"), found);
+        Gather(GgType("ApiException"), found);
         return found;
     }
 
@@ -1160,7 +1160,7 @@ internal static class Signatures
         var throws = comment?.Elements("exception").Select(Text).Where(text => text.Length > 0).ToArray();
         if (throws is { Length: > 0 })
         {
-            tags.Add($"Throws `ToolException`: {string.Join(" ", throws)}");
+            tags.Add($"Throws `ApiException`: {string.Join(" ", throws)}");
         }
         return new Documented(Brief(Require(Summary(target), what), what), Remarks(target), tags);
     }
@@ -1312,7 +1312,7 @@ internal static class Signatures
         }
     }
 
-    /// What a `<see cref="Gg.ToolErrorCode.NotFound"/>` reads as: `ToolErrorCode.NotFound`.
+    /// What a `<see cref="Gg.ApiErrorCode.NotFound"/>` reads as: `ApiErrorCode.NotFound`.
     ///
     /// **A cref is module-qualified in the rendered text and bare in the source**, because Roslyn
     /// resolves `<see cref="ImageFile"/>` written inside `Files` to `Gg.Files.ImageFile` and only the

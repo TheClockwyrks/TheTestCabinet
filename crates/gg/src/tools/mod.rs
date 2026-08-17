@@ -29,7 +29,7 @@
 //! plus a short `summary` for the [`ToolResult`](test_cabinet_core::gg::GgTelemetryKind::ToolResult)
 //! telemetry event.
 //!
-//! An outcome also carries a **typed sidecar**: the [`ToolData`] a successful call produced and the
+//! An outcome also carries a **typed sidecar**: the [`ApiData`] a successful call produced and the
 //! [`ToolFailure`] class a failed one was classified as, both computed from the same locals the
 //! prose is formatted from. The model-facing text is untouched by their presence — see
 //! [`data`] for why a consumer that is a program needs facts rather than sentences.
@@ -81,7 +81,7 @@ use test_cabinet_core::gg::{
     CAPABILITY_FORK, CAPABILITY_FSM, CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES,
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE, CAPABILITY_RESPONSES_AS_CODE,
     CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS,
-    CAPABILITY_WRITE_FILE, GgAgentConfig, GgToolFailure,
+    CAPABILITY_WRITE_FILE, GgAgentConfig, GgCallFailure,
 };
 
 use crate::board::IssuePolicy;
@@ -107,10 +107,10 @@ pub use context::{
 // from here by the [sandbox membrane](crate::sandbox), which turns each one into a typed WIT
 // result.
 pub use data::{
-    AgentStatusData, ArchiveHitData, ArchiveSearchData, BoardNodeData, BoardUsageData,
+    AgentStatusData, ApiData, ArchiveHitData, ArchiveSearchData, BoardNodeData, BoardUsageData,
     DirEntryData, DirEntryKind, FileImageData, FileTextData, MemoryHitData, MemoryUsageData,
-    ReclaimData, ShellData, SubagentHandleData, SubagentResultData, ToolData, ToolFailure,
-    UsagePair, saturating_u32, saturating_u64,
+    ReclaimData, ShellData, SubagentHandleData, SubagentResultData, ToolFailure, UsagePair,
+    saturating_u32, saturating_u64,
 };
 /// Crate-visible, unlike the rest of this module's surface: the only consumer of either is
 /// [session capture](crate::capture). It sizes its tool-payload ceiling at [`READ_FILE_CAP`] and
@@ -543,7 +543,7 @@ pub struct ToolOutcome {
     /// them. `None` for a tool whose result is a bare confirmation. The native tool-calling path is
     /// untouched: it keeps reading [`output`](Self::output).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub data: Option<ToolData>,
+    pub data: Option<ApiData>,
     /// Why the call failed, when it failed — so a structured caller is handed a typed class
     /// instead of inferring one from prose. `None` on success, and on a failure raised outside a
     /// tool implementation (which such a caller reports as unclassified).
@@ -600,28 +600,28 @@ impl ToolOutcome {
         self
     }
 
-    /// This outcome with its structured [`ToolData`] sidecar attached — the facts the `output`
+    /// This outcome with its structured [`ApiData`] sidecar attached — the facts the `output`
     /// states in prose, for a caller that needs to compute with them.
-    pub fn with_data(mut self, data: ToolData) -> Self {
+    pub fn with_data(mut self, data: ApiData) -> Self {
         self.data = Some(data);
         self
     }
 
-    /// The [failure class](GgToolFailure) this outcome is recorded with on its
+    /// The [failure class](GgCallFailure) this outcome is recorded with on its
     /// [`ToolResult`](test_cabinet_core::gg::GgTelemetryKind::ToolResult) telemetry — `None` on a
     /// success, `Some` on every failure.
     ///
     /// A failure the raising tool did not classify becomes
-    /// [`Other`](GgToolFailure::Other) rather than `None`, which is the same decision the membrane's
-    /// `error_code` already makes for the program-facing `ToolError`: the two records of one failed
+    /// [`Other`](GgCallFailure::Other) rather than `None`, which is the same decision the membrane's
+    /// `error_code` already makes for the program-facing `ApiError`: the two records of one failed
     /// call say the same thing about it. It also keeps the wire invariant simple and checkable —
     /// the class is present on exactly the results whose `ok` is `false` — where a `None` shared
     /// between "succeeded" and "failed, unclassified" would say nothing about either.
-    pub fn wire_failure(&self) -> Option<GgToolFailure> {
+    pub fn wire_failure(&self) -> Option<GgCallFailure> {
         if self.ok {
             return None;
         }
-        Some(self.failure.map_or(GgToolFailure::Other, ToolFailure::wire))
+        Some(self.failure.map_or(GgCallFailure::Other, ToolFailure::wire))
     }
 }
 
@@ -1057,8 +1057,9 @@ impl From<ArgumentError> for ToolOutcome {
 ///
 /// The message deliberately does **not** name the tool. Both paths a failure reaches the model by
 /// already attribute it: a native tool result is bound to the `tool_use` that asked for it, and the
-/// [sandbox](crate::sandbox) renders a `ToolError` as "`<tool>` failed (`<code>`): `<message>`". A
-/// tool name here would be the second half of that line saying what the first half already said.
+/// [sandbox](crate::sandbox) renders an `ApiError` as "`<operation>` failed (`<code>`):
+/// `<message>`". A tool name here would be the second half of that line saying what the first half
+/// already said.
 fn required_str(args: &Value, field: &str) -> Result<String, ArgumentError> {
     match args.get(field) {
         Some(Value::String(value)) => Ok(value.clone()),

@@ -15,7 +15,7 @@ use super::super::test_cabinet::gg::delegation::{
 use super::super::test_cabinet::gg::feedback::{self, ErrorKind, ProgramError};
 use super::super::test_cabinet::gg::session::Host as SessionHost;
 use super::super::test_cabinet::gg::types::ErrorCode;
-use super::super::{MembraneState, ToolApi};
+use super::super::{MembraneState, OperationApi};
 use super::wire_coding::{VARIANT_CASE, VARIANT_VALUE, Value, WireFault, argument, record, text};
 use super::{Answer, Failure};
 
@@ -24,7 +24,7 @@ use super::{Answer, Failure};
 // ---------------------------------------------------------------------------------------------
 
 /// `session.finish` — declare the work complete.
-pub(super) fn finish<A: ToolApi>(
+pub(super) fn finish<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -35,13 +35,13 @@ pub(super) fn finish<A: ToolApi>(
 }
 
 /// `session.approve` — approve what was reviewed.
-pub(super) fn approve<A: ToolApi>(state: &mut MembraneState<A>) -> Answer {
+pub(super) fn approve<A: OperationApi>(state: &mut MembraneState<A>) -> Answer {
     SessionHost::approve(state)?;
     Ok(Value::None)
 }
 
 /// `session.request_changes` — send the work back with a list of changes.
-pub(super) fn request_changes<A: ToolApi>(
+pub(super) fn request_changes<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -56,7 +56,7 @@ pub(super) fn request_changes<A: ToolApi>(
 // ---------------------------------------------------------------------------------------------
 
 /// `delegation.spawn_subagent` — start a subagent.
-pub(super) fn spawn_subagent<A: ToolApi>(
+pub(super) fn spawn_subagent<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -72,7 +72,7 @@ pub(super) fn spawn_subagent<A: ToolApi>(
 }
 
 /// `delegation.wait_for_subagents` — park until subagents return.
-pub(super) fn wait_for_subagents<A: ToolApi>(
+pub(super) fn wait_for_subagents<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -87,7 +87,7 @@ pub(super) fn wait_for_subagents<A: ToolApi>(
 }
 
 /// `delegation.send_message` — send one agent a message.
-pub(super) fn send_message<A: ToolApi>(
+pub(super) fn send_message<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -99,7 +99,7 @@ pub(super) fn send_message<A: ToolApi>(
 }
 
 /// `delegation.transition_state` — move this agent's issue to another state.
-pub(super) fn transition_state<A: ToolApi>(
+pub(super) fn transition_state<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -111,7 +111,7 @@ pub(super) fn transition_state<A: ToolApi>(
 }
 
 /// `delegation.exec` — hand this session to another agent.
-pub(super) fn exec<A: ToolApi>(
+pub(super) fn exec<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -123,7 +123,7 @@ pub(super) fn exec<A: ToolApi>(
 }
 
 /// `delegation.fork` — start a copy of this agent.
-pub(super) fn fork<A: ToolApi>(
+pub(super) fn fork<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -187,7 +187,7 @@ fn subagent_result(result: SubagentResult) -> Value {
 // ---------------------------------------------------------------------------------------------
 
 /// `feedback.log` — one line the program produced.
-pub(super) fn log<A: ToolApi>(
+pub(super) fn log<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -198,13 +198,13 @@ pub(super) fn log<A: ToolApi>(
 }
 
 /// `feedback.note_return` — the program ended with a value gg discarded.
-pub(super) fn note_return<A: ToolApi>(state: &mut MembraneState<A>) -> Answer {
+pub(super) fn note_return<A: OperationApi>(state: &mut MembraneState<A>) -> Answer {
     feedback::Host::note_return(state);
     Ok(Value::None)
 }
 
 /// `feedback.report_deferred` — a call landed after the program ended.
-pub(super) fn report_deferred<A: ToolApi>(
+pub(super) fn report_deferred<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -215,7 +215,7 @@ pub(super) fn report_deferred<A: ToolApi>(
 }
 
 /// `feedback.report_error` — the program failed and its guest described the failure.
-pub(super) fn report_error<A: ToolApi>(
+pub(super) fn report_error<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -237,7 +237,7 @@ pub(super) fn report_error<A: ToolApi>(
 }
 
 /// `feedback.report_module_error` — a code module threw while it was being loaded.
-pub(super) fn report_module_error<A: ToolApi>(
+pub(super) fn report_module_error<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -251,7 +251,7 @@ pub(super) fn report_module_error<A: ToolApi>(
 /// The `error-kind` enum.
 fn error_kind(value: &Value) -> Result<ErrorKind, Failure> {
     match value.text("the kind")?.as_str() {
-        "tool-failure" => Ok(ErrorKind::ToolFailure),
+        "api-failure" => Ok(ErrorKind::ApiFailure),
         "unknown-name" => Ok(ErrorKind::UnknownName),
         "other" => Ok(ErrorKind::Other),
         other => Err(Failure::Fault(WireFault::new(format!(

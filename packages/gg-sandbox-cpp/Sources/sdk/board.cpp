@@ -14,7 +14,7 @@ namespace gg {
 
 namespace detail {
 
-const std::vector<std::string>& board_tools() {
+const std::vector<std::string>& board_operations() {
   static const std::vector<std::string> names{"create_epic",   "create_issue",
                                               "update_issue",  "set_issue_blocked_by",
                                               "remove_epic",   "remove_issue",
@@ -34,7 +34,7 @@ board::epic_created create_epic(std::string_view prefix, std::string_view title,
   input.title = scratch.str(title);
   input.description = scratch.str(description);
   test_cabinet_gg_board_epic_created_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_board_create_epic(&input, &ret, &err)) detail::fail(err);
   board::epic_created created{detail::lift(ret.id), detail::lift_board_usage(ret.board)};
   test_cabinet_gg_board_epic_created_free(&ret);
@@ -57,7 +57,7 @@ board::issue_created create_issue(std::string_view title, std::string_view in_sc
   input.agent = scratch.str(agent);
   input.reviewers = scratch.list(options.reviewers);
   test_cabinet_gg_board_issue_created_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_board_create_issue(&input, &ret, &err)) detail::fail(err);
   board::issue_created created{detail::lift(ret.id), detail::lift_board_usage(ret.board)};
   test_cabinet_gg_board_issue_created_free(&ret);
@@ -76,7 +76,7 @@ void update_issue(std::string_view id, board::issue_patch patch) {
   lowered.status.is_some = patch.status.has_value();
   if (patch.status.has_value()) lowered.status.val = detail::lower(*patch.status);
   lowered.epic = scratch.epic(patch.epic);
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_board_update_issue(&lowered_id, &lowered, &err)) detail::fail(err);
 }
 
@@ -84,7 +84,7 @@ void set_issue_blocked_by(std::string_view id, std::vector<std::string> blocked_
   detail::scratch scratch;
   sandbox_string_t lowered_id = scratch.str(id);
   sandbox_list_string_t lowered = scratch.list(blocked_by);
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_board_set_issue_blocked_by(&lowered_id, &lowered, &err)) detail::fail(err);
 }
 
@@ -92,7 +92,7 @@ board::board_usage remove_epic(std::string_view id) {
   detail::scratch scratch;
   sandbox_string_t lowered = scratch.str(id);
   test_cabinet_gg_board_board_usage_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_board_remove_epic(&lowered, &ret, &err)) detail::fail(err);
   return detail::lift_board_usage(ret);
 }
@@ -101,7 +101,7 @@ board::board_usage remove_issue(std::string_view id) {
   detail::scratch scratch;
   sandbox_string_t lowered = scratch.str(id);
   test_cabinet_gg_board_board_usage_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_board_remove_issue(&lowered, &ret, &err)) detail::fail(err);
   return detail::lift_board_usage(ret);
 }
@@ -110,7 +110,7 @@ std::string wait_for_issue(std::string_view id) {
   detail::scratch scratch;
   sandbox_string_t lowered = scratch.str(id);
   sandbox_string_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_board_wait_for_issue(&lowered, &ret, &err)) detail::fail(err);
   std::string acknowledgement = detail::lift(ret);
   sandbox_string_free(&ret);

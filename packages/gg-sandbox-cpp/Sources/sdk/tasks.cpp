@@ -14,7 +14,7 @@ namespace gg {
 
 namespace detail {
 
-const std::vector<std::string>& tasks_tools() {
+const std::vector<std::string>& tasks_operations() {
   static const std::vector<std::string> names{"add_task", "update_task", "set_blocked_by",
                                               "complete_task", "remove_task"};
   return names;
@@ -33,7 +33,7 @@ tasks::task_usage add_task(std::string_view id, std::string_view title,
   input.description = scratch.opt(options.description);
   input.blocked_by = scratch.list(options.blocked_by);
   test_cabinet_gg_tasks_task_usage_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_tasks_add_task(&input, &ret, &err)) detail::fail(err);
   return detail::lift_task_usage(ret);
 }
@@ -46,7 +46,7 @@ void update_task(std::string_view id, tasks::task_patch patch) {
   lowered.description = scratch.edit(patch.description);
   lowered.status.is_some = patch.status.has_value();
   if (patch.status.has_value()) lowered.status.val = detail::lower(*patch.status);
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_tasks_update_task(&lowered_id, &lowered, &err)) detail::fail(err);
 }
 
@@ -54,14 +54,14 @@ void set_blocked_by(std::string_view id, std::vector<std::string> blocked_by) {
   detail::scratch scratch;
   sandbox_string_t lowered_id = scratch.str(id);
   sandbox_list_string_t lowered = scratch.list(blocked_by);
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_tasks_set_blocked_by(&lowered_id, &lowered, &err)) detail::fail(err);
 }
 
 void complete_task(std::string_view id) {
   detail::scratch scratch;
   sandbox_string_t lowered = scratch.str(id);
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_tasks_complete_task(&lowered, &err)) detail::fail(err);
 }
 
@@ -69,7 +69,7 @@ tasks::task_usage remove_task(std::string_view id) {
   detail::scratch scratch;
   sandbox_string_t lowered = scratch.str(id);
   test_cabinet_gg_tasks_task_usage_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_tasks_remove_task(&lowered, &ret, &err)) detail::fail(err);
   return detail::lift_task_usage(ret);
 }

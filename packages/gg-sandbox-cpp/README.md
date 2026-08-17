@@ -104,7 +104,7 @@ SDK's is at global scope, so a program's own `namespace files` and `gg::files` n
 arguments: `snake_case` functions, `snake_case` types, `enum class` for a
 fixed choice, aggregates with public members for a record, `std::variant` for a value that is one of
 two things, **default arguments** for one optional part and a **designated initialiser** for
-several, and a thrown `gg::core::tool_error` — a `std::runtime_error` — for a call that failed.
+several, and a thrown `gg::core::api_error` — a `std::runtime_error` — for a call that failed.
 
 ```cpp
 gg::files::read_file("src/main.cpp", {.limit = 40});
@@ -112,8 +112,8 @@ gg::tasks::update_task("t1", {.description = gg::tasks::text_edit::clear(),
                               .status = gg::tasks::task_status::done});
 try {
   gg::views::open_text("notes", gg::files::read_text_file("notes.md"));
-} catch (const gg::core::tool_error &failure) {
-  if (failure.code() != gg::core::tool_error_code::not_found) throw;
+} catch (const gg::core::api_error &failure) {
+  if (failure.code() != gg::core::api_error_code::not_found) throw;
 }
 ```
 

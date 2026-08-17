@@ -1,7 +1,7 @@
 package gg.docs;
 
-import gg.ToolError;
-import gg.ToolErrorCode;
+import gg.ApiError;
+import gg.ApiErrorCode;
 import gg.internal.Coding;
 import gg.internal.Read;
 import gg.internal.Value;
@@ -16,7 +16,7 @@ import java.util.List;
  *
  * <p>A search only ever returns what this agent may actually call. The compiler is less careful —
  * the SDK is one jar and every class on it compiles — so a program can write a call a search would
- * never have shown it, and what happens then is a {@link ToolErrorCode#UNAVAILABLE} naming the
+ * never have shown it, and what happens then is a {@link ApiErrorCode#UNAVAILABLE} naming the
  * capability this run withheld.
  *
  * @ggmodule docs
@@ -39,7 +39,7 @@ public final class Docs {
      *
      * @param query The words to look for, as one string. Several specific words beat a sentence.
      * @return one page of matches, best first, and the total behind it
-     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} for a blank query, which is a
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for a blank query, which is a
      *     question with no filter and no words in it. {@link #search(String, SearchFilters)} is the
      *     overload that takes one instead.
      * @ggop docs.search
@@ -62,7 +62,7 @@ public final class Docs {
      * @param filters What to narrow to, and which page to read. It may carry nothing, which is the
      *     same request the one-argument overload makes.
      * @return one page of matches, best first, and the total behind it
-     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} for a blank query with no filter
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for a blank query with no filter
      *     beside it — a search that asked for nothing and a search that found nothing are different
      *     answers — and for a {@link SearchFilters#limit(int)} of zero, which is a page that could
      *     answer nothing.
@@ -84,7 +84,7 @@ public final class Docs {
      * @param key The fully-qualified name the view was opened under, as {@link DocHit#key()}
      *     reports it.
      * @return how many views were closed, which is one unless it had already gone
-     * @throws ToolError {@link ToolErrorCode#UNAVAILABLE} for an agent this run did not give the
+     * @throws ApiError {@link ApiErrorCode#UNAVAILABLE} for an agent this run did not give the
      *     closing of documentation views. Opening one only ever appends to the end of the prompt,
      *     while closing one rewrites its middle, which is why opening is always available and
      *     closing is bought.
@@ -103,7 +103,7 @@ public final class Docs {
      * naming each key would be a list to keep.
      *
      * @return how many views went
-     * @throws ToolError {@link ToolErrorCode#UNAVAILABLE} for an agent this run did not give the
+     * @throws ApiError {@link ApiErrorCode#UNAVAILABLE} for an agent this run did not give the
      *     closing of documentation views.
      * @ggop docs.close_all
      */

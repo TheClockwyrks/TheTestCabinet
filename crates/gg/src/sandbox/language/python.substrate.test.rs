@@ -18,7 +18,7 @@
 //! ambient WASI surface — put in a [`bounded_store`](super::super::super::bounded_store) with the
 //! production ceilings, instantiated through the `bindgen!`-generated
 //! [`Sandbox`](super::super::super::membrane::Sandbox), and driven through its `run` export. The tool
-//! side is [`FakeToolApi`](super::super::super::fake::FakeToolApi), which is what every other
+//! side is [`FakeOperationApi`](super::super::super::fake::FakeOperationApi), which is what every other
 //! end-to-end sandbox test uses, and it records the exact JSON each call arrived as.
 //!
 //! # Why these tests are consolidated
@@ -37,8 +37,8 @@ use test_cabinet_core::gg::{
 use wasmtime::component::Component;
 
 use crate::sandbox::fake::{
-    CallLog, FakeToolApi, all_capabilities, all_operations, all_operations_without, canned_outcome,
-    granted_operations,
+    CallLog, FakeOperationApi, all_capabilities, all_operations, all_operations_without,
+    canned_outcome, granted_operations,
 };
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{ProgramError, ProgramErrorKind, SandboxError, SandboxOutcome};
@@ -142,10 +142,10 @@ fn run_as(
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
     let log = CallLog::default();
-    let api = FakeToolApi::with(&log, responder);
+    let api = FakeOperationApi::with(&log, responder);
     // Both of these before the store exists, for the reason this function's documentation gives.
     let component = component();
-    let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let linker = linker::<FakeOperationApi>().expect("the production linker builds");
     let operations = granted_operations(operations, library);
     let scope = ProgramScope {
         capabilities: &all_capabilities(),
@@ -247,7 +247,7 @@ fn program_error(outcome: &SandboxOutcome) -> &ProgramError {
 #[test]
 fn a_whole_python_program_a_model_would_write_runs_through_the_turn_path() {
     let log = CallLog::default();
-    let api = FakeToolApi::with(&log, canned_outcome);
+    let api = FakeOperationApi::with(&log, canned_outcome);
     let operations = granted_operations(&all_operations(), false);
     let scope = ProgramScope {
         capabilities: &all_capabilities(),
@@ -336,7 +336,7 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
         (r#"views.open_text("notes", "eight files")"#, "views"),
         (r#"gg.views.open_text("notes", "eight files")"#, "gg"),
         (r#"print(files.read_file)"#, "files"),
-        (r#"print(ToolError)"#, "ToolError"),
+        (r#"print(ApiError)"#, "ApiError"),
         (r#"print(UNCHANGED)"#, "UNCHANGED"),
         // The shim's own module namespace is not the program's either: a program is executed in a
         // mapping of its own rather than in the file that executes it.
@@ -380,7 +380,7 @@ gg.views.open_text("notes", notes)
         },
         SandboxLimits::default(),
         None,
-        FakeToolApi::with(&log, canned_outcome),
+        FakeOperationApi::with(&log, canned_outcome),
     );
     let error = program_error(&outcome);
     assert_eq!(error.kind, ProgramErrorKind::UnknownName);
@@ -473,7 +473,7 @@ print(f"{len(points)} points, {sum(p.x for p in points)} total x")
 fn a_python_program_crosses_the_membrane_and_is_gated_by_the_host() {
     // The SDK is not written, so the program reaches the wire through the generated bindings
     // directly. That is the *substrate's* proof and not a model-facing surface: what is being shown
-    // is that a `result<T, tool-error>` marshals both ways between CPython and gg's real `ToolApi`.
+    // is that a `result<T, api-error>` marshals both ways between CPython and gg's real `OperationApi`.
     let read = r#"
 from wit_world.imports import helpers
 text = helpers.read_text_file("notes.md", None, None)
@@ -507,7 +507,7 @@ from componentize_py_types import Err
 try:
     helpers.read_text_file("notes.md", None, None)
 except Err as err:
-    print(f"{err.value.code.name} {err.value.tool}")
+    print(f"{err.value.code.name} {err.value.operation}")
 "#;
     let (outcome, log) = run_with(caught, &[], &[], SandboxLimits::default(), canned_outcome);
     assert_eq!(logs(&outcome), ["UNAVAILABLE read_text_file"]);
@@ -931,7 +931,7 @@ fn the_embedded_guest_imports_the_whole_membrane_and_the_whole_wasi_surface() {
     // 30 s wall-clock deadline, and a `Component::new` of a 25 MB guest performed inside it is
     // charged to a program that has not started. See [`run_as`] for the measurements.
     let component = component();
-    let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let linker = linker::<FakeOperationApi>().expect("the production linker builds");
     let limits = SandboxLimits::default();
     let log = CallLog::default();
     let scope = ProgramScope {
@@ -941,15 +941,15 @@ fn the_embedded_guest_imports_the_whole_membrane_and_the_whole_wasi_surface() {
         ending: RunEnding::None,
     };
     let mut store = bounded_store(
-        MembraneState::new(FakeToolApi::new(&log), python(), scope, limits, None),
+        MembraneState::new(FakeOperationApi::new(&log), python(), scope, limits, None),
         limits,
     );
     let bound = Sandbox::instantiate(&mut store, component, &linker).expect("instantiates");
     let mut answered = bound
-        .call_bound_tools(&mut store)
+        .call_bound_operations(&mut store)
         .expect("the guest answers");
     answered.sort();
-    let mut expected = crate::sandbox::signatures::sandbox_tool_names();
+    let mut expected = crate::sandbox::signatures::sandbox_operation_names();
     expected.sort_unstable();
     assert_eq!(answered, expected);
 }
@@ -1025,7 +1025,7 @@ fn a_code_module_becomes_a_python_namespace_at_lib() {
     );
 }
 
-/// One tool, called through the Python spelling of it, and the JSON gg's dispatch must have seen.
+/// One operation, called through the Python spelling of it, and the JSON gg's dispatch must have seen.
 struct Crossing {
     /// The gg tool name the call must arrive under.
     tool: &'static str,
@@ -1035,7 +1035,7 @@ struct Crossing {
     expected: fn() -> Value,
 }
 
-/// Every bound tool, called through its idiomatic Python function.
+/// Every bound operation, called through its idiomatic Python function.
 ///
 /// Deliberately the same table `sandbox.membrane.test.rs` drives the TypeScript arm with, down to
 /// the arguments and the expected JSON — because the expected JSON is the point. gg's dispatch is
@@ -1254,7 +1254,7 @@ fn crossings() -> Vec<Crossing> {
 }
 
 #[test]
-fn every_tool_crosses_the_membrane_from_its_python_spelling() {
+fn every_operation_crosses_the_membrane_from_its_python_spelling() {
     let crossings = crossings();
     let operations = all_operations();
 
@@ -1286,15 +1286,15 @@ fn every_tool_crosses_the_membrane_from_its_python_spelling() {
         );
     }
 
-    // Exhaustive by construction: a tool added to gg with no row here fails now, rather than
+    // Exhaustive by construction: an operation added to gg with no row here fails now, rather than
     // shipping as a typed function nobody ever called.
     let mut covered: Vec<&str> = crossings.iter().map(|crossing| crossing.tool).collect();
     covered.sort_unstable();
-    let mut expected = crate::sandbox::signatures::sandbox_tool_names();
+    let mut expected = crate::sandbox::signatures::sandbox_operation_names();
     expected.sort_unstable();
     assert_eq!(
         covered, expected,
-        "every bound tool needs a crossing, and only bound tools may have one"
+        "every bound operation needs a crossing, and only bound operations may have one"
     );
 }
 
@@ -1396,7 +1396,7 @@ except dataclasses.FrozenInstanceError:
 fn a_failed_call_arrives_as_a_python_exception() {
     let operations = all_operations();
 
-    // The wire's `result<T, tool-error>` is a raised `ToolError` carrying a typed code — so a
+    // The wire's `result<T, api-error>` is a raised `ApiError` carrying a typed code — so a
     // handler branches on a value, and an `except` clause is where a Python programmer expects the
     // failure to be handled.
     let (outcome, _log) = run_with(
@@ -1405,8 +1405,8 @@ import gg
 
 try:
     gg.files.edit_file("src/a.py", "alpha", "beta")
-except gg.core.ToolError as failure:
-    print(failure.tool, failure.code is gg.core.ToolErrorCode.CONFLICT, failure.code.value)
+except gg.core.ApiError as failure:
+    print(failure.operation, failure.code is gg.core.ApiErrorCode.CONFLICT, failure.code.value)
     print(str(failure))
 "#,
         &operations,
@@ -1431,7 +1431,7 @@ except gg.core.ToolError as failure:
         ]
     );
 
-    // Uncaught, it is a TOOL FAILURE rather than an ordinary exception, and it carries the code the
+    // Uncaught, it is an API FAILURE rather than an ordinary exception, and it carries the code the
     // host branches on — which is what makes a failure raised through the SDK indistinguishable, to
     // gg, from one a program raised by reaching past it into the generated bindings.
     let (outcome, _log) = run_with(
@@ -1603,12 +1603,12 @@ fn what_a_run_withholds_is_still_on_its_module_and_refused_when_it_is_called() {
     let (outcome, log) = run_with(
         r#"
 from gg import files
-from gg.core import ToolError, ToolErrorCode
+from gg.core import ApiError, ApiErrorCode
 
 try:
     files.read_file("notes.md")
-except ToolError as failure:
-    print(failure.tool, failure.code is ToolErrorCode.UNAVAILABLE)
+except ApiError as failure:
+    print(failure.operation, failure.code is ApiErrorCode.UNAVAILABLE)
 "#,
         &[crate::sandbox::operations::FILES_WRITE_FILE],
         &[],
@@ -1768,7 +1768,7 @@ fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
 
     // And every TYPE it declares is a name a program can write, because a signature that mentions
     // one a program cannot name is a signature a model cannot act on: `gg.context.TurnRange(4, 19)`
-    // is an argument, `gg.core.ToolError` is what an `except` clause catches, and
+    // is an argument, `gg.core.ApiError` is what an `except` clause catches, and
     // `gg.tasks.TaskStatus.DONE` is a status. Each is written under the module that declares it,
     // which is the key the catalogue files it under.
     let types: Vec<String> = catalogue["types"]
@@ -1818,7 +1818,7 @@ fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
 /// proved to be the one gg filled in.
 #[test]
 fn a_convenience_method_reaches_the_operation_it_is_an_alias_of() {
-    // Four of the five hang off a value a gg TOOL produced, so the alias's crossing is visible in
+    // Four of the five hang off a value a gg OPERATION produced, so the alias's crossing is visible in
     // the log beside the crossing that made the receiver. `views.close` is the exception among
     // them — it is a view rather than a tool — and it is checked by what it answers instead.
     let (outcome, log) = run_as(
@@ -1884,10 +1884,10 @@ print(gg.views.current()[0].close(), len(gg.views.current()))
     // The fifth hangs off the program library, which is bound from a capability rather than from a
     // tool, so it needs a store that grants one and a library with something in it.
     let log = CallLog::default();
-    let api = FakeToolApi::new(&log).with_program(3, "print('the program that ran')");
+    let api = FakeOperationApi::new(&log).with_program(3, "print('the program that ran')");
     // The component before the store, as everywhere in this file; see [`run_as`] for why.
     let component = component();
-    let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let linker = linker::<FakeOperationApi>().expect("the production linker builds");
     let limits = SandboxLimits::default();
     // A run that keeps a library: the capability on, and the calls it offers granted.
     let capabilities = vec![CAPABILITY_PROGRAM_LIBRARY.to_string()];
@@ -1999,7 +1999,7 @@ print(type(region).__name__, region.offset, region.limit)
         |name, _args| {
             if name == "read_file" {
                 ToolOutcome::ok("line two\n", "read 1 line").with_data(
-                    crate::tools::ToolData::FileText(crate::tools::FileTextData {
+                    crate::tools::ApiData::FileText(crate::tools::FileTextData {
                         contents: "line two\n".to_string(),
                         first_line: 2,
                         last_line: 2,
@@ -2034,10 +2034,10 @@ print(type(region).__name__, region.offset, region.limit)
     // The program library: bound from the capability rather than from a tool, so the whole object is
     // there or it is not a name at all.
     let log = CallLog::default();
-    let api = FakeToolApi::new(&log).with_program(3, "print('the program that ran')");
+    let api = FakeOperationApi::new(&log).with_program(3, "print('the program that ran')");
     // The component before the store, as everywhere in this file; see [`run_as`] for why.
     let component = component();
-    let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let linker = linker::<FakeOperationApi>().expect("the production linker builds");
     let limits = SandboxLimits::default();
     // A run that keeps a library: the capability on, and the calls it offers granted.
     let capabilities = vec![CAPABILITY_PROGRAM_LIBRARY.to_string()];
@@ -2089,7 +2089,7 @@ gg.programs.rerun(source.replace("ran", "walked"))
     // double can honestly say about a real index; what is proven is the crossing, the lowering of
     // the record and the enum argument, and the view the host opens on the way back.
     let log = CallLog::default();
-    let api = FakeToolApi::new(&log);
+    let api = FakeOperationApi::new(&log);
     // Searching is bound to every program; closing is bought, so this store grants the capability
     // that buys it and the calls that capability offers.
     let capabilities = vec![CAPABILITY_DOCVIEW_CLOSE.to_string()];
@@ -2143,8 +2143,8 @@ import gg
 
 try:
     gg.docs.close_all()
-except gg.core.ToolError as failure:
-    print(failure.tool, failure.code is gg.core.ToolErrorCode.UNAVAILABLE)
+except gg.core.ApiError as failure:
+    print(failure.operation, failure.code is gg.core.ApiErrorCode.UNAVAILABLE)
 "#,
         &all_operations_without(CAPABILITY_DOCVIEW_CLOSE),
         &[],
@@ -2162,7 +2162,7 @@ fn g8_a_runtime_failure_reaches_the_model() {
         GgProgramLanguage::Python,
         &[
             Case {
-                shape: Shape::ToolError,
+                shape: Shape::ApiError,
                 program: r#"# G8 (a): a gg call the host answers `not-found`, uncaught.
 
 import gg
@@ -2175,7 +2175,7 @@ print(text)
                 names: &["read_file", "missing.md"],
                 located: Located::At("line 5, column 8"),
                 answered: Answered::AtRuntime,
-                recorded: Some(TurnErrorType::ProgramToolError),
+                recorded: Some(TurnErrorType::ProgramApiError),
             },
             Case {
                 shape: Shape::NativeFault,

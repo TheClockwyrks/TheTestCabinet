@@ -1,7 +1,7 @@
 package gg.views;
 
-import gg.ToolError;
-import gg.ToolErrorCode;
+import gg.ApiError;
+import gg.ApiErrorCode;
 import gg.files.Files;
 import gg.internal.Coding;
 import gg.internal.Read;
@@ -39,7 +39,7 @@ public final class Views {
      *
      * @param path The file to open, relative to the workspace or absolute.
      * @return the file's text, or the picture's description
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} for a missing path. The read is what fails,
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for a missing path. The read is what fails,
      *     and nothing is opened when it does.
      * @ggop views.open_file
      */
@@ -58,8 +58,8 @@ public final class Views {
      * @param offset The 1-based first line to show.
      * @param limit How many lines to show from {@code offset}.
      * @return the window of the file's text, or the picture's description
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} for a missing path, and
-     *     {@link ToolErrorCode#INVALID_ARGUMENT} for an offset past the end of the file.
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for a missing path, and
+     *     {@link ApiErrorCode#INVALID_ARGUMENT} for an offset past the end of the file.
      * @ggop views.open_file
      */
     public static Files.FileRead openFile(String path, int offset, int limit) {
@@ -78,8 +78,8 @@ public final class Views {
      *     same label again replaces what it showed. It may not be empty.
      * @param body What to show. An empty body is allowed: it is how a program says that something it
      *     was showing is now empty.
-     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} for an empty label — a view with no
-     *     selector could never be closed or attributed — and {@link ToolErrorCode#LIMIT_EXCEEDED},
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for an empty label — a view with no
+     *     selector could never be closed or attributed — and {@link ApiErrorCode#LIMIT_EXCEEDED},
      *     naming the cap, for a body or label over gg's caps. Nothing is silently truncated.
      * @ggop views.open_text
      */
@@ -103,7 +103,7 @@ public final class Views {
      *     resolves and is a fallback rather than the form to reach for: two modules are free to
      *     declare a {@code close}, and only the qualified name says which one is meant. Searching
      *     the documentation is what says which names exist.
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} for an unknown or unbound name.
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for an unknown or unbound name.
      * @ggop views.open_docs_view
      */
     public static void openDocsView(String name) {
@@ -127,7 +127,7 @@ public final class Views {
      * @param selector What the view is filed under: a file's path, a text view's label, or
      *     {@code search results}.
      * @return how many views were closed
-     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} for an empty selector, which names
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for an empty selector, which names
      *     nothing rather than everything — no call here closes the window wholesale.
      * @ggop views.close
      */

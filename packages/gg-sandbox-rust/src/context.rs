@@ -7,11 +7,11 @@
 use std::ops::RangeInclusive;
 
 use crate::bindings::test_cabinet::gg::context;
-use crate::core::ToolError;
+use crate::core::ApiError;
 use crate::wire;
 
-/// The gg tools this module dispatches — see [`files::TOOLS`](crate::files::TOOLS).
-pub(crate) const TOOLS: &[&str] = &[
+/// The gg tools this module dispatches — see [`files::OPERATIONS`](crate::files::OPERATIONS).
+pub(crate) const OPERATIONS: &[&str] = &[
     "evict_file_view",
     "archive_thread",
     "search_archive",
@@ -38,7 +38,7 @@ pub(crate) const TOOLS: &[&str] = &[
 /// `InvalidArgument` for a path that is given but empty; leaving it out altogether is how every file
 /// view is dropped.
 #[doc(alias = "ggop:context.evict_file_view")]
-pub fn evict_file_view(path: Option<&str>) -> Result<ReclaimReport, ToolError> {
+pub fn evict_file_view(path: Option<&str>) -> Result<ReclaimReport, ApiError> {
     wire::lift(context::evict_file_view(path)).map(wire::reclaim_report)
 }
 
@@ -63,7 +63,7 @@ pub fn evict_file_view(path: Option<&str>) -> Result<ReclaimReport, ToolError> {
 /// `InvalidArgument` for an empty list, too many spans at once, or a span that ends before it
 /// starts.
 #[doc(alias = "ggop:context.archive_thread")]
-pub fn archive_thread(ranges: &[RangeInclusive<u32>]) -> Result<ReclaimReport, ToolError> {
+pub fn archive_thread(ranges: &[RangeInclusive<u32>]) -> Result<ReclaimReport, ApiError> {
     let ranges: Vec<_> = ranges.iter().map(wire::turn_range).collect();
     wire::lift(context::archive_thread(&ranges)).map(wire::reclaim_report)
 }
@@ -87,7 +87,7 @@ pub fn archive_thread(ranges: &[RangeInclusive<u32>]) -> Result<ReclaimReport, T
 ///
 /// `InvalidArgument` for an empty query.
 #[doc(alias = "ggop:context.search_archive")]
-pub fn search_archive(query: &str) -> Result<ArchiveSearch, ToolError> {
+pub fn search_archive(query: &str) -> Result<ArchiveSearch, ApiError> {
     wire::lift(context::search_archive(query)).map(wire::archive_search)
 }
 
@@ -112,7 +112,7 @@ pub fn search_archive(query: &str) -> Result<ArchiveSearch, ToolError> {
 /// `InvalidArgument` for a blank summary. This is the one call gg does not refuse while a compaction
 /// is in flight, since nothing else can clear the window.
 #[doc(alias = "ggop:context.compact")]
-pub fn compact(summary: &str, files: &[&str]) -> Result<(), ToolError> {
+pub fn compact(summary: &str, files: &[&str]) -> Result<(), ApiError> {
     wire::lift(context::compact(summary, &wire::strings(files)))
 }
 

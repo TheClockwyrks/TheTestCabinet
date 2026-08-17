@@ -1,7 +1,7 @@
 package gg.internal
 
-import gg.core.ToolError
-import gg.core.ToolErrorCode
+import gg.core.ApiError
+import gg.core.ApiErrorCode
 
 /**
  * **The bridge** — the one file in this SDK that knows there is a host at all, and the lowering
@@ -27,7 +27,7 @@ import gg.core.ToolErrorCode
  * exists to avoid.
  *
  * Every call therefore lands in the same typed host function a TypeScript program's does: the same
- * capability gate, the same recorded call, the same deadline, the same `tool-error`. That is what
+ * capability gate, the same recorded call, the same deadline, the same `api-error`. That is what
  * makes two arms of a study produce byte-identical arguments for one capability.
  *
  * ## Why a dispatcher is fine *here*
@@ -44,7 +44,7 @@ import gg.core.ToolErrorCode
 // -------------------------------------------------------------------------------------------
 
 /**
- * One gg call: the value it returned, or a raised [ToolError].
+ * One gg call: the value it returned, or a raised [ApiError].
  *
  * @param op the rendered operation id — `files.read_file`
  * @param arguments the call's arguments, already lowered, positionally in the order the WIT declares
@@ -56,7 +56,7 @@ internal fun ggCall(
 ): Value {
     val answered = Frames.response(Abi.call(op, Frames.request(*arguments)))
     if (answered.failed()) {
-        throw ToolError(answered.tool(), ToolErrorCode.of(answered.code()), answered.message())
+        throw ApiError(answered.operation(), ApiErrorCode.of(answered.code()), answered.message())
     }
     return answered.value()
 }

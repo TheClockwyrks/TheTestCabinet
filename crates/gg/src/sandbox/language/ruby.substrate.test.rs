@@ -13,7 +13,7 @@
 //! ambient WASI surface), put in a [`bounded_store`](super::super::super::bounded_store) with the
 //! production ceilings, instantiated through the `bindgen!`-generated
 //! [`Sandbox`](super::super::super::membrane::Sandbox) and driven through its `run` export. The tool
-//! side is [`FakeToolApi`](super::super::super::fake::FakeToolApi), which is what every other
+//! side is [`FakeOperationApi`](super::super::super::fake::FakeOperationApi), which is what every other
 //! end-to-end sandbox test uses, and it records the exact JSON each call arrived as.
 //!
 //! # Why these tests are consolidated
@@ -39,8 +39,8 @@ use crate::ending::EndingRole;
 use test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE;
 
 use crate::sandbox::fake::{
-    CallLog, FakeToolApi, all_capabilities, all_operations, all_operations_without, canned_outcome,
-    granted_operations,
+    CallLog, FakeOperationApi, all_capabilities, all_operations, all_operations_without,
+    canned_outcome, granted_operations,
 };
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{ProgramError, ProgramErrorKind, SandboxError, SandboxOutcome};
@@ -145,10 +145,10 @@ fn evaluate(
 ) -> (SandboxOutcome, CallLog) {
     let limits = SandboxLimits::default();
     let log = CallLog::default();
-    let api = FakeToolApi::with(&log, responder);
+    let api = FakeOperationApi::with(&log, responder);
     // Both of these before the store exists, for the reason this function's documentation gives.
     let component = component();
-    let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let linker = linker::<FakeOperationApi>().expect("the production linker builds");
     let operations = granted_operations(operations, library);
     let scope = ProgramScope {
         capabilities: &all_capabilities(),
@@ -416,7 +416,7 @@ puts "#{out.exit_code} #{out.truncated?}"
         ]
     );
 
-    // A failure is a raised `ToolError` carrying a Symbol code, rescued by a name the prompt teaches
+    // A failure is a raised `ApiError` carrying a Symbol code, rescued by a name the prompt teaches
     // — and `rescue => failure` catches it too, because it is a `StandardError` like anything else a
     // Ruby library raises.
     let (outcome, _log) = run_with(
@@ -424,8 +424,8 @@ puts "#{out.exit_code} #{out.truncated?}"
 require "gg"
 begin
   GG::Files.read_file("missing.md")
-rescue GG::Core::ToolError => failure
-  puts "#{failure.tool} #{failure.code} #{failure.code == GG::Core::ToolErrorCode::NOT_FOUND}"
+rescue GG::Core::ApiError => failure
+  puts "#{failure.operation} #{failure.code} #{failure.code == GG::Core::ApiErrorCode::NOT_FOUND}"
   puts failure.message
 end
 
@@ -532,7 +532,7 @@ fn a_ruby_program_is_gated_by_the_host_and_told_what_it_does_have() {
     // And it is a VALUE: a `rescue` clause catches it, reads the code off it, and the program runs
     // on. That is what a `NoMethodError` could never be.
     let (outcome, _log) = run_with(
-        "require \"gg\"\nbegin\n  GG::Files.read_file(\"notes.md\")\nrescue GG::Core::ToolError => failure\n           puts \"#{failure.tool} #{failure.code}\"\nend\n",
+        "require \"gg\"\nbegin\n  GG::Files.read_file(\"notes.md\")\nrescue GG::Core::ApiError => failure\n           puts \"#{failure.operation} #{failure.code}\"\nend\n",
         &[crate::sandbox::operations::FILES_WRITE_FILE],
         &[],
         canned_outcome,
@@ -810,7 +810,7 @@ end
     }
 }
 
-/// One tool, called through the Ruby spelling of it, and the JSON gg's dispatch must have seen.
+/// One operation, called through the Ruby spelling of it, and the JSON gg's dispatch must have seen.
 struct Crossing {
     /// The gg tool name the call must arrive under.
     tool: &'static str,
@@ -1042,7 +1042,7 @@ fn crossings() -> Vec<Crossing> {
 }
 
 #[test]
-fn every_tool_crosses_the_membrane_from_its_ruby_spelling() {
+fn every_operation_crosses_the_membrane_from_its_ruby_spelling() {
     let crossings = crossings();
     let operations = all_operations();
 
@@ -1069,15 +1069,15 @@ fn every_tool_crosses_the_membrane_from_its_ruby_spelling() {
         );
     }
 
-    // Exhaustive by construction: a tool added to gg with no row here fails now, rather than
+    // Exhaustive by construction: an operation added to gg with no row here fails now, rather than
     // shipping as a typed method nobody ever called.
     let mut covered: Vec<&str> = crossings.iter().map(|crossing| crossing.tool).collect();
     covered.sort_unstable();
-    let mut expected = crate::sandbox::signatures::sandbox_tool_names();
+    let mut expected = crate::sandbox::signatures::sandbox_operation_names();
     expected.sort_unstable();
     assert_eq!(
         covered, expected,
-        "every bound tool needs a crossing, and only bound tools may have one"
+        "every bound operation needs a crossing, and only bound operations may have one"
     );
 }
 
@@ -1175,9 +1175,9 @@ GG::Session.request_changes("widen the test", "name the file")
     // Symbol the kind filter lowers from, and the view the host opens on the way back.
     let limits = SandboxLimits::default();
     let log = CallLog::default();
-    let api = FakeToolApi::new(&log);
+    let api = FakeOperationApi::new(&log);
     let component = component();
-    let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let linker = linker::<FakeOperationApi>().expect("the production linker builds");
     let capabilities = vec![CAPABILITY_DOCVIEW_CLOSE.to_string()];
     let operations = crate::sandbox::capability_operations([CAPABILITY_DOCVIEW_CLOSE]);
     let scope = ProgramScope {
@@ -1228,8 +1228,8 @@ puts "#{GG::Docs.close("GG::Files.read_file")} #{GG::Docs.close_all}"
 require "gg"
 begin
   GG::Docs.close_all
-rescue GG::Core::ToolError => failure
-  puts "#{failure.tool} #{failure.code == GG::Core::ToolErrorCode::UNAVAILABLE}"
+rescue GG::Core::ApiError => failure
+  puts "#{failure.operation} #{failure.code == GG::Core::ApiErrorCode::UNAVAILABLE}"
 end
 "##,
         &all_operations_without(CAPABILITY_DOCVIEW_CLOSE),
@@ -1507,7 +1507,7 @@ end
     let program = prepare("sleep 30\nputs 'never'\n");
     let component = component();
     let log = CallLog::default();
-    let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let linker = linker::<FakeOperationApi>().expect("the production linker builds");
     let scope = ProgramScope {
         capabilities: &[],
         operations: &[],
@@ -1517,7 +1517,7 @@ end
     let started = Instant::now();
     let mut store = bounded_store(
         MembraneState::new(
-            FakeToolApi::with(&log, canned_outcome),
+            FakeOperationApi::with(&log, canned_outcome),
             ruby(),
             scope,
             limits,
@@ -1607,7 +1607,7 @@ fn the_embedded_guest_imports_the_membrane_and_the_wasi_it_was_baked_with() {
     // 30 s wall-clock deadline, and a `Component::new` of a 21 MB guest performed inside it is
     // charged to a program that has not started. See [`evaluate`] for the measurements.
     let component = component();
-    let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let linker = linker::<FakeOperationApi>().expect("the production linker builds");
     let limits = SandboxLimits::default();
     let log = CallLog::default();
     let scope = ProgramScope {
@@ -1617,15 +1617,15 @@ fn the_embedded_guest_imports_the_membrane_and_the_wasi_it_was_baked_with() {
         ending: RunEnding::None,
     };
     let mut store = bounded_store(
-        MembraneState::new(FakeToolApi::new(&log), ruby(), scope, limits, None),
+        MembraneState::new(FakeOperationApi::new(&log), ruby(), scope, limits, None),
         limits,
     );
     let bound = Sandbox::instantiate(&mut store, component, &linker).expect("instantiates");
     let mut answered = bound
-        .call_bound_tools(&mut store)
+        .call_bound_operations(&mut store)
         .expect("the guest answers");
     answered.sort();
-    let mut expected = crate::sandbox::signatures::sandbox_tool_names();
+    let mut expected = crate::sandbox::signatures::sandbox_operation_names();
     expected.sort_unstable();
     assert_eq!(answered, expected);
 }
@@ -1755,7 +1755,7 @@ fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
 
     // And every TYPE it declares is a name a program can write, under the fully-qualified name the
     // catalogue advertises — because a signature that mentions one a program cannot name is a
-    // signature a model cannot act on: `4..19` is an argument, `GG::Core::ToolError` is what a
+    // signature a model cannot act on: `4..19` is an argument, `GG::Core::ApiError` is what a
     // `rescue` clause catches, and `GG::Tasks::TaskStatus::DONE` is a status. Named as constants
     // rather than asked for by string, so an absent one is a `NameError` on the line that wrote it.
     let types: Vec<&str> = catalogue["types"]
@@ -1991,7 +1991,7 @@ fn g8_a_runtime_failure_reaches_the_model() {
         GgProgramLanguage::Ruby,
         &[
             Case {
-                shape: Shape::ToolError,
+                shape: Shape::ApiError,
                 program: r#"# G8 (a): a gg call the host answers `not-found`, uncaught.
 require "gg"
 
@@ -2003,7 +2003,7 @@ puts text
                 names: &["read_file", "not-found", "missing.md"],
                 located: Located::At("line 4"),
                 answered: Answered::AtRuntime,
-                recorded: Some(TurnErrorType::ProgramToolError),
+                recorded: Some(TurnErrorType::ProgramApiError),
             },
             Case {
                 shape: Shape::NativeFault,
@@ -2120,7 +2120,7 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
 
     // A type is behind the same line, and so is the constant a `rescue` clause names — this arm
     // has no half of its surface that arrives some other way.
-    for reach in ["GG::Core::ToolError", "GG::Tasks::TaskStatus::DONE"] {
+    for reach in ["GG::Core::ApiError", "GG::Tasks::TaskStatus::DONE"] {
         let outcome = run(&format!("puts {reach}\n"));
         let error = program_error(&outcome);
         assert_eq!(error.kind, ProgramErrorKind::UnknownName);
@@ -2218,7 +2218,7 @@ GG::Views.open_text("notes", JSON.parse(%({"label": "notes"}))["label"] + " #{re
 "##;
 
     let log = CallLog::default();
-    let api = FakeToolApi::with(&log, canned_outcome);
+    let api = FakeOperationApi::with(&log, canned_outcome);
     let operations = granted_operations(&all_operations(), false);
     let scope = ProgramScope {
         capabilities: &all_capabilities(),

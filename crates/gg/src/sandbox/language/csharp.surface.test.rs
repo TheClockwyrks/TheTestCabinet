@@ -33,7 +33,7 @@ use super::substrate::{
     evaluate, evaluate_closing_docviews, evaluate_with_program, logs, prepare, program_error,
 };
 use crate::ending::{Ending, EndingRole};
-use crate::sandbox::fake::{CallLog, FakeToolApi, all_operations, canned_outcome};
+use crate::sandbox::fake::{CallLog, FakeOperationApi, all_operations, canned_outcome};
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::SandboxOutcome;
 use crate::sandbox::{ProgramScope, SandboxLimits, bounded_store, engine, linker};
@@ -67,7 +67,7 @@ fn text<'a>(entry: &'a Value, field: &str) -> &'a str {
         .unwrap_or_else(|| panic!("an entry carries a `{field}`: {entry}"))
 }
 
-/// Compile and run one C# program with `enabled`'s tools offered and no ending group.
+/// Compile and run one C# program with `enabled`'s operations offered and no ending group.
 fn run_with(
     source: &str,
     operations: &[crate::sandbox::operations::OperationId],
@@ -82,7 +82,7 @@ fn run_with(
     )
 }
 
-/// One tool, called through the C# spelling of it, and the JSON gg's dispatch must have seen.
+/// One operation, called through the C# spelling of it, and the JSON gg's dispatch must have seen.
 struct Crossing {
     /// The gg tool name the call must arrive under.
     tool: &'static str,
@@ -333,7 +333,7 @@ fn crossings() -> Vec<Crossing> {
 }
 
 #[test]
-fn every_tool_crosses_the_membrane_from_its_csharp_spelling() {
+fn every_operation_crosses_the_membrane_from_its_csharp_spelling() {
     let crossings = crossings();
 
     // One program rather than one per crossing: a compile and an instantiate here cost seconds, so
@@ -371,15 +371,15 @@ fn every_tool_crosses_the_membrane_from_its_csharp_spelling() {
         );
     }
 
-    // Exhaustive by construction: a tool added to gg with no row here fails now, rather than
+    // Exhaustive by construction: an operation added to gg with no row here fails now, rather than
     // shipping as a typed method nobody ever called.
     let mut covered: Vec<&str> = crossings.iter().map(|crossing| crossing.tool).collect();
     covered.sort_unstable();
-    let mut vocabulary = crate::sandbox::signatures::sandbox_tool_names();
+    let mut vocabulary = crate::sandbox::signatures::sandbox_operation_names();
     vocabulary.sort_unstable();
     assert_eq!(
         covered, vocabulary,
-        "every bound tool needs a crossing, and only bound tools may have one"
+        "every bound operation needs a crossing, and only bound operations may have one"
     );
 }
 
@@ -469,9 +469,9 @@ try
 {
     Docs.Close("Gg.Files.ReadFile");
 }
-catch (ToolException failure)
+catch (ApiException failure)
 {
-    Console.WriteLine($"{failure.Code} {failure.Tool}");
+    Console.WriteLine($"{failure.Code} {failure.Operation}");
 }
 "####,
         &[],
@@ -543,7 +543,7 @@ try
 {
     Console.WriteLine(Programs.Get(2));
 }
-catch (ToolException failure)
+catch (ApiException failure)
 {
     Console.WriteLine(failure.Code);
 }
@@ -608,7 +608,7 @@ Session.RequestChanges("widen the test", "name the file");
 /// filled in.
 #[test]
 fn a_member_method_reaches_the_operation_it_is_an_alias_of() {
-    // Four of the five hang off a value a gg TOOL produced, so the alias's own crossing lands in the
+    // Four of the five hang off a value a gg OPERATION produced, so the alias's own crossing lands in the
     // log beside the crossing that made its receiver. `Views.Close` is the exception — a view is not
     // a tool — and it is checked by what it answers instead.
     let (outcome, log) = evaluate(
@@ -698,7 +698,7 @@ Console.WriteLine($"{summary.Turn} {summary.Source()}");
 #[test]
 fn a_failure_is_thrown_whether_it_is_caught_or_let_out() {
     // Caught: an ordinary `catch` with a `when` clause on the code, which is what a program that
-    // expects one failure and not the others writes. Nothing about it is exceptional — `ToolException`
+    // expects one failure and not the others writes. Nothing about it is exceptional — `ApiException`
     // is an ordinary `System.Exception`, so `catch`, `when` and `finally` all work on it without an
     // SDK-specific combinator.
     let (outcome, _log) = run_with(
@@ -710,9 +710,9 @@ try
 {
     Console.WriteLine(Files.ReadTextFile("gone.cs"));
 }
-catch (ToolException failure) when (failure.Code == ToolErrorCode.NotFound)
+catch (ApiException failure) when (failure.Code == ApiErrorCode.NotFound)
 {
-    Console.WriteLine($"{failure.Code} on {failure.Tool}");
+    Console.WriteLine($"{failure.Code} on {failure.Operation}");
 }
 Console.WriteLine("carried on");
 "####,
@@ -744,7 +744,7 @@ Console.WriteLine("after");
     );
     let reported = program_error(&outcome);
     assert!(
-        reported.message.contains("Gg.ToolException")
+        reported.message.contains("Gg.ApiException")
             && reported.message.contains("no such file: gone.cs"),
         "an uncaught failure did not carry gg's own sentence under its own type: {}",
         reported.message
@@ -778,7 +778,7 @@ try
     Shell.Run("dotnet build");
     Console.WriteLine("ran");
 }
-catch (ToolException failure)
+catch (ApiException failure)
 {
     Console.WriteLine(failure.Code);
 }
@@ -955,21 +955,21 @@ lock (gate) { Console.WriteLine($"{Monitor.IsEntered(gate)} {typeof(Task).Name}"
 }
 
 #[test]
-fn the_artifact_binds_exactly_the_tools_gg_offers() {
+fn the_artifact_binds_exactly_the_operations_gg_offers() {
     // The one drift no source-level test can catch, asked of the **embedded artifact** rather than
-    // of a source file: `Sources/bridge.c` answers `bound-tools` off its own registration table, so
+    // of a source file: `Sources/bridge.c` answers `bound-operations` off its own registration table, so
     // a gg function bound with no tool name beside it — or a tool gg gained since the guest was last
     // built — fails here and nowhere else.
     //
-    // It is asked directly rather than through `component_bound_tools`, which takes a registered
+    // It is asked directly rather than through `component_bound_operations`, which takes a registered
     // language and this arm is not one yet.
     let limits = SandboxLimits::default();
-    let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let linker = linker::<FakeOperationApi>().expect("the production linker builds");
     let component =
         engine::compile_bytes(GUEST_COMPONENT).expect("the embedded C# guest is a component");
     let mut store = bounded_store(
         MembraneState::new(
-            FakeToolApi::with(&CallLog::default(), canned_outcome),
+            FakeOperationApi::with(&CallLog::default(), canned_outcome),
             crate::sandbox::language(GgProgramLanguage::TypeScript),
             ProgramScope {
                 capabilities: &[],
@@ -985,10 +985,10 @@ fn the_artifact_binds_exactly_the_tools_gg_offers() {
     let bound = Sandbox::instantiate(&mut store, &component, &linker)
         .expect("the embedded C# guest instantiates");
     let mut answered = bound
-        .call_bound_tools(&mut store)
+        .call_bound_operations(&mut store)
         .expect("the guest answers which tools its bridge binds");
     answered.sort();
-    let mut expected: Vec<String> = crate::sandbox::signatures::sandbox_tool_names()
+    let mut expected: Vec<String> = crate::sandbox::signatures::sandbox_operation_names()
         .into_iter()
         .map(str::to_string)
         .collect();
@@ -1051,7 +1051,7 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
         .filter_map(|entry| text(entry, "operation").split_once('.').map(|(_, key)| key))
         .collect();
     catalogued.sort_unstable();
-    let mut vocabulary: Vec<&str> = crate::sandbox::signatures::sandbox_tool_names();
+    let mut vocabulary: Vec<&str> = crate::sandbox::signatures::sandbox_operation_names();
     // Three operations share the `read_file` tool and one shares nothing, so the tool vocabulary is
     // a SUBSET of the operation keys rather than equal to it — every tool is bound, and the surface
     // is wider than the tools.

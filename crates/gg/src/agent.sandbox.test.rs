@@ -995,7 +995,7 @@ async fn every_image_view_a_program_opens_carries_its_picture() {
              \x20 try {
              \x20   gg.views.openFile(p);
              \x20 } catch (error) {
-             \x20   refused.push(p + \": \" + (error as gg.core.ToolError).code);
+             \x20   refused.push(p + \": \" + (error as gg.core.ApiError).code);
              \x20 }
              }
              gg.files.writeFile(\"refused.txt\", refused.join(\"\\n\") || \"none\");",

@@ -54,7 +54,7 @@
 //! **twelve capability modules** plus a thirteenth, `gg::core`, that declares no function and holds
 //! the types every other module's signatures name; each module owns the types it produces, so
 //! `gg::files::FileRead` is both the key a documentation view is opened by and a path a program can
-//! write. Every call hands back `Result<_, core::ToolError>`, and optional arguments are a struct
+//! write. Every call hands back `Result<_, core::ApiError>`, and optional arguments are a struct
 //! with a `Default`. What that looks like in full is in
 //! `apps/docs/src/content/docs/gg/languages/rust.md`.
 //!

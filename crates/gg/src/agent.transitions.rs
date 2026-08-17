@@ -441,7 +441,7 @@ pub(super) fn handle_fork(
     // The structured half of the same facts, and the same sidecar `spawn_subagent` produces — so a
     // program's `fork()` reads the copy's handle back exactly as its `spawnSubagent` does, and the
     // console's existing spawn affordances light up with no new case.
-    .with_data(ToolData::SubagentSpawned(SubagentHandleData {
+    .with_data(ApiData::SubagentSpawned(SubagentHandleData {
         id,
         slot: spawner.slot.clone(),
         model_id,

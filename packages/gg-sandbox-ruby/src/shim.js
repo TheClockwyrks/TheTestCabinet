@@ -7,7 +7,7 @@
  * by Opal, before it is handed over (`crates/gg/src/sandbox/language/ruby.compile.rs`), so what this
  * guest evaluates is JavaScript — but everything it evaluates it against is Ruby: the capability
  * modules are constants under `GG`, the types are declared inside them, a failure is a raised
- * `GG::Core::ToolError`, and a code module is a `Module` bound at `lib.<key>`.
+ * `GG::Core::ApiError`, and a code module is a `Module` bound at `lib.<key>`.
  *
  * # Nothing of gg's is loaded when a program starts
  *
@@ -91,29 +91,29 @@ globalThis.__ggWire = {
 /**
  * The failure fields, dug out of whatever a binding threw.
  *
- * A failing `result<T, tool-error>` arrives as a bare object whose only own key is `payload`, so
+ * A failing `result<T, api-error>` arrives as a bare object whose only own key is `payload`, so
  * both the thrown value and its payload are inspected. Anything that is not a membrane failure —
  * a `TypeError` out of the generated lowering, most often — is reported against the call that
  * raised it with `invalid-argument`, which supplies the one fact such an error is missing: which
  * call failed.
  *
- * @param {string} tool the gg call being made, for a throw that names none
+ * @param {string} operation the gg call being made, for a throw that names none
  * @param {unknown} thrown whatever came out of the binding
- * @returns {{ tool: string, code: string, message: string }} the failure `GG::Wire` raises
+ * @returns {{ operation: string, code: string, message: string }} the failure `GG::Wire` raises
  */
-globalThis.__ggFailure = function (tool, thrown) {
+globalThis.__ggFailure = function (operation, thrown) {
   const nested = thrown === null || thrown === undefined ? undefined : thrown.payload;
   for (const candidate of [thrown, nested]) {
     if (candidate === null || typeof candidate !== "object") continue;
     if (
-      typeof candidate.tool === "string" &&
+      typeof candidate.operation === "string" &&
       typeof candidate.code === "string" &&
       typeof candidate.message === "string"
     ) {
       return candidate;
     }
   }
-  return { tool, code: "invalid-argument", message: describe(thrown) };
+  return { operation, code: "invalid-argument", message: describe(thrown) };
 };
 
 /**
@@ -140,9 +140,9 @@ globalThis.__ggAdopt = function (value) {
  * One Ruby constant, by name, off the `GG` module — **requiring gg's SDK first**.
  *
  * `require "gg"` is the model's line to write, and this guest never writes it on a program's
- * behalf. The two places this is called are neither of them a program's: `boundTools` is a drift
- * gate gg runs in a unit test, and the unknown-name hint is composed *after* a program has already
- * failed, where loading the SDK changes nothing the program could observe.
+ * behalf. The two places this is called are neither of them a program's: `boundOperations` is a
+ * drift gate gg runs in a unit test, and the unknown-name hint is composed *after* a program has
+ * already failed, where loading the SDK changes nothing the program could observe.
  */
 function gg(name) {
   Opal.require("gg");
@@ -500,9 +500,9 @@ function locate(thrown, program) {
  * that is the sentence the model can act on, and it is a *different* sentence from the compiled
  * JavaScript's `TypeError`. That is only true because gg compiles both the model's program and the
  * SDK with `arity_check`; with Opal's default the same mistake arrives here as a raw JavaScript
- * `TypeError` naming a compiled variable, and `describe` below is what renders it. A `GG::Core::ToolError`
- * is reported as the tool failure it is, carrying the membrane's own code, so gg classifies the turn
- * from the code rather than from what this guest made of the raise.
+ * `TypeError` naming a compiled variable, and `describe` below is what renders it. A
+ * `GG::Core::ApiError` is reported as the API failure it is, carrying the membrane's own code, so
+ * gg classifies the turn from the code rather than from what this guest made of the raise.
  *
  * A throw with no `$$class` is not a Ruby exception at all and is reported as what it is. Opal's
  * precompiled corelib is the one place that still produces one — it is outside gg's compile, so
@@ -513,13 +513,13 @@ function report(thrown, program, lib) {
   const klass = thrown && thrown.$$class ? String(thrown.$$class.$$name) : undefined;
   const message = klass === undefined ? describe(thrown) : String(Opal.send(thrown, "message"));
 
-  if (klass === "ToolError") {
+  if (klass === "ApiError") {
     const code = String(Opal.send(thrown, "code")).replace(/_/g, "-");
-    const tool = String(Opal.send(thrown, "tool"));
+    const operation = String(Opal.send(thrown, "operation"));
     return {
-      kind: "tool-failure",
+      kind: "api-failure",
       code,
-      message: `\`${tool}\` failed (${code}): ${message}`,
+      message: `\`${operation}\` failed (${code}): ${message}`,
       location,
     };
   }
@@ -653,8 +653,8 @@ function modulePaths() {
  * drift gate that inspects the **committed artifact** rather than a source file, so it catches a
  * tool added, renamed or removed in gg with a stale `.wasm` still checked in.
  */
-export function boundTools() {
-  return Array.from(Opal.send(gg("Scope"), "bound_tools"));
+export function boundOperations() {
+  return Array.from(Opal.send(gg("Scope"), "bound_operations"));
 }
 
 /**

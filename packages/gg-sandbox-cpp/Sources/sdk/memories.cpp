@@ -12,7 +12,7 @@ namespace gg {
 
 namespace detail {
 
-const std::vector<std::string>& memories_tools() {
+const std::vector<std::string>& memories_operations() {
   static const std::vector<std::string> names{"write_memory",  "update_memory",   "create_memory",
                                               "read_memory",   "edit_memory",     "search_memories",
                                               "delete_memory"};
@@ -42,7 +42,7 @@ memories::memory_usage write_memory(std::string_view name, std::string_view desc
   test_cabinet_gg_memories_memory_input_t input =
       detail::memory_input(scratch, name, description, body, options);
   test_cabinet_gg_memories_memory_usage_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_memories_write_memory(&input, &ret, &err)) detail::fail(err);
   return detail::lift_memory_usage(ret);
 }
@@ -53,7 +53,7 @@ memories::memory_usage update_memory(std::string_view name, std::string_view des
   test_cabinet_gg_memories_memory_input_t input =
       detail::memory_input(scratch, name, description, body, options);
   test_cabinet_gg_memories_memory_usage_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_memories_update_memory(&input, &ret, &err)) detail::fail(err);
   return detail::lift_memory_usage(ret);
 }
@@ -64,7 +64,7 @@ memories::memory_usage create_memory(std::string_view name, std::string_view des
   test_cabinet_gg_memories_memory_input_t input =
       detail::memory_input(scratch, name, description, body, options);
   test_cabinet_gg_memories_memory_usage_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_memories_create_memory(&input, &ret, &err)) detail::fail(err);
   return detail::lift_memory_usage(ret);
 }
@@ -73,7 +73,7 @@ std::string read_memory(std::string_view name) {
   detail::scratch scratch;
   sandbox_string_t lowered = scratch.str(name);
   sandbox_string_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_memories_read_memory(&lowered, &ret, &err)) detail::fail(err);
   std::string contents = detail::lift(ret);
   sandbox_string_free(&ret);
@@ -88,7 +88,7 @@ memories::memory_usage edit_memory(std::string_view name, std::string_view searc
   edit.search = scratch.str(search);
   edit.replace = scratch.str(replace);
   test_cabinet_gg_memories_memory_usage_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_memories_edit_memory(&edit, &ret, &err)) detail::fail(err);
   return detail::lift_memory_usage(ret);
 }
@@ -97,7 +97,7 @@ std::vector<memories::memory_hit> search_memories(std::vector<std::string> keywo
   detail::scratch scratch;
   sandbox_list_string_t lowered = scratch.list(keywords);
   test_cabinet_gg_memories_list_memory_hit_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_memories_search_memories(&lowered, &ret, &err)) detail::fail(err);
   std::vector<memories::memory_hit> hits =
       detail::lift_each(ret.ptr, ret.len, detail::lift_memory_hit);
@@ -109,7 +109,7 @@ memories::memory_usage delete_memory(std::string_view name) {
   detail::scratch scratch;
   sandbox_string_t lowered = scratch.str(name);
   test_cabinet_gg_memories_memory_usage_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_memories_delete_memory(&lowered, &ret, &err)) detail::fail(err);
   return detail::lift_memory_usage(ret);
 }

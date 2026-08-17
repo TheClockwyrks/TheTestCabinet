@@ -25,7 +25,7 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use super::{
-    ArchiveHitData, ArchiveSearchData, Tool, ToolContext, ToolData, ToolOutcome, invalid_argument,
+    ApiData, ArchiveHitData, ArchiveSearchData, Tool, ToolContext, ToolOutcome, invalid_argument,
     required_str, saturating_u32,
 };
 use crate::archive::ArchiveStore;
@@ -158,7 +158,7 @@ impl Tool for EvictFileViewTool {
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
         // Validate only; the loop performs the reclaim against the live window and rewrites
-        // this result — including its `ToolData::Reclaim` sidecar — with what was actually
+        // this result — including its `ApiData::Reclaim` sidecar — with what was actually
         // reclaimed. This placeholder therefore carries no data of its own: it has not yet
         // happened, and reporting a guess would be worse than reporting nothing.
         match parse_evict_path(&args) {
@@ -172,7 +172,7 @@ impl EvictFileViewTool {
     /// Validate an `evict_file_view` call — the **standard, typed** API function both the JSON
     /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach. It only
     /// validates: the [loop](crate::agent) performs the reclaim against the live window and rewrites
-    /// this outcome (and its [`ToolData::Reclaim`]) with what it actually freed. `None` evicts all
+    /// this outcome (and its [`ApiData::Reclaim`]) with what it actually freed. `None` evicts all
     /// file views; an empty path is refused.
     pub(crate) fn evict(&self, path: Option<String>) -> ToolOutcome {
         if matches!(&path, Some(path) if path.trim().is_empty()) {
@@ -230,7 +230,7 @@ impl Tool for ArchiveThreadTool {
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
         // Validate only; the loop performs the archival against the live window and rewrites this
-        // result (and attaches its `ToolData::Reclaim`) with what it actually moved out.
+        // result (and attaches its `ApiData::Reclaim`) with what it actually moved out.
         match parse_archive_ranges(&args) {
             Ok(ranges) => self.archive(ranges),
             Err(message) => invalid_argument(message),
@@ -242,7 +242,7 @@ impl ArchiveThreadTool {
     /// Validate an `archive_thread` call — the **standard, typed** API function both the JSON
     /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach. It only
     /// validates: the [loop](crate::agent) performs the archival against the live window and rewrites
-    /// this outcome (and its [`ToolData::Reclaim`]) with what it actually moved out. `ranges` are the
+    /// this outcome (and its [`ApiData::Reclaim`]) with what it actually moved out. `ranges` are the
     /// inclusive turn spans to move into the archive.
     pub(crate) fn archive(&self, ranges: Vec<TurnRange>) -> ToolOutcome {
         // The typed entry point is reachable without going through the JSON schema (a program calls
@@ -451,13 +451,13 @@ impl SearchArchiveTool {
                 "The thread archive is empty — nothing has been archived yet.",
                 "archive empty",
             )
-            .with_data(ToolData::ArchiveSearch(ArchiveSearchData {
+            .with_data(ApiData::ArchiveSearch(ArchiveSearchData {
                 archive_empty: true,
                 hits: Vec::new(),
             }));
         }
         let hits = archive.search(&query, SEARCH_RESULT_CAP);
-        let data = ToolData::ArchiveSearch(ArchiveSearchData {
+        let data = ApiData::ArchiveSearch(ArchiveSearchData {
             archive_empty: false,
             hits: hits
                 .iter()

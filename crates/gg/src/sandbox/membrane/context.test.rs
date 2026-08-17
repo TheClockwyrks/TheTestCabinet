@@ -1,4 +1,4 @@
-//! Tests for the context family — the three tools an agent manages its own window with, and the
+//! Tests for the context family — the three operations an agent manages its own window with, and the
 //! `compact` that hands the whole window back to gg to rebuild.
 
 use serde_json::json;
@@ -81,7 +81,7 @@ fn evicting_every_file_view_sends_no_path() {
 fn no_archive_match_is_an_empty_hit_list() {
     let log = CallLog::default();
     let mut state = membrane_with(&log, &all_operations(), None, |_, _| {
-        ToolOutcome::ok("no matches", "searched").with_data(crate::tools::ToolData::ArchiveSearch(
+        ToolOutcome::ok("no matches", "searched").with_data(crate::tools::ApiData::ArchiveSearch(
             ArchiveSearchData {
                 archive_empty: false,
                 hits: Vec::new(),
@@ -104,7 +104,7 @@ fn an_empty_archive_is_distinguished_from_no_match() {
     let log = CallLog::default();
     let mut state = membrane_with(&log, &all_operations(), None, |_, _| {
         ToolOutcome::ok("nothing has been archived yet", "searched").with_data(
-            crate::tools::ToolData::ArchiveSearch(ArchiveSearchData {
+            crate::tools::ApiData::ArchiveSearch(ArchiveSearchData {
                 archive_empty: true,
                 hits: Vec::new(),
             }),

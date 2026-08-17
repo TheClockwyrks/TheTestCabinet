@@ -1,7 +1,7 @@
 package gg.delegation;
 
-import gg.ToolError;
-import gg.ToolErrorCode;
+import gg.ApiError;
+import gg.ApiErrorCode;
 import gg.internal.Coding;
 import gg.internal.Read;
 import gg.internal.Value;
@@ -35,8 +35,8 @@ public final class Delegation {
      * @param brief What the child is to do: {@code Delegation.Brief.prompt} with self-contained
      *     instructions, or {@code Delegation.Brief.issue} with a board issue's id.
      * @return the child's handle, to wait on or to message
-     * @throws ToolError {@link ToolErrorCode#LIMIT_EXCEEDED} at the delegation depth cap, and
-     *     {@link ToolErrorCode#INVALID_ARGUMENT} when {@code agent} is not one this agent may spawn.
+     * @throws ApiError {@link ApiErrorCode#LIMIT_EXCEEDED} at the delegation depth cap, and
+     *     {@link ApiErrorCode#INVALID_ARGUMENT} when {@code agent} is not one this agent may spawn.
      * @ggop delegation.spawn_subagent
      */
     public static SubagentHandle spawnSubagent(String agent, Brief brief) {
@@ -56,7 +56,7 @@ public final class Delegation {
      * @param ids The children to wait for, as {@link #spawnSubagent} returned them. Naming none waits
      *     for every one still outstanding.
      * @return every collected child's result, in dispatch order
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} for an unknown id.
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for an unknown id.
      * @ggop delegation.wait_for_subagents
      */
     public static List<SubagentResult> waitForSubagents(String... ids) {
@@ -69,8 +69,8 @@ public final class Delegation {
      *
      * @param agentId The child to deliver to, as {@link #spawnSubagent} returned it.
      * @param message What to put in its inbox.
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} for an unknown agent id, and
-     *     {@link ToolErrorCode#CONFLICT} when that child has already returned.
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for an unknown agent id, and
+     *     {@link ApiErrorCode#CONFLICT} when that child has already returned.
      * @ggop delegation.send_message
      */
     public static void sendMessage(String agentId, String message) {
@@ -87,8 +87,8 @@ public final class Delegation {
      * first declaration in a turn stands.
      *
      * @param state The state to move on to, named the way an agent to spawn is named.
-     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} for a state this agent may not move
-     *     to, and {@link ToolErrorCode#REFUSED} for a second declaration in one turn.
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for a state this agent may not move
+     *     to, and {@link ApiErrorCode#REFUSED} for a second declaration in one turn.
      * @ggop delegation.transition_state
      */
     public static void transitionState(String state) {
@@ -100,8 +100,8 @@ public final class Delegation {
      *
      * @param state The state to move on to, named the way an agent to spawn is named.
      * @param note The opening message the next state's agent sees.
-     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} for a state this agent may not move
-     *     to, and {@link ToolErrorCode#REFUSED} for a second declaration in one turn.
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for a state this agent may not move
+     *     to, and {@link ApiErrorCode#REFUSED} for a second declaration in one turn.
      * @ggop delegation.transition_state
      */
     public static void transitionState(String state, String note) {
@@ -118,8 +118,8 @@ public final class Delegation {
      * make transitions, has agents it may become, and is not being driven by a state machine.
      *
      * @param agent The agent to become, from the ones this agent may become.
-     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} for an agent this one may not become,
-     *     and {@link ToolErrorCode#REFUSED} for a second succession in one turn.
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for an agent this one may not become,
+     *     and {@link ApiErrorCode#REFUSED} for a second succession in one turn.
      * @ggop delegation.exec
      */
     public static void exec(String agent) {
@@ -132,8 +132,8 @@ public final class Delegation {
      * @param agent The agent to become, from the ones this agent may become.
      * @param prompt Its opening message. It already has the whole conversation, so this is the
      *     instruction rather than a briefing.
-     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} for an agent this one may not become,
-     *     and {@link ToolErrorCode#REFUSED} for a second succession in one turn.
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for an agent this one may not become,
+     *     and {@link ApiErrorCode#REFUSED} for a second succession in one turn.
      * @ggop delegation.exec
      */
     public static void exec(String agent, String prompt) {
@@ -151,7 +151,7 @@ public final class Delegation {
      * @param prompt What the copy is to do instead. It has the whole conversation already, so this is
      *     the difference rather than a briefing.
      * @return the copy's handle, to collect on a later turn
-     * @throws ToolError {@link ToolErrorCode#LIMIT_EXCEEDED} at the delegation depth cap.
+     * @throws ApiError {@link ApiErrorCode#LIMIT_EXCEEDED} at the delegation depth cap.
      * @ggop delegation.fork
      */
     public static SubagentHandle fork(String prompt) {
@@ -175,7 +175,7 @@ public final class Delegation {
          * Deliver a message to this child, which is {@link Delegation#sendMessage} on its own id.
          *
          * @param message What to put in its inbox. It reads it at its next turn.
-         * @throws ToolError {@link ToolErrorCode#CONFLICT} when the child has already returned.
+         * @throws ApiError {@link ApiErrorCode#CONFLICT} when the child has already returned.
          * @ggalias delegation.send_message
          */
         public void send(String message) {

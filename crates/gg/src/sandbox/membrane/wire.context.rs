@@ -12,7 +12,7 @@ use super::super::test_cabinet::gg::context::{
 use super::super::test_cabinet::gg::docs::{DocHit, DocSearch, Host as DocsHost};
 use super::super::test_cabinet::gg::programs::{Host as ProgramsHost, ProgramSummary};
 use super::super::test_cabinet::gg::views::{Host as ViewsHost, OpenView, ViewKind, ViewRegion};
-use super::super::{MembraneState, ToolApi};
+use super::super::{MembraneState, OperationApi};
 use super::wire_coding::{Value, argument, integer, optional, record, text, texts, wide};
 use super::workspace::file_read;
 use super::{Answer, Failure};
@@ -22,7 +22,7 @@ use super::{Answer, Failure};
 // ---------------------------------------------------------------------------------------------
 
 /// `context.evict_file_view` — drop a file view, or all of them.
-pub(super) fn evict_file_view<A: ToolApi>(
+pub(super) fn evict_file_view<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -32,7 +32,7 @@ pub(super) fn evict_file_view<A: ToolApi>(
 }
 
 /// `context.archive_thread` — archive whole turns.
-pub(super) fn archive_thread<A: ToolApi>(
+pub(super) fn archive_thread<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -46,7 +46,7 @@ pub(super) fn archive_thread<A: ToolApi>(
 }
 
 /// `context.search_archive` — search what was archived.
-pub(super) fn search_archive<A: ToolApi>(
+pub(super) fn search_archive<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -56,7 +56,7 @@ pub(super) fn search_archive<A: ToolApi>(
 }
 
 /// `context.compact` — compact the thread behind a summary.
-pub(super) fn compact<A: ToolApi>(
+pub(super) fn compact<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -120,7 +120,7 @@ fn archive_hit(hit: ArchiveHit) -> Value {
 // ---------------------------------------------------------------------------------------------
 
 /// `docs.search` — search the surface this agent binds.
-pub(super) fn search<A: ToolApi>(
+pub(super) fn search<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -137,7 +137,7 @@ pub(super) fn search<A: ToolApi>(
 }
 
 /// `docs.close` — close one documentation view.
-pub(super) fn close_doc_view<A: ToolApi>(
+pub(super) fn close_doc_view<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -147,7 +147,7 @@ pub(super) fn close_doc_view<A: ToolApi>(
 }
 
 /// `docs.close_all` — close every documentation view.
-pub(super) fn close_doc_views<A: ToolApi>(state: &mut MembraneState<A>) -> Answer {
+pub(super) fn close_doc_views<A: OperationApi>(state: &mut MembraneState<A>) -> Answer {
     Ok(integer(DocsHost::close_doc_views(state)?))
 }
 
@@ -179,7 +179,7 @@ fn doc_hit(hit: DocHit) -> Value {
 // ---------------------------------------------------------------------------------------------
 
 /// `views.open_file` — put a file, or a window of one, in the context window.
-pub(super) fn open_file_view<A: ToolApi>(
+pub(super) fn open_file_view<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -193,7 +193,7 @@ pub(super) fn open_file_view<A: ToolApi>(
 }
 
 /// `views.open_text` — put composed text in the context window.
-pub(super) fn open_text_view<A: ToolApi>(
+pub(super) fn open_text_view<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -205,7 +205,7 @@ pub(super) fn open_text_view<A: ToolApi>(
 }
 
 /// `views.open_docs_view` — put one documentation entry in the context window.
-pub(super) fn open_docs_view<A: ToolApi>(
+pub(super) fn open_docs_view<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -216,7 +216,7 @@ pub(super) fn open_docs_view<A: ToolApi>(
 }
 
 /// `views.close` — close whatever a selector names.
-pub(super) fn close_view<A: ToolApi>(
+pub(super) fn close_view<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -226,7 +226,7 @@ pub(super) fn close_view<A: ToolApi>(
 }
 
 /// `views.current` — what is open. It cannot fail.
-pub(super) fn current_views<A: ToolApi>(state: &mut MembraneState<A>) -> Answer {
+pub(super) fn current_views<A: OperationApi>(state: &mut MembraneState<A>) -> Answer {
     Ok(Value::List(
         ViewsHost::current_views(state)
             .into_iter()
@@ -265,7 +265,7 @@ fn view_region(region: ViewRegion) -> Value {
 // ---------------------------------------------------------------------------------------------
 
 /// `programs.history` — every program this agent has run.
-pub(super) fn history<A: ToolApi>(state: &mut MembraneState<A>) -> Answer {
+pub(super) fn history<A: OperationApi>(state: &mut MembraneState<A>) -> Answer {
     Ok(Value::List(
         ProgramsHost::history(state)?
             .into_iter()
@@ -275,7 +275,7 @@ pub(super) fn history<A: ToolApi>(state: &mut MembraneState<A>) -> Answer {
 }
 
 /// `programs.get` — the source of one of them.
-pub(super) fn get<A: ToolApi>(
+pub(super) fn get<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -285,7 +285,7 @@ pub(super) fn get<A: ToolApi>(
 }
 
 /// `programs.rerun` — run a stored program again.
-pub(super) fn rerun<A: ToolApi>(
+pub(super) fn rerun<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],

@@ -25,8 +25,8 @@ use super::test_cabinet::gg::skills::Host as SkillsHost;
 use super::test_cabinet::gg::tasks::{
     Host as TasksHost, TaskInput, TaskPatch, TaskStatus, TaskUsage,
 };
-use super::test_cabinet::gg::types::{TextEdit, ToolError};
-use super::{MembraneState, ToolApi};
+use super::test_cabinet::gg::types::{ApiError, TextEdit};
+use super::{MembraneState, OperationApi};
 use crate::memories::MemoryCode;
 use crate::sandbox::operations::{
     BOARD_CREATE_EPIC, BOARD_CREATE_ISSUE, BOARD_REMOVE_EPIC, BOARD_REMOVE_ISSUE,
@@ -35,10 +35,10 @@ use crate::sandbox::operations::{
     MEMORIES_UPDATE_MEMORY, MEMORIES_WRITE_MEMORY, OperationId, SKILLS_READ_SKILL, TASKS_ADD_TASK,
     TASKS_COMPLETE_TASK, TASKS_REMOVE_TASK, TASKS_SET_BLOCKED_BY, TASKS_UPDATE_TASK,
 };
-use crate::tools::{BoardUsageData, ToolData};
+use crate::tools::{ApiData, BoardUsageData};
 
-impl<A: ToolApi> SkillsHost for MembraneState<A> {
-    fn read_skill(&mut self, name: String) -> Result<String, ToolError> {
+impl<A: OperationApi> SkillsHost for MembraneState<A> {
+    fn read_skill(&mut self, name: String) -> Result<String, ApiError> {
         // A skill's body *is* its structured result — there is nothing to describe that the text
         // does not already say — so this is the one tool whose typed result is `outcome.output`
         // itself rather than a sidecar.
@@ -49,8 +49,8 @@ impl<A: ToolApi> SkillsHost for MembraneState<A> {
     }
 }
 
-impl<A: ToolApi> MemoriesHost for MembraneState<A> {
-    fn write_memory(&mut self, memory: MemoryInput) -> Result<MemoryUsage, ToolError> {
+impl<A: OperationApi> MemoriesHost for MembraneState<A> {
+    fn write_memory(&mut self, memory: MemoryInput) -> Result<MemoryUsage, ApiError> {
         self.recorded(MEMORIES_WRITE_MEMORY, |state, rec| {
             let MemoryInput {
                 name,
@@ -67,7 +67,7 @@ impl<A: ToolApi> MemoriesHost for MembraneState<A> {
         })
     }
 
-    fn update_memory(&mut self, memory: MemoryInput) -> Result<MemoryUsage, ToolError> {
+    fn update_memory(&mut self, memory: MemoryInput) -> Result<MemoryUsage, ApiError> {
         self.recorded(MEMORIES_UPDATE_MEMORY, |state, rec| {
             let MemoryInput {
                 name,
@@ -84,7 +84,7 @@ impl<A: ToolApi> MemoriesHost for MembraneState<A> {
         })
     }
 
-    fn create_memory(&mut self, memory: MemoryInput) -> Result<MemoryUsage, ToolError> {
+    fn create_memory(&mut self, memory: MemoryInput) -> Result<MemoryUsage, ApiError> {
         self.recorded(MEMORIES_CREATE_MEMORY, |state, rec| {
             let MemoryInput {
                 name,
@@ -101,7 +101,7 @@ impl<A: ToolApi> MemoriesHost for MembraneState<A> {
         })
     }
 
-    fn read_memory(&mut self, name: String) -> Result<String, ToolError> {
+    fn read_memory(&mut self, name: String) -> Result<String, ApiError> {
         // Like a skill's body, a memory's contents *are* the result: there is nothing to describe
         // that the text does not already say, so this is the second tool whose typed result is
         // `outcome.output` itself rather than a sidecar.
@@ -111,7 +111,7 @@ impl<A: ToolApi> MemoriesHost for MembraneState<A> {
         })
     }
 
-    fn edit_memory(&mut self, edit: MemoryEdit) -> Result<MemoryUsage, ToolError> {
+    fn edit_memory(&mut self, edit: MemoryEdit) -> Result<MemoryUsage, ApiError> {
         self.recorded(MEMORIES_EDIT_MEMORY, |state, rec| {
             let MemoryEdit {
                 name,
@@ -125,13 +125,13 @@ impl<A: ToolApi> MemoriesHost for MembraneState<A> {
         })
     }
 
-    fn search_memories(&mut self, keywords: Vec<String>) -> Result<Vec<MemoryHit>, ToolError> {
+    fn search_memories(&mut self, keywords: Vec<String>) -> Result<Vec<MemoryHit>, ApiError> {
         self.recorded(MEMORIES_SEARCH_MEMORIES, |state, rec| {
             let outcome = state.call(rec, MEMORIES_SEARCH_MEMORIES, |api| {
                 api.search_memories(keywords)
             })?;
             match outcome.data {
-                Some(ToolData::MemoryHits(hits)) => Ok(hits
+                Some(ApiData::MemoryHits(hits)) => Ok(hits
                     .into_iter()
                     .map(|hit| MemoryHit {
                         name: hit.name,
@@ -146,7 +146,7 @@ impl<A: ToolApi> MemoriesHost for MembraneState<A> {
         })
     }
 
-    fn delete_memory(&mut self, name: String) -> Result<MemoryUsage, ToolError> {
+    fn delete_memory(&mut self, name: String) -> Result<MemoryUsage, ApiError> {
         self.recorded(MEMORIES_DELETE_MEMORY, |state, rec| {
             let outcome = state.call(rec, MEMORIES_DELETE_MEMORY, |api| api.delete_memory(name))?;
             memory_usage(state, MEMORIES_DELETE_MEMORY, outcome.data)
@@ -154,8 +154,8 @@ impl<A: ToolApi> MemoriesHost for MembraneState<A> {
     }
 }
 
-impl<A: ToolApi> TasksHost for MembraneState<A> {
-    fn add_task(&mut self, task: TaskInput) -> Result<TaskUsage, ToolError> {
+impl<A: OperationApi> TasksHost for MembraneState<A> {
+    fn add_task(&mut self, task: TaskInput) -> Result<TaskUsage, ApiError> {
         self.recorded(TASKS_ADD_TASK, |state, rec| {
             let TaskInput {
                 id,
@@ -170,7 +170,7 @@ impl<A: ToolApi> TasksHost for MembraneState<A> {
         })
     }
 
-    fn update_task(&mut self, id: String, patch: TaskPatch) -> Result<(), ToolError> {
+    fn update_task(&mut self, id: String, patch: TaskPatch) -> Result<(), ApiError> {
         self.recorded(TASKS_UPDATE_TASK, |state, rec| {
             let description = text_edit(patch.description);
             let status = patch.status.map(task_status);
@@ -181,7 +181,7 @@ impl<A: ToolApi> TasksHost for MembraneState<A> {
         })
     }
 
-    fn set_blocked_by(&mut self, id: String, blocked_by: Vec<String>) -> Result<(), ToolError> {
+    fn set_blocked_by(&mut self, id: String, blocked_by: Vec<String>) -> Result<(), ApiError> {
         self.recorded(TASKS_SET_BLOCKED_BY, |state, rec| {
             state.call(rec, TASKS_SET_BLOCKED_BY, |api| {
                 api.set_blocked_by(id, blocked_by)
@@ -190,14 +190,14 @@ impl<A: ToolApi> TasksHost for MembraneState<A> {
         })
     }
 
-    fn complete_task(&mut self, id: String) -> Result<(), ToolError> {
+    fn complete_task(&mut self, id: String) -> Result<(), ApiError> {
         self.recorded(TASKS_COMPLETE_TASK, |state, rec| {
             state.call(rec, TASKS_COMPLETE_TASK, |api| api.complete_task(id))?;
             Ok(())
         })
     }
 
-    fn remove_task(&mut self, id: String) -> Result<TaskUsage, ToolError> {
+    fn remove_task(&mut self, id: String) -> Result<TaskUsage, ApiError> {
         self.recorded(TASKS_REMOVE_TASK, |state, rec| {
             let outcome = state.call(rec, TASKS_REMOVE_TASK, |api| api.remove_task(id))?;
             task_usage(state, TASKS_REMOVE_TASK, outcome.data)
@@ -205,8 +205,8 @@ impl<A: ToolApi> TasksHost for MembraneState<A> {
     }
 }
 
-impl<A: ToolApi> BoardHost for MembraneState<A> {
-    fn create_epic(&mut self, epic: EpicInput) -> Result<EpicCreated, ToolError> {
+impl<A: OperationApi> BoardHost for MembraneState<A> {
+    fn create_epic(&mut self, epic: EpicInput) -> Result<EpicCreated, ApiError> {
         self.recorded(BOARD_CREATE_EPIC, |state, rec| {
             let EpicInput {
                 prefix,
@@ -221,7 +221,7 @@ impl<A: ToolApi> BoardHost for MembraneState<A> {
         })
     }
 
-    fn create_issue(&mut self, issue: IssueInput) -> Result<IssueCreated, ToolError> {
+    fn create_issue(&mut self, issue: IssueInput) -> Result<IssueCreated, ApiError> {
         self.recorded(BOARD_CREATE_ISSUE, |state, rec| {
             let IssueInput {
                 title,
@@ -252,7 +252,7 @@ impl<A: ToolApi> BoardHost for MembraneState<A> {
         })
     }
 
-    fn update_issue(&mut self, id: String, patch: IssuePatch) -> Result<(), ToolError> {
+    fn update_issue(&mut self, id: String, patch: IssuePatch) -> Result<(), ApiError> {
         self.recorded(BOARD_UPDATE_ISSUE, |state, rec| {
             let IssuePatch {
                 title,
@@ -286,7 +286,7 @@ impl<A: ToolApi> BoardHost for MembraneState<A> {
         &mut self,
         id: String,
         blocked_by: Vec<String>,
-    ) -> Result<(), ToolError> {
+    ) -> Result<(), ApiError> {
         self.recorded(BOARD_SET_ISSUE_BLOCKED_BY, |state, rec| {
             state.call(rec, BOARD_SET_ISSUE_BLOCKED_BY, |api| {
                 api.set_issue_blocked_by(id, blocked_by)
@@ -295,21 +295,21 @@ impl<A: ToolApi> BoardHost for MembraneState<A> {
         })
     }
 
-    fn remove_epic(&mut self, id: String) -> Result<BoardUsage, ToolError> {
+    fn remove_epic(&mut self, id: String) -> Result<BoardUsage, ApiError> {
         self.recorded(BOARD_REMOVE_EPIC, |state, rec| {
             let outcome = state.call(rec, BOARD_REMOVE_EPIC, |api| api.remove_epic(id))?;
             board_usage(state, BOARD_REMOVE_EPIC, outcome.data)
         })
     }
 
-    fn remove_issue(&mut self, id: String) -> Result<BoardUsage, ToolError> {
+    fn remove_issue(&mut self, id: String) -> Result<BoardUsage, ApiError> {
         self.recorded(BOARD_REMOVE_ISSUE, |state, rec| {
             let outcome = state.call(rec, BOARD_REMOVE_ISSUE, |api| api.remove_issue(id))?;
             board_usage(state, BOARD_REMOVE_ISSUE, outcome.data)
         })
     }
 
-    fn wait_for_issue(&mut self, id: String) -> Result<String, ToolError> {
+    fn wait_for_issue(&mut self, id: String) -> Result<String, ApiError> {
         // The wait is *deferred*: the api records the requested wait and returns its acknowledgement
         // at once, and the loop suspends the agent after the program ends. So this is a plain
         // string-returning call — the acknowledgement is `outcome.output`, exactly as `read_skill`'s
@@ -325,13 +325,13 @@ impl<A: ToolApi> BoardHost for MembraneState<A> {
 ///
 /// It takes the state because that diagnostic also corrects the roster entry the dispatch
 /// already wrote, which until this point says the call succeeded.
-fn memory_usage<A: ToolApi>(
+fn memory_usage<A: OperationApi>(
     state: &mut MembraneState<A>,
     id: OperationId,
-    data: Option<ToolData>,
-) -> Result<MemoryUsage, ToolError> {
+    data: Option<ApiData>,
+) -> Result<MemoryUsage, ApiError> {
     match data {
-        Some(ToolData::MemoryUsage(usage)) => Ok(MemoryUsage {
+        Some(ApiData::MemoryUsage(usage)) => Ok(MemoryUsage {
             count: usage.count,
             max_count: usage.max_count,
             total_chars: usage.total_chars,
@@ -345,13 +345,13 @@ fn memory_usage<A: ToolApi>(
 
 /// The task budget a mutation reported, or the defect diagnostic if it reported none — with the
 /// same roster correction [`memory_usage`] makes.
-fn task_usage<A: ToolApi>(
+fn task_usage<A: OperationApi>(
     state: &mut MembraneState<A>,
     id: OperationId,
-    data: Option<ToolData>,
-) -> Result<TaskUsage, ToolError> {
+    data: Option<ApiData>,
+) -> Result<TaskUsage, ApiError> {
     match data {
-        Some(ToolData::TaskUsage(usage)) => Ok(TaskUsage {
+        Some(ApiData::TaskUsage(usage)) => Ok(TaskUsage {
             count: usage.count,
             max_tasks: usage.max,
         }),
@@ -361,13 +361,13 @@ fn task_usage<A: ToolApi>(
 
 /// The board budget a mutation reported, or the defect diagnostic if it reported none — with the
 /// same roster correction [`memory_usage`] makes.
-fn board_usage<A: ToolApi>(
+fn board_usage<A: OperationApi>(
     state: &mut MembraneState<A>,
     id: OperationId,
-    data: Option<ToolData>,
-) -> Result<BoardUsage, ToolError> {
+    data: Option<ApiData>,
+) -> Result<BoardUsage, ApiError> {
     match data {
-        Some(ToolData::BoardUsage(usage)) => Ok(usage_record(usage)),
+        Some(ApiData::BoardUsage(usage)) => Ok(usage_record(usage)),
         other => Err(state.missing_data(id, other.as_ref())),
     }
 }
@@ -375,13 +375,13 @@ fn board_usage<A: ToolApi>(
 /// The id a creation assigned plus its board budget, or the defect diagnostic if it reported
 /// neither — the sidecar `create_epic`/`create_issue` carry, since gg (not the model) names what
 /// they filed.
-fn board_node<A: ToolApi>(
+fn board_node<A: OperationApi>(
     state: &mut MembraneState<A>,
     id: OperationId,
-    data: Option<ToolData>,
-) -> Result<(String, BoardUsage), ToolError> {
+    data: Option<ApiData>,
+) -> Result<(String, BoardUsage), ApiError> {
     match data {
-        Some(ToolData::BoardNode(node)) => Ok((node.id, usage_record(node.board))),
+        Some(ApiData::BoardNode(node)) => Ok((node.id, usage_record(node.board))),
         other => Err(state.missing_data(id, other.as_ref())),
     }
 }

@@ -103,7 +103,7 @@ std::vector<std::string> lift(const sandbox_list_string_t& texts);
 // `[[noreturn]]`, so a call site is a statement rather than a branch the compiler thinks may fall
 // through — which is what lets every one of this SDK's functions end in a `return` of the lifted
 // value with no `else`.
-[[noreturn]] void fail(test_cabinet_gg_types_tool_error_t& failure);
+[[noreturn]] void fail(test_cabinet_gg_types_api_error_t& failure);
 
 // The two nullable scalars a read's window and a search's page are, as the ABI spells an optional
 // `u32` argument: a pointer that is null for the absent case.
@@ -152,20 +152,20 @@ docs::doc_kind lift_doc_kind(const sandbox_string_t& wire);
 context::message_role lift_message_role(test_cabinet_gg_context_message_role_t wire);
 views::view_kind lift_view_kind(test_cabinet_gg_views_view_kind_t wire);
 delegation::agent_status lift_agent_status(test_cabinet_gg_delegation_agent_status_t wire);
-core::tool_error_code lift_error_code(test_cabinet_gg_types_error_code_t wire);
+core::api_error_code lift_error_code(test_cabinet_gg_types_error_code_t wire);
 
-// Each module's share of what the artifact answers `bound-tools` with, defined in the same
+// Each module's share of what the artifact answers `bound-operations` with, defined in the same
 // translation unit as the functions that dispatch them — so a tool that gained a function without
 // gaining an entry, or the reverse, is a failing gate rather than a silent difference between what
-// a model may call and what gg thinks it may call. `gg::bound_tool_names` is their concatenation.
-const std::vector<std::string>& files_tools();
-const std::vector<std::string>& shell_tools();
-const std::vector<std::string>& skills_tools();
-const std::vector<std::string>& memories_tools();
-const std::vector<std::string>& tasks_tools();
-const std::vector<std::string>& board_tools();
-const std::vector<std::string>& context_tools();
-const std::vector<std::string>& delegation_tools();
+// a model may call and what gg thinks it may call. `gg::bound_operation_names` is their concatenation.
+const std::vector<std::string>& files_operations();
+const std::vector<std::string>& shell_operations();
+const std::vector<std::string>& skills_operations();
+const std::vector<std::string>& memories_operations();
+const std::vector<std::string>& tasks_operations();
+const std::vector<std::string>& board_operations();
+const std::vector<std::string>& context_operations();
+const std::vector<std::string>& delegation_operations();
 
 // Every element of an ABI list, mapped — the shape every list lift here has.
 template <typename Wire, typename Each>

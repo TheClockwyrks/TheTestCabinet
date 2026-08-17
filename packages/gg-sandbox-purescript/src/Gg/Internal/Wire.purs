@@ -10,11 +10,11 @@
 -- | Not the WIT membrane. `Gg/Internal/Wire.js` writes `import * as gg from "gg"`, which is the same
 -- | line a TypeScript program writes and reaches the same SDK instance in the same guest. So every
 -- | call lands in the same lowering — the same argument validation, the same `u64` conversions, the
--- | same `ToolError`. That is not a compromise: it is what makes two arms of a study produce byte
+-- | same `ApiError`. That is not a compromise: it is what makes two arms of a study produce byte
 -- | identical arguments for the same capability, which is the property the whole comparison rests
 -- | on.
 -- |
--- | A capability this run withheld is refused by the **host**, as a `ToolError` carrying
+-- | A capability this run withheld is refused by the **host**, as an `ApiError` carrying
 -- | `unavailable`, exactly as it is for every other arm.
 -- |
 -- | # Why a dispatcher is fine *here*
@@ -58,14 +58,14 @@ foreign import data Wire :: Type
 
 -- | Call one function in one of the guest's namespaces.
 -- |
--- | `tool` is the **gate** the failure is reported under when the run withheld the capability —
--- | the gg tool whose absence takes the function away, which is not always the function's own name:
--- | `Gg.Files.readTextFile` and `Gg.Views.openFile` are both spellings of a read, so both refuse
--- | under `read_file`. Where nothing a run can withhold has a tool name at all — an ending call,
--- | which a role decides, or a program-library call, which a capability buys — the call's own key
--- | stands in, since naming a tool that could not have been the reason would be worse than naming
--- | none. `namespace` is gg's own name for the family holding the function; and `written` is the
--- | fully-qualified name a PureScript program writes. The family's own name for the function is
+-- | `operation` is the **gate** the failure is reported under when the run withheld the capability —
+-- | the gg operation whose absence takes the function away, which is not always the function's own
+-- | name: `Gg.Files.readTextFile` and `Gg.Views.openFile` are both spellings of a read, so both
+-- | refuse under `read_file`. Where nothing a run can withhold gates the call at all — an ending
+-- | call, which a role decides, or a program-library call, which a capability buys — the call's own
+-- | key stands in, since naming an operation that could not have been the reason would be worse than
+-- | naming none. `namespace` is gg's own name for the family holding the function; and `written` is
+-- | the fully-qualified name a PureScript program writes. The family's own name for the function is
 -- | `written`'s last segment, which is the same word on both sides — so the one string carries the
 -- | dispatch and the sentence a refusal is reported in, and a refusal names the call the model wrote
 -- | rather than the one the bridge made.
@@ -106,11 +106,11 @@ taken = unsafeCoerce
 
 -- | Call a function that answers with something.
 call :: forall a. String -> String -> String -> Array Wire -> Effect a
-call tool namespace written args = taken <$> callImpl tool namespace written args
+call operation namespace written args = taken <$> callImpl operation namespace written args
 
 -- | Call a function whose answer is nothing worth having.
 call_ :: String -> String -> String -> Array Wire -> Effect Unit
-call_ tool namespace written args = void (callImpl tool namespace written args)
+call_ operation namespace written args = void (callImpl operation namespace written args)
 
 -- | One export of a code module, as the type the caller says it is.
 lib :: forall a. String -> String -> Maybe a

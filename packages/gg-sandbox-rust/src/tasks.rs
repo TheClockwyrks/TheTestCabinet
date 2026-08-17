@@ -8,11 +8,11 @@
 //! that is there, [`Clear`](TextEdit::Clear) empties it, [`Set`](TextEdit::Set) replaces it.
 
 use crate::bindings::test_cabinet::gg::tasks;
-use crate::core::ToolError;
+use crate::core::ApiError;
 use crate::wire;
 
-/// The gg tools this module dispatches — see [`files::TOOLS`](crate::files::TOOLS).
-pub(crate) const TOOLS: &[&str] = &[
+/// The gg tools this module dispatches — see [`files::OPERATIONS`](crate::files::OPERATIONS).
+pub(crate) const OPERATIONS: &[&str] = &[
     "add_task",
     "update_task",
     "set_blocked_by",
@@ -40,7 +40,7 @@ pub(crate) const TOOLS: &[&str] = &[
 /// `InvalidArgument` for a blank id or title, `Conflict` on a duplicate id or an edge that would
 /// close a cycle, `NotFound` for an unknown blocker, and `LimitExceeded` at the task cap.
 #[doc(alias = "ggop:tasks.add_task")]
-pub fn add_task(id: &str, title: &str, options: TaskOptions<'_>) -> Result<TaskUsage, ToolError> {
+pub fn add_task(id: &str, title: &str, options: TaskOptions<'_>) -> Result<TaskUsage, ApiError> {
     wire::lift(tasks::add_task(&tasks::TaskInput {
         id: id.to_string(),
         title: title.to_string(),
@@ -65,7 +65,7 @@ pub fn add_task(id: &str, title: &str, options: TaskOptions<'_>) -> Result<TaskU
 /// `InvalidArgument` when no field was supplied or one was blanked, and `NotFound` for an unknown
 /// id.
 #[doc(alias = "ggop:tasks.update_task")]
-pub fn update_task(id: &str, patch: TaskPatch<'_>) -> Result<(), ToolError> {
+pub fn update_task(id: &str, patch: TaskPatch<'_>) -> Result<(), ApiError> {
     wire::lift(tasks::update_task(id, &patch.to_wire()))
 }
 
@@ -82,7 +82,7 @@ pub fn update_task(id: &str, patch: TaskPatch<'_>) -> Result<(), ToolError> {
 /// `InvalidArgument` for a blank id or blocker, `NotFound` for a task or blocker that is not on the
 /// list, and `Conflict` when an edge would close a cycle or block the task on itself.
 #[doc(alias = "ggop:tasks.set_blocked_by")]
-pub fn set_blocked_by(id: &str, blocked_by: &[&str]) -> Result<(), ToolError> {
+pub fn set_blocked_by(id: &str, blocked_by: &[&str]) -> Result<(), ApiError> {
     wire::lift(tasks::set_blocked_by(id, &wire::strings(blocked_by)))
 }
 
@@ -98,7 +98,7 @@ pub fn set_blocked_by(id: &str, blocked_by: &[&str]) -> Result<(), ToolError> {
 ///
 /// `NotFound` for an unknown id.
 #[doc(alias = "ggop:tasks.complete_task")]
-pub fn complete_task(id: &str) -> Result<(), ToolError> {
+pub fn complete_task(id: &str) -> Result<(), ApiError> {
     wire::lift(tasks::complete_task(id))
 }
 
@@ -116,7 +116,7 @@ pub fn complete_task(id: &str) -> Result<(), ToolError> {
 ///
 /// `NotFound` for an unknown id.
 #[doc(alias = "ggop:tasks.remove_task")]
-pub fn remove_task(id: &str) -> Result<TaskUsage, ToolError> {
+pub fn remove_task(id: &str) -> Result<TaskUsage, ApiError> {
     wire::lift(tasks::remove_task(id)).map(wire::task_usage)
 }
 

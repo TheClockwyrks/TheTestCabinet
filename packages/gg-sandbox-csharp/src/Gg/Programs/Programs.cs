@@ -18,8 +18,8 @@ public static partial class Programs
     /// avoid re-reading it. It is empty before the first program has been recorded.
     /// </remarks>
     /// <returns>one summary per program the library still holds, the ones that failed included.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.Unavailable"/> when this agent keeps no program library.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.Unavailable"/> when this agent keeps no program library.
     /// </exception>
     /// <ggop>programs.history</ggop>
     public static IReadOnlyList<ProgramSummary> History()
@@ -54,10 +54,10 @@ public static partial class Programs
     /// one is returned.
     /// </param>
     /// <returns>that program's source, ready to patch and hand to <see cref="Rerun"/>.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.NotFound"/> — naming the turns that are held — for a turn that ran
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.NotFound"/> — naming the turns that are held — for a turn that ran
     /// no program, or one the library's retention has already dropped, and
-    /// <see cref="ToolErrorCode.Unavailable"/> when this agent keeps no program library.
+    /// <see cref="ApiErrorCode.Unavailable"/> when this agent keeps no program library.
     /// </exception>
     /// <ggop>programs.get</ggop>
     public static string Get(uint? turn = null)
@@ -85,10 +85,10 @@ public static partial class Programs
     /// </para>
     /// </remarks>
     /// <param name="source">The program to run instead. Blank is refused.</param>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.InvalidArgument"/> for a blank source,
-    /// <see cref="ToolErrorCode.Refused"/> for a second call in one turn, and
-    /// <see cref="ToolErrorCode.Unavailable"/> when this agent keeps no program library.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for a blank source,
+    /// <see cref="ApiErrorCode.Refused"/> for a second call in one turn, and
+    /// <see cref="ApiErrorCode.Unavailable"/> when this agent keeps no program library.
     /// </exception>
     /// <ggop>programs.rerun</ggop>
     public static void Rerun(string source) => Internal.Wire.Check(Internal.Native.Rerun(source));

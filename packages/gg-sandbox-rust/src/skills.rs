@@ -4,11 +4,11 @@
 //! carrying the full list.
 
 use crate::bindings::test_cabinet::gg::skills;
-use crate::core::ToolError;
+use crate::core::ApiError;
 use crate::wire;
 
-/// The gg tools this module dispatches — see [`files::TOOLS`](crate::files::TOOLS).
-pub(crate) const TOOLS: &[&str] = &["read_skill"];
+/// The gg tools this module dispatches — see [`files::OPERATIONS`](crate::files::OPERATIONS).
+pub(crate) const OPERATIONS: &[&str] = &["read_skill"];
 
 
 /// Read a skill by name and hand back its body with the front matter stripped.
@@ -32,6 +32,6 @@ pub(crate) const TOOLS: &[&str] = &["read_skill"];
 ///
 /// `NotFound` — listing the skills that do exist — when the name is unknown.
 #[doc(alias = "ggop:skills.read_skill")]
-pub fn read_skill(name: &str) -> Result<String, ToolError> {
+pub fn read_skill(name: &str) -> Result<String, ApiError> {
     wire::lift(skills::read_skill(name))
 }

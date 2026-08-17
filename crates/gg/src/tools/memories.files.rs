@@ -22,7 +22,7 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use super::super::{
-    MemoryHitData, Tool, ToolContext, ToolData, ToolOutcome, optional_str, required_str,
+    ApiData, MemoryHitData, Tool, ToolContext, ToolOutcome, optional_str, required_str,
     required_str_array, saturating_u32,
 };
 use super::{
@@ -408,7 +408,7 @@ impl SearchMemoriesTool {
                 format!("No memory matches those keywords ({held} in total).")
             };
             return ToolOutcome::ok(output, "searched memories (no matches)")
-                .with_data(ToolData::MemoryHits(Vec::new()));
+                .with_data(ApiData::MemoryHits(Vec::new()));
         }
 
         let output = hits
@@ -424,7 +424,7 @@ impl SearchMemoriesTool {
             ),
             format!("searched memories ({} matches)", hits.len()),
         )
-        .with_data(ToolData::MemoryHits(
+        .with_data(ApiData::MemoryHits(
             hits.iter().map(hit_data).collect::<Vec<_>>(),
         ))
     }

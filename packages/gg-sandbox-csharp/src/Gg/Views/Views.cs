@@ -35,9 +35,9 @@ public static partial class Views
     /// <param name="offset">The 1-based first line. Left out, the whole file is shown.</param>
     /// <param name="limit">How many lines. Left out, the view runs to the end.</param>
     /// <returns>the read itself, so the program can work with what the model is now being shown.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.NotFound"/> for a missing path, and
-    /// <see cref="ToolErrorCode.InvalidArgument"/> for an offset past the end of the file.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.NotFound"/> for a missing path, and
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for an offset past the end of the file.
     /// </exception>
     /// <ggop>views.open_file</ggop>
     public static Files.FileRead OpenFile(string path, uint? offset = null, uint? limit = null)
@@ -81,9 +81,9 @@ public static partial class Views
     /// The text to show. Empty is allowed, and is how a program says that something it was showing
     /// is now empty.
     /// </param>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.InvalidArgument"/> for an empty label, and
-    /// <see cref="ToolErrorCode.LimitExceeded"/> naming the cap a body or label went over.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for an empty label, and
+    /// <see cref="ApiErrorCode.LimitExceeded"/> naming the cap a body or label went over.
     /// </exception>
     /// <ggop>views.open_text</ggop>
     public static void OpenText(string label, string body) =>
@@ -104,8 +104,8 @@ public static partial class Views
     /// a <c>Close</c>, and only the qualified name says which one is meant. Searching the
     /// documentation is what says which names exist.
     /// </param>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.NotFound"/> for a name nothing on this surface has.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.NotFound"/> for a name nothing on this surface has.
     /// </exception>
     /// <ggop>views.open_docs_view</ggop>
     public static void OpenDocsView(string name) => Internal.Wire.Check(Internal.Native.OpenDocsView(name));
@@ -117,8 +117,8 @@ public static partial class Views
     /// </remarks>
     /// <param name="selector">A file view's workspace path, or a text view's label.</param>
     /// <returns>how many views went, counting each page of a paged file separately.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.InvalidArgument"/> for an empty selector, which names nothing rather
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for an empty selector, which names nothing rather
     /// than everything — no call here closes the window wholesale.
     /// </exception>
     /// <ggop>views.close</ggop>

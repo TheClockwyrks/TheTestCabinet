@@ -28,7 +28,7 @@
 //! module is compiled into the program and reached at `Lib.<key>`; what TeaVM is not; and what a
 //! turn pays for all of it.
 //!
-//! What the **SDK** puts on top of it — every gg tool driven through the real membrane from its Java
+//! What the **SDK** puts on top of it — every gg operation driven through the real membrane from its Java
 //! spelling, the catalogue reflected out of that SDK's own Javadoc, and the libraries this arm says
 //! a program may reach — is [next door](super::surface).
 //!
@@ -50,7 +50,7 @@ use crate::limits::TurnErrorType;
 use super::compile::{compile_module, compile_program};
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::fake::{
-    CallLog, FakeToolApi, all_capabilities, all_operations, canned_outcome, granted_operations,
+    CallLog, FakeOperationApi, all_capabilities, all_operations, canned_outcome, granted_operations,
 };
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{SandboxError, SandboxOutcome};
@@ -91,7 +91,7 @@ pub(super) fn whole(classes: &[&str], body: &str) -> String {
 
 /// The `import` line a program writes to reach one of this arm's classes, **out of the catalogue**.
 ///
-/// `gg.Gg` and `gg.ToolError` live in the `core` module, whose path is a *package* rather than a
+/// `gg.Gg` and `gg.ApiError` live in the `core` module, whose path is a *package* rather than a
 /// class: the line it publishes is an on-demand import of the whole package, so a test naming one
 /// class of it writes the single-type import instead. Every other class is looked up rather than
 /// composed, so a test that compiles is a test the published line resolves.
@@ -198,8 +198,8 @@ fn evaluate_granting(
 ) -> (SandboxOutcome, CallLog) {
     let limits = SandboxLimits::default();
     let log = CallLog::default();
-    let api = FakeToolApi::with(&log, responder);
-    let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let api = FakeOperationApi::with(&log, responder);
+    let linker = linker::<FakeOperationApi>().expect("the production linker builds");
     let compiled =
         engine::compile_bytes(component).expect("a freshly compiled Java program is a component");
     let operations = granted_operations(operations, library);
@@ -894,7 +894,7 @@ fn g8_a_runtime_failure_reaches_the_model() {
         GgProgramLanguage::Java,
         &[
             Case {
-                shape: Shape::ToolError,
+                shape: Shape::ApiError,
                 program: r#"// G8 (a): a gg call the host answers `not-found`, uncaught.
 import gg.files.Files;
 

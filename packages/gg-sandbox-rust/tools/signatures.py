@@ -52,9 +52,9 @@ SCHEMA = 1
 GENERATED_FROM = "packages/gg-sandbox-rust/src/ (rustdoc --output-format json)"
 
 #: The types every call's failure arm refers to, closed over on every entry because every function in
-#: this SDK returns ``Result<_, ToolError>`` — including the two that cannot fail, whose signature
+#: this SDK returns ``Result<_, ApiError>`` — including the two that cannot fail, whose signature
 #: says so.
-ALWAYS_REFERENCED = ("ToolError", "ToolErrorCode")
+ALWAYS_REFERENCED = ("ApiError", "ApiErrorCode")
 
 #: The prefix a declaration's ``#[doc(alias = …)]`` carries to name the gg operation it binds.
 OPERATION_ALIAS = "ggop:"
@@ -326,7 +326,7 @@ class Declared:
     ``fqn`` is the key a documentation view is opened by and the string a program could write in
     full; ``spelled`` is what a signature writes, which is the module-qualified form a program
     reaches under the ``use`` line its module states — `files::FileRead` under `use gg::files;`,
-    `core::ToolError` under `use gg::core;`. A bare name is a spelling nothing gg does makes
+    `core::ApiError` under `use gg::core;`. A bare name is a spelling nothing gg does makes
     resolve.
     """
 
@@ -354,7 +354,7 @@ class Reflector:
 
         A type is catalogued exactly when a **catalogued module declares it**, which is what makes
         every fully-qualified name in this artifact a real Rust path. It is also what keeps the
-        generated `bindings` module out: it declares a `ToolError` and a `FileRead` of its own — the
+        generated `bindings` module out: it declares an `ApiError` and a `FileRead` of its own — the
         wire's, with the WIT's documentation — and a catalogue that picked those up would describe
         the membrane to a model instead of the SDK.
         """
@@ -459,8 +459,8 @@ class Reflector:
     def returned(self, node, out):
         """The declared types a return position **hands back**, by rustdoc id.
 
-        Every function here returns `Result<T, ToolError>`, and only `T` is a value the program
-        receives: the error arm is the failure channel, which is `ToolError` on every call and is the
+        Every function here returns `Result<T, ApiError>`, and only `T` is a value the program
+        receives: the error arm is the failure channel, which is `ApiError` on every call and is the
         same one type an exception-throwing arm never lists as a return. So a `Result` this crate did
         not declare is descended into by its first argument alone, and everything else is walked
         whole.
@@ -736,7 +736,7 @@ class Reflector:
                 alias_of = tagged(method, ALIAS_ALIAS)
                 if operation is None and alias_of is None:
                     # A public method that binds no gg operation — an accessor such as
-                    # `ToolErrorCode::as_str` — is documentation for a Rust reader rather than a
+                    # `ApiErrorCode::as_str` — is documentation for a Rust reader rather than a
                     # capability, so it is not catalogued and nothing here has to invent an id for
                     # it. The both-directions check above is on the MODULE functions, where a
                     # forgotten declaration would be a forgotten capability.

@@ -75,7 +75,7 @@ fn written_pair(dir: &TempDir) -> (String, String) {
 /// The [`ShellData`] an outcome carries.
 fn shell_data(outcome: &ToolOutcome) -> &ShellData {
     match outcome.data.as_ref() {
-        Some(ToolData::Shell(data)) => data,
+        Some(ApiData::Shell(data)) => data,
         other => panic!("expected shell data, got {other:?}"),
     }
 }

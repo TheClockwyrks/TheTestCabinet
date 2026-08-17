@@ -12,7 +12,7 @@ namespace gg {
 
 namespace detail {
 
-const std::vector<std::string>& files_tools() {
+const std::vector<std::string>& files_operations() {
   static const std::vector<std::string> names{"read_file", "write_file", "edit_file", "list_dir"};
   return names;
 }
@@ -26,7 +26,7 @@ files::file_read read_file(std::string_view path, files::read_window window) {
   detail::window lines(window);
   sandbox_string_t lowered = scratch.str(path);
   test_cabinet_gg_files_file_read_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_files_read_file(&lowered, lines.offset(), lines.limit(), &ret, &err)) {
     detail::fail(err);
   }
@@ -38,7 +38,7 @@ std::string read_text_file(std::string_view path, files::read_window window) {
   detail::window lines(window);
   sandbox_string_t lowered = scratch.str(path);
   sandbox_string_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_helpers_read_text_file(&lowered, lines.offset(), lines.limit(), &ret,
                                               &err)) {
     detail::fail(err);
@@ -53,7 +53,7 @@ std::uint64_t write_file(std::string_view path, std::string_view contents) {
   sandbox_string_t lowered_path = scratch.str(path);
   sandbox_string_t lowered_contents = scratch.str(contents);
   std::uint64_t ret = 0;
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_files_write_file(&lowered_path, &lowered_contents, &ret, &err)) {
     detail::fail(err);
   }
@@ -65,7 +65,7 @@ void edit_file(std::string_view path, std::string_view old_string, std::string_v
   sandbox_string_t lowered_path = scratch.str(path);
   sandbox_string_t lowered_old = scratch.str(old_string);
   sandbox_string_t lowered_new = scratch.str(new_string);
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_files_edit_file(&lowered_path, &lowered_old, &lowered_new, &err)) {
     detail::fail(err);
   }
@@ -76,7 +76,7 @@ std::vector<files::dir_entry> list_dir(std::optional<std::string_view> path) {
   sandbox_string_t lowered{};
   if (path.has_value()) lowered = scratch.str(*path);
   test_cabinet_gg_files_list_dir_entry_t ret{};
-  test_cabinet_gg_types_tool_error_t err{};
+  test_cabinet_gg_types_api_error_t err{};
   if (!test_cabinet_gg_files_list_dir(path.has_value() ? &lowered : nullptr, &ret, &err)) {
     detail::fail(err);
   }

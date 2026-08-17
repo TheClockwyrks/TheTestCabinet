@@ -71,7 +71,7 @@ export interface IssueCreated {
    *
    * @ggop board.wait_for_issue
    * @returns gg's acknowledgement that the wait is registered.
-   * @throws `ToolError` with `not-found` when the board no longer holds the issue, and
+   * @throws `ApiError` with `not-found` when the board no longer holds the issue, and
    * `invalid-argument` where it is the issue this agent was itself assigned.
    */
   wait(): string;
@@ -141,7 +141,7 @@ function witStatus(status: IssueStatus | undefined): IssueStatusRaw | undefined 
  * @param epic.title A short line naming the body of work.
  * @param epic.description What the epic covers, for a reader who has not seen its issues.
  * @returns the id the prefix resolved to, and how much of the board budget is now used.
- * @throws `ToolError` with `invalid-argument` when the prefix is not 3 to 6 letters, and `conflict`
+ * @throws `ApiError` with `invalid-argument` when the prefix is not 3 to 6 letters, and `conflict`
  * when another epic already holds it.
  */
 export function createEpic(epic: { prefix: string; title: string; description: string }): EpicCreated {
@@ -175,7 +175,7 @@ export function createEpic(epic: { prefix: string; title: string; description: s
  * @param issue.reviewers The agents that must approve the work, from that same set. Required where
  * this run's reviewers feature is on.
  * @returns the id the board assigned, and how much of the board budget is now used.
- * @throws `ToolError` with `invalid-argument` when `agent` or a reviewer is not assignable, and
+ * @throws `ApiError` with `invalid-argument` when `agent` or a reviewer is not assignable, and
  * `conflict` on a blocker edge that would close a cycle.
  */
 export function createIssue(issue: {
@@ -222,7 +222,7 @@ export function createIssue(issue: {
  * @param patch.completionCriteria The completion criteria to replace the old ones with.
  * @param patch.status Where the issue now stands.
  * @param patch.epicId The epic to regroup it under, or `null` to detach it from the one it has.
- * @throws `ToolError` with `not-found` for an unknown id.
+ * @throws `ApiError` with `not-found` for an unknown id.
  */
 export function updateIssue(
   id: string,
@@ -256,7 +256,7 @@ export function updateIssue(
  * @param id The issue whose blockers to replace.
  * @param blockedBy The ids of every issue that must now be done before it. An empty array clears them
  * all.
- * @throws `ToolError` with `not-found` for an unknown id, and `conflict` when an edge would close a
+ * @throws `ApiError` with `not-found` for an unknown id, and `conflict` when an edge would close a
  * cycle.
  */
 export function setIssueBlockedBy(id: string, blockedBy: string[]): void {
@@ -269,7 +269,7 @@ export function setIssueBlockedBy(id: string, blockedBy: string[]): void {
  * @ggop board.remove_epic
  * @param id The epic to remove.
  * @returns how much of the board budget is used now that the epic has gone.
- * @throws `ToolError` with `not-found` for an unknown id.
+ * @throws `ApiError` with `not-found` for an unknown id.
  */
 export function removeEpic(id: string): BoardUsage {
   return call(() => raw.removeEpic(id));
@@ -281,7 +281,7 @@ export function removeEpic(id: string): BoardUsage {
  * @ggop board.remove_issue
  * @param id The issue to remove.
  * @returns how much of the board budget is used now that the issue has gone.
- * @throws `ToolError` with `not-found` for an unknown id.
+ * @throws `ApiError` with `not-found` for an unknown id.
  */
 export function removeIssue(id: string): BoardUsage {
   return call(() => raw.removeIssue(id));
@@ -298,7 +298,7 @@ export function removeIssue(id: string): BoardUsage {
  * @ggop board.wait_for_issue
  * @param id The issue to wait on. It may not be the issue this agent was assigned.
  * @returns gg's acknowledgement that the wait is registered.
- * @throws `ToolError` with `not-found` for an unknown id, and `invalid-argument` for the issue this
+ * @throws `ApiError` with `not-found` for an unknown id, and `invalid-argument` for the issue this
  * agent was itself assigned.
  */
 export function waitForIssue(id: string): string {

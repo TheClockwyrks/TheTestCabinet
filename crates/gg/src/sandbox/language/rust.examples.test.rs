@@ -201,7 +201,7 @@ fn call_path(span: &str) -> Option<&str> {
 /// Every signature string a template can render, spelled exactly as [`crate::prompts`] spells it.
 ///
 /// Subtracted from the inline candidates because a signature is a declaration — `gg::shell::run(
-/// command: &str, timeout_secs: Option<f64>) -> Result<shell::ShellOutput, ToolError>` reads as a
+/// command: &str, timeout_secs: Option<f64>) -> Result<shell::ShellOutput, ApiError>` reads as a
 /// call to the rule above and is not one. What a template writes *beside* a signature is already gated by
 /// `every_argument_a_rendered_prompt_names_is_one_that_signature_takes`.
 fn signature_spellings() -> Vec<String> {

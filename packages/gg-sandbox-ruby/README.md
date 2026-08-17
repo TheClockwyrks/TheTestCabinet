@@ -32,7 +32,7 @@ runtime does not fail cleanly.
 whole surface is Ruby.** Nothing crosses the membrane as Ruby, and everything the compiled
 program is evaluated *against* is Ruby: the capability modules are constants under `GG`
 (`GG::Files`, `GG::Views`), each declaring the types it produces, a failure is a raised
-`GG::Core::ToolError`, and a code module is an anonymous `Module` bound at `lib.<key>`.
+`GG::Core::ApiError`, and a code module is an anonymous `Module` bound at `lib.<key>`.
 
 A program reaches any of it by writing Ruby's own `require`. This SDK is the requirable
 unit `gg`, the agent's loaded code modules are `lib`, and the curated set is `json`, `set`

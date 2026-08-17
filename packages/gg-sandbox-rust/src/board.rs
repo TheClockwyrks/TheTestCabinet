@@ -9,12 +9,12 @@
 //! [`EpicAssignment`] leaves, detaches or regroups an epic. Neither needs a sentinel.
 
 use crate::bindings::test_cabinet::gg::board;
-use crate::core::ToolError;
+use crate::core::ApiError;
 use crate::tasks::TextEdit;
 use crate::wire;
 
-/// The gg tools this module dispatches — see [`files::TOOLS`](crate::files::TOOLS).
-pub(crate) const TOOLS: &[&str] = &[
+/// The gg tools this module dispatches — see [`files::OPERATIONS`](crate::files::OPERATIONS).
+pub(crate) const OPERATIONS: &[&str] = &[
     "create_epic",
     "create_issue",
     "update_issue",
@@ -48,7 +48,7 @@ pub(crate) const TOOLS: &[&str] = &[
 /// `InvalidArgument` when the prefix is not 3-6 letters or a required field is blank, `Conflict`
 /// when another epic already holds the prefix, and `LimitExceeded` at the board's epic cap.
 #[doc(alias = "ggop:board.create_epic")]
-pub fn create_epic(prefix: &str, title: &str, description: &str) -> Result<EpicCreated, ToolError> {
+pub fn create_epic(prefix: &str, title: &str, description: &str) -> Result<EpicCreated, ApiError> {
     wire::lift(board::create_epic(&board::EpicInput {
         prefix: prefix.to_string(),
         title: title.to_string(),
@@ -92,7 +92,7 @@ pub fn create_issue(
     completion_criteria: &str,
     agent: &str,
     options: IssueOptions<'_>,
-) -> Result<IssueCreated, ToolError> {
+) -> Result<IssueCreated, ApiError> {
     wire::lift(board::create_issue(&board::IssueInput {
         title: title.to_string(),
         description: options.description.map(str::to_string),
@@ -122,7 +122,7 @@ pub fn create_issue(
 /// `InvalidArgument` when no field was supplied or one was blanked, and `NotFound` for an unknown
 /// issue or epic id.
 #[doc(alias = "ggop:board.update_issue")]
-pub fn update_issue(id: &str, patch: IssuePatch<'_>) -> Result<(), ToolError> {
+pub fn update_issue(id: &str, patch: IssuePatch<'_>) -> Result<(), ApiError> {
     wire::lift(board::update_issue(id, &patch.to_wire()))
 }
 
@@ -139,7 +139,7 @@ pub fn update_issue(id: &str, patch: IssuePatch<'_>) -> Result<(), ToolError> {
 /// `InvalidArgument` for a blank id or blocker, `NotFound` for an issue or blocker the board does not
 /// hold, and `Conflict` when an edge would close a cycle or block the issue on itself.
 #[doc(alias = "ggop:board.set_issue_blocked_by")]
-pub fn set_issue_blocked_by(id: &str, blocked_by: &[&str]) -> Result<(), ToolError> {
+pub fn set_issue_blocked_by(id: &str, blocked_by: &[&str]) -> Result<(), ApiError> {
     wire::lift(board::set_issue_blocked_by(id, &wire::strings(blocked_by)))
 }
 
@@ -158,7 +158,7 @@ pub fn set_issue_blocked_by(id: &str, blocked_by: &[&str]) -> Result<(), ToolErr
 ///
 /// `NotFound` for an unknown id.
 #[doc(alias = "ggop:board.remove_epic")]
-pub fn remove_epic(id: &str) -> Result<BoardUsage, ToolError> {
+pub fn remove_epic(id: &str) -> Result<BoardUsage, ApiError> {
     wire::lift(board::remove_epic(id)).map(wire::board_usage)
 }
 
@@ -176,7 +176,7 @@ pub fn remove_epic(id: &str) -> Result<BoardUsage, ToolError> {
 ///
 /// `NotFound` for an unknown id.
 #[doc(alias = "ggop:board.remove_issue")]
-pub fn remove_issue(id: &str) -> Result<BoardUsage, ToolError> {
+pub fn remove_issue(id: &str) -> Result<BoardUsage, ApiError> {
     wire::lift(board::remove_issue(id)).map(wire::board_usage)
 }
 
@@ -202,7 +202,7 @@ pub fn remove_issue(id: &str) -> Result<BoardUsage, ToolError> {
 /// `InvalidArgument` for a blank id, or for this agent's own assigned issue, `NotFound` for an id
 /// the board does not hold, and `Unavailable` when the run has no board.
 #[doc(alias = "ggop:board.wait_for_issue")]
-pub fn wait_for_issue(id: &str) -> Result<String, ToolError> {
+pub fn wait_for_issue(id: &str) -> Result<String, ApiError> {
     wire::lift(board::wait_for_issue(id))
 }
 
@@ -255,7 +255,7 @@ impl IssueCreated {
     ///
     /// `NotFound` when the issue has since been removed.
     #[doc(alias = "ggop-alias:board.wait_for_issue")]
-    pub fn wait(&self) -> Result<String, ToolError> {
+    pub fn wait(&self) -> Result<String, ApiError> {
         wait_for_issue(&self.id)
     }
 }

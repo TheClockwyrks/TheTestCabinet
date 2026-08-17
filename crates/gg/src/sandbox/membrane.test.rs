@@ -59,7 +59,7 @@ fn a_call_outside_the_allowlist_is_unavailable_without_reaching_the_invoker() {
         .expect_err("a withheld tool is refused");
 
     assert_eq!(error.code, ErrorCode::Unavailable);
-    assert_eq!(error.tool, "list_dir");
+    assert_eq!(error.operation, "list_dir");
     assert!(
         log.calls().is_empty(),
         "the call reached the invoker anyway"
@@ -167,7 +167,7 @@ fn a_tool_that_returns_no_structured_data_is_an_error_not_a_guess() {
         .list_dir(None)
         .expect_err("a missing sidecar is an error");
     assert_eq!(error.code, ErrorCode::IoError);
-    assert_eq!(error.tool, "list_dir");
+    assert_eq!(error.operation, "list_dir");
     assert!(error.message.contains("gg defect"), "{}", error.message);
 
     let parts = state.into_parts();
@@ -188,7 +188,7 @@ fn a_tool_that_returns_no_structured_data_is_an_error_not_a_guess() {
 fn a_wrongly_typed_sidecar_names_what_it_produced() {
     let log = CallLog::default();
     let mut state = membrane_with(&log, &all_operations(), None, |_, _| {
-        ToolOutcome::ok("wrote it", "wrote").with_data(ToolData::BytesWritten(12))
+        ToolOutcome::ok("wrote it", "wrote").with_data(ApiData::BytesWritten(12))
     });
 
     let error = state

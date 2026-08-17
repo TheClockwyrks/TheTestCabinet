@@ -104,7 +104,7 @@ class IssueCreated:
                 program ends.
 
         Raises:
-            ToolError: `not-found` when the issue has since been removed.
+            ApiError: `not-found` when the issue has since been removed.
         """
         return wait_for_issue(self.id)
 
@@ -160,7 +160,7 @@ def create_epic(prefix: str, title: str, description: str) -> EpicCreated:
         The id the prefix resolved to, and the board budget the epic left behind.
 
     Raises:
-        ToolError: `invalid-argument` when the prefix is not 3-6 letters or a required field is
+        ApiError: `invalid-argument` when the prefix is not 3-6 letters or a required field is
             blank, `conflict` when another epic already holds the prefix, and `limit-exceeded` at the
             board's epic cap.
     """
@@ -209,7 +209,7 @@ def create_issue(
             and keeping it is what blocks a later issue on this one or waits for it.
 
     Raises:
-        ToolError: `invalid-argument` when a required field is blank or `agent` or a reviewer is not
+        ApiError: `invalid-argument` when a required field is blank or `agent` or a reviewer is not
             one this agent may assign, `not-found` for an unknown epic or blocker, and
             `limit-exceeded` at the board's issue cap.
     """
@@ -260,7 +260,7 @@ def update_issue(
             default keeps the grouping.
 
     Raises:
-        ToolError: `invalid-argument` when no field was supplied or one was blanked, and `not-found`
+        ApiError: `invalid-argument` when no field was supplied or one was blanked, and `not-found`
             for an unknown issue or epic id.
     """
     _call(
@@ -288,7 +288,7 @@ def set_issue_blocked_by(id: str, blocked_by: list[str]) -> None:
             all.
 
     Raises:
-        ToolError: `invalid-argument` for a blank id or blocker, `not-found` for an issue or blocker
+        ApiError: `invalid-argument` for a blank id or blocker, `not-found` for an issue or blocker
             the board does not hold, and `conflict` when an edge would close a cycle or block the
             issue on itself.
     """
@@ -306,7 +306,7 @@ def remove_epic(id: str) -> BoardUsage:
         The board budget the removal left behind.
 
     Raises:
-        ToolError: `not-found` for an unknown id.
+        ApiError: `not-found` for an unknown id.
     """
     return _usage(_call(wire.remove_epic, id))
 
@@ -322,7 +322,7 @@ def remove_issue(id: str) -> BoardUsage:
         The board budget the removal left behind.
 
     Raises:
-        ToolError: `not-found` for an unknown id.
+        ApiError: `not-found` for an unknown id.
     """
     return _usage(_call(wire.remove_issue, id))
 
@@ -345,7 +345,7 @@ def wait_for_issue(id: str) -> str:
             ends.
 
     Raises:
-        ToolError: `invalid-argument` for a blank id, or for this agent's own assigned issue,
+        ApiError: `invalid-argument` for a blank id, or for this agent's own assigned issue,
             `not-found` for an id the board does not hold, and `unavailable` when the run has no
             board.
     """

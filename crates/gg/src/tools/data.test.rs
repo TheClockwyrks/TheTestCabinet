@@ -12,33 +12,33 @@ use super::*;
 
 /// Every payload, once, so that a variant added without a serde representation that works cannot
 /// slip through — the two-line list below is the thing a new variant has to be added to.
-fn one_of_each() -> Vec<ToolData> {
+fn one_of_each() -> Vec<ApiData> {
     vec![
-        ToolData::Shell(ShellData {
+        ApiData::Shell(ShellData {
             exit_code: Some(0),
             body: "ok\n".to_string(),
             truncated: false,
         }),
-        ToolData::FileText(FileTextData {
+        ApiData::FileText(FileTextData {
             contents: "line 1\n".to_string(),
             first_line: 1,
             last_line: 1,
             total_lines: 9,
             byte_truncated: false,
         }),
-        ToolData::FileImage(FileImageData {
+        ApiData::FileImage(FileImageData {
             media_type: "image/png".to_string(),
             label: "PNG".to_string(),
             bytes: 33,
             shown: true,
             not_shown_reason: None,
         }),
-        ToolData::BytesWritten(1_024),
-        ToolData::DirEntries(vec![DirEntryData {
+        ApiData::BytesWritten(1_024),
+        ApiData::DirEntries(vec![DirEntryData {
             name: "src".to_string(),
             kind: DirEntryKind::Directory,
         }]),
-        ToolData::MemoryUsage(MemoryUsageData {
+        ApiData::MemoryUsage(MemoryUsageData {
             count: 1,
             max_count: Some(8),
             total_chars: 20,
@@ -46,27 +46,27 @@ fn one_of_each() -> Vec<ToolData> {
             index_chars: None,
             max_index_chars: None,
         }),
-        ToolData::MemoryHits(vec![MemoryHitData {
+        ApiData::MemoryHits(vec![MemoryHitData {
             name: "layout".to_string(),
             description: "where things live".to_string(),
             matched: 2,
             occurrences: 3,
             excerpt: "…src/ holds the engine…".to_string(),
         }]),
-        ToolData::TaskUsage(UsagePair { count: 2, max: 40 }),
-        ToolData::BoardUsage(BoardUsageData {
+        ApiData::TaskUsage(UsagePair { count: 2, max: 40 }),
+        ApiData::BoardUsage(BoardUsageData {
             epics: 1,
             max_epics: 10,
             issues: 3,
             max_issues: 60,
         }),
-        ToolData::Reclaim(ReclaimData {
+        ApiData::Reclaim(ReclaimData {
             items: 4,
             reclaimed_tokens: 900,
             paths: vec!["src/a.ts".to_string()],
             detail: "evicted 4 file views".to_string(),
         }),
-        ToolData::ArchiveSearch(ArchiveSearchData {
+        ApiData::ArchiveSearch(ArchiveSearchData {
             archive_empty: false,
             hits: vec![ArchiveHitData {
                 seq: 7,
@@ -74,12 +74,12 @@ fn one_of_each() -> Vec<ToolData> {
                 text: "physics tuning".to_string(),
             }],
         }),
-        ToolData::SubagentSpawned(SubagentHandleData {
+        ApiData::SubagentSpawned(SubagentHandleData {
             id: "agent-1".to_string(),
             slot: "primary".to_string(),
             model_id: "vendor/model".to_string(),
         }),
-        ToolData::SubagentResults(vec![SubagentResultData {
+        ApiData::SubagentResults(vec![SubagentResultData {
             id: "agent-1".to_string(),
             status: Some(AgentStatusData::Completed),
             summary: "done".to_string(),
@@ -95,7 +95,7 @@ fn every_payload_round_trips_through_json() {
     for data in one_of_each() {
         let json = serde_json::to_string(&data)
             .unwrap_or_else(|err| panic!("{data:?} should serialise: {err}"));
-        let back: ToolData = serde_json::from_str(&json)
+        let back: ApiData = serde_json::from_str(&json)
             .unwrap_or_else(|err| panic!("{json} should deserialise: {err}"));
         assert_eq!(back, data, "round trip changed {data:?}");
     }
@@ -110,11 +110,11 @@ fn every_payload_round_trips_through_json() {
 #[test]
 fn the_wire_shape_is_adjacently_tagged() {
     assert_eq!(
-        serde_json::to_value(ToolData::BytesWritten(12)).unwrap(),
+        serde_json::to_value(ApiData::BytesWritten(12)).unwrap(),
         json!({ "kind": "bytesWritten", "data": 12 })
     );
     assert_eq!(
-        serde_json::to_value(ToolData::DirEntries(vec![DirEntryData {
+        serde_json::to_value(ApiData::DirEntries(vec![DirEntryData {
             name: "a.ts".to_string(),
             kind: DirEntryKind::File,
         }]))
@@ -122,7 +122,7 @@ fn the_wire_shape_is_adjacently_tagged() {
         json!({ "kind": "dirEntries", "data": [{ "name": "a.ts", "kind": "file" }] })
     );
     assert_eq!(
-        serde_json::to_value(ToolData::TaskUsage(UsagePair { count: 1, max: 4 })).unwrap(),
+        serde_json::to_value(ApiData::TaskUsage(UsagePair { count: 1, max: 4 })).unwrap(),
         json!({ "kind": "taskUsage", "data": { "count": 1, "max": 4 } })
     );
 }
@@ -130,7 +130,7 @@ fn the_wire_shape_is_adjacently_tagged() {
 /// Payload fields are camelCase, matching the outcome that carries them.
 #[test]
 fn payload_fields_are_camel_case() {
-    let shell = serde_json::to_value(ToolData::Shell(ShellData {
+    let shell = serde_json::to_value(ApiData::Shell(ShellData {
         exit_code: Some(3),
         body: "boom".to_string(),
         truncated: true,
@@ -139,7 +139,7 @@ fn payload_fields_are_camel_case() {
     assert_eq!(shell["data"]["exitCode"], json!(3));
     assert_eq!(shell["data"]["truncated"], json!(true));
 
-    let read = serde_json::to_value(ToolData::FileText(FileTextData {
+    let read = serde_json::to_value(ApiData::FileText(FileTextData {
         contents: "x".to_string(),
         first_line: 251,
         last_line: 500,
@@ -157,7 +157,7 @@ fn payload_fields_are_camel_case() {
 /// `exit_code` is an option rather than a sentinel.
 #[test]
 fn a_signal_terminated_process_has_no_exit_code() {
-    let value = serde_json::to_value(ToolData::Shell(ShellData {
+    let value = serde_json::to_value(ApiData::Shell(ShellData {
         exit_code: None,
         body: String::new(),
         truncated: false,

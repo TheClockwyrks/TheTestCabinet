@@ -32,7 +32,7 @@
 //!
 //! Four shapes reach stderr that way, and the last two were silent or opaque on the incumbent:
 //!
-//! * a throw the program did not catch, including a `ToolError` a refused gg call raised;
+//! * a throw the program did not catch, including an `ApiError` a refused gg call raised;
 //! * a syntax error, at the model's own line, where a `new Function` construction failure had no
 //!   location at all;
 //! * a **floating rejection** — a promise nothing awaited — through the engine's rejection tracker,
@@ -236,13 +236,13 @@ struct Component;
 impl Guest for Component {
     /// Evaluate one program.
     ///
-    /// `tools`, `ending` and `library` are read by nothing here, exactly as the world says of every
-    /// guest: the SDK is static and every capability question is answered at the membrane, which is
-    /// the one place that can answer it the same way for all eleven arms.
+    /// `operations`, `ending` and `library` are read by nothing here, exactly as the world says of
+    /// every guest: the SDK is static and every capability question is answered at the membrane,
+    /// which is the one place that can answer it the same way for all eleven arms.
     fn run(
         program: String,
         modules: Vec<CodeModule>,
-        _tools: Vec<String>,
+        _operations: Vec<String>,
         _ending: bindings::session::EndingKind,
         _library: bool,
     ) {
@@ -330,8 +330,8 @@ impl Guest for Component {
     }
 
     /// Every gg tool this component imports a binding for.
-    fn bound_tools() -> Vec<String> {
-        membrane::BOUND_TOOLS
+    fn bound_operations() -> Vec<String> {
+        membrane::BOUND_OPERATIONS
             .iter()
             .map(|name| (*name).to_string())
             .collect()
@@ -591,8 +591,8 @@ fn describe<'js>(ctx: &Ctx<'js>, value: Value<'js>) -> String {
     if let Some(exception) = value.clone().into_exception() {
         return thrown_error(&exception);
     }
-    // A refused gg call arrives as the membrane's own record — `{ code, tool, message }` — which is
-    // an ordinary object rather than an `Error`, exactly as it is on every other guest.
+    // A refused gg call arrives as the membrane's own record — `{ code, operation, message }` —
+    // which is an ordinary object rather than an `Error`, exactly as it is on every other guest.
     if let Some(object) = value.as_object() {
         let name: String = object.get("name").unwrap_or_else(|_| "Error".to_string());
         let message: String = object.get("message").unwrap_or_default();
@@ -645,12 +645,12 @@ fn thrown_value<'js>(ctx: &Ctx<'js>, value: &Value<'js>) -> String {
 /// One thrown `Error` object, rendered the way a JavaScript host renders an uncaught one: the name,
 /// the message, the stack, and then **the properties the error carries of its own**.
 ///
-/// That last part is not decoration and not gg's account of the failure. A `ToolError` says which
-/// call failed and why in `tool` and `code`, which are ordinary own properties of the thrown object
-/// — so an uncaught one that printed only `name` and `message` would tell a model a file was missing
-/// without telling it which call went looking. Node prints an error's extra own properties for the
-/// same reason, and this prints whatever the thrown object carries rather than the two gg happens to
-/// know about.
+/// That last part is not decoration and not gg's account of the failure. An `ApiError` says which
+/// call failed and why in `operation` and `code`, which are ordinary own properties of the thrown
+/// object — so an uncaught one that printed only `name` and `message` would tell a model a file was
+/// missing without telling it which call went looking. Node prints an error's extra own properties
+/// for the same reason, and this prints whatever the thrown object carries rather than the two gg
+/// happens to know about.
 fn thrown_error(exception: &rquickjs::Exception<'_>) -> String {
     let head = format!(
         "{}: {}\n{}",

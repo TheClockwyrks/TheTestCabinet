@@ -91,7 +91,7 @@ struct turn_range {
 ///
 /// \param path The file whose views to drop; empty drops every file view the agent holds.
 /// \returns what the reclaim actually freed.
-/// \throws gg::core::tool_error `invalid_argument` for a path that is given but empty; leaving it out
+/// \throws gg::core::api_error `invalid_argument` for a path that is given but empty; leaving it out
 ///   altogether is how every file view is dropped.
 context::reclaim_report evict_file_view(std::optional<std::string_view> path = std::nullopt);
 
@@ -106,7 +106,7 @@ context::reclaim_report evict_file_view(std::optional<std::string_view> path = s
 ///
 /// \param ranges The inclusive spans of turn numbers to move out of the window. They may overlap.
 /// \returns what the archive actually freed.
-/// \throws gg::core::tool_error `invalid_argument` for a span whose ends are not turn numbers.
+/// \throws gg::core::api_error `invalid_argument` for a span whose ends are not turn numbers.
 context::reclaim_report archive_thread(std::vector<context::turn_range> ranges);
 
 /// Search archived history for a case-insensitive substring, most recent first, up to 8 hits.
@@ -118,7 +118,7 @@ context::reclaim_report archive_thread(std::vector<context::turn_range> ranges);
 ///
 /// \param query The substring to look for. Matching is case-insensitive.
 /// \returns whether anything is archived at all, and the matches.
-/// \throws gg::core::tool_error `invalid_argument` for an empty query.
+/// \throws gg::core::api_error `invalid_argument` for an empty query.
 context::archive_search search_archive(std::string_view query);
 
 /// Compact the context window: the detailed thread is dropped and restarted from `summary`.
@@ -137,7 +137,7 @@ context::archive_search search_archive(std::string_view query);
 ///   `files` is gone.
 /// \param files The paths to read afresh into the restarted window. An empty vector reads nothing
 ///   back.
-/// \throws gg::core::tool_error `invalid_argument` for a blank summary. This is the one call gg does
+/// \throws gg::core::api_error `invalid_argument` for a blank summary. This is the one call gg does
 ///   not refuse while a compaction is in flight, since nothing else can clear the window.
 void compact(std::string_view summary, std::vector<std::string> files);
 

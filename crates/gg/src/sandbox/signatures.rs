@@ -67,7 +67,7 @@ use test_cabinet_core::gg::GgProgramLanguage;
 use super::language::ProgramLanguage;
 use super::operations::{Binding, OperationId, operation_by_id};
 
-// The whole vocabulary backs [`sandbox_tool_names`], which is a drift gate rather than a
+// The whole vocabulary backs [`sandbox_operation_names`], which is a drift gate rather than a
 // run-time need — so, like it, the names it is built from are only reachable under test.
 #[cfg(test)]
 use crate::tools::ALL_TOOL_NAMES;
@@ -173,8 +173,8 @@ pub(crate) struct SignatureCatalogue {
     /// through. Nothing is unreachable for not knowing a module's name, because search finds the
     /// function; knowing the name makes the search an exact lookup instead.
     pub modules: Vec<ModuleDoc>,
-    /// **Every model-facing call**, in one array: the tools, the helpers, the view calls, the
-    /// program-library calls and the calls that end a session alike.
+    /// **Every model-facing call**, in one array: the tool-backed calls, the helpers, the view calls,
+    /// the program-library calls and the calls that end a session alike.
     ///
     /// One array rather than a section per gate, because a section was never a fact about the
     /// functions: it was where an arm filed a gate it should never have been asserting. Gating is
@@ -638,16 +638,17 @@ impl SignatureCatalogue {
     }
 }
 
-/// Every gg tool name, as the drift gate over a **guest artifact** needs it.
+/// Every name the guest's `bound-operations` export must answer with, as the drift gate over a
+/// **guest artifact** needs it.
 ///
 /// It is the tool vocabulary and decides nothing about the API surface an operation names; its one
-/// use is the WIT's `bound-tools` export, which is how a test asks a committed component what it was
+/// use is the WIT's `bound-operations` export, which is how a test asks a committed component what it was
 /// built against and catches a stale `.wasm` that no compiler and no source-level test can.
 ///
 /// `#[cfg(test)]` because a run never asks: what a program may call is its [grant](super::Grants),
 /// which is stated in operations.
 #[cfg(test)]
-pub(crate) fn sandbox_tool_names() -> Vec<&'static str> {
+pub(crate) fn sandbox_operation_names() -> Vec<&'static str> {
     ALL_TOOL_NAMES.to_vec()
 }
 
@@ -792,8 +793,9 @@ impl<'a> Prose<'a> {
     }
 }
 
-/// Every function `language`'s catalogue documents — the tools, the helpers, the view calls, the
-/// program-library calls and the ending calls alike — each projected as a [`CatalogueFunction`].
+/// Every function `language`'s catalogue documents — the tool-backed calls, the helpers, the view
+/// calls, the program-library calls and the ending calls alike — each projected as a
+/// [`CatalogueFunction`].
 ///
 /// It takes a language because the *spellings* are one language's: two registered languages offer
 /// the same operations under the same gates, and differ in what a program calls them. The docs runtime filters these by the run's enabled set, the agent's role and whether it
@@ -804,8 +806,8 @@ impl<'a> Prose<'a> {
 /// # It is the one place a gate is decided
 ///
 /// A catalogue entry carries none, and this is where the [operation](FunctionSignature::operation)
-/// it names is resolved against gg's own [operations table](super::operations) into the tool, role
-/// or capability that buys it — so no consumer downstream has to read the artifact to learn what an
+/// it names is resolved against gg's own [operations table](super::operations) into the role,
+/// capability or standing that buys it — so no consumer downstream has to read the artifact to learn what an
 /// arm may do.
 pub fn catalogue_functions(language: &dyn ProgramLanguage) -> Vec<CatalogueFunction> {
     functions_of(language.catalogue())

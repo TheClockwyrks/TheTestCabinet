@@ -109,7 +109,7 @@ const GENERATED_FROM =
   "packages/gg-sandbox-purescript/src/Gg/ + spago.yaml (purs --codegen docs)";
 
 /** The types every failure names, closed over on every entry because every call here throws one. */
-const ALWAYS_REFERENCED = ["Gg.Core.ToolError", "Gg.Core.ToolErrorCode"];
+const ALWAYS_REFERENCED = ["Gg.Core.ApiError", "Gg.Core.ApiErrorCode"];
 
 /**
  * The longest a brief may be, in characters.

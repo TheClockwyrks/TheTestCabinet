@@ -34,7 +34,7 @@ def read_skill(name: str) -> str:
             `lib.<key>` its public names are now bound at.
 
     Raises:
-        ToolError: `not-found` — listing the skills that do exist — when the name is unknown.
+        ApiError: `not-found` — listing the skills that do exist — when the name is unknown.
     """
     return _call(wire.read_skill, name)
 

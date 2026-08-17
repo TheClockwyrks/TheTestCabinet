@@ -19,7 +19,7 @@ use super::super::test_cabinet::gg::tasks::{
     Host as TasksHost, TaskInput, TaskPatch, TaskStatus, TaskUsage,
 };
 use super::super::test_cabinet::gg::types::TextEdit;
-use super::super::{MembraneState, ToolApi};
+use super::super::{MembraneState, OperationApi};
 use super::wire_coding::{
     VARIANT_CASE, VARIANT_VALUE, Value, WireFault, argument, integer, optional, record, text,
 };
@@ -30,7 +30,7 @@ use super::{Answer, Failure};
 // ---------------------------------------------------------------------------------------------
 
 /// `memories.write_memory` — write the scratchpad.
-pub(super) fn write_memory<A: ToolApi>(
+pub(super) fn write_memory<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -40,7 +40,7 @@ pub(super) fn write_memory<A: ToolApi>(
 }
 
 /// `memories.update_memory` — replace an existing memory whole.
-pub(super) fn update_memory<A: ToolApi>(
+pub(super) fn update_memory<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -50,7 +50,7 @@ pub(super) fn update_memory<A: ToolApi>(
 }
 
 /// `memories.create_memory` — create a memory.
-pub(super) fn create_memory<A: ToolApi>(
+pub(super) fn create_memory<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -60,7 +60,7 @@ pub(super) fn create_memory<A: ToolApi>(
 }
 
 /// `memories.read_memory` — read one memory.
-pub(super) fn read_memory<A: ToolApi>(
+pub(super) fn read_memory<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -70,7 +70,7 @@ pub(super) fn read_memory<A: ToolApi>(
 }
 
 /// `memories.edit_memory` — replace one string inside a memory.
-pub(super) fn edit_memory<A: ToolApi>(
+pub(super) fn edit_memory<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -87,7 +87,7 @@ pub(super) fn edit_memory<A: ToolApi>(
 }
 
 /// `memories.search_memories` — search the memory index.
-pub(super) fn search_memories<A: ToolApi>(
+pub(super) fn search_memories<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -102,7 +102,7 @@ pub(super) fn search_memories<A: ToolApi>(
 }
 
 /// `memories.delete_memory` — delete one memory.
-pub(super) fn delete_memory<A: ToolApi>(
+pub(super) fn delete_memory<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -156,7 +156,7 @@ fn memory_hit(hit: MemoryHit) -> Value {
 // ---------------------------------------------------------------------------------------------
 
 /// `tasks.add_task` — add a task.
-pub(super) fn add_task<A: ToolApi>(
+pub(super) fn add_task<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -174,7 +174,7 @@ pub(super) fn add_task<A: ToolApi>(
 }
 
 /// `tasks.update_task` — patch a task.
-pub(super) fn update_task<A: ToolApi>(
+pub(super) fn update_task<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -196,7 +196,7 @@ pub(super) fn update_task<A: ToolApi>(
 }
 
 /// `tasks.set_blocked_by` — replace a task's blockers.
-pub(super) fn set_blocked_by<A: ToolApi>(
+pub(super) fn set_blocked_by<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -208,7 +208,7 @@ pub(super) fn set_blocked_by<A: ToolApi>(
 }
 
 /// `tasks.complete_task` — mark a task done.
-pub(super) fn complete_task<A: ToolApi>(
+pub(super) fn complete_task<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -219,7 +219,7 @@ pub(super) fn complete_task<A: ToolApi>(
 }
 
 /// `tasks.remove_task` — remove a task.
-pub(super) fn remove_task<A: ToolApi>(
+pub(super) fn remove_task<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -251,7 +251,7 @@ fn task_status(value: &Value) -> Result<TaskStatus, Failure> {
 // ---------------------------------------------------------------------------------------------
 
 /// `board.create_epic` — create an epic.
-pub(super) fn create_epic<A: ToolApi>(
+pub(super) fn create_epic<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -268,7 +268,7 @@ pub(super) fn create_epic<A: ToolApi>(
 }
 
 /// `board.create_issue` — create an issue.
-pub(super) fn create_issue<A: ToolApi>(
+pub(super) fn create_issue<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -301,7 +301,7 @@ pub(super) fn create_issue<A: ToolApi>(
 }
 
 /// `board.update_issue` — patch an issue.
-pub(super) fn update_issue<A: ToolApi>(
+pub(super) fn update_issue<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -333,7 +333,7 @@ pub(super) fn update_issue<A: ToolApi>(
 }
 
 /// `board.set_issue_blocked_by` — replace an issue's blockers.
-pub(super) fn set_issue_blocked_by<A: ToolApi>(
+pub(super) fn set_issue_blocked_by<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -345,7 +345,7 @@ pub(super) fn set_issue_blocked_by<A: ToolApi>(
 }
 
 /// `board.remove_epic` — remove an epic.
-pub(super) fn remove_epic<A: ToolApi>(
+pub(super) fn remove_epic<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -355,7 +355,7 @@ pub(super) fn remove_epic<A: ToolApi>(
 }
 
 /// `board.remove_issue` — remove an issue.
-pub(super) fn remove_issue<A: ToolApi>(
+pub(super) fn remove_issue<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],
@@ -365,7 +365,7 @@ pub(super) fn remove_issue<A: ToolApi>(
 }
 
 /// `board.wait_for_issue` — park until an issue is unblocked.
-pub(super) fn wait_for_issue<A: ToolApi>(
+pub(super) fn wait_for_issue<A: OperationApi>(
     state: &mut MembraneState<A>,
     op: &str,
     arguments: &[Value],

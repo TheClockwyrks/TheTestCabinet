@@ -12,7 +12,7 @@ use wasmtime::{Config, Engine, OptLevel, Store, WasmBacktraceDetails};
 use wasmtime_wasi::I32Exit;
 
 use super::SandboxError;
-use super::invoker::ToolApi;
+use super::invoker::OperationApi;
 use super::language::ProgramLanguage;
 use super::limits::SandboxLimits;
 use super::membrane::MembraneState;
@@ -367,7 +367,7 @@ pub(crate) fn component_bytes(language: &'static dyn ProgramLanguage) -> &'stati
 /// `fallback` is what an unclassified failure becomes, and it differs by phase — an error from
 /// [`instantiate`](wasmtime::component::Linker) means the embedded artifact and the membrane have
 /// drifted apart, while one from the call is an ordinary trap — so the caller names it.
-pub(crate) fn classify<A: ToolApi>(
+pub(crate) fn classify<A: OperationApi>(
     store: &Store<MembraneState<A>>,
     limits: SandboxLimits,
     err: &wasmtime::Error,
@@ -415,7 +415,10 @@ pub(crate) fn classify<A: ToolApi>(
 /// arm gg's own deadline is the only ceiling and its flag always fires, so this would be pure
 /// heuristic: a panic, a trap or an allocation failure in the last tick of a program's budget would
 /// be reported to the model as a timeout rather than as what it was.
-fn spent_its_budget<A: ToolApi>(store: &Store<MembraneState<A>>, limits: SandboxLimits) -> bool {
+fn spent_its_budget<A: OperationApi>(
+    store: &Store<MembraneState<A>>,
+    limits: SandboxLimits,
+) -> bool {
     store.data().language().stops_itself_at_ggs_deadline()
         && store.data().guest_elapsed() >= super::membrane::guest_deadline(limits)
 }

@@ -272,7 +272,7 @@ public final class Abi {
     /**
      * The canonical ABI return area for a {@code list} with nothing in it.
      *
-     * <p>What gg's generated entry class answers {@code bound-tools} with. That export exists
+     * <p>What gg's generated entry class answers {@code bound-operations} with. That export exists
      * because gg instantiates every component of this membrane through the {@code sandbox} world's
      * bindings and a missing export is an instantiation failure; what it means — which of gg's
      * fifteen typed interfaces this component imports — has one true answer for a compiled arm,

@@ -75,8 +75,8 @@ public static partial class Board
         /// so the rest of the program still runs and the suspension happens after it ends.
         /// </remarks>
         /// <returns>an acknowledgement that the wait is registered.</returns>
-        /// <exception cref="ToolException">
-        /// <see cref="ToolErrorCode.NotFound"/> when the board no longer holds the issue, which is
+        /// <exception cref="ApiException">
+        /// <see cref="ApiErrorCode.NotFound"/> when the board no longer holds the issue, which is
         /// the one way this can fail: the other refusals <see cref="WaitForIssue"/> documents cannot
         /// be reached from an issue that was just filed here.
         /// </exception>

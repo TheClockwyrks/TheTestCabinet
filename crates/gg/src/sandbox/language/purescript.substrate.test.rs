@@ -18,7 +18,7 @@
 //! into the same library tree a program is compiled against, so `import Gg.Files as Gg.Files` is an
 //! ordinary import resolved by `purs`; its one foreign module writes `import * as gg from "gg"`,
 //! which `esbuild` leaves external and the guest's loader resolves to the instance a TypeScript
-//! program shares. That is what [`every_tool_crosses_the_membrane_from_its_purescript_spelling`]
+//! program shares. That is what [`every_operation_crosses_the_membrane_from_its_purescript_spelling`]
 //! drives: real PureScript, really compiled, whose calls arrive at gg's dispatch carrying the same
 //! JSON every other arm's do.
 //!
@@ -42,8 +42,8 @@ use crate::limits::TurnErrorType;
 use super::compile::{self, compile_module, compile_program};
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::fake::{
-    CallLog, FakeToolApi, all_capabilities, all_operations, all_operations_without, canned_outcome,
-    granted_operations,
+    CallLog, FakeOperationApi, all_capabilities, all_operations, all_operations_without,
+    canned_outcome, granted_operations,
 };
 use crate::sandbox::membrane::RunEnding;
 use crate::sandbox::outcome::SandboxOutcome;
@@ -101,7 +101,7 @@ fn evaluate(
         },
         SandboxLimits::default(),
         None,
-        FakeToolApi::with(&log, responder),
+        FakeOperationApi::with(&log, responder),
     );
     (outcome, log)
 }
@@ -143,7 +143,7 @@ fn run_as(
     )
 }
 
-/// Compile and run one PureScript program with `enabled`'s tools offered and no ending group.
+/// Compile and run one PureScript program with `enabled`'s operations offered and no ending group.
 fn run_with(
     source: &str,
     operations: &[crate::sandbox::operations::OperationId],
@@ -672,7 +672,7 @@ fn a_compiled_program_needs_nothing_of_the_guest_plain_javascript_does_not() {
     );
 }
 
-/// One tool, called through the PureScript spelling of it, and the JSON gg's dispatch must have seen.
+/// One operation, called through the PureScript spelling of it, and the JSON gg's dispatch must have seen.
 struct Crossing {
     /// The gg tool name the call must arrive under.
     tool: &'static str,
@@ -682,7 +682,7 @@ struct Crossing {
     expected: fn() -> Value,
 }
 
-/// Every bound tool, called through its idiomatic PureScript function.
+/// Every bound operation, called through its idiomatic PureScript function.
 ///
 /// Deliberately the same table `sandbox.membrane.test.rs` drives the TypeScript arm with and
 /// `python.substrate.test.rs` and `ruby.substrate.test.rs` drive theirs with, down to the arguments
@@ -933,7 +933,7 @@ fn program_of(statements: &[&str]) -> String {
 }
 
 #[test]
-fn every_tool_crosses_the_membrane_from_its_purescript_spelling() {
+fn every_operation_crosses_the_membrane_from_its_purescript_spelling() {
     let crossings = crossings();
 
     // One program rather than one per crossing, which is a difference from the other arms and a
@@ -973,15 +973,15 @@ fn every_tool_crosses_the_membrane_from_its_purescript_spelling() {
         );
     }
 
-    // Exhaustive by construction: a tool added to gg with no row here fails now, rather than shipping
+    // Exhaustive by construction: an operation added to gg with no row here fails now, rather than shipping
     // as a typed function nobody ever called.
     let mut covered: Vec<&str> = crossings.iter().map(|crossing| crossing.tool).collect();
     covered.sort_unstable();
-    let mut vocabulary = crate::sandbox::signatures::sandbox_tool_names();
+    let mut vocabulary = crate::sandbox::signatures::sandbox_operation_names();
     vocabulary.sort_unstable();
     assert_eq!(
         covered, vocabulary,
-        "every bound tool needs a crossing, and only bound tools may have one"
+        "every bound operation needs a crossing, and only bound operations may have one"
     );
 }
 
@@ -1005,7 +1005,7 @@ fn a_convenience_function_reaches_the_operation_it_is_an_alias_of() {
     let log = CallLog::default();
     // A library with something in it, which is what `Gg.Programs.sourceOf` needs a summary of; the
     // plain double answers an empty history, and an alias driven over an empty array proves nothing.
-    let api = FakeToolApi::new(&log).with_program(2, "module Main where\nmain = pure unit");
+    let api = FakeOperationApi::new(&log).with_program(2, "module Main where\nmain = pure unit");
     let operations = all_operations();
     let program = prepare(
         &program_of(&[
@@ -1231,7 +1231,7 @@ fn the_views_docs_program_library_helper_and_endings_modules_are_reached_in_pure
     // (whose `module` and `type` labels are reserved words this arm writes as labels anyway), the
     // constructor the kind filter lowers from, and the view the host opens on the way back.
     let log = CallLog::default();
-    let api = FakeToolApi::new(&log);
+    let api = FakeOperationApi::new(&log);
     // Searching is bound to every program; closing is bought, so this store grants the capability
     // that buys it and the calls that capability offers.
     let capabilities = vec![CAPABILITY_DOCVIEW_CLOSE.to_string()];
@@ -1286,7 +1286,7 @@ fn the_views_docs_program_library_helper_and_endings_modules_are_reached_in_pure
         &program_of(&[
             "outcome <- Gg.Core.attempt Gg.Docs.closeAll",
             "case outcome of\n                 \
-             Left failure -> Console.log (failure.tool <> \" \" <> show failure.code)\n                 \
+             Left failure -> Console.log (failure.operation <> \" \" <> show failure.code)\n                 \
              Right count -> Console.log (show count)",
         ])
         .replace(
@@ -1331,7 +1331,7 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
         &program_of(&[
             "outcome <- Gg.Core.attempt (Gg.Files.readFile \"gone.purs\" {})",
             "case outcome of",
-            "  Left failure -> Console.log (show failure.code <> \" on \" <> failure.tool)",
+            "  Left failure -> Console.log (show failure.code <> \" on \" <> failure.operation)",
             "  Right _ -> Console.log \"read it\"",
         ])
         .replace(
@@ -1489,7 +1489,7 @@ fn g8_a_runtime_failure_reaches_the_model() {
         GgProgramLanguage::PureScript,
         &[
             Case {
-                shape: Shape::ToolError,
+                shape: Shape::ApiError,
                 program: r#"module Main where
 
 -- G8 (a): a gg call the host answers `not-found`, uncaught.

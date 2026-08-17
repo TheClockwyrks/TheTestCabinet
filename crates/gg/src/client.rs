@@ -1819,7 +1819,7 @@ impl MockClient {
 
     /// How many turns this mock has actually been asked for — the script cursor, read live.
     ///
-    /// Test-only, like [`component_bound_tools`](crate::sandbox) and for the same reason: no part of
+    /// Test-only, like [`component_bound_operations`](crate::sandbox) and for the same reason: no part of
     /// a run asks a client how many times it has been called, and a production affordance nothing
     /// produces is a claim about the design that is not true.
     ///

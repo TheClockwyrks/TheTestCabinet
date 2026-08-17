@@ -50,7 +50,7 @@ async fn read_ref(ctx: &ToolContext) -> ToolOutcome {
 /// The [`FileImageData`] an outcome carries, or a failure naming what it carried instead.
 fn image_data(outcome: &ToolOutcome) -> &FileImageData {
     match outcome.data.as_ref() {
-        Some(ToolData::FileImage(data)) => data,
+        Some(ApiData::FileImage(data)) => data,
         other => panic!("expected image data, got {other:?}"),
     }
 }

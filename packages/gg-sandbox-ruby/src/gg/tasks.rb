@@ -36,7 +36,7 @@ module GG
     # @param blocked_by [Array<String>] The ids of the tasks that must be done before this one.
     #   Defaults to none.
     # @return [GG::Tasks::TaskUsage] how much of the task budget is now used
-    # @raise [GG::Core::ToolError] `:conflict` on a duplicate id or on an edge that would close a
+    # @raise [GG::Core::ApiError] `:conflict` on a duplicate id or on an edge that would close a
     #   cycle.
     def self.add_task(id, title, description: nil, blocked_by: [])
       usage(Wire.call("add_task", "tasks", "addTask", [
@@ -60,7 +60,7 @@ module GG
     # @param status [GG::Tasks::TaskStatus, nil] Where the task now stands. Leave it out to keep the
     #   status it has.
     # @return [nil]
-    # @raise [GG::Core::ToolError] `:not_found` for an unknown id.
+    # @raise [GG::Core::ApiError] `:not_found` for an unknown id.
     def self.update_task(id, title: nil, description: Core::UNCHANGED, status: nil)
       Wire.call("update_task", "tasks", "updateTask", [
                   id,
@@ -81,7 +81,7 @@ module GG
     # @param blocked_by [Array<String>] The ids of every task that must now be done before it,
     #   splatted. Passing none clears them all.
     # @return [nil]
-    # @raise [GG::Core::ToolError] `:not_found` for an unknown id, and `:conflict` when an edge
+    # @raise [GG::Core::ApiError] `:not_found` for an unknown id, and `:conflict` when an edge
     #   would close a cycle.
     def self.set_blocked_by(id, *blocked_by)
       Wire.call("set_blocked_by", "tasks", "setBlockedBy",
@@ -96,7 +96,7 @@ module GG
     #
     # @param id [String] The task to mark done.
     # @return [nil]
-    # @raise [GG::Core::ToolError] `:not_found` for an unknown id.
+    # @raise [GG::Core::ApiError] `:not_found` for an unknown id.
     def self.complete_task(id)
       Wire.call("complete_task", "tasks", "completeTask", [id])
       nil
@@ -107,7 +107,7 @@ module GG
     #
     # @param id [String] The task to remove.
     # @return [GG::Tasks::TaskUsage] how much of the task budget is still used
-    # @raise [GG::Core::ToolError] `:not_found` for an unknown id.
+    # @raise [GG::Core::ApiError] `:not_found` for an unknown id.
     def self.remove_task(id)
       usage(Wire.call("remove_task", "tasks", "removeTask", [id]))
     end

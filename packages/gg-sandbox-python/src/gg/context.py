@@ -13,7 +13,7 @@ from enum import Enum
 from wit_world.imports import context as wire
 
 from ._registry import missing, operation
-from .core import ToolError, ToolErrorCode, _call, _strings, _uint
+from .core import ApiError, ApiErrorCode, _call, _strings, _uint
 
 __all__ = [
     "ArchiveHit",
@@ -123,16 +123,16 @@ def _span(span: TurnRange, edge: str) -> int:
     a range nobody asked for.
     """
     if not isinstance(span, TurnRange):
-        raise ToolError(
+        raise ApiError(
             "archive_thread",
-            ToolErrorCode.INVALID_ARGUMENT,
+            ApiErrorCode.INVALID_ARGUMENT,
             f"every entry of `ranges` must be a TurnRange, got {span!r}",
         )
     value = _uint("archive_thread", f"ranges[].{edge}", getattr(span, edge))
     if value is None:
-        raise ToolError(
+        raise ApiError(
             "archive_thread",
-            ToolErrorCode.INVALID_ARGUMENT,
+            ApiErrorCode.INVALID_ARGUMENT,
             f"every entry of `ranges` needs both `start` and `end`; `{edge}` is None",
         )
     return value
@@ -152,7 +152,7 @@ def evict_file_view(path: str | None = None) -> ReclaimReport:
             the files whose views were dropped.
 
     Raises:
-        ToolError: `invalid-argument` for a path that is given but empty; the default is how every
+        ApiError: `invalid-argument` for a path that is given but empty; the default is how every
             file view is dropped.
     """
     return _report(_call(wire.evict_file_view, path))
@@ -175,7 +175,7 @@ def archive_thread(ranges: list[TurnRange]) -> ReclaimReport:
             since an archive drops turns rather than files.
 
     Raises:
-        ToolError: `invalid-argument` for an empty list, too many spans at once, or a span that ends
+        ApiError: `invalid-argument` for an empty list, too many spans at once, or a span that ends
             before it starts.
     """
     spans = [wire.TurnRange(start=_span(span, "start"), end=_span(span, "end")) for span in ranges]
@@ -197,7 +197,7 @@ def search_archive(query: str) -> ArchiveSearch:
         The matches, most recent first and at most 8, beside the `archive_empty` flag.
 
     Raises:
-        ToolError: `invalid-argument` for an empty query.
+        ApiError: `invalid-argument` for an empty query.
     """
     found = _call(wire.search_archive, query)
     return ArchiveSearch(
@@ -227,7 +227,7 @@ def compact(summary: str, files: list[str] | None = None) -> None:
         files: The paths to read afresh into the restarted window. The default reads nothing back.
 
     Raises:
-        ToolError: `invalid-argument` for a blank summary. This is the one call gg does not refuse
+        ApiError: `invalid-argument` for a blank summary. This is the one call gg does not refuse
             while a compaction is in flight, since nothing else can clear the window.
     """
     _call(wire.compact, summary, _strings("compact", "files", files))

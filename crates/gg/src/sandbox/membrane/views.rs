@@ -14,7 +14,7 @@
 //!
 //! [`open_file_view`](ViewsHost::open_file_view) **performs a read**. It goes through
 //! [`dispatch`](MembraneState), so it keeps the wall-clock deadline guard, the ordered roster entry
-//! and — on the far side of the [api](ToolApi) — the loop's own servicing: the compaction gate and
+//! and — on the far side of the [api](OperationApi) — the loop's own servicing: the compaction gate and
 //! the session capture. What it adds is the view itself: the read's result also becomes a context
 //! item, keyed by the path it came from.
 //!
@@ -22,7 +22,7 @@
 //! internal read is shared with `files.read_file` and `files.read_text_file` — three operations over
 //! one implementation — and none of the three is recorded, refused or reported as either of the
 //! others. A program that opened a view of a file it may not read is refused `views.open_file`; a
-//! read that fails throws with `open_file` in the error's `tool` field; and the turn's roster carries
+//! read that fails throws with `open_file` in the error's `operation` field; and the turn's roster carries
 //! one entry per call the model made.
 //!
 //! The other four bypass `dispatch`, whose deadline guard is wrong for them: it would withhold them
@@ -35,7 +35,7 @@
 //! # Where the rules live
 //!
 //! Not here. The [caps](crate::agent) — the body and label ceilings, the open-text-view count, the
-//! open-image-view count, the per-program op budget — are enforced in `LoopToolApi`, because that
+//! open-image-view count, the per-program op budget — are enforced in `LoopOperationApi`, because that
 //! is where the [`ContextModel`](crate::context::ContextModel) is and a cap that cannot see the
 //! window is a cap guessing. This file lowers what comes back into the typed WIT result, and
 //! records what happened for the turn's feedback.
@@ -47,17 +47,17 @@
 //! [`withhold_pictures`](super::capture::withhold_pictures)). That is what makes the open-image-view
 //! cap a cap on the whole arm rather than one of two budgets that cannot see each other.
 
-use super::test_cabinet::gg::types::ToolError;
+use super::test_cabinet::gg::types::ApiError;
 use super::test_cabinet::gg::views::{FileRead, Host as ViewsHost, OpenView, ViewKind, ViewRegion};
 use super::workspace::{file_read, read_window};
-use super::{MembraneState, ToolApi, error_code};
+use super::{MembraneState, OperationApi, error_code};
 use crate::context::{FileRegion, OpenViewInfo, ViewKind as HostViewKind};
 use crate::sandbox::invoker::{ViewOpenOutcome, ViewRefusal};
 use crate::sandbox::operations::{
     OperationId, VIEWS_CLOSE, VIEWS_CURRENT, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE, VIEWS_OPEN_TEXT,
 };
 
-impl<A: ToolApi> ViewsHost for MembraneState<A> {
+impl<A: OperationApi> ViewsHost for MembraneState<A> {
     /// Read a workspace file and open a view of it.
     ///
     /// The read is the same one `files.read_file` performs, under the same guards, so a program that
@@ -66,7 +66,7 @@ impl<A: ToolApi> ViewsHost for MembraneState<A> {
     /// closure rather than out of the outcome.
     ///
     /// Everything the call leaves behind says `views.open_file`, because that is what the **model**
-    /// wrote: the API bracket, the roster line, and the `tool` field of the error a failed read
+    /// wrote: the API bracket, the roster line, and the `operation` field of the error a failed read
     /// throws. What runs underneath is the execution layer's business and appears nowhere in what
     /// this agent's surface reports.
     fn open_file_view(
@@ -74,7 +74,7 @@ impl<A: ToolApi> ViewsHost for MembraneState<A> {
         path: String,
         offset: Option<u32>,
         limit: Option<u32>,
-    ) -> Result<FileRead, ToolError> {
+    ) -> Result<FileRead, ApiError> {
         self.recorded(VIEWS_OPEN_FILE, |state, rec| {
             let (offset, limit) = read_window(offset, limit);
             let mut opened = None;
@@ -97,7 +97,7 @@ impl<A: ToolApi> ViewsHost for MembraneState<A> {
 
     /// Open (or replace) a text view. Never dispatched and never refused for a spent budget; the
     /// only failures are the ones the api's caps raise.
-    fn open_text_view(&mut self, label: String, body: String) -> Result<(), ToolError> {
+    fn open_text_view(&mut self, label: String, body: String) -> Result<(), ApiError> {
         self.recorded(VIEWS_OPEN_TEXT, |state, rec| {
             match state.api(rec).open_text_view(label, body) {
                 Ok(view) => {
@@ -124,7 +124,7 @@ impl<A: ToolApi> ViewsHost for MembraneState<A> {
     ///
     /// An unknown or unbound name is `not-found`, worded so the model is pointed at the one call
     /// that enumerates what it *does* have.
-    fn open_docs_view(&mut self, name: String) -> Result<(), ToolError> {
+    fn open_docs_view(&mut self, name: String) -> Result<(), ApiError> {
         self.recorded(VIEWS_OPEN_DOCS_VIEW, |state, rec| {
             match state.api(rec).open_docs_view(name) {
                 Ok(views) => {
@@ -140,7 +140,7 @@ impl<A: ToolApi> ViewsHost for MembraneState<A> {
 
     /// Close every view carrying `selector` and report how many. Closing nothing is `0`, not a
     /// failure — a program that tidies up unconditionally should not have to guard every call.
-    fn close_view(&mut self, selector: String) -> Result<u32, ToolError> {
+    fn close_view(&mut self, selector: String) -> Result<u32, ApiError> {
         self.recorded(VIEWS_CLOSE, |state, rec| {
             match state.api(rec).close_view(selector.clone()) {
                 Ok(closed) => {
@@ -168,7 +168,7 @@ impl<A: ToolApi> ViewsHost for MembraneState<A> {
     }
 }
 
-impl<A: ToolApi> MembraneState<A> {
+impl<A: OperationApi> MembraneState<A> {
     /// Record a refused view call and render it as the error the program will see thrown.
     ///
     /// It deliberately does **not** go through [`refuse`](Self::refuse), which files into the
@@ -180,11 +180,11 @@ impl<A: ToolApi> MembraneState<A> {
     /// The error carries the operation's key, exactly as every other failed call on this membrane
     /// does — a `catch` site branches on the call that failed, and the sentence beside it is the
     /// api's own, already written for the model.
-    pub(super) fn refuse_view(&mut self, id: OperationId, refusal: ViewRefusal) -> ToolError {
+    pub(super) fn refuse_view(&mut self, id: OperationId, refusal: ViewRefusal) -> ApiError {
         self.record_view_refusal(&refusal.message);
-        ToolError {
+        ApiError {
             code: error_code(Some(refusal.failure)),
-            tool: id.key.to_string(),
+            operation: id.key.to_string(),
             message: refusal.message,
         }
     }

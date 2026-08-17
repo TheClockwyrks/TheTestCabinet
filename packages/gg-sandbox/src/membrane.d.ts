@@ -37,20 +37,20 @@
  * Two consequences of that table drive the whole SDK: an `option<T>` is a *positional* parameter
  * that must be passed explicitly as `undefined` rather than omitted, and a `result` error is
  * **thrown** rather than returned — and it arrives as a bare record, not an `Error`, which is what
- * `src/errors.ts` normalises.
+ * `src/internal/errors.ts` normalises.
  */
 
 /**
  * The types shared across the tool interfaces. It declares no functions; it exists so one
- * `tool-error` crosses the whole membrane rather than one per family.
+ * `api-error` crosses the whole membrane rather than one per family.
  */
 declare module "test-cabinet:gg/types" {
   /**
    * Why a call failed, in the vocabulary a program branches on. gg classifies every failure at the
    * point it raises it, so this is never derived by matching on prose.
    *
-   * The model-facing spelling of this union is re-declared in `src/types.ts` as `ToolErrorCode`, so
-   * the signature catalogue can quote the arms to a model; `src/errors.ts` assigns a value of this
+   * The model-facing spelling of this union is re-declared in `src/gg/core.ts` as `ApiErrorCode`, so
+   * the signature catalogue can quote the arms to a model; `src/internal/errors.ts` assigns a value of this
    * type into that one, which is what makes `tsc` reject a WIT arm the model-facing union has not
    * learned about.
    */
@@ -65,11 +65,11 @@ declare module "test-cabinet:gg/types" {
     | "other";
 
   /** A failed call, as it crosses the membrane: the thrown value before `errors.ts` wraps it. */
-  export interface ToolErrorRecord {
+  export interface ApiErrorRecord {
     /** The failure class, so a catch site branches on a value rather than on prose. */
     code: ErrorCode;
     /** The call that failed, by the key of the operation the program reached for. */
-    tool: string;
+    operation: string;
     /** The model-facing guidance — the same text the native tool-calling path shows. */
     message: string;
   }
@@ -444,7 +444,7 @@ declare module "test-cabinet:gg/context" {
  * They have their own interface for the same reason they have their own catalogue array: no
  * capability offers them, nothing dispatches them, and one group of them is bound into every
  * program's scope, so folding them in among the tool interfaces would perturb the one-to-one
- * correspondence those hold with gg's tool vocabulary. `src/session.ts` is their only importer.
+ * correspondence those hold with gg's tool vocabulary. `src/gg/session.ts` is their only importer.
  *
  * Which group is bound is the host's decision, passed to `run` as the agent's role.
  */
@@ -454,7 +454,7 @@ declare module "test-cabinet:gg/session" {
    *
    * The host sets a flag in the agent's own context and returns. Nothing stops the program: a
    * further call replaces the declaration, and the host revokes the flag itself if the program goes
-   * on to fail. It **throws** `ToolErrorRecord` with code `invalid-argument` only for an empty
+   * on to fail. It **throws** `ApiErrorRecord` with code `invalid-argument` only for an empty
    * summary.
    */
   export function finish(summary: string): void;
@@ -462,7 +462,7 @@ declare module "test-cabinet:gg/session" {
   export function approve(): void;
   /**
    * Declare the work under review unacceptable, listing what must change. Ends the session under the
-   * same flag rules. **Throws** `ToolErrorRecord` with code `invalid-argument` for an empty list or a
+   * same flag rules. **Throws** `ApiErrorRecord` with code `invalid-argument` for an empty list or a
    * blank item.
    */
   export function requestChanges(items: string[]): void;
@@ -526,11 +526,11 @@ declare module "test-cabinet:gg/docs" {
 
 /**
  * Putting material into the agent's own context window — the third model-facing carve-out, beside
- * `session` and `docs`, and never a gg tool. `src/tools/views.ts` is its only importer.
+ * `session` and `docs`, and never a gg tool. `src/gg/views.ts` is its only importer.
  *
  * The SDK declares all five whatever a run enables, exactly as it declares `finish`; the host is
  * what refuses one this agent was not granted. Cataloguing any of them as a tool would break the
- * `bound-tools == ALL_TOOL_NAMES` bijection the guest is checked against, which is why they have
+ * `bound-operations == ALL_TOOL_NAMES` bijection the guest is checked against, which is why they have
  * their own interface.
  */
 declare module "test-cabinet:gg/views" {
@@ -577,7 +577,7 @@ declare module "test-cabinet:gg/views" {
 
 /**
  * The library of programs this agent has already run — the fourth model-facing carve-out, beside
- * `session`, `docs` and `views`, and never a gg tool. `src/tools/programs.ts` is its only importer.
+ * `session`, `docs` and `views`, and never a gg tool. `src/gg/programs.ts` is its only importer.
  *
  * Unlike the other three it is bought by a capability rather than by a tool, which is why the host
  * passes a `library` flag to `run` rather than naming a tool in the enabled set.
@@ -672,7 +672,7 @@ declare module "test-cabinet:gg/feedback" {
   import type { ErrorCode } from "test-cabinet:gg/types";
 
   /** What kind of failure a program hit, so gg can pick the right feedback and telemetry. */
-  export type ErrorKind = "tool-failure" | "unknown-name" | "other";
+  export type ErrorKind = "api-failure" | "unknown-name" | "other";
 
   /** A program that did not run to its end. */
   export interface ProgramError {
@@ -685,7 +685,7 @@ declare module "test-cabinet:gg/feedback" {
      * one thing in every language arm rather than one thing per guest.
      */
     code: ErrorCode | undefined;
-    /** The rendered message, already naming the tool or the available identifiers. */
+    /** The rendered message, already naming the operation or the available identifiers. */
     message: string;
     /** Where in the *program* it happened (`line 5, column 12`), or `undefined`. */
     location: string | undefined;
@@ -703,7 +703,7 @@ declare module "test-cabinet:gg/feedback" {
    * per run, so the host can tell the model to open a view on it instead.
    */
   export function noteReturn(): void;
-  /** A tool call happened after the program ended. Called at most once per run. */
+  /** An API call happened after the program ended. Called at most once per run. */
   export function reportDeferred(note: string): void;
   /**
    * The program threw and did not run to its end. Called at most once per run — and what revokes a

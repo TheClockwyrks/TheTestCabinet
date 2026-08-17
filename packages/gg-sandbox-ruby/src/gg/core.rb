@@ -5,7 +5,7 @@ module GG
   #
   # A capability module owns the types it produces, so `GG::Files::TextFile` belongs to `GG::Files`
   # and `GG::Board::IssueCreated` to `GG::Board`. The declarations here belong to none of them
-  # because they belong to all of them: every function in this SDK raises `GG::Core::ToolError` when
+  # because they belong to all of them: every function in this SDK raises `GG::Core::ApiError` when
   # it fails.
   #
   # This module declares no function of its own, which is why it comes last in the surface: there is
@@ -23,47 +23,48 @@ module GG
     # ```ruby
     # begin
     #   notes = GG::Files.read_text_file("notes.md")
-    # rescue GG::Core::ToolError => failure
-    #   raise unless failure.code == GG::Core::ToolErrorCode::NOT_FOUND
+    # rescue GG::Core::ApiError => failure
+    #   raise unless failure.code == GG::Core::ApiErrorCode::NOT_FOUND
     #
     #   notes = ""
     # end
     # ```
-    class ToolError < StandardError
-      # The gg call that failed, under gg's own name for it (`read_file`, `spawn_subagent`).
+    class ApiError < StandardError
+      # The call that failed, by the key of the operation the program reached for (`read_file`,
+      # `spawn_subagent`).
       #
-      # It is gg's name rather than this SDK's, so it is the same string on every language a program
-      # may be written in.
+      # It is gg's key rather than this SDK's method name, so it is the same string on every
+      # language a program may be written in.
       #
       # @return [String]
-      attr_reader :tool
+      attr_reader :operation
 
       # @return [Symbol] The failure class, so a rescue branches on a value rather than on prose.
-      #   One of `GG::Core::ToolErrorCode`'s symbols.
+      #   One of `GG::Core::ApiErrorCode`'s symbols.
       attr_reader :code
 
-      # @param tool [String] gg's own name for the call that failed
+      # @param operation [String] gg's own key for the call that failed
       # @param code [Symbol] the failure class
       # @param message [String] the model-facing guidance
       # @api private
-      def initialize(tool, code, message)
+      def initialize(operation, code, message)
         super(message)
-        @tool = tool
+        @operation = operation
         @code = code
       end
 
       # @return [String] the failure, with the call and the class in front of the message
       # @api private
       def inspect
-        "#<ToolError #{@tool} (#{@code}): #{message}>"
+        "#<ApiError #{@operation} (#{@code}): #{message}>"
       end
     end
 
-    # Why a gg call failed — the `code` on a raised `GG::Core::ToolError`.
+    # Why a gg call failed — the `code` on a raised `GG::Core::ApiError`.
     #
     # Every arm is a Symbol, so a rescue may match the constant or the literal a program writes:
-    # `GG::Core::ToolErrorCode::NOT_FOUND` and `:not_found` are the same value.
-    module ToolErrorCode
+    # `GG::Core::ApiErrorCode::NOT_FOUND` and `:not_found` are the same value.
+    module ApiErrorCode
       # The arguments were malformed, ill-typed, or out of range.
       #
       # It covers a path that is absolute or climbs out of the workspace, and an agent name this run

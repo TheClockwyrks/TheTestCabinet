@@ -14,7 +14,7 @@
  */
 package gg.memories
 
-import gg.core.ToolError
+import gg.core.ApiError
 import gg.internal.Read
 import gg.internal.ggCall
 import gg.internal.ggRecord
@@ -41,7 +41,7 @@ import gg.internal.ggTexts
  * @param onUse A program gg runs the first time the memory comes into use, whose views arrive on the
  *   next turn.
  * @return how much of the memory budget is now used
- * @throws ToolError `CONFLICT` on a duplicate name, and `LIMIT_EXCEEDED` when the body would breach
+ * @throws ApiError `CONFLICT` on a duplicate name, and `LIMIT_EXCEEDED` when the body would breach
  *   the run's caps.
  */
 public fun writeMemory(
@@ -66,7 +66,7 @@ public fun writeMemory(
  * @param onUse A program gg runs the first time the memory comes into use, replacing whatever script
  *   the memory carried.
  * @return how much of the memory budget is now used
- * @throws ToolError `NOT_FOUND` when no memory has that name.
+ * @throws ApiError `NOT_FOUND` when no memory has that name.
  */
 public fun updateMemory(
     name: String,
@@ -91,7 +91,7 @@ public fun updateMemory(
  *   once the memory is read.
  * @param onUse A program gg runs on that first read, whose views arrive on the next turn.
  * @return how much of the memory budget is now used
- * @throws ToolError `CONFLICT` on a duplicate slug, and `LIMIT_EXCEEDED` when the contents, or the
+ * @throws ApiError `CONFLICT` on a duplicate slug, and `LIMIT_EXCEEDED` when the contents, or the
  *   index entry, would breach a limit.
  */
 public fun createMemory(
@@ -111,7 +111,7 @@ public fun createMemory(
  * @ggop memories.read_memory
  * @param name The memory's slug.
  * @return the memory's contents
- * @throws ToolError `NOT_FOUND` when no memory has that slug.
+ * @throws ApiError `NOT_FOUND` when no memory has that slug.
  */
 public fun readMemory(name: String): String =
     ggCall("memories.read_memory", ggText(name)).text()
@@ -126,7 +126,7 @@ public fun readMemory(name: String): String =
  * @param search The exact text to find in its contents. It must appear exactly once.
  * @param replace The text to put in its place.
  * @return how much of the memory budget is now used
- * @throws ToolError `NOT_FOUND` when the text does not appear, `CONFLICT` when it appears more than
+ * @throws ApiError `NOT_FOUND` when the text does not appear, `CONFLICT` when it appears more than
  *   once, `LIMIT_EXCEEDED` when the result would be too long, and `INVALID_ARGUMENT` when the edit
  *   would leave the memory empty.
  */
@@ -150,7 +150,7 @@ public fun editMemory(name: String, search: String, replace: String): MemoryUsag
  * @param keywords The words to look for. Several specific words rank better than one sentence,
  *   because a memory is ranked by how many of them it mentions.
  * @return every memory that mentioned one, best first
- * @throws ToolError `INVALID_ARGUMENT` when every keyword is empty.
+ * @throws ApiError `INVALID_ARGUMENT` when every keyword is empty.
  */
 public fun searchMemories(vararg keywords: String): List<MemoryHit> =
     Read.memoryHits(ggCall("memories.search_memories", ggTexts(keywords.asIterable())))
@@ -161,7 +161,7 @@ public fun searchMemories(vararg keywords: String): List<MemoryHit> =
  * @ggop memories.delete_memory
  * @param name The memory's slug.
  * @return how much of the memory budget is now used
- * @throws ToolError `NOT_FOUND` when no memory has that name.
+ * @throws ApiError `NOT_FOUND` when no memory has that name.
  */
 public fun deleteMemory(name: String): MemoryUsage =
     Read.memoryUsage(ggCall("memories.delete_memory", ggText(name)))
@@ -232,7 +232,7 @@ public data class MemoryHit(
      *
      * @ggalias memories.read_memory
      * @return the memory's contents
-     * @throws ToolError `NOT_FOUND` when the memory has been deleted since the search.
+     * @throws ApiError `NOT_FOUND` when the memory has been deleted since the search.
      */
     public fun read(): String = readMemory(name)
 }

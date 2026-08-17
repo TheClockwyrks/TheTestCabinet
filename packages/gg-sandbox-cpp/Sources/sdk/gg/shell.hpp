@@ -57,7 +57,7 @@ struct shell_output {
 /// \param timeout_secs How long to let it run before it is killed; empty takes gg's default of
 ///   120, clamped to whatever is left of the run's wall-clock budget.
 /// \returns what the process reported when it finished.
-/// \throws gg::core::tool_error `limit_exceeded` when the timeout killed the process, and `io_error`
+/// \throws gg::core::api_error `limit_exceeded` when the timeout killed the process, and `io_error`
 ///   when it could not be launched.
 shell::shell_output run(std::string_view command,
                         std::optional<double> timeout_secs = std::nullopt);

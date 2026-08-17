@@ -20,7 +20,7 @@ fn ctx() -> ToolContext {
 /// The [`ArchiveSearchData`] an outcome carries, or a failure naming what it carried instead.
 fn search_data(outcome: &ToolOutcome) -> &ArchiveSearchData {
     match outcome.data.as_ref() {
-        Some(ToolData::ArchiveSearch(data)) => data,
+        Some(ApiData::ArchiveSearch(data)) => data,
         other => panic!("expected an archive search, got {other:?}"),
     }
 }

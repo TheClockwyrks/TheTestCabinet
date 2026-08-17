@@ -44,8 +44,8 @@ public static partial class Memories
         /// that follows a search worth following up.
         /// </remarks>
         /// <returns>the memory's body alone; the description that indexes it is not part of it.</returns>
-        /// <exception cref="ToolException">
-        /// <see cref="ToolErrorCode.NotFound"/> for a memory deleted since the search ran.
+        /// <exception cref="ApiException">
+        /// <see cref="ApiErrorCode.NotFound"/> for a memory deleted since the search ran.
         /// </exception>
         /// <ggop alias="true">memories.read_memory</ggop>
         public string Read() => ReadMemory(Name);

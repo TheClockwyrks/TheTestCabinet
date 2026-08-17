@@ -13,7 +13,7 @@
  */
 package gg.delegation
 
-import gg.core.ToolError
+import gg.core.ApiError
 import gg.internal.Read
 import gg.internal.ggCall
 import gg.internal.ggRecord
@@ -35,7 +35,7 @@ import gg.internal.lowered
  * @param brief What the child is to do: `Brief.Prompt` with self-contained instructions, or
  *   `Brief.Issue` with the id of a board issue to brief it from.
  * @return the child's handle, to wait on or to message
- * @throws ToolError `LIMIT_EXCEEDED` at the delegation depth cap, and `INVALID_ARGUMENT` for an agent
+ * @throws ApiError `LIMIT_EXCEEDED` at the delegation depth cap, and `INVALID_ARGUMENT` for an agent
  *   this one may not spawn.
  */
 public fun spawnSubagent(agent: String, brief: Brief): SubagentHandle {
@@ -53,7 +53,7 @@ public fun spawnSubagent(agent: String, brief: Brief): SubagentHandle {
  * @param ids The children to wait for, as spawning returned them. Naming none waits for every one
  *   still outstanding.
  * @return every collected child's result, in dispatch order
- * @throws ToolError `NOT_FOUND` for an unknown id.
+ * @throws ApiError `NOT_FOUND` for an unknown id.
  */
 public fun waitForSubagents(vararg ids: String): List<SubagentResult> =
     Read.subagentResults(
@@ -66,7 +66,7 @@ public fun waitForSubagents(vararg ids: String): List<SubagentResult> =
  * @ggop delegation.send_message
  * @param agentId The child to deliver to, as spawning returned it.
  * @param message What to put in its inbox.
- * @throws ToolError `NOT_FOUND` for an unknown agent id, and `CONFLICT` when that child has already
+ * @throws ApiError `NOT_FOUND` for an unknown agent id, and `CONFLICT` when that child has already
  *   returned.
  */
 public fun sendMessage(agentId: String, message: String) {
@@ -87,7 +87,7 @@ public fun sendMessage(agentId: String, message: String) {
  * @ggop delegation.transition_state
  * @param state The state to move on to, named the way an agent to spawn is named.
  * @param note The opening message the next state's agent sees. Left out, it sees nothing.
- * @throws ToolError `INVALID_ARGUMENT` for a state this session may not move to, and `REFUSED` for a
+ * @throws ApiError `INVALID_ARGUMENT` for a state this session may not move to, and `REFUSED` for a
  *   second declaration in one turn.
  */
 public fun transitionState(state: String, note: String? = null) {
@@ -109,7 +109,7 @@ public fun transitionState(state: String, note: String? = null) {
  * @param agent The agent to become, from the ones this agent may become.
  * @param prompt The opening message for it. It already holds the whole conversation, so this is the
  *   instruction rather than a briefing. Left out, it is given nothing.
- * @throws ToolError `INVALID_ARGUMENT` for an agent this one may not become, and `REFUSED` for a
+ * @throws ApiError `INVALID_ARGUMENT` for an agent this one may not become, and `REFUSED` for a
  *   second succession in one turn.
  */
 public fun exec(agent: String, prompt: String? = null) {
@@ -130,7 +130,7 @@ public fun exec(agent: String, prompt: String? = null) {
  * @param prompt What the copy is to do instead. It holds the whole conversation already, so this is
  *   the difference rather than a briefing.
  * @return the copy's handle, to collect on a later turn
- * @throws ToolError `LIMIT_EXCEEDED` at the delegation depth cap.
+ * @throws ApiError `LIMIT_EXCEEDED` at the delegation depth cap.
  */
 public fun fork(prompt: String): SubagentHandle =
     Read.subagentHandle(ggCall("delegation.fork", ggText(prompt)))
@@ -174,7 +174,7 @@ public data class SubagentHandle(val id: String, val slot: String, val modelId: 
      *
      * @ggalias delegation.send_message
      * @param message What to put in its inbox, which it reads at its next turn.
-     * @throws ToolError `CONFLICT` when this child has already returned.
+     * @throws ApiError `CONFLICT` when this child has already returned.
      */
     public fun send(message: String) {
         sendMessage(id, message)

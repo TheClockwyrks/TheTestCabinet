@@ -50,7 +50,7 @@ use crate::limits::TurnErrorType;
 use super::compile::{compile_module, compile_program, warm};
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::fake::{
-    CallLog, FakeToolApi, all_capabilities, all_operations, canned_outcome, granted_operations,
+    CallLog, FakeOperationApi, all_capabilities, all_operations, canned_outcome, granted_operations,
 };
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{SandboxError, SandboxOutcome};
@@ -171,8 +171,8 @@ fn evaluate_granting(
 ) -> (SandboxOutcome, CallLog) {
     let limits = SandboxLimits::default();
     let log = CallLog::default();
-    let api = FakeToolApi::with(&log, responder);
-    let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let api = FakeOperationApi::with(&log, responder);
+    let linker = linker::<FakeOperationApi>().expect("the production linker builds");
     let compiled =
         engine::compile_bytes(component).expect("a freshly compiled Kotlin program is a component");
     let operations = granted_operations(operations, library);
@@ -1067,7 +1067,7 @@ fn g8_a_runtime_failure_reaches_the_model() {
         GgProgramLanguage::Kotlin,
         &[
             Case {
-                shape: Shape::ToolError,
+                shape: Shape::ApiError,
                 program: r#"// G8 (a): a gg call the host answers `not-found`, uncaught.
 fun main() {
     val text = gg.files.readTextFile(

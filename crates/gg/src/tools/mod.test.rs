@@ -1194,11 +1194,11 @@ fn a_classified_failure_reads_exactly_like_an_unclassified_one() {
 fn attaching_data_leaves_the_model_facing_text_alone() {
     let bare = ToolOutcome::ok("wrote 5 bytes", "wrote 5 bytes");
     let with_data =
-        ToolOutcome::ok("wrote 5 bytes", "wrote 5 bytes").with_data(ToolData::BytesWritten(5));
+        ToolOutcome::ok("wrote 5 bytes", "wrote 5 bytes").with_data(ApiData::BytesWritten(5));
 
     assert_eq!(with_data.output, bare.output);
     assert_eq!(with_data.summary, bare.summary);
-    assert_eq!(with_data.data, Some(ToolData::BytesWritten(5)));
+    assert_eq!(with_data.data, Some(ApiData::BytesWritten(5)));
 }
 
 // ---------------------------------------------------------------------------
@@ -1220,7 +1220,7 @@ fn an_outcome_without_a_sidecar_serializes_unchanged() {
 /// contract, since a driver has to hand back exactly what dispatch produced.
 #[test]
 fn an_outcome_with_a_sidecar_round_trips() {
-    let outcome = ToolOutcome::ok("a\nb/", "2 entries").with_data(ToolData::DirEntries(vec![
+    let outcome = ToolOutcome::ok("a\nb/", "2 entries").with_data(ApiData::DirEntries(vec![
         DirEntryData {
             name: "a".to_string(),
             kind: DirEntryKind::File,

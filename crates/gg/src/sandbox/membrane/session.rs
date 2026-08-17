@@ -26,7 +26,7 @@
 //! nothing downstream re-examines, so an agent that may not give one must be stopped from giving one
 //! here.
 //!
-//! Nothing here touches the [api](super::ToolApi) for the *work* — ending performs none: it sets a
+//! Nothing here touches the [api](super::OperationApi) for the *work* — ending performs none: it sets a
 //! flag in the agent's own [context](MembraneState), which is why it goes to
 //! [`MembraneState::declare`] rather than through the dispatch path's guards. Every rule these obey
 //! — the role gate first, last call wins, a malformed declaration is refused, a spent wall-clock
@@ -38,15 +38,15 @@
 //! be the one call an agent made that nothing counted.
 
 use super::test_cabinet::gg::session::Host as SessionHost;
-use super::test_cabinet::gg::types::ToolError;
-use super::{MembraneState, ToolApi};
+use super::test_cabinet::gg::types::ApiError;
+use super::{MembraneState, OperationApi};
 use crate::ending::Ending;
 use crate::sandbox::operations::{SESSION_APPROVE, SESSION_FINISH, SESSION_REQUEST_CHANGES};
 
-impl<A: ToolApi> SessionHost for MembraneState<A> {
+impl<A: OperationApi> SessionHost for MembraneState<A> {
     /// Declare the work complete. See [`MembraneState::declare`] for what setting the flag does and
     /// does not do, and for the role check every one of these three passes through first.
-    fn finish(&mut self, summary: String) -> Result<(), ToolError> {
+    fn finish(&mut self, summary: String) -> Result<(), ApiError> {
         self.recorded(SESSION_FINISH, |state, rec| {
             let ending = Ending::finished(summary, &state.spelled(SESSION_FINISH));
             state.declare(rec, ending, SESSION_FINISH)
@@ -55,7 +55,7 @@ impl<A: ToolApi> SessionHost for MembraneState<A> {
 
     /// Declare the work under review acceptable. Takes nothing, so the only thing that can refuse it
     /// is the role check: an agent that was not dispatched to review has no verdict to give.
-    fn approve(&mut self) -> Result<(), ToolError> {
+    fn approve(&mut self) -> Result<(), ApiError> {
         self.recorded(SESSION_APPROVE, |state, rec| {
             state.declare(rec, Ok(Ending::Approved), SESSION_APPROVE)
         })
@@ -64,7 +64,7 @@ impl<A: ToolApi> SessionHost for MembraneState<A> {
     /// Declare the work under review unacceptable. A list with nothing actionable in it is refused
     /// here rather than accepted and papered over downstream: it is dispatched verbatim to the agent
     /// that has to fix the work, and an empty one would give it nothing to do.
-    fn request_changes(&mut self, items: Vec<String>) -> Result<(), ToolError> {
+    fn request_changes(&mut self, items: Vec<String>) -> Result<(), ApiError> {
         self.recorded(SESSION_REQUEST_CHANGES, |state, rec| {
             let ending = Ending::changes_requested(
                 items,

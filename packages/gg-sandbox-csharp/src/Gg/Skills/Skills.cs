@@ -19,8 +19,8 @@ public static partial class Skills
     /// full list of the skills this run has.
     /// </param>
     /// <returns>the skill's instructions in full, which the session now holds pinned as well.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.NotFound"/> for a name this run has no skill under.
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.NotFound"/> for a name this run has no skill under.
     /// </exception>
     /// <ggop>skills.read_skill</ggop>
     public static string ReadSkill(string name)

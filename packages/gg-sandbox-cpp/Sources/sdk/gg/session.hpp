@@ -36,7 +36,7 @@ namespace session {
 /// <ggop>session.finish</ggop>
 ///
 /// \param summary What was done, in a sentence or two.
-/// \throws gg::core::tool_error `unavailable` when this agent's role does not end this way, and
+/// \throws gg::core::api_error `unavailable` when this agent's role does not end this way, and
 ///   `invalid_argument` for an empty summary.
 void finish(std::string_view summary);
 
@@ -48,7 +48,7 @@ void finish(std::string_view summary);
 ///
 /// <ggop>session.approve</ggop>
 ///
-/// \throws gg::core::tool_error `unavailable` when this agent's role is not to review.
+/// \throws gg::core::api_error `unavailable` when this agent's role is not to review.
 void approve();
 
 /// Reject the work under review, listing every change that must be made before it can stand.
@@ -60,7 +60,7 @@ void approve();
 ///
 /// \param items Every change that must be made before the work can be accepted, one per entry. It
 ///   may not be empty.
-/// \throws gg::core::tool_error `unavailable` when this agent's role is not to review, and
+/// \throws gg::core::api_error `unavailable` when this agent's role is not to review, and
 ///   `invalid_argument` when the list is empty.
 void request_changes(std::vector<std::string> items);
 

@@ -31,7 +31,7 @@ module GG
     # @param path [String, nil] The file whose views to drop. Leave it out to drop every file view
     #   held.
     # @return [GG::Context::ReclaimReport] what the eviction freed
-    # @raise [GG::Core::ToolError] `:invalid_argument` for a path that is given but empty; leaving
+    # @raise [GG::Core::ApiError] `:invalid_argument` for a path that is given but empty; leaving
     #   it out altogether is how every file view is dropped. A path with no view open frees nothing
     #   and is not a failure.
     def self.evict_file_view(path = nil)
@@ -50,7 +50,7 @@ module GG
     # @param ranges [Array<GG::Context::TurnRange>] The inclusive spans of turn numbers to move out
     #   of the window, splatted: `GG::Context.archive_thread(4..19, 30..35)`.
     # @return [GG::Context::ReclaimReport] what the archive freed
-    # @raise [GG::Core::ToolError] `:invalid_argument` for anything that is not a range of turn
+    # @raise [GG::Core::ApiError] `:invalid_argument` for anything that is not a range of turn
     #   numbers, for an empty list, and for too many spans at once.
     def self.archive_thread(*ranges)
       spans = ranges.flatten.map do |span|
@@ -69,7 +69,7 @@ module GG
     #
     # @param query [String] The substring to look for. Matching is case-insensitive.
     # @return [GG::Context::ArchiveSearch] whether anything is archived at all, and what matched
-    # @raise [GG::Core::ToolError] `:invalid_argument` for a blank query.
+    # @raise [GG::Core::ApiError] `:invalid_argument` for a blank query.
     def self.search_archive(query)
       found = Wire.call("search_archive", "context", "searchArchive", [query])
       ArchiveSearch.new(
@@ -100,7 +100,7 @@ module GG
     # @param files [Array<String>] The paths to read afresh into the restarted window. Defaults to
     #   none.
     # @return [nil]
-    # @raise [GG::Core::ToolError] `:invalid_argument` for a blank summary.
+    # @raise [GG::Core::ApiError] `:invalid_argument` for a blank summary.
     def self.compact(summary, files: [])
       Wire.call("compact", "context", "compact",
                 [summary, Check.strings("compact", "files", files)])

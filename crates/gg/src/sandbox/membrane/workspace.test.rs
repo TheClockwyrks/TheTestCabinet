@@ -78,7 +78,7 @@ fn a_shell_timeout_is_a_limit_exceeded_error() {
         .expect_err("a killed process throws");
 
     assert_eq!(error.code, ErrorCode::LimitExceeded);
-    assert_eq!(error.tool, "shell");
+    assert_eq!(error.operation, "shell");
     assert!(error.message.contains("timed out"), "{}", error.message);
 
     let parts = state.into_parts();
@@ -360,7 +360,7 @@ fn an_empty_directory_is_an_empty_list_not_an_error() {
     let log = CallLog::default();
     let mut state = membrane_with(&log, &all_operations(), None, |_, _| {
         ToolOutcome::ok("(empty directory)", "0 entries")
-            .with_data(crate::tools::ToolData::DirEntries(Vec::new()))
+            .with_data(crate::tools::ApiData::DirEntries(Vec::new()))
     });
 
     let entries = state.list_dir(None).expect("an empty directory lists");

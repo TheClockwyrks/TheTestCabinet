@@ -1,7 +1,7 @@
 package gg.skills;
 
-import gg.ToolError;
-import gg.ToolErrorCode;
+import gg.ApiError;
+import gg.ApiErrorCode;
 import gg.internal.Coding;
 import gg.internal.Value;
 
@@ -27,7 +27,7 @@ public final class Skills {
      *
      * @param name The skill's name, exactly as the system prompt lists it.
      * @return the skill's body, with its front matter stripped
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND}, listing the skills this run does have, for
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND}, listing the skills this run does have, for
      *     a name none of them has.
      * @ggop skills.read_skill
      */

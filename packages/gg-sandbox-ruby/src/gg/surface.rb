@@ -27,8 +27,8 @@ module GG
   # operations table, and the **host** refuses a call this agent was not granted — the SDK is
   # static, every declaration below is bound onto its module at load time, and no run's enabled set
   # is read anywhere in this package. The `tool:` that survives is a different claim: it says which
-  # gg tool this SDK implements a method *for*, which is what `GG::Scope.bound_tools` answers the
-  # component's drift export with.
+  # gg tool this SDK implements a method *for*, which is what `GG::Scope.bound_operations` answers
+  # the component's drift export with.
   #
   # @api private
   module Surface
@@ -141,8 +141,8 @@ module GG
 
     # The gg tool names this SDK really defines a method for.
     #
-    # `GG::Scope.bound_tools` answers the component's `bound-tools` export with this, and gg
-    # compares it against its own vocabulary on the **committed artifact** — the one drift check
+    # `GG::Scope.bound_operations` answers the component's `bound-operations` export with this, and
+    # gg compares it against its own vocabulary on the **committed artifact** — the one drift check
     # that catches a stale `.wasm` rather than a stale source file.
     #
     # @return [Array<String>] every gg tool a canonical declaration binds, in declaration order

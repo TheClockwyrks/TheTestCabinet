@@ -38,7 +38,7 @@ fn fixture_with(
 /// The [`MemoryUsageData`] an outcome carries, or a failure naming what it carried instead.
 fn usage(outcome: &ToolOutcome) -> &super::super::MemoryUsageData {
     match outcome.data.as_ref() {
-        Some(ToolData::MemoryUsage(data)) => data,
+        Some(ApiData::MemoryUsage(data)) => data,
         other => panic!("expected memory usage, got {other:?}"),
     }
 }
@@ -46,7 +46,7 @@ fn usage(outcome: &ToolOutcome) -> &super::super::MemoryUsageData {
 /// The hits an outcome carries, or a failure naming what it carried instead.
 fn hits(outcome: &ToolOutcome) -> &[MemoryHitData] {
     match outcome.data.as_ref() {
-        Some(ToolData::MemoryHits(hits)) => hits,
+        Some(ApiData::MemoryHits(hits)) => hits,
         other => panic!("expected memory hits, got {other:?}"),
     }
 }

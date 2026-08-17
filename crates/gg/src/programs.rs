@@ -81,7 +81,7 @@ pub struct ProgramSummary {
     pub error: Option<String>,
 }
 
-/// Why a `programs.*` lookup was refused, in a shape the membrane lowers into a typed `tool-error`.
+/// Why a `programs.*` lookup was refused, in a shape the membrane lowers into a typed `api-error`.
 ///
 /// It carries a [`ToolFailure`] rather than the membrane's generated `error-code` for the reason
 /// every other type on that seam does: nothing outside `sandbox/membrane` may depend on the

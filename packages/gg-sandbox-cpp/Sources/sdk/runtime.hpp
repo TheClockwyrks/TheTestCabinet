@@ -31,9 +31,9 @@ void log(std::string_view line);
 
 /// **Every gg tool this SDK binds**, gathered from the modules that dispatch them.
 ///
-/// It is what gg's shell answers `bound-tools` with, and gg's drift gate compares that answer with
-/// its own `ALL_TOOL_NAMES`. Not model-facing and not catalogued: a program has the functions
-/// themselves.
-std::vector<std::string> bound_tool_names();
+/// It is what gg's shell answers `bound-operations` with, and gg's drift gate compares that
+/// answer with its own `ALL_TOOL_NAMES`. Not model-facing and not catalogued: a program has the
+/// functions themselves.
+std::vector<std::string> bound_operation_names();
 
 }  // namespace gg

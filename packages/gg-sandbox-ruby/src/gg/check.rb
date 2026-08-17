@@ -18,45 +18,45 @@ module GG
     # The `u32` range, so no wrapper inlines the magic number.
     U32_MAX = 4_294_967_295
 
-    # A whole number in `0..U32_MAX`, or a `ToolError` naming the argument.
+    # A whole number in `0..U32_MAX`, or an `ApiError` naming the argument.
     #
     # @param fn [String] the gg call the failure is reported against
     # @param name [String] the argument's name, for the message
     # @param value [Integer, nil] what the program passed
     # @return [Integer, nil] the value, or nil when it was left out
-    # @raise [GG::Core::ToolError] `invalid-argument` when it is not a whole number in range
+    # @raise [GG::Core::ApiError] `invalid-argument` when it is not a whole number in range
     def self.uint(fn, name, value)
       return nil if value.nil?
 
       unless value.is_a?(Integer) && value >= 0 && value <= U32_MAX
-        raise Core::ToolError.new(fn, Core::ToolErrorCode::INVALID_ARGUMENT,
-                                  "`#{name}` must be a whole number 0..#{U32_MAX}, " \
-                                  "got #{value.inspect}")
+        raise Core::ApiError.new(fn, Core::ApiErrorCode::INVALID_ARGUMENT,
+                                 "`#{name}` must be a whole number 0..#{U32_MAX}, " \
+                                 "got #{value.inspect}")
       end
 
       value
     end
 
-    # A finite positive number of seconds, or a `ToolError` naming the argument.
+    # A finite positive number of seconds, or an `ApiError` naming the argument.
     #
     # @param fn [String] the gg call the failure is reported against
     # @param name [String] the argument's name, for the message
     # @param value [Numeric, nil] what the program passed
     # @return [Float, nil] the value as a float, or nil when it was left out
-    # @raise [GG::Core::ToolError] `invalid-argument` when it is not a positive number
+    # @raise [GG::Core::ApiError] `invalid-argument` when it is not a positive number
     def self.positive(fn, name, value)
       return nil if value.nil?
 
       unless value.is_a?(Numeric) && value.to_f > 0
-        raise Core::ToolError.new(fn, Core::ToolErrorCode::INVALID_ARGUMENT,
-                                  "`#{name}` must be a positive number of seconds, " \
-                                  "got #{value.inspect}")
+        raise Core::ApiError.new(fn, Core::ApiErrorCode::INVALID_ARGUMENT,
+                                 "`#{name}` must be a positive number of seconds, " \
+                                 "got #{value.inspect}")
       end
 
       value.to_f
     end
 
-    # A list of strings, flattened, defaulted to empty, or a `ToolError` naming the argument.
+    # A list of strings, flattened, defaulted to empty, or an `ApiError` naming the argument.
     #
     # Every `list<string>` argument goes through this, and every one of them is a splat — so
     # `GG::Delegation.wait_for_subagents(*ids)` and `GG::Delegation.wait_for_subagents(ids)` are the
@@ -66,19 +66,19 @@ module GG
     # @param name [String] the argument's name, for the message
     # @param values [Array] what the program passed, splatted
     # @return [Array<String>] the flattened strings
-    # @raise [GG::Core::ToolError] `invalid-argument` when an entry is not a string
+    # @raise [GG::Core::ApiError] `invalid-argument` when an entry is not a string
     def self.strings(fn, name, values)
       flat = Array(values).flatten
       flat.each do |item|
         next if item.is_a?(String)
 
-        raise Core::ToolError.new(fn, Core::ToolErrorCode::INVALID_ARGUMENT,
-                                  "every entry of `#{name}` must be a string, got #{item.inspect}")
+        raise Core::ApiError.new(fn, Core::ApiErrorCode::INVALID_ARGUMENT,
+                                 "every entry of `#{name}` must be a string, got #{item.inspect}")
       end
       flat
     end
 
-    # One of a fixed set of symbols, or a `ToolError` listing the set.
+    # One of a fixed set of symbols, or an `ApiError` listing the set.
     #
     # This is what makes a symbol a *typed* choice rather than a free string. `:in_progres` is a
     # value Ruby will happily construct, so the check has to be here — and the failure names every
@@ -90,7 +90,7 @@ module GG
     # @param value [Symbol, nil] what the program passed
     # @param allowed [Array<Symbol>] every symbol this argument accepts
     # @return [Symbol, nil] the value, or nil when it was left out
-    # @raise [GG::Core::ToolError] `invalid-argument` when it is not one of `allowed`
+    # @raise [GG::Core::ApiError] `invalid-argument` when it is not one of `allowed`
     def self.choice(fn, name, value, allowed)
       return nil if value.nil?
       return value if allowed.include?(value)
@@ -98,9 +98,9 @@ module GG
       # Written with a leading colon by hand rather than with `inspect`, because Opal's Symbol is a
       # String: `:done.inspect` is `"done"` here, and a message that quoted the accepted set that
       # way would be telling a model to write the one thing this argument does not take.
-      raise Core::ToolError.new(fn, Core::ToolErrorCode::INVALID_ARGUMENT,
-                                "`#{name}` must be one of " \
-                                "#{allowed.map { |arm| ":#{arm}" }.join(", ")}, got :#{value}")
+      raise Core::ApiError.new(fn, Core::ApiErrorCode::INVALID_ARGUMENT,
+                               "`#{name}` must be one of " \
+                               "#{allowed.map { |arm| ":#{arm}" }.join(", ")}, got :#{value}")
     end
 
     # An inclusive `Range` of whole turn numbers, lowered to the membrane's `{ start, end }` record.
@@ -112,13 +112,13 @@ module GG
     # @param fn [String] the gg call the failure is reported against
     # @param span [Range] the span to check
     # @return [Array(Integer, Integer)] the first and last turn, both inclusive
-    # @raise [GG::Core::ToolError] `invalid-argument` for anything that is not a whole, forward,
+    # @raise [GG::Core::ApiError] `invalid-argument` for anything that is not a whole, forward,
     #   closed range
     def self.span(fn, span)
       unless span.is_a?(Range) && span.first.is_a?(Integer) && span.last.is_a?(Integer)
-        raise Core::ToolError.new(fn, Core::ToolErrorCode::INVALID_ARGUMENT,
-                                  "every entry of `ranges` must be a Range of turn numbers " \
-                                  "(`4..19`), got #{span.inspect}")
+        raise Core::ApiError.new(fn, Core::ApiErrorCode::INVALID_ARGUMENT,
+                                 "every entry of `ranges` must be a Range of turn numbers " \
+                                 "(`4..19`), got #{span.inspect}")
       end
 
       last = span.exclude_end? ? span.last - 1 : span.last

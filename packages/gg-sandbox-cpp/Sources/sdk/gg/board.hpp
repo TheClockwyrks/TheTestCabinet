@@ -94,7 +94,7 @@ struct issue_created {
   /// <ggop-alias>board.wait_for_issue</ggop-alias>
   ///
   /// \returns gg's acknowledgement of the registered wait.
-  /// \throws gg::core::tool_error `not_found` when the issue has since been removed.
+  /// \throws gg::core::api_error `not_found` when the issue has since been removed.
   std::string wait() const;
 };
 
@@ -141,7 +141,7 @@ struct issue_patch {
 /// \param title A short line naming the body of work.
 /// \param description What the epic covers, for a reader who has not seen its issues.
 /// \returns the id the prefix resolved to, and the board budget.
-/// \throws gg::core::tool_error `invalid_argument` when the prefix is not 3-6 letters, and `conflict`
+/// \throws gg::core::api_error `invalid_argument` when the prefix is not 3-6 letters, and `conflict`
 ///   when another epic already holds it.
 board::epic_created create_epic(std::string_view prefix, std::string_view title,
                                 std::string_view description);
@@ -164,7 +164,7 @@ board::epic_created create_epic(std::string_view prefix, std::string_view title,
 /// \param agent The agent the issue is dispatched to. It must be one this agent may spawn.
 /// \param options The parts that may be left out: a description, blockers, an epic, reviewers.
 /// \returns the id the board assigned, and the board budget.
-/// \throws gg::core::tool_error `invalid_argument` when the agent or a reviewer is not one this agent
+/// \throws gg::core::api_error `invalid_argument` when the agent or a reviewer is not one this agent
 ///   may assign, and `conflict` on a blocker edge that would close a cycle.
 board::issue_created create_issue(std::string_view title, std::string_view in_scope,
                                   std::string_view out_of_scope,
@@ -181,7 +181,7 @@ board::issue_created create_issue(std::string_view title, std::string_view in_sc
 /// \param id The issue to revise.
 /// \param patch The fields to change. At least one is required; a field left at its default is
 ///   left alone.
-/// \throws gg::core::tool_error `not_found` for an unknown id.
+/// \throws gg::core::api_error `not_found` for an unknown id.
 void update_issue(std::string_view id, board::issue_patch patch);
 
 /// Replace an issue's whole blocker set; an empty vector clears every blocker.
@@ -190,7 +190,7 @@ void update_issue(std::string_view id, board::issue_patch patch);
 ///
 /// \param id The issue whose blockers to replace.
 /// \param blocked_by The ids of every issue that must now be done before it.
-/// \throws gg::core::tool_error `not_found` for an unknown id, and `conflict` when an edge would close
+/// \throws gg::core::api_error `not_found` for an unknown id, and `conflict` when an edge would close
 ///   a cycle.
 void set_issue_blocked_by(std::string_view id, std::vector<std::string> blocked_by);
 
@@ -200,7 +200,7 @@ void set_issue_blocked_by(std::string_view id, std::vector<std::string> blocked_
 ///
 /// \param id The epic to remove.
 /// \returns how much of the board budget is left in use.
-/// \throws gg::core::tool_error `not_found` for an unknown id.
+/// \throws gg::core::api_error `not_found` for an unknown id.
 board::board_usage remove_epic(std::string_view id);
 
 /// Remove an issue and every blocker edge pointing at it, and hand back the board budget.
@@ -209,7 +209,7 @@ board::board_usage remove_epic(std::string_view id);
 ///
 /// \param id The issue to remove.
 /// \returns how much of the board budget is left in use.
-/// \throws gg::core::tool_error `not_found` for an unknown id.
+/// \throws gg::core::api_error `not_found` for an unknown id.
 board::board_usage remove_issue(std::string_view id);
 
 /// Register a wait on an issue and hand back an acknowledgement.
@@ -224,7 +224,7 @@ board::board_usage remove_issue(std::string_view id);
 ///
 /// \param id The issue to wait on. It may not be the issue this agent was assigned.
 /// \returns gg's acknowledgement of the registered wait.
-/// \throws gg::core::tool_error `not_found` for an unknown id.
+/// \throws gg::core::api_error `not_found` for an unknown id.
 std::string wait_for_issue(std::string_view id);
 
 }  // namespace board

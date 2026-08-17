@@ -5,7 +5,7 @@ The **ECMAScript** guest for gg's
 capability. Under that capability a model answers a turn by writing a whole
 **program** instead of a batch of tool calls; gg prepares that program in-process
 and evaluates it inside a wasm component. This package is that component's source:
-the typed tool surface a program calls, the engine that evaluates it, and the build
+the typed API surface a program calls, the engine that evaluates it, and the build
 that bakes both into the artifacts the Rust host embeds.
 
 **One guest, three arms.** The language a program is written in is a first-class
@@ -45,7 +45,7 @@ rather than out of copies somebody last refreshed.
 | Path | What it holds |
 | --- | --- |
 | `src/membrane.d.ts` | The hand-maintained TypeScript mirror of `crates/gg/wit/gg-sandbox.wit`. Emits no code; the guest's own generated glue is the real binding. |
-| `src/gg/*.ts` | **The model-facing surface**: one module per capability family, each exporting that family's functions and declaring the types they speak in. `src/gg/core.ts` declares no function and holds the types every other module names — `ToolError` above all. |
+| `src/gg/*.ts` | **The model-facing surface**: one module per capability family, each exporting that family's functions and declaring the types they speak in. `src/gg/core.ts` declares no function and holds the types every other module names — `ApiError` above all. |
 | `src/internal/*.ts` | Everything the modules are built out of and no model reads: the argument validators, the failure normaliser, and the membrane lowerings shared by two modules. It is outside `src/gg/` because that is exactly what the reflector walks. |
 | `src/catalogue.ts` | The one thing a declaration cannot state: the module order, and which gg tool buys each operation. No name, no description and no operation id lives here. |
 | `tools/signatures.mjs` | Reflects the catalogue out of the emitted `.d.ts` files under `dist/headers/gg/`. |
@@ -82,10 +82,9 @@ second table to keep in step.
 The name a documentation view is opened by is `gg.<module>.<name>`, or
 `gg.<module>` for a module's own, and it is a path a program can really write:
 `import * as gg from "gg"` puts one namespace per module under `gg`, and
-`gg:<module>` reaches the same module alone. Types are bound bare, as `ToolError`
-is, and filed under their
-module's name, so `gg.files.FileRead` is where the declaration lives and
-`FileRead` is what a signature writes.
+`gg:<module>` reaches the same module alone. Types are bound bare, as `ApiError`
+is, and filed under their module's name, so `gg.files.FileRead` is where the
+declaration lives and `FileRead` is what a signature writes.
 
 Four families are model-facing and are **not** gg tools, so no `ALL_TOOL_NAMES`
 entry stands for one: the ending calls of `src/gg/session.ts`, which a role buys;
@@ -93,7 +92,7 @@ the view calls of `src/gg/views.ts`, four of which nothing gates at all; the
 documentation calls of `src/gg/docs.ts`, of which the search is bound to every
 program and the two closes are bought by a capability; and the program library of
 `src/gg/programs.ts`, which a capability buys. Keeping them out
-of the tool vocabulary is what keeps `boundTools() == ALL_TOOL_NAMES` — the one
+of the tool vocabulary is what keeps `boundOperations() == ALL_TOOL_NAMES` — the one
 drift gate that inspects the built `.wasm` rather than a source file — in exact
 bijection.
 
@@ -141,7 +140,7 @@ emitted JSON on the way in.
 | --- | --- |
 | `tsc -b` failing | `src/membrane.d.ts` disagreeing with the WIT, at build time |
 | gg's instantiation test | a WIT change the guest was not rebuilt against — the component's imports no longer match the host's linker. Not a state a `cargo build` can reach any more (the WIT is in this arm's rerun set); it is what catches a change made to the host's linker alone |
-| gg's `bound-tools` test | a tool added, renamed or removed in gg without the guest's generated glue following — the component says which tools it binds and gg compares that with its own `ALL_TOOL_NAMES` |
+| gg's `bound-operations` test | a tool added, renamed or removed in gg without the guest's generated glue following — the component says which names it binds and gg compares that with its own `ALL_TOOL_NAMES` |
 | `tools/signatures.mjs` exiting non-zero | an exported function of `src/gg/` naming no gg operation, an operation `src/catalogue.ts` lists that nothing binds, an operation whose key does not name its function, or two functions claiming one operation |
 | `tools/signatures.mjs` exiting non-zero | a **module**, a **function**, an **argument**, an inline argument **field**, a **type** or a type **member** with no doc comment — an `@param` naming something the signature does not declare — a first paragraph that wraps onto a second line, so there is no brief in it — or a declared type nothing refers to |
 | gg's register gate | prose that has a brief and gets its register wrong: a paragraph in the brief field, a second-person instruction, emphasis by capitals, an unclosed code span |

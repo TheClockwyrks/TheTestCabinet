@@ -35,21 +35,21 @@ use super::super::test_cabinet::gg::tasks::{Host as TasksHost, TaskInput, TaskPa
 use super::super::test_cabinet::gg::types::TextEdit;
 use super::super::test_cabinet::gg::views::Host as ViewsHost;
 use super::*;
-use test_cabinet_core::gg::GgToolFailure;
+use test_cabinet_core::gg::GgCallFailure;
 
 use crate::sandbox::OPERATIONS;
-use crate::sandbox::fake::{ApiLog, CallLog, FakeToolApi, membrane_from};
+use crate::sandbox::fake::{ApiLog, CallLog, FakeOperationApi, membrane_from};
 
 /// A membrane over a fake api, with both of its records to hand: what ran, and what was written.
-fn recording_membrane(log: &CallLog) -> (MembraneState<FakeToolApi>, ApiLog) {
-    let api = FakeToolApi::new(log).with_program(1, "harness.finish('done');");
+fn recording_membrane(log: &CallLog) -> (MembraneState<FakeOperationApi>, ApiLog) {
+    let api = FakeOperationApi::new(log).with_program(1, "harness.finish('done');");
     let recorded = api.api_log();
     (membrane_from(api), recorded)
 }
 
 /// Call every model-facing function on the membrane once, in catalogue order. Errors are ignored:
 /// this is about *which* calls were recorded, not what any of them returned.
-fn call_everything(state: &mut MembraneState<FakeToolApi>) {
+fn call_everything(state: &mut MembraneState<FakeOperationApi>) {
     let _ = state.shell("echo hi".to_string(), None);
     let _ = state.read_file("src/main.rs".to_string(), None, None);
     let _ = state.read_text_file("src/main.rs".to_string(), None, None);
@@ -337,7 +337,7 @@ fn the_text_read_helper_is_recorded_apart_from_the_read_it_shares_a_core_with() 
 #[test]
 fn a_refused_call_is_recorded_as_a_failed_api_call() {
     let log = CallLog::default();
-    let api = FakeToolApi::new(&log);
+    let api = FakeOperationApi::new(&log);
     let recorded = api.api_log();
     let mut state = MembraneState::new(
         api,
@@ -363,7 +363,7 @@ fn a_refused_call_is_recorded_as_a_failed_api_call() {
     // reached for" would be unrecorded anywhere.
     assert_eq!(
         recorded.calls()[0].failure,
-        Some(GgToolFailure::Unavailable)
+        Some(GgCallFailure::Unavailable)
     );
     assert!(
         log.calls().is_empty(),
@@ -383,7 +383,7 @@ fn a_refused_call_is_recorded_as_a_failed_api_call() {
 #[test]
 fn a_call_whose_result_could_not_be_converted_fails_the_api_record() {
     let log = CallLog::default();
-    let api = FakeToolApi::with(&log, |_, _| {
+    let api = FakeOperationApi::with(&log, |_, _| {
         crate::tools::ToolOutcome::ok("no sidecar", "listed")
     });
     let recorded = api.api_log();
@@ -401,7 +401,7 @@ fn a_call_whose_result_could_not_be_converted_fails_the_api_record() {
     );
     assert_eq!(
         recorded.calls()[0].failure,
-        Some(GgToolFailure::IoError),
+        Some(GgCallFailure::IoError),
         "and the class it was thrown with, which the `ToolResult` beside it cannot carry — that \
          one streamed a success"
     );
@@ -410,13 +410,13 @@ fn a_call_whose_result_could_not_be_converted_fails_the_api_record() {
 /// **Every failed API call says why**, in the class the program itself branches on — and a
 /// successful one says nothing, so a class is present on exactly the calls that failed.
 ///
-/// This is the seam the complaint was about: the bracket knew the `ToolError` it was closing over
+/// This is the seam the complaint was about: the bracket knew the `ApiError` it was closing over
 /// and recorded only that there *was* one, so an API call that failed forty times over a missing
 /// file was indistinguishable from one that failed forty times over a refused capability.
 #[test]
 fn a_failed_api_call_records_the_class_it_threw_with() {
     let log = CallLog::default();
-    let api = FakeToolApi::with(&log, |tool, _| match tool {
+    let api = FakeOperationApi::with(&log, |tool, _| match tool {
         "read_file" => crate::tools::ToolOutcome::failed(
             crate::tools::ToolFailure::NotFound,
             "no such file: missing.rs",
@@ -440,8 +440,8 @@ fn a_failed_api_call_records_the_class_it_threw_with() {
             .map(|call| (call.operation.as_str(), call.failure))
             .collect::<Vec<_>>(),
         vec![
-            ("files.read_file", Some(GgToolFailure::NotFound)),
-            ("files.write_file", Some(GgToolFailure::InvalidArgument)),
+            ("files.read_file", Some(GgCallFailure::NotFound)),
+            ("files.write_file", Some(GgCallFailure::InvalidArgument)),
             // A call that cannot fail records no class, because nothing threw.
             ("views.current", None),
         ]
@@ -455,7 +455,7 @@ fn a_failed_api_call_records_the_class_it_threw_with() {
 #[test]
 fn an_unclassified_failure_is_recorded_as_the_unclassified_class() {
     let log = CallLog::default();
-    let api = FakeToolApi::with(&log, |_, _| {
+    let api = FakeOperationApi::with(&log, |_, _| {
         crate::tools::ToolOutcome::error("the bridge degraded")
     });
     let recorded = api.api_log();
@@ -463,5 +463,5 @@ fn an_unclassified_failure_is_recorded_as_the_unclassified_class() {
 
     let _ = state.read_file("src/main.rs".to_string(), None, None);
 
-    assert_eq!(recorded.calls()[0].failure, Some(GgToolFailure::Other));
+    assert_eq!(recorded.calls()[0].failure, Some(GgCallFailure::Other));
 }

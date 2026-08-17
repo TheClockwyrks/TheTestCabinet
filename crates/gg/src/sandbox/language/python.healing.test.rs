@@ -173,7 +173,7 @@ fn a_trailing_colon_is_code_only_with_a_block_keyword() {
         "for row in rows:",
         "with open(path) as handle:",
         "try:",
-        "except ToolError as failure:",
+        "except ApiError as failure:",
         "class Row:",
         "match kind:",
     ] {

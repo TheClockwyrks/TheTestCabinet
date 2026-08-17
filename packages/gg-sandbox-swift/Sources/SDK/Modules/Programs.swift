@@ -19,13 +19,13 @@ public enum programs {
     /// that has run nothing yet gets an empty array rather than an error.
     ///
     /// - Returns: every program this session has run, oldest first.
-    /// - Throws: `core.ToolError` with `.unavailable` when this agent keeps no program library —
+    /// - Throws: `core.ApiError` with `.unavailable` when this agent keeps no program library —
     ///   which is a different fact from an empty one, and the reason this call is `throws` rather
     ///   than total.
     /// - ggop: programs.history
     public static func history() throws -> [ProgramSummary] {
         var ret = test_cabinet_gg_programs_list_program_summary_t()
-        var err = test_cabinet_gg_types_tool_error_t()
+        var err = test_cabinet_gg_types_api_error_t()
         guard test_cabinet_gg_programs_history(&ret, &err) else { throw lift(failure: &err) }
         let summaries = lift(ret.ptr, ret.len) { ProgramSummary(wire: $0) }
         test_cabinet_gg_programs_list_program_summary_free(&ret)
@@ -43,12 +43,12 @@ public enum programs {
     /// - Parameter turn: The turn whose program to fetch, as `programs.history` reports it. Left
     ///   out, it fetches the most recent one.
     /// - Returns: the program's source, exactly as it ran.
-    /// - Throws: `core.ToolError` with `.notFound`, naming the turns that are held, for a turn that
+    /// - Throws: `core.ApiError` with `.notFound`, naming the turns that are held, for a turn that
     ///   ran no program or one old enough that the library has dropped it.
     /// - ggop: programs.get
     public static func get(turn: Int? = nil) throws -> String {
         var ret = sandbox_string_t()
-        var err = test_cabinet_gg_types_tool_error_t()
+        var err = test_cabinet_gg_types_api_error_t()
         let ok = withOptional(turn.map { UInt32(truncatingIfNeeded: $0) }) { turn in
             test_cabinet_gg_programs_get(turn, &ret, &err)
         }
@@ -71,13 +71,13 @@ public enum programs {
     /// per turn, and the fixed program is the one that does the work.
     ///
     /// - Parameter source: The program to run in place of this one, as Swift. It may not be blank.
-    /// - Throws: `core.ToolError` with `.refused` for a second hand-over in one turn, and
+    /// - Throws: `core.ApiError` with `.refused` for a second hand-over in one turn, and
     ///   `.invalidArgument` for a blank source.
     /// - ggop: programs.rerun
     public static func rerun(_ source: String) throws {
         try withScratch { scratch in
             var source = scratch.string(source)
-            var err = test_cabinet_gg_types_tool_error_t()
+            var err = test_cabinet_gg_types_api_error_t()
             guard test_cabinet_gg_programs_rerun(&source, &err) else { throw lift(failure: &err) }
         }
     }
@@ -115,7 +115,7 @@ extension programs.ProgramSummary {
     /// `programs.get` for the common case where the history entry is in hand.
     ///
     /// - Returns: the program's source, exactly as it ran.
-    /// - Throws: `core.ToolError` with `.notFound` when the library has since dropped that turn.
+    /// - Throws: `core.ApiError` with `.notFound` when the library has since dropped that turn.
     /// - ggop-alias: programs.get
     public func source() throws -> String {
         try programs.get(turn: turn)

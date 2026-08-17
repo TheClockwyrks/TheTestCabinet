@@ -42,7 +42,7 @@ export interface ProgramSummary {
    *
    * @ggop programs.get
    * @returns the exact source of the program that ran on that turn.
-   * @throws `ToolError` with `not-found` when the library has dropped that turn since the history
+   * @throws `ApiError` with `not-found` when the library has dropped that turn since the history
    * was read.
    */
   source(): string;
@@ -58,7 +58,7 @@ export interface ProgramSummary {
  * @ggop programs.history
  * @returns one entry per program already run, oldest first; empty for an agent that has a library
  * and has run nothing yet.
- * @throws `ToolError` with `unavailable` for an agent with no program library.
+ * @throws `ApiError` with `unavailable` for an agent with no program library.
  */
 export function history(): ProgramSummary[] {
   // The method is attached here rather than declared on a class: nothing in a program ever
@@ -88,7 +88,7 @@ export function history(): ProgramSummary[] {
  * @ggop programs.get
  * @param turn The turn whose program to fetch, as `history` reports it. Omit it for the most recent.
  * @returns the exact source of the program that ran on that turn.
- * @throws `ToolError` with `unavailable` for an agent with no program library, and `not-found` —
+ * @throws `ApiError` with `unavailable` for an agent with no program library, and `not-found` —
  * naming the turns that are held — for a turn that ran no program or one old enough to have been
  * dropped.
  */
@@ -109,7 +109,7 @@ export function get(turn?: number): string {
  *
  * @ggop programs.rerun
  * @param source The program to run in place of this one. It may not be blank.
- * @throws `ToolError` with `unavailable` for an agent with no program library, `invalid-argument`
+ * @throws `ApiError` with `unavailable` for an agent with no program library, `invalid-argument`
  * for a blank source, and `refused` for a second hand-over in one turn.
  */
 export function rerun(source: string): void {

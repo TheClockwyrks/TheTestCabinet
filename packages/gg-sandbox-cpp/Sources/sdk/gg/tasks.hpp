@@ -99,7 +99,7 @@ struct task_patch {
 /// \param title A short line naming the work.
 /// \param options The parts that may be left out: a description, and the tasks this one waits on.
 /// \returns how much of the task budget is used.
-/// \throws gg::core::tool_error `conflict` on a duplicate id or on an edge that would close a cycle.
+/// \throws gg::core::api_error `conflict` on a duplicate id or on an edge that would close a cycle.
 tasks::task_usage add_task(std::string_view id, std::string_view title,
                            tasks::task_options options = {});
 
@@ -113,7 +113,7 @@ tasks::task_usage add_task(std::string_view id, std::string_view title,
 /// \param id The task to revise.
 /// \param patch The fields to change. At least one is required; a field left at its default is
 ///   left alone.
-/// \throws gg::core::tool_error `not_found` for an unknown id.
+/// \throws gg::core::api_error `not_found` for an unknown id.
 void update_task(std::string_view id, tasks::task_patch patch);
 
 /// Replace a task's whole blocker set; an empty vector clears every blocker.
@@ -122,7 +122,7 @@ void update_task(std::string_view id, tasks::task_patch patch);
 ///
 /// \param id The task whose blockers to replace.
 /// \param blocked_by The ids of every task that must now be done before it.
-/// \throws gg::core::tool_error `not_found` for an unknown id, and `conflict` when an edge would close
+/// \throws gg::core::api_error `not_found` for an unknown id, and `conflict` when an edge would close
 ///   a cycle.
 void set_blocked_by(std::string_view id, std::vector<std::string> blocked_by);
 
@@ -133,7 +133,7 @@ void set_blocked_by(std::string_view id, std::vector<std::string> blocked_by);
 /// <ggop>tasks.complete_task</ggop>
 ///
 /// \param id The task to mark done.
-/// \throws gg::core::tool_error `not_found` for an unknown id.
+/// \throws gg::core::api_error `not_found` for an unknown id.
 void complete_task(std::string_view id);
 
 /// Remove a task and every blocker edge pointing at it, and hand back the task budget.
@@ -142,7 +142,7 @@ void complete_task(std::string_view id);
 ///
 /// \param id The task to remove.
 /// \returns how much of the task budget is left in use.
-/// \throws gg::core::tool_error `not_found` for an unknown id.
+/// \throws gg::core::api_error `not_found` for an unknown id.
 tasks::task_usage remove_task(std::string_view id);
 
 }  // namespace tasks

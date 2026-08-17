@@ -16,8 +16,8 @@ package gg.internal;
  *
  * <h2>Why this stops short of raising the failure</h2>
  *
- * <p>Because the failure a program catches is the <b>arm's</b> class — {@code gg.ToolError} on the
- * Java arm and {@code gg.core.ToolError} on the Kotlin one — and each is a model-facing type with its
+ * <p>Because the failure a program catches is the <b>arm's</b> class — {@code gg.ApiError} on the
+ * Java arm and {@code gg.core.ApiError} on the Kotlin one — and each is a model-facing type with its
  * own documentation, its own accessors and its own catalogue entry. This file is shared between them
  * and so cannot name either. {@link Answer} is what it hands back instead, and the arm's own one-line
  * bridge turns it into a raise.
@@ -37,12 +37,12 @@ public final class Frames {
      *
      * @param value what the call returned, or {@code null} when it failed — {@link Value#none()} is
      *     what a call returning nothing answers with, so {@code null} is unambiguous
-     * @param tool the gg name of the call that failed, or {@code null}
+     * @param operation the key of the operation the failed call reached for, or {@code null}
      * @param code gg's own wire spelling of the failure class, or {@code null}
      * @param message what went wrong, or {@code null}
      */
-    public record Answer(Value value, String tool, String code, String message) {
-        /** Whether gg refused the call or the tool behind it failed. */
+    public record Answer(Value value, String operation, String code, String message) {
+        /** Whether gg refused the call or the operation behind it failed. */
         public boolean failed() {
             return value == null;
         }
@@ -63,10 +63,10 @@ public final class Frames {
             return new Answer(in.value(), null, null, null);
         }
         if (outcome == RESPONSE_ERROR) {
-            String tool = in.value().text();
+            String operation = in.value().text();
             String code = in.value().text();
             String message = in.value().text();
-            return new Answer(null, tool, code, message);
+            return new Answer(null, operation, code, message);
         }
         throw new IllegalStateException("gg's answer began with " + outcome
                 + ", which is neither an answer nor a failure");

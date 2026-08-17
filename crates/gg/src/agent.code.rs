@@ -26,7 +26,7 @@
 //! * [`run_code_program`] — the `spawn_blocking` offload plus the servicing loop, which is where
 //!   every must-survive loop behaviour (gating, scheduler routing, telemetry, session capture,
 //!   knowledge-state re-emission, context reclaim, skill pinning) is preserved for a composed call.
-//! * [`LoopToolApi`] — the production [`ToolApi`], holding the loop's own state and servicing each
+//! * [`LoopOperationApi`] — the production [`OperationApi`], holding the loop's own state and servicing each
 //!   typed call the guest makes inline, so a composed call and a native tool call gate and route
 //!   identically.
 //! * The feedback builders, which turn what happened into the compiler diagnostic, runtime fault or
@@ -63,10 +63,11 @@ use crate::sandbox::{
     DELEGATION_TRANSITION_STATE, DELEGATION_WAIT_FOR_SUBAGENTS, DocSearchQuery, DocSearchResult,
     FILES_EDIT_FILE, FILES_LIST_DIR, FILES_READ_FILE, FILES_WRITE_FILE, MEMORIES_CREATE_MEMORY,
     MEMORIES_DELETE_MEMORY, MEMORIES_EDIT_MEMORY, MEMORIES_READ_MEMORY, MEMORIES_SEARCH_MEMORIES,
-    MEMORIES_UPDATE_MEMORY, MEMORIES_WRITE_MEMORY, OperationId, PreparedProgram, ProgramError,
-    ProgramLanguage, ProgramScope, RunEnding, SHELL_SHELL, SKILLS_READ_SKILL, SandboxViewOpened,
-    TASKS_ADD_TASK, TASKS_COMPLETE_TASK, TASKS_REMOVE_TASK, TASKS_SET_BLOCKED_BY,
-    TASKS_UPDATE_TASK, ToolApi, ViewOpenOutcome, ViewRefusal, run_prepared_program, spell,
+    MEMORIES_UPDATE_MEMORY, MEMORIES_WRITE_MEMORY, OperationApi, OperationId, PreparedProgram,
+    ProgramError, ProgramLanguage, ProgramScope, RunEnding, SHELL_SHELL, SKILLS_READ_SKILL,
+    SandboxViewOpened, TASKS_ADD_TASK, TASKS_COMPLETE_TASK, TASKS_REMOVE_TASK,
+    TASKS_SET_BLOCKED_BY, TASKS_UPDATE_TASK, ViewOpenOutcome, ViewRefusal, run_prepared_program,
+    spell,
 };
 use crate::tasks::TaskStatus;
 use crate::tools::{
@@ -1168,7 +1169,7 @@ pub(super) struct CodeTurn<'a> {
 /// The per-turn state a code turn takes **by value** and hands back: the context window, the skills
 /// and docs runtimes, and (when delegation is on) the subagent context.
 ///
-/// It is moved into the turn's [`LoopToolApi`] so a program's calls act on the live window on the
+/// It is moved into the turn's [`LoopOperationApi`] so a program's calls act on the live window on the
 /// blocking sandbox thread, then reclaimed from it when the sandbox returns — which is why
 /// [`run_code_program`] returns `Option<CodeTurnState>`: on the one path the state cannot come back
 /// (the blocking task **panicked** and took it with it) the option is `None`, a host fault the turn
@@ -1227,7 +1228,7 @@ pub(super) struct CodeTurnState {
 ///
 /// The sandbox is synchronous and CPU-bound, so it runs on a
 /// [`spawn_blocking`](tokio::task::spawn_blocking) thread (the same offload the Foray/Lattice
-/// validators use). Every call the program composes is serviced by the turn's [`LoopToolApi`], which
+/// validators use). Every call the program composes is serviced by the turn's [`LoopOperationApi`], which
 /// runs **on that blocking thread** — calling the typed implementations directly and routing
 /// the delegation family back onto the async loop via `block_on`. That is where every must-survive
 /// loop behaviour lives now: the compaction gate, the session record, knowledge-state re-emission,
@@ -1254,7 +1255,7 @@ pub(super) struct CodeTurnState {
 /// holds for **pictures too**: a bare read of a mockup reads and describes it (`shown: false`, with
 /// a reason naming the remedy) and shows the model nothing.
 ///
-/// A [`view.openFile`](ToolApi::open_file_view) *does* push one, and that is the whole distinction
+/// A [`view.openFile`](OperationApi::open_file_view) *does* push one, and that is the whole distinction
 /// the model is taught in one line: **`fs.readFile` gets bytes for your program; `view.openFile`
 /// shows a file to you.** A view is an intent — *this should be visible* — so it is an attributable,
 /// evictable, persisted context item keyed by `(path, region)`, and the picture an opened mockup
@@ -1287,11 +1288,11 @@ async fn run_code_program(
     // The ending group, which the same membrane enforces. It is the agent's role rather than a
     // capability, which is why it travels beside the grant instead of inside it.
     let role = turn.ending_role;
-    // The production `ToolApi`: the loop's own per-turn state, servicing each typed call inline. The
+    // The production `OperationApi`: the loop's own per-turn state, servicing each typed call inline. The
     // mutable, reclaimed-after-the-turn state moves in; the rest is cloned from the turn (all
     // Arc-backed, so cheap) or captured fresh (`Handle::current()` bridges the delegation family
     // back onto this runtime from the blocking thread).
-    let api = LoopToolApi {
+    let api = LoopOperationApi {
         language,
         context,
         skills,
@@ -1634,9 +1635,9 @@ fn merge_chain(earlier: SandboxOutcome, later: SandboxOutcome) -> SandboxOutcome
 /// same reason.
 /// # Which call this is, is the caller's to know
 ///
-/// It is reached only from the [servicing tail](LoopToolApi::complete)'s
+/// It is reached only from the [servicing tail](LoopOperationApi::complete)'s
 /// `operation == SKILLS_READ_SKILL` arm, and it does not re-check. It cannot: the
-/// [dispatch record](LoopToolApi::begin) a program's call is minted with is named for the
+/// [dispatch record](LoopOperationApi::begin) a program's call is minted with is named for the
 /// **operation**, because that is the only vocabulary this surface has — a tool name is the other
 /// surface's, and no program ever wrote one. A guard here re-reading that field against a tool name
 /// would refuse every call it was handed.
@@ -1682,8 +1683,8 @@ fn run_program_charged(
     scope: ProgramScope<'_>,
     limits: SandboxLimits,
     deadline: Option<Instant>,
-    api: LoopToolApi,
-) -> (SandboxOutcome, LoopToolApi) {
+    api: LoopOperationApi,
+) -> (SandboxOutcome, LoopOperationApi) {
     let (mut outcome, mut api) = run_program(language, program, scope, limits, deadline, api);
     outcome.compile = SandboxOutcome::summed_compile(outcome.compile, api.knowledge.take_compile());
     (outcome, api)
@@ -1700,8 +1701,8 @@ fn run_prepared_charged(
     scope: ProgramScope<'_>,
     limits: SandboxLimits,
     deadline: Option<Instant>,
-    api: LoopToolApi,
-) -> (SandboxOutcome, LoopToolApi) {
+    api: LoopOperationApi,
+) -> (SandboxOutcome, LoopOperationApi) {
     let (mut outcome, mut api) =
         run_prepared_program(language, program, scope, limits, deadline, api);
     outcome.compile = SandboxOutcome::summed_compile(outcome.compile, api.knowledge.take_compile());
@@ -1760,8 +1761,8 @@ fn run_on_use_scripts(
     operations: &[OperationId],
     limits: SandboxLimits,
     deadline: Option<Instant>,
-    mut api: LoopToolApi,
-) -> LoopToolApi {
+    mut api: LoopOperationApi,
+) -> LoopOperationApi {
     // Drained rather than iterated: a script that itself reads a skill would otherwise queue work
     // this loop is still walking. What it queues waits for the next turn, which is the same promise
     // every on-use script is given.
@@ -1819,8 +1820,8 @@ fn memory_args(name: &str, description: &str, body: &str, code: &MemoryCode) -> 
 // The caps a program's views are held to
 // ---------------------------------------------------------------------------
 //
-// Every one of these is enforced in `LoopToolApi`, because that is where the `ContextModel` is: a
-// cap that cannot see the window is a cap guessing. Breaching one is a **catchable** `ToolError`
+// Every one of these is enforced in `LoopOperationApi`, because that is where the `ContextModel` is: a
+// cap that cannot see the window is a cap guessing. Breaching one is a **catchable** `ApiError`
 // with code `limit-exceeded` **naming the cap** — never a silent truncation. A view is a program's
 // only channel into its own context, and quietly cutting the model's output in half behind its back
 // is the exact failure mode this whole feature exists to remove: the model can split the material,
@@ -1874,10 +1875,10 @@ const MAX_COMPOSED_VIEW_BYTES_PER_TURN: usize = 8 * 1024 * 1024;
 // context window is the limit; agent-managed context is how it is spent.
 
 // ---------------------------------------------------------------------------
-// The native `ToolApi`: the loop's own state, servicing each typed call inline
+// The native `OperationApi`: the loop's own state, servicing each typed call inline
 // ---------------------------------------------------------------------------
 
-/// The production [`ToolApi`]: the loop's own state, servicing each typed call — the compaction
+/// The production [`OperationApi`]: the loop's own state, servicing each typed call — the compaction
 /// gate, the session record, agent-managed-context reclaim, skill pinning, board pump + state
 /// events — and routing the delegation family to the subagent scheduler via `block_on` (the sandbox
 /// runs on a blocking thread).
@@ -1886,7 +1887,7 @@ const MAX_COMPOSED_VIEW_BYTES_PER_TURN: usize = 8 * 1024 * 1024;
 /// with an [`ApiCall`](GgTelemetryKind::ApiCall)/[`ApiResult`](GgTelemetryKind::ApiResult) pair and
 /// nothing here emits a second, tool-shaped record beside it. The two surfaces are independent, and
 /// a program that never made a tool call must not appear to have made one.
-pub(super) struct LoopToolApi {
+pub(super) struct LoopOperationApi {
     /// The [program language](ProgramLanguage) this agent writes in.
     ///
     /// It is on the api rather than only on the turn because one of the api's own calls needs it: a
@@ -1969,7 +1970,7 @@ pub(super) struct LoopToolApi {
 }
 
 #[allow(dead_code)]
-impl LoopToolApi {
+impl LoopOperationApi {
     /// Bring a code skill or memory into use: transpile and bind its module, queue its on-use
     /// script, and tell the model where its code went.
     ///
@@ -2280,7 +2281,7 @@ impl LoopToolApi {
     /// program to catch it. Whether the wait can be satisfied at all is not among them: that is
     /// board state, and it is read by the wait itself at the moment it suspends, which is the only
     /// reading that can still be true when the agent blocks. What it does not do is block: it
-    /// appends the id to [`issue_waits_requested`](LoopToolApi::issue_waits_requested)
+    /// appends the id to [`issue_waits_requested`](LoopOperationApi::issue_waits_requested)
     /// (deduplicated) and returns an acknowledgement, and the loop suspends on it once the whole
     /// program has run.
     pub(super) fn register_issue_wait(&mut self, id: String) -> ToolOutcome {
@@ -2365,7 +2366,7 @@ impl LoopToolApi {
 // ---------------------------------------------------------------------------
 //
 // Free functions rather than methods, and pure: every one of them is a decision about a call, made
-// from the call and from what is already open. Keeping them out of `LoopToolApi` is what lets the
+// from the call and from what is already open. Keeping them out of `LoopOperationApi` is what lets the
 // rules — and the exact words a refused model reads — be read and tested without standing up an
 // agent, a workspace and a tokio runtime.
 
@@ -2576,7 +2577,7 @@ fn docs_close_event(key: Option<&str>, closed: &ViewsClosed) -> Option<GgTelemet
 /// # Why each line leads with the key rather than the name
 ///
 /// The identifier on a hit's line is the one the model is about to type into an
-/// [`open_docs_view`](ToolApi::open_docs_view), so it has to be the one that call takes: the
+/// [`open_docs_view`](OperationApi::open_docs_view), so it has to be the one that call takes: the
 /// **fully-qualified** [`key`](crate::docs::DocHit::key), not the bare
 /// [`name`](crate::docs::DocHit::name). A bare name is not an identity on an arm — several
 /// modules offer a `close`, and [`DocsRuntime::function`](crate::docs::DocsRuntime) resolves a bare
@@ -2657,7 +2658,7 @@ fn issue_status_word(status: IssueStatus) -> &'static str {
 }
 
 #[allow(dead_code)]
-impl ToolApi for LoopToolApi {
+impl OperationApi for LoopOperationApi {
     /// Stream the opening half of one model-facing call's record.
     ///
     /// This is the **whole** telemetry of a responses-as-code call. There is no bridged
@@ -2668,7 +2669,7 @@ impl ToolApi for LoopToolApi {
     /// emitted before the work rather than with it.
     ///
     /// It is not recorded for [replay](crate::capture): that is a *dispatch's* record, keyed on the
-    /// call the loop minted for it, and it is written by [`complete`](LoopToolApi::complete) at the
+    /// call the loop minted for it, and it is written by [`complete`](LoopOperationApi::complete) at the
     /// one place an outcome exists to record.
     fn begin_api_call(&mut self, call: ApiIdentity<'_>) {
         self.emitter.emit(GgTelemetryKind::ApiCall {
@@ -2683,7 +2684,7 @@ impl ToolApi for LoopToolApi {
     /// counting how often one operation failed reads results, and pairing each result back to its
     /// own call would mean re-deriving a bracket across every child event a delegation emitted
     /// inside it.
-    fn end_api_call(&mut self, call: ApiIdentity<'_>, failure: Option<GgToolFailure>) {
+    fn end_api_call(&mut self, call: ApiIdentity<'_>, failure: Option<GgCallFailure>) {
         self.emitter.emit(GgTelemetryKind::ApiResult {
             operation: call.operation.to_string(),
             ok: failure.is_none(),
@@ -3130,7 +3131,7 @@ impl ToolApi for LoopToolApi {
     }
     fn transition_state(&mut self, state: String, note: Option<String>) -> ToolOutcome {
         // Deferred, not performed — the shape `compact` has, for the reason on
-        // [`handoff_requested`](LoopToolApi::handoff_requested). The judging is the loop's own
+        // [`handoff_requested`](LoopOperationApi::handoff_requested). The judging is the loop's own
         // `handle_transition`, so a program and a native tool call are held to exactly the same
         // rules: the same legal targets, the same first-wins, the same refusal text. There is no
         // ending to lose to here — under responses-as-code an ending is declared through the session
@@ -3165,7 +3166,7 @@ impl ToolApi for LoopToolApi {
                 name: DELEGATION_EXEC.to_string(),
                 arguments: call_args,
             };
-            let LoopToolApi {
+            let LoopOperationApi {
                 exec_roster,
                 spawner,
                 handoff_requested,
@@ -3190,7 +3191,7 @@ impl ToolApi for LoopToolApi {
                 name: DELEGATION_FORK.to_string(),
                 arguments: call_args,
             };
-            let LoopToolApi {
+            let LoopOperationApi {
                 subagents,
                 spawner,
                 forks_requested,
@@ -3410,7 +3411,7 @@ impl ToolApi for LoopToolApi {
             };
         }
         let region = match &outcome.data {
-            Some(ToolData::FileText(text)) => FileRegion::covered(
+            Some(ApiData::FileText(text)) => FileRegion::covered(
                 text.first_line.into(),
                 text.last_line.into(),
                 text.total_lines.into(),
