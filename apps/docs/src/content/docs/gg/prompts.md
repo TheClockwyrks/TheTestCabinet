@@ -215,8 +215,8 @@ is wider than what a search will find.
 
 The prompt lists one line per capability module: the path this arm spells it
 under, the line the module's own declaration introduces it by, and the import
-that brings it into scope on the arm that needs one. Every field is the
-catalogue's, reflected from the module's declaration in the guest SDK.
+that brings it into scope. Every field is the catalogue's, reflected from the
+module's declaration in the guest SDK.
 
 That list is the whole vocabulary the prompt supplies. Nothing enumerates a
 module's functions; a module path is an exact lookup into the surface, and

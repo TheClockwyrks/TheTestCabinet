@@ -44,8 +44,8 @@ The guest imports every interface of the sandbox world directly. The lowering
 between WIT values and JavaScript values is generated from
 `crates/gg/wit/gg-sandbox.wit`, so a family gg adds is reachable from the SDK as
 soon as its declarations land, and the guest's `bound-tools` export is derived
-from the same source. It follows the canonical component-model mapping, which is
-what lets the SDK the incumbent guest ships be baked into this one unchanged.
+from the same source. It follows the canonical component-model mapping, so the guest lowers
+a call exactly as a generated binding would.
 
 Building the lowering from the WIT requires that gg's membrane use only the
 constructs the generator covers: records, variants, enums, options, lists and
@@ -114,8 +114,7 @@ ceiling.
 ## Globals
 
 The guest installs `TextEncoder`, `TextDecoder`, `structuredClone` and `crypto`,
-because the guest it replaces has them and quickjs does not. `Intl` is absent
-from both.
+which quickjs does not carry. `Intl` is absent.
 
 `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`,
 `requestAnimationFrame` and `fetch` are installed as named throwers, so a program

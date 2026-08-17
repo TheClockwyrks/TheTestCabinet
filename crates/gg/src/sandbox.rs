@@ -54,8 +54,8 @@
 //! turn's [`CodeExecution`](test_cabinet_core::gg::GgTelemetryKind::CodeExecution) event carries
 //! every line, which puts them on the run's stream, in the run record and on the console. A value a
 //! program hands back reaches nobody: on an arm whose program is a module the language itself has
-//! nowhere to hand one, and on an arm that still evaluates a function body the value is discarded
-//! and the model is told so once. That is a deliberate subtraction. A returned value bought nothing
+//! nowhere to hand one, and on an arm whose entry point carries a status the status is a *failure*
+//! the model reads rather than a value. That is a deliberate subtraction. A returned value bought nothing
 //! an opened view does not, and it cost a whole family of rules the model had to learn and gg had to
 //! enforce: what happens to a cycle, to a function, to a structure nested past what the host's
 //! parser accepts, to a `Promise`. One rule — open a view of what you want to see — replaces all of

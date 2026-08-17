@@ -193,14 +193,3 @@ declaration.
   withholds the exit.
 - Nothing ends implicitly. A session whose programs never call an ending
   continues until a bound stops it.
-
-## Returned values
-
-A program's entry point may return a value, and gg does not look at it. The
-guest reports only that a value was returned, and that report reaches the run's
-operator. Anything a program wants the model to read, it opens a view of.
-
-A returned Promise is reported as an error instead, saying that the program
-returned a Promise and that this sandbox is synchronous. It is the trace of
-`async` or `await` in a synchronous sandbox, and the work inside it is still
-pending as the program returns.

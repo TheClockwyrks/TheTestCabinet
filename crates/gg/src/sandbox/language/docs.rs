@@ -38,6 +38,10 @@
 //! page is TypeScript about a React app, and compiling it against gg's SDK would report a defect
 //! that is not one.
 //!
+//! A fence is read at the start of a line, which is where every fence in these pages sits. One
+//! indented into a list item is not gathered, and `the_documentation_is_where_the_gate_looks_for_it`
+//! is what would notice a page moving its programs there.
+//!
 //! # What it costs
 //!
 //! One preparation per gathered block, and the cost is the arm's: an interpreted arm's is free, and

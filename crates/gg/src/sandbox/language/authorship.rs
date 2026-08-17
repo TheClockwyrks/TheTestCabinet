@@ -38,8 +38,10 @@
 //! # What a byte comparison cannot see
 //!
 //! Three injection shapes leave the model's bytes untouched and are invisible here. They are named
-//! rather than guarded against, because each is deleted in its own arm's step and a gate that
-//! claimed to cover them would be worse than one that says it does not:
+//! rather than guarded against, because each is held by the arm that could commit it — a test on
+//! each arm compiles a whole program that omits the import and asserts the language's own
+//! diagnostic — and a gate that claimed to cover them here would be worse than one that says it does
+//! not:
 //!
 //! * **A second compilation unit that names the model's.** A generated entry class calling into a
 //!   class the model's statements were placed in, a `GlobalUsings.cs` beside the program, a shell
@@ -48,13 +50,13 @@
 //!   re-exported import, a prelude glob, a scope of names handed to an evaluator. Nothing is added
 //!   to the source; the compiler is simply told the names already exist.
 //!
-//!   The unconverted ECMAScript arms deliver that scope by evaluating the program as the body of a
-//!   function,
-//!   which costs the model one thing beyond the names: a top-level `return` ends the program, and
-//!   every statement after it is dead. It is legal JavaScript, so nothing refuses it and the turn is
-//!   recorded as a success — the shape a model drafting two programs and pasting the second after
-//!   the first lands in, kept as the `round2-*-two-drafts` fixtures in `healing.test.rs`. Deleting
-//!   the wrapper is what makes it an early error the language itself reports.
+//!   The shape that cost the most to delete was evaluating a program as the body of a function,
+//!   which the ECMAScript arms once did: beyond the names it bought, a top-level `return` ended the
+//!   program and every statement after it was dead. That is legal JavaScript, so nothing refused it
+//!   and the turn was recorded as a success — the shape a model drafting two programs and pasting
+//!   the second after the first lands in, kept as the `round2-*-two-drafts` fixtures in
+//!   `healing.test.rs`. A module has no function body to return from, so the language reports it
+//!   before anything runs.
 //! * **A transform conditional on a construct the generated program does not contain.** An arm that
 //!   hoists a model's `import` lines only when it wrote one keeps the bytes of a program that wrote
 //!   none.

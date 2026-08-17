@@ -142,8 +142,9 @@ exit whose value gg was not told. Naming the `1` that arrives would be gg
 reporting a program the model did not write, which the
 [invariants](/gg/responses-as-code/invariants/) forbid.
 
-A status a model wants read is one its entry point returns. On the arms whose
-entry point carries a status, gg reports the number the program chose.
+A status a model wants read is one its entry point returns. C++ and C# are the
+arms whose entry point carries one, and an entry point that returned a non-zero
+status is reported with the number the program chose.
 
 ### Globals an ECMAScript guest shadows
 

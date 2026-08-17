@@ -178,9 +178,9 @@ language passes by name rather than by position is marked `(passed by name)`.
 Every view states where the symbol is defined and how a program reaches it, on
 its own line under the signature or the declaration. The module is named by this
 language's own path for it, and the line a program writes to bring the symbol
-into scope is quoted verbatim. An arm whose SDK is in a program's scope before it
-compiles says so instead, because a model shown neither cannot tell "nothing to
-write" from "nobody said".
+into scope is quoted verbatim. Every module of every arm states one, since an
+import is the only route in and a view that quoted none would describe a surface
+no program could call.
 
 A type is a view of its own, addressed by the type's name, and it ends with a
 line per member function: the member's fully-qualified name and its one-line
@@ -226,8 +226,8 @@ the views the window opens on are the ones its own calls placed, so the model's
 first example of a well-formed reply is a program that provably ran.
 
 That program is written under the same rules a model's reply is on that arm, so
-the example a model opens on has the shape of a reply it has to send. The rules
-an arm is converting to are on
+the example a model opens on has the shape of a reply it has to send. It carries
+its own import line and its own entry point, on the terms in
 [invariants](/gg/responses-as-code/invariants/).
 
 The program makes two kinds of call. It searches each capability module the

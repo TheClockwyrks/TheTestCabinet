@@ -1007,8 +1007,8 @@ pub enum PrepareError {
     /// Every arm with a compiler in front of it raises it: TypeScript's prepare step runs `tsc` over
     /// the model's own source against the SDK's declarations, and the checked arms beside it run
     /// their own. What each hands back is that compiler's diagnostics, in the program's own
-    /// coordinates — the one line number the wrapper it was checked in made wrong is corrected, and
-    /// nothing else about the text is.
+    /// coordinates — the compiler read the model's own file, so there is no coordinate to correct
+    /// and nothing about the text is edited.
     ///
     /// It is **bounded**, and this is the type that makes the bound necessary. The `Display` above
     /// is `"{0}"` and nothing downstream shortens it: what an arm renders here is what the next

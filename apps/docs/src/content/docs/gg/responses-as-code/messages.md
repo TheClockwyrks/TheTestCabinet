@@ -136,8 +136,6 @@ console's activity feed:
 - every refused view call, and how many further view records a cap suppressed;
 - every view opened or replaced, with its kind, selector and token estimate, and
   every view closed, by selector;
-- that the program returned a value, which was discarded;
-- work the program deferred past its own end;
 - that a later ending call replaced an earlier one, how many times, and the
   summary the session ended on;
 - that an ending was revoked because the program then failed;

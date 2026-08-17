@@ -89,7 +89,8 @@ for what it leaves out. The ECMAScript guest is a preview1 module through the
 reactor adapter, so the adapter's whole surface is declared whether the engine
 reaches it or not. The Ruby guest imports seven interfaces: `wasi:clocks`,
 `wasi:random` and `wasi:io`, which is how a program reads the host clock, and
-`wasi:cli/stderr`. The Python guest imports the whole surface, twenty of them.
+`wasi:cli/stderr`. The Python guest imports the whole surface, twenty-five of
+them.
 Each guest's list is asserted against its built artifact, because the list is
 decided by how that arm's guest is built.
 

@@ -45,8 +45,8 @@ The rules required of every arm whatever language an agent writes in are on
 [invariants](/gg/responses-as-code/invariants/): the program is the model's own
 bytes, the SDK is reached by an import the model writes, documentation comes
 from that language's own documentation generator, and a failure reaches the
-model with the language's own words and locations. An arm that does not keep
-them all yet says so at the head of its own page.
+model with the language's own words and locations. Every registered arm keeps
+them, and two gates hold each arm to them on every test run.
 
 The capability set is gg's. An arm chooses how a call is spelled, which module
 it is filed under, whether it is a free function or a method, and how optional
@@ -71,15 +71,12 @@ own component.
 
 Java and Kotlin compile to TeaVM's WebAssembly target. TeaVM emits per program
 only the classlib that program's own call graph reached, so there is no runtime
-two programs could share and the component is built per turn. Both arms reach gg
-through one imported function rather than the fifteen typed interfaces, because
-there is no binding generator for the JVM; the [Java](/gg/languages/java/) page
-carries that argument and the canonical ABI both arms compile.
+two programs could share and the component is built per turn.
 
-On that route an arm reaches gg through one imported interface,
-`test-cabinet:gg/wire`. Every other guest binds the typed interfaces directly,
-which requires a binding generator for its language; Java has none, so the ABI
-its SDK implements is one string, two byte lists and a scalar. `call` takes an
+Both arms reach gg through one imported interface, `test-cabinet:gg/wire`,
+rather than the fifteen typed ones. Every other guest binds the typed interfaces
+directly, which requires a binding generator for its language; the JVM has none,
+so the ABI its SDK implements is one string, two byte lists and a scalar. `call` takes an
 operation id and the encoded arguments, runs the operation, and answers the byte
 length of its encoded result; `take` hands those bytes over. Two steps rather
 than one because a JVM guest may allocate only while the host holds no address
@@ -105,9 +102,7 @@ TeaVM emits a core module with no component metadata in it, so gg stamps the
 `component-type` section for the `jvm-sandbox` world from its own WIT and
 encodes the component in process with a pinned `wasi_snapshot_preview1` reactor
 adapter. A compiled program's Java heap is fixed at one size, because TeaVM
-gives a program its minimum heap rather than its maximum. TeaVM emits per program
-only the classlib a program reached, so there is no shared runtime a baked guest
-could hold and the encode is paid per turn.
+gives a program its minimum heap rather than its maximum.
 
 A failure on that route reaches the model as the runtime's own words on standard
 error: the exception's header, then frames naming the model's own file and lines.

@@ -146,9 +146,11 @@ step with a whole program of that language's own, and reports what the
 preparation did to the bytes: kept them, wrapped them in something larger, or
 rewrote them. It reads what the preparation wrote into its own workspace and the
 source it handed the guest, and takes the least faithful relation either of them
-has to what it was given. The arms that do not keep their bytes are recorded in
-a table the gate holds them to, so an arm that starts keeping them fails until
-its rows are deleted, and an arm that stops fails because nothing records it.
+has to what it was given. What a preparation does other than keep its bytes is
+recorded in a table the gate holds it to, so an arm that starts keeping them
+fails until its row is deleted, and an arm that stops fails because nothing
+records it. Every arm keeps the bytes of a model's reply, and every row the
+table still carries is a module half, which the invariants put outside the rule.
 
 A byte comparison leaves three shapes to each arm's own preparation step: an SDK
 reaching a program through a compiler flag, a second compilation unit that names
@@ -275,8 +277,8 @@ notes apiece and exempts any diagnostic naming a file somebody authored, at any
 depth.
 
 Three arms need no bound. Ruby's Opal driver reports a single thrown
-`SyntaxError`, Python runs no checker on the prepare path, and JavaScript
-delegates its whole prepare step to TypeScript's parse path.
+`SyntaxError`, and neither Python nor JavaScript reads a program on the host at
+all: each hands the reply to its guest, which is the first thing to parse it.
 
 Two rules govern what the bound may touch. Both failures gg reports to the
 operator alone, and they are bounded differently because their content is

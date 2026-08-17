@@ -33,7 +33,8 @@ The crate type is `bin`, and that is what makes the model's `main` reachable.
 `rustc` compiling a binary crate emits the unmangled C entry symbol wasi-libc
 names `__main_void` beside the model's `main` and asks `rust-lld` to export it;
 gg's SDK declares that symbol, calls it from the world's `run` export, and
-propagates the status it returns. A library crate type emits neither, since
+propagates a non-zero status as an exit, so the turn fails. A library crate type
+emits neither, since
 there the model's `main` is dead code and the Rust-mangled symbol carries a
 `-C metadata` hash no `extern` declaration can name.
 
