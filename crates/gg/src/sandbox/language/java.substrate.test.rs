@@ -690,7 +690,9 @@ fn what_teavm_is_not_is_recorded_rather_than_assumed() {
     // lowers `/` to `i32.div_s` and wasm traps on a zero divisor, so nothing reaches Java's own
     // exception machinery and nothing reaches standard error. What the model reads names the fault
     // and the function, and carries no line — this arm's DWARF locations are struck out because
-    // they name gg's own files. Measured rather than assumed.
+    // they name gg's own files. Measured rather than assumed, at
+    // `BaseWasmGenerationVisitor.visit(BinaryExpr)`, which lowers `DIVIDE` to `DIV_SIGNED` and
+    // `MODULO` to `REM_SIGNED` whatever `setStrict` says.
     let outcome = evaluate(
         &prepare(&whole(
             &["Gg"],
@@ -706,6 +708,57 @@ fn what_teavm_is_not_is_recorded_rather_than_assumed() {
     assert!(
         reported.contains("integer divide by zero") && reported.contains("- main"),
         "integer division by zero: {reported}"
+    );
+
+    // And a `catch (ArithmeticException)` around it does not catch: the trap takes the store down
+    // with the program's handler unreached. This is the half a model can act on — the exception
+    // Java promises for this fault does not exist on this arm — so it is asserted rather than left
+    // to be inferred from the trap above.
+    let outcome = evaluate(
+        &prepare(&whole(
+            &["Gg"],
+            "        int zero = args.length;\n\
+             \x20       try {\n\
+             \x20           Gg.log(String.valueOf(7 / zero));\n\
+             \x20       } catch (ArithmeticException failure) {\n\
+             \x20           Gg.log(\"caught\");\n\
+             \x20       }\n",
+        )),
+        &[],
+        &[],
+        canned_outcome,
+    )
+    .0;
+    assert!(
+        trap(&outcome).contains("integer divide by zero"),
+        "a handler for the exception Java promises must not change the outcome"
+    );
+    assert!(
+        outcome.logs.is_empty(),
+        "nothing after the division ran: {:?}",
+        outcome.logs
+    );
+
+    // A divisor the COMPILER can fold is the same fault one stage earlier, and it is the model's
+    // rather than the machine's. TeaVM folds a constant expression by evaluating it, so `7 / 0`
+    // makes the compiler itself throw `java.lang.ArithmeticException: / by zero` and abandon the
+    // build with no `Problem` recorded. That used to be a toolchain failure, which is gg's own
+    // defect and ends the run: a model writing one line of legal Java was told nothing and the
+    // session was over. It is a diagnostic on the program now, in the JVM's own words, at the
+    // model's own file with no line, because the fold discards the expression's location.
+    let failure = compile_program(
+        &whole(&["Gg"], "        Gg.log(String.valueOf(7 / 0));\n"),
+        &[],
+        &PrepareContext::new(),
+    )
+    .expect_err("refused");
+    let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
+        panic!("arithmetic the compiler evaluated for the program is the program's: {failure:?}");
+    };
+    assert!(
+        rendered.contains("java.lang.ArithmeticException: / by zero")
+            && rendered.starts_with("Program.java:"),
+        "TeaVM's own words about the model's own file: {rendered}"
     );
 
     // A class the classlib does not carry at all is a located compile error at the model's own line

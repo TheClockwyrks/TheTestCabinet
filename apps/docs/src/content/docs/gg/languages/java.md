@@ -213,8 +213,17 @@ operator. The shared rules are on
 Integer division by zero is the engine's own trap rather than an
 `ArithmeticException`: TeaVM lowers `/` to `i32.div_s` and wasm traps on a zero
 divisor, so what the model reads is `wasm trap: integer divide by zero` and the
-name of the function it happened in. A `Thread` a program starts is refused by
-the sandbox.
+name of the function it happened in. A `catch (ArithmeticException)` around it is
+never reached, because the trap stops the program where it stands.
+
+A divisor the compiler can fold is that fault one stage earlier and is reported
+as the program's. TeaVM folds a constant expression by evaluating it, so `7 / 0`
+throws inside the build; what the model reads is a compile error carrying the
+JVM's own `java.lang.ArithmeticException: / by zero`, against the model's file
+with no line, since the fold discards the expression's location. Every other way
+a build can throw is a toolchain failure.
+
+A `Thread` a program starts is refused by the sandbox.
 
 ## Prompt segment
 

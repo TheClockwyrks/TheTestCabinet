@@ -800,7 +800,9 @@ fn what_this_toolchain_is_not_is_recorded_rather_than_assumed() {
     // Integer division by zero is the ENGINE's trap rather than an `ArithmeticException`: TeaVM
     // lowers `/` to `i32.div_s` and wasm traps on a zero divisor, so nothing reaches Kotlin's own
     // exception machinery and nothing reaches standard error. Kotlin says `ArithmeticException` and
-    // this says a trap, which is this arm's sharpest semantic edge.
+    // this says a trap, which is this arm's sharpest semantic edge. Measured at
+    // `BaseWasmGenerationVisitor.visit(BinaryExpr)`, which lowers `DIVIDE` to `DIV_SIGNED` and
+    // `MODULO` to `REM_SIGNED` whatever `setStrict` says.
     let outcome = evaluate(
         &prepare(&whole(
             "",
@@ -817,6 +819,62 @@ fn what_this_toolchain_is_not_is_recorded_rather_than_assumed() {
     assert!(
         reported.contains("integer divide by zero"),
         "integer division by zero: {reported}"
+    );
+
+    // And a `catch (failure: ArithmeticException)` around it does not catch: the trap takes the
+    // store down with the program's handler unreached. This is the half a model can act on — the
+    // exception Kotlin promises for this fault does not exist on this arm — so it is asserted
+    // rather than left to be inferred from the trap above.
+    let outcome = evaluate(
+        &prepare(&whole(
+            "",
+            "    var zero = 0\n\
+             \x20   for (i in 0 until 1) zero = i\n\
+             \x20   try {\n\
+             \x20       gg.log((7 / zero).toString())\n\
+             \x20   } catch (failure: ArithmeticException) {\n\
+             \x20       gg.log(\"caught\")\n\
+             \x20   }\n",
+        )),
+        &[],
+        &[],
+        canned_outcome,
+    )
+    .0;
+    assert!(
+        trap(&outcome).contains("integer divide by zero"),
+        "a handler for the exception Kotlin promises must not change the outcome"
+    );
+    assert!(
+        outcome.logs.is_empty(),
+        "nothing after the division ran: {:?}",
+        outcome.logs
+    );
+
+    // A divisor the COMPILER can fold is the same fault one stage earlier, and it is the model's
+    // rather than the machine's. TeaVM folds a constant expression by evaluating it, so `7 / 0`
+    // makes the compiler itself throw `java.lang.ArithmeticException: / by zero` and abandon the
+    // build with no `Problem` recorded.
+    // That used to be a toolchain failure, which is gg's own defect and ends the run: a model
+    // writing one line of legal Kotlin was told nothing and the session was over. It is a
+    // diagnostic on the program now, in the JVM's own words, at the model's own file with no line,
+    // because the fold discards the expression's location.
+    let failure = compile_program(
+        &whole(
+            "",
+            "    val broken = 7 / 0\n\x20   gg.log(broken.toString())\n",
+        ),
+        &[],
+        &PrepareContext::new(),
+    )
+    .expect_err("refused");
+    let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
+        panic!("arithmetic the compiler evaluated for the program is the program's: {failure:?}");
+    };
+    assert!(
+        rendered.contains("java.lang.ArithmeticException: / by zero")
+            && rendered.starts_with("Program.kt:"),
+        "TeaVM's own words about the model's own file: {rendered}"
     );
 
     // Bignum arithmetic is the JVM's rather than JavaScript's, because Kotlin's `Long` is TeaVM's

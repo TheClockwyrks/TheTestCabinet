@@ -134,9 +134,13 @@
      * with it — the module type, the source map, the source-file policy — are gone, because both
      * JVM arms now compile to a WebAssembly component of their own and a second road kept alive
      * "just in case" is a road nothing tests.
+     *
+     * <p>{@code programFile} is the model's own file, and it is here for one diagnostic: the
+     * arithmetic TeaVM evaluates on the program's behalf. See {@code programsOwnArithmetic}.
      */
     static void teavm(Path classes, Path output, List<String> classpath, String mainClass,
-            String targetFile, List<Diagnostics.Entry> entries) throws Exception {
+            String targetFile, String programFile, List<Diagnostics.Entry> entries)
+            throws Exception {
         // A FRESH strategy per build. A shared one produced no output for three of four
         // concurrent builds while throwing nothing; even lent exclusively, a strategy reused
         // across builds would carry the previous program's dependency graph.
@@ -167,10 +171,53 @@
         // ONE NUMBER FOR BOTH, AND THAT IS THE POINT — see `HEAP`.
         build.setMinHeapSize(HEAP);
         build.setMaxHeapSize(HEAP);
-        BuildResult result = build.build();
+        BuildResult result;
+        try {
+            result = build.build();
+        } catch (Exception failure) {
+            ArithmeticException arithmetic = programsOwnArithmetic(failure);
+            if (arithmetic == null) {
+                throw failure;
+            }
+            entries.add(Diagnostics.of(arithmetic, programFile));
+            return;
+        }
         for (Problem problem : result.getProblems().getProblems()) {
             entries.add(Diagnostics.of(problem));
         }
+    }
+
+    /**
+     * The {@code ArithmeticException} in {@code failure}'s cause chain, or null.
+     *
+     * <h3>Why an exception out of the compiler can be the program's</h3>
+     *
+     * <p>TeaVM folds a constant expression by <b>evaluating</b> it, on the JVM it is running on. So
+     * a program whose divisor folds to zero — {@code 7 / 0}, or Kotlin's {@code 7 / "".length},
+     * which its own front end folds first — makes the compiler throw {@code
+     * java.lang.ArithmeticException: / by zero} and abandon the build. MEASURED: before this, both
+     * arms answered that program with a toolchain failure, which is gg's own defect and ends the
+     * run, so a model writing one line of legal Java was told nothing and the session was over.
+     *
+     * <p>The words are the ones the JVM would have used had the expression been evaluated at run
+     * time, about arithmetic the model wrote, so they are reported as a diagnostic on the program
+     * rather than as a failure of the machine. Every other way a build can throw is still gg's or
+     * the operator's, and is still rethrown.
+     *
+     * <p>The location is the model's file with no line: TeaVM discards the expression's location
+     * when it folds it, and a line reached any other way would be a line gg computed.
+     */
+    static ArithmeticException programsOwnArithmetic(Throwable failure) {
+        Throwable cause = failure;
+        int depth = 0;
+        while (cause != null && depth < 8) {
+            if (cause instanceof ArithmeticException) {
+                return (ArithmeticException) cause;
+            }
+            cause = cause.getCause();
+            depth++;
+        }
+        return null;
     }
 
     /** One thing a compiler said, and how to say it in JSON. */
@@ -228,6 +275,23 @@
             if (entry.file == null && location != null && location.getMethod() != null) {
                 entry.message = entry.message + " (in " + location.getMethod() + ")";
             }
+            return entry;
+        }
+
+        /**
+         * The arithmetic the compiler evaluated on the program's behalf, as a diagnostic about the
+         * program — see {@code programsOwnArithmetic}.
+         *
+         * <p>The exception's own rendering and nothing added: {@code java.lang.ArithmeticException:
+         * / by zero} is what the JVM says about this fault, and gg's account of what a compiler was
+         * doing when it said it belongs in gg's documentation rather than in a compiler diagnostic.
+         */
+        static Entry of(ArithmeticException failure, String file) {
+            Entry entry = new Entry();
+            entry.stage = "teavm";
+            entry.error = true;
+            entry.file = file;
+            entry.message = String.valueOf(failure);
             return entry;
         }
 

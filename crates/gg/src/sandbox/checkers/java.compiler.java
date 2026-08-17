@@ -145,7 +145,8 @@ public final class GgCompiler {
         }
 
         try {
-            teavm(classes, output, classpath, mainClass, targetFile, entries);
+            teavm(classes, output, classpath, mainClass, targetFile,
+                    sources.get(0).getName(), entries);
         } catch (Throwable failure) {
             return Json.failure("internal", "TeaVM fell over: " + Diagnostics.render(failure));
         }

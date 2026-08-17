@@ -164,7 +164,15 @@ The DWARF wasmtime symbolicates this artifact from is misattributed, so this arm
 declares its wasm frames unlocated and gg strikes those locations out.
 
 Integer division by zero is a wasm trap rather than an `ArithmeticException`,
-because TeaVM lowers `/` to `i32.div_s`. `kotlin.io`'s `use` reaches TeaVM's own
+because TeaVM lowers `/` to `i32.div_s`, and a `catch (failure:
+ArithmeticException)` around it is never reached. A divisor the compiler can fold
+is that fault one stage earlier and is reported as the program's: TeaVM folds a
+constant expression by evaluating it, so `7 / 0` throws inside the build and
+reaches the model as a compile error carrying the JVM's own
+`java.lang.ArithmeticException: / by zero`, against the model's file with no
+line. Every other way a build can throw is a toolchain failure.
+
+`kotlin.io`'s `use` reaches TeaVM's own
 reflection classes through `Throwable.addSuppressed` and is refused at compile
 time, so a program closes a resource with `try`/`finally` instead. A `Thread` a
 program starts is refused by the sandbox.

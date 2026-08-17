@@ -263,7 +263,7 @@ public final class GgCompiler {
             List<String> path = new ArrayList<>();
             path.addAll(programPath);
             path.addAll(toolchain);
-            teavm(classes, output, path, mainClass, targetFile, entries);
+            teavm(classes, output, path, mainClass, targetFile, sources.get(0).getName(), entries);
         } catch (Throwable failure) {
             return Json.failure("internal", "TeaVM fell over: " + Diagnostics.render(failure));
         }
