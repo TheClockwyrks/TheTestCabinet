@@ -30,6 +30,9 @@
 #   the Rust arm's    `packages/gg-sandbox-rust/Cargo.lock` is a SEPARATE lockfile from the
 #   cargo closure    workspace's, so nothing else in this repository warms it, and that arm's build
 #                     runs `cargo build --locked --offline` against it.
+#   the ECMAScript    `packages/gg-sandbox/guest/Cargo.lock`, a THIRD lockfile, for the same reason:
+#   guest's closure   quickjs and `rquickjs` are compiled for `wasm32-wasip1` out of a package that
+#                     is deliberately not in the workspace.
 #
 # THE LAST TWO ARRIVED LATE AND THE REASON IS WORTH THE LINE, because it is the trap this script is
 # for. Both were already cached — and both cached INSIDE the repository, in
@@ -204,10 +207,15 @@ echo "componentize-py $PY_COMPONENTIZE and the pinned wheels are in uv's cache"
 log "the rust arm's curated crate set (a separate Cargo.lock from the workspace's)"
 if command -v cargo >/dev/null 2>&1; then
 	cargo fetch --locked --manifest-path "$REPO_ROOT/packages/gg-sandbox-rust/Cargo.toml"
+	# The ECMAScript guest, which is a THIRD lockfile for the same reason: quickjs and `rquickjs`
+	# are compiled for `wasm32-wasip1` out of a package that is deliberately not in the workspace,
+	# and `packages/gg-sandbox/guest.sh` builds it `--locked --offline` inside an ordinary
+	# `cargo build`.
+	cargo fetch --locked --manifest-path "$REPO_ROOT/packages/gg-sandbox/guest/Cargo.toml"
 else
-	echo "warning: no \`cargo\` on PATH, so the rust arm's crate set was not fetched." >&2
-	echo "         That arm's build.sh runs \`cargo build --locked --offline\` and will fail" >&2
-	echo "         until this is run on a machine that has one." >&2
+	echo "warning: no \`cargo\` on PATH, so the rust arm's crate set and the ECMAScript guest's" >&2
+	echo "         were not fetched. Both build \`--locked --offline\` and will fail until this" >&2
+	echo "         is run on a machine that has one." >&2
 fi
 
 log "gg's package-manager-delivered build tools are warm"

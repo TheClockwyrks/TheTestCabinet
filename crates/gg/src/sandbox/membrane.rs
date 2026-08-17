@@ -473,6 +473,24 @@ impl<A: ToolApi> WasiView for MembraneState<A> {
     }
 }
 
+/// The variable [`wasi_context`] names this run's execution budget in.
+///
+/// Read today by the ECMAScript guest alone (`packages/gg-sandbox/guest`); a guest that does not
+/// read it simply has gg's epoch deadline as its only ceiling, which is what every arm had before it.
+pub(crate) const GUEST_DEADLINE: &str = "GG_SANDBOX_DEADLINE_MS";
+
+/// The budget a guest that can stop itself is given: gg's execution ceiling, less one epoch tick.
+///
+/// Never zero and never longer than gg's own — `saturating_sub` on a ceiling shorter than a tick
+/// leaves nothing, and a budget of nothing would interrupt a program before its first statement, so
+/// the floor is half the ceiling.
+fn guest_deadline(limits: SandboxLimits) -> Duration {
+    limits
+        .timeout
+        .saturating_sub(super::engine::EPOCH_TICK)
+        .max(limits.timeout / 2)
+}
+
 /// The WASI context every program gets: the process's environment, a real clock and RNG, the
 /// network, and the filesystem preopened at `/`.
 ///
@@ -492,10 +510,32 @@ impl<A: ToolApi> WasiView for MembraneState<A> {
 /// which is why [`preopen_root`] is a named function rather than a line here: an ignored failure
 /// that is also an *unobserved* one would leave a whole capability quietly missing, so a test calls
 /// it and asserts it worked.
-fn wasi_context(stderr: GuestStderr) -> WasiCtx {
+fn wasi_context(stderr: GuestStderr, limits: SandboxLimits) -> WasiCtx {
     let mut builder = WasiCtxBuilder::new();
     builder
         .inherit_env()
+        // **This run's execution budget, in milliseconds**, so a guest whose engine can stop a
+        // runaway loop ITSELF can be told what to stop it at.
+        //
+        // gg's own ceiling is the epoch deadline and stays so; what this buys is which of the two
+        // speaks first. An epoch trap names nothing a model can act on — the store simply dies —
+        // where the ECMAScript guest's engine answers with
+        // `InternalError: interrupted` and the JavaScript frames that were executing. That guest
+        // subtracts its own parked-in-a-host-call time before deciding, exactly as
+        // [`guest_elapsed`](MembraneState::guest_elapsed) does here, so a program sitting in a
+        // twenty-minute `shell` build is not mistaken for one that is looping.
+        //
+        // An environment variable rather than a WIT parameter because the world is shared with ten
+        // sibling guests and adding a parameter reshapes every one of them; and because a guest that
+        // does not read it is unaffected, which is all ten of them today.
+        //
+        // ONE EPOCH TICK SHORT of gg's own ceiling, and the subtraction is what makes the whole thing
+        // work rather than a rounding nicety. gg's deadline is armed in whole ticks against a
+        // free-running counter, so it can be delivered up to a tick EARLY; a guest asked to stop at
+        // the same instant therefore loses the race and the model reads an epoch trap after all —
+        // measured, on a 250 ms ceiling. A tick is gg's own resolution, so giving it away costs a
+        // 30 s budget 0.3% of itself and buys every runaway loop a sentence naming the function.
+        .env(GUEST_DEADLINE, guest_deadline(limits).as_millis().to_string())
         .inherit_network()
         .allow_ip_name_lookup(true)
         // Kept rather than inherited: this process's stderr is an operator's log, and a guest
@@ -616,7 +656,7 @@ impl<A: ToolApi> MembraneState<A> {
             program_error: None,
             rerun: None,
             revoked_rerun: false,
-            wasi: wasi_context(stderr.clone()),
+            wasi: wasi_context(stderr.clone(), limits),
             wasi_table: ResourceTable::new(),
             stderr,
             wire_held: Vec::new(),

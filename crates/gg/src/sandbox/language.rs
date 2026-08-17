@@ -142,6 +142,20 @@ mod typescript;
 #[path = "language/javascript.rs"]
 mod javascript;
 
+/// The ECMAScript guest the TypeScript, JavaScript and PureScript arms are moving to. Not a language
+/// arm and not registered as one: it is the artifact those three will stand on, landed on its own so
+/// that the engine is proved before three arms are moved onto it.
+///
+/// **`cfg(test)` until an arm is registered against it**, and deliberately: the module's whole body
+/// is an `include_bytes!` of a 1.2 MB artifact and the two functions that encode and compile it, so
+/// compiling it into a released binary that cannot reach it would put 1.2 MB into every `tcab` for
+/// nothing. The artifact is built either way — it is in the `typescript` row of
+/// `scripts/gg-arms.sh`, because the tests beside it are what prove the engine — and this attribute
+/// is the one line that goes when the three arms move.
+#[cfg(test)]
+#[path = "language/ecmascript.rs"]
+pub(super) mod ecmascript;
+
 #[path = "language/python.rs"]
 pub(super) mod python;
 

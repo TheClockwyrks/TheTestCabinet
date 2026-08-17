@@ -53,6 +53,11 @@ membrane refuses every bridged call once the run's budget is spent.
   `shell("sleep 3600")` would carry the run past its deadline with nothing left
   to stop it; and down to a day, because the tool builds a `Duration` from
   whatever number arrives and a `Duration` cannot hold every `f64`.
+- A guest may spend 1 MiB of wasm call stack before wasmtime traps it. The
+  ceiling is above the JavaScript recursion ceiling the
+  [ECMAScript guest](/gg/languages/ecmascript-guest/) sets, so that engine
+  reports an overflow itself rather than the store dying, and below a thread's
+  own stack, so the trap is a trap rather than a crash.
 - The ECMAScript arms' preparation step refuses a program whose brackets nest
   more than 200 deep, checked before the parse. The parser is recursive descent
   and a stack overflow would take the gg process down. A program's length is
@@ -97,8 +102,14 @@ rather than inherited: the host keeps the last 8 KiB of it and never fails a
 write, so a guest runtime's dying message reaches the model's feedback instead
 of the operator's log.
 
-The environment is inherited because a language runtime needs `HOME`, `PATH`,
-`TMPDIR` and the locale to work at all. The accepted consequence is that
+gg adds `GG_SANDBOX_DEADLINE_MS` to the environment, holding this program's
+execution budget one epoch tick short of gg's own deadline. It is for a guest
+whose engine can stop a runaway loop itself and report which function was
+looping; a guest that leaves it alone has the epoch deadline as its only
+ceiling.
+
+The rest of the environment is inherited because a language runtime needs
+`HOME`, `PATH`, `TMPDIR` and the locale to work at all. The accepted consequence is that
 whatever this process's environment holds, including the run's model
 credentials, is readable from inside a program. That is the same reach a program
 has through the preopened filesystem, and the same reach an agent has through

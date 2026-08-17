@@ -104,8 +104,25 @@ echo "Type-checking and emitting $PACKAGE/dist ..."
 #    the result — there is no second copy in this package to drift from it.
 #
 #    Each `--disable` removes a WASI capability the guest would otherwise inherit:
-#      stdio        gg's telemetry IS this process's stdout (newline-delimited JSON); a guest write
-#                   would corrupt the stream, so `console.*` is rebound to a host call instead
+#      stdio        it is what keeps this component's DECLARED IMPORTS narrow. Removing it adds
+#                   eight: `wasi:cli/{stdin,stdout,terminal-input,terminal-output,terminal-stderr,
+#                   terminal-stdin,terminal-stdout}` and, because this engine's stdio resolves file
+#                   descriptors, the whole of `wasi:filesystem`. gg's linker defines all of them for
+#                   every guest, so what a component declares is the whole of what it can reach, and
+#                   `gg/responses-as-code/sandbox.md` documents this one as asking for neither
+#                   filesystem nor sockets.
+#
+#                   NOT because a guest write to fd 1 would corrupt gg's telemetry stream, which is
+#                   what this comment said and is false: `wasi_context` in
+#                   `crates/gg/src/sandbox/membrane.rs` builds every guest's context WITHOUT stdout,
+#                   so a write there reaches a sink. And not at the cost of this arm's failure
+#                   surface either, which was the other reason to reconsider it: MEASURED through
+#                   `run_program`, a stack overflow, an allocation overflow and a plain throw all
+#                   reach the model as `InternalError: too much recursion`, `InternalError:
+#                   allocation size overflow` and `Error: …` with a location — every one of them
+#                   from the shim's own `catch`, over `feedback.report-error`, with nothing on
+#                   standard error to fold in. While that catch stands, this flag costs the model
+#                   nothing.
 #      http,
 #      fetch-event  this guest gets no HTTP client. Not a sandbox-wide denial: gg's host linker
 #                   defines the whole WASI surface, `wasi:sockets` included, for every guest — a
@@ -131,6 +148,20 @@ COMPONENTIZE_DIR="$(gg_npm_tool @bytecodealliance/componentize-js "$COMPONENTIZE
 	--world-name sandbox \
 	--disable stdio http fetch-event \
 	-o "$COMPONENT"
+
+# 2b. Build the ECMAScript guest under `guest/` — quickjs-ng inside a `wit-bindgen` component — and
+#     its adapter. It is the guest the TypeScript, JavaScript and PureScript arms are moving to (see
+#     `guest/src/lib.rs` for the whole argument, and `ecmascript-version.sh` for the pins), and it is
+#     built here rather than in a package of its own because it is cut from THIS package's SDK: the
+#     4,098 lines of `src/gg/**` that step 1 has just emitted to `dist/` are baked into it unchanged.
+#     A second package would need a second copy of them.
+#
+#     A CORE MODULE and an adapter rather than a finished component, for the reason the Rust, C++ and
+#     Swift arms ship the same pair: the encode is 5–30 ms, gg already links `wit_component`, and gg
+#     does it in its own process (`crates/gg/src/sandbox/language/ecmascript.rs`) so the component a
+#     run instantiates is produced by the `wasm-encoder` gg's own wasmtime agrees with, rather than by
+#     whichever one a `wasm-tools` on the build machine happened to bundle.
+"$ROOT/$PACKAGE/guest.sh"
 
 # 3. Cut the checker gg type-checks a model's program with out of the same pinned `typescript` this
 #    package installs, so what the SDK's declarations were emitted by and what a program is judged

@@ -372,10 +372,26 @@ fn rerun_paths(root: &Path, id: &str) -> Vec<PathBuf> {
         // is an input here even though nothing in the package names it — measured, when changing
         // `target` alone changed the JavaScript in eight emitted files, `shim.js` among them.
         // `package.json` pins the `typescript` the checker is cut from.
+        //
+        // The `guest/` entries are the SECOND guest this package builds — quickjs-ng inside a
+        // `wit-bindgen` component — and they are named a file at a time rather than as a directory
+        // for the reason [`rust_sdk_sources`] gives: `guest.sh` puts cargo's target directory at
+        // `guest/.build/target`, and a directory in a rerun set is walked by cargo, so naming
+        // `guest` would make every build invalidate the next. `packages/gg-sandbox-cpp/cpp-version.sh`
+        // is here because that arm's wasi-sdk is the C compiler quickjs is built with — see
+        // `packages/gg-sandbox/ecmascript-version.sh` for why it is that tree and not a second one.
         "typescript" => vec![
             "packages/gg-sandbox/src",
             "packages/gg-sandbox/tools",
             "packages/gg-sandbox/build.sh",
+            "packages/gg-sandbox/guest.sh",
+            "packages/gg-sandbox/ecmascript-version.sh",
+            "packages/gg-sandbox/guest/src",
+            "packages/gg-sandbox/guest/build.rs",
+            "packages/gg-sandbox/guest/Cargo.toml",
+            "packages/gg-sandbox/guest/Cargo.lock",
+            "packages/gg-sandbox/guest/.cargo/config.toml",
+            "packages/gg-sandbox-cpp/cpp-version.sh",
             "packages/gg-sandbox/package.json",
             "packages/gg-sandbox/tsconfig.json",
             "packages/gg-sandbox/tsconfig.headers.json",

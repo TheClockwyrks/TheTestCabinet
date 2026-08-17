@@ -124,6 +124,31 @@ fn engine() -> &'static Engine {
         // turn `gc_support` back off on their own engines rather than inheriting a wider validation
         // surface from a decision made here. See the root `Cargo.toml`.
         config.wasm_exceptions(true);
+        // **How much host stack a guest may spend before wasmtime traps it**, raised from wasmtime's
+        // 512 KiB default to 1 MiB for one arm's sake and measured rather than chosen.
+        //
+        // A JavaScript recursion on the ECMAScript guest (`packages/gg-sandbox/guest`) spends TWO
+        // stacks at once: quickjs's own, which lives in the guest's linear memory and is what the
+        // engine measures a recursion against, and the wasm call stack under it, which is this. If
+        // this one runs out first the store dies with `wasm trap: call stack exhausted` and the model
+        // reads nothing at all; if the engine's does, the model reads `RangeError: Maximum call stack
+        // size exceeded` with its own frames, which is the whole point. Measured on that guest, the
+        // recursion depth reached before the engine reports the overflow itself:
+        //
+        //     JavaScript ceiling  |  512 KiB here  |  1 MiB here  |  2 MiB here
+        //     128 KiB             |  452           |  452         |  452
+        //     256 KiB             |  907           |  907         |  907
+        //     512 KiB             |  host trap     |  1817        |  1817
+        //     1 MiB               |  host trap     |  host trap   |  3637
+        //
+        // The guest's ceiling is 512 KiB, so this is the 1 MiB row. NOT 2 MiB, although wasmtime
+        // accepts it: this engine runs wasm on whatever thread called it, and a Rust test thread's
+        // default stack is 2 MiB — a ceiling equal to the whole thread stack would turn a guest
+        // overflow into a native one, which is not a trap but a crash.
+        //
+        // It widens what every other arm may spend before being trapped, by half a megabyte, and
+        // costs them nothing else: the limit is a ceiling, not an allocation.
+        config.max_wasm_stack(1024 * 1024);
         // A fixed, known-valid configuration: nothing here depends on the host, the run, or any
         // input, so a failure would be a programming error rather than a runtime condition.
         let engine = Engine::new(&config).expect("the fixed wasmtime Config is valid");
@@ -136,7 +161,7 @@ fn engine() -> &'static Engine {
 /// every execution timeout: a 30 s ceiling is 300 ticks, and a program is stopped within one tick of
 /// its deadline. A tenth of a second is far finer than a timeout sized in tens of seconds needs, and
 /// coarse enough that the ticker's own cost — one atomic increment — is utterly negligible.
-const EPOCH_TICK: Duration = Duration::from_millis(100);
+pub(crate) const EPOCH_TICK: Duration = Duration::from_millis(100);
 
 /// The number of [epoch ticks](EPOCH_TICK) that span `budget`, for
 /// [`Store::set_epoch_deadline`](wasmtime::Store::set_epoch_deadline) and the deadline callback's

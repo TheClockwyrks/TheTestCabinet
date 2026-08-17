@@ -631,6 +631,7 @@ export default defineConfig({
                 "gg/languages/static-sdks",
                 "gg/languages/compilation",
                 "gg/languages/registration",
+                "gg/languages/ecmascript-guest",
                 "gg/languages/typescript",
                 "gg/languages/javascript",
                 "gg/languages/python",

@@ -37,6 +37,9 @@ checkout on the build that embeds them rather than out of copies somebody last r
 | `typescript.lib.d.ts` (generated) | The ES2022 standard library, 57 files concatenated so a check opens one. |
 | `typescript.globals.d.ts` (generated) | `tools/program-globals.d.ts`, verbatim: the names a program reaches that no SDK declaration covers. |
 | `typescript.checker.json` (generated) | Which compiler, at which language level. |
+| `ecmascript.core.wasm` (generated) | The **ECMAScript guest**'s preview1 core module, ~1.1 MiB, built from `guest/`. gg encodes it into a component in its own process. |
+| `ecmascript.adapter.wasm` (generated) | The pinned `wasi_snapshot_preview1` reactor adapter that encode needs. |
+| `ecmascript.guest.json` (generated) | What built the two above. |
 
 ## Layout
 
@@ -50,7 +53,10 @@ checkout on the build that embeds them rather than out of copies somebody last r
 | `tools/signatures.mjs` | Reflects the catalogue out of the emitted `.d.ts` files under `dist/headers/gg/`. |
 | `tools/checker.mjs` | Cuts the `tsc` gg carries, and its standard library, out of the pinned `typescript`. |
 | `tools/program-globals.d.ts` | `console`, `lib`, `performance`, `crypto` — declared for the checker, beside the shim that installs them. |
-| `build.sh` | Writes every artifact this package produces except the catalogues — the component and the four checker files — into `$GG_ARTIFACTS_OUT_DIR`. `signatures.sh` writes the catalogues, and `crates/gg/build.rs` runs that. |
+| `guest/` | The **ECMAScript guest**: quickjs-ng inside a `wit-bindgen` component declaring gg's own `sandbox` world, with `src/gg/**` baked into it unchanged. It is the guest the TypeScript, JavaScript and PureScript arms are moving onto, and it lives here because it is cut from this package's SDK. `apps/docs/src/content/docs/gg/languages/ecmascript-guest.md` is the contract; `guest/src/lib.rs` is the argument. |
+| `guest.sh` | Builds `guest/` and writes `ecmascript.core.wasm`, `ecmascript.adapter.wasm` and `ecmascript.guest.json`. Called from `build.sh`, after the SDK emit it reads. |
+| `ecmascript-version.sh` | That guest's pins: the target, the adapter, the wasi-sdk it borrows, and the two compile flags that replace a fork of quickjs. |
+| `build.sh` | Writes every artifact this package produces except the catalogues — the two guests and the four checker files — into `$GG_ARTIFACTS_OUT_DIR`. `signatures.sh` writes the catalogues, and `crates/gg/build.rs` runs that. |
 
 There is deliberately **one** copy of the WIT, and it lives in the Rust crate that
 embeds the component (`crates/gg/wit/`); `build.sh` points `componentize-js` at it.
