@@ -596,6 +596,23 @@ pub trait ProgramLanguage: Send + Sync + 'static {
         true
     }
 
+    /// **Whether this arm's guest reads gg's execution budget and stops itself at it**, rather than
+    /// running until gg's own epoch deadline traps the store.
+    ///
+    /// gg states the budget in [`GUEST_DEADLINE`](super::membrane::GUEST_DEADLINE), one epoch tick
+    /// short of its own ceiling, so that a runaway loop is answered by the engine in the model's own
+    /// words. What that costs is gg's [`timed_out`](super::membrane::MembraneState::timed_out) flag:
+    /// the deadline callback never fires, because the store is already dead when it would have, so
+    /// [`classify`](super::engine::classify) recognises the ceiling from the elapsed time instead.
+    ///
+    /// That recognition is a heuristic — any failure in the last tick of a program's budget looks
+    /// like it — so it is confined to the arms it is the truth about. An arm gg stops with its own
+    /// epoch deadline keeps `timed_out` as its only timeout signal, and a panic it happens to make
+    /// as the ceiling arrives is still reported as a panic.
+    fn stops_itself_at_ggs_deadline(&self) -> bool {
+        false
+    }
+
     /// **How a frame this arm's guest reports is read back into the text the model wrote**, for an
     /// arm whose compiler emits source.
     ///

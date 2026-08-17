@@ -28,6 +28,14 @@
 //! A map made from several sources therefore names several files. That is what a bundled arm needs:
 //! one map covers the model's own file, the SDK's and every library's, and a frame reads as whichever
 //! of them the token came from.
+//!
+//! # What is struck instead of rewritten
+//!
+//! Two frames name a place the model has no program at, and neither may be reported: a position in a
+//! mapped text the map resolves nothing for, which is a line of the compiler's own output, and a
+//! position in a source gg itself wrote to hold a bundle together. A frame that survives therefore
+//! names a file the model wrote or a library its program compiled against, and a report that struck
+//! anything closes by counting it.
 
 use sourcemap::SourceMap;
 
@@ -49,7 +57,18 @@ struct Mapped {
 /// Built by the arm that produced the texts ([`ProgramLanguage::locations`](super::language::ProgramLanguage::locations)),
 /// held by the [membrane state](super::membrane::MembraneState) for the life of one program, and
 /// applied to everything the guest wrote to standard error before gg reports it.
-pub(crate) struct Locations(Vec<Mapped>);
+pub(crate) struct Locations {
+    /// Every text this program is made of that carries a map.
+    texts: Vec<Mapped>,
+    /// The sources in those maps that **gg** wrote rather than the model or a library, and whose
+    /// frames are therefore struck.
+    ///
+    /// A bundled arm needs an entry module to point its bundler at, and that module is gg's: it
+    /// names the entry point the model declared and the specifiers a turn's code modules are
+    /// declared under. The bundler records it as a source like any other, so without this it reads
+    /// back as an ordinary frame in a file the model never wrote and cannot open.
+    ggs_own: Vec<String>,
+}
 
 impl Locations {
     /// Read the inline map each `(guest name, reads-as name, source)` carries, or `None` when not
@@ -60,7 +79,7 @@ impl Locations {
     pub(crate) fn read<'a>(
         texts: impl IntoIterator<Item = (String, Option<String>, &'a str)>,
     ) -> Option<Self> {
-        let mapped: Vec<Mapped> = texts
+        let texts: Vec<Mapped> = texts
             .into_iter()
             .filter_map(|(guest, reads_as, source)| {
                 Some(Mapped {
@@ -70,32 +89,95 @@ impl Locations {
                 })
             })
             .collect();
-        (!mapped.is_empty()).then_some(Self(mapped))
+        (!texts.is_empty()).then_some(Self {
+            texts,
+            ggs_own: Vec::new(),
+        })
+    }
+
+    /// The same locations with [gg's own sources](Self::ggs_own) named, for an arm that had to
+    /// generate one.
+    pub(crate) fn hiding(mut self, ggs_own: impl IntoIterator<Item = String>) -> Self {
+        self.ggs_own = ggs_own.into_iter().collect();
+        self
     }
 
     /// `text` with every frame located in a mapped source rewritten into that source's own
-    /// coordinates.
+    /// coordinates, and every frame that names no source the model has struck.
     ///
-    /// Each map is applied in turn over the whole text. That is safe rather than merely convenient:
-    /// a rewritten frame names the source a map resolves to, and no arm files a map under a name
+    /// Each map is applied in turn over each line. That is safe rather than merely convenient: a
+    /// rewritten frame names the source a map resolves to, and no arm files a map under a name
     /// another map resolves to, so a frame this pass rewrites is never a frame a later pass matches.
+    ///
+    /// A line is the unit because a frame is a line. Two of them are struck: one carrying a position
+    /// in a mapped text the map resolved nothing for, which leaves the compiler's own coordinate
+    /// behind, and one that resolved to a source in [gg's own](Self::ggs_own).
     pub(crate) fn rewrite(&self, text: &str) -> String {
-        self.0
-            .iter()
-            .fold(text.to_string(), |text, mapped| mapped.rewrite(&text))
+        let mut kept = String::with_capacity(text.len());
+        let mut struck = 0usize;
+        for line in text.split_inclusive('\n') {
+            let mut unresolved = false;
+            let rewritten = self.texts.iter().fold(line.to_string(), |line, mapped| {
+                let (line, missed) = mapped.rewrite(&line);
+                unresolved |= missed;
+                line
+            });
+            if unresolved
+                || self
+                    .ggs_own
+                    .iter()
+                    .any(|source| locates(&rewritten, source))
+            {
+                struck += 1;
+                continue;
+            }
+            kept.push_str(&rewritten);
+        }
+        if struck == 0 {
+            return kept;
+        }
+        if !kept.is_empty() && !kept.ends_with('\n') {
+            kept.push('\n');
+        }
+        let frames = match struck {
+            1 => "frame",
+            _ => "frames",
+        };
+        kept.push_str(&format!(
+            "… and {struck} more {frames}, in code this program was compiled into rather than in \
+             code it contains."
+        ));
+        kept
     }
+}
+
+/// Whether `text` carries `name` followed by a `:<line>:<column>`, which is what a frame in `name`
+/// looks like and what an ordinary mention of the name does not.
+fn locates(text: &str, name: &str) -> bool {
+    let mut rest = text;
+    while let Some(at) = rest.find(name) {
+        let after = &rest[at + name.len()..];
+        if position(after).is_some() {
+            return true;
+        }
+        rest = after;
+    }
+    false
 }
 
 impl Mapped {
     /// `text` with every `<guest>:<line>:<column>` rewritten into this map's own source and
     /// coordinates.
     ///
-    /// A position the map does not resolve is left as the engine wrote it. A map is complete over
-    /// the code its compiler emitted, so the positions that miss are the ones in text the compiler
-    /// added of its own — and reporting the engine's own coordinates there is more honest than
-    /// reporting the nearest thing that happens to have a token.
-    fn rewrite(&self, text: &str) -> String {
+    /// Also **whether a position in this text went unresolved**, which is what tells
+    /// [`Locations::rewrite`] to strike the line: a map is complete over the code its compiler
+    /// emitted, so the positions that miss are the ones in text the compiler added of its own, and
+    /// the coordinate left behind names a line of a program the model has never seen.
+    ///
+    /// A mention of the name that carries no position is not one of those, and is untouched.
+    fn rewrite(&self, text: &str) -> (String, bool) {
         let mut out = String::with_capacity(text.len());
+        let mut unresolved = false;
         let mut rest = text;
         while let Some(at) = rest.find(&self.guest) {
             let (before, from) = rest.split_at(at);
@@ -108,6 +190,7 @@ impl Mapped {
                         rest = tail;
                     }
                     None => {
+                        unresolved = true;
                         out.push_str(&self.guest);
                         rest = after;
                     }
@@ -119,7 +202,7 @@ impl Mapped {
             }
         }
         out.push_str(rest);
-        out
+        (out, unresolved)
     }
 
     /// The source, 1-based line and 1-based column one 1-based generated position resolves to.

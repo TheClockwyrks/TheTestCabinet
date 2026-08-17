@@ -394,7 +394,7 @@ pub(crate) fn classify<A: ToolApi>(
         true => reason,
         false => without_frame_locations(&reason),
     };
-    fallback(with_guest_stderr(reason, &said))
+    fallback(with_guest_stderr(without_nameless_frames(&reason), &said))
 }
 
 /// **Whether the guest stopped itself because it reached the budget gg gave it.**
@@ -409,8 +409,63 @@ pub(crate) fn classify<A: ToolApi>(
 /// spent at least the budget gg handed it and then stopped, stopped for the reason gg set. The time
 /// is [`guest_elapsed`](MembraneState::guest_elapsed) — the guest's own execution, with the time
 /// parked in bridged calls subtracted — which is the same clock the budget was written from.
+///
+/// **Only for an arm whose guest actually reads that budget**
+/// ([`stops_itself_at_ggs_deadline`](ProgramLanguage::stops_itself_at_ggs_deadline)). On any other
+/// arm gg's own deadline is the only ceiling and its flag always fires, so this would be pure
+/// heuristic: a panic, a trap or an allocation failure in the last tick of a program's budget would
+/// be reported to the model as a timeout rather than as what it was.
 fn spent_its_budget<A: ToolApi>(store: &Store<MembraneState<A>>, limits: SandboxLimits) -> bool {
-    store.data().guest_elapsed() >= super::membrane::guest_deadline(limits)
+    store.data().language().stops_itself_at_ggs_deadline()
+        && store.data().guest_elapsed() >= super::membrane::guest_deadline(limits)
+}
+
+/// The same failure with every **nameless** wasm frame struck, and the backtrace header with them
+/// when nothing survives under it.
+///
+/// wasmtime writes a frame as `0: 0x1a2b - <module>!<function>`, taking both names from the module's
+/// name section. An artifact built without one renders every frame as
+/// `<unknown>!<wasm function 1785>`, which names neither a place nor a thing: on the arms whose
+/// guest is an *engine* rather than the program, those indices are quickjs's own internals, and six
+/// lines of them follow the engine's own located rendering on every runtime failure.
+///
+/// Struck rather than counted, on the same terms [`without_frame_locations`] drops a misattributed
+/// location: a frame with no name and no location is not a shorter account of the failure, it is no
+/// account of it, and a count of how many there were is the same nothing one line longer.
+///
+/// A frame the name section does name is kept, which is every frame on the arms whose program is
+/// the wasm module.
+fn without_nameless_frames(reason: &str) -> String {
+    /// What wasmtime renders for a frame it has no name for.
+    const NAMELESS: &str = "<unknown>!<wasm function ";
+    /// The line wasmtime opens a backtrace with.
+    const HEADER: &str = "error while executing at wasm backtrace:";
+
+    let mut kept: Vec<&str> = Vec::new();
+    for line in reason.lines() {
+        if line.contains(NAMELESS) {
+            continue;
+        }
+        // The header, once every frame beneath it has gone. `lines()` has already consumed the
+        // blank line that separated it from the reason, so that goes too.
+        if line.trim() == HEADER
+            && !reason
+                .lines()
+                .skip_while(|earlier| earlier.trim() != HEADER)
+                .skip(1)
+                .any(|frame| !frame.trim().is_empty() && !frame.contains(NAMELESS))
+        {
+            while kept.last().is_some_and(|last| last.trim().is_empty()) {
+                kept.pop();
+            }
+            continue;
+        }
+        kept.push(line);
+    }
+    while kept.last().is_some_and(|last| last.trim().is_empty()) {
+        kept.pop();
+    }
+    kept.join("\n")
 }
 
 /// The same failure with every frame's **file and line struck out**, for an arm whose DWARF is

@@ -181,6 +181,13 @@ impl ProgramLanguage for TypeScript {
         Some(super::ecmascript::embedded())
     }
 
+    /// This guest arms an interrupt handler off `GG_SANDBOX_DEADLINE_MS`, so a runaway loop is
+    /// stopped by quickjs with `InternalError: interrupted` and the JavaScript frames rather than by
+    /// gg's epoch trap. See [`stops_itself_at_ggs_deadline`](ProgramLanguage::stops_itself_at_ggs_deadline).
+    fn stops_itself_at_ggs_deadline(&self) -> bool {
+        true
+    }
+
     /// `tsc`'s own source map, read out of the emitted JavaScript it is inlined in.
     ///
     /// The program's map answers to `program.js`, which is the name the guest declares it under and

@@ -29,9 +29,11 @@ on [compilation](/gg/languages/compilation/).
 
 A program is a module with its own `module … where` header and a `main` of type
 `Effect Unit`. The module name is the model's, and it is the name gg's bundler
-entry imports `main` from. A reply with no header is `ErrorParsingModule` at line
-1, and a program that compiles but declares no `main` is refused with a sentence
-naming the type it must define.
+entry imports `main` from. It has to be a name the shipped library set does not
+already publish, since `purs` compiles the program alongside that set and answers
+a collision with `DuplicateModule` at line 1. A reply with no header is
+`ErrorParsingModule` at line 1, and a program that compiles but declares no
+`main` is refused with a sentence naming the type it must define.
 
 A code skill's or memory's module is an ordinary PureScript module compiled as
 itself, with a bundler entry that re-exports rather than one that runs `main`.
@@ -156,6 +158,15 @@ A run-time failure is reported by capture: nothing catches a program's throw, th
 engine writes its own rendering to standard error, and gg puts that in front of
 whatever it says about the trap. `Gg.Core.attempt` is how a program handles a
 failure it expects.
+
+Every frame in that rendering is read back through the map `purs` and `esbuild`
+composed, so a frame in the model's own code names `program.purs` and a frame in
+a library names that library's module. `purs` maps a definition that takes no
+argument to its type-signature line, so a frame in one reports the signature
+rather than the body. Two kinds of frame name neither the model's code nor a
+library and are struck instead, with the report closing on how many went: gg's
+own bundler entry, and a position in the flattened bundle the composed map
+resolves nothing for.
 
 ## The idiomatic PureScript surface
 

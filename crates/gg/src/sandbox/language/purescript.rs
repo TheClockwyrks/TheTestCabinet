@@ -244,14 +244,26 @@ impl ProgramLanguage for PureScript {
         Some(super::ecmascript::embedded())
     }
 
+    /// This guest arms an interrupt handler off `GG_SANDBOX_DEADLINE_MS`, so a runaway loop is
+    /// stopped by quickjs with `InternalError: interrupted` and the JavaScript frames rather than by
+    /// gg's epoch trap. See [`stops_itself_at_ggs_deadline`](ProgramLanguage::stops_itself_at_ggs_deadline).
+    fn stops_itself_at_ggs_deadline(&self) -> bool {
+        true
+    }
+
     /// The **composition** of `purs`'s source map and `esbuild`'s, which `esbuild` performs itself
     /// and inlines into the bundle it writes.
     ///
-    /// A frame the engine reports as `bundle.js:206:26` therefore reads back as `program.purs:11:27`
-    /// — the model's own file at the line it wrote — and a frame in a library or in this arm's SDK
-    /// reads as that PureScript module's own path in the shipped tree. The name each frame takes is
-    /// the one the map itself records for the token, rather than a single name gg picks, because a
-    /// bundle is made of many sources and only the map knows which one a frame came from.
+    /// A frame the engine reports as a position in the bundle therefore reads back as
+    /// `program.purs:11:27` — the model's own file at the line it wrote — and a frame in a library
+    /// or in this arm's SDK reads as that PureScript module's own path in the shipped tree. The name
+    /// each frame takes is the one the map itself records for the token, rather than a single name
+    /// gg picks, because a bundle is made of many sources and only the map knows which one a frame
+    /// came from.
+    ///
+    /// Two sources in that map are neither the model's nor a library's, and their frames are struck
+    /// rather than reported: [the entry module](compile::ENTRY_FILE) gg generates for the bundler,
+    /// and any position in the bundle the composed map resolves nothing for.
     fn locations(&self, program: &str, modules: &[CodeModule]) -> Option<Locations> {
         Locations::read(
             std::iter::once((super::ecmascript::PROGRAM.to_string(), None, program)).chain(
@@ -264,6 +276,7 @@ impl ProgramLanguage for PureScript {
                 }),
             ),
         )
+        .map(|locations| locations.hiding([compile::ENTRY_FILE.to_string()]))
     }
 
     /// This language's catalogue, parsed once and checked to be **this** language's.

@@ -21,11 +21,19 @@ use crate::sandbox::{ProgramScope, RunEnding, SandboxLimits, bounded_store, run_
 /// path through it can be driven here without paying the ~1.2 s component compile the rest of this
 /// file pays. That is what lets these be one test per property instead of one consolidated function.
 fn classifiable_store(limits: SandboxLimits) -> Store<MembraneState<FakeToolApi>> {
+    store_on(typescript(), limits)
+}
+
+/// The same, on an arm the caller names.
+fn store_on(
+    language: &'static dyn crate::sandbox::ProgramLanguage,
+    limits: SandboxLimits,
+) -> Store<MembraneState<FakeToolApi>> {
     let log = CallLog::default();
     bounded_store(
         MembraneState::new(
             FakeToolApi::new(&log),
-            typescript(),
+            language,
             ProgramScope {
                 capabilities: &[],
                 operations: &[],
@@ -136,6 +144,91 @@ fn an_explicit_exit_is_named_with_its_status() {
             )
         );
     }
+}
+
+/// **A frame the artifact names nothing for is struck, and so is the header over a backtrace of
+/// nothing but those.**
+///
+/// The arms whose guest is an engine rather than the program — the ECMAScript one above all — end
+/// every runtime failure with wasmtime's backtrace through quickjs's own internals, rendered as
+/// `<unknown>!<wasm function 1785>` because the artifact carries no name section. That is six lines
+/// naming neither a place nor a thing, after an engine rendering that already located the fault in
+/// the model's own file.
+#[test]
+fn a_frame_the_artifact_names_nothing_for_is_struck() {
+    let limits = SandboxLimits::default();
+    let store = classifiable_store(limits);
+    let nameless = wasmtime::Error::msg("wasm trap: wasm `unreachable` instruction executed")
+        .context(
+            "error while executing at wasm backtrace:\n    0:  0xd3d96 - <unknown>!<wasm function \
+             1781>\n    1:  0x3e50c - <unknown>!<wasm function 483>",
+        );
+    let reported = classify(&store, limits, &nameless, SandboxError::Trap).to_string();
+    assert_eq!(
+        reported, "the sandbox trapped: wasm trap: wasm `unreachable` instruction executed",
+        "nothing but the reason survives a backtrace of frames the artifact named nothing for"
+    );
+
+    // And a frame the name section DOES name is kept, which is every frame on the arms whose
+    // program is the wasm module.
+    let reported = classify(
+        &store,
+        limits,
+        &trap_error("wasm trap: integer divide by zero"),
+        SandboxError::Trap,
+    )
+    .to_string();
+    assert!(
+        reported.contains("program.wasm!main") && reported.contains("wasm backtrace:"),
+        "a named frame is the model's own program and stays: {reported}"
+    );
+}
+
+/// **gg's own ceiling is recognised from the elapsed time only on an arm that stops itself at it.**
+///
+/// A guest handed `GG_SANDBOX_DEADLINE_MS` stops itself one epoch tick early, so gg's deadline
+/// callback never fires and [`spent_its_budget`] is the only thing left that knows the ceiling was
+/// reached. On every other arm that callback does fire, and recognising a timeout from the clock
+/// would misreport whatever a program did in the last tick of its budget as one.
+///
+/// The budget is zero here rather than short, so what is asserted is the branch rather than a race:
+/// every store has spent at least nothing.
+#[test]
+fn the_elapsed_clock_names_a_timeout_only_where_the_guest_stops_itself() {
+    let limits = SandboxLimits {
+        timeout: std::time::Duration::ZERO,
+        ..SandboxLimits::default()
+    };
+
+    let stops_itself =
+        crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::TypeScript);
+    assert!(stops_itself.stops_itself_at_ggs_deadline());
+    let store = store_on(stops_itself, limits);
+    let reported = classify(
+        &store,
+        limits,
+        &trap_error("wasm trap: unreachable"),
+        SandboxError::Trap,
+    );
+    assert!(
+        matches!(reported, SandboxError::Timeout { .. }),
+        "the arm whose guest stops itself has no other signal that gg's ceiling was reached: \
+         {reported}"
+    );
+
+    let gg_stops_it = crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::Python);
+    assert!(!gg_stops_it.stops_itself_at_ggs_deadline());
+    let store = store_on(gg_stops_it, limits);
+    let reported = classify(
+        &store,
+        limits,
+        &trap_error("wasm trap: unreachable"),
+        SandboxError::Trap,
+    );
+    assert!(
+        matches!(reported, SandboxError::Trap(_)),
+        "and an arm gg stops with its own deadline reports what actually happened: {reported}"
+    );
 }
 
 /// An exit reaching the **instantiate** path is still the program's, never the artifact drift the

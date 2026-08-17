@@ -172,7 +172,10 @@ pub(super) const MODULE_FILE: &str = "module.purs";
 const WIRE_MODULE: &str = "Gg.Internal.Wire";
 
 /// The entry module `esbuild` is pointed at.
-const ENTRY_FILE: &str = "entry.js";
+///
+/// It is the one source in the bundle that is gg's rather than the model's or a library's, so
+/// `PureScript::locations` names it as the source whose frames are struck.
+pub(super) const ENTRY_FILE: &str = "entry.js";
 
 /// What the bundler writes, beside the model's own source in this preparation's working directory.
 ///

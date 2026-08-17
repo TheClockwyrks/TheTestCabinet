@@ -38,7 +38,7 @@ use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 
 use super::super::g8::{self, Answered, Case, Located, Shape};
 
-use super::compile::{compile_module, compile_program};
+use super::compile::{self, compile_module, compile_program};
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::fake::{
     CallLog, FakeToolApi, all_capabilities, all_operations, all_operations_without, canned_outcome,
@@ -393,32 +393,48 @@ fn a_located_failure_names_the_model_s_own_purescript() {
          import Prelude\n\
          \n\
          import Effect (Effect)\n\
+         import Effect.Class.Console as Console\n\
          import Effect.Exception (throw)\n\
          \n\
          boom :: String -> Effect Unit\n\
          boom label = void (throw (\"bang: \" <> label))\n\
          \n\
          main :: Effect Unit\n\
-         main = boom \"here\"\n");
+         main = do\n\
+         \x20 Console.log \"starting\"\n\
+         \x20 boom \"here\"\n");
     let reported = trapped(&outcome);
-    // The call site, exactly: line 12 is `main = boom "here"` and column 8 is `boom`. The frame
-    // above it is line 9, the throwing definition — at the innermost token the map has on that line
-    // rather than at the `throw`, which is what a compiler's map resolves a compound expression to.
+    // The call site, exactly: line 15 is `  boom "here"` and column 3 is `boom`. The frame above it
+    // is line 10, the throwing definition — at the innermost token the map has on that line rather
+    // than at the `throw`, which is what a compiler's map resolves a compound expression to.
     assert!(
-        reported.contains("at <anonymous> (program.purs:12:8)"),
+        reported.contains("at __do (program.purs:15:3)"),
         "the call site is the model's own file at the column it wrote the call in: {reported}"
     );
     assert!(
-        reported.contains("at boom (program.purs:9:"),
+        reported.contains("at boom (program.purs:10:"),
         "and the frame above it is the line the throw is on: {reported}"
     );
     assert!(
         reported.contains("/src/Effect/Exception.purs:"),
         "and a frame in a library names that library's own module: {reported}"
     );
+    // The two names a frame the model cannot open would carry, and the reason this assertion is
+    // written against these two rather than against the bundle's own file name: the bundle is
+    // `bundle.js` on the HOST, and the guest declares it under `ecmascript::PROGRAM`, so
+    // `bundle.js` is a string no frame can ever contain and asserting its absence would assert
+    // nothing. `program.js` is a position in the flattened bundle the composed map resolved
+    // nothing for; `entry.js` is the module gg generates to point the bundler at `main`.
+    for invented in [super::super::ecmascript::PROGRAM, compile::ENTRY_FILE] {
+        assert!(
+            !reported.contains(invented),
+            "nothing the model reads names `{invented}`, which is a file it did not write: \
+             {reported}"
+        );
+    }
     assert!(
-        !reported.contains("bundle.js"),
-        "nothing the model reads names the file it did not write: {reported}"
+        reported.contains("… and 1 more frame,"),
+        "and the one frame that was struck is counted rather than silently dropped: {reported}"
     );
 }
 
