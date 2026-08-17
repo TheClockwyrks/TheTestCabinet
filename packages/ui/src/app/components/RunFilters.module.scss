@@ -42,6 +42,13 @@
 
 // Mirrors the version-scope picker so the two families of dropdown read as one.
 .facet {
+  // The dropdowns share out the row's spare width rather than each sitting at
+  // its own content width, so the bar lines up with the full-width search field
+  // above it instead of trailing off into empty space. The basis is the point at
+  // which they wrap; `min-width: 0` lets it win over the widest option's
+  // intrinsic width, so they shrink together before the row breaks.
+  flex: 1 1 9rem;
+  min-width: 0;
   font: inherit;
   font-size: t.$font-sm;
   padding: t.$space-xs t.$space-sm;
