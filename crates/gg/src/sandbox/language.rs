@@ -1011,8 +1011,8 @@ pub enum PrepareError {
     #[error("{0}")]
     Compile(String),
     /// It asks for something the sandbox will not run it with, and is refused with an explanation of
-    /// what to write instead — a module import where there is no loader, an `await` where there is
-    /// no event loop, a nesting depth the host's parser is not given room for.
+    /// what to write instead — a code module that exports nothing for a program to reach, an
+    /// `#include` inside a module whose declarations are compiled into a namespace of gg's naming.
     #[error("{0}")]
     Unsupported(String),
 }

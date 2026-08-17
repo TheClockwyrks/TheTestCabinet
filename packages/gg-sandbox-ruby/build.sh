@@ -146,9 +146,7 @@ cp "$PACKAGE/src/shim.js" "$BUILD_DIR/shim.js"
 cp "$OPAL_DIR/node_modules/opal-runtime/src/opal.js" "$BUILD_DIR/opal.js"
 
 # 6. Bake the component against the ONE copy of the WIT, which lives in the Rust crate that embeds
-#    the result. The `--disable` flags are the ECMAScript guest's, unchanged and deliberately so:
-#    a capability enabled here and not there would be a difference between two arms of a study that
-#    nobody chose.
+#    the result. What the `--disable` flags buy:
 #
 #      stdio        gg's telemetry IS this process's stdout (newline-delimited JSON); a guest write
 #                   would corrupt the stream, so `console.*` is rebound to a host call instead — and

@@ -60,33 +60,30 @@ The line is written in that language's own idiom, and shortening a name is what
 it buys:
 
 ```text
-C#      using Gg;                 →  Files.WriteFile(…)   unshortened  Gg.Files.WriteFile(…)
-C++     #include <gg/files.hpp>   →  gg::files::read_file(…)
-Swift   import gg                 →  files.readFile(…)    unshortened  gg.files.readFile(…)
-Python  import gg                 →  gg.files.read_file(…)
-Ruby    require "gg"              →  GG::Files.read_file(…)
-Rust    use gg::files;            →  files::read_file(…)  unshortened  gg::files::read_file(…)
+TypeScript  import * as gg from "gg";        →  gg.files.readFile(…)
+JavaScript  import * as gg from "gg";        →  gg.files.readFile(…)
+PureScript  import Gg.Files as Gg.Files      →  Gg.Files.readFile(…)
+Python      import gg                        →  gg.files.read_file(…)
+Ruby        require "gg"                     →  GG::Files.read_file(…)
+Rust        use gg::files;                   →  files::read_file(…)   unshortened  gg::files::read_file(…)
+Java        import gg.files.Files;           →  Files.readFile(…)     unshortened  gg.files.Files.readFile(…)
+Kotlin      import gg.files.*                →  readFile(…)           unshortened  gg.files.readFile(…)
+Swift       import gg                        →  files.readFile(…)     unshortened  gg.files.readFile(…)
+C++         #include <gg/files.hpp>          →  gg::files::read_file(…)
+C#          using Gg;                        →  Files.ReadFile(…)     unshortened  Gg.Files.ReadFile(…)
 ```
 
-Rust's is the form that arm is converting to. PureScript, C#, C++, Swift, Python
-and Ruby hold the condition today: a PureScript program writes
-`import Gg.Files as Gg.Files` for every module it calls, a C# program writes
-`using Gg;` once or names each module in full, a C++ program writes one
-`#include` per module it calls and then the full path, since an include declares
-a name rather than shortening one, a Swift program writes `import gg` once, which
-is the one line that reaches gg's Swift module at all, a Python program writes
-`import gg` and then the fully-qualified name the documentation is keyed by, and a
-Ruby program writes `require "gg"` and then the fully-qualified constant path.
-Every other arm puts its SDK in a program's scope before the program compiles,
-through a prelude or a scope handed to an evaluator, and each arm's page states
-which of those its own is.
+Every arm holds the condition, and every module of every arm states its own line.
+The lines differ in what they buy: a C++ `#include` declares a name rather than
+shortening one, a Swift `import gg` is the one line that reaches gg's Swift module
+at all, and a Python program writes `import gg` and then the fully-qualified name
+the documentation is keyed by.
 
-What survives a converted arm without a line is package availability: a classpath
-entry, an extern prelude, an include path, a linked archive. That is how a
-compiler is told the library exists, and it declares no name. A
+What an arm may be given without a line is package availability: a classpath
+entry, an extern, an include path, a linked archive. That is how a compiler is
+told the library exists, and it declares no name. A
 [documentation view](/gg/responses-as-code/views/) quotes the line beside the
-symbol it reaches, and says the symbol is in scope already on an arm with no line
-to write.
+symbol it reaches.
 
 ## What a refused call raises
 

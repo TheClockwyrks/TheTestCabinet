@@ -299,11 +299,10 @@ impl TurnErrorKind {
 /// sandbox enforced, which class the guest typed an uncaught throw with, and which of the two "no
 /// work declared" shapes the turn was. Nothing here needs new information to be computed.
 ///
-/// Every value here has a counterpart in the contract's [`GgTurnErrorType`], and is converted by
-/// hand ([`wire`](Self::wire)) for the reason [`TurnOutcome::wire`] gives: gg's vocabulary and the
+/// One-to-one with the contract's [`GgTurnErrorType`], and converted by hand
+/// ([`wire`](Self::wire)) for the reason [`TurnOutcome::wire`] gives: gg's vocabulary and the
 /// published one must not become interchangeable, so adding a type here is a decision to publish it
-/// there. The contract is the wider of the two, because it also has to read back a value some
-/// earlier gg recorded.
+/// there.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TurnErrorType {
     /// The run's credential was refused — no key in the environment, or a `401`/`403`.

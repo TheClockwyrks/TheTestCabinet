@@ -157,7 +157,13 @@ A program that fails at run time fails by capture: nothing catches its throw to
 describe it, the engine writes its own rendering to standard error, and gg puts
 that in front of the trap that follows. What the model reads is its own
 language's account of its own failure, with the frames read back into
-`program.ts`.
+`program.ts` through the map `tsc` emitted.
+
+A stack the SDK raised from carries the SDK's own frames above the program's,
+under the `sdk:` specifiers the guest resolves for its own modules alone. Which
+construct the engine carries a position for, and when a rejected promise counts
+as a failure, are the guest's own rules and are on
+[the ECMAScript guest](/gg/languages/ecmascript-guest/) page.
 
 ## Code modules
 

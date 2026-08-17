@@ -140,10 +140,10 @@ halves, so omitting them clears them, on the rule the description and the body
 already follow. A native-mode update leaves both alone, since its schema has no
 way to say anything about them.
 
-- `code` is a module whose exports are bound at `lib.<key>` in every program the
-  agent writes from then on, `key` being the slug in camel case (`csv-tools` →
-  `lib.csvTools`), deduplicated if something else holds it. The reply names the
-  key and lists the exports.
+- `code` is a module whose exports are bound in every program the agent writes
+  from then on, `key` being the slug in camel case (`csv-tools` → `csvTools`),
+  deduplicated if something else holds it. The reply names the key, the form that
+  reaches it, and the exports.
 - `onUse` is a script gg runs once, when the memory first comes into use, after
   the turn's program has ended, so the views it opens arrive on the next turn. It
   cannot end the session, it has no program library, and its source is never
